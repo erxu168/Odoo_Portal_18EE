@@ -54,7 +54,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
   }
 
   const stateColors: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-600', confirmed: 'bg-indigo-50 text-indigo-700',
+    draft: 'bg-gray-100 text-gray-600', confirmed: 'bg-orange-50 text-orange-700',
     progress: 'bg-amber-50 text-amber-700', done: 'bg-emerald-50 text-emerald-700',
     cancel: 'bg-red-50 text-red-700',
   };
@@ -62,7 +62,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
     draft: 'Draft', confirmed: 'Confirmed', progress: 'In Progress', done: 'Done', cancel: 'Cancelled',
   };
   const woStateColors: Record<string, string> = {
-    ready: 'bg-indigo-50 text-indigo-700', progress: 'bg-amber-50 text-amber-700',
+    ready: 'bg-orange-50 text-orange-700', progress: 'bg-amber-50 text-amber-700',
     pending: 'bg-gray-100 text-gray-500', done: 'bg-emerald-50 text-emerald-700',
     waiting: 'bg-gray-100 text-gray-500',
   };
@@ -70,7 +70,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
     ready: 'Ready', progress: 'In Progress', pending: 'Waiting', done: 'Done', waiting: 'Waiting',
   };
   const woStepColors: Record<string, string> = {
-    ready: 'bg-indigo-50 text-indigo-600', progress: 'bg-amber-50 text-amber-600',
+    ready: 'bg-orange-50 text-orange-600', progress: 'bg-amber-50 text-amber-600',
     pending: 'bg-gray-100 text-gray-400', done: 'bg-emerald-50 text-emerald-600',
     waiting: 'bg-gray-100 text-gray-400',
   };
@@ -78,7 +78,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
   if (loading || !mo) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -90,14 +90,14 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white px-5 pt-3.5 pb-3.5 border-b border-gray-200">
-        <button onClick={onBack} className="flex items-center gap-1 mb-1 text-indigo-500 text-[13px] active:opacity-70">
+      <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
+        <button onClick={onBack} className="flex items-center gap-1 mb-2 text-orange-600 text-[13px] font-semibold active:opacity-70">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
-          Back
+          Production
         </button>
         <div className="flex items-center gap-3">
           <div className="flex-1">
-            <h1 className="text-lg font-bold text-gray-900">{mo.product_id[1]}</h1>
+            <h1 className="text-[18px] font-bold text-gray-900">{mo.product_id[1]}</h1>
             <p className="text-[13px] text-gray-500 mt-0.5">{mo.name} {"\u00b7"} {mo.bom_id?.[1] || ''}</p>
           </div>
           <span className={`text-[11px] px-2.5 py-0.5 rounded-md font-semibold ${stateColors[mo.state]}`}>
@@ -111,15 +111,15 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex-1 text-center py-3 border-r border-gray-100">
             <div className="text-[11px] text-gray-400 font-semibold tracking-wider">QUANTITY</div>
-            <div className="text-lg font-bold text-indigo-500 mt-0.5">{mo.qty_producing} / {mo.product_qty}</div>
+            <div className="text-lg font-bold text-orange-500 mt-0.5 font-mono">{mo.qty_producing} / {mo.product_qty}</div>
           </div>
           <div className="flex-1 text-center py-3 border-r border-gray-100">
-            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">WORK ORDERS</div>
-            <div className="text-lg font-bold text-amber-500 mt-0.5">{doneWos} / {workOrders.length}</div>
+            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">STEPS</div>
+            <div className="text-lg font-bold text-amber-500 mt-0.5 font-mono">{doneWos} / {workOrders.length}</div>
           </div>
           <div className="flex-1 text-center py-3">
-            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">COMPONENTS</div>
-            <div className="text-lg font-bold text-emerald-500 mt-0.5">{doneComps} / {components.length}</div>
+            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">INGREDIENTS</div>
+            <div className="text-lg font-bold text-emerald-500 mt-0.5 font-mono">{doneComps} / {components.length}</div>
           </div>
         </div>
       </div>
@@ -130,18 +130,18 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
           <button
             onClick={() => setTab('workorders')}
             className={`flex-1 py-2 rounded-md text-xs font-semibold tracking-wide transition-all ${
-              tab === 'workorders' ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-500'
+              tab === 'workorders' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'
             }`}
           >
-            Work Orders ({workOrders.length})
+            Steps ({workOrders.length})
           </button>
           <button
             onClick={() => setTab('components')}
             className={`flex-1 py-2 rounded-md text-xs font-semibold tracking-wide transition-all ${
-              tab === 'components' ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-500'
+              tab === 'components' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'
             }`}
           >
-            Components ({components.length})
+            Ingredients ({components.length})
           </button>
         </div>
       </div>
@@ -154,8 +154,8 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
               <button
                 key={wo.id}
                 onClick={() => onOpenWo(wo.id)}
-                className={`bg-white border rounded-xl p-4 text-left active:bg-gray-50 transition-colors ${
-                  wo.state === 'progress' ? 'border-amber-200' : 'border-gray-200'
+                className={`bg-white border rounded-xl p-4 text-left active:scale-[0.98] transition-all ${
+                  wo.state === 'progress' ? 'border-orange-200 shadow-sm' : 'border-gray-200'
                 }`}
               >
                 <div className="flex items-start gap-3">
@@ -174,7 +174,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
                   <div className="flex items-center gap-2 mt-2 pl-11 text-[11px] text-gray-400">
                     <span>{"\u23F1"}</span>
                     {wo.duration > 0 && (
-                      <span className={`font-semibold ${wo.state === 'done' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      <span className={`font-semibold ${wo.state === 'done' ? 'text-emerald-600' : 'text-orange-600'}`}>
                         {Math.floor(wo.duration)}m
                       </span>
                     )}
@@ -186,7 +186,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
               </button>
             ))}
             {workOrders.length === 0 && (
-              <div className="text-center py-8 text-gray-400 text-sm">No work orders for this MO</div>
+              <div className="text-center py-8 text-gray-400 text-sm">No steps for this order</div>
             )}
           </div>
         )}
@@ -199,8 +199,8 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
               const isDone = c.is_done || c.state === 'done';
               const partial = consumed > 0 && !isDone;
               const compUom = c.product_uom?.[1] || 'kg';
-              const accentColor = isDone ? 'bg-emerald-500' : partial ? 'bg-amber-400' : 'bg-gray-200';
-              const qtyColor = isDone ? 'text-emerald-600' : partial ? 'text-amber-600' : 'text-gray-900';
+              const accentColor = isDone ? 'bg-emerald-500' : partial ? 'bg-orange-400' : 'bg-gray-200';
+              const qtyColor = isDone ? 'text-emerald-600' : partial ? 'text-orange-600' : 'text-gray-900';
 
               return (
                 <div key={c.id} className="bg-white border border-gray-200 rounded-xl flex overflow-hidden">
@@ -215,7 +215,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className={`text-[15px] font-bold tabular-nums ${qtyColor}`}>
+                      <div className={`text-[15px] font-bold tabular-nums font-mono ${qtyColor}`}>
                         {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(consumed)} / {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(required)}
                       </div>
                       <div className="text-[11px] text-gray-400">{compUom}</div>
@@ -225,7 +225,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
               );
             })}
             {components.length === 0 && (
-              <div className="text-center py-8 text-gray-400 text-sm">No components</div>
+              <div className="text-center py-8 text-gray-400 text-sm">No ingredients</div>
             )}
           </div>
         )}
@@ -233,25 +233,25 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
 
       {/* Produce & Close CTA */}
       {produceError && (
-        <div className="fixed bottom-32 left-0 right-0 max-w-lg mx-auto px-4">
+        <div className="fixed bottom-20 left-0 right-0 max-w-lg mx-auto px-4">
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-red-700 text-sm">{produceError}</div>
         </div>
       )}
       {mo.state === 'done' && (
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
           <div className="w-full py-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[15px] text-center">
-            {"\u2713"} Manufacturing order completed
+            {"\u2713"} Order completed
           </div>
         </div>
       )}
       {mo.state !== 'done' && allWosDone && (
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
           <button
             onClick={handleProduce}
             disabled={producing}
-            className="w-full py-4 rounded-xl bg-emerald-500 text-white font-bold text-[15px] shadow-lg shadow-emerald-500/30 active:scale-[0.975] transition-transform disabled:opacity-50"
+            className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform disabled:opacity-50"
           >
-            {producing ? 'Producing...' : '\u2713 Produce & Close MO'}
+            {producing ? 'Finishing...' : '\u2713 Produce & close'}
           </button>
         </div>
       )}

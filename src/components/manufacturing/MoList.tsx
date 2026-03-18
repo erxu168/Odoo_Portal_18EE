@@ -1,26 +1,62 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface MoListProps {
   onSelect: (moId: number) => void;
   onCreate: () => void;
+  onHome?: () => void;
 }
 
-export default function MoList({ onSelect, onCreate }: MoListProps) {
+const STATE_COLORS: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-600',
+  confirmed: 'bg-orange-50 text-orange-700',
+  progress: 'bg-amber-50 text-amber-700',
+  to_close: 'bg-blue-50 text-blue-700',
+  done: 'bg-emerald-50 text-emerald-700',
+  cancel: 'bg-red-50 text-red-700',
+};
+
+const STATE_LABELS: Record<string, string> = {
+  draft: 'Draft',
+  confirmed: 'Confirmed',
+  progress: 'In Progress',
+  to_close: 'Almost Done',
+  done: 'Done',
+  cancel: 'Cancelled',
+};
+
+const FILTER_TABS = [
+  { id: 'all', label: 'All' },
+  { id: 'active', label: 'Active' },
+  { id: 'progress', label: 'In Progress' },
+  { id: 'draft', label: 'To Do' },
+  { id: 'done', label: 'Done' },
+];
+
+export default function MoList({ onSelect, onCreate, onHome }: MoListProps) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  // BUG FIX #5: Default to 'all' so test data (drafts) is visible
   const [filter, setFilter] = useState('all');
+  const [stats, setStats] = useState({ due: 0, active: 0, doneToday: 0 });
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => { fetchOrders(); }, [filter]);
 
   async function fetchOrders() {
     setLoading(true);
     try {
-      const res = await fetch('/api/manufacturing-orders?limit=100');
+      const params = new URLSearchParams();
+      if (filter !== 'all') params.set('state', filter);
+      const res = await fetch(`/api/manufacturing-orders?${params}`);
       const data = await res.json();
       setOrders(data.orders || []);
+
+      // Fetch dashboard stats
+      try {
+        const dRes = await fetch('/api/dashboard');
+        const dData = await dRes.json();
+        if (dData.production) setStats(dData.production);
+      } catch {}
     } catch (err) {
       console.error('Failed to fetch MOs:', err);
     } finally {
@@ -28,140 +64,147 @@ export default function MoList({ onSelect, onCreate }: MoListProps) {
     }
   }
 
-  const filtered = useMemo(() => {
-    if (filter === 'all') return orders;
-    if (filter === 'active') return orders.filter((m) => m.state === 'confirmed' || m.state === 'progress');
-    return orders.filter((m) => m.state === filter);
-  }, [orders, filter]);
-
-  const stateColors: Record<string, string> = {
-    draft: 'bg-gray-100 text-gray-600',
-    confirmed: 'bg-indigo-50 text-indigo-700',
-    progress: 'bg-amber-50 text-amber-700',
-    done: 'bg-emerald-50 text-emerald-700',
-    cancel: 'bg-red-50 text-red-700',
-  };
-  const stateLabels: Record<string, string> = {
-    draft: 'Draft', confirmed: 'Confirmed', progress: 'In Progress', done: 'Done', cancel: 'Cancelled',
-  };
-
-  const filters = [
-    { id: 'all', label: 'All' },
-    { id: 'active', label: 'Active' },
-    { id: 'progress', label: 'In Progress' },
-    { id: 'confirmed', label: 'To Do' },
-    { id: 'done', label: 'Done' },
-  ];
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-gray-500 mt-3">Loading orders...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
-        <h1 className="text-lg font-bold text-gray-900">Manufacturing</h1>
-        <p className="text-xs text-gray-500 mt-0.5">SSAM Korean BBQ</p>
+      <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
+        <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
+        <div className="flex items-center gap-3 relative">
+          {onHome && (
+            <button
+              onClick={onHome}
+              className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
+            </button>
+          )}
+          <div className="flex-1">
+            <h1 className="text-[20px] font-bold text-white">Production</h1>
+            <p className="text-[12px] text-white/50 mt-0.5">Manufacturing orders</p>
+          </div>
+          <button
+            onClick={onCreate}
+            className="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center active:bg-orange-600 transition-colors shadow-lg shadow-orange-500/30"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+
+        {/* Stats strip */}
+        <div className="flex gap-2 mt-4 relative">
+          <div className="flex-1 bg-white/8 border border-white/10 rounded-xl px-3 py-2.5 text-center">
+            <div className="text-[16px] font-bold text-red-400 font-mono">{stats.due}</div>
+            <div className="text-[10px] text-white/40 font-semibold tracking-wider mt-0.5">DUE NOW</div>
+          </div>
+          <div className="flex-1 bg-white/8 border border-white/10 rounded-xl px-3 py-2.5 text-center">
+            <div className="text-[16px] font-bold text-orange-400 font-mono">{stats.active}</div>
+            <div className="text-[10px] text-white/40 font-semibold tracking-wider mt-0.5">ACTIVE</div>
+          </div>
+          <div className="flex-1 bg-white/8 border border-white/10 rounded-xl px-3 py-2.5 text-center">
+            <div className="text-[16px] font-bold text-emerald-400 font-mono">{stats.doneToday}</div>
+            <div className="text-[10px] text-white/40 font-semibold tracking-wider mt-0.5">DONE TODAY</div>
+          </div>
+        </div>
       </div>
 
-      {/* Segment filter */}
+      {/* Filter pills */}
       <div className="px-4 py-3">
-        <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
-          {filters.map((f) => (
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+          {FILTER_TABS.map((tab) => (
             <button
-              key={f.id}
-              onClick={() => setFilter(f.id)}
-              className={`flex-1 py-2 rounded-md text-xs font-semibold tracking-wide transition-all ${
-                filter === f.id
-                  ? 'bg-indigo-500 text-white shadow-sm'
-                  : 'text-gray-500'
+              key={tab.id}
+              onClick={() => setFilter(tab.id)}
+              className={`px-4 py-2 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
+                filter === tab.id
+                  ? 'bg-orange-500 text-white shadow-sm'
+                  : 'bg-white text-gray-500 border border-gray-200'
               }`}
             >
-              {f.label}
+              {tab.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* MO Cards */}
-      <div className="px-4 pb-24 flex flex-col gap-2.5">
-        {filtered.map((mo) => {
-          const pct = mo.product_qty > 0 ? Math.round((mo.qty_producing / mo.product_qty) * 100) : 0;
-          const woCount = mo.work_order_count || 0;
-          const compCount = mo.move_raw_ids?.length || 0;
-          const uom = mo.product_uom_id?.[1] || 'kg';
-          const deadline = mo.date_deadline
-            ? new Date(mo.date_deadline).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-            : '';
+      {/* MO cards */}
+      <div className="px-4 pb-24">
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+          </div>
+        ) : orders.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-3xl mb-3 opacity-40">\uD83D\uDCE6</div>
+            <div className="text-[13px] text-gray-400">No orders found</div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {orders.map((mo: any) => {
+              const pct = mo.product_qty > 0 ? Math.round((mo.qty_producing / mo.product_qty) * 100) : 0;
+              const hasDeadline = mo.date_deadline;
+              const deadlineStr = hasDeadline
+                ? new Date(mo.date_deadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : null;
 
-          return (
-            <button
-              key={mo.id}
-              onClick={() => onSelect(mo.id)}
-              className="bg-white border border-gray-200 rounded-xl p-4 text-left active:bg-gray-50 transition-colors"
-            >
-              {/* Top row */}
-              <div className="flex justify-between items-start mb-2.5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-400 font-semibold tracking-wider">{mo.name}</span>
-                  </div>
-                  <div className="text-[15px] font-bold text-gray-900 mt-1 leading-tight">{mo.product_id[1]}</div>
-                </div>
-                <span className={`text-[11px] px-2.5 py-0.5 rounded-md font-semibold flex-shrink-0 ${stateColors[mo.state] || 'bg-gray-100 text-gray-600'}`}>
-                  {stateLabels[mo.state] || mo.state}
-                </span>
-              </div>
-
-              {/* Meta row */}
-              <div className="flex gap-4 text-xs text-gray-500 mb-2.5">
-                <span>Qty: <strong className="text-gray-900">{mo.qty_producing}/{mo.product_qty}</strong> {uom}</span>
-                {woCount > 0 && <span>WOs: <strong className="text-gray-900">{woCount}</strong></span>}
-                {compCount > 0 && <span>Comps: <strong className="text-gray-900">{compCount}</strong></span>}
-              </div>
-
-              {/* Progress bar */}
-              <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    mo.state === 'done' ? 'bg-emerald-500' : mo.state === 'progress' ? 'bg-amber-500' : 'bg-indigo-500'
+              return (
+                <button
+                  key={mo.id}
+                  onClick={() => onSelect(mo.id)}
+                  className={`bg-white border rounded-2xl p-4 text-left active:scale-[0.98] transition-all ${
+                    mo.state === 'progress' ? 'border-orange-200 shadow-sm' : 'border-gray-200'
                   }`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
+                >
+                  {/* Top row: ref + badge */}
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] text-gray-400 font-mono">{mo.name}</span>
+                    <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${STATE_COLORS[mo.state] || 'bg-gray-100 text-gray-500'}`}>
+                      {STATE_LABELS[mo.state] || mo.state}
+                    </span>
+                  </div>
 
-              {/* Bottom row */}
-              <div className="flex justify-between mt-2 text-[11px] text-gray-400">
-                <span>{mo.bom_id?.[1] || ''}</span>
-                {deadline && <span>Due {deadline}</span>}
-              </div>
-            </button>
-          );
-        })}
-        {filtered.length === 0 && (
-          <div className="text-center py-12 text-gray-400 text-sm">
-            No manufacturing orders in this category
+                  {/* Product name */}
+                  <div className="text-[15px] font-bold text-gray-900 leading-tight">
+                    {mo.product_id?.[1] || 'Unknown product'}
+                  </div>
+
+                  {/* Meta row */}
+                  <div className="flex items-center gap-3 mt-2 text-[12px] text-gray-500">
+                    <span className="font-semibold">
+                      Qty <span className="font-mono text-gray-900">{mo.qty_producing}/{mo.product_qty}</span> {mo.product_uom_id?.[1] || 'Units'}
+                    </span>
+                    {mo.work_order_count > 0 && (
+                      <span>\u00b7 {mo.work_order_count} steps</span>
+                    )}
+                    {mo.move_raw_ids?.length > 0 && (
+                      <span>\u00b7 {mo.move_raw_ids.length} comps</span>
+                    )}
+                  </div>
+
+                  {/* Progress bar (only for active/progress) */}
+                  {(mo.state === 'progress' || mo.state === 'confirmed') && mo.product_qty > 0 && (
+                    <div className="flex items-center gap-2 mt-3">
+                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-orange-500 rounded-full transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="text-[11px] font-mono text-gray-400">{pct}%</span>
+                    </div>
+                  )}
+
+                  {/* Deadline */}
+                  {deadlineStr && (mo.state === 'confirmed' || mo.state === 'progress') && (
+                    <div className="mt-2 text-[11px] text-gray-400">
+                      Due {deadlineStr}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
-
-      {/* FAB */}
-      <button
-        onClick={onCreate}
-        className="fixed bottom-20 right-5 w-14 h-14 rounded-2xl bg-indigo-500 text-white shadow-lg shadow-indigo-500/40 flex items-center justify-center active:scale-90 transition-transform z-40"
-      >
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-      </button>
     </div>
   );
 }
