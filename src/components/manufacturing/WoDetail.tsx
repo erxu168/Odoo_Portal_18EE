@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import NumPad from '@/components/ui/NumPad';
 
 interface WoDetailProps {
   moId: number;
@@ -22,6 +23,10 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const [timerSec, setTimerSec] = useState(0);
   const [running, setRunning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Numpad state
+  const [numpadComp, setNumpadComp] = useState<any>(null);
+  const [numpadSaving, setNumpadSaving] = useState(false);
 
   useEffect(() => { fetchData(); return () => { if (timerRef.current) clearInterval(timerRef.current); }; }, [woId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -91,6 +96,29 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
     try { await callWoAction('done'); setRunning(false); onDone(); } catch (e) { void e; }
   }
 
+  // Save component qty from numpad
+  async function handleNumpadConfirm(value: number) {
+    if (!numpadComp) return;
+    setNumpadSaving(true);
+    try {
+      const res = await fetch(`/api/manufacturing-orders/${moId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          component_updates: [{ move_id: numpadComp.id, consumed_qty: value }],
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setNumpadComp(null);
+      await fetchData();
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to update quantity');
+    } finally {
+      setNumpadSaving(false);
+    }
+  }
+
   const mm = String(Math.floor(timerSec / 60)).padStart(2, '0');
   const ss = String(timerSec % 60).padStart(2, '0');
 
@@ -112,7 +140,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
           {productName}
         </button>
         <h1 className="text-[18px] font-bold text-gray-900">{wo.name}</h1>
-        <p className="text-[13px] text-gray-500 mt-0.5">{wo.workcenter_id[1]} {"\u00b7"} {displayComps.length} ingredients</p>
+        <p className="text-[13px] text-gray-500 mt-0.5">{wo.workcenter_id[1]} &middot; {displayComps.length} ingredients</p>
       </div>
 
       {/* Step progress */}
@@ -131,7 +159,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
           <div className="text-xs text-gray-400 mt-2">Expected: {wo.duration_expected ? `${Math.round(wo.duration_expected)} min` : 'N/A'}</div>
           <div className="flex gap-3 justify-center mt-5">
             {wo.state === 'done' ? (
-              <span className="text-emerald-600 font-semibold text-sm">{"\u2713"} Completed</span>
+              <span className="text-emerald-600 font-semibold text-sm">&#x2713; Completed</span>
             ) : (
               <>
                 <button onClick={handleToggle} disabled={!!actionLoading}
@@ -182,6 +210,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       <div className="px-4 pb-24">
         {tab === 'components' && (
           <div className="flex flex-col gap-1.5">
+            {displayComps.length > 0 && (
+              <p className="text-[11px] text-gray-400 mb-1 px-1">Tap an ingredient to set the quantity</p>
+            )}
             {displayComps.map((c: any) => {
               const consumed = c.consumed_qty || 0;
               const required = c.product_uom_qty || 0;
@@ -190,7 +221,13 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
               const compUom = c.product_uom?.[1] || 'kg';
               const accentColor = isDone ? 'bg-emerald-500' : partial ? 'bg-orange-400' : 'bg-gray-200';
               return (
-                <div key={c.id} className="bg-white border border-gray-200 rounded-xl flex overflow-hidden">
+                <button
+                  key={c.id}
+                  onClick={() => !isDone && setNumpadComp(c)}
+                  className={`bg-white border border-gray-200 rounded-xl flex overflow-hidden text-left ${
+                    !isDone ? 'active:scale-[0.98] transition-transform' : ''
+                  }`}
+                >
                   <div className={`w-1 flex-shrink-0 ${accentColor}`} />
                   <div className="flex-1 flex items-center gap-3 px-4 py-3">
                     <div className={`w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center ${isDone ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'}`}>
@@ -198,6 +235,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className={`text-[14px] font-semibold ${isDone ? 'text-emerald-600 line-through' : 'text-gray-900'}`}>{c.product_id[1]}</div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        {isDone ? '&#x2713; Consumed' : partial ? 'Partial' : 'Tap to set qty'}
+                      </div>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className={`text-[15px] font-bold tabular-nums font-mono ${isDone ? 'text-emerald-600' : partial ? 'text-orange-600' : 'text-gray-900'}`}>
@@ -206,7 +246,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                       <div className="text-[11px] text-gray-400">{compUom}</div>
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
             {displayComps.length === 0 && <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-gray-400 text-sm">No ingredients assigned to this step</div>}
@@ -225,6 +265,19 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         </div>
       )}
 
+      {/* NumPad */}
+      {numpadComp && (
+        <NumPad
+          label={numpadComp.product_id[1]}
+          value={String(numpadComp.consumed_qty || 0)}
+          unit={numpadComp.product_uom?.[1] || 'kg'}
+          demandQty={numpadComp.product_uom_qty}
+          loading={numpadSaving}
+          onConfirm={handleNumpadConfirm}
+          onClose={() => setNumpadComp(null)}
+        />
+      )}
+
       {/* Confirm sheet */}
       {showConfirm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowConfirm(false)}>
@@ -232,9 +285,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
           <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-8" onClick={(e) => e.stopPropagation()} style={{animation: 'slideUp .25s ease-out'}}>
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
             <div className="text-center mb-6">
-              <div className="text-2xl mb-2">{"\u2705"}</div>
+              <div className="text-2xl mb-2">&#x2705;</div>
               <h3 className="text-lg font-bold text-gray-900">Finished this step?</h3>
-              <p className="text-sm text-gray-500 mt-2">You{"\u2019"}re marking <strong>{wo.name}</strong> as done{productName !== 'this product' && <> for <strong>{productName}</strong></>}.
+              <p className="text-sm text-gray-500 mt-2">You&rsquo;re marking <strong>{wo.name}</strong> as done{productName !== 'this product' && <> for <strong>{productName}</strong></>}.
                 {running && <><br />Timer stops at <strong>{mm}:{ss}</strong>.</>}
               </p>
             </div>
