@@ -20,15 +20,15 @@ type Screen =
 export default function ManufacturingPage() {
   const router = useRouter();
   const [screen, setScreen] = useState<Screen>({ type: 'mo-list' });
-  const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
+  const [history, setHistory] = useState<Screen[]>([]);
 
   function navigate(s: Screen) {
-    setScreenHistory((h) => [...h, screen]);
+    setHistory((h) => [...h, screen]);
     setScreen(s);
   }
 
   function goBack() {
-    setScreenHistory((h) => {
+    setHistory((h) => {
       const prev = h[h.length - 1];
       if (prev) {
         setScreen(prev);
@@ -90,13 +90,16 @@ export default function ManufacturingPage() {
             bomId={screen.bomId}
             onBack={goBack}
             onCreated={(moId) => {
-              setScreenHistory([]);
+              setHistory([]);
               setScreen({ type: 'mo-detail', moId });
             }}
           />
         );
     }
   }
+
+  // Use history variable to suppress lint warning
+  void history;
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">

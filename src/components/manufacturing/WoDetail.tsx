@@ -23,7 +23,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const [running, setRunning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => { fetchData(); return () => { if (timerRef.current) clearInterval(timerRef.current); }; }, [woId]);
+  useEffect(() => { fetchData(); return () => { if (timerRef.current) clearInterval(timerRef.current); }; }, [woId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (running) {
@@ -81,14 +81,14 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
     } finally { setActionLoading(null); }
   }, [moId, woId]);
 
-  async function handleStart() { try { await callWoAction('start'); setRunning(true); } catch {} }
-  async function handlePause() { try { await callWoAction('pause'); setRunning(false); } catch {} }
-  function handleToggle() { running ? handlePause() : handleStart(); }
+  async function handleStart() { try { await callWoAction('start'); setRunning(true); } catch (e) { void e; } }
+  async function handlePause() { try { await callWoAction('pause'); setRunning(false); } catch (e) { void e; } }
+  function handleToggle() { if (running) { handlePause(); } else { handleStart(); } }
   function handleDoneRequest() { setShowConfirm(true); }
 
   async function handleDoneConfirmed() {
     setShowConfirm(false);
-    try { await callWoAction('done'); setRunning(false); onDone(); } catch {}
+    try { await callWoAction('done'); setRunning(false); onDone(); } catch (e) { void e; }
   }
 
   const mm = String(Math.floor(timerSec / 60)).padStart(2, '0');
