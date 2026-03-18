@@ -4,6 +4,10 @@
  * This DB only handles portal authentication.
  *
  * DB file location: ./data/portal.db (gitignored)
+ *
+ * NOTE: We compute all timestamps in JS (new Date().toISOString()) rather than
+ * using SQLite's datetime('now'), because Next.js minification can mangle
+ * the SQL string quotes and break the query.
  */
 import Database from 'better-sqlite3';
 import path from 'path';
@@ -13,6 +17,10 @@ import bcrypt from 'bcryptjs';
 const DB_PATH = path.join(process.cwd(), 'data', 'portal.db');
 
 let _db: Database.Database | null = null;
+
+function nowISO(): string {
+  return new Date().toISOString();
+}
 
 export function getDb(): Database.Database {
   if (!_db) {
@@ -33,24 +41,24 @@ function initTables(db: Database.Database) {
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE COLLATE NOCASE,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'staff' CHECK(role IN ('staff', 'manager', 'admin')),
+      role TEXT NOT NULL DEFAULT 'staff',
       employee_id INTEGER,
       active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL,
       last_login TEXT
     );
 
     CREATE TABLE IF NOT EXISTS sessions (
       token TEXT PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
       token TEXT PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL
     );
 
@@ -70,8 +78,8 @@ function seedAdmin(db: Database.Database) {
     const email = process.env.ODOO_USER || 'admin@krawings.de';
     const hash = bcrypt.hashSync('krawings2026', 10);
     db.prepare(
-      'INSERT INTO portal_users (name, email, password_hash, role) VALUES (?, ?, ?, ?)'
-    ).run('Admin', email, hash, 'admin');
+      'INSERT INTO portal_users (name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run('Admin', email, hash, 'admin', nowISO());
     console.log(`Portal: created initial admin user (${email}). Change the password!`);
   }
 }
@@ -114,8 +122,8 @@ export function createUser(name: string, email: string, password: string, role: 
   const db = getDb();
   const hash = bcrypt.hashSync(password, 10);
   const result = db.prepare(
-    'INSERT INTO portal_users (name, email, password_hash, role) VALUES (?, ?, ?, ?)'
-  ).run(name, email.toLowerCase().trim(), hash, role);
+    'INSERT INTO portal_users (name, email, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(name, email.toLowerCase().trim(), hash, role, nowISO());
   return result.lastInsertRowid as number;
 }
 
@@ -145,23 +153,25 @@ const SESSION_DAYS = 30;
 export function createSession(userId: number): string {
   const db = getDb();
   const token = crypto.randomUUID();
+  const now = nowISO();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + SESSION_DAYS);
   db.prepare(
-    'INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)'
-  ).run(token, userId, expiresAt.toISOString());
-  db.prepare('UPDATE portal_users SET last_login = datetime("now") WHERE id = ?').run(userId);
+    'INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
+  ).run(token, userId, now, expiresAt.toISOString());
+  db.prepare('UPDATE portal_users SET last_login = ? WHERE id = ?').run(now, userId);
   return token;
 }
 
 export function getSessionUser(token: string): PortalUser | null {
   const db = getDb();
+  const now = nowISO();
   const row = db.prepare(`
     SELECT u.id, u.name, u.email, u.role, u.employee_id, u.active, u.created_at, u.last_login
     FROM sessions s
     JOIN portal_users u ON u.id = s.user_id
-    WHERE s.token = ? AND u.active = 1 AND s.expires_at > datetime('now')
-  `).get(token) as PortalUser | null;
+    WHERE s.token = ? AND u.active = 1 AND s.expires_at > ?
+  `).get(token, now) as PortalUser | null;
   if (!row) {
     db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
     return null;
@@ -176,7 +186,7 @@ export function deleteSession(token: string) {
 
 export function cleanExpiredSessions() {
   const db = getDb();
-  db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
+  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(nowISO());
 }
 
 // ── Password Reset Tokens ──
@@ -189,17 +199,16 @@ const RESET_TOKEN_HOURS = 1;
  */
 export function createPasswordResetToken(userId: number): string {
   const db = getDb();
-  // Delete any existing tokens for this user
   db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
-  // Clean expired tokens
-  db.prepare("DELETE FROM password_reset_tokens WHERE expires_at < datetime('now')").run();
+  db.prepare('DELETE FROM password_reset_tokens WHERE expires_at < ?').run(nowISO());
 
   const token = crypto.randomUUID();
+  const now = nowISO();
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + RESET_TOKEN_HOURS);
   db.prepare(
-    'INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (?, ?, ?)'
-  ).run(token, userId, expiresAt.toISOString());
+    'INSERT INTO password_reset_tokens (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
+  ).run(token, userId, now, expiresAt.toISOString());
   return token;
 }
 
@@ -208,10 +217,9 @@ export function createPasswordResetToken(userId: number): string {
  */
 export function verifyPasswordResetToken(token: string): number | null {
   const db = getDb();
-  const row = db.prepare(`
-    SELECT user_id FROM password_reset_tokens
-    WHERE token = ? AND expires_at > datetime('now')
-  `).get(token) as { user_id: number } | null;
+  const row = db.prepare(
+    'SELECT user_id FROM password_reset_tokens WHERE token = ? AND expires_at > ?'
+  ).get(token, nowISO()) as { user_id: number } | null;
   return row?.user_id || null;
 }
 
