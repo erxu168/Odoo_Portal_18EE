@@ -25,6 +25,7 @@ export default function WorkOrderList({
 
   useEffect(() => {
     fetchMoDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moId]);
 
   async function fetchMoDetail() {
@@ -48,7 +49,6 @@ export default function WorkOrderList({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
-      // Refresh
       await fetchMoDetail();
     } catch (err) {
       console.error(`Failed to ${action} work order:`, err);
@@ -75,23 +75,26 @@ export default function WorkOrderList({
 
   if (loading || !mo) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-400">
-        Loading...
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-gray-500 mt-3">Loading...</p>
+        </div>
       </div>
     );
   }
 
   const doneCount = workOrders.filter((wo) => wo.state === 'done').length;
   const totalCount = workOrders.length;
-  const uom = mo.product_uom_id?.[1] || 'g';
+  const uom = mo.product_uom_id?.[1] || 'kg';
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-gray-50">
       <BackHeader
         backLabel={mo.name}
-        backHref="#"
+        onBack={onBack}
         title={mo.product_id[1]}
-        subtitle={`${new Intl.NumberFormat('de-DE').format(mo.product_qty)}${uom} · ${totalCount} steps · ${mo.state}`}
+        subtitle={`${new Intl.NumberFormat('de-DE').format(mo.product_qty)}${uom} \u00b7 ${totalCount} steps \u00b7 ${mo.state}`}
       />
 
       <ProgressBar
@@ -121,27 +124,23 @@ export default function WorkOrderList({
           return (
             <div
               key={wo.id}
-              className={`bg-white dark:bg-gray-900 border rounded-xl px-4 py-3.5 ${
-                isActive
-                  ? 'border-blue-200 dark:border-blue-700'
-                  : 'border-gray-200 dark:border-gray-700'
+              className={`bg-white border rounded-xl px-4 py-3.5 ${
+                isActive ? 'border-blue-200' : 'border-gray-200'
               }`}
             >
-              {/* Top: name + badge */}
               <div className="flex justify-between items-start">
                 <div>
-                  <div className="text-[15px] font-medium text-gray-900 dark:text-white">
+                  <div className="text-[15px] font-medium text-gray-900">
                     {idx + 1}. {wo.name}
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  <div className="text-xs text-gray-500 mt-0.5">
                     {wo.workcenter_id[1]}
                   </div>
                 </div>
                 {getStateBadge(wo.state)}
               </div>
 
-              {/* Footer: meta + actions */}
-              <div className="flex justify-between items-center mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800">
+              <div className="flex justify-between items-center mt-2.5 pt-2.5 border-t border-gray-100">
                 <div className="flex items-center gap-4 text-xs text-gray-500">
                   {wo.duration > 0 && <TimerChip minutes={wo.duration} />}
                   {wo.duration === 0 && wo.duration_expected > 0 && (
@@ -155,18 +154,10 @@ export default function WorkOrderList({
                   {isReady && (
                     <button
                       onClick={() => handleWoAction(wo.id, 'start')}
-                      className="w-9 h-9 rounded-full bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 flex items-center justify-center"
+                      className="w-9 h-9 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center"
                       title="Start"
                     >
-                      <svg
-                        className="w-3.5 h-3.5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="rgb(29,78,216)"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="rgb(29,78,216)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <polygon points="6,4 20,12 6,20" />
                       </svg>
                     </button>
@@ -175,35 +166,20 @@ export default function WorkOrderList({
                     <>
                       <button
                         onClick={() => handleWoAction(wo.id, 'pause')}
-                        className="w-9 h-9 rounded-full bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 flex items-center justify-center"
+                        className="w-9 h-9 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center"
                         title="Pause"
                       >
-                        <svg
-                          className="w-3.5 h-3.5"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="rgb(180,83,9)"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                        >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="rgb(180,83,9)" strokeWidth="2.5" strokeLinecap="round">
                           <line x1="10" y1="6" x2="10" y2="18" />
                           <line x1="14" y1="6" x2="14" y2="18" />
                         </svg>
                       </button>
                       <button
                         onClick={() => handleWoAction(wo.id, 'done')}
-                        className="w-9 h-9 rounded-full bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 flex items-center justify-center"
+                        className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-300 flex items-center justify-center"
                         title="Done"
                       >
-                        <svg
-                          className="w-3.5 h-3.5"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="rgb(5,150,105)"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="rgb(5,150,105)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M5 13l4 4L19 7" />
                         </svg>
                       </button>
@@ -212,17 +188,14 @@ export default function WorkOrderList({
                 </div>
               </div>
 
-              {/* Assigned components pills */}
               {displayNames.length > 0 && (
-                <div className="mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800">
-                  <div className="text-[11px] text-gray-400 mb-1.5">
-                    Assigned components
-                  </div>
+                <div className="mt-2.5 pt-2.5 border-t border-gray-100">
+                  <div className="text-[11px] text-gray-400 mb-1.5">Assigned components</div>
                   <div className="flex flex-wrap gap-1">
                     {displayNames.map((name: string, i: number) => (
                       <span
                         key={i}
-                        className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                        className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"
                       >
                         {name}
                       </span>
@@ -231,17 +204,16 @@ export default function WorkOrderList({
                 </div>
               )}
 
-              {/* Tap to open detail */}
               {(isActive || isDone || isReady) && (
                 <button
                   onClick={() => onSelectWo(wo.id)}
-                  className="mt-2.5 w-full text-center text-xs text-blue-600 dark:text-blue-400 py-1"
+                  className="mt-2.5 w-full text-center text-xs text-emerald-600 py-1"
                 >
                   {isActive
-                    ? 'Open work order →'
+                    ? 'Open work order \u2192'
                     : isDone
-                    ? 'View details →'
-                    : 'View components →'}
+                    ? 'View details \u2192'
+                    : 'View components \u2192'}
                 </button>
               )}
             </div>

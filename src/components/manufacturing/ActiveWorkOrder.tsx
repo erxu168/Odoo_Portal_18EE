@@ -28,10 +28,10 @@ export default function ActiveWorkOrder({
   const [components, setComponents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Pick state: track which components are picked
+  // Pick state
   const [pickedIds, setPickedIds] = useState<Set<number>>(new Set());
 
-  // Consumption state: track entered quantities
+  // Consumption state
   const [consumedQtys, setConsumedQtys] = useState<Record<number, string>>({});
 
   // Timer
@@ -42,9 +42,9 @@ export default function ActiveWorkOrder({
   useEffect(() => {
     fetchWorkOrder();
     fetchAllWos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [woId]);
 
-  // Timer tick
   useEffect(() => {
     if (isRunning) {
       timerRef.current = setInterval(() => {
@@ -68,23 +68,19 @@ export default function ActiveWorkOrder({
       setWo(data.work_order);
       setComponents(data.work_order?.components || []);
 
-      // Set timer from duration (Odoo stores in minutes)
       const durationMinutes = data.work_order?.duration || 0;
       setTimerSeconds(Math.round(durationMinutes * 60));
 
-      // Auto-start timer if WO is in progress
       if (data.work_order?.state === 'progress') {
         setIsRunning(true);
       }
 
-      // Initialize picked state from Odoo's picked field
       const picked = new Set<number>();
       for (const c of data.work_order?.components || []) {
         if (c.picked) picked.add(c.id);
       }
       setPickedIds(picked);
 
-      // Initialize consumed quantities from Odoo
       const qtys: Record<number, string> = {};
       for (const c of data.work_order?.components || []) {
         if (c.quantity > 0) {
@@ -111,7 +107,6 @@ export default function ActiveWorkOrder({
     }
   }
 
-  // Toggle pick
   const togglePick = useCallback(
     async (moveId: number) => {
       const newPicked = new Set(pickedIds);
@@ -121,7 +116,6 @@ export default function ActiveWorkOrder({
       else newPicked.delete(moveId);
       setPickedIds(newPicked);
 
-      // Persist to Odoo
       try {
         await fetch(
           `/api/manufacturing-orders/${moId}/work-orders/${woId}`,
@@ -140,15 +134,13 @@ export default function ActiveWorkOrder({
     [pickedIds, moId, woId],
   );
 
-  // Update consumed qty
   function updateConsumedQty(moveId: number, value: string) {
     setConsumedQtys((prev) => ({ ...prev, [moveId]: value }));
   }
 
-  // Save consumed quantities to Odoo
   async function saveConsumedQtys() {
     const updates = Object.entries(consumedQtys)
-      .filter(([_, val]) => val && parseFloat(val) > 0)
+      .filter(([, val]) => val && parseFloat(val) > 0)
       .map(([moveId, val]) => ({
         move_id: parseInt(moveId),
         consumed_qty: parseFloat(val),
@@ -170,9 +162,7 @@ export default function ActiveWorkOrder({
     }
   }
 
-  // WO actions
   async function handleAction(action: string) {
-    // Save consumed qtys first
     await saveConsumedQtys();
 
     try {
@@ -200,8 +190,11 @@ export default function ActiveWorkOrder({
 
   if (loading || !wo) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-400">
-        Loading...
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-gray-500 mt-3">Loading...</p>
+        </div>
       </div>
     );
   }
@@ -216,50 +209,34 @@ export default function ActiveWorkOrder({
     wo.name?.toLowerCase().includes('weigh') ||
     wo.name?.toLowerCase().includes('measure');
 
-  // Step indicator
   const currentWoIdx = allWos.findIndex((w: any) => w.id === woId);
   const totalSteps = allWos.length;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-gray-50">
       <BackHeader
         backLabel={wo.production_id?.[1] || 'Back'}
-        backHref="#"
+        onBack={onBack}
         title={wo.name}
-        subtitle={`${wo.workcenter_id[1]} · ${totalCount} components`}
+        subtitle={`${wo.workcenter_id[1]} \u00b7 ${totalCount} components`}
       />
 
       {/* Timer bar */}
-      <div className="flex items-center justify-center gap-5 py-5 bg-gray-100 dark:bg-gray-800">
+      <div className="flex items-center justify-center gap-5 py-5 bg-gray-100">
         <button
           onClick={() => handleAction(isRunning ? 'pause' : 'start')}
           className={`w-12 h-12 rounded-full flex items-center justify-center border ${
             isRunning
-              ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-700'
-              : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'
+              ? 'bg-red-50 border-red-200'
+              : 'bg-white border-gray-300'
           }`}
         >
           {isRunning ? (
-            <svg
-              className="w-[18px] h-[18px]"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="rgb(220,38,38)"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            >
+            <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="rgb(220,38,38)" strokeWidth="2.5" strokeLinecap="round">
               <rect x="6" y="6" width="12" height="12" rx="1" />
             </svg>
           ) : (
-            <svg
-              className="w-[18px] h-[18px]"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
+            <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="6,4 20,12 6,20" />
             </svg>
           )}
@@ -267,16 +244,9 @@ export default function ActiveWorkOrder({
         <TimerDisplay seconds={timerSeconds} isRunning={isRunning} />
         <button
           onClick={() => setIsRunning(!isRunning)}
-          className="w-12 h-12 rounded-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 flex items-center justify-center"
+          className="w-12 h-12 rounded-full bg-white border border-gray-300 flex items-center justify-center"
         >
-          <svg
-            className="w-[18px] h-[18px]"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          >
+          <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="10" y1="6" x2="10" y2="18" />
             <line x1="14" y1="6" x2="14" y2="18" />
           </svg>
@@ -286,7 +256,7 @@ export default function ActiveWorkOrder({
       {/* Step indicator dots */}
       {totalSteps > 1 && (
         <div className="flex items-center gap-1.5 px-5 py-2.5">
-          {allWos.map((w: any, i: number) => (
+          {allWos.map((w: any) => (
             <span
               key={w.id}
               className={`rounded-full ${
@@ -294,7 +264,7 @@ export default function ActiveWorkOrder({
                   ? 'w-2 h-2 bg-emerald-500'
                   : w.id === woId
                   ? 'w-2.5 h-2.5 bg-blue-500'
-                  : 'w-2 h-2 bg-gray-300 dark:bg-gray-600'
+                  : 'w-2 h-2 bg-gray-300'
               }`}
             />
           ))}
@@ -331,7 +301,7 @@ export default function ActiveWorkOrder({
           const consumed = consumedQtys[c.id] || '';
           const isFilled = consumed && parseFloat(consumed) > 0;
           const targetQty = Math.round(c.product_uom_qty * 1000) / 1000;
-          const uom = c.product_uom?.[1] || 'g';
+          const uom = c.product_uom?.[1] || 'kg';
           const onHand = c.on_hand_qty || 0;
           const availColor =
             onHand >= targetQty
@@ -343,26 +313,20 @@ export default function ActiveWorkOrder({
           return (
             <div
               key={c.id}
-              className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg px-3.5 py-3 flex items-center gap-3 transition-opacity ${
+              className={`bg-white border border-gray-200 rounded-lg px-3.5 py-3 flex items-center gap-3 transition-opacity ${
                 isPicked || isFilled ? 'opacity-45' : ''
               }`}
             >
-              {/* Pick circle */}
               <PickCircle
                 checked={isPicked || !!isFilled}
                 onToggle={() => {
-                  if (isWeighMode) return; // In weigh mode, circle auto-fills
+                  if (isWeighMode) return;
                   togglePick(c.id);
                 }}
               />
 
-              {/* Component info */}
               <div className="flex-1 min-w-0">
-                <div
-                  className={`text-sm text-gray-900 dark:text-white ${
-                    isPicked ? 'line-through' : ''
-                  }`}
-                >
+                <div className={`text-sm text-gray-900 ${isPicked ? 'line-through' : ''}`}>
                   {c.product_id[1]}
                 </div>
                 <div className={`text-[11px] mt-0.5 ${availColor}`}>
@@ -372,7 +336,6 @@ export default function ActiveWorkOrder({
                 </div>
               </div>
 
-              {/* Right side: qty display or input */}
               {isWeighMode ? (
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                   <input
@@ -381,7 +344,6 @@ export default function ActiveWorkOrder({
                     value={consumed}
                     onChange={(e) => updateConsumedQty(c.id, e.target.value)}
                     onBlur={() => {
-                      // Auto-mark as picked when qty entered
                       if (consumed && parseFloat(consumed) > 0) {
                         const newPicked = new Set(pickedIds);
                         newPicked.add(c.id);
@@ -391,9 +353,9 @@ export default function ActiveWorkOrder({
                     placeholder="0"
                     className={`w-16 px-2 py-2 text-right text-[15px] font-medium rounded-lg border ${
                       isFilled
-                        ? 'border-emerald-400 text-emerald-600 dark:text-emerald-400'
-                        : 'border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white'
-                    } bg-white dark:bg-gray-800`}
+                        ? 'border-emerald-400 text-emerald-600'
+                        : 'border-gray-200 text-gray-900'
+                    } bg-white`}
                   />
                   <span className="text-xs text-gray-500 w-3">{uom}</span>
                 </div>
@@ -408,7 +370,7 @@ export default function ActiveWorkOrder({
       </div>
 
       {/* Action bar */}
-      <div className="px-4 pb-6 pt-3 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
+      <div className="px-4 pb-6 pt-3 bg-white border-t border-gray-200">
         <div className="flex gap-2">
           <div className="flex-1">
             <ActionButton
