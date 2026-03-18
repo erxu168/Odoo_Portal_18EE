@@ -53,12 +53,11 @@ export async function GET(
         )
       : [];
 
-    // Enrich components with proper consumed_qty
+    // Enrich components with consumed_qty
+    // In Odoo 18 EE, stock.move.quantity is the consumed/done quantity.
+    // Always use it directly — this matches Odoo's native MO form behavior.
     const enrichedComponents = components.map((c: any) => {
-      const consumed = c.is_done || c.state === 'done'
-        ? c.quantity
-        : (c.should_consume_qty > 0 ? c.should_consume_qty : 0);
-      return { ...c, consumed_qty: consumed };
+      return { ...c, consumed_qty: c.quantity || 0 };
     });
 
     // Fetch work orders
