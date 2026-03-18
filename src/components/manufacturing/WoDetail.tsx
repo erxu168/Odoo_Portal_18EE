@@ -13,7 +13,8 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const [mo, setMo] = useState<any>(null);
   const [wo, setWo] = useState<any>(null);
   const [allWos, setAllWos] = useState<any[]>([]);
-  const [components, setComponents] = useState<any[]>([]);
+  const [woComponents, setWoComponents] = useState<any[]>([]);
+  const [allComponents, setAllComponents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'components' | 'instructions'>('components');
 
@@ -44,7 +45,21 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       setAllWos(wos);
       const thisWo = wos.find((w: any) => w.id === woId);
       setWo(thisWo);
-      setComponents(data.order?.components || []);
+
+      const allComps = data.order?.components || [];
+      setAllComponents(allComps);
+
+      // BUG FIX #3: Filter components for this specific WO
+      // If the WO has move_raw_ids, show only those components
+      // Otherwise fall back to showing all components
+      if (thisWo?.move_raw_ids?.length > 0) {
+        const woMoveIds = new Set(thisWo.move_raw_ids);
+        setWoComponents(allComps.filter((c: any) => woMoveIds.has(c.id)));
+      } else {
+        // No specific assignment — show all MO components
+        setWoComponents(allComps);
+      }
+
       if (thisWo) {
         setTimerSec(Math.round((thisWo.duration || 0) * 60));
         if (thisWo.state === 'progress') setRunning(true);
@@ -53,21 +68,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       console.error('Failed to fetch WO:', err);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleAction(action: string) {
-    try {
-      await fetch(`/api/manufacturing-orders/${moId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-      if (action === 'confirm') {
-        // For now just go back since individual WO actions need their own endpoint
-      }
-    } catch (err) {
-      console.error(`WO action ${action} failed:`, err);
     }
   }
 
@@ -87,6 +87,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   }
 
   const woIdx = allWos.findIndex((w: any) => w.id === woId);
+  const displayComps = woComponents;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -97,7 +98,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
           {mo.product_id[1]}
         </button>
         <h1 className="text-lg font-bold text-gray-900">{wo.name}</h1>
-        <p className="text-[13px] text-gray-500 mt-0.5">{wo.workcenter_id[1]} \u00b7 {components.length} components</p>
+        <p className="text-[13px] text-gray-500 mt-0.5">{wo.workcenter_id[1]} \u00b7 {displayComps.length} components</p>
       </div>
 
       {/* Step progress bar */}
@@ -171,7 +172,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
               tab === 'components' ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-500'
             }`}
           >
-            Components
+            Components ({displayComps.length})
           </button>
           <button
             onClick={() => setTab('instructions')}
@@ -188,13 +189,14 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       <div className="px-4 pb-24">
         {tab === 'components' && (
           <div className="flex flex-col gap-1.5">
-            {components.map((c: any) => {
-              const done = c.quantity || 0;
+            {displayComps.map((c: any) => {
+              // BUG FIX #1: Use consumed_qty from API
+              const consumed = c.consumed_qty || 0;
               const required = c.product_uom_qty || 0;
-              const fullyDone = done >= required;
-              const partial = done > 0 && !fullyDone;
+              const isDone = c.is_done || c.state === 'done';
+              const partial = consumed > 0 && !isDone;
               const compUom = c.product_uom?.[1] || 'kg';
-              const accentColor = fullyDone ? 'bg-emerald-500' : partial ? 'bg-amber-400' : 'bg-gray-200';
+              const accentColor = isDone ? 'bg-emerald-500' : partial ? 'bg-amber-400' : 'bg-gray-200';
 
               return (
                 <div key={c.id} className="bg-white border border-gray-200 rounded-xl flex overflow-hidden">
@@ -202,22 +204,22 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                   <div className="flex-1 flex items-center gap-3 px-4 py-3">
                     {/* Checkbox */}
                     <div className={`w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center ${
-                      fullyDone ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
+                      isDone ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
                     }`}>
-                      {fullyDone && (
+                      {isDone && (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className={`text-[14px] font-semibold ${fullyDone ? 'text-emerald-600 line-through' : 'text-gray-900'}`}>
+                      <div className={`text-[14px] font-semibold ${isDone ? 'text-emerald-600 line-through' : 'text-gray-900'}`}>
                         {c.product_id[1]}
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className={`text-[15px] font-bold tabular-nums ${
-                        fullyDone ? 'text-emerald-600' : partial ? 'text-amber-600' : 'text-gray-900'
+                        isDone ? 'text-emerald-600' : partial ? 'text-amber-600' : 'text-gray-900'
                       }`}>
-                        {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(done)} / {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(required)}
+                        {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(consumed)} / {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(required)}
                       </div>
                       <div className="text-[11px] text-gray-400">{compUom}</div>
                     </div>
@@ -225,7 +227,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                 </div>
               );
             })}
-            {components.length === 0 && (
+            {displayComps.length === 0 && (
               <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-gray-400 text-sm">
                 No components assigned to this step
               </div>

@@ -10,7 +10,8 @@ interface MoListProps {
 export default function MoList({ onSelect, onCreate }: MoListProps) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('active');
+  // BUG FIX #5: Default to 'all' so test data (drafts) is visible
+  const [filter, setFilter] = useState('all');
 
   useEffect(() => { fetchOrders(); }, []);
 

@@ -35,30 +35,42 @@ export async function GET(
 
     const mo = mos[0];
 
-    // Fetch components (stock.move lines)
-    const components = mo.move_raw_ids.length
-      ? await odoo.read('mrp.production', [moId], ['move_raw_ids']).then(
-          async (res: any[]) => {
-            const moveIds = res[0]?.move_raw_ids || [];
-            if (!moveIds.length) return [];
-            return odoo.searchRead(
-              'stock.move',
-              [['id', 'in', moveIds]],
-              [
-                'product_id',
-                'product_uom_qty',
-                'quantity',
-                'product_uom',
-                'forecast_availability',
-                'state',
-              ],
-            );
-          },
+    // ── Fetch components (stock.move lines) ──
+    // BUG FIX: Read is_done and state to determine actual consumed qty.
+    // In Odoo 18 EE, stock.move.quantity = demand/reserved when state != 'done',
+    // and = actual consumed when state = 'done'.
+    const components = mo.move_raw_ids?.length
+      ? await odoo.searchRead(
+          'stock.move',
+          [['id', 'in', mo.move_raw_ids]],
+          [
+            'product_id',
+            'product_uom_qty',
+            'quantity',
+            'product_uom',
+            'forecast_availability',
+            'state',
+            'is_done',
+            'should_consume_qty',
+          ],
         )
       : [];
 
-    // Fetch work orders
-    const workOrders = mo.workorder_ids.length
+    // Enrich components with proper consumed_qty
+    const enrichedComponents = components.map((c: any) => {
+      // consumed_qty: only show as consumed when move is actually done
+      const consumed = c.is_done || c.state === 'done'
+        ? c.quantity
+        : (c.should_consume_qty > 0 ? c.should_consume_qty : 0);
+
+      return {
+        ...c,
+        consumed_qty: consumed,
+      };
+    });
+
+    // ── Fetch work orders ──
+    const workOrders = mo.workorder_ids?.length
       ? await odoo.searchRead(
           'mrp.workorder',
           [['id', 'in', mo.workorder_ids]],
@@ -72,6 +84,7 @@ export async function GET(
             'date_finished',
             'sequence',
             'production_id',
+            'move_raw_ids',
           ],
           { order: 'sequence asc' },
         )
@@ -85,7 +98,7 @@ export async function GET(
     return NextResponse.json({
       order: {
         ...mo,
-        components,
+        components: enrichedComponents,
         work_orders: workOrders,
         progress_percent: progressPercent,
       },
@@ -113,17 +126,12 @@ export async function PATCH(
     const body = await request.json();
 
     if (body.action) {
-      // Handle button actions
       switch (body.action) {
         case 'confirm':
           await odoo.buttonCall('mrp.production', 'action_confirm', [moId]);
           break;
         case 'mark_done':
-          await odoo.buttonCall(
-            'mrp.production',
-            'button_mark_done',
-            [moId],
-          );
+          await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
           break;
         case 'cancel':
           await odoo.buttonCall('mrp.production', 'action_cancel', [moId]);
@@ -135,16 +143,11 @@ export async function PATCH(
           );
       }
     } else if (body.vals) {
-      // Direct field updates
       await odoo.write('mrp.production', [moId], body.vals);
     }
 
-    // Read back updated MO
     const updated = await odoo.read('mrp.production', [moId], [
-      'name',
-      'state',
-      'product_qty',
-      'qty_producing',
+      'name', 'state', 'product_qty', 'qty_producing',
     ]);
 
     return NextResponse.json({ order: updated[0] });

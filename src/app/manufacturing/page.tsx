@@ -98,6 +98,7 @@ export default function ManufacturingPage() {
         return (
           <BomList
             onSelect={(bom) => navigate({ type: 'bom-detail', bomId: bom.id })}
+            onBack={goBack} // BUG FIX #2: Pass back handler
           />
         );
       case 'bom-detail':
@@ -124,7 +125,7 @@ export default function ManufacturingPage() {
         return (
           <div className="min-h-screen bg-gray-50 flex items-center justify-center">
             <div className="text-center text-gray-400">
-              <div className="text-4xl mb-3">🚧</div>
+              <div className="text-4xl mb-3">\uD83D\uDEA7</div>
               <div className="text-sm font-medium">{screen.label}</div>
               <div className="text-xs mt-1">Coming soon</div>
             </div>

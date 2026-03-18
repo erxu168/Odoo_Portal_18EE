@@ -14,6 +14,8 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
   const [components, setComponents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'workorders' | 'components'>('workorders');
+  const [producing, setProducing] = useState(false);
+  const [produceError, setProduceError] = useState<string | null>(null);
 
   useEffect(() => { fetchDetail(); }, [moId]);
 
@@ -29,6 +31,26 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       console.error('Failed to fetch MO detail:', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // BUG FIX #4: Wire up Produce & Close
+  async function handleProduce() {
+    setProducing(true);
+    setProduceError(null);
+    try {
+      const res = await fetch(`/api/manufacturing-orders/${moId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_done' }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      await fetchDetail(); // Refresh to show done state
+    } catch (err: any) {
+      setProduceError(err.message || 'Failed to produce');
+    } finally {
+      setProducing(false);
     }
   }
 
@@ -63,8 +85,9 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
   }
 
   const doneWos = workOrders.filter((w) => w.state === 'done').length;
-  const doneComps = components.filter((c) => c.quantity >= c.product_uom_qty).length;
-  const uom = mo.product_uom_id?.[1] || 'kg';
+  // BUG FIX #1: Use consumed_qty instead of quantity for done count
+  const doneComps = components.filter((c) => c.is_done || c.state === 'done').length;
+  const allWosDone = workOrders.length > 0 && workOrders.every((w: any) => w.state === 'done');
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -138,7 +161,6 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  {/* Step number */}
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-extrabold flex-shrink-0 ${woStepColors[wo.state] || 'bg-gray-100 text-gray-400'}`}>
                     {idx + 1}
                   </div>
@@ -150,15 +172,14 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
                     {woStateLabels[wo.state] || wo.state}
                   </span>
                 </div>
-                {/* Time info */}
                 {(wo.duration > 0 || wo.duration_expected > 0) && (
                   <div className="flex items-center gap-2 mt-2 pl-11 text-[11px] text-gray-400">
                     <span>\u23F1</span>
-                    {wo.duration > 0 ? (
+                    {wo.duration > 0 && (
                       <span className={`font-semibold ${wo.state === 'done' ? 'text-emerald-600' : 'text-amber-600'}`}>
                         {Math.floor(wo.duration)}m
                       </span>
-                    ) : null}
+                    )}
                     {wo.duration_expected > 0 && (
                       <span>/ {Math.round(wo.duration_expected)}m expected</span>
                     )}
@@ -175,29 +196,30 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         {tab === 'components' && (
           <div className="flex flex-col gap-1.5">
             {components.map((c: any) => {
-              const done = c.quantity || 0;
+              // BUG FIX #1: Use consumed_qty (calculated by API) instead of quantity
+              const consumed = c.consumed_qty || 0;
               const required = c.product_uom_qty || 0;
-              const fullyDone = done >= required;
-              const partial = done > 0 && !fullyDone;
+              const isDone = c.is_done || c.state === 'done';
+              const partial = consumed > 0 && !isDone;
               const compUom = c.product_uom?.[1] || 'kg';
-              const accentColor = fullyDone ? 'bg-emerald-500' : partial ? 'bg-amber-400' : 'bg-gray-200';
-              const qtyColor = fullyDone ? 'text-emerald-600' : partial ? 'text-amber-600' : 'text-gray-900';
+              const accentColor = isDone ? 'bg-emerald-500' : partial ? 'bg-amber-400' : 'bg-gray-200';
+              const qtyColor = isDone ? 'text-emerald-600' : partial ? 'text-amber-600' : 'text-gray-900';
 
               return (
                 <div key={c.id} className="bg-white border border-gray-200 rounded-xl flex overflow-hidden">
                   <div className={`w-1 flex-shrink-0 ${accentColor}`} />
                   <div className="flex-1 flex items-center gap-3 px-4 py-3">
                     <div className="flex-1 min-w-0">
-                      <div className={`text-[14px] font-semibold ${fullyDone ? 'text-emerald-600' : 'text-gray-900'}`}>
+                      <div className={`text-[14px] font-semibold ${isDone ? 'text-emerald-600' : 'text-gray-900'}`}>
                         {c.product_id[1]}
                       </div>
                       <div className="text-[11px] text-gray-400 mt-0.5">
-                        {fullyDone ? '\u2713 Done' : partial ? 'Partial' : 'Pending'}
+                        {isDone ? '\u2713 Consumed' : partial ? 'Partial' : 'Pending'}
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className={`text-[15px] font-bold tabular-nums ${qtyColor}`}>
-                        {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(done)} / {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(required)}
+                        {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(consumed)} / {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(required)}
                       </div>
                       <div className="text-[11px] text-gray-400">{compUom}</div>
                     </div>
@@ -212,11 +234,27 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         )}
       </div>
 
-      {/* Bottom CTA */}
-      {mo.state !== 'done' && workOrders.length > 0 && workOrders.every((w: any) => w.state === 'done') && (
+      {/* BUG FIX #4: Produce & Close CTA — now wired to API */}
+      {produceError && (
+        <div className="fixed bottom-32 left-0 right-0 max-w-lg mx-auto px-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-red-700 text-sm">{produceError}</div>
+        </div>
+      )}
+      {mo.state === 'done' && (
         <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
-          <button className="w-full py-4 rounded-xl bg-emerald-500 text-white font-bold text-[15px] shadow-lg shadow-emerald-500/30 active:scale-[0.975] transition-transform">
-            \u2713 Produce & Close MO
+          <div className="w-full py-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[15px] text-center">
+            \u2713 Manufacturing order completed
+          </div>
+        </div>
+      )}
+      {mo.state !== 'done' && allWosDone && (
+        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
+          <button
+            onClick={handleProduce}
+            disabled={producing}
+            className="w-full py-4 rounded-xl bg-emerald-500 text-white font-bold text-[15px] shadow-lg shadow-emerald-500/30 active:scale-[0.975] transition-transform disabled:opacity-50"
+          >
+            {producing ? 'Producing...' : '\u2713 Produce & Close MO'}
           </button>
         </div>
       )}
