@@ -88,9 +88,14 @@ function LoginForm() {
         </button>
       </div>
 
-      <p className="text-center text-[12px] text-gray-400 mt-8">
-        Forgot your password? Ask your manager to reset it.
-      </p>
+      <div className="text-center mt-6">
+        <button
+          onClick={() => router.push('/forgot-password')}
+          className="text-[13px] text-orange-600 font-semibold active:opacity-70"
+        >
+          Forgot your password?
+        </button>
+      </div>
     </div>
   );
 }
@@ -98,7 +103,6 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
       <div className="bg-[#1A1F2E] px-6 pt-20 pb-10 text-center relative overflow-hidden">
         <div className="absolute -top-10 right-1/4 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.2)_0%,transparent_70%)]" />
         <div className="relative">
