@@ -1,0 +1,120 @@
+import { NextResponse } from 'next/server';
+import { getOdoo } from '@/lib/odoo';
+import type { CreateMoRequest } from '@/types/manufacturing';
+
+/**
+ * GET /api/manufacturing-orders
+ * List manufacturing orders with optional filters
+ */
+export async function GET(request: Request) {
+  try {
+    const odoo = getOdoo();
+    const { searchParams } = new URL(request.url);
+    const state = searchParams.get('state');
+    const search = searchParams.get('search');
+    const limit = parseInt(searchParams.get('limit') || '50');
+
+    const domain: any[] = [];
+    if (state && state !== 'all') {
+      if (state === 'active') {
+        domain.push(['state', 'in', ['confirmed', 'progress']]);
+      } else {
+        domain.push(['state', '=', state]);
+      }
+    }
+    if (search) {
+      domain.push('|');
+      domain.push(['name', 'ilike', search]);
+      domain.push(['product_id.name', 'ilike', search]);
+    }
+
+    const orders = await odoo.searchRead('mrp.production', domain, [
+      'name',
+      'product_id',
+      'product_qty',
+      'product_uom_id',
+      'bom_id',
+      'state',
+      'date_start',
+      'date_finished',
+      'date_deadline',
+      'user_id',
+      'qty_producing',
+      'workorder_ids',
+      'move_raw_ids',
+    ], { limit, order: 'id desc' });
+
+    // Enrich with work order count and progress
+    const enriched = orders.map((mo: any) => {
+      const woCount = mo.workorder_ids?.length || 0;
+      return {
+        ...mo,
+        work_order_count: woCount,
+      };
+    });
+
+    return NextResponse.json({ orders: enriched, total: enriched.length });
+  } catch (error: any) {
+    console.error('GET /api/manufacturing-orders error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to fetch manufacturing orders' },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * POST /api/manufacturing-orders
+ * Create a new manufacturing order
+ */
+export async function POST(request: Request) {
+  try {
+    const odoo = getOdoo();
+    const body: CreateMoRequest = await request.json();
+
+    const vals: Record<string, any> = {
+      product_id: body.product_id,
+      bom_id: body.bom_id,
+      product_qty: body.product_qty,
+      product_uom_id: body.product_uom_id,
+    };
+
+    if (body.date_deadline) vals.date_deadline = body.date_deadline;
+    if (body.user_id) vals.user_id = body.user_id;
+    if (body.company_id) {
+      vals.company_id = body.company_id;
+    }
+
+    const moId = await odoo.create('mrp.production', vals, {
+      context: {
+        lang: 'de_DE',
+        tz: 'Europe/Berlin',
+        ...(body.company_id
+          ? {
+              allowed_company_ids: [body.company_id],
+              company_id: body.company_id,
+            }
+          : {}),
+      },
+    });
+
+    // Read back the created MO
+    const created = await odoo.read('mrp.production', [moId], [
+      'name',
+      'product_id',
+      'product_qty',
+      'product_uom_id',
+      'state',
+      'workorder_ids',
+      'move_raw_ids',
+    ]);
+
+    return NextResponse.json({ order: created[0], id: moId }, { status: 201 });
+  } catch (error: any) {
+    console.error('POST /api/manufacturing-orders error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to create manufacturing order' },
+      { status: 500 },
+    );
+  }
+}
