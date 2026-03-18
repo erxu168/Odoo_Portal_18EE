@@ -6,7 +6,6 @@ import {
   StatusDot,
   SectionTitle,
   ActionButton,
-  Badge,
 } from './ui';
 import type { ComponentAvailability } from '@/types/manufacturing';
 
@@ -53,8 +52,11 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
 
   if (loading || !bom) {
     return (
-      <div className="flex items-center justify-center h-64 text-gray-400">
-        Loading...
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-gray-500 mt-3">Loading recipe...</p>
+        </div>
       </div>
     );
   }
@@ -69,29 +71,29 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     : 'Never';
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-gray-50">
       <BackHeader
         backLabel="Recipes"
-        backHref="#"
+        onBack={onBack}
         title={productName}
-        subtitle={`Makes ${new Intl.NumberFormat('de-DE').format(bom.product_qty)}${uom} per batch · Last produced ${lastProduced}`}
+        subtitle={`Makes ${new Intl.NumberFormat('de-DE').format(bom.product_qty)}${uom} per batch \u00b7 Last produced ${lastProduced}`}
       />
 
       {/* Stats row */}
       <div className="flex gap-2 px-4 py-3">
-        <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2.5">
+        <div className="flex-1 bg-gray-100 rounded-lg px-3 py-2.5">
           <div className="text-[11px] text-gray-400">Components</div>
-          <div className="text-lg font-medium text-gray-900 dark:text-white mt-0.5">
+          <div className="text-lg font-medium text-gray-900 mt-0.5">
             {components.length}
           </div>
         </div>
-        <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2.5">
+        <div className="flex-1 bg-gray-100 rounded-lg px-3 py-2.5">
           <div className="text-[11px] text-gray-400">On hand</div>
-          <div className="text-lg font-medium text-gray-900 dark:text-white mt-0.5">
+          <div className="text-lg font-medium text-gray-900 mt-0.5">
             --
           </div>
         </div>
-        <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2.5">
+        <div className="flex-1 bg-gray-100 rounded-lg px-3 py-2.5">
           <div className="text-[11px] text-gray-400">Can make</div>
           <div className="text-lg font-medium text-emerald-600 mt-0.5">
             {new Intl.NumberFormat('de-DE').format(canMakeQty)}{uom}
@@ -106,20 +108,20 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         {components.map((comp) => (
           <React.Fragment key={comp.product_id}>
             <div
-              className={`bg-white dark:bg-gray-900 border rounded-lg px-3.5 py-3 flex justify-between items-center ${
+              className={`bg-white border rounded-lg px-3.5 py-3 flex justify-between items-center ${
                 comp.is_sub_bom
-                  ? 'border-blue-200 dark:border-blue-700 cursor-pointer'
-                  : 'border-gray-200 dark:border-gray-700'
+                  ? 'border-blue-200 cursor-pointer'
+                  : 'border-gray-200'
               }`}
               onClick={() => comp.is_sub_bom && toggleSubBom(comp.product_id)}
             >
               <div className="flex items-center gap-2.5 min-w-0">
                 <StatusDot status={comp.status} />
                 <div className="min-w-0">
-                  <div className="text-sm text-gray-900 dark:text-white truncate">
+                  <div className="text-sm text-gray-900 truncate">
                     {comp.product_name}
                     {comp.is_sub_bom && (
-                      <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                      <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
                         Sub-recipe
                       </span>
                     )}
@@ -134,7 +136,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                 </div>
               </div>
               <div className="text-right flex-shrink-0 ml-3">
-                <div className="text-sm font-medium text-gray-900 dark:text-white">
+                <div className="text-sm font-medium text-gray-900">
                   {new Intl.NumberFormat('de-DE').format(comp.required_qty)}
                   {comp.uom}
                 </div>
@@ -157,30 +159,28 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
             {comp.is_sub_bom &&
               expandedSubBoms.has(comp.product_id) &&
               comp.sub_bom_lines && (
-                <div className="ml-5 border-l-2 border-blue-200 dark:border-blue-700">
-                  <div className="ml-3 bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-700 rounded-lg overflow-hidden">
-                    <div className="px-3.5 py-2.5 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                      <span className="text-[13px] font-medium text-blue-700 dark:text-blue-300">
+                <div className="ml-5 border-l-2 border-blue-200">
+                  <div className="ml-3 bg-white border border-blue-200 rounded-lg overflow-hidden">
+                    <div className="px-3.5 py-2.5 border-b border-gray-200 flex justify-between items-center">
+                      <span className="text-[13px] font-medium text-blue-700">
                         {comp.product_name} (sub-BOM)
                       </span>
                       <span className="text-xs text-gray-400">
                         {comp.sub_bom_lines.length} items
                       </span>
                     </div>
-                    <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                    <div className="divide-y divide-gray-100">
                       {comp.sub_bom_lines.map((sub) => (
                         <div
                           key={sub.product_id}
                           className="px-3.5 py-2 flex justify-between items-center"
                         >
-                          <span className="text-[13px] text-gray-900 dark:text-white">
+                          <span className="text-[13px] text-gray-900">
                             <StatusDot status={sub.status} />
                             {sub.product_name}
                           </span>
-                          <span className="text-[13px] font-medium text-gray-600 dark:text-gray-300">
-                            {new Intl.NumberFormat('de-DE').format(
-                              sub.required_qty,
-                            )}
+                          <span className="text-[13px] font-medium text-gray-600">
+                            {new Intl.NumberFormat('de-DE').format(sub.required_qty)}
                             {sub.uom}
                           </span>
                         </div>
@@ -194,7 +194,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
       </div>
 
       {/* Action bar */}
-      <div className="px-4 pb-6 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 pt-3">
+      <div className="px-4 pb-6 bg-white border-t border-gray-200 pt-3">
         <ActionButton onClick={() => onCreateMo(bomId)}>
           Create manufacturing order
         </ActionButton>

@@ -3,15 +3,16 @@
 import React from 'react';
 
 // --- Status Dot ---
-export function StatusDot({ status }: { status: 'ok' | 'low' | 'out' }) {
-  const colors = {
+export function StatusDot({ status }: { status: string }) {
+  const colors: Record<string, string> = {
     ok: 'bg-emerald-600',
     low: 'bg-amber-500',
     out: 'bg-red-500',
+    none: 'bg-gray-300',
   };
   return (
     <span
-      className={`inline-block w-2 h-2 rounded-full ${colors[status]} mr-1.5 align-middle`}
+      className={`inline-block w-2 h-2 rounded-full ${colors[status] || 'bg-gray-300'} mr-1.5 align-middle`}
     />
   );
 }
@@ -37,7 +38,7 @@ export function PickCircle({
       className={`${dims} rounded-full border flex-shrink-0 flex items-center justify-center transition-colors ${
         checked
           ? 'bg-emerald-600 border-emerald-600'
-          : 'border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600'
+          : 'border-gray-300 bg-white'
       }`}
       aria-label={checked ? 'Marked as picked' : 'Mark as picked'}
     >
@@ -77,7 +78,7 @@ export function ProgressBar({
       {label && (
         <span className="text-xs text-gray-500 whitespace-nowrap">{label}</span>
       )}
-      <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
         <div
           className={`h-full ${fillColor} rounded-full transition-all`}
           style={{ width: `${pct}%` }}
@@ -99,12 +100,12 @@ export function Badge({
   children: React.ReactNode;
 }) {
   const styles: Record<string, string> = {
-    done: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
-    progress: 'bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
-    ready: 'bg-blue-50 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
-    draft: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
-    pending: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
-    warning: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    done: 'bg-emerald-50 text-emerald-800',
+    progress: 'bg-amber-50 text-amber-800',
+    ready: 'bg-blue-50 text-blue-800',
+    draft: 'bg-gray-100 text-gray-600',
+    pending: 'bg-gray-100 text-gray-500',
+    warning: 'bg-amber-50 text-amber-700',
   };
   return (
     <span
@@ -131,7 +132,7 @@ export function TimerDisplay({
   return (
     <span
       className={`font-mono text-[32px] font-medium tracking-wide ${
-        isRunning ? 'text-gray-900 dark:text-white' : 'text-gray-400'
+        isRunning ? 'text-gray-900' : 'text-gray-400'
       }`}
     >
       {formatted}
@@ -145,38 +146,42 @@ export function TimerChip({ minutes }: { minutes: number }) {
   const mins = Math.round(minutes % 60);
   const display = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
   return (
-    <span className="font-mono text-[13px] font-medium bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 px-2.5 py-0.5 rounded-xl">
+    <span className="font-mono text-[13px] font-medium bg-gray-100 text-gray-900 px-2.5 py-0.5 rounded-xl">
       {display}
     </span>
   );
 }
 
 // --- Back Header ---
+// FIX: Changed from <a href> to <button onClick> so the onBack callback works
 export function BackHeader({
   backLabel,
-  backHref,
+  onBack,
   title,
   subtitle,
 }: {
   backLabel: string;
-  backHref: string;
+  onBack: () => void;
   title: string;
   subtitle?: string;
 }) {
   return (
-    <div className="bg-white dark:bg-gray-900 px-5 pt-3.5 pb-3.5 border-b border-gray-200 dark:border-gray-700">
-      <a
-        href={backHref}
-        className="flex items-center gap-2 mb-1 text-blue-600 dark:text-blue-400 text-[13px]"
+    <div className="bg-white px-5 pt-3.5 pb-3.5 border-b border-gray-200">
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex items-center gap-1 mb-1 text-emerald-600 text-[13px] active:opacity-70"
       >
-        <span className="text-lg leading-none">&lsaquo;</span>
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path d="M15 19l-7-7 7-7" />
+        </svg>
         {backLabel}
-      </a>
-      <h1 className="text-lg font-medium text-gray-900 dark:text-white">
+      </button>
+      <h1 className="text-lg font-semibold text-gray-900">
         {title}
       </h1>
       {subtitle && (
-        <p className="text-[13px] text-gray-500 dark:text-gray-400 mt-0.5">
+        <p className="text-[13px] text-gray-500 mt-0.5">
           {subtitle}
         </p>
       )}
@@ -187,7 +192,7 @@ export function BackHeader({
 // --- Section Title ---
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="text-sm font-medium text-gray-500 dark:text-gray-400 px-5 pt-3.5 pb-2">
+    <h2 className="text-sm font-medium text-gray-500 px-5 pt-3.5 pb-2">
       {children}
     </h2>
   );
@@ -206,23 +211,18 @@ export function ActionButton({
   disabled?: boolean;
 }) {
   const styles: Record<string, string> = {
-    primary:
-      'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-    outline:
-      'bg-transparent text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-600',
-    success:
-      'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
-    warning:
-      'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-    danger:
-      'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    primary: 'bg-emerald-600 text-white',
+    outline: 'bg-transparent text-emerald-700 border border-emerald-300',
+    success: 'bg-emerald-600 text-white',
+    warning: 'bg-amber-50 text-amber-700',
+    danger: 'bg-red-50 text-red-700',
   };
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`w-full py-3 rounded-lg text-sm font-medium text-center transition-opacity ${styles[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : 'active:opacity-75'}`}
+      className={`w-full py-3 rounded-lg text-sm font-medium text-center transition-opacity ${styles[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : 'active:opacity-80'}`}
     >
       {children}
     </button>
