@@ -55,7 +55,7 @@ export async function GET() {
     // ── Mock: shift info (until planning.slot is wired) ──
     const hour = new Date().getHours();
     let shiftName = 'Morning shift';
-    let shiftStation = 'Kitchen';
+    const shiftStation = 'Kitchen';
     let shiftStart = '06:00';
     let shiftEnd = '14:00';
     let onShift = true;
