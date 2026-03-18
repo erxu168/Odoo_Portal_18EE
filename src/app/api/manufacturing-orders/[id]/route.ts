@@ -35,10 +35,7 @@ export async function GET(
 
     const mo = mos[0];
 
-    // ── Fetch components (stock.move lines) ──
-    // BUG FIX: Read is_done and state to determine actual consumed qty.
-    // In Odoo 18 EE, stock.move.quantity = demand/reserved when state != 'done',
-    // and = actual consumed when state = 'done'.
+    // Fetch components (stock.move lines)
     const components = mo.move_raw_ids?.length
       ? await odoo.searchRead(
           'stock.move',
@@ -58,18 +55,13 @@ export async function GET(
 
     // Enrich components with proper consumed_qty
     const enrichedComponents = components.map((c: any) => {
-      // consumed_qty: only show as consumed when move is actually done
       const consumed = c.is_done || c.state === 'done'
         ? c.quantity
         : (c.should_consume_qty > 0 ? c.should_consume_qty : 0);
-
-      return {
-        ...c,
-        consumed_qty: consumed,
-      };
+      return { ...c, consumed_qty: consumed };
     });
 
-    // ── Fetch work orders ──
+    // Fetch work orders
     const workOrders = mo.workorder_ids?.length
       ? await odoo.searchRead(
           'mrp.workorder',
@@ -90,7 +82,6 @@ export async function GET(
         )
       : [];
 
-    // Calculate progress
     const doneWos = workOrders.filter((wo: any) => wo.state === 'done').length;
     const totalWos = workOrders.length;
     const progressPercent = totalWos > 0 ? Math.round((doneWos / totalWos) * 100) : 0;
@@ -114,7 +105,12 @@ export async function GET(
 
 /**
  * PATCH /api/manufacturing-orders/[id]
- * Update MO or trigger actions (confirm, mark_done, cancel)
+ * Update MO, trigger actions, or update component quantities.
+ *
+ * Body options:
+ *   { action: 'confirm' | 'mark_done' | 'cancel' }
+ *   { vals: { field: value } }
+ *   { component_updates: [{ move_id, consumed_qty }] }
  */
 export async function PATCH(
   request: Request,
@@ -125,6 +121,7 @@ export async function PATCH(
     const moId = parseInt(params.id);
     const body = await request.json();
 
+    // Action buttons
     if (body.action) {
       switch (body.action) {
         case 'confirm':
@@ -142,8 +139,20 @@ export async function PATCH(
             { status: 400 },
           );
       }
-    } else if (body.vals) {
+    }
+
+    // Field updates
+    if (body.vals) {
       await odoo.write('mrp.production', [moId], body.vals);
+    }
+
+    // Component quantity updates
+    if (body.component_updates) {
+      for (const update of body.component_updates) {
+        await odoo.write('stock.move', [update.move_id], {
+          quantity: update.consumed_qty,
+        });
+      }
     }
 
     const updated = await odoo.read('mrp.production', [moId], [
