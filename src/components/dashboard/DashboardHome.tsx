@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
-// ── Tile definitions ──
 const TILES = [
   {
     id: 'production', label: 'Production', href: '/manufacturing',
@@ -82,17 +81,37 @@ const TASK_STATUS_STYLES: Record<string, { border: string; pill: string; pillTex
 
 export default function DashboardHome() {
   const router = useRouter();
+  const [userName, setUserName] = useState<string>('');
+  const [userRole, setUserRole] = useState<string>('staff');
   const [badges, setBadges] = useState<Record<string, number>>({});
   const [shift, setShift] = useState<any>(null);
   const [tasks, setTasks] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [comingSoon, setComingSoon] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   // Live clock
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(t);
+  }, []);
+
+  // Fetch user info
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+        if (data.user) {
+          setUserName(data.user.name);
+          setUserRole(data.user.role);
+        }
+      } catch (e) {
+        console.error('Failed to fetch user:', e);
+      }
+    }
+    loadUser();
   }, []);
 
   // Fetch dashboard data
@@ -120,6 +139,18 @@ export default function DashboardHome() {
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const dateStr = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
 
+  // Logout
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/login');
+      router.refresh();
+    } catch {
+      setLoggingOut(false);
+    }
+  }
+
   function handleTileTap(tile: typeof TILES[0]) {
     if (tile.href) {
       router.push(tile.href);
@@ -129,20 +160,48 @@ export default function DashboardHome() {
     }
   }
 
+  // Suppress lint
+  void userRole;
+
   const tasksDone = tasks?.done || 0;
   const tasksTotal = tasks?.total || 0;
   const progressPct = tasksTotal > 0 ? Math.round((tasksDone / tasksTotal) * 100) : 0;
 
+  // First name only for greeting
+  const firstName = userName ? userName.split(' ')[0] : '';
+
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="bg-[#1A1F2E] px-6 pt-14 pb-6 rounded-b-[28px] relative overflow-hidden">
-        {/* Glow */}
         <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
 
-        <h1 className="text-[22px] font-bold text-white relative">{greeting}</h1>
-        <p className="text-[13px] text-white/50 mt-0.5 relative">{dateStr}</p>
+        {/* Top row: greeting + logout */}
+        <div className="flex items-start justify-between relative">
+          <div>
+            <h1 className="text-[22px] font-bold text-white">
+              {greeting}{firstName ? `, ${firstName}` : ''}
+            </h1>
+            <p className="text-[13px] text-white/50 mt-0.5">{dateStr}</p>
+          </div>
+          <button
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="mt-1 w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
+            title="Sign out"
+          >
+            {loggingOut ? (
+              <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+            )}
+          </button>
+        </div>
 
         {/* Shift banner */}
         {shift && (
@@ -172,7 +231,7 @@ export default function DashboardHome() {
         )}
       </div>
 
-      {/* ── Shift tasks preview ── */}
+      {/* Shift tasks preview */}
       {tasks && tasks.items && tasks.items.length > 0 && (
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between mb-2.5">
@@ -181,11 +240,10 @@ export default function DashboardHome() {
               onClick={() => handleTileTap(TILES.find(t => t.id === 'tasks')!)}
               className="text-[12px] font-semibold text-orange-600 active:opacity-70"
             >
-              See all \u2192
+              See all &rarr;
             </button>
           </div>
 
-          {/* Progress */}
           <div className="flex items-center gap-2.5 mb-3">
             <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
               <div
@@ -198,7 +256,6 @@ export default function DashboardHome() {
             </span>
           </div>
 
-          {/* Task cards */}
           <div className="flex flex-col gap-2 mb-2">
             {tasks.items.map((task: any) => {
               const s = TASK_STATUS_STYLES[task.status] || TASK_STATUS_STYLES.upcoming;
@@ -210,7 +267,6 @@ export default function DashboardHome() {
                     isDone ? 'opacity-50' : ''
                   } active:scale-[0.98] transition-transform`}
                 >
-                  {/* Checkbox */}
                   <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center ${
                     isDone ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'
                   }`}>
@@ -218,7 +274,6 @@ export default function DashboardHome() {
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                     )}
                   </div>
-                  {/* Body */}
                   <div className="flex-1 min-w-0">
                     <div className={`text-[13px] font-semibold ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>
                       {task.name}
@@ -227,7 +282,6 @@ export default function DashboardHome() {
                       {task.category}{task.photoRequired ? ' \u00b7 Photo required' : ''}
                     </div>
                   </div>
-                  {/* Time pill */}
                   <div className={`flex-shrink-0 px-2 py-1 rounded-md text-[11px] font-semibold font-mono ${s.pill} ${s.pillText}`}>
                     {task.dueLabel}
                   </div>
@@ -238,14 +292,14 @@ export default function DashboardHome() {
         </div>
       )}
 
-      {/* ── Coming soon toast ── */}
+      {/* Coming soon toast */}
       {comingSoon && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-5 py-3 bg-gray-900 text-white text-[13px] font-semibold rounded-xl shadow-lg animate-bounce">
-          {comingSoon} \u2014 coming soon
+          {comingSoon} &mdash; coming soon
         </div>
       )}
 
-      {/* ── App tiles ── */}
+      {/* App tiles */}
       <div className="px-5 pt-3">
         <p className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase mb-2">Apps</p>
         <div className="grid grid-cols-3 gap-3">
@@ -257,13 +311,11 @@ export default function DashboardHome() {
                 onClick={() => handleTileTap(tile)}
                 className="aspect-square rounded-2xl bg-white border border-gray-200 flex flex-col items-center justify-center gap-2 relative active:scale-95 transition-transform"
               >
-                {/* Badge */}
                 {count > 0 && (
                   <span className={`absolute top-2 right-2 min-w-[20px] h-5 px-1.5 rounded-full text-white text-[11px] font-bold font-mono leading-5 text-center ${tile.badgeColor}`}>
                     {count}
                   </span>
                 )}
-                {/* Icon */}
                 <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center ${tile.iconBg} ${tile.iconColor}`}>
                   {tile.icon}
                 </div>
@@ -276,10 +328,10 @@ export default function DashboardHome() {
         </div>
       </div>
 
-      {/* ── Footer ── */}
+      {/* Footer */}
       <div className="text-center py-6">
         <span className="text-[11px] text-gray-400 tracking-wider">
-          <span className="text-orange-500 font-semibold">KRAWINGS</span> SSAM \u00b7 Staff Portal
+          <span className="text-orange-500 font-semibold">KRAWINGS</span> SSAM &middot; Staff Portal
         </span>
       </div>
     </div>
