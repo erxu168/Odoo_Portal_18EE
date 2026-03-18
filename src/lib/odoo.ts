@@ -126,7 +126,7 @@ export class OdooClient {
       method,
       args,
       kwargs: {
-        context: { lang: 'de_DE', tz: 'Europe/Berlin' },
+        context: { lang: 'en_US', tz: 'Europe/Berlin' },
         ...kwargs,
       },
     });
@@ -155,7 +155,7 @@ export class OdooClient {
         limit: options.limit || 200,
         offset: options.offset || 0,
         order: options.order || '',
-        context: { lang: 'de_DE', tz: 'Europe/Berlin' },
+        context: { lang: 'en_US', tz: 'Europe/Berlin' },
       },
     });
   }
