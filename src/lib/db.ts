@@ -1,5 +1,5 @@
 /**
- * Portal SQLite database — stores users and sessions.
+ * Portal SQLite database — stores users, sessions, and password reset tokens.
  * Odoo remains the single source of truth for business data.
  * This DB only handles portal authentication.
  *
@@ -16,7 +16,6 @@ let _db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (!_db) {
-    // Ensure data directory exists
     fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
     _db = new Database(DB_PATH);
     _db.pragma('journal_mode = WAL');
@@ -48,8 +47,16 @@ function initTables(db: Database.Database) {
       expires_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_users_email ON portal_users(email);
     CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_reset_expires ON password_reset_tokens(expires_at);
   `);
 }
 
@@ -170,4 +177,48 @@ export function deleteSession(token: string) {
 export function cleanExpiredSessions() {
   const db = getDb();
   db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
+}
+
+// ── Password Reset Tokens ──
+
+const RESET_TOKEN_HOURS = 1;
+
+/**
+ * Create a password reset token that expires in 1 hour.
+ * Deletes any existing tokens for the same user first.
+ */
+export function createPasswordResetToken(userId: number): string {
+  const db = getDb();
+  // Delete any existing tokens for this user
+  db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
+  // Clean expired tokens
+  db.prepare("DELETE FROM password_reset_tokens WHERE expires_at < datetime('now')").run();
+
+  const token = crypto.randomUUID();
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + RESET_TOKEN_HOURS);
+  db.prepare(
+    'INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (?, ?, ?)'
+  ).run(token, userId, expiresAt.toISOString());
+  return token;
+}
+
+/**
+ * Verify a password reset token. Returns user ID if valid, null if expired/invalid.
+ */
+export function verifyPasswordResetToken(token: string): number | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT user_id FROM password_reset_tokens
+    WHERE token = ? AND expires_at > datetime('now')
+  `).get(token) as { user_id: number } | null;
+  return row?.user_id || null;
+}
+
+/**
+ * Delete a used password reset token.
+ */
+export function deletePasswordResetToken(token: string) {
+  const db = getDb();
+  db.prepare('DELETE FROM password_reset_tokens WHERE token = ?').run(token);
 }
