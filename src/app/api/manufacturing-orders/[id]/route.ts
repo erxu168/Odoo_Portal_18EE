@@ -27,7 +27,7 @@ export async function GET(
           [['id', 'in', mo.move_raw_ids]],
           ['product_id', 'product_uom_qty', 'quantity', 'product_uom',
            'forecast_availability', 'state', 'is_done', 'should_consume_qty',
-           'picked'])
+           'picked', 'operation_id'])
       : [];
 
     const enrichedComponents = components.map((c: any) => ({
@@ -38,7 +38,8 @@ export async function GET(
       ? await odoo.searchRead('mrp.workorder',
           [['id', 'in', mo.workorder_ids]],
           ['name', 'workcenter_id', 'state', 'duration_expected', 'duration',
-           'date_start', 'date_finished', 'sequence', 'production_id', 'move_raw_ids'],
+           'date_start', 'date_finished', 'sequence', 'production_id',
+           'move_raw_ids', 'operation_id'],
           { order: 'sequence asc' })
       : [];
 
@@ -117,7 +118,6 @@ export async function PATCH(
       await odoo.write('mrp.production', [moId], body.vals);
     }
 
-    // Component quantity updates — also sets picked=true
     if (body.component_updates) {
       for (const update of body.component_updates) {
         await odoo.write('stock.move', [update.move_id], {
