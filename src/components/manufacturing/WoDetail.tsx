@@ -58,13 +58,26 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       setAllWos(wos);
       const thisWo = wos.find((w: any) => w.id === woId);
       setWo(thisWo);
+
+      // Filter components by operation_id, not by move_raw_ids
+      // Rules:
+      //   - Component with operation_id matching this WO's operation_id -> show
+      //   - Component with no operation_id (false) -> show in ALL work orders
       const allComps = moData.order?.components || [];
-      if (thisWo?.move_raw_ids?.length > 0) {
-        const woMoveIds = new Set(thisWo.move_raw_ids);
-        setWoComponents(allComps.filter((c: any) => woMoveIds.has(c.id)));
+      const woOperationId = thisWo?.operation_id?.[0] || null;
+
+      if (woOperationId) {
+        const filtered = allComps.filter((c: any) => {
+          const compOpId = c.operation_id?.[0] || null;
+          // Show if: no operation assigned (global) OR matches this WO's operation
+          return !compOpId || compOpId === woOperationId;
+        });
+        setWoComponents(filtered);
       } else {
+        // WO has no operation_id — show all components
         setWoComponents(allComps);
       }
+
       if (thisWo) {
         setTimerSec(Math.round((thisWo.duration || 0) * 60));
         if (thisWo.state === 'progress') setRunning(true);
@@ -157,7 +170,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
   const arrow = '\u2192';
 
-  // Ingredient collection — based on 'picked' field
   const pickedCount = displayComps.filter((c: any) => c.picked === true).length;
   const totalComps = displayComps.length;
 
