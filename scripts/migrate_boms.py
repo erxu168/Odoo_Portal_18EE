@@ -2,18 +2,8 @@
 """
 BOM Migration: Odoo 19 CE -> Odoo 18 EE
 ========================================
-Migrates BOMs and all dependent records:
-  - Product categories
-  - Units of measure (UoM categories + UoMs)
-  - Products (product.template + product.product)
-  - Work centers
-  - Taxes
-  - BOMs (mrp.bom)
-  - BOM lines (mrp.bom.line)
-  - Operations (mrp.routing.workcenter)
-
-Matches by name to avoid duplicates.
-Safe to run multiple times.
+Migrates BOMs and all dependent records.
+Matches by name to avoid duplicates. Safe to run multiple times.
 
 Usage:
   python3 scripts/migrate_boms.py --dry-run   # preview only
@@ -21,11 +11,9 @@ Usage:
 """
 
 import requests
-import json
 import sys
 import os
 
-# Load from .env.local if present
 def load_env():
     env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env.local')
     if os.path.exists(env_path):
@@ -38,7 +26,6 @@ def load_env():
 
 load_env()
 
-# CONFIG
 SOURCE = {
     'url': os.environ.get('SOURCE_ODOO_URL', 'http://65.109.6.237:7071'),
     'db': os.environ.get('SOURCE_ODOO_DB', 'odoo19'),
@@ -145,7 +132,6 @@ def migrate():
     source.authenticate()
     target.authenticate()
 
-    # Read BOMs
     print('\n2. Reading BOMs from Odoo 19 CE...')
     src_boms = source.search_read('mrp.bom', [['active', '=', True]], [
         'product_tmpl_id', 'product_id', 'product_qty', 'product_uom_id',
@@ -156,7 +142,6 @@ def migrate():
         print('   No BOMs to migrate. Done.')
         return
 
-    # Collect all dependent IDs
     print('\n3. Collecting dependent data...')
 
     all_line_ids = []
@@ -170,18 +155,17 @@ def migrate():
     all_op_ids = []
     for bom in src_boms:
         all_op_ids.extend(bom.get('operation_ids', []))
+    # Note: 'note' field does not exist on mrp.routing.workcenter in Odoo 19 CE
     src_operations = source.search_read('mrp.routing.workcenter', [['id', 'in', all_op_ids]], [
-        'name', 'workcenter_id', 'sequence', 'time_cycle_manual', 'bom_id', 'note',
+        'name', 'workcenter_id', 'sequence', 'time_cycle_manual', 'bom_id',
     ]) if all_op_ids else []
     print(f'   Operations: {len(src_operations)}')
 
-    # Product templates from BOMs
     tmpl_ids = set()
     for bom in src_boms:
         if bom.get('product_tmpl_id'):
             tmpl_ids.add(bom['product_tmpl_id'][0])
 
-    # Products from BOM lines
     product_ids = set()
     for line in src_lines:
         if line.get('product_id'):
@@ -201,7 +185,6 @@ def migrate():
     ]) if product_ids else []
     print(f'   Products (components): {len(src_products)}')
 
-    # Component templates not already in BOM templates
     comp_tmpl_ids = set()
     for p in src_products:
         if p.get('product_tmpl_id'):
@@ -217,7 +200,6 @@ def migrate():
 
     all_templates = src_templates + src_comp_templates
 
-    # Categories
     categ_ids = set()
     for t in all_templates:
         if t.get('categ_id'):
@@ -227,7 +209,6 @@ def migrate():
     ]) if categ_ids else []
     print(f'   Categories: {len(src_categories)}')
 
-    # UoMs
     uom_ids = set()
     for t in all_templates:
         if t.get('uom_id'): uom_ids.add(t['uom_id'][0])
@@ -250,7 +231,6 @@ def migrate():
     ]) if uom_categ_ids else []
     print(f'   UoM categories: {len(src_uom_categs)}')
 
-    # Work centers
     wc_ids = set()
     for op in src_operations:
         if op.get('workcenter_id'):
@@ -261,7 +241,6 @@ def migrate():
     ]) if wc_ids else []
     print(f'   Work centers: {len(src_workcenters)}')
 
-    # Taxes
     tax_ids = set()
     for t in all_templates:
         tax_ids.update(t.get('taxes_id', []))
@@ -272,9 +251,8 @@ def migrate():
     print(f'   Taxes: {len(src_taxes)}')
 
     # ============================================================
-    # Step 4: Create in target
-    # ============================================================
     print('\n4. Migrating to Odoo 18 EE...')
+    # ============================================================
 
     uom_categ_map = {}
     uom_map = {}
@@ -286,14 +264,12 @@ def migrate():
     bom_map = {}
     op_map = {}
 
-    # 4a: UoM categories
     print('\n   4a. UoM categories...')
     for uc in src_uom_categs:
         uom_categ_map[uc['id']] = find_or_create(target, 'uom.category', 'name', uc['name'], {
             'name': uc['name'],
         })
 
-    # 4b: UoMs
     print('\n   4b. Units of measure...')
     for u in src_uoms:
         target_categ = uom_categ_map.get(u['category_id'][0]) if u.get('category_id') else False
@@ -307,14 +283,12 @@ def migrate():
             'active': True,
         })
 
-    # 4c: Product categories
     print('\n   4c. Product categories...')
     for cat in src_categories:
         categ_map[cat['id']] = find_or_create(target, 'product.category', 'name', cat['name'], {
             'name': cat['name'],
         })
 
-    # 4d: Taxes
     print('\n   4d. Taxes...')
     for tax in src_taxes:
         tax_map[tax['id']] = find_or_create(target, 'account.tax', 'name', tax['name'], {
@@ -325,7 +299,6 @@ def migrate():
             'active': True,
         })
 
-    # 4e: Product templates
     print('\n   4e. Product templates...')
     for t in all_templates:
         target_uom = uom_map.get(t['uom_id'][0]) if t.get('uom_id') else False
@@ -353,7 +326,6 @@ def migrate():
 
         tmpl_map[t['id']] = find_or_create(target, 'product.template', match_field, match_value, vals)
 
-    # 4f: Product variants
     print('\n   4f. Mapping product variants...')
     for p in src_products:
         src_tmpl_id = p['product_tmpl_id'][0] if p.get('product_tmpl_id') else None
@@ -388,7 +360,6 @@ def migrate():
             product_map[p['id']] = -1
     print(f'   Mapped {len(product_map)} product variants')
 
-    # 4g: Work centers
     print('\n   4g. Work centers...')
     for wc in src_workcenters:
         wc_map[wc['id']] = find_or_create(target, 'mrp.workcenter', 'name', wc['name'], {
@@ -402,7 +373,6 @@ def migrate():
             'oee_target': wc.get('oee_target', 90),
         })
 
-    # 4h: BOMs
     print('\n   4h. Bills of Materials...')
     for bom in src_boms:
         src_tmpl_id = bom['product_tmpl_id'][0] if bom.get('product_tmpl_id') else None
@@ -438,7 +408,6 @@ def migrate():
         bom_map[bom['id']] = new_id
         print(f"    Created BOM: {bom['product_tmpl_id'][1]} (ID {new_id})")
 
-    # 4i: Operations
     print('\n   4i. Operations...')
     for op in src_operations:
         src_bom_id = op['bom_id'][0] if op.get('bom_id') else None
@@ -468,7 +437,6 @@ def migrate():
         op_map[op['id']] = new_id
         print(f"    Created operation: {op['name']} (ID {new_id})")
 
-    # 4j: BOM lines
     print('\n   4j. BOM lines (components)...')
     created_lines = 0
     skipped_lines = 0
@@ -509,7 +477,6 @@ def migrate():
 
     print(f'   Created {created_lines} lines, skipped {skipped_lines}')
 
-    # Summary
     print('\n' + '=' * 60)
     print('MIGRATION SUMMARY')
     print('=' * 60)
