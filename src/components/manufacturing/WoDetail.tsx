@@ -15,6 +15,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const [wo, setWo] = useState<any>(null);
   const [allWos, setAllWos] = useState<any[]>([]);
   const [woComponents, setWoComponents] = useState<any[]>([]);
+  const [instructions, setInstructions] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'components' | 'instructions'>('components');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -24,7 +25,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const [running, setRunning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Numpad state
   const [numpadComp, setNumpadComp] = useState<any>(null);
   const [numpadSaving, setNumpadSaving] = useState(false);
 
@@ -47,14 +47,15 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   async function fetchData() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/manufacturing-orders/${moId}`);
-      const data = await res.json();
-      setMo(data.order);
-      const wos = data.order?.work_orders || [];
+      // Fetch MO detail for components and WO list
+      const moRes = await fetch(`/api/manufacturing-orders/${moId}`);
+      const moData = await moRes.json();
+      setMo(moData.order);
+      const wos = moData.order?.work_orders || [];
       setAllWos(wos);
       const thisWo = wos.find((w: any) => w.id === woId);
       setWo(thisWo);
-      const allComps = data.order?.components || [];
+      const allComps = moData.order?.components || [];
       if (thisWo?.move_raw_ids?.length > 0) {
         const woMoveIds = new Set(thisWo.move_raw_ids);
         setWoComponents(allComps.filter((c: any) => woMoveIds.has(c.id)));
@@ -64,6 +65,15 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       if (thisWo) {
         setTimerSec(Math.round((thisWo.duration || 0) * 60));
         if (thisWo.state === 'progress') setRunning(true);
+      }
+
+      // Fetch WO detail for instructions (operation_note)
+      const woRes = await fetch(`/api/manufacturing-orders/${moId}/work-orders/${woId}`);
+      const woData = await woRes.json();
+      if (woData.work_order?.operation_note) {
+        setInstructions(woData.work_order.operation_note);
+      } else {
+        setInstructions('');
       }
     } catch (err) { console.error('Failed to fetch WO:', err); }
     finally { setLoading(false); }
@@ -96,7 +106,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
     try { await callWoAction('done'); setRunning(false); onDone(); } catch (e) { void e; }
   }
 
-  // Save component qty from numpad
   async function handleNumpadConfirm(value: number) {
     if (!numpadComp) return;
     setNumpadSaving(true);
@@ -119,6 +128,15 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
     }
   }
 
+  // Strip HTML tags for plain text display, but keep basic formatting
+  function renderInstructions(html: string) {
+    // Sanitize: only allow basic tags
+    const clean = html
+      .replace(/<script[^>]*>.*?<\/script>/gi, '')
+      .replace(/<style[^>]*>.*?<\/style>/gi, '');
+    return clean;
+  }
+
   const mm = String(Math.floor(timerSec / 60)).padStart(2, '0');
   const ss = String(timerSec % 60).padStart(2, '0');
 
@@ -130,6 +148,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const displayComps = woComponents;
   const nextWo = allWos[woIdx + 1];
   const productName = mo.product_id?.[1] || 'this product';
+  const hasInstructions = instructions && instructions.trim().length > 0 && instructions !== '<p><br></p>';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -159,7 +178,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
           <div className="text-xs text-gray-400 mt-2">Expected: {wo.duration_expected ? `${Math.round(wo.duration_expected)} min` : 'N/A'}</div>
           <div className="flex gap-3 justify-center mt-5">
             {wo.state === 'done' ? (
-              <span className="text-emerald-600 font-semibold text-sm">&#x2713; Completed</span>
+              <span className="text-emerald-600 font-semibold text-sm">Completed</span>
             ) : (
               <>
                 <button onClick={handleToggle} disabled={!!actionLoading}
@@ -202,7 +221,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       <div className="px-4 mb-3">
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
           <button onClick={() => setTab('components')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'components' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>Ingredients ({displayComps.length})</button>
-          <button onClick={() => setTab('instructions')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'instructions' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>Instructions</button>
+          <button onClick={() => setTab('instructions')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'instructions' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>
+            Instructions{hasInstructions ? '' : ''}
+          </button>
         </div>
       </div>
 
@@ -236,7 +257,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                     <div className="flex-1 min-w-0">
                       <div className={`text-[14px] font-semibold ${isDone ? 'text-emerald-600 line-through' : 'text-gray-900'}`}>{c.product_id[1]}</div>
                       <div className="text-[11px] text-gray-400 mt-0.5">
-                        {isDone ? '&#x2713; Consumed' : partial ? 'Partial' : 'Tap to set qty'}
+                        {isDone ? 'Consumed' : partial ? 'Partial' : 'Tap to set qty'}
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
@@ -252,7 +273,32 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
             {displayComps.length === 0 && <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-gray-400 text-sm">No ingredients assigned to this step</div>}
           </div>
         )}
-        {tab === 'instructions' && <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-gray-400 text-sm">Instructions will be available once configured in Odoo</div>}
+        {tab === 'instructions' && (
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            {hasInstructions ? (
+              <div
+                className="p-5 text-[14px] text-gray-800 leading-relaxed prose prose-sm max-w-none
+                  [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2
+                  [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2
+                  [&_li]:my-1
+                  [&_p]:my-2
+                  [&_strong]:font-bold
+                  [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2
+                  [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-3 [&_h2]:mb-1.5
+                  [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-2 [&_h3]:mb-1"
+                dangerouslySetInnerHTML={{ __html: renderInstructions(instructions) }}
+              />
+            ) : (
+              <div className="p-6 text-center">
+                <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+                <p className="text-gray-400 text-sm">No instructions yet</p>
+                <p className="text-gray-300 text-xs mt-1">Add them in Odoo 18 EE under BOM &rarr; Operations &rarr; Work Sheet</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Bottom CTA */}
@@ -260,7 +306,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
           <button onClick={handleDoneRequest} disabled={!!actionLoading}
             className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
-            {actionLoading === 'done' ? 'Finishing...' : nextWo && nextWo.state !== 'done' ? `Done \u2192 ${nextWo.name}` : '\u2713 Mark step done'}
+            {actionLoading === 'done' ? 'Finishing...' : nextWo && nextWo.state !== 'done' ? `Done &rarr; ${nextWo.name}` : 'Mark step done'}
           </button>
         </div>
       )}
@@ -285,9 +331,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
           <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-8" onClick={(e) => e.stopPropagation()} style={{animation: 'slideUp .25s ease-out'}}>
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
             <div className="text-center mb-6">
-              <div className="text-2xl mb-2">&#x2705;</div>
               <h3 className="text-lg font-bold text-gray-900">Finished this step?</h3>
-              <p className="text-sm text-gray-500 mt-2">You&rsquo;re marking <strong>{wo.name}</strong> as done{productName !== 'this product' && <> for <strong>{productName}</strong></>}.
+              <p className="text-sm text-gray-500 mt-2">
+                Marking <strong>{wo.name}</strong> as done{productName !== 'this product' && <> for <strong>{productName}</strong></>}.
                 {running && <><br />Timer stops at <strong>{mm}:{ss}</strong>.</>}
               </p>
             </div>
