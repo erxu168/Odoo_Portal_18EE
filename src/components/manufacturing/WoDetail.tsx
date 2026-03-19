@@ -157,8 +157,8 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
   const arrow = '\u2192';
 
-  // Ingredient collection status
-  const collectedCount = displayComps.filter((c: any) => (c.consumed_qty || 0) > 0).length;
+  // Ingredient collection — based on 'picked' field
+  const pickedCount = displayComps.filter((c: any) => c.picked === true).length;
   const totalComps = displayComps.length;
 
   return (
@@ -227,7 +227,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       <div className="px-4 mb-3">
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
           <button onClick={() => setTab('components')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'components' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>
-            Ingredients ({collectedCount}/{totalComps})
+            Ingredients ({pickedCount}/{totalComps})
           </button>
           <button onClick={() => setTab('instructions')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'instructions' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>
             Instructions{hasInstructions ? ' *' : ''}
@@ -241,63 +241,46 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
             {totalComps > 0 && (
               <div className="flex items-center justify-between mb-1 px-1">
                 <p className="text-[11px] text-gray-400">Tap to weigh each ingredient</p>
-                {collectedCount === totalComps && totalComps > 0 && (
+                {pickedCount === totalComps && totalComps > 0 && (
                   <span className="text-[11px] font-semibold text-emerald-600">All collected</span>
                 )}
               </div>
             )}
-
-            {/* Collection progress bar */}
             {totalComps > 0 && (
               <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2">
-                <div
-                  className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                  style={{ width: `${totalComps > 0 ? (collectedCount / totalComps) * 100 : 0}%` }}
-                />
+                <div className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                  style={{ width: `${totalComps > 0 ? (pickedCount / totalComps) * 100 : 0}%` }} />
               </div>
             )}
 
             {displayComps.map((c: any) => {
               const consumed = c.consumed_qty || 0;
               const required = c.product_uom_qty || 0;
-              const isCollected = consumed > 0;
+              const isPicked = c.picked === true;
               const compUom = c.product_uom?.[1] || 'kg';
-
               return (
-                <button
-                  key={c.id}
-                  onClick={() => setNumpadComp(c)}
+                <button key={c.id} onClick={() => setNumpadComp(c)}
                   className={`bg-white border rounded-xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
-                    isCollected ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200'
-                  }`}
-                >
-                  {/* Left accent bar */}
-                  <div className={`w-1 flex-shrink-0 ${isCollected ? 'bg-emerald-500' : 'bg-gray-200'}`} />
-
+                    isPicked ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200'
+                  }`}>
+                  <div className={`w-1 flex-shrink-0 ${isPicked ? 'bg-emerald-500' : 'bg-gray-200'}`} />
                   <div className="flex-1 flex items-center gap-3 px-4 py-3">
-                    {/* Checkbox */}
                     <div className={`w-7 h-7 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                      isCollected ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 bg-white'
+                      isPicked ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 bg-white'
                     }`}>
-                      {isCollected && (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                      )}
+                      {isPicked && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
                     </div>
-
-                    {/* Name + status */}
                     <div className="flex-1 min-w-0">
-                      <div className={`text-[14px] font-semibold ${isCollected ? 'text-emerald-700 line-through decoration-emerald-400' : 'text-gray-900'}`}>
+                      <div className={`text-[14px] font-semibold ${isPicked ? 'text-emerald-700 line-through decoration-emerald-400' : 'text-gray-900'}`}>
                         {c.product_id[1]}
                       </div>
                       <div className="text-[11px] text-gray-400 mt-0.5">
-                        {isCollected ? `Collected ${fmt(consumed)} ${compUom}` : `Need ${fmt(required)} ${compUom} \u2014 tap to weigh`}
+                        {isPicked ? `Collected ${fmt(consumed)} ${compUom}` : `Need ${fmt(required)} ${compUom}`}
                       </div>
                     </div>
-
-                    {/* Quantity display */}
                     <div className="text-right flex-shrink-0">
-                      <div className={`text-[15px] font-bold tabular-nums font-mono ${isCollected ? 'text-emerald-600' : 'text-gray-400'}`}>
-                        {isCollected ? fmt(consumed) : fmt(required)}
+                      <div className={`text-[15px] font-bold tabular-nums font-mono ${isPicked ? 'text-emerald-600' : 'text-gray-400'}`}>
+                        {isPicked ? fmt(consumed) : fmt(required)}
                       </div>
                       <div className="text-[11px] text-gray-400">{compUom}</div>
                     </div>
@@ -384,7 +367,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       {numpadComp && (
         <NumPad
           label={numpadComp.product_id[1]}
-          value={String(numpadComp.consumed_qty || 0)}
+          value={numpadComp.picked ? String(numpadComp.consumed_qty || 0) : '0'}
           unit={numpadComp.product_uom?.[1] || 'kg'}
           demandQty={numpadComp.product_uom_qty}
           loading={numpadSaving}

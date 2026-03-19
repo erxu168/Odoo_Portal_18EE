@@ -26,7 +26,8 @@ export async function GET(
       ? await odoo.searchRead('stock.move',
           [['id', 'in', mo.move_raw_ids]],
           ['product_id', 'product_uom_qty', 'quantity', 'product_uom',
-           'forecast_availability', 'state', 'is_done', 'should_consume_qty'])
+           'forecast_availability', 'state', 'is_done', 'should_consume_qty',
+           'picked'])
       : [];
 
     const enrichedComponents = components.map((c: any) => ({
@@ -76,20 +77,14 @@ export async function PATCH(
           await odoo.buttonCall('mrp.production', 'action_confirm', [moId]);
           break;
         case 'mark_done': {
-          // button_mark_done may return a wizard (e.g. mrp.immediate.production)
           const result = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
-
-          // If result is a wizard action dict, process it
           if (result && typeof result === 'object' && result.res_model) {
             try {
               const wizModel = result.res_model;
               const wizCtx = result.context || {};
               const ctx = { ...wizCtx, active_id: moId, active_ids: [moId] };
-
-              // Create wizard with context
               const wizId = await odoo.create(wizModel, {}, { context: ctx });
               const wizIds = Array.isArray(wizId) ? wizId : [wizId];
-
               if (wizModel === 'mrp.immediate.production') {
                 await odoo.call(wizModel, 'process', [wizIds]);
               } else if (wizModel === 'mrp.production.backorder') {
@@ -99,7 +94,6 @@ export async function PATCH(
                   await odoo.call(wizModel, 'process', [wizIds]);
                 }
               } else {
-                // Generic wizard — try process
                 await odoo.call(wizModel, 'process', [wizIds]);
               }
             } catch (wizErr: any) {
@@ -123,10 +117,12 @@ export async function PATCH(
       await odoo.write('mrp.production', [moId], body.vals);
     }
 
+    // Component quantity updates — also sets picked=true
     if (body.component_updates) {
       for (const update of body.component_updates) {
         await odoo.write('stock.move', [update.move_id], {
           quantity: update.consumed_qty,
+          picked: true,
         });
       }
     }

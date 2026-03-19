@@ -97,7 +97,6 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      // Navigate back to MO list after successful produce
       onBack();
     } catch (err: any) {
       setProduceError(err.message || 'Failed to produce');
@@ -126,6 +125,8 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       setNumpadSaving(false);
     }
   }
+
+  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(n);
 
   const stateColors: Record<string, string> = {
     draft: 'bg-gray-100 text-gray-600', confirmed: 'bg-orange-50 text-orange-700',
@@ -159,7 +160,6 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
   }
 
   const doneWos = workOrders.filter((w) => w.state === 'done').length;
-  const doneComps = components.filter((c) => c.is_done || c.state === 'done').length;
   const allWosDone = workOrders.length > 0 && workOrders.every((w: any) => w.state === 'done');
   const isDraft = mo.state === 'draft';
   const isDone = mo.state === 'done';
@@ -167,6 +167,10 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
   const isToClose = mo.state === 'to_close';
   const canCancel = !isDone && !isCancelled;
   const showProduce = !isDraft && !isDone && !isCancelled && (allWosDone || isToClose || workOrders.length === 0);
+
+  // Ingredient picking status — based on 'picked' field, not consumed_qty
+  const pickedCount = components.filter((c: any) => c.picked === true).length;
+  const totalComps = components.length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -190,7 +194,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         <div className="flex items-center gap-3">
           <div className="flex-1">
             <h1 className="text-[18px] font-bold text-gray-900">{mo.product_id[1]}</h1>
-            <p className="text-[13px] text-gray-500 mt-0.5">{mo.name} &middot; {mo.bom_id?.[1] || ''}</p>
+            <p className="text-[13px] text-gray-500 mt-0.5">{mo.name} {'\u00b7'} {mo.bom_id?.[1] || ''}</p>
           </div>
           <span className={`text-[11px] px-2.5 py-0.5 rounded-md font-semibold ${stateColors[mo.state] || 'bg-gray-100 text-gray-600'}`}>
             {stateLabels[mo.state] || mo.state}
@@ -216,8 +220,8 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
             <div className="text-lg font-bold text-amber-500 mt-0.5 font-mono">{doneWos} / {workOrders.length}</div>
           </div>
           <div className="flex-1 text-center py-3">
-            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">INGREDIENTS</div>
-            <div className="text-lg font-bold text-emerald-500 mt-0.5 font-mono">{doneComps} / {components.length}</div>
+            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">PICKED</div>
+            <div className="text-lg font-bold text-emerald-500 mt-0.5 font-mono">{pickedCount} / {totalComps}</div>
           </div>
         </div>
       </div>
@@ -231,7 +235,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
           </button>
           <button onClick={() => setTab('components')}
             className={`flex-1 py-2 rounded-md text-xs font-semibold tracking-wide transition-all ${tab === 'components' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>
-            Ingredients ({components.length})
+            Ingredients ({pickedCount}/{totalComps})
           </button>
         </div>
       </div>
@@ -271,27 +275,48 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
 
         {tab === 'components' && (
           <div className="flex flex-col gap-1.5">
-            {components.length > 0 && <p className="text-[11px] text-gray-400 mb-1 px-1">Tap an ingredient to set the quantity</p>}
+            {totalComps > 0 && (
+              <div className="flex items-center justify-between mb-1 px-1">
+                <p className="text-[11px] text-gray-400">Tap to weigh and pick each ingredient</p>
+                {pickedCount === totalComps && totalComps > 0 && (
+                  <span className="text-[11px] font-semibold text-emerald-600">All picked</span>
+                )}
+              </div>
+            )}
+            {totalComps > 0 && (
+              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2">
+                <div className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                  style={{ width: `${totalComps > 0 ? (pickedCount / totalComps) * 100 : 0}%` }} />
+              </div>
+            )}
             {components.map((c: any) => {
               const consumed = c.consumed_qty || 0;
               const required = c.product_uom_qty || 0;
-              const isDoneComp = c.is_done || c.state === 'done';
-              const partial = consumed > 0 && !isDoneComp;
+              const isPicked = c.picked === true;
               const compUom = c.product_uom?.[1] || 'kg';
-              const accentColor = isDoneComp ? 'bg-emerald-500' : partial ? 'bg-orange-400' : 'bg-gray-200';
-              const qtyColor = isDoneComp ? 'text-emerald-600' : partial ? 'text-orange-600' : 'text-gray-900';
               return (
-                <button key={c.id} onClick={() => !isDoneComp && setNumpadComp(c)}
-                  className={`bg-white border border-gray-200 rounded-xl flex overflow-hidden text-left ${!isDoneComp ? 'active:scale-[0.98] transition-transform' : ''}`}>
-                  <div className={`w-1 flex-shrink-0 ${accentColor}`} />
+                <button key={c.id} onClick={() => setNumpadComp(c)}
+                  className={`bg-white border rounded-xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
+                    isPicked ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200'
+                  }`}>
+                  <div className={`w-1 flex-shrink-0 ${isPicked ? 'bg-emerald-500' : 'bg-gray-200'}`} />
                   <div className="flex-1 flex items-center gap-3 px-4 py-3">
+                    <div className={`w-7 h-7 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                      isPicked ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 bg-white'
+                    }`}>
+                      {isPicked && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <div className={`text-[14px] font-semibold ${isDoneComp ? 'text-emerald-600' : 'text-gray-900'}`}>{c.product_id[1]}</div>
-                      <div className="text-[11px] text-gray-400 mt-0.5">{isDoneComp ? 'Consumed' : partial ? 'Partial' : 'Tap to set qty'}</div>
+                      <div className={`text-[14px] font-semibold ${isPicked ? 'text-emerald-700 line-through decoration-emerald-400' : 'text-gray-900'}`}>
+                        {c.product_id[1]}
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        {isPicked ? `Picked ${fmt(consumed)} ${compUom}` : `Need ${fmt(required)} ${compUom}`}
+                      </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className={`text-[15px] font-bold tabular-nums font-mono ${qtyColor}`}>
-                        {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(consumed)} / {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(required)}
+                      <div className={`text-[15px] font-bold tabular-nums font-mono ${isPicked ? 'text-emerald-600' : 'text-gray-400'}`}>
+                        {isPicked ? fmt(consumed) : fmt(required)}
                       </div>
                       <div className="text-[11px] text-gray-400">{compUom}</div>
                     </div>
@@ -304,7 +329,6 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         )}
       </div>
 
-      {/* Bottom CTA area */}
       {produceError && (
         <div className="fixed bottom-24 left-0 right-0 max-w-lg mx-auto px-4">
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-red-700 text-sm">{produceError}</div>
@@ -331,24 +355,20 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
 
       {isDone && (
         <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
-          <div className="w-full py-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[15px] text-center">
-            Order completed
-          </div>
+          <div className="w-full py-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[15px] text-center">Order completed</div>
         </div>
       )}
 
       {isCancelled && (
         <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
-          <div className="w-full py-4 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-[15px] text-center">
-            Order cancelled
-          </div>
+          <div className="w-full py-4 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-[15px] text-center">Order cancelled</div>
         </div>
       )}
 
       {numpadComp && (
         <NumPad
           label={numpadComp.product_id[1]}
-          value={String(numpadComp.consumed_qty || 0)}
+          value={numpadComp.picked ? String(numpadComp.consumed_qty || 0) : '0'}
           unit={numpadComp.product_uom?.[1] || 'kg'}
           demandQty={numpadComp.product_uom_qty}
           loading={numpadSaving}
