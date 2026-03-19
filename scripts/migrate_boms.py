@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 """
 BOM Migration: Odoo 19 CE -> Odoo 18 EE
-Uses ONLY fields verified to exist in both instances.
-Safe to run multiple times — matches by name, skips existing.
-
-Usage:
-  python3 scripts/migrate_boms.py --dry-run
-  python3 scripts/migrate_boms.py
+Uses ONLY verified safe fields. Safe to run multiple times.
 """
 import requests, sys, os
 
@@ -35,10 +30,7 @@ TARGET = {
 }
 DRY = '--dry-run' in sys.argv
 
-# ═══════════════════════════════════════════════════════════
-# VERIFIED SAFE FIELDS (exist in BOTH Odoo 19 CE and 18 EE)
-# from check_fields.py output 2026-03-19
-# ═══════════════════════════════════════════════════════════
+# Safe fields (verified via check_fields.py)
 F_TMPL = ['name', 'default_code', 'categ_id', 'uom_id', 'type',
           'list_price', 'standard_price', 'active', 'taxes_id',
           'supplier_taxes_id', 'sale_ok', 'purchase_ok']
@@ -55,8 +47,7 @@ F_OP   = ['name', 'workcenter_id', 'sequence', 'time_cycle_manual',
           'bom_id', 'time_mode', 'time_mode_batch']
 F_WC   = ['name', 'code', 'active', 'time_start', 'time_stop',
           'time_efficiency', 'oee_target']
-F_UOM  = ['name', 'factor', 'rounding', 'active']
-# uom.category has NO shared fields — skip reading from source
+F_UOM_SRC = ['name', 'factor', 'rounding', 'active']  # Odoo 19 safe
 F_TAX  = ['name', 'type_tax_use', 'amount_type', 'amount', 'active']
 
 
@@ -98,7 +89,6 @@ class Odoo:
 
 
 def foc(tgt, model, field, val, vals):
-    """Find or create."""
     ex = tgt.sr(model, [[field, '=', val]], ['id'], 1)
     if ex: return ex[0]['id']
     if DRY:
@@ -122,7 +112,6 @@ def run():
     print('\n1. Connecting...')
     src.auth(); tgt.auth()
 
-    # --- Read source ---
     print('\n2. Reading BOMs...')
     boms = src.sr('mrp.bom', [['active','=',True]], F_BOM)
     print(f'   {len(boms)} BOMs')
@@ -162,7 +151,7 @@ def run():
         if b.get('product_uom_id'): uids.add(b['product_uom_id'][0])
     for l in lines:
         if l.get('product_uom_id'): uids.add(l['product_uom_id'][0])
-    uoms = src.sr('uom.uom', [['id','in',list(uids)]], F_UOM) if uids else []
+    uoms = src.sr('uom.uom', [['id','in',list(uids)]], F_UOM_SRC) if uids else []
     print(f'   {len(uoms)} UoMs')
 
     wids = set(o['workcenter_id'][0] for o in ops if o.get('workcenter_id'))
@@ -177,15 +166,63 @@ def run():
 
     # --- Create in target ---
     print('\n4. Migrating...')
-    um, cm, tm, txm, tlm, pm, wm, bm, om = {},{},{},{},{},{},{},{},{}
+    um, cm, txm, tlm, pm, wm, bm, om = {},{},{},{},{},{},{},{}
 
-    # UoMs — match by name only (category_id not available in Odoo 19)
+    # UoMs — match by name in target (Odoo 18 has category_id required)
+    # First get ALL existing UoMs in target to match against
     print('\n   UoMs...')
+    tgt_uoms = tgt.sr('uom.uom', [], ['id', 'name', 'category_id'], 0)
+    tgt_uom_by_name = {u['name'].lower().strip(): u for u in tgt_uoms}
+
+    # Get or create a "Custom" UoM category for unmatched UoMs
+    # Use "Weight" category for kg-like units, "Unit" for pieces
+    tgt_uom_cats = tgt.sr('uom.category', [], ['id', 'name'], 0)
+    tgt_cat_by_name = {c['name'].lower(): c['id'] for c in tgt_uom_cats}
+    weight_cat_id = tgt_cat_by_name.get('weight') or tgt_cat_by_name.get('gewicht')
+    volume_cat_id = tgt_cat_by_name.get('volume') or tgt_cat_by_name.get('volumen')
+    unit_cat_id = tgt_cat_by_name.get('unit') or tgt_cat_by_name.get('einheit')
+
+    # Print what categories exist
+    print(f'   Target UoM categories: {[c["name"] for c in tgt_uom_cats]}')
+    print(f'   Target UoMs: {len(tgt_uoms)} existing')
+
     for u in uoms:
-        um[u['id']] = foc(tgt, 'uom.uom', 'name', u['name'], {
-            'name': u['name'], 'factor': u.get('factor',1.0),
-            'rounding': u.get('rounding',0.01), 'active': True,
+        uname = u['name']
+        # Try exact match first
+        match = tgt_uom_by_name.get(uname.lower().strip())
+        if match:
+            um[u['id']] = match['id']
+            continue
+
+        # Guess category based on name
+        nl = uname.lower()
+        if any(k in nl for k in ['kg', 'g', 'lb', 'oz', 'sack', 'can']):
+            cat_id = weight_cat_id
+        elif any(k in nl for k in ['l', 'ml', 'liter', 'canister', 'blt']):
+            cat_id = volume_cat_id
+        else:
+            cat_id = unit_cat_id
+
+        if not cat_id:
+            # Fallback: use first available category
+            cat_id = tgt_uom_cats[0]['id'] if tgt_uom_cats else None
+
+        if not cat_id:
+            print(f'    SKIP UoM {uname} — no category available')
+            continue
+
+        if DRY:
+            print(f'    [DRY] uom.uom: {uname} (cat={cat_id})')
+            um[u['id']] = -1
+            continue
+
+        nid = tgt.cr('uom.uom', {
+            'name': uname, 'category_id': cat_id,
+            'factor': u.get('factor', 1.0), 'rounding': u.get('rounding', 0.01),
+            'uom_type': 'bigger', 'active': True,
         })
+        um[u['id']] = nid
+        print(f'    + uom.uom: {uname} (ID {nid}, cat={cat_id})')
 
     print('\n   Categories...')
     for c in cats:
