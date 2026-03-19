@@ -76,52 +76,34 @@ export async function PATCH(
           await odoo.buttonCall('mrp.production', 'action_confirm', [moId]);
           break;
         case 'mark_done': {
-          // button_mark_done may return a wizard action (e.g. mrp.immediate.production)
-          // We need to handle that by processing the wizard
+          // button_mark_done may return a wizard (e.g. mrp.immediate.production)
           const result = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
 
-          // If result is an action dict (wizard), process it
+          // If result is a wizard action dict, process it
           if (result && typeof result === 'object' && result.res_model) {
             try {
-              // Create the wizard record
-              const wizardModel = result.res_model;
-              const wizardContext = result.context || {};
+              const wizModel = result.res_model;
+              const wizCtx = result.context || {};
+              const ctx = { ...wizCtx, active_id: moId, active_ids: [moId] };
 
-              if (wizardModel === 'mrp.immediate.production') {
-                // Create the wizard with the MO context
-                const wizId = await odoo.create(wizardModel, {}, {
-                  context: { ...wizardContext, active_id: moId, active_ids: [moId] },
-                });
-                // Execute the wizard's confirm action
-                await odoo.buttonCall(wizardModel, 'process', [wizId], {
-                  context: { ...wizardContext, active_id: moId, active_ids: [moId] },
-                });
-              } else if (wizardModel === 'change.production.qty' || wizardModel === 'mrp.production.backorder') {
-                // Handle backorder wizard — just confirm with no backorder
-                const wizId = await odoo.create(wizardModel, {}, {
-                  context: { ...wizardContext, active_id: moId, active_ids: [moId] },
-                });
-                // Try action_close or action_skip_backorder
+              // Create wizard with context
+              const wizId = await odoo.create(wizModel, {}, { context: ctx });
+              const wizIds = Array.isArray(wizId) ? wizId : [wizId];
+
+              if (wizModel === 'mrp.immediate.production') {
+                await odoo.call(wizModel, 'process', [wizIds]);
+              } else if (wizModel === 'mrp.production.backorder') {
                 try {
-                  await odoo.buttonCall(wizardModel, 'action_close_mo', [wizId], {
-                    context: { ...wizardContext, active_id: moId, active_ids: [moId] },
-                  });
+                  await odoo.call(wizModel, 'action_close_mo', [wizIds]);
                 } catch {
-                  // Fallback: try process
-                  await odoo.buttonCall(wizardModel, 'process', [wizId], {
-                    context: { ...wizardContext, active_id: moId, active_ids: [moId] },
-                  });
+                  await odoo.call(wizModel, 'process', [wizIds]);
                 }
+              } else {
+                // Generic wizard — try process
+                await odoo.call(wizModel, 'process', [wizIds]);
               }
             } catch (wizErr: any) {
-              console.error('Wizard processing error:', wizErr.message);
-              // If wizard fails, the MO might still be in to_close state
-              // Try direct state change as fallback
-              try {
-                await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
-              } catch {
-                // ignore secondary error
-              }
+              console.error('Wizard error:', wizErr.message);
             }
           }
           break;
