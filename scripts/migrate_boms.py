@@ -1,27 +1,24 @@
 #!/usr/bin/env python3
 """
 BOM Migration: Odoo 19 CE -> Odoo 18 EE
-Safe to run multiple times. Matches by name to avoid duplicates.
+Uses ONLY fields verified to exist in both instances.
+Safe to run multiple times — matches by name, skips existing.
 
 Usage:
   python3 scripts/migrate_boms.py --dry-run
   python3 scripts/migrate_boms.py
 """
-
-import requests
-import sys
-import os
+import requests, sys, os
 
 def load_env():
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env.local')
-    if os.path.exists(env_path):
-        with open(env_path) as f:
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env.local')
+    if os.path.exists(p):
+        with open(p, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
-                    key, val = line.split('=', 1)
-                    os.environ.setdefault(key.strip(), val.strip())
-
+                    k, v = line.split('=', 1)
+                    os.environ.setdefault(k.strip(), v.strip())
 load_env()
 
 SOURCE = {
@@ -36,363 +33,296 @@ TARGET = {
     'login': os.environ.get('ODOO_USER', 'biz@krawings.de'),
     'password': os.environ.get('ODOO_PASSWORD', ''),
 }
-DRY_RUN = '--dry-run' in sys.argv
+DRY = '--dry-run' in sys.argv
+
+# ═══════════════════════════════════════════════════════════
+# VERIFIED SAFE FIELDS (exist in BOTH Odoo 19 CE and 18 EE)
+# from check_fields.py output 2026-03-19
+# ═══════════════════════════════════════════════════════════
+F_TMPL = ['name', 'default_code', 'categ_id', 'uom_id', 'type',
+          'list_price', 'standard_price', 'active', 'taxes_id',
+          'supplier_taxes_id', 'sale_ok', 'purchase_ok']
+F_PROD = ['name', 'default_code', 'product_tmpl_id', 'categ_id', 'uom_id',
+          'type', 'list_price', 'standard_price', 'active',
+          'taxes_id', 'supplier_taxes_id']
+F_CAT  = ['name', 'parent_id', 'complete_name']
+F_BOM  = ['product_tmpl_id', 'product_id', 'product_qty', 'product_uom_id',
+          'code', 'type', 'bom_line_ids', 'operation_ids', 'active',
+          'ready_to_produce', 'consumption']
+F_LINE = ['product_id', 'product_qty', 'product_uom_id', 'bom_id',
+          'operation_id', 'sequence']
+F_OP   = ['name', 'workcenter_id', 'sequence', 'time_cycle_manual',
+          'bom_id', 'time_mode', 'time_mode_batch']
+F_WC   = ['name', 'code', 'active', 'time_start', 'time_stop',
+          'time_efficiency', 'oee_target']
+F_UOM  = ['name', 'factor', 'rounding', 'active']
+# uom.category has NO shared fields — skip reading from source
+F_TAX  = ['name', 'type_tax_use', 'amount_type', 'amount', 'active']
 
 
-class OdooRPC:
-    def __init__(self, config, label):
-        self.url = config['url']
-        self.db = config['db']
-        self.login = config['login']
-        self.password = config['password']
-        self.label = label
-        self.session = requests.Session()
-        self.uid = None
+class Odoo:
+    def __init__(self, cfg, label):
+        self.url, self.db = cfg['url'], cfg['db']
+        self.login, self.pw = cfg['login'], cfg['password']
+        self.label, self.s = label, requests.Session()
 
-    def authenticate(self):
-        r = self.session.post(f'{self.url}/web/session/authenticate', json={
-            'jsonrpc': '2.0', 'id': 1, 'method': 'call',
-            'params': {'db': self.db, 'login': self.login, 'password': self.password}
-        })
-        data = r.json()
-        if data.get('error'):
-            raise Exception(f"Auth failed on {self.label}: {data['error']['data']['message']}")
-        self.uid = data['result'].get('uid')
-        if not self.uid:
-            raise Exception(f"Auth failed on {self.label}: no UID")
-        print(f"  [{self.label}] UID {self.uid}")
+    def auth(self):
+        r = self.s.post(f'{self.url}/web/session/authenticate', json={
+            'jsonrpc':'2.0','id':1,'method':'call',
+            'params':{'db':self.db,'login':self.login,'password':self.pw}
+        }, timeout=15)
+        uid = r.json().get('result',{}).get('uid')
+        if not uid: raise Exception(f'Auth failed: {self.label}')
+        print(f'  [{self.label}] UID {uid}')
 
-    def search_read(self, model, domain=None, fields=None, limit=0, order='id asc'):
-        r = self.session.post(f'{self.url}/web/dataset/call_kw', json={
-            'jsonrpc': '2.0', 'id': 2, 'method': 'call',
-            'params': {
-                'model': model, 'method': 'search_read',
-                'args': [domain or []],
-                'kwargs': {'fields': fields or [], 'limit': limit, 'order': order,
-                           'context': {'active_test': False, 'lang': 'en_US'}}
-            }
-        })
-        result = r.json()
-        if result.get('error'):
-            raise Exception(f"search_read {model}: {result['error']['data']['message']}")
-        return result.get('result', [])
+    def sr(self, model, domain=None, fields=None, limit=0):
+        r = self.s.post(f'{self.url}/web/dataset/call_kw', json={
+            'jsonrpc':'2.0','id':2,'method':'call',
+            'params':{'model':model,'method':'search_read','args':[domain or []],
+                      'kwargs':{'fields':fields or[],'limit':limit,'order':'id asc',
+                                'context':{'active_test':False,'lang':'en_US'}}}
+        }, timeout=30)
+        res = r.json()
+        if res.get('error'): raise Exception(f"sr {model}: {res['error']['data']['message']}")
+        return res.get('result',[])
 
-    def create(self, model, vals):
-        r = self.session.post(f'{self.url}/web/dataset/call_kw', json={
-            'jsonrpc': '2.0', 'id': 3, 'method': 'call',
-            'params': {'model': model, 'method': 'create', 'args': [vals],
-                       'kwargs': {'context': {'lang': 'en_US'}}}
-        })
-        result = r.json()
-        if result.get('error'):
-            raise Exception(f"create {model}: {result['error']['data']['message']}")
-        return result.get('result')
+    def cr(self, model, vals):
+        r = self.s.post(f'{self.url}/web/dataset/call_kw', json={
+            'jsonrpc':'2.0','id':3,'method':'call',
+            'params':{'model':model,'method':'create','args':[vals],
+                      'kwargs':{'context':{'lang':'en_US'}}}
+        }, timeout=15)
+        res = r.json()
+        if res.get('error'): raise Exception(f"cr {model}: {res['error']['data']['message']}")
+        return res.get('result')
 
 
-def find_or_create(target, model, name_field, name_value, create_vals):
-    existing = target.search_read(model, [[name_field, '=', name_value]], ['id'], limit=1)
-    if existing:
-        return existing[0]['id']
-    if DRY_RUN:
-        print(f"    [DRY] Would create {model}: {name_value}")
+def foc(tgt, model, field, val, vals):
+    """Find or create."""
+    ex = tgt.sr(model, [[field, '=', val]], ['id'], 1)
+    if ex: return ex[0]['id']
+    if DRY:
+        print(f'    [DRY] {model}: {val}')
         return -1
-    new_id = target.create(model, create_vals)
-    print(f"    + {model}: {name_value} (ID {new_id})")
-    return new_id
+    nid = tgt.cr(model, vals)
+    print(f'    + {model}: {val} (ID {nid})')
+    return nid
 
 
-def migrate():
+def run():
     print('=' * 60)
     print('BOM Migration: Odoo 19 CE -> Odoo 18 EE')
     print('=' * 60)
-    if DRY_RUN:
-        print('*** DRY RUN ***\n')
-
+    if DRY: print('*** DRY RUN ***\n')
     if not SOURCE['password'] or not TARGET['password']:
         print('ERROR: Set SOURCE_ODOO_PASSWORD and ODOO_PASSWORD in .env.local')
         sys.exit(1)
 
+    src, tgt = Odoo(SOURCE, 'SRC'), Odoo(TARGET, 'TGT')
     print('\n1. Connecting...')
-    source = OdooRPC(SOURCE, 'SOURCE')
-    target = OdooRPC(TARGET, 'TARGET')
-    source.authenticate()
-    target.authenticate()
+    src.auth(); tgt.auth()
 
-    # --- Read source data ---
+    # --- Read source ---
     print('\n2. Reading BOMs...')
-    src_boms = source.search_read('mrp.bom', [['active', '=', True]], [
-        'product_tmpl_id', 'product_id', 'product_qty', 'product_uom_id',
-        'code', 'type', 'bom_line_ids', 'operation_ids', 'active',
-    ])
-    print(f'   {len(src_boms)} BOMs')
-    if not src_boms:
-        print('   Nothing to migrate.')
-        return
+    boms = src.sr('mrp.bom', [['active','=',True]], F_BOM)
+    print(f'   {len(boms)} BOMs')
+    if not boms: return
 
-    print('\n3. Collecting dependencies...')
+    print('\n3. Dependencies...')
+    lid = [i for b in boms for i in b.get('bom_line_ids',[])]
+    lines = src.sr('mrp.bom.line', [['id','in',lid]], F_LINE) if lid else []
+    print(f'   {len(lines)} BOM lines')
 
-    # BOM lines
-    all_line_ids = []
-    for b in src_boms:
-        all_line_ids.extend(b.get('bom_line_ids', []))
-    src_lines = source.search_read('mrp.bom.line', [['id', 'in', all_line_ids]], [
-        'product_id', 'product_qty', 'product_uom_id', 'bom_id', 'operation_id',
-    ]) if all_line_ids else []
-    print(f'   {len(src_lines)} BOM lines')
+    oid = [i for b in boms for i in b.get('operation_ids',[])]
+    ops = src.sr('mrp.routing.workcenter', [['id','in',oid]], F_OP) if oid else []
+    print(f'   {len(ops)} operations')
 
-    # Operations
-    all_op_ids = []
-    for b in src_boms:
-        all_op_ids.extend(b.get('operation_ids', []))
-    src_ops = source.search_read('mrp.routing.workcenter', [['id', 'in', all_op_ids]], [
-        'name', 'workcenter_id', 'sequence', 'time_cycle_manual', 'bom_id',
-    ]) if all_op_ids else []
-    print(f'   {len(src_ops)} operations')
+    tid = set(b['product_tmpl_id'][0] for b in boms if b.get('product_tmpl_id'))
+    pid = set(l['product_id'][0] for l in lines if l.get('product_id'))
 
-    # Product templates (BOM products)
-    tmpl_ids = set()
-    for b in src_boms:
-        if b.get('product_tmpl_id'): tmpl_ids.add(b['product_tmpl_id'][0])
+    tmpls = src.sr('product.template', [['id','in',list(tid)]], F_TMPL) if tid else []
+    print(f'   {len(tmpls)} BOM templates')
 
-    # Products (components)
-    prod_ids = set()
-    for l in src_lines:
-        if l.get('product_id'): prod_ids.add(l['product_id'][0])
+    prods = src.sr('product.product', [['id','in',list(pid)]], F_PROD) if pid else []
+    print(f'   {len(prods)} component products')
 
-    # Use only fields that exist in both Odoo 19 CE and 18 EE
-    TMPL_FIELDS = ['name', 'default_code', 'categ_id', 'uom_id',
-                   'type', 'list_price', 'standard_price', 'active',
-                   'taxes_id', 'supplier_taxes_id']
-    PROD_FIELDS = ['name', 'default_code', 'product_tmpl_id', 'categ_id', 'uom_id',
-                   'type', 'list_price', 'standard_price', 'active',
-                   'taxes_id', 'supplier_taxes_id']
+    ctid = set(p['product_tmpl_id'][0] for p in prods if p.get('product_tmpl_id')) - tid
+    ctmpls = src.sr('product.template', [['id','in',list(ctid)]], F_TMPL) if ctid else []
+    print(f'   {len(ctmpls)} component templates')
+    at = tmpls + ctmpls
 
-    src_tmpls = source.search_read('product.template', [['id', 'in', list(tmpl_ids)]], TMPL_FIELDS) if tmpl_ids else []
-    print(f'   {len(src_tmpls)} BOM product templates')
+    cids = set(t['categ_id'][0] for t in at if t.get('categ_id'))
+    cats = src.sr('product.category', [['id','in',list(cids)]], F_CAT) if cids else []
+    print(f'   {len(cats)} categories')
 
-    src_prods = source.search_read('product.product', [['id', 'in', list(prod_ids)]], PROD_FIELDS) if prod_ids else []
-    print(f'   {len(src_prods)} component products')
+    uids = set()
+    for t in at:
+        if t.get('uom_id'): uids.add(t['uom_id'][0])
+    for b in boms:
+        if b.get('product_uom_id'): uids.add(b['product_uom_id'][0])
+    for l in lines:
+        if l.get('product_uom_id'): uids.add(l['product_uom_id'][0])
+    uoms = src.sr('uom.uom', [['id','in',list(uids)]], F_UOM) if uids else []
+    print(f'   {len(uoms)} UoMs')
 
-    # Component templates not yet fetched
-    comp_tmpl_ids = set()
-    for p in src_prods:
-        if p.get('product_tmpl_id'): comp_tmpl_ids.add(p['product_tmpl_id'][0])
-    comp_tmpl_ids -= tmpl_ids
-    src_comp_tmpls = source.search_read('product.template', [['id', 'in', list(comp_tmpl_ids)]], TMPL_FIELDS) if comp_tmpl_ids else []
-    print(f'   {len(src_comp_tmpls)} component templates')
+    wids = set(o['workcenter_id'][0] for o in ops if o.get('workcenter_id'))
+    wcs = src.sr('mrp.workcenter', [['id','in',list(wids)]], F_WC) if wids else []
+    print(f'   {len(wcs)} work centers')
 
-    all_tmpls = src_tmpls + src_comp_tmpls
-
-    # Categories
-    cat_ids = set(t['categ_id'][0] for t in all_tmpls if t.get('categ_id'))
-    src_cats = source.search_read('product.category', [['id', 'in', list(cat_ids)]], ['name']) if cat_ids else []
-    print(f'   {len(src_cats)} categories')
-
-    # UoMs
-    uom_ids = set()
-    for t in all_tmpls:
-        if t.get('uom_id'): uom_ids.add(t['uom_id'][0])
-    for b in src_boms:
-        if b.get('product_uom_id'): uom_ids.add(b['product_uom_id'][0])
-    for l in src_lines:
-        if l.get('product_uom_id'): uom_ids.add(l['product_uom_id'][0])
-    src_uoms = source.search_read('uom.uom', [['id', 'in', list(uom_ids)]], [
-        'name', 'category_id', 'factor', 'factor_inv', 'uom_type', 'rounding',
-    ]) if uom_ids else []
-    print(f'   {len(src_uoms)} UoMs')
-
-    uom_cat_ids = set(u['category_id'][0] for u in src_uoms if u.get('category_id'))
-    src_uom_cats = source.search_read('uom.category', [['id', 'in', list(uom_cat_ids)]], ['name']) if uom_cat_ids else []
-    print(f'   {len(src_uom_cats)} UoM categories')
-
-    # Work centers
-    wc_ids = set(op['workcenter_id'][0] for op in src_ops if op.get('workcenter_id'))
-    src_wcs = source.search_read('mrp.workcenter', [['id', 'in', list(wc_ids)]], [
-        'name', 'code', 'active', 'time_start', 'time_stop', 'time_efficiency', 'capacity',
-    ]) if wc_ids else []
-    print(f'   {len(src_wcs)} work centers')
-
-    # Taxes
-    tax_ids = set()
-    for t in all_tmpls:
-        tax_ids.update(t.get('taxes_id', []))
-        tax_ids.update(t.get('supplier_taxes_id', []))
-    src_taxes = source.search_read('account.tax', [['id', 'in', list(tax_ids)]], [
-        'name', 'type_tax_use', 'amount_type', 'amount',
-    ]) if tax_ids else []
-    print(f'   {len(src_taxes)} taxes')
+    txids = set()
+    for t in at:
+        txids.update(t.get('taxes_id',[])); txids.update(t.get('supplier_taxes_id',[]))
+    taxes = src.sr('account.tax', [['id','in',list(txids)]], F_TAX) if txids else []
+    print(f'   {len(taxes)} taxes')
 
     # --- Create in target ---
     print('\n4. Migrating...')
-    uom_cat_map, uom_map, cat_map, tax_map = {}, {}, {}, {}
-    tmpl_map, prod_map, wc_map, bom_map, op_map = {}, {}, {}, {}, {}
+    um, cm, tm, txm, tlm, pm, wm, bm, om = {},{},{},{},{},{},{},{},{}
 
-    print('\n   UoM categories...')
-    for uc in src_uom_cats:
-        uom_cat_map[uc['id']] = find_or_create(target, 'uom.category', 'name', uc['name'], {'name': uc['name']})
-
+    # UoMs — match by name only (category_id not available in Odoo 19)
     print('\n   UoMs...')
-    for u in src_uoms:
-        tc = uom_cat_map.get(u['category_id'][0]) if u.get('category_id') else False
-        uom_map[u['id']] = find_or_create(target, 'uom.uom', 'name', u['name'], {
-            'name': u['name'], 'category_id': tc,
-            'factor': u.get('factor', 1.0), 'factor_inv': u.get('factor_inv', 1.0),
-            'uom_type': u.get('uom_type', 'bigger'), 'rounding': u.get('rounding', 0.01),
+    for u in uoms:
+        um[u['id']] = foc(tgt, 'uom.uom', 'name', u['name'], {
+            'name': u['name'], 'factor': u.get('factor',1.0),
+            'rounding': u.get('rounding',0.01), 'active': True,
         })
 
     print('\n   Categories...')
-    for c in src_cats:
-        cat_map[c['id']] = find_or_create(target, 'product.category', 'name', c['name'], {'name': c['name']})
+    for c in cats:
+        cm[c['id']] = foc(tgt, 'product.category', 'name', c['name'], {'name': c['name']})
 
     print('\n   Taxes...')
-    for tx in src_taxes:
-        tax_map[tx['id']] = find_or_create(target, 'account.tax', 'name', tx['name'], {
-            'name': tx['name'], 'type_tax_use': tx.get('type_tax_use', 'sale'),
-            'amount_type': tx.get('amount_type', 'percent'), 'amount': tx.get('amount', 0),
+    for tx in taxes:
+        txm[tx['id']] = foc(tgt, 'account.tax', 'name', tx['name'], {
+            'name': tx['name'], 'type_tax_use': tx.get('type_tax_use','sale'),
+            'amount_type': tx.get('amount_type','percent'), 'amount': tx.get('amount',0),
         })
 
     print('\n   Product templates...')
-    for t in all_tmpls:
-        tu = uom_map.get(t['uom_id'][0]) if t.get('uom_id') else False
-        tc = cat_map.get(t['categ_id'][0]) if t.get('categ_id') else False
-        tt = [tax_map[x] for x in t.get('taxes_id', []) if x in tax_map]
-        st = [tax_map[x] for x in t.get('supplier_taxes_id', []) if x in tax_map]
-        vals = {'name': t['name'], 'type': t.get('type', 'consu'),
-                'list_price': t.get('list_price', 0), 'standard_price': t.get('standard_price', 0), 'active': True}
-        if t.get('default_code'): vals['default_code'] = t['default_code']
-        if tu: vals['uom_id'] = tu
-        if tc: vals['categ_id'] = tc
-        if tt: vals['taxes_id'] = [(6, 0, tt)]
-        if st: vals['supplier_taxes_id'] = [(6, 0, st)]
+    for t in at:
+        tu = um.get(t['uom_id'][0]) if t.get('uom_id') else False
+        tc = cm.get(t['categ_id'][0]) if t.get('categ_id') else False
+        tt = [txm[x] for x in t.get('taxes_id',[]) if x in txm]
+        st = [txm[x] for x in t.get('supplier_taxes_id',[]) if x in txm]
+        v = {'name': t['name'], 'type': t.get('type','consu'),
+             'list_price': t.get('list_price',0), 'standard_price': t.get('standard_price',0),
+             'active': True, 'sale_ok': t.get('sale_ok',True), 'purchase_ok': t.get('purchase_ok',True)}
+        if t.get('default_code'): v['default_code'] = t['default_code']
+        if tu: v['uom_id'] = tu
+        if tc: v['categ_id'] = tc
+        if tt: v['taxes_id'] = [(6,0,tt)]
+        if st: v['supplier_taxes_id'] = [(6,0,st)]
         mf = 'default_code' if t.get('default_code') else 'name'
         mv = t.get('default_code') or t['name']
-        tmpl_map[t['id']] = find_or_create(target, 'product.template', mf, mv, vals)
+        tlm[t['id']] = foc(tgt, 'product.template', mf, mv, v)
 
     print('\n   Product variants...')
-    for p in src_prods:
+    for p in prods:
         stid = p['product_tmpl_id'][0] if p.get('product_tmpl_id') else None
-        if stid and stid in tmpl_map:
-            ttid = tmpl_map[stid]
+        if stid and stid in tlm:
+            ttid = tlm[stid]
             if ttid and ttid > 0:
-                tp = target.search_read('product.product', [['product_tmpl_id', '=', ttid]], ['id'], limit=1)
-                if tp:
-                    prod_map[p['id']] = tp[0]['id']
-                    continue
-        tp = target.search_read('product.product', [['name', '=', p['name']]], ['id'], limit=1)
-        if tp:
-            prod_map[p['id']] = tp[0]['id']
-        elif not DRY_RUN:
-            tu = uom_map.get(p['uom_id'][0]) if p.get('uom_id') else False
-            tc = cat_map.get(p['categ_id'][0]) if p.get('categ_id') else False
-            v = {'name': p['name'], 'type': p.get('type', 'consu'), 'active': True}
+                tp = tgt.sr('product.product', [['product_tmpl_id','=',ttid]], ['id'], 1)
+                if tp: pm[p['id']] = tp[0]['id']; continue
+        tp = tgt.sr('product.product', [['name','=',p['name']]], ['id'], 1)
+        if tp: pm[p['id']] = tp[0]['id']
+        elif not DRY:
+            tu = um.get(p['uom_id'][0]) if p.get('uom_id') else False
+            tc = cm.get(p['categ_id'][0]) if p.get('categ_id') else False
+            v = {'name': p['name'], 'type': p.get('type','consu'), 'active': True}
             if p.get('default_code'): v['default_code'] = p['default_code']
             if tu: v['uom_id'] = tu
             if tc: v['categ_id'] = tc
-            tid = target.create('product.template', v)
-            print(f"    + template: {p['name']} (ID {tid})")
-            tp = target.search_read('product.product', [['product_tmpl_id', '=', tid]], ['id'], limit=1)
-            if tp: prod_map[p['id']] = tp[0]['id']
+            tid2 = tgt.cr('product.template', v)
+            print(f"    + tmpl: {p['name']} ({tid2})")
+            tp = tgt.sr('product.product', [['product_tmpl_id','=',tid2]], ['id'], 1)
+            if tp: pm[p['id']] = tp[0]['id']
         else:
-            print(f"    [DRY] Would create: {p['name']}")
-            prod_map[p['id']] = -1
-    print(f'   {len(prod_map)} variants mapped')
+            print(f"    [DRY] product: {p['name']}")
+            pm[p['id']] = -1
+    print(f'   {len(pm)} variants')
 
     print('\n   Work centers...')
-    for wc in src_wcs:
-        wc_map[wc['id']] = find_or_create(target, 'mrp.workcenter', 'name', wc['name'], {
-            'name': wc['name'], 'code': wc.get('code', ''), 'active': True,
-            'time_start': wc.get('time_start', 0), 'time_stop': wc.get('time_stop', 0),
-            'time_efficiency': wc.get('time_efficiency', 100), 'capacity': wc.get('capacity', 1),
+    for w in wcs:
+        wm[w['id']] = foc(tgt, 'mrp.workcenter', 'name', w['name'], {
+            'name': w['name'], 'code': w.get('code',''), 'active': True,
+            'time_start': w.get('time_start',0), 'time_stop': w.get('time_stop',0),
+            'time_efficiency': w.get('time_efficiency',100), 'oee_target': w.get('oee_target',90),
         })
 
     print('\n   BOMs...')
-    for b in src_boms:
+    for b in boms:
         stid = b['product_tmpl_id'][0] if b.get('product_tmpl_id') else None
-        tt = tmpl_map.get(stid) if stid else False
-        tu = uom_map.get(b['product_uom_id'][0]) if b.get('product_uom_id') else False
+        tt = tlm.get(stid) if stid else False
+        tu = um.get(b['product_uom_id'][0]) if b.get('product_uom_id') else False
         if not tt or tt < 1:
-            print(f"    SKIP: {b['product_tmpl_id'][1]} (no template)")
-            continue
-        ex = target.search_read('mrp.bom', [['product_tmpl_id', '=', tt]], ['id'], limit=1)
+            print(f"    SKIP: {b['product_tmpl_id'][1]}"); continue
+        ex = tgt.sr('mrp.bom', [['product_tmpl_id','=',tt]], ['id'], 1)
         if ex:
-            bom_map[b['id']] = ex[0]['id']
-            print(f"    EXISTS: {b['product_tmpl_id'][1]} (ID {ex[0]['id']})")
-            continue
-        if DRY_RUN:
-            print(f"    [DRY] BOM: {b['product_tmpl_id'][1]}")
-            bom_map[b['id']] = -1
-            continue
-        v = {'product_tmpl_id': tt, 'product_qty': b.get('product_qty', 1.0),
-             'type': b.get('type', 'normal'), 'active': True}
+            bm[b['id']] = ex[0]['id']
+            print(f"    EXISTS: {b['product_tmpl_id'][1]} ({ex[0]['id']})"); continue
+        if DRY:
+            print(f"    [DRY] BOM: {b['product_tmpl_id'][1]}"); bm[b['id']] = -1; continue
+        v = {'product_tmpl_id': tt, 'product_qty': b.get('product_qty',1.0),
+             'type': b.get('type','normal'), 'active': True}
         if b.get('code'): v['code'] = b['code']
         if tu: v['product_uom_id'] = tu
-        nid = target.create('mrp.bom', v)
-        bom_map[b['id']] = nid
-        print(f"    + BOM: {b['product_tmpl_id'][1]} (ID {nid})")
+        if b.get('ready_to_produce'): v['ready_to_produce'] = b['ready_to_produce']
+        if b.get('consumption'): v['consumption'] = b['consumption']
+        nid = tgt.cr('mrp.bom', v)
+        bm[b['id']] = nid
+        print(f"    + BOM: {b['product_tmpl_id'][1]} ({nid})")
 
     print('\n   Operations...')
-    for op in src_ops:
-        sb = op['bom_id'][0] if op.get('bom_id') else None
-        tb = bom_map.get(sb) if sb else False
-        tw = wc_map.get(op['workcenter_id'][0]) if op.get('workcenter_id') else False
+    for o in ops:
+        sb = o['bom_id'][0] if o.get('bom_id') else None
+        tb = bm.get(sb) if sb else False
+        tw = wm.get(o['workcenter_id'][0]) if o.get('workcenter_id') else False
         if not tb or tb < 1 or not tw or tw < 1: continue
-        ex = target.search_read('mrp.routing.workcenter', [['bom_id', '=', tb], ['name', '=', op['name']]], ['id'], limit=1)
-        if ex:
-            op_map[op['id']] = ex[0]['id']
-            continue
-        if DRY_RUN:
-            print(f"    [DRY] Op: {op['name']}")
-            op_map[op['id']] = -1
-            continue
-        nid = target.create('mrp.routing.workcenter', {
-            'name': op['name'], 'bom_id': tb, 'workcenter_id': tw,
-            'sequence': op.get('sequence', 10), 'time_cycle_manual': op.get('time_cycle_manual', 0),
-        })
-        op_map[op['id']] = nid
-        print(f"    + Op: {op['name']} (ID {nid})")
+        ex = tgt.sr('mrp.routing.workcenter', [['bom_id','=',tb],['name','=',o['name']]], ['id'], 1)
+        if ex: om[o['id']] = ex[0]['id']; continue
+        if DRY:
+            print(f"    [DRY] Op: {o['name']}"); om[o['id']] = -1; continue
+        v = {'name': o['name'], 'bom_id': tb, 'workcenter_id': tw,
+             'sequence': o.get('sequence',10), 'time_cycle_manual': o.get('time_cycle_manual',0)}
+        if o.get('time_mode'): v['time_mode'] = o['time_mode']
+        if o.get('time_mode_batch'): v['time_mode_batch'] = o['time_mode_batch']
+        nid = tgt.cr('mrp.routing.workcenter', v)
+        om[o['id']] = nid
+        print(f"    + Op: {o['name']} ({nid})")
 
     print('\n   BOM lines...')
-    created, skipped = 0, 0
-    for l in src_lines:
+    cr, sk = 0, 0
+    for l in lines:
         sb = l['bom_id'][0] if l.get('bom_id') else None
-        tb = bom_map.get(sb) if sb else False
+        tb = bm.get(sb) if sb else False
         sp = l['product_id'][0] if l.get('product_id') else None
-        tp = prod_map.get(sp) if sp else False
-        tu = uom_map.get(l['product_uom_id'][0]) if l.get('product_uom_id') else False
-        if not tb or tb < 1 or not tp or tp < 1:
-            skipped += 1
-            continue
-        ex = target.search_read('mrp.bom.line', [['bom_id', '=', tb], ['product_id', '=', tp]], ['id'], limit=1)
-        if ex:
-            skipped += 1
-            continue
-        if DRY_RUN:
-            created += 1
-            continue
-        v = {'bom_id': tb, 'product_id': tp, 'product_qty': l.get('product_qty', 1.0)}
+        tp = pm.get(sp) if sp else False
+        tu = um.get(l['product_uom_id'][0]) if l.get('product_uom_id') else False
+        if not tb or tb < 1 or not tp or tp < 1: sk += 1; continue
+        ex = tgt.sr('mrp.bom.line', [['bom_id','=',tb],['product_id','=',tp]], ['id'], 1)
+        if ex: sk += 1; continue
+        if DRY: cr += 1; continue
+        v = {'bom_id': tb, 'product_id': tp, 'product_qty': l.get('product_qty',1.0)}
         if tu: v['product_uom_id'] = tu
+        if l.get('sequence'): v['sequence'] = l['sequence']
         if l.get('operation_id'):
-            to = op_map.get(l['operation_id'][0])
+            to = om.get(l['operation_id'][0])
             if to and to > 0: v['operation_id'] = to
-        target.create('mrp.bom.line', v)
-        created += 1
-    print(f'   {created} created, {skipped} skipped')
+        tgt.cr('mrp.bom.line', v)
+        cr += 1
+    print(f'   {cr} created, {sk} skipped')
 
     print('\n' + '=' * 60)
     print('SUMMARY')
     print('=' * 60)
-    for label, m in [('UoM categories', uom_cat_map), ('UoMs', uom_map), ('Categories', cat_map),
-                     ('Taxes', tax_map), ('Templates', tmpl_map), ('Variants', prod_map),
-                     ('Work centers', wc_map), ('BOMs', bom_map), ('Operations', op_map)]:
-        print(f'  {label}: {len(m)}')
-    print(f'  BOM lines: {created} new, {skipped} skipped')
-    if DRY_RUN: print('\n*** DRY RUN ***')
+    for lbl, m in [('UoMs',um),('Categories',cm),('Taxes',txm),('Templates',tlm),
+                   ('Variants',pm),('Work centers',wm),('BOMs',bm),('Operations',om)]:
+        print(f'  {lbl}: {len(m)}')
+    print(f'  BOM lines: {cr} new, {sk} skipped')
+    if DRY: print('\n*** DRY RUN ***')
     print('=' * 60)
 
-
 if __name__ == '__main__':
-    try:
-        migrate()
-    except Exception as e:
-        print(f'\n!!! ERROR: {e}')
-        sys.exit(1)
+    try: run()
+    except Exception as e: print(f'\n!!! ERROR: {e}'); sys.exit(1)
