@@ -58,7 +58,7 @@ export function ProgressBar({ value, max, label, color = 'orange' }: { value: nu
   );
 }
 
-// --- Timer Display ---
+// --- Timer Display (full size, used in ActiveWorkOrder) ---
 export function TimerDisplay({ seconds, isRunning }: { seconds: number; isRunning?: boolean }) {
   const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
   const ss = String(seconds % 60).padStart(2, '0');
@@ -66,6 +66,18 @@ export function TimerDisplay({ seconds, isRunning }: { seconds: number; isRunnin
     <div className={`text-[32px] font-light tabular-nums tracking-widest font-mono ${isRunning ? 'text-orange-500' : 'text-gray-900'}`}>
       {mm}:{ss}
     </div>
+  );
+}
+
+// --- Timer Chip (compact, used in WorkOrderList) ---
+export function TimerChip({ minutes }: { minutes: number }) {
+  const mm = Math.floor(minutes);
+  const ss = Math.round((minutes - mm) * 60);
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-500">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+      {mm}:{String(ss).padStart(2, '0')}
+    </span>
   );
 }
 
