@@ -52,7 +52,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   async function fetchData() {
     setLoading(true);
     try {
-      // Fetch MO detail for components and WO list
       const moRes = await fetch(`/api/manufacturing-orders/${moId}`);
       const moData = await moRes.json();
       setMo(moData.order);
@@ -72,7 +71,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         if (thisWo.state === 'progress') setRunning(true);
       }
 
-      // Fetch WO detail for worksheet fields
       const woRes = await fetch(`/api/manufacturing-orders/${moId}/work-orders/${woId}`);
       const woData = await woRes.json();
       const woDetail = woData.work_order || {};
@@ -151,35 +149,32 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const nextWo = allWos[woIdx + 1];
   const productName = mo.product_id?.[1] || 'this product';
 
-  // Determine if there are any instructions
   const hasText = operationNote && operationNote.trim().length > 0 && operationNote !== '<p><br></p>';
   const hasPdf = worksheetType === 'pdf' && worksheetPdf;
   const hasGoogleSlide = worksheetType === 'google_slide' && worksheetGoogleSlide;
   const hasInstructions = hasText || hasPdf || hasGoogleSlide;
-
-  // Build PDF data URL from base64
   const pdfDataUrl = hasPdf ? `data:application/pdf;base64,${worksheetPdf}` : '';
+
+  // Arrow character for button text (HTML entities don't work in JSX template literals)
+  const arrow = '\u2192';
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
         <button onClick={onBack} className="flex items-center gap-1 mb-2 text-orange-600 text-[13px] font-semibold active:opacity-70">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
           {productName}
         </button>
         <h1 className="text-[18px] font-bold text-gray-900">{wo.name}</h1>
-        <p className="text-[13px] text-gray-500 mt-0.5">{wo.workcenter_id[1]} &middot; {displayComps.length} ingredients</p>
+        <p className="text-[13px] text-gray-500 mt-0.5">{wo.workcenter_id[1]} {'\u00b7'} {displayComps.length} ingredients</p>
       </div>
 
-      {/* Step progress */}
       <div className="flex gap-1 px-4 py-2.5">
         {allWos.map((w: any) => (
           <div key={w.id} className={`flex-1 h-1 rounded-full ${w.state === 'done' ? 'bg-emerald-500' : w.id === woId ? 'bg-orange-500' : 'bg-gray-200'}`} />
         ))}
       </div>
 
-      {/* Timer */}
       <div className="px-4 py-3">
         <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center">
           <div className={`text-[52px] font-light tabular-nums tracking-widest leading-none font-mono ${running ? 'text-orange-500' : 'text-gray-900'}`}>
@@ -218,7 +213,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         </div>
       </div>
 
-      {/* Error toast */}
       {actionError && (
         <div className="px-4 mb-2">
           <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-sm">{actionError}</div>
@@ -227,7 +221,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
       <div className="flex items-center gap-1.5 px-5 py-1 text-[13px] text-gray-500">Step {woIdx + 1} of {allWos.length}</div>
 
-      {/* Tabs */}
       <div className="px-4 mb-3">
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
           <button onClick={() => setTab('components')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'components' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>Ingredients ({displayComps.length})</button>
@@ -237,7 +230,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         </div>
       </div>
 
-      {/* Tab content */}
       <div className="px-4 pb-24">
         {tab === 'components' && (
           <div className="flex flex-col gap-1.5">
@@ -286,7 +278,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
         {tab === 'instructions' && (
           <div className="flex flex-col gap-3">
-            {/* PDF Worksheet */}
             {hasPdf && (
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
@@ -307,7 +298,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
               </div>
             )}
 
-            {/* Google Slide */}
             {hasGoogleSlide && (
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
@@ -329,7 +319,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
               </div>
             )}
 
-            {/* Text Instructions */}
             {hasText && (
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                 {(hasPdf || hasGoogleSlide) && (
@@ -351,14 +340,13 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
               </div>
             )}
 
-            {/* Empty state */}
             {!hasInstructions && (
               <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
                 <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                 </svg>
                 <p className="text-gray-400 text-sm">No instructions yet</p>
-                <p className="text-gray-300 text-xs mt-1">Add them in Odoo 18 EE: BOM &rarr; Operations &rarr; Work Sheet</p>
+                <p className="text-gray-300 text-xs mt-1">Add in Odoo 18 EE: BOM {arrow} Operations {arrow} Work Sheet</p>
                 <p className="text-gray-300 text-xs mt-0.5">Supports: Text, PDF, or Google Slides</p>
               </div>
             )}
@@ -366,17 +354,15 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         )}
       </div>
 
-      {/* Bottom CTA */}
       {wo.state !== 'done' && (
         <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
           <button onClick={handleDoneRequest} disabled={!!actionLoading}
             className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
-            {actionLoading === 'done' ? 'Finishing...' : nextWo && nextWo.state !== 'done' ? `Done &rarr; ${nextWo.name}` : 'Mark step done'}
+            {actionLoading === 'done' ? 'Finishing...' : nextWo && nextWo.state !== 'done' ? `Done ${arrow} ${nextWo.name}` : 'Mark step done'}
           </button>
         </div>
       )}
 
-      {/* NumPad */}
       {numpadComp && (
         <NumPad
           label={numpadComp.product_id[1]}
@@ -389,7 +375,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         />
       )}
 
-      {/* Confirm sheet */}
       {showConfirm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowConfirm(false)}>
           <div className="absolute inset-0 bg-black/40" />
