@@ -5,17 +5,13 @@ import { useRouter } from 'next/navigation';
 import MoList from '@/components/manufacturing/MoList';
 import MoDetail from '@/components/manufacturing/MoDetail';
 import WoDetail from '@/components/manufacturing/WoDetail';
-import BomList from '@/components/manufacturing/BomList';
-import BomDetail from '@/components/manufacturing/BomDetail';
 import CreateMo from '@/components/manufacturing/CreateMo';
 
 type Screen =
   | { type: 'mo-list' }
   | { type: 'mo-detail'; moId: number }
   | { type: 'wo-detail'; moId: number; woId: number }
-  | { type: 'bom-list' }
-  | { type: 'bom-detail'; bomId: number }
-  | { type: 'create-mo'; bomId: number };
+  | { type: 'create' };
 
 export default function ManufacturingPage() {
   const router = useRouter();
@@ -48,7 +44,7 @@ export default function ManufacturingPage() {
         return (
           <MoList
             onSelect={(moId) => navigate({ type: 'mo-detail', moId })}
-            onCreate={() => navigate({ type: 'bom-list' })}
+            onCreate={() => navigate({ type: 'create' })}
             onHome={goHome}
           />
         );
@@ -69,25 +65,9 @@ export default function ManufacturingPage() {
             onDone={goBack}
           />
         );
-      case 'bom-list':
-        return (
-          <BomList
-            onSelect={(bom) => navigate({ type: 'bom-detail', bomId: bom.id })}
-            onBack={goBack}
-          />
-        );
-      case 'bom-detail':
-        return (
-          <BomDetail
-            bomId={screen.bomId}
-            onBack={goBack}
-            onCreateMo={(bomId) => navigate({ type: 'create-mo', bomId })}
-          />
-        );
-      case 'create-mo':
+      case 'create':
         return (
           <CreateMo
-            bomId={screen.bomId}
             onBack={goBack}
             onCreated={(moId) => {
               setHistory([]);
@@ -98,7 +78,7 @@ export default function ManufacturingPage() {
     }
   }
 
-  // Use history variable to suppress lint warning
+  // Suppress lint
   void history;
 
   return (
