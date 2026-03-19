@@ -59,34 +59,20 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       const thisWo = wos.find((w: any) => w.id === woId);
       setWo(thisWo);
 
-      // Smart component filtering by operation_id
-      // Rules:
-      //   1. Component assigned to this WO's operation -> always show
-      //   2. Component with no operation (unassigned):
-      //      - If this WO has ANY assigned components -> DON'T show unassigned here
-      //      - If this WO has NO assigned components -> show all unassigned here
+      // Component filtering by operation_id
+      // Rule 1: If this WO has components assigned to it -> show ONLY those
+      // Rule 2: If this WO has NO components assigned -> show entire BOM list
       const allComps = moData.order?.components || [];
       const woOperationId = thisWo?.operation_id?.[0] || null;
 
       if (woOperationId) {
-        // Components specifically assigned to this operation
-        const assignedToThis = allComps.filter((c: any) => {
-          const compOpId = c.operation_id?.[0] || null;
-          return compOpId === woOperationId;
-        });
-
-        // Unassigned components (no operation set)
-        const unassigned = allComps.filter((c: any) => !c.operation_id);
-
-        if (assignedToThis.length > 0) {
-          // This WO has specific components -> show ONLY those
-          setWoComponents(assignedToThis);
+        const assigned = allComps.filter((c: any) => c.operation_id?.[0] === woOperationId);
+        if (assigned.length > 0) {
+          setWoComponents(assigned);
         } else {
-          // This WO has no specific components -> show unassigned ones
-          setWoComponents(unassigned);
+          setWoComponents(allComps);
         }
       } else {
-        // WO has no operation_id at all -> show all components
         setWoComponents(allComps);
       }
 
