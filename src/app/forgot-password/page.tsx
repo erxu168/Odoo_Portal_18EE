@@ -45,7 +45,11 @@ export default function ForgotPasswordPage() {
       <div className="flex-1 px-6 py-8">
         {sent ? (
           <div className="text-center">
-            <div className="text-4xl mb-4">\u2709\uFE0F</div>
+            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-orange-50 flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F5800A" strokeWidth="2">
+                <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4l-10 8L2 4"/>
+              </svg>
+            </div>
             <h2 className="text-[20px] font-bold text-gray-900 mb-2">Check your email</h2>
             <p className="text-[14px] text-gray-500 leading-relaxed mb-6">
               If an account exists for <strong>{email}</strong>, we sent a reset link. Check your inbox (and spam folder).
@@ -80,26 +84,19 @@ export default function ForgotPasswordPage() {
               <div>
                 <label className="block text-[12px] font-semibold text-gray-500 tracking-wider uppercase mb-1.5">Email</label>
                 <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  autoFocus
+                  type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com" autoComplete="email" autoFocus
                   className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all"
                 />
               </div>
 
               <button
-                onClick={handleSubmit}
-                disabled={loading || !email}
+                onClick={handleSubmit} disabled={loading || !email}
                 className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  'Send reset link'
-                )}
+                ) : 'Send reset link'}
               </button>
             </div>
           </>

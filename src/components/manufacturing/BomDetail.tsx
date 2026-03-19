@@ -15,20 +15,24 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   const [components, setComponents] = useState<ComponentAvailability[]>([]);
   const [canMakeQty, setCanMakeQty] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expandedSubBoms, setExpandedSubBoms] = useState<Set<number>>(new Set());
 
   useEffect(() => { fetchBomDetail(); }, [bomId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchBomDetail() {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/boms/${bomId}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (data.error) throw new Error(data.error);
       setBom(data.bom);
       setComponents(data.components || []);
       setCanMakeQty(data.can_make_qty || 0);
-    } catch (err) {
-      console.error('Failed to fetch BOM detail:', err);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load recipe details');
     } finally {
       setLoading(false);
     }
@@ -42,10 +46,28 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     });
   }
 
-  if (loading || !bom) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !bom) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6">
+        <div className="text-center">
+          <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-red-50 flex items-center justify-center">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </div>
+          <p className="text-[15px] text-gray-900 font-bold mb-1">Could not load recipe</p>
+          <p className="text-[13px] text-gray-500 mb-5">{error || 'Recipe not found'}</p>
+          <button onClick={fetchBomDetail} className="px-6 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-orange-500/30 active:scale-95 transition-transform">Retry</button>
+          <button onClick={onBack} className="block mx-auto mt-3 text-[13px] text-gray-500 active:opacity-70">Go back</button>
+        </div>
       </div>
     );
   }
@@ -58,7 +80,6 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
         <button onClick={onBack} className="flex items-center gap-1 mb-2 text-orange-600 text-[13px] font-semibold active:opacity-70">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
@@ -70,7 +91,6 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         </p>
       </div>
 
-      {/* Stats strip */}
       <div className="px-4 py-3">
         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex-1 text-center py-3 border-r border-gray-100">
@@ -90,12 +110,10 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         </div>
       </div>
 
-      {/* Section title */}
       <div className="px-5 pt-1 pb-2">
         <p className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase">Ingredients</p>
       </div>
 
-      {/* Component list */}
       <div className="px-4 pb-28 flex flex-col gap-1.5">
         {components.map((comp) => (
           <React.Fragment key={comp.product_id}>
@@ -103,16 +121,13 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
               onClick={() => comp.is_sub_bom && toggleSubBom(comp.product_id)}
               className={`bg-white border rounded-xl px-4 py-3 flex justify-between items-center text-left w-full ${
                 comp.is_sub_bom ? 'border-orange-200 active:scale-[0.98] transition-transform' : 'border-gray-200'
-              }`}
-            >
+              }`}>
               <div className="flex items-center gap-2.5 min-w-0">
                 <StatusDot status={comp.status} />
                 <div className="min-w-0">
                   <div className="text-[14px] font-semibold text-gray-900 truncate">
                     {comp.product_name}
-                    {comp.is_sub_bom && (
-                      <span className="ml-2 text-[10px] px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 font-semibold">Sub-recipe</span>
-                    )}
+                    {comp.is_sub_bom && <span className="ml-2 text-[10px] px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 font-semibold">Sub-recipe</span>}
                   </div>
                 </div>
               </div>
@@ -154,12 +169,9 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         ))}
       </div>
 
-      {/* Bottom CTA */}
       <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
-        <button
-          onClick={() => onCreateMo(bomId)}
-          className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform"
-        >
+        <button onClick={() => onCreateMo(bomId)}
+          className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform">
           Create manufacturing order
         </button>
       </div>

@@ -15,15 +15,8 @@ function ResetForm() {
 
   async function handleSubmit() {
     setError(null);
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
+    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
 
     setLoading(true);
     try {
@@ -33,28 +26,25 @@ function ResetForm() {
         body: JSON.stringify({ token, password }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) {
-        setError(data.error || 'Reset failed.');
-        return;
-      }
+      if (!res.ok || data.error) { setError(data.error || 'Reset failed.'); return; }
       setSuccess(true);
-    } catch {
-      setError('Could not connect. Try again.');
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError('Could not connect. Try again.'); }
+    finally { setLoading(false); }
   }
 
   if (!token) {
     return (
       <div className="flex-1 px-6 py-8 text-center">
-        <div className="text-4xl mb-4">\u26A0\uFE0F</div>
+        <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-amber-50 flex items-center justify-center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
         <h2 className="text-[20px] font-bold text-gray-900 mb-2">Invalid link</h2>
         <p className="text-[14px] text-gray-500 mb-6">This reset link is invalid or has expired.</p>
-        <button
-          onClick={() => router.push('/forgot-password')}
-          className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all"
-        >
+        <button onClick={() => router.push('/forgot-password')}
+          className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all">
           Request a new link
         </button>
       </div>
@@ -64,13 +54,15 @@ function ResetForm() {
   if (success) {
     return (
       <div className="flex-1 px-6 py-8 text-center">
-        <div className="text-4xl mb-4">\u2705</div>
+        <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-emerald-50 flex items-center justify-center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M20 6L9 17l-5-5"/>
+          </svg>
+        </div>
         <h2 className="text-[20px] font-bold text-gray-900 mb-2">Password reset</h2>
         <p className="text-[14px] text-gray-500 mb-6">Your password has been changed. You can now sign in.</p>
-        <button
-          onClick={() => router.push('/login')}
-          className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all"
-        >
+        <button onClick={() => router.push('/login')}
+          className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all">
           Sign in
         </button>
       </div>
@@ -83,45 +75,25 @@ function ResetForm() {
       <p className="text-[13px] text-gray-500 mb-6">Choose a new password for your account.</p>
 
       {error && (
-        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[13px]">
-          {error}
-        </div>
+        <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[13px]">{error}</div>
       )}
 
       <div className="flex flex-col gap-4">
         <div>
           <label className="block text-[12px] font-semibold text-gray-500 tracking-wider uppercase mb-1.5">New password</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="At least 6 characters"
-            autoFocus
-            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all"
-          />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 6 characters" autoFocus
+            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all" />
         </div>
-
         <div>
           <label className="block text-[12px] font-semibold text-gray-500 tracking-wider uppercase mb-1.5">Confirm password</label>
-          <input
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
+          <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Type it again"
-            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all"
-          />
+            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all" />
         </div>
-
-        <button
-          onClick={handleSubmit}
-          disabled={loading || !password || !confirmPassword}
-          className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          ) : (
-            'Set new password'
-          )}
+        <button onClick={handleSubmit} disabled={loading || !password || !confirmPassword}
+          className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2">
+          {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Set new password'}
         </button>
       </div>
     </div>
