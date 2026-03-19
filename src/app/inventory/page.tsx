@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import MyLists from '@/components/inventory/MyLists';
 import CountingSession from '@/components/inventory/CountingSession';
 import QuickCount from '@/components/inventory/QuickCount';
+import ManageTemplates from '@/components/inventory/ManageTemplates';
+import ReviewSubmissions from '@/components/inventory/ReviewSubmissions';
 
 type Tab = 'lists' | 'quick' | 'manage' | 'review';
 type Screen =
@@ -29,7 +31,7 @@ export default function InventoryPage() {
     router.push('/');
   }
 
-  // Tab content
+  // Full-screen session view
   if (screen.type === 'session') {
     return (
       <CountingSession
@@ -54,7 +56,6 @@ export default function InventoryPage() {
         )}
         {tab === 'quick' && (
           <div className="min-h-screen bg-gray-50 flex flex-col">
-            {/* Quick Count header */}
             <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
               <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
               <div className="flex items-center gap-3 relative">
@@ -71,29 +72,39 @@ export default function InventoryPage() {
           </div>
         )}
         {tab === 'manage' && canManage && (
-          <div className="min-h-screen bg-gray-50">
-            <div className="bg-[#1A1F2E] px-5 pt-14 pb-5">
-              <h1 className="text-[20px] font-bold text-white">Manage Lists</h1>
-              <p className="text-[12px] text-white/50 mt-0.5">Create and manage counting templates</p>
+          <div className="min-h-screen bg-gray-50 flex flex-col">
+            <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
+              <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
+              <div className="flex items-center gap-3 relative">
+                <button onClick={goHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
+                </button>
+                <div className="flex-1">
+                  <h1 className="text-[20px] font-bold text-white">Manage Lists</h1>
+                  <p className="text-[12px] text-white/50 mt-0.5">Create and manage counting templates</p>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-              <div className="text-4xl mb-3">\uD83D\uDEE0\uFE0F</div>
-              <p className="text-[15px] font-semibold text-gray-900 mb-1">Coming soon</p>
-              <p className="text-[13px] text-gray-500">Template management will be available here</p>
-            </div>
+            <ManageTemplates onBack={() => setTab('lists')} />
           </div>
         )}
         {tab === 'review' && canManage && (
-          <div className="min-h-screen bg-gray-50">
-            <div className="bg-[#1A1F2E] px-5 pt-14 pb-5">
-              <h1 className="text-[20px] font-bold text-white">Review</h1>
-              <p className="text-[12px] text-white/50 mt-0.5">Approve or reject submitted counts</p>
+          <div className="min-h-screen bg-gray-50 flex flex-col">
+            <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
+              <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
+              <div className="flex items-center gap-3 relative">
+                <button onClick={goHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
+                </button>
+                <div className="flex-1">
+                  <h1 className="text-[20px] font-bold text-white">Review</h1>
+                  <p className="text-[12px] text-white/50 mt-0.5">Approve or reject submitted counts</p>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col items-center justify-center py-16 text-center px-6">
-              <div className="text-4xl mb-3">\u2705</div>
-              <p className="text-[15px] font-semibold text-gray-900 mb-1">Coming soon</p>
-              <p className="text-[13px] text-gray-500">Submission review will be available here</p>
-            </div>
+            <ReviewSubmissions
+              onViewSession={(id) => setScreen({ type: 'session', sessionId: id })}
+            />
           </div>
         )}
       </div>
