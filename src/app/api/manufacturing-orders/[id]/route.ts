@@ -1,10 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 
-/**
- * GET /api/manufacturing-orders/[id]
- * Full MO detail with components and work orders
- */
 export async function GET(
   request: Request,
   { params }: { params: { id: string } },
@@ -14,19 +10,10 @@ export async function GET(
     const moId = parseInt(params.id);
 
     const mos = await odoo.read('mrp.production', [moId], [
-      'name',
-      'product_id',
-      'product_qty',
-      'product_uom_id',
-      'bom_id',
-      'state',
-      'date_start',
-      'date_finished',
-      'date_deadline',
-      'user_id',
-      'qty_producing',
-      'workorder_ids',
-      'move_raw_ids',
+      'name', 'product_id', 'product_qty', 'product_uom_id',
+      'bom_id', 'state', 'date_start', 'date_finished',
+      'date_deadline', 'user_id', 'qty_producing',
+      'workorder_ids', 'move_raw_ids',
     ]);
 
     if (!mos.length) {
@@ -35,62 +22,34 @@ export async function GET(
 
     const mo = mos[0];
 
-    // Fetch components (stock.move lines)
     const components = mo.move_raw_ids?.length
-      ? await odoo.searchRead(
-          'stock.move',
+      ? await odoo.searchRead('stock.move',
           [['id', 'in', mo.move_raw_ids]],
-          [
-            'product_id',
-            'product_uom_qty',
-            'quantity',
-            'product_uom',
-            'forecast_availability',
-            'state',
-            'is_done',
-            'should_consume_qty',
-          ],
-        )
+          ['product_id', 'product_uom_qty', 'quantity', 'product_uom',
+           'forecast_availability', 'state', 'is_done', 'should_consume_qty'])
       : [];
 
-    // Enrich components with consumed_qty
-    // In Odoo 18 EE, stock.move.quantity is the consumed/done quantity.
-    // Always use it directly — this matches Odoo's native MO form behavior.
-    const enrichedComponents = components.map((c: any) => {
-      return { ...c, consumed_qty: c.quantity || 0 };
-    });
+    const enrichedComponents = components.map((c: any) => ({
+      ...c, consumed_qty: c.quantity || 0,
+    }));
 
-    // Fetch work orders
     const workOrders = mo.workorder_ids?.length
-      ? await odoo.searchRead(
-          'mrp.workorder',
+      ? await odoo.searchRead('mrp.workorder',
           [['id', 'in', mo.workorder_ids]],
-          [
-            'name',
-            'workcenter_id',
-            'state',
-            'duration_expected',
-            'duration',
-            'date_start',
-            'date_finished',
-            'sequence',
-            'production_id',
-            'move_raw_ids',
-          ],
-          { order: 'sequence asc' },
-        )
+          ['name', 'workcenter_id', 'state', 'duration_expected', 'duration',
+           'date_start', 'date_finished', 'sequence', 'production_id', 'move_raw_ids'],
+          { order: 'sequence asc' })
       : [];
 
     const doneWos = workOrders.filter((wo: any) => wo.state === 'done').length;
     const totalWos = workOrders.length;
-    const progressPercent = totalWos > 0 ? Math.round((doneWos / totalWos) * 100) : 0;
 
     return NextResponse.json({
       order: {
         ...mo,
         components: enrichedComponents,
         work_orders: workOrders,
-        progress_percent: progressPercent,
+        progress_percent: totalWos > 0 ? Math.round((doneWos / totalWos) * 100) : 0,
       },
     });
   } catch (error: any) {
@@ -102,15 +61,6 @@ export async function GET(
   }
 }
 
-/**
- * PATCH /api/manufacturing-orders/[id]
- * Update MO, trigger actions, or update component quantities.
- *
- * Body options:
- *   { action: 'confirm' | 'mark_done' | 'cancel' }
- *   { vals: { field: value } }
- *   { component_updates: [{ move_id, consumed_qty }] }
- */
 export async function PATCH(
   request: Request,
   { params }: { params: { id: string } },
@@ -120,15 +70,62 @@ export async function PATCH(
     const moId = parseInt(params.id);
     const body = await request.json();
 
-    // Action buttons
     if (body.action) {
       switch (body.action) {
         case 'confirm':
           await odoo.buttonCall('mrp.production', 'action_confirm', [moId]);
           break;
-        case 'mark_done':
-          await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
+        case 'mark_done': {
+          // button_mark_done may return a wizard action (e.g. mrp.immediate.production)
+          // We need to handle that by processing the wizard
+          const result = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
+
+          // If result is an action dict (wizard), process it
+          if (result && typeof result === 'object' && result.res_model) {
+            try {
+              // Create the wizard record
+              const wizardModel = result.res_model;
+              const wizardContext = result.context || {};
+
+              if (wizardModel === 'mrp.immediate.production') {
+                // Create the wizard with the MO context
+                const wizId = await odoo.create(wizardModel, {}, {
+                  context: { ...wizardContext, active_id: moId, active_ids: [moId] },
+                });
+                // Execute the wizard's confirm action
+                await odoo.buttonCall(wizardModel, 'process', [wizId], {
+                  context: { ...wizardContext, active_id: moId, active_ids: [moId] },
+                });
+              } else if (wizardModel === 'change.production.qty' || wizardModel === 'mrp.production.backorder') {
+                // Handle backorder wizard — just confirm with no backorder
+                const wizId = await odoo.create(wizardModel, {}, {
+                  context: { ...wizardContext, active_id: moId, active_ids: [moId] },
+                });
+                // Try action_close or action_skip_backorder
+                try {
+                  await odoo.buttonCall(wizardModel, 'action_close_mo', [wizId], {
+                    context: { ...wizardContext, active_id: moId, active_ids: [moId] },
+                  });
+                } catch {
+                  // Fallback: try process
+                  await odoo.buttonCall(wizardModel, 'process', [wizId], {
+                    context: { ...wizardContext, active_id: moId, active_ids: [moId] },
+                  });
+                }
+              }
+            } catch (wizErr: any) {
+              console.error('Wizard processing error:', wizErr.message);
+              // If wizard fails, the MO might still be in to_close state
+              // Try direct state change as fallback
+              try {
+                await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
+              } catch {
+                // ignore secondary error
+              }
+            }
+          }
           break;
+        }
         case 'cancel':
           await odoo.buttonCall('mrp.production', 'action_cancel', [moId]);
           break;
@@ -140,12 +137,10 @@ export async function PATCH(
       }
     }
 
-    // Field updates
     if (body.vals) {
       await odoo.write('mrp.production', [moId], body.vals);
     }
 
-    // Component quantity updates
     if (body.component_updates) {
       for (const update of body.component_updates) {
         await odoo.write('stock.move', [update.move_id], {
