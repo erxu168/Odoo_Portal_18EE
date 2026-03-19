@@ -30,7 +30,9 @@ export default function ManufacturingPage() {
         setScreen(prev);
         return h.slice(0, -1);
       }
-      return h;
+      // No history — always fall back to MO list
+      setScreen({ type: 'mo-list' });
+      return [];
     });
   }
 
@@ -70,16 +72,14 @@ export default function ManufacturingPage() {
           <CreateMo
             onBack={goBack}
             onCreated={(moId) => {
-              setHistory([]);
+              // Keep mo-list in history so back from detail goes to list
+              setHistory([{ type: 'mo-list' }]);
               setScreen({ type: 'mo-detail', moId });
             }}
           />
         );
     }
   }
-
-  // Suppress lint
-  void history;
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
