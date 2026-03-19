@@ -58,6 +58,17 @@ export function ProgressBar({ value, max, label, color = 'orange' }: { value: nu
   );
 }
 
+// --- Timer Display ---
+export function TimerDisplay({ seconds, isRunning }: { seconds: number; isRunning?: boolean }) {
+  const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const ss = String(seconds % 60).padStart(2, '0');
+  return (
+    <div className={`text-[32px] font-light tabular-nums tracking-widest font-mono ${isRunning ? 'text-orange-500' : 'text-gray-900'}`}>
+      {mm}:{ss}
+    </div>
+  );
+}
+
 // --- Badge ---
 export function Badge({ variant, children }: { variant: 'done' | 'progress' | 'ready' | 'draft' | 'pending' | 'warning'; children: React.ReactNode }) {
   const styles: Record<string, string> = {
