@@ -24,7 +24,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const [running, setRunning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Worksheet data
   const [worksheetType, setWorksheetType] = useState<string>('');
   const [operationNote, setOperationNote] = useState<string>('');
   const [worksheetPdf, setWorksheetPdf] = useState<string>('');
@@ -137,6 +136,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       .replace(/<style[^>]*>.*?<\/style>/gi, '');
   }
 
+  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(n);
   const mm = String(Math.floor(timerSec / 60)).padStart(2, '0');
   const ss = String(timerSec % 60).padStart(2, '0');
 
@@ -155,8 +155,11 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const hasInstructions = hasText || hasPdf || hasGoogleSlide;
   const pdfDataUrl = hasPdf ? `data:application/pdf;base64,${worksheetPdf}` : '';
 
-  // Arrow character for button text (HTML entities don't work in JSX template literals)
   const arrow = '\u2192';
+
+  // Ingredient collection status
+  const collectedCount = displayComps.filter((c: any) => (c.consumed_qty || 0) > 0).length;
+  const totalComps = displayComps.length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -223,7 +226,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
       <div className="px-4 mb-3">
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
-          <button onClick={() => setTab('components')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'components' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>Ingredients ({displayComps.length})</button>
+          <button onClick={() => setTab('components')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'components' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>
+            Ingredients ({collectedCount}/{totalComps})
+          </button>
           <button onClick={() => setTab('instructions')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'instructions' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>
             Instructions{hasInstructions ? ' *' : ''}
           </button>
@@ -233,38 +238,66 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       <div className="px-4 pb-24">
         {tab === 'components' && (
           <div className="flex flex-col gap-1.5">
-            {displayComps.length > 0 && (
-              <p className="text-[11px] text-gray-400 mb-1 px-1">Tap an ingredient to set the quantity</p>
+            {totalComps > 0 && (
+              <div className="flex items-center justify-between mb-1 px-1">
+                <p className="text-[11px] text-gray-400">Tap to weigh each ingredient</p>
+                {collectedCount === totalComps && totalComps > 0 && (
+                  <span className="text-[11px] font-semibold text-emerald-600">All collected</span>
+                )}
+              </div>
             )}
+
+            {/* Collection progress bar */}
+            {totalComps > 0 && (
+              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2">
+                <div
+                  className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                  style={{ width: `${totalComps > 0 ? (collectedCount / totalComps) * 100 : 0}%` }}
+                />
+              </div>
+            )}
+
             {displayComps.map((c: any) => {
               const consumed = c.consumed_qty || 0;
               const required = c.product_uom_qty || 0;
-              const isDone = c.is_done || c.state === 'done';
-              const partial = consumed > 0 && !isDone;
+              const isCollected = consumed > 0;
               const compUom = c.product_uom?.[1] || 'kg';
-              const accentColor = isDone ? 'bg-emerald-500' : partial ? 'bg-orange-400' : 'bg-gray-200';
+
               return (
                 <button
                   key={c.id}
-                  onClick={() => !isDone && setNumpadComp(c)}
-                  className={`bg-white border border-gray-200 rounded-xl flex overflow-hidden text-left ${
-                    !isDone ? 'active:scale-[0.98] transition-transform' : ''
+                  onClick={() => setNumpadComp(c)}
+                  className={`bg-white border rounded-xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
+                    isCollected ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200'
                   }`}
                 >
-                  <div className={`w-1 flex-shrink-0 ${accentColor}`} />
+                  {/* Left accent bar */}
+                  <div className={`w-1 flex-shrink-0 ${isCollected ? 'bg-emerald-500' : 'bg-gray-200'}`} />
+
                   <div className="flex-1 flex items-center gap-3 px-4 py-3">
-                    <div className={`w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center ${isDone ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300'}`}>
-                      {isDone && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                    {/* Checkbox */}
+                    <div className={`w-7 h-7 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                      isCollected ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 bg-white'
+                    }`}>
+                      {isCollected && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      )}
                     </div>
+
+                    {/* Name + status */}
                     <div className="flex-1 min-w-0">
-                      <div className={`text-[14px] font-semibold ${isDone ? 'text-emerald-600 line-through' : 'text-gray-900'}`}>{c.product_id[1]}</div>
+                      <div className={`text-[14px] font-semibold ${isCollected ? 'text-emerald-700 line-through decoration-emerald-400' : 'text-gray-900'}`}>
+                        {c.product_id[1]}
+                      </div>
                       <div className="text-[11px] text-gray-400 mt-0.5">
-                        {isDone ? 'Consumed' : partial ? 'Partial' : 'Tap to set qty'}
+                        {isCollected ? `Collected ${fmt(consumed)} ${compUom}` : `Need ${fmt(required)} ${compUom} \u2014 tap to weigh`}
                       </div>
                     </div>
+
+                    {/* Quantity display */}
                     <div className="text-right flex-shrink-0">
-                      <div className={`text-[15px] font-bold tabular-nums font-mono ${isDone ? 'text-emerald-600' : partial ? 'text-orange-600' : 'text-gray-900'}`}>
-                        {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(consumed)} / {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(required)}
+                      <div className={`text-[15px] font-bold tabular-nums font-mono ${isCollected ? 'text-emerald-600' : 'text-gray-400'}`}>
+                        {isCollected ? fmt(consumed) : fmt(required)}
                       </div>
                       <div className="text-[11px] text-gray-400">{compUom}</div>
                     </div>
@@ -285,16 +318,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
                     <span className="text-[13px] font-semibold text-gray-700">PDF Worksheet</span>
                   </div>
-                  <a href={pdfDataUrl} download="worksheet.pdf" className="text-[12px] text-orange-600 font-semibold">
-                    Download
-                  </a>
+                  <a href={pdfDataUrl} download="worksheet.pdf" className="text-[12px] text-orange-600 font-semibold">Download</a>
                 </div>
-                <iframe
-                  src={pdfDataUrl}
-                  className="w-full border-0"
-                  style={{ height: '500px' }}
-                  title="PDF Worksheet"
-                />
+                <iframe src={pdfDataUrl} className="w-full border-0" style={{ height: '500px' }} title="PDF Worksheet" />
               </div>
             )}
 
@@ -305,17 +331,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
                     <span className="text-[13px] font-semibold text-gray-700">Google Slides</span>
                   </div>
-                  <a href={worksheetGoogleSlide} target="_blank" rel="noopener noreferrer" className="text-[12px] text-orange-600 font-semibold">
-                    Open in new tab
-                  </a>
+                  <a href={worksheetGoogleSlide} target="_blank" rel="noopener noreferrer" className="text-[12px] text-orange-600 font-semibold">Open in new tab</a>
                 </div>
-                <iframe
-                  src={worksheetGoogleSlide.replace('/edit', '/embed')}
-                  className="w-full border-0"
-                  style={{ height: '400px' }}
-                  title="Google Slides Worksheet"
-                  allowFullScreen
-                />
+                <iframe src={worksheetGoogleSlide.replace('/edit', '/embed')} className="w-full border-0" style={{ height: '400px' }} title="Google Slides Worksheet" allowFullScreen />
               </div>
             )}
 
