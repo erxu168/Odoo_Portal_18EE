@@ -20,6 +20,10 @@ export async function GET(
       'sequence',
       'production_id',
       'move_raw_ids',
+      // Worksheet fields
+      'worksheet_type',
+      'worksheet',
+      'worksheet_google_slide',
       'operation_note',
     ]);
 
