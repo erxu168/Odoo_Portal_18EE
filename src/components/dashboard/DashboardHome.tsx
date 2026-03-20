@@ -30,7 +30,7 @@ const TILES = [
     icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>,
   },
   {
-    id: 'purchase', label: 'Purchase', href: null,
+    id: 'purchase', label: 'Purchase', href: '/purchase',
     icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>,
   },
   {
@@ -56,11 +56,6 @@ const TILES = [
   },
 ];
 
-/**
- * Task status: semantic colors only.
- * Red=overdue, amber=due_soon, blue=upcoming, green=done.
- * No purple, no indigo, no decorative colors.
- */
 const TASK_STATUS_STYLES: Record<string, { dot: string; pill: string; pillText: string }> = {
   overdue:  { dot: 'bg-red-500',   pill: 'bg-red-100',   pillText: 'text-red-800' },
   due_soon: { dot: 'bg-amber-500', pill: 'bg-amber-100', pillText: 'text-amber-800' },
@@ -68,21 +63,12 @@ const TASK_STATUS_STYLES: Record<string, { dot: string; pill: string; pillText: 
   done:     { dot: 'bg-green-500', pill: 'bg-green-100', pillText: 'text-green-800' },
 };
 
-/**
- * Badge colors: semantic only.
- * Red=alerts/overdue, blue=info/counts, green=done, gray=neutral.
- */
 function getBadgeColor(tileId: string, count: number): string {
   if (count === 0) return '';
-  // Tasks with overdue items get red
   if (tileId === 'tasks') return 'bg-red-500';
-  // Repair alerts get red
   if (tileId === 'repair') return 'bg-red-500';
-  // Staff pending registrations get red
   if (tileId === 'contacts') return 'bg-red-500';
-  // Leave days = green (informational)
   if (tileId === 'leave') return 'bg-green-500';
-  // Everything else = blue (informational count)
   return 'bg-blue-500';
 }
 
@@ -98,20 +84,10 @@ export default function DashboardHome() {
   const [comingSoon, setComingSoon] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 30000);
-    return () => clearInterval(t);
-  }, []);
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
 
   useEffect(() => {
-    async function loadUser() {
-      try {
-        const res = await fetch('/api/auth/me');
-        const data = await res.json();
-        if (data.user) { setUserName(data.user.name); setUserRole(data.user.role); }
-      } catch (e) { console.error('Failed to fetch user:', e); }
-    }
-    loadUser();
+    fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user) { setUserName(d.user.name); setUserRole(d.user.role); } }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -153,11 +129,8 @@ export default function DashboardHome() {
 
   return (
     <div className="min-h-screen bg-[#F6F7F9]">
-
-      {/* Header — reduced gradient intensity */}
       <div className="bg-[#1A1F2E] px-6 pt-14 pb-6 rounded-b-[28px] relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
-
         <div className="flex items-start justify-between relative">
           <div>
             <h1 className="text-[22px] font-bold text-white">
@@ -166,8 +139,7 @@ export default function DashboardHome() {
             <p className="text-[13px] text-white/50 mt-0.5">{dateStr}</p>
           </div>
           <button onClick={handleLogout} disabled={loggingOut}
-            className="mt-1 w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
-            title="Sign out">
+            className="mt-1 w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors" title="Sign out">
             {loggingOut ? (
               <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
             ) : (
@@ -177,15 +149,9 @@ export default function DashboardHome() {
             )}
           </button>
         </div>
-
-        {/* Shift banner */}
         {shift && (
-          <div className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-xl relative ${
-            shift.onShift ? 'bg-orange-500/10 border border-orange-500/20' : 'bg-white/5 border border-white/10'
-          }`}>
-            <div className={`w-2.5 h-2.5 rounded-full ${
-              shift.onShift ? 'bg-orange-500 shadow-[0_0_8px_rgba(245,128,10,0.5)] animate-pulse' : 'bg-gray-500'
-            }`} />
+          <div className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-xl relative ${shift.onShift ? 'bg-orange-500/10 border border-orange-500/20' : 'bg-white/5 border border-white/10'}`}>
+            <div className={`w-2.5 h-2.5 rounded-full ${shift.onShift ? 'bg-orange-500 shadow-[0_0_8px_rgba(245,128,10,0.5)] animate-pulse' : 'bg-gray-500'}`} />
             <div>
               <div className={`text-[13px] font-semibold ${shift.onShift ? 'text-white' : 'text-white/50'}`}>
                 {shift.onShift ? `${shift.name} \u00b7 ${shift.station}` : 'No shift right now'}
@@ -204,7 +170,6 @@ export default function DashboardHome() {
         )}
       </div>
 
-      {/* Shift tasks preview — semantic colors only */}
       {tasks && tasks.items && tasks.items.length > 0 && (
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between mb-2.5">
@@ -212,14 +177,12 @@ export default function DashboardHome() {
             <button onClick={() => handleTileTap(TILES.find(t => t.id === 'tasks')!)}
               className="text-[12px] font-semibold text-orange-600 active:opacity-70">See all &rarr;</button>
           </div>
-
           <div className="flex items-center gap-2.5 mb-3">
             <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
               <div className="h-full bg-orange-500 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
             </div>
             <span className="text-[11px] font-semibold text-gray-400 font-mono">{tasksDone} / {tasksTotal}</span>
           </div>
-
           <div className="flex flex-col gap-2 mb-2">
             {tasks.items.map((task: any) => {
               const s = TASK_STATUS_STYLES[task.status] || TASK_STATUS_STYLES.upcoming;
@@ -227,7 +190,6 @@ export default function DashboardHome() {
               return (
                 <div key={task.id}
                   className={`flex items-center gap-3 px-3.5 py-3 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] ${isDone ? 'opacity-50' : ''} active:scale-[0.98] transition-transform`}>
-                  {/* Status dot instead of colored left border */}
                   {!isDone && <div className={`w-2 h-2 rounded-full flex-shrink-0 ${s.dot}`} />}
                   {isDone && (
                     <div className="w-5 h-5 rounded-md bg-green-500 flex-shrink-0 flex items-center justify-center">
@@ -235,16 +197,10 @@ export default function DashboardHome() {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[13px] font-semibold ${isDone ? 'line-through text-gray-400' : 'text-[#1F2933]'}`}>
-                      {task.name}
-                    </div>
-                    <div className="text-[11px] text-gray-500 mt-0.5">
-                      {task.category}{task.photoRequired ? ' \u00b7 Photo required' : ''}
-                    </div>
+                    <div className={`text-[13px] font-semibold ${isDone ? 'line-through text-gray-400' : 'text-[#1F2933]'}`}>{task.name}</div>
+                    <div className="text-[11px] text-gray-500 mt-0.5">{task.category}{task.photoRequired ? ' \u00b7 Photo required' : ''}</div>
                   </div>
-                  <div className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold font-mono ${s.pill} ${s.pillText}`}>
-                    {task.dueLabel}
-                  </div>
+                  <div className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold font-mono ${s.pill} ${s.pillText}`}>{task.dueLabel}</div>
                 </div>
               );
             })}
@@ -252,14 +208,12 @@ export default function DashboardHome() {
         </div>
       )}
 
-      {/* Coming soon toast */}
       {comingSoon && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-5 py-3 bg-gray-900 text-white text-[13px] font-semibold rounded-xl shadow-lg animate-bounce">
           {comingSoon} &mdash; coming soon
         </div>
       )}
 
-      {/* App tiles — ALL same gray bg, blue icons, semantic badges only */}
       <div className="px-5 pt-3">
         <p className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase mb-2">Apps</p>
         <div className="grid grid-cols-3 gap-3">
@@ -271,16 +225,10 @@ export default function DashboardHome() {
               <button key={tile.id} onClick={() => handleTileTap(tile)}
                 className="aspect-square rounded-2xl bg-white border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] flex flex-col items-center justify-center gap-2 relative active:scale-95 transition-transform">
                 {count > 0 && (
-                  <span className={`absolute top-2 right-2 min-w-[20px] h-5 px-1.5 rounded-full text-white text-[11px] font-bold font-mono leading-5 text-center ${badgeColor}`}>
-                    {count}
-                  </span>
+                  <span className={`absolute top-2 right-2 min-w-[20px] h-5 px-1.5 rounded-full text-white text-[11px] font-bold font-mono leading-5 text-center ${badgeColor}`}>{count}</span>
                 )}
-                <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center bg-[#F1F3F5] ${isGray ? 'text-gray-500' : 'text-blue-600'}`}>
-                  {tile.icon}
-                </div>
-                <span className="text-[12px] font-semibold text-[#1F2933] text-center px-1 leading-tight">
-                  {tile.label}
-                </span>
+                <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center bg-[#F1F3F5] ${isGray ? 'text-gray-500' : 'text-blue-600'}`}>{tile.icon}</div>
+                <span className="text-[12px] font-semibold text-[#1F2933] text-center px-1 leading-tight">{tile.label}</span>
               </button>
             );
           })}
