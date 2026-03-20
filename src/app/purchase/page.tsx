@@ -9,6 +9,7 @@ interface GuideItem { id: number; product_id: number; product_name: string; prod
 interface CartSummary { id: number; supplier_id: number; supplier_name: string; item_count: number; total: number; items: any[]; send_method: string; min_order_value: number; approval_required: number; }
 interface Order { id: number; supplier_name: string; odoo_po_name: string | null; status: string; total_amount: number; created_at: string; lines?: any[]; delivery_date: string | null; order_note: string; location_id: number; }
 interface ReceiptLine { id: number; product_id: number; product_name: string; product_uom: string; ordered_qty: number; received_qty: number | null; difference: number; has_issue: number; issue_type: string | null; issue_notes: string | null; }
+interface OdooProduct { id: number; name: string; uom: string; category_name: string; price: number; }
 
 type Tab = 'order' | 'cart' | 'receive' | 'history';
 type Screen = 'suppliers' | 'guide' | 'cart' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide';
@@ -50,6 +51,15 @@ export default function PurchasePage() {
   const [guideCategory, setGuideCategory] = useState('All');
   const [historyFilter, setHistoryFilter] = useState('all');
 
+  // Manage guide: product search
+  const [mgSearch, setMgSearch] = useState('');
+  const [mgCategory, setMgCategory] = useState('All');
+  const [mgResults, setMgResults] = useState<OdooProduct[]>([]);
+  const [mgCategories, setMgCategories] = useState<string[]>([]);
+  const [mgSearching, setMgSearching] = useState(false);
+  const [mgAdding, setMgAdding] = useState<number>(0);
+  const mgDebounce = useRef<NodeJS.Timeout | null>(null);
+
   // Cart extras
   const [deliveryDate, setDeliveryDate] = useState('');
   const [orderNote, setOrderNote] = useState('');
@@ -62,12 +72,10 @@ export default function PurchasePage() {
   // Debounce ref
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch user
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user) setUser(d.user); }).catch(() => {});
   }, []);
 
-  // Fetchers
   const fetchSuppliers = useCallback(async () => {
     setLoading(true);
     try {
@@ -105,7 +113,6 @@ export default function PurchasePage() {
 
   useEffect(() => { fetchSuppliers(); fetchCart(); }, [fetchSuppliers, fetchCart]);
 
-  // Refetch on location change
   useEffect(() => {
     if (tab === 'history') fetchOrders();
     if (tab === 'receive') fetchPending();
@@ -132,7 +139,6 @@ export default function PurchasePage() {
     } catch (_e) { setGuideItems([]); }
   }
 
-  // Debounced cart update
   function updateCartQty(product: GuideItem, qty: number) {
     setQuantities(prev => ({ ...prev, [product.product_id]: qty }));
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -150,7 +156,6 @@ export default function PurchasePage() {
     }, 300);
   }
 
-  // Numpad
   function openNumpad(product: GuideItem) {
     setNumpadProduct(product);
     setNumpadValue(String(quantities[product.product_id] || ''));
@@ -174,7 +179,6 @@ export default function PurchasePage() {
     else if (t === 'history') { setScreen('history'); fetchOrders(); }
   }
 
-  // Send order for a single cart
   async function sendOrder(cart: CartSummary) {
     setSending(true);
     try {
@@ -193,7 +197,6 @@ export default function PurchasePage() {
     finally { setSending(false); }
   }
 
-  // Open receive check
   async function openReceiveCheck(order: Order) {
     setSelectedOrder(order);
     setScreen('receive-check');
@@ -205,7 +208,6 @@ export default function PurchasePage() {
     } catch (_e) {}
   }
 
-  // Update receipt line qty
   async function updateRecvQty(lineId: number, qty: number) {
     setReceiptLines(prev => prev.map(l => l.id === lineId ? { ...l, received_qty: qty, difference: qty - l.ordered_qty } : l));
     await fetch('/api/purchase/receive', {
@@ -262,15 +264,96 @@ export default function PurchasePage() {
     setScreen('history');
   }
 
+  // ===== MANAGE GUIDE FUNCTIONS =====
   async function openManageGuide(supplier: Supplier) {
     setGuideSupplierId(supplier.id);
     setGuideSupplierName(supplier.name);
+    setMgSearch('');
+    setMgCategory('All');
+    setMgResults([]);
     setScreen('manage-guide');
     try {
       const r = await fetch(`/api/purchase/guides?supplier_id=${supplier.id}&location_id=${locationId}`);
       const d = await r.json();
       setGuideItems(d.guide?.items || []);
     } catch (_e) { setGuideItems([]); }
+    // Fetch categories for filter
+    try {
+      const r = await fetch('/api/purchase/products?q=&limit=1');
+      const d = await r.json();
+      setMgCategories((d.categories || []).map((c: any) => c.name));
+    } catch (_e) {}
+  }
+
+  // Search Odoo products (debounced)
+  function searchProducts(query: string, category: string) {
+    setMgSearch(query);
+    if (mgDebounce.current) clearTimeout(mgDebounce.current);
+    if (!query && category === 'All') { setMgResults([]); return; }
+    mgDebounce.current = setTimeout(async () => {
+      setMgSearching(true);
+      try {
+        const params = new URLSearchParams();
+        if (query) params.set('q', query);
+        if (category && category !== 'All') params.set('category', category);
+        params.set('limit', '40');
+        const r = await fetch(`/api/purchase/products?${params}`);
+        const d = await r.json();
+        setMgResults(d.products || []);
+      } catch (_e) { setMgResults([]); }
+      finally { setMgSearching(false); }
+    }, 400);
+  }
+
+  function handleMgCategoryChange(cat: string) {
+    setMgCategory(cat);
+    // If a category is selected, search even without text
+    if (cat !== 'All') {
+      if (mgDebounce.current) clearTimeout(mgDebounce.current);
+      mgDebounce.current = setTimeout(async () => {
+        setMgSearching(true);
+        try {
+          const params = new URLSearchParams();
+          if (mgSearch) params.set('q', mgSearch);
+          params.set('category', cat);
+          params.set('limit', '40');
+          const r = await fetch(`/api/purchase/products?${params}`);
+          const d = await r.json();
+          setMgResults(d.products || []);
+        } catch (_e) { setMgResults([]); }
+        finally { setMgSearching(false); }
+      }, 200);
+    } else if (!mgSearch) {
+      setMgResults([]);
+    } else {
+      searchProducts(mgSearch, 'All');
+    }
+  }
+
+  async function addProductToGuide(product: OdooProduct) {
+    setMgAdding(product.id);
+    try {
+      await fetch('/api/purchase/guides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplier_id: guideSupplierId,
+          location_id: locationId,
+          product_id: product.id,
+          product_name: product.name,
+          product_uom: product.uom,
+          price: product.price,
+          price_source: 'odoo',
+          category_name: product.category_name,
+        }),
+      });
+      // Refresh guide items
+      const r = await fetch(`/api/purchase/guides?supplier_id=${guideSupplierId}&location_id=${locationId}`);
+      const d = await r.json();
+      setGuideItems(d.guide?.items || []);
+      fetchSuppliers();
+    } catch (_e) {}
+    finally { setMgAdding(0); }
   }
 
   async function removeGuideItemAction(itemId: number) {
@@ -297,7 +380,6 @@ export default function PurchasePage() {
   const HomeIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
   const BackIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 19l-7-7 7-7"/></svg>;
 
-  // ========== HEADER ==========
   const Header = ({ title, subtitle, showBack, onBack }: { title: string; subtitle?: string; showBack?: boolean; onBack?: () => void }) => (
     <div className="bg-[#1A1F2E] px-5 pt-12 pb-0 relative overflow-hidden">
       <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
@@ -418,17 +500,13 @@ export default function PurchasePage() {
             const dayStr = days.map((d: string) => d.charAt(0).toUpperCase() + d.slice(1)).join(' & ');
             return <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-blue-50 border border-blue-200 mb-3 text-[12px] text-blue-800"><span className="text-[14px] mt-0.5">&#128197;</span><span>Order days: <strong>{dayStr}</strong></span></div>;
           })()}
-
           <SearchInput value={guideSearch} onChange={setGuideSearch} placeholder="Search products..." />
-
           <div className="flex gap-1.5 overflow-x-auto pb-3 -mx-1 px-1">
             {allCategories.map(cat => (
               <button key={cat} onClick={() => setGuideCategory(cat)} className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap flex-shrink-0 ${guideCategory === cat ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{cat}</button>
             ))}
           </div>
-
           {filtered.length === 0 && <div className="text-center py-12"><div className="text-[15px] font-semibold text-[#1F2933] mb-1">No products found</div></div>}
-
           {categories.map(cat => (
             <div key={cat}>
               <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pt-3 pb-2 flex justify-between"><span>{cat}</span><span className="font-mono text-gray-300">{filtered.filter(i => (i.category_name || 'Other') === cat).length}</span></div>
@@ -531,7 +609,6 @@ export default function PurchasePage() {
     </div>
   );
 
-  // ============== ORDER SENT ==============
   const OrderSent = () => (
     <div className="px-4 py-3 flex flex-col items-center pt-16">
       <div className="w-16 h-16 rounded-[18px] bg-green-100 flex items-center justify-center mb-4"><svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg></div>
@@ -648,7 +725,6 @@ export default function PurchasePage() {
           </div>
         ))}
       </div>
-
       <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
         {isManager ? (
           <>
@@ -709,25 +785,94 @@ export default function PurchasePage() {
     </div>
   );
 
-  const ManageGuideScreen = () => (
-    <div className="px-4 py-3">
-      {guideItems.length === 0 ? (
-        <div className="text-center py-12"><div className="text-[15px] font-semibold text-[#1F2933] mb-1">No products in guide</div><div className="text-[13px] text-gray-500">Run seed to populate from Odoo, or add via API.</div></div>
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
-          {guideItems.map(item => (
-            <div key={item.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-semibold text-[#1F2933] truncate">{item.product_name}</div>
-                <div className="text-[11px] text-gray-500 font-mono">&euro;{item.price.toFixed(2)}/{item.product_uom} &bull; {item.price_source}</div>
-              </div>
-              <button onClick={() => removeGuideItemAction(item.id)} className="text-[11px] font-semibold text-red-600 px-3 py-1.5 rounded-lg bg-red-50 border border-red-100 active:bg-red-100 flex-shrink-0">Remove</button>
-            </div>
+  // ============== MANAGE GUIDE (with search + add + remove) ==============
+  const ManageGuideScreen = () => {
+    const guideProductIds = new Set(guideItems.map(i => i.product_id));
+    const searchResults = mgResults.filter(p => !guideProductIds.has(p.id));
+    const guideCats = Array.from(new Set(guideItems.map(i => i.category_name || 'Other')));
+    const allFilterCats = ['All', ...mgCategories.slice(0, 10)];
+
+    return (
+      <div className="px-4 py-3">
+        {/* Search to add products */}
+        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-orange-400 transition-colors mb-2">
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/><path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          <input type="text" value={mgSearch} onChange={e => searchProducts(e.target.value, mgCategory)} placeholder="Search Odoo products to add..." className="flex-1 bg-transparent outline-none text-[14px] text-[#1F2933] placeholder-gray-400" />
+          {mgSearch && <button onClick={() => { setMgSearch(''); setMgResults([]); }} className="text-gray-400 text-[18px]">&times;</button>}
+        </div>
+
+        {/* Category filter pills */}
+        <div className="flex gap-1.5 overflow-x-auto pb-3 -mx-1 px-1">
+          {allFilterCats.map(cat => (
+            <button key={cat} onClick={() => handleMgCategoryChange(cat)} className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap flex-shrink-0 ${mgCategory === cat ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{cat}</button>
           ))}
         </div>
-      )}
-    </div>
-  );
+
+        {/* Search results */}
+        {(mgSearch || mgCategory !== 'All') && (
+          <div className="mb-4">
+            <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
+              {mgSearching ? 'Searching...' : `${searchResults.length} results`}
+              {searchResults.length > 0 && ' — tap + to add'}
+            </div>
+            {mgSearching && <div className="flex justify-center py-4"><div className="w-6 h-6 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" /></div>}
+            {!mgSearching && searchResults.length > 0 && (
+              <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
+                {searchResults.map(product => (
+                  <div key={product.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center text-[12px] flex-shrink-0">&#128230;</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-[#1F2933] truncate">{product.name}</div>
+                      <div className="text-[11px] text-gray-500 font-mono">{product.uom} &bull; &euro;{product.price.toFixed(2)} &bull; {product.category_name}</div>
+                    </div>
+                    <button onClick={() => addProductToGuide(product)} disabled={mgAdding === product.id}
+                      className="w-9 h-9 rounded-lg bg-green-500 flex items-center justify-center text-white text-[18px] font-bold shadow-sm active:bg-green-600 flex-shrink-0 disabled:opacity-50">
+                      {mgAdding === product.id ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '+'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!mgSearching && searchResults.length === 0 && mgResults.length > 0 && (
+              <div className="text-[12px] text-gray-500 text-center py-4">All matching products are already in the guide.</div>
+            )}
+            {!mgSearching && mgResults.length === 0 && (mgSearch || mgCategory !== 'All') && (
+              <div className="text-[12px] text-gray-500 text-center py-4">No products found. Try a different search.</div>
+            )}
+          </div>
+        )}
+
+        {/* Current guide items */}
+        <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
+          In guide ({guideItems.length})
+        </div>
+        {guideItems.length === 0 ? (
+          <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
+            <div className="text-[13px] text-gray-500">No products yet. Search above to add products from Odoo.</div>
+          </div>
+        ) : (
+          <>
+            {guideCats.map(cat => (
+              <div key={cat}>
+                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide pt-2 pb-1">{cat}</div>
+                <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-2">
+                  {guideItems.filter(i => (i.category_name || 'Other') === cat).map(item => (
+                    <div key={item.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-semibold text-[#1F2933] truncate">{item.product_name}</div>
+                        <div className="text-[11px] text-gray-500 font-mono">&euro;{item.price.toFixed(2)}/{item.product_uom}</div>
+                      </div>
+                      <button onClick={() => removeGuideItemAction(item.id)} className="text-[11px] font-semibold text-red-600 px-3 py-1.5 rounded-lg bg-red-50 border border-red-100 active:bg-red-100 flex-shrink-0">Remove</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    );
+  };
 
   // ============== NUMPAD ==============
   const Numpad = () => numpadOpen ? (
@@ -753,7 +898,7 @@ export default function PurchasePage() {
       ) : screen === 'manage' ? (
         <><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => { setScreen('suppliers'); setTab('order'); }} /><LocationPicker /><ManageScreen /></>
       ) : screen === 'manage-guide' ? (
-        <><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName}`} showBack onBack={() => setScreen('manage')} /><ManageGuideScreen /></>
+        <><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('manage')} /><ManageGuideScreen /></>
       ) : screen === 'sent' ? (
         <><Header title="Purchase" /><OrderSent /></>
       ) : screen === 'order-detail' ? (
