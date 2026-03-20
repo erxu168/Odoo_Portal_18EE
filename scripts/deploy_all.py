@@ -44,14 +44,9 @@ for old, new in renames:
         print(f'  OK: rename "{old[:40]}" -> "{new[:40]}"')
 
 # 4. Move "Manage order lists" button from bottom to top of SupplierList
-#    After rename, the bottom button is:
-#    {isManager && <div className="text-center mt-4"><button onClick={() => setScreen('manage')} className="text-[12px]...">Manage order lists</button></div>}
-#    We remove it from bottom and insert after SearchInput at the top
 old_manage_btn = '{isManager && <div className="text-center mt-4"><button onClick={() => setScreen(\'manage\')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage order lists</button></div>}'
 if old_manage_btn in t:
-    # Remove from bottom
     t = t.replace(old_manage_btn, '')
-    # Insert after SearchInput in SupplierList - right before the loading check
     search_anchor = 'SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />'
     if search_anchor in t:
         new_btn = (
@@ -74,7 +69,6 @@ if old_manage_btn in t:
     else:
         print('  FAIL: SearchInput anchor not found')
 else:
-    # Try the pre-rename version
     old_manage_btn2 = '{isManager && <div className="text-center mt-4"><button onClick={() => setScreen(\'manage\')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage guides &amp; settings</button></div>}'
     if old_manage_btn2 in t:
         t = t.replace(old_manage_btn2, '')
@@ -100,19 +94,23 @@ else:
         else:
             print('  FAIL: SearchInput anchor not found')
     elif 'Manage order lists' in t and 'text-center mt-4' in t:
-        print('  SKIP: manage button exists but pattern changed - check manually')
+        print('  SKIP: manage button exists but pattern changed')
     else:
         print('  SKIP: manage button already moved or not found')
 
-# 5. Add deleteGuideAction handler
+# 5. Add deleteGuideAction handler (with confirmation dialog + smart message for empty/non-empty)
 if 'deleteGuideAction' not in t:
     handler = (
         'async function deleteGuideAction() {\n'
         '    if (!guideSupplierId) return;\n'
+        '    const msg = guideItems.length > 0\n'
+        "      ? 'This will remove all ' + guideItems.length + ' products from ' + guideSupplierName + '. This cannot be undone.'\n"
+        "      : 'This will delete the empty order list for ' + guideSupplierName + '. This cannot be undone.';\n"
         '    setConfirmDialog({\n'
         "      title: 'Delete this order list?',\n"
-        "      message: 'This will remove all ' + guideItems.length + ' products from ' + guideSupplierName + '. This cannot be undone.',\n"
+        '      message: msg,\n'
         "      confirmLabel: 'Yes, delete it',\n"
+        "      cancelLabel: 'Cancel',\n"
         "      variant: 'danger' as const,\n"
         '      onConfirm: async () => {\n'
         '        setConfirmDialog(null);\n'
@@ -133,12 +131,12 @@ if 'deleteGuideAction' not in t:
         t = t.replace(anchor, handler + anchor)
         print('  OK: deleteGuideAction handler')
 
-# 6. Add delete button before {ManageGuideScreen()}
+# 6. Add delete button before {ManageGuideScreen()} — always show for managers, even on empty lists
 if 'Delete entire order list' not in t:
     target = '{ManageGuideScreen()}'
     if target in t:
         delete_bar = (
-            '{isManager && guideItems.length > 0 && ('
+            '{isManager && ('
             '<div className="px-4 pt-3">'
             '<button onClick={() => deleteGuideAction()} '
             'className="w-full py-2.5 rounded-xl bg-red-50 border border-red-200 '
@@ -151,7 +149,7 @@ if 'Delete entire order list' not in t:
             'Delete entire order list</button></div>)}'
         )
         t = t.replace(target, delete_bar + target)
-        print('  OK: delete button added')
+        print('  OK: delete button added (shows for all lists, empty or not)')
 
 write(p, t)
 print('  purchase/page.tsx written')
