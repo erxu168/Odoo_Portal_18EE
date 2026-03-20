@@ -14,7 +14,7 @@ interface ReceiptLine { id: number; product_id: number; product_name: string; pr
 interface OdooProduct { id: number; name: string; uom: string; category_name: string; price: number; }
 
 type Tab = 'order' | 'cart' | 'receive' | 'history';
-type Screen = 'suppliers' | 'guide' | 'cart' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide';
+type Screen = 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide';
 
 const LOCATIONS = [
   { id: 32, name: 'SSAM', key: 'SSAM' },
@@ -71,6 +71,7 @@ export default function PurchasePage() {
   const [numpadProduct, setNumpadProduct] = useState<GuideItem | null>(null);
   const [numpadValue, setNumpadValue] = useState('');
   const [cartNumpadItem, setCartNumpadItem] = useState<any>(null);
+  const [reviewCart, setReviewCart] = useState<CartSummary | null>(null);
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -89,7 +90,7 @@ export default function PurchasePage() {
 
   useEffect(() => { fetchSuppliers(); fetchCart(); }, [fetchSuppliers, fetchCart]);
   useEffect(() => { if (tab === 'history') fetchOrders(); if (tab === 'receive') fetchPending(); }, [locationId, tab, fetchOrders, fetchPending]);
-  useEffect(() => { if (tab === 'cart' && carts.length > 0) { const ids = carts.flatMap(c => c.items.map((i: any) => i.product_id)); if (ids.length > 0) fetchTaxRates(ids); } }, [tab, carts, fetchTaxRates]);
+  useEffect(() => { if ((tab === 'cart' || screen === 'review') && carts.length > 0) { const ids = carts.flatMap(c => c.items.map((i: any) => i.product_id)); if (ids.length > 0) fetchTaxRates(ids); } }, [tab, screen, carts, fetchTaxRates]);
 
   function goHome() { router.push('/'); }
 
@@ -132,23 +133,7 @@ export default function PurchasePage() {
 
   async function sendOrder(cart: CartSummary) {
     setSending(true);
-    try { await fetch('/api/purchase/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cart_id: cart.id, delivery_date: deliveryDate || null, order_note: orderNote }) }); await fetchCart(); if (carts.length <= 1) { setDeliveryDate(''); setOrderNote(''); setScreen('sent'); } } catch (e) { void e; } finally { setSending(false); }
-  }
-
-  function cancelCart(cart: CartSummary) {
-    setConfirmDialog({
-      title: 'Cancel this order?',
-      message: 'Do you want to save it as a draft so you can come back to it later, or discard it completely?',
-      confirmLabel: 'Save as draft',
-      cancelLabel: 'Discard',
-      variant: 'primary',
-      onConfirm: () => { setConfirmDialog(null); changeTab('order'); },
-      onCancel: () => {
-        setConfirmDialog(null);
-        fetch('/api/purchase/cart', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cart_id: cart.id }) }).then(() => fetchCart());
-        if (carts.length <= 1) changeTab('order');
-      },
-    });
+    try { await fetch('/api/purchase/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cart_id: cart.id, delivery_date: deliveryDate || null, order_note: orderNote }) }); await fetchCart(); setDeliveryDate(''); setOrderNote(''); setReviewCart(null); setScreen('sent'); } catch (e) { void e; } finally { setSending(false); }
   }
 
   async function removeCartItem(cartId: number, productId: number) {
@@ -213,6 +198,15 @@ export default function PurchasePage() {
   async function removeGuideItemAction(itemId: number) { await fetch(`/api/purchase/guides?item_id=${itemId}`, { method: 'DELETE' }); setGuideItems(prev => prev.filter(i => i.id !== itemId)); fetchSuppliers(); }
 
   async function runSeed() { setSeedMsg('Seeding...'); try { const r = await fetch('/api/purchase/seed', { method: 'POST' }); const d = await r.json(); setSeedMsg(d.message || 'Done'); fetchSuppliers(); } catch (e: any) { setSeedMsg(`Error: ${e.message}`); } }
+
+  // Tax calc helper
+  function calcCartTax(cart: CartSummary) {
+    const taxByRate: Record<number, number> = {};
+    let net = 0;
+    for (const item of cart.items) { const lineNet = item.quantity * item.price; net += lineNet; const rate = taxRates[item.product_id] ?? 0; if (rate > 0) { taxByRate[rate] = (taxByRate[rate] || 0) + lineNet * (rate / 100); } }
+    const totalTax = Object.values(taxByRate).reduce((s, v) => s + v, 0);
+    return { net, taxByRate, gross: net + totalTax };
+  }
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isAdmin = user?.role === 'admin';
@@ -289,15 +283,8 @@ export default function PurchasePage() {
     </>);
   };
 
-  // ============== CART ==============
+  // ============== CART (edit mode: steppers, trash, delivery date/note) ==============
   const CartView = () => {
-    const calcTax = (cart: CartSummary) => {
-      const taxByRate: Record<number, number> = {};
-      let net = 0;
-      for (const item of cart.items) { const lineNet = item.quantity * item.price; net += lineNet; const rate = taxRates[item.product_id] ?? 0; if (rate > 0) { taxByRate[rate] = (taxByRate[rate] || 0) + lineNet * (rate / 100); } }
-      const totalTax = Object.values(taxByRate).reduce((s, v) => s + v, 0);
-      return { net, taxByRate, gross: net + totalTax };
-    };
     return (
     <div className="px-4 py-3 pb-20">
       {carts.length === 0 ? (<div className="text-center py-16"><div className="text-4xl mb-3">&#128722;</div><div className="text-[15px] font-semibold text-[#1F2933] mb-1">Cart is empty</div><div className="text-[13px] text-gray-500">Go to a supplier and add products.</div></div>
@@ -305,20 +292,18 @@ export default function PurchasePage() {
         <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-2"><div className="flex items-center gap-3"><span className="text-[16px]">&#128197;</span><div className="flex-1"><div className="text-[13px] font-semibold text-[#1F2933]">Delivery date</div></div><input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="text-[13px] text-gray-600 border border-gray-200 rounded-lg px-2 py-1" /></div></div>
         <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3"><div className="text-[13px] font-semibold text-[#1F2933] mb-1">Order note</div><textarea value={orderNote} onChange={e => setOrderNote(e.target.value)} placeholder="Add a note for this order..." rows={2} className="w-full text-[13px] text-gray-600 border border-gray-200 rounded-lg px-3 py-2 resize-none outline-none focus:border-orange-400" /></div>
         {carts.map(cart => {
-          const { net, taxByRate, gross } = calcTax(cart);
+          const { net, taxByRate, gross } = calcCartTax(cart);
           const belowMin = cart.min_order_value > 0 && net < cart.min_order_value;
           return (<div key={cart.id} className="mb-4">
           <div className="flex justify-between items-center py-2"><span className="text-[11px] font-bold tracking-wide uppercase text-gray-400">{cart.supplier_name}</span><div className="flex gap-1.5"><span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-blue-100 text-blue-800">{cart.send_method === 'whatsapp' ? 'WhatsApp' : 'Email'}</span>{cart.approval_required === 1 && <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-amber-100 text-amber-800">Approval required</span>}</div></div>
           {belowMin && (<div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 mb-2 text-[11px] text-amber-800"><span>&#9888;&#65039;</span> Min. order: &euro;{cart.min_order_value.toFixed(2)}. You need &euro;{(cart.min_order_value - net).toFixed(2)} more.</div>)}
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
-            {cart.items.map((item: any) => {
-              const rate = taxRates[item.product_id] ?? 0;
-              return (
+            {cart.items.map((item: any) => (
               <div key={item.id} className="py-2.5 border-b border-gray-100 last:border-0">
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold text-[#1F2933] truncate">{item.product_name}</div>
-                    <div className="text-[11px] text-gray-500 font-mono">&euro;{item.price.toFixed(2)}/{item.product_uom}{rate > 0 ? ` \u00b7 ${rate}% MwSt` : ''}</div>
+                    <div className="text-[11px] text-gray-500 font-mono">&euro;{item.price.toFixed(2)}/{item.product_uom}</div>
                   </div>
                   <div className="text-right flex-shrink-0"><div className="text-[13px] font-bold font-mono text-[#1F2933]">&euro;{(item.quantity * item.price).toFixed(2)}</div></div>
                 </div>
@@ -330,25 +315,77 @@ export default function PurchasePage() {
                   </div>
                   <button onClick={() => removeCartItem(cart.id, item.product_id)} className="w-8 h-8 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center text-red-400 active:bg-red-100"><TrashIcon /></button>
                 </div>
-              </div>);
-            })}
+              </div>))}
           </div>
-          <div className="bg-gray-50 rounded-xl px-3.5 py-2.5 mt-2 border border-gray-100">
-            <div className="flex justify-between text-[12px] text-gray-500"><span>Subtotal (net)</span><span className="font-mono">&euro;{net.toFixed(2)}</span></div>
-            {Object.entries(taxByRate).sort(([a],[b]) => Number(a)-Number(b)).map(([r, amt]) => (<div key={r} className="flex justify-between text-[11px] text-gray-400"><span>{r}% MwSt</span><span className="font-mono">&euro;{(amt as number).toFixed(2)}</span></div>))}
-            <div className="flex justify-between text-[14px] font-bold text-[#1F2933] pt-1 border-t border-gray-200 mt-1"><span>Total (gross)</span><span className="font-mono">&euro;{gross.toFixed(2)}</span></div>
+          {/* Running total */}
+          <div className="flex justify-between items-center px-3.5 py-2 mt-2 bg-gray-50 rounded-xl border border-gray-100">
+            <span className="text-[12px] text-gray-500">{cart.item_count} items</span>
+            <span className="text-[14px] font-bold font-mono text-[#1F2933]">&euro;{net.toFixed(2)}</span>
           </div>
-          <div className="flex gap-2 mt-2">
-            <button onClick={() => cancelCart(cart)} className="flex-1 py-3 rounded-xl bg-white border border-gray-200 text-gray-600 text-[13px] font-semibold active:bg-gray-50">Cancel</button>
-            <button onClick={() => {
-              const msg = belowMin ? `This order (\u20ac${net.toFixed(2)} net) is below the minimum of \u20ac${cart.min_order_value.toFixed(2)}. Send anyway to ${cart.supplier_name}?` : `Send ${cart.item_count} items (\u20ac${gross.toFixed(2)} incl. tax) to ${cart.supplier_name}?`;
-              setConfirmDialog({ title: belowMin ? 'Below minimum order' : 'Send order?', message: msg, confirmLabel: belowMin ? 'Send anyway' : 'Yes, send order', variant: 'primary', onConfirm: () => { setConfirmDialog(null); sendOrder(cart); } });
-            }} disabled={sending} className="flex-[2] py-3 rounded-xl bg-orange-500 text-white text-[13px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 disabled:opacity-50 transition-all">
-              {sending ? 'Sending...' : `Send to ${cart.supplier_name.split(' ')[0]} \u2192`}
-            </button>
-          </div>
+          <button onClick={() => { setReviewCart(cart); setScreen('review'); }} className="w-full mt-2 py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all">
+            Review order &rarr;
+          </button>
         </div>); })}
       </>)}
+    </div>);
+  };
+
+  // ============== REVIEW ORDER (read-only, Choco-style clean layout) ==============
+  const ReviewOrder = () => {
+    if (!reviewCart) return null;
+    const cart = reviewCart;
+    const { net, taxByRate, gross } = calcCartTax(cart);
+    const belowMin = cart.min_order_value > 0 && net < cart.min_order_value;
+
+    return (<div className="px-4 py-3 pb-28">
+      {/* Supplier info card */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3">
+        <div className="flex justify-between items-start mb-2">
+          <div className="text-[15px] font-bold text-[#1F2933]">{cart.supplier_name}</div>
+          <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-blue-100 text-blue-800">{cart.send_method === 'whatsapp' ? 'WhatsApp' : 'Email'}</span>
+        </div>
+        {deliveryDate && <div className="text-[12px] text-gray-500">Delivery: {deliveryDate}</div>}
+        {orderNote && <div className="text-[12px] text-gray-500 mt-1 italic">{orderNote}</div>}
+        <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
+          <span className="text-[11px] text-gray-400">{cart.item_count} items &bull; {locName}</span>
+          {cart.approval_required === 1 && <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-amber-100 text-amber-800">Approval required</span>}
+        </div>
+      </div>
+
+      {belowMin && (<div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 mb-3 text-[11px] text-amber-800"><span>&#9888;&#65039;</span> Min. order: &euro;{cart.min_order_value.toFixed(2)}. You need &euro;{(cart.min_order_value - net).toFixed(2)} more.</div>)}
+
+      {/* Clean read-only line items */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
+        {cart.items.map((item: any) => (
+          <div key={item.id} className="flex justify-between items-start py-3 border-b border-gray-100 last:border-0">
+            <div className="flex-1 min-w-0 pr-3">
+              <div className="text-[13px] font-semibold text-[#1F2933]">{item.product_name}</div>
+              <div className="text-[11px] text-gray-500 font-mono mt-0.5">{item.quantity} {item.product_uom} &times; &euro;{item.price.toFixed(2)}</div>
+            </div>
+            <div className="text-[13px] font-bold font-mono text-[#1F2933] flex-shrink-0">&euro;{(item.quantity * item.price).toFixed(2)}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tax summary */}
+      <div className="bg-gray-50 rounded-xl px-3.5 py-2.5 mt-2 border border-gray-100">
+        <div className="flex justify-between text-[12px] text-gray-500"><span>Subtotal (net)</span><span className="font-mono">&euro;{net.toFixed(2)}</span></div>
+        {Object.entries(taxByRate).sort(([a],[b]) => Number(a)-Number(b)).map(([r, amt]) => (<div key={r} className="flex justify-between text-[11px] text-gray-400"><span>{r}% MwSt</span><span className="font-mono">&euro;{(amt as number).toFixed(2)}</span></div>))}
+        <div className="flex justify-between text-[14px] font-bold text-[#1F2933] pt-1 border-t border-gray-200 mt-1"><span>Total (gross)</span><span className="font-mono">&euro;{gross.toFixed(2)}</span></div>
+      </div>
+
+      {/* Fixed bottom: single Send CTA */}
+      <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
+        <button onClick={() => {
+          const msg = belowMin
+            ? `This order (\u20ac${net.toFixed(2)} net) is below the minimum of \u20ac${cart.min_order_value.toFixed(2)}. Send anyway to ${cart.supplier_name}?`
+            : `Send ${cart.item_count} items (\u20ac${gross.toFixed(2)} incl. tax) to ${cart.supplier_name}?`;
+          setConfirmDialog({ title: belowMin ? 'Below minimum order' : 'Send order?', message: msg, confirmLabel: belowMin ? 'Send anyway' : 'Yes, send order', variant: 'primary', onConfirm: () => { setConfirmDialog(null); sendOrder(cart); } });
+        }} disabled={sending} className="w-full py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 disabled:opacity-50 active:scale-[0.975] transition-all">
+          {sending ? 'Sending...' : `Send to ${cart.supplier_name.split(' ')[0]} \u2192`}
+        </button>
+        {cart.approval_required === 1 && <p className="text-[11px] text-amber-600 text-center mt-1.5">This order requires manager approval before sending.</p>}
+      </div>
     </div>);
   };
 
@@ -425,6 +462,7 @@ export default function PurchasePage() {
       {screen === 'guide' ? (<><Header title={guideSupplierName} subtitle={`${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => { setScreen('suppliers'); setTab('order'); }} /><OrderGuide /></>
       ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => { setScreen('suppliers'); setTab('order'); }} /><LocationPicker /><ManageScreen /></>
       ) : screen === 'manage-guide' ? (<><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('manage')} /><ManageGuideScreen /></>
+      ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); setTab('cart'); }} /><ReviewOrder /></>
       ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSent /></>
       ) : screen === 'order-detail' ? (<><Header title="Order details" showBack onBack={() => { setScreen('history'); setTab('history'); }} /><OrderDetail /></>
       ) : screen === 'receive-check' ? (<><Header title={selectedOrder?.supplier_name || 'Receive'} subtitle={selectedOrder?.odoo_po_name || ''} showBack onBack={() => { setScreen('receive-list'); setTab('receive'); }} /><ReceiveCheck /></>
