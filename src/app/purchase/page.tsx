@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import Numpad from '@/components/ui/Numpad';
 
 // Types
 interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; min_order_value: number; approval_required: number; send_method: string; }
@@ -137,7 +138,7 @@ export default function PurchasePage() {
   function cancelCart(cart: CartSummary) {
     setConfirmDialog({
       title: 'Cancel this order?',
-      message: `Do you want to save it as a draft so you can come back to it later, or discard it completely?`,
+      message: 'Do you want to save it as a draft so you can come back to it later, or discard it completely?',
       confirmLabel: 'Save as draft',
       cancelLabel: 'Discard',
       variant: 'primary',
@@ -288,7 +289,7 @@ export default function PurchasePage() {
     </>);
   };
 
-  // ============== CART (inline -/qty/+ stepper, cancel + send buttons, tax) ==============
+  // ============== CART ==============
   const CartView = () => {
     const calcTax = (cart: CartSummary) => {
       const taxByRate: Record<number, number> = {};
@@ -332,19 +333,15 @@ export default function PurchasePage() {
               </div>);
             })}
           </div>
-          {/* Tax breakdown */}
           <div className="bg-gray-50 rounded-xl px-3.5 py-2.5 mt-2 border border-gray-100">
             <div className="flex justify-between text-[12px] text-gray-500"><span>Subtotal (net)</span><span className="font-mono">&euro;{net.toFixed(2)}</span></div>
             {Object.entries(taxByRate).sort(([a],[b]) => Number(a)-Number(b)).map(([r, amt]) => (<div key={r} className="flex justify-between text-[11px] text-gray-400"><span>{r}% MwSt</span><span className="font-mono">&euro;{(amt as number).toFixed(2)}</span></div>))}
             <div className="flex justify-between text-[14px] font-bold text-[#1F2933] pt-1 border-t border-gray-200 mt-1"><span>Total (gross)</span><span className="font-mono">&euro;{gross.toFixed(2)}</span></div>
           </div>
-          {/* Send + Cancel buttons */}
           <div className="flex gap-2 mt-2">
             <button onClick={() => cancelCart(cart)} className="flex-1 py-3 rounded-xl bg-white border border-gray-200 text-gray-600 text-[13px] font-semibold active:bg-gray-50">Cancel</button>
             <button onClick={() => {
-              const msg = belowMin
-                ? `This order (\u20ac${net.toFixed(2)} net) is below the minimum of \u20ac${cart.min_order_value.toFixed(2)}. Send anyway to ${cart.supplier_name}?`
-                : `Send ${cart.item_count} items (\u20ac${gross.toFixed(2)} incl. tax) to ${cart.supplier_name}?`;
+              const msg = belowMin ? `This order (\u20ac${net.toFixed(2)} net) is below the minimum of \u20ac${cart.min_order_value.toFixed(2)}. Send anyway to ${cart.supplier_name}?` : `Send ${cart.item_count} items (\u20ac${gross.toFixed(2)} incl. tax) to ${cart.supplier_name}?`;
               setConfirmDialog({ title: belowMin ? 'Below minimum order' : 'Send order?', message: msg, confirmLabel: belowMin ? 'Send anyway' : 'Yes, send order', variant: 'primary', onConfirm: () => { setConfirmDialog(null); sendOrder(cart); } });
             }} disabled={sending} className="flex-[2] py-3 rounded-xl bg-orange-500 text-white text-[13px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 disabled:opacity-50 transition-all">
               {sending ? 'Sending...' : `Send to ${cart.supplier_name.split(' ')[0]} \u2192`}
@@ -352,8 +349,7 @@ export default function PurchasePage() {
           </div>
         </div>); })}
       </>)}
-    </div>
-    );
+    </div>);
   };
 
   const OrderSent = () => (<div className="px-4 py-3 flex flex-col items-center pt-16"><div className="w-16 h-16 rounded-[18px] bg-green-100 flex items-center justify-center mb-4"><svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg></div><div className="text-[18px] font-bold text-[#1F2933] mb-2">Order sent!</div><div className="text-[13px] text-gray-500 text-center max-w-[280px] leading-relaxed mb-6">Your order has been submitted.</div><button onClick={() => changeTab('order')} className="w-full max-w-[300px] py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30 mb-3">Place another order</button><button onClick={() => changeTab('history')} className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold mb-3">View order history</button><button onClick={goHome} className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold">Back to dashboard</button></div>);
@@ -423,25 +419,6 @@ export default function PurchasePage() {
     </div>);
   };
 
-  // ============== NUMPAD (standard calculator: 789/456/123/C0. + backspace) ==============
-  const Numpad = () => numpadOpen ? (
-    <div className="fixed inset-0 bg-black/40 z-[100] flex items-end justify-center" onClick={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }}>
-      <div className="bg-white rounded-t-[20px] w-full max-w-lg p-5 pb-7" onClick={e => e.stopPropagation()}>
-        <div className="text-center pb-2"><div className="text-[12px] text-gray-400">{numpadProduct?.product_uom}</div><div className="text-[15px] font-bold text-[#1F2933]">{numpadProduct?.product_name}</div></div>
-        <div className="text-center text-[36px] font-extrabold font-mono text-[#1F2933] pb-4 min-h-[52px]">{numpadValue || '0'}</div>
-        <div className="grid grid-cols-4 gap-2 mb-3">
-          {['7','8','9','del','4','5','6','C','1','2','3','.'].map(k => (
-            <button key={k} onClick={() => numpadKey(k)} className={`h-14 rounded-xl border text-[20px] font-semibold flex items-center justify-center active:bg-gray-100 font-mono ${k === 'C' ? 'bg-red-50 text-red-500 border-red-200' : k === 'del' ? 'bg-gray-100 text-gray-500 border-gray-200 text-[16px]' : 'bg-white text-[#1F2933] border-gray-200'}`}>
-              {k === 'del' ? '\u232B' : k}
-            </button>
-          ))}
-          <button onClick={() => numpadKey('0')} className="col-span-2 h-14 rounded-xl border border-gray-200 bg-white text-[20px] font-semibold flex items-center justify-center active:bg-gray-100 font-mono text-[#1F2933]">0</button>
-          <button onClick={confirmNumpad} className="col-span-2 h-14 rounded-xl bg-orange-500 text-white text-[16px] font-bold flex items-center justify-center active:bg-orange-600 shadow-lg shadow-orange-500/30">OK</button>
-        </div>
-      </div>
-    </div>
-  ) : null;
-
   // ============== RENDER ==============
   return (
     <div className="min-h-screen bg-[#F6F7F9]">
@@ -458,7 +435,7 @@ export default function PurchasePage() {
         {tab === 'receive' && <ReceiveList />}
         {tab === 'history' && <HistoryView />}
       </>)}
-      <Numpad />
+      <Numpad open={numpadOpen} value={numpadValue} label={numpadProduct?.product_name} sublabel={numpadProduct?.product_uom} onKey={numpadKey} onConfirm={confirmNumpad} onClose={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }} />
       {confirmDialog && <ConfirmDialog title={confirmDialog.title} message={confirmDialog.message} confirmLabel={confirmDialog.confirmLabel} cancelLabel={confirmDialog.cancelLabel} variant={confirmDialog.variant} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
     </div>
   );
