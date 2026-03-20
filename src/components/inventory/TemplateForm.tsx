@@ -25,7 +25,6 @@ interface TemplateFormProps {
 }
 
 export default function TemplateForm({ template, locations, departments, onSave, onCancel }: TemplateFormProps) {
-  // --- Form state ---
   const [name, setName] = useState(template?.name || '');
   const [frequency, setFrequency] = useState(template?.frequency || 'adhoc');
   const [locationId, setLocationId] = useState<number | null>(template?.location_id || null);
@@ -34,7 +33,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
   const [active, setActive] = useState(template?.active !== false);
   const [saving, setSaving] = useState(false);
 
-  // --- Product picker state ---
   const [allProducts, setAllProducts] = useState<any[]>([]);
   const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(
     new Set(template?.product_ids || [])
@@ -44,12 +42,10 @@ export default function TemplateForm({ template, locations, departments, onSave,
   const [catFilter, setCatFilter] = useState<string>('all');
   const [selectionFilter, setSelectionFilter] = useState<'all' | 'selected' | 'unselected'>('all');
 
-  // --- Step: 'config' or 'products' ---
   const [step, setStep] = useState<'config' | 'products'>('config');
 
   const isEdit = !!template?.id;
 
-  // Load products from Odoo
   useEffect(() => {
     async function load() {
       try {
@@ -65,14 +61,12 @@ export default function TemplateForm({ template, locations, departments, onSave,
     load();
   }, []);
 
-  // Auto-select first location
   useEffect(() => {
     if (!locationId && locations.length > 0) {
       setLocationId(locations[0].id);
     }
   }, [locations, locationId]);
 
-  // Derive categories from products
   const categories = useMemo(() => {
     const catMap = new Map<number, { id: number; name: string; count: number }>();
     for (const p of allProducts) {
@@ -86,9 +80,8 @@ export default function TemplateForm({ template, locations, departments, onSave,
     return Array.from(catMap.values()).sort((a, b) => b.count - a.count);
   }, [allProducts]);
 
-  // Filter products for picker
   const filteredProducts = useMemo(() => {
-    let list = [...allProducts];
+    let list = allProducts.slice();
     if (search) list = list.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
     if (catFilter !== 'all') list = list.filter((p) => p.categ_id?.[0] === Number(catFilter));
     if (selectionFilter === 'selected') list = list.filter((p) => selectedProductIds.has(p.id));
@@ -137,13 +130,11 @@ export default function TemplateForm({ template, locations, departments, onSave,
   async function handleSubmit() {
     if (!canSave) return;
     setSaving(true);
-    // Derive category_ids from selected products
-    const catIds = [...new Set(
-      allProducts
-        .filter((p) => selectedProductIds.has(p.id))
-        .map((p) => p.categ_id?.[0])
-        .filter(Boolean)
-    )];
+    const catIdSet = new Set<number>();
+    allProducts
+      .filter((p) => selectedProductIds.has(p.id))
+      .forEach((p) => { if (p.categ_id?.[0]) catIdSet.add(p.categ_id[0]); });
+    const catIds = Array.from(catIdSet);
     await onSave({
       ...(isEdit ? { id: template.id } : {}),
       name: name.trim(),
@@ -156,6 +147,17 @@ export default function TemplateForm({ template, locations, departments, onSave,
       active,
     });
     setSaving(false);
+  }
+
+  function getSelectedCategorySummary(): string {
+    const catSet = new Set<string>();
+    allProducts
+      .filter((p) => selectedProductIds.has(p.id))
+      .forEach((p) => { if (p.categ_id?.[1]) catSet.add(p.categ_id[1]); });
+    const cats = Array.from(catSet);
+    if (cats.length === 0) return '';
+    const shown = cats.slice(0, 3).join(', ');
+    return cats.length > 3 ? `From: ${shown} +${cats.length - 3} more` : `From: ${shown}`;
   }
 
   // ========== PRODUCT PICKER STEP ==========
@@ -176,7 +178,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
 
         <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
 
-        {/* Category filter */}
         <FilterBar>
           <FilterPill active={catFilter === 'all'} label="All" onClick={() => setCatFilter('all')} />
           {categories.map((c) => (
@@ -186,14 +187,12 @@ export default function TemplateForm({ template, locations, departments, onSave,
           ))}
         </FilterBar>
 
-        {/* Selection filter */}
         <FilterBar>
           <FilterPill active={selectionFilter === 'all'} label={`All (${allProducts.length})`} onClick={() => setSelectionFilter('all')} />
           <FilterPill active={selectionFilter === 'selected'} label={`Selected (${selectedCount})`} onClick={() => setSelectionFilter('selected')} />
           <FilterPill active={selectionFilter === 'unselected'} label={`Unselected (${allProducts.length - selectedCount})`} onClick={() => setSelectionFilter('unselected')} />
         </FilterBar>
 
-        {/* Bulk actions */}
         <div className="flex gap-2 px-4 pb-2">
           <button onClick={selectAllVisible}
             className="flex-1 py-2 rounded-lg bg-orange-50 border border-orange-200 text-orange-700 text-[12px] font-semibold active:bg-orange-100">
@@ -205,7 +204,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
           </button>
         </div>
 
-        {/* Quick add by category */}
         {catFilter !== 'all' && (
           <div className="px-4 pb-2">
             <button onClick={() => selectByCategory(Number(catFilter))}
@@ -215,7 +213,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
           </div>
         )}
 
-        {/* Product list */}
         <div className="flex-1 overflow-y-auto px-4 pb-24">
           {loadingProducts ? <Spinner /> : filteredProducts.length === 0 ? (
             <div className="text-center py-12 text-[13px] text-gray-400">No products match filters</div>
@@ -230,7 +227,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
                     className={`flex items-center gap-3 py-3 border-b border-gray-100 text-left active:bg-gray-50 transition-colors ${
                       isSelected ? '' : 'opacity-60'
                     }`}>
-                    {/* Checkbox */}
                     <div className={`w-6 h-6 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
                       isSelected ? 'bg-orange-500 border-orange-500' : 'border-gray-300 bg-white'
                     }`}>
@@ -251,7 +247,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
           )}
         </div>
 
-        {/* Bottom bar */}
         <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
           <button onClick={() => setStep('config')}
             className="w-full py-4 rounded-xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all">
@@ -270,7 +265,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
       />
 
       <div className="flex-1 overflow-y-auto px-5 pt-4 pb-28">
-        {/* Name */}
         <div className="mb-5">
           <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">List name</label>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)}
@@ -278,7 +272,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
             className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-orange-400 transition-colors" />
         </div>
 
-        {/* Frequency */}
         <div className="mb-5">
           <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Frequency</label>
           <div className="flex gap-2 flex-wrap">
@@ -295,7 +288,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
           </div>
         </div>
 
-        {/* Location */}
         <div className="mb-5">
           <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Location</label>
           <div className="flex gap-2 flex-wrap">
@@ -312,7 +304,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
           </div>
         </div>
 
-        {/* Products */}
         <div className="mb-5">
           <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Products</label>
           <button onClick={() => setStep('products')}
@@ -325,12 +316,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
                 <div className="text-[12px] text-gray-500 mt-0.5">
                   {selectedCount === 0
                     ? 'Tap to browse and pick products for this list'
-                    : (() => {
-                        const cats = new Set(
-                          allProducts.filter(p => selectedProductIds.has(p.id)).map(p => p.categ_id?.[1]).filter(Boolean)
-                        );
-                        return `From: ${[...cats].slice(0, 3).join(', ')}${cats.size > 3 ? ` +${cats.size - 3} more` : ''}`;
-                      })()
+                    : getSelectedCategorySummary()
                   }
                 </div>
               </div>
@@ -352,7 +338,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
           )}
         </div>
 
-        {/* Assign to */}
         <div className="mb-5">
           <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Assign to</label>
           <div className="flex gap-2 mb-3 flex-wrap">
@@ -405,7 +390,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
           )}
         </div>
 
-        {/* Active toggle (edit only) */}
         {isEdit && (
           <div className="mb-5">
             <button onClick={() => setActive(!active)}
@@ -418,7 +402,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
           </div>
         )}
 
-        {/* Summary */}
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <p className="text-[11px] font-semibold tracking-wide uppercase text-gray-400 mb-2">Summary</p>
           <div className="flex flex-col gap-1.5 text-[13px]">
@@ -454,7 +437,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
         </div>
       </div>
 
-      {/* Save button */}
       <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
         <button onClick={handleSubmit} disabled={saving || !canSave}
           className="w-full py-4 rounded-xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-50">
