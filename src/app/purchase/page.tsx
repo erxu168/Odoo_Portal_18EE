@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Numpad from '@/components/ui/Numpad';
+import OrdersDashboard from '@/components/purchase/OrdersDashboard';
 
 // Types
 interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; min_order_value: number; approval_required: number; send_method: string; }
@@ -14,7 +15,7 @@ interface ReceiptLine { id: number; product_id: number; product_name: string; pr
 interface OdooProduct { id: number; name: string; uom: string; category_name: string; price: number; }
 
 type Tab = 'order' | 'cart' | 'receive' | 'history';
-type Screen = 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide';
+type Screen = 'dashboard' | 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide';
 
 const LOCATIONS = [
   { id: 32, name: 'SSAM', key: 'SSAM' },
@@ -24,7 +25,7 @@ const LOCATIONS = [
 export default function PurchasePage() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('order');
-  const [screen, setScreen] = useState<Screen>('suppliers');
+  const [screen, setScreen] = useState<Screen>('dashboard');
   const [locationId, setLocationId] = useState(32);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -88,7 +89,7 @@ export default function PurchasePage() {
     try { const r = await fetch(`/api/purchase/tax?product_ids=${uncached.join(',')}`); const d = await r.json(); if (d.taxes) setTaxRates(prev => ({ ...prev, ...d.taxes })); } catch (e) { void e; }
   }, [taxRates]);
 
-  useEffect(() => { fetchSuppliers(); fetchCart(); }, [fetchSuppliers, fetchCart]);
+  useEffect(() => { fetchSuppliers(); fetchCart(); fetchPending(); }, [fetchSuppliers, fetchCart, fetchPending]);
   useEffect(() => { if (tab === 'history') fetchOrders(); if (tab === 'receive') fetchPending(); }, [locationId, tab, fetchOrders, fetchPending]);
   useEffect(() => { if ((tab === 'cart' || screen === 'review') && carts.length > 0) { const ids = carts.flatMap(c => c.items.map((i: any) => i.product_id)); if (ids.length > 0) fetchTaxRates(ids); } }, [tab, screen, carts, fetchTaxRates]);
 
@@ -229,7 +230,6 @@ export default function PurchasePage() {
   );
 
   const LocationPicker = () => (<div className="bg-[#1A1F2E] px-5 pb-3 flex gap-2 relative">{LOCATIONS.map(loc => (<button key={loc.id} onClick={() => setLocationId(loc.id)} className={`px-4 py-1.5 rounded-full text-[11px] font-bold transition-all ${locationId === loc.id ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/45'}`}>{loc.name}</button>))}</div>);
-  const Tabs = () => (<div className="flex gap-1 px-4 py-2.5 bg-white border-b border-gray-200 overflow-x-auto">{(['order', 'cart', 'receive', 'history'] as Tab[]).map(t => (<button key={t} onClick={() => changeTab(t)} className={`px-3.5 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-all ${tab === t ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'}`}>{t === 'order' ? 'Order' : t === 'cart' ? `Cart${cartTotal.items > 0 ? ` (${cartTotal.items})` : ''}` : t === 'receive' ? 'Receive' : 'History'}</button>))}</div>);
   const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) => (<div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-orange-400 transition-colors mb-3"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/><path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg><input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="flex-1 bg-transparent outline-none text-[14px] text-[#1F2933] placeholder-gray-400" />{value && <button onClick={() => onChange('')} className="text-gray-400 text-[18px]">&times;</button>}</div>);
   const StatusBadge = ({ status }: { status: string }) => { const m: Record<string, [string, string]> = { pending_approval: ['bg-amber-100 text-amber-800', 'Awaiting approval'], approved: ['bg-blue-100 text-blue-800', 'Approved'], sent: ['bg-blue-100 text-blue-800', 'Sent'], received: ['bg-green-100 text-green-800', 'Delivered'], partial: ['bg-amber-100 text-amber-800', 'Partial'], cancelled: ['bg-red-100 text-red-800', 'Cancelled'], draft: ['bg-gray-100 text-gray-700', 'Draft'] }; const [cls, label] = m[status] || ['bg-gray-100 text-gray-700', status]; return <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${cls}`}>{label}</span>; };
 
@@ -248,7 +248,6 @@ export default function PurchasePage() {
             <div className="flex-1 min-w-0"><div className="text-[14px] font-bold text-[#1F2933] truncate">{s.name}</div><div className="text-[11px] text-gray-500 mt-0.5">{s.product_count} products in guide</div>{dayStr && <div className="text-[10px] font-semibold text-blue-600 mt-1">Orders: {dayStr}</div>}</div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>
           </button>); })}
-        {isManager && <div className="text-center mt-4"><button onClick={() => setScreen('manage')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage guides &amp; settings</button></div>}
       </>)}
     </div>);
   };
@@ -317,7 +316,6 @@ export default function PurchasePage() {
                 </div>
               </div>))}
           </div>
-          {/* Running total */}
           <div className="flex justify-between items-center px-3.5 py-2 mt-2 bg-gray-50 rounded-xl border border-gray-100">
             <span className="text-[12px] text-gray-500">{cart.item_count} items</span>
             <span className="text-[14px] font-bold font-mono text-[#1F2933]">&euro;{net.toFixed(2)}</span>
@@ -330,7 +328,7 @@ export default function PurchasePage() {
     </div>);
   };
 
-  // ============== REVIEW ORDER (read-only, Choco-style clean layout) ==============
+  // ============== REVIEW ORDER ==============
   const ReviewOrder = () => {
     if (!reviewCart) return null;
     const cart = reviewCart;
@@ -338,7 +336,6 @@ export default function PurchasePage() {
     const belowMin = cart.min_order_value > 0 && net < cart.min_order_value;
 
     return (<div className="px-4 py-3 pb-28">
-      {/* Supplier info card */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3">
         <div className="flex justify-between items-start mb-2">
           <div className="text-[15px] font-bold text-[#1F2933]">{cart.supplier_name}</div>
@@ -351,10 +348,7 @@ export default function PurchasePage() {
           {cart.approval_required === 1 && <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-amber-100 text-amber-800">Approval required</span>}
         </div>
       </div>
-
       {belowMin && (<div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 mb-3 text-[11px] text-amber-800"><span>&#9888;&#65039;</span> Min. order: &euro;{cart.min_order_value.toFixed(2)}. You need &euro;{(cart.min_order_value - net).toFixed(2)} more.</div>)}
-
-      {/* Clean read-only line items */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
         {cart.items.map((item: any) => (
           <div key={item.id} className="flex justify-between items-start py-3 border-b border-gray-100 last:border-0">
@@ -366,15 +360,11 @@ export default function PurchasePage() {
           </div>
         ))}
       </div>
-
-      {/* Tax summary */}
       <div className="bg-gray-50 rounded-xl px-3.5 py-2.5 mt-2 border border-gray-100">
         <div className="flex justify-between text-[12px] text-gray-500"><span>Subtotal (net)</span><span className="font-mono">&euro;{net.toFixed(2)}</span></div>
         {Object.entries(taxByRate).sort(([a],[b]) => Number(a)-Number(b)).map(([r, amt]) => (<div key={r} className="flex justify-between text-[11px] text-gray-400"><span>{r}% MwSt</span><span className="font-mono">&euro;{(amt as number).toFixed(2)}</span></div>))}
         <div className="flex justify-between text-[14px] font-bold text-[#1F2933] pt-1 border-t border-gray-200 mt-1"><span>Total (gross)</span><span className="font-mono">&euro;{gross.toFixed(2)}</span></div>
       </div>
-
-      {/* Fixed bottom: single Send CTA */}
       <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
         <button onClick={() => {
           const msg = belowMin
@@ -459,19 +449,20 @@ export default function PurchasePage() {
   // ============== RENDER ==============
   return (
     <div className="min-h-screen bg-[#F6F7F9]">
-      {screen === 'guide' ? (<><Header title={guideSupplierName} subtitle={`${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => { setScreen('suppliers'); setTab('order'); }} /><OrderGuide /></>
-      ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => { setScreen('suppliers'); setTab('order'); }} /><LocationPicker /><ManageScreen /></>
+      {screen === 'guide' ? (<><Header title={guideSupplierName} subtitle={`${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('dashboard')} /><OrderGuide /></>
+      ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => setScreen('dashboard')} /><LocationPicker /><ManageScreen /></>
       ) : screen === 'manage-guide' ? (<><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('manage')} /><ManageGuideScreen /></>
-      ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); setTab('cart'); }} /><ReviewOrder /></>
+      ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); }} /><ReviewOrder /></>
       ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSent /></>
-      ) : screen === 'order-detail' ? (<><Header title="Order details" showBack onBack={() => { setScreen('history'); setTab('history'); }} /><OrderDetail /></>
-      ) : screen === 'receive-check' ? (<><Header title={selectedOrder?.supplier_name || 'Receive'} subtitle={selectedOrder?.odoo_po_name || ''} showBack onBack={() => { setScreen('receive-list'); setTab('receive'); }} /><ReceiveCheck /></>
+      ) : screen === 'order-detail' ? (<><Header title="Order details" showBack onBack={() => { setScreen('history'); }} /><OrderDetail /></>
+      ) : screen === 'receive-check' ? (<><Header title={selectedOrder?.supplier_name || 'Receive'} subtitle={selectedOrder?.odoo_po_name || ''} showBack onBack={() => { setScreen('receive-list'); }} /><ReceiveCheck /></>
       ) : screen === 'receive-issue' ? (<><Header title="Report issue" showBack onBack={() => setScreen('receive-check')} /><ReceiveIssue /></>
-      ) : (<><Header title="Purchase" subtitle="Order from your suppliers" /><LocationPicker /><Tabs />
-        {tab === 'order' && <SupplierList />}
-        {tab === 'cart' && <CartView />}
-        {tab === 'receive' && <ReceiveList />}
-        {tab === 'history' && <HistoryView />}
+      ) : screen === 'suppliers' ? (<><Header title="Place Order" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><SupplierList /></>
+      ) : screen === 'cart' ? (<><Header title="Cart" subtitle={`${locName} \u2022 ${cartTotal.items} items`} showBack onBack={() => setScreen('dashboard')} /><CartView /></>
+      ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><ReceiveList /></>
+      ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><HistoryView /></>
+      ) : (<><Header title="Purchase" subtitle="Order from your suppliers" /><LocationPicker />
+        <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} onNavigate={changeTab} isManager={isManager} onManage={() => setScreen('manage')} locationName={locName} />
       </>)}
       <Numpad open={numpadOpen} value={numpadValue} label={numpadProduct?.product_name} sublabel={numpadProduct?.product_uom} onKey={numpadKey} onConfirm={confirmNumpad} onClose={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }} />
       {confirmDialog && <ConfirmDialog title={confirmDialog.title} message={confirmDialog.message} confirmLabel={confirmDialog.confirmLabel} cancelLabel={confirmDialog.cancelLabel} variant={confirmDialog.variant} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
