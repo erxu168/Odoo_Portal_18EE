@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Numpad from '@/components/ui/Numpad';
+import LocationDropdown from '@/components/ui/LocationDropdown';
 import OrdersDashboard from '@/components/purchase/OrdersDashboard';
 
 // Types
@@ -218,18 +219,22 @@ export default function PurchasePage() {
   const WarningIcon = ({ color = '#D97706' }: { color?: string }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>;
   const TrashIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>;
 
-  const Header = ({ title, subtitle, showBack, onBack }: { title: string; subtitle?: string; showBack?: boolean; onBack?: () => void }) => (
-    <div className="bg-[#1A1F2E] px-5 pt-12 pb-0 relative overflow-hidden">
+  // Header with optional right-side element (location dropdown, etc.)
+  const Header = ({ title, subtitle, showBack, onBack, rightElement }: { title: string; subtitle?: string; showBack?: boolean; onBack?: () => void; rightElement?: React.ReactNode }) => (
+    <div className="bg-[#1A1F2E] px-5 pt-12 pb-3 relative overflow-hidden">
       <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
-      <div className="flex items-center gap-3 relative pb-3">
+      <div className="flex items-center gap-3 relative">
         <button onClick={showBack ? onBack : goHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors">{showBack ? <BackIcon /> : <HomeIcon />}</button>
-        <div className="flex-1"><h1 className="text-[20px] font-bold text-white">{title}</h1>{subtitle && <p className="text-[12px] text-white/45 mt-0.5">{subtitle}</p>}</div>
-        {showBack && <button onClick={goHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors" title="Dashboard"><HomeIcon /></button>}
+        <div className="flex-1 min-w-0"><h1 className="text-[20px] font-bold text-white truncate">{title}</h1>{subtitle && <p className="text-[12px] text-white/45 mt-0.5">{subtitle}</p>}</div>
+        {rightElement}
+        {showBack && !rightElement && <button onClick={goHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors" title="Dashboard"><HomeIcon /></button>}
       </div>
     </div>
   );
 
-  const LocationPicker = () => (<div className="bg-[#1A1F2E] px-5 pb-3 flex gap-2 relative">{LOCATIONS.map(loc => (<button key={loc.id} onClick={() => setLocationId(loc.id)} className={`px-4 py-1.5 rounded-full text-[11px] font-bold transition-all ${locationId === loc.id ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/45'}`}>{loc.name}</button>))}</div>);
+  // Location dropdown element for headers that need it
+  const locDropdown = <LocationDropdown locations={LOCATIONS} selectedId={locationId} onChange={setLocationId} variant="dark" />;
+
   const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) => (<div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-orange-400 transition-colors mb-3"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/><path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg><input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="flex-1 bg-transparent outline-none text-[14px] text-[#1F2933] placeholder-gray-400" />{value && <button onClick={() => onChange('')} className="text-gray-400 text-[18px]">&times;</button>}</div>);
   const StatusBadge = ({ status }: { status: string }) => { const m: Record<string, [string, string]> = { pending_approval: ['bg-amber-100 text-amber-800', 'Awaiting approval'], approved: ['bg-blue-100 text-blue-800', 'Approved'], sent: ['bg-blue-100 text-blue-800', 'Sent'], received: ['bg-green-100 text-green-800', 'Delivered'], partial: ['bg-amber-100 text-amber-800', 'Partial'], cancelled: ['bg-red-100 text-red-800', 'Cancelled'], draft: ['bg-gray-100 text-gray-700', 'Draft'] }; const [cls, label] = m[status] || ['bg-gray-100 text-gray-700', status]; return <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${cls}`}>{label}</span>; };
 
@@ -282,7 +287,7 @@ export default function PurchasePage() {
     </>);
   };
 
-  // ============== CART (edit mode: steppers, trash, delivery date/note) ==============
+  // ============== CART ==============
   const CartView = () => {
     return (
     <div className="px-4 py-3 pb-20">
@@ -450,7 +455,7 @@ export default function PurchasePage() {
   return (
     <div className="min-h-screen bg-[#F6F7F9]">
       {screen === 'guide' ? (<><Header title={guideSupplierName} subtitle={`${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('dashboard')} /><OrderGuide /></>
-      ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => setScreen('dashboard')} /><LocationPicker /><ManageScreen /></>
+      ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => setScreen('dashboard')} rightElement={locDropdown} /><ManageScreen /></>
       ) : screen === 'manage-guide' ? (<><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('manage')} /><ManageGuideScreen /></>
       ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); }} /><ReviewOrder /></>
       ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSent /></>
@@ -461,7 +466,7 @@ export default function PurchasePage() {
       ) : screen === 'cart' ? (<><Header title="Cart" subtitle={`${locName} \u2022 ${cartTotal.items} items`} showBack onBack={() => setScreen('dashboard')} /><CartView /></>
       ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><ReceiveList /></>
       ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><HistoryView /></>
-      ) : (<><Header title="Purchase" subtitle="Order from your suppliers" /><LocationPicker />
+      ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={locDropdown} />
         <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} onNavigate={changeTab} isManager={isManager} onManage={() => setScreen('manage')} locationName={locName} />
       </>)}
       <Numpad open={numpadOpen} value={numpadValue} label={numpadProduct?.product_name} sublabel={numpadProduct?.product_uom} onKey={numpadKey} onConfirm={confirmNumpad} onClose={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }} />
