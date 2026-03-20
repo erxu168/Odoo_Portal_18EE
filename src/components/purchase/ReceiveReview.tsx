@@ -25,7 +25,7 @@ interface ReceiveReviewProps {
   recvOrder: any;
   receipt: any;
   isManager: boolean;
-  onConfirm: (closeOrder: boolean) => void;
+  onConfirm: (closeOrder: boolean, deliveryNotePhoto?: string) => void;
   onBack: () => void;
   onSetConfirmDialog: (dialog: any) => void;
 }
@@ -156,7 +156,6 @@ export default function ReceiveReview({
           return (
             <div key={line.id} className="py-3 border-b border-gray-100 last:border-0">
               <div className="flex items-start gap-2.5">
-                {/* Checkmark toggle */}
                 <button
                   onClick={() => onToggleCheck(line.id)}
                   className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
@@ -169,8 +168,6 @@ export default function ReceiveReview({
                     <path d="M20 6L9 17l-5-5" />
                   </svg>
                 </button>
-
-                {/* Product info */}
                 <div className="flex-1 min-w-0">
                   <div className="text-[13px] font-semibold text-[#1F2933]">{line.product_name}</div>
                   <div className="flex items-center gap-2 mt-0.5">
@@ -204,8 +201,6 @@ export default function ReceiveReview({
                     </div>
                   )}
                 </div>
-
-                {/* Line subtotal */}
                 {line.price && line.price > 0 && qty !== null && qty > 0 && (
                   <div className="text-[12px] font-bold font-mono text-[#1F2933] flex-shrink-0">
                     &euro;{(qty * line.price).toFixed(2)}
@@ -219,7 +214,10 @@ export default function ReceiveReview({
 
       {/* Delivery note photo */}
       <div className="mt-4">
-        <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Delivery note photo (optional)</div>
+        <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
+          Delivery note photo
+          {deliveryNotePhoto ? <span className="text-green-600 ml-2">Attached</span> : <span className="ml-1 font-normal normal-case">(recommended)</span>}
+        </div>
         {deliveryNotePhoto ? (
           <div className="relative">
             <img src={deliveryNotePhoto} alt="Delivery note" className="w-full h-40 object-cover rounded-xl border border-gray-200" />
@@ -235,6 +233,10 @@ export default function ReceiveReview({
                 <input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" />
               </label>
             </div>
+            <div className="flex items-center gap-2 mt-2 px-1">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+              <span className="text-[11px] text-green-700">Photo will be uploaded to Odoo as a log note on this order</span>
+            </div>
           </div>
         ) : (
           <label className="block cursor-pointer">
@@ -244,7 +246,7 @@ export default function ReceiveReview({
                 <circle cx="12" cy="13" r="4" />
               </svg>
               <div className="text-[12px] font-semibold text-[#1F2933]">Take photo of delivery note</div>
-              <div className="text-[10px] text-gray-400 mt-0.5">Camera or gallery</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">Saved to Odoo as proof of delivery</div>
             </div>
             <input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" />
           </label>
@@ -289,7 +291,7 @@ export default function ReceiveReview({
                     variant: 'primary',
                     onConfirm: () => {
                       onSetConfirmDialog(null);
-                      onConfirm(true);
+                      onConfirm(true, deliveryNotePhoto || undefined);
                     },
                   })
                 }
@@ -307,7 +309,7 @@ export default function ReceiveReview({
                     variant: 'primary',
                     onConfirm: () => {
                       onSetConfirmDialog(null);
-                      onConfirm(false);
+                      onConfirm(false, deliveryNotePhoto || undefined);
                     },
                   })
                 }
@@ -317,7 +319,9 @@ export default function ReceiveReview({
                 Keep as backorder
               </button>
             </div>
-            <p className="text-[11px] text-gray-400 text-center mt-1.5">Confirming will update stock in Odoo.</p>
+            <p className="text-[11px] text-gray-400 text-center mt-1.5">
+              {deliveryNotePhoto ? 'Photo + receipt will be logged in Odoo.' : 'Confirming will update stock in Odoo.'}
+            </p>
           </>
         ) : (
           <p className="text-[12px] text-gray-500 text-center py-2">A manager must confirm receipt to update stock.</p>
