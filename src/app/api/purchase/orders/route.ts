@@ -1,11 +1,11 @@
 /**
  * /api/purchase/orders
- * GET  - list orders for a location
+ * GET  - list orders for a location (optionally single order by id)
  * POST - create order from cart (submit)
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { createOrder, listOrders, getOrder, updateOrderStatus, clearCart, getCartWithItems, getSupplier, countPendingApprovals } from '@/lib/purchase-db';
+import { createOrder, listOrders, getOrder, updateOrderStatus, clearCart, getCartWithItems, getSupplier, countPendingApprovals, checkDuplicateOrder } from '@/lib/purchase-db';
 import { getOdoo } from '@/lib/odoo';
 import { LOCATIONS } from '@/types/purchase';
 
@@ -15,8 +15,16 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const locationId = parseInt(searchParams.get('location_id') || '0');
+  const orderId = searchParams.get('id');
   const status = searchParams.get('status') || undefined;
   const limit = parseInt(searchParams.get('limit') || '50');
+
+  // Single order by id
+  if (orderId) {
+    const order = getOrder(parseInt(orderId));
+    if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    return NextResponse.json({ order });
+  }
 
   if (!locationId) return NextResponse.json({ error: 'location_id required' }, { status: 400 });
 
@@ -35,22 +43,22 @@ export async function POST(request: Request) {
 
   if (!cart_id) return NextResponse.json({ error: 'cart_id required' }, { status: 400 });
 
-  // Get cart with items
   const cart = getCartWithItems(cart_id);
   if (!cart || !cart.items || cart.items.length === 0) {
     return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
   }
 
-  // Get supplier to check approval requirement
   const supplier = getSupplier(cart.supplier_id) as any;
   if (!supplier) return NextResponse.json({ error: 'Supplier not found' }, { status: 404 });
 
+  // Check duplicate
+  const isDuplicate = checkDuplicateOrder(cart.supplier_id, cart.location_id);
+
   const needsApproval = supplier.approval_required === 1 && !hasRole(user, 'manager');
-  const status = needsApproval ? 'pending_approval' : 'approved';
+  const orderStatus = needsApproval ? 'pending_approval' : 'approved';
 
   const total = cart.items.reduce((s: number, i: any) => s + (i.quantity * i.price), 0);
 
-  // Create portal order
   const orderId = createOrder({
     supplier_id: cart.supplier_id,
     location_id: cart.location_id,
@@ -58,7 +66,7 @@ export async function POST(request: Request) {
     order_note: order_note || '',
     total_amount: total,
     ordered_by: user.id,
-    status,
+    status: orderStatus,
     lines: cart.items.map((i: any) => ({
       product_id: i.product_id,
       product_name: i.product_name,
@@ -68,8 +76,8 @@ export async function POST(request: Request) {
     })),
   });
 
-  // If approved immediately, create Odoo PO and send
-  if (status === 'approved') {
+  // If approved, create Odoo PO
+  if (orderStatus === 'approved') {
     try {
       const poResult = await createOdooPO(orderId, cart, supplier);
       if (poResult) {
@@ -81,26 +89,24 @@ export async function POST(request: Request) {
       }
     } catch (e) {
       console.error('Failed to create Odoo PO:', e);
-      // Order still created in portal, just not synced
     }
   }
 
-  // Clear the cart
   clearCart(cart_id);
 
   const order = getOrder(orderId);
-  return NextResponse.json({ order, message: needsApproval ? 'Order queued for approval' : 'Order sent' }, { status: 201 });
+  return NextResponse.json({
+    order,
+    message: needsApproval ? 'Order queued for approval' : 'Order sent',
+    duplicate_warning: isDuplicate,
+  }, { status: 201 });
 }
 
-/**
- * Create a draft purchase.order in Odoo 18 EE.
- */
 async function createOdooPO(orderId: number, cart: any, supplier: any) {
   const odoo = getOdoo();
   const locKey = cart.location_id === 32 ? 'SSAM' : 'GBM38';
   const loc = LOCATIONS[locKey as keyof typeof LOCATIONS];
 
-  // Build order lines in Odoo format: (0, 0, { ... })
   const order = getOrder(orderId);
   if (!order) return null;
 
@@ -121,12 +127,10 @@ async function createOdooPO(orderId: number, cart: any, supplier: any) {
     origin: `Portal Order #${orderId}`,
   });
 
-  // Read back the PO name
   const pos = await odoo.searchRead('purchase.order',
     [['id', '=', poId]], ['name'], { limit: 1 });
   const poName = pos?.[0]?.name || `PO-${poId}`;
 
-  // Confirm the PO in Odoo (draft -> purchase)
   try {
     await odoo.call('purchase.order', 'button_confirm', [[poId]]);
   } catch (e) {

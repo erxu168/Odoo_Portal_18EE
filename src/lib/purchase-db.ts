@@ -19,7 +19,6 @@ function db(): Database.Database {
 // ============================================================
 export function initPurchaseTables() {
   db().exec(`
-    -- Portal-managed suppliers
     CREATE TABLE IF NOT EXISTS purchase_suppliers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       odoo_partner_id INTEGER NOT NULL,
@@ -37,7 +36,6 @@ export function initPurchaseTables() {
       created_at TEXT NOT NULL
     );
 
-    -- Order guides (one per supplier per location)
     CREATE TABLE IF NOT EXISTS purchase_order_guides (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       supplier_id INTEGER NOT NULL REFERENCES purchase_suppliers(id),
@@ -46,7 +44,6 @@ export function initPurchaseTables() {
       created_at TEXT NOT NULL
     );
 
-    -- Products in each guide
     CREATE TABLE IF NOT EXISTS purchase_guide_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       guide_id INTEGER NOT NULL REFERENCES purchase_order_guides(id) ON DELETE CASCADE,
@@ -59,7 +56,6 @@ export function initPurchaseTables() {
       category_name TEXT NOT NULL DEFAULT ''
     );
 
-    -- Shared carts (per location per supplier)
     CREATE TABLE IF NOT EXISTS purchase_carts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       location_id INTEGER NOT NULL,
@@ -70,7 +66,6 @@ export function initPurchaseTables() {
       created_at TEXT NOT NULL
     );
 
-    -- Cart items
     CREATE TABLE IF NOT EXISTS purchase_cart_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       cart_id INTEGER NOT NULL REFERENCES purchase_carts(id) ON DELETE CASCADE,
@@ -83,7 +78,6 @@ export function initPurchaseTables() {
       updated_at TEXT NOT NULL
     );
 
-    -- Purchase orders
     CREATE TABLE IF NOT EXISTS purchase_orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       odoo_po_id INTEGER,
@@ -96,11 +90,12 @@ export function initPurchaseTables() {
       total_amount REAL NOT NULL DEFAULT 0,
       ordered_by INTEGER NOT NULL,
       approved_by INTEGER,
+      cancelled_by INTEGER,
+      cancelled_at TEXT,
       sent_at TEXT,
       created_at TEXT NOT NULL
     );
 
-    -- Order lines
     CREATE TABLE IF NOT EXISTS purchase_order_lines (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       order_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
@@ -112,10 +107,10 @@ export function initPurchaseTables() {
       subtotal REAL NOT NULL DEFAULT 0
     );
 
-    -- Receipts
     CREATE TABLE IF NOT EXISTS purchase_receipts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       order_id INTEGER NOT NULL REFERENCES purchase_orders(id),
+      location_id INTEGER NOT NULL DEFAULT 32,
       status TEXT NOT NULL DEFAULT 'pending',
       received_by INTEGER NOT NULL,
       confirmed_by INTEGER,
@@ -125,13 +120,13 @@ export function initPurchaseTables() {
       confirmed_at TEXT
     );
 
-    -- Receipt lines
     CREATE TABLE IF NOT EXISTS purchase_receipt_lines (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       receipt_id INTEGER NOT NULL REFERENCES purchase_receipts(id) ON DELETE CASCADE,
       order_line_id INTEGER NOT NULL,
       product_id INTEGER NOT NULL,
       product_name TEXT NOT NULL,
+      product_uom TEXT NOT NULL DEFAULT 'Units',
       ordered_qty REAL NOT NULL,
       received_qty REAL,
       difference REAL NOT NULL DEFAULT 0,
@@ -139,6 +134,12 @@ export function initPurchaseTables() {
       issue_type TEXT,
       issue_photo TEXT,
       issue_notes TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key TEXT NOT NULL UNIQUE,
+      value TEXT NOT NULL DEFAULT ''
     );
 
     CREATE INDEX IF NOT EXISTS idx_guides_supplier ON purchase_order_guides(supplier_id, location_id);
@@ -150,6 +151,12 @@ export function initPurchaseTables() {
     CREATE INDEX IF NOT EXISTS idx_receipts_order ON purchase_receipts(order_id);
     CREATE INDEX IF NOT EXISTS idx_receipt_lines ON purchase_receipt_lines(receipt_id);
   `);
+
+  // Migration: add columns that may not exist on older DBs
+  try { db().exec('ALTER TABLE purchase_receipts ADD COLUMN location_id INTEGER NOT NULL DEFAULT 32'); } catch (_e) { /* already exists */ }
+  try { db().exec('ALTER TABLE purchase_receipt_lines ADD COLUMN product_uom TEXT NOT NULL DEFAULT "Units"'); } catch (_e) { /* already exists */ }
+  try { db().exec('ALTER TABLE purchase_orders ADD COLUMN cancelled_by INTEGER'); } catch (_e) { /* already exists */ }
+  try { db().exec('ALTER TABLE purchase_orders ADD COLUMN cancelled_at TEXT'); } catch (_e) { /* already exists */ }
 }
 
 // ============================================================
@@ -186,10 +193,11 @@ export function createSupplier(data: {
 }
 
 export function updateSupplier(id: number, data: Record<string, any>) {
+  const allowed = ['name','email','phone','send_method','whatsapp_number','min_order_value','order_days','lead_time_days','approval_required','location_id','active'];
   const sets: string[] = [];
   const vals: any[] = [];
   for (const [k, v] of Object.entries(data)) {
-    if (v !== undefined) { sets.push(`${k} = ?`); vals.push(v); }
+    if (v !== undefined && allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v); }
   }
   if (sets.length === 0) return;
   vals.push(id);
@@ -269,7 +277,7 @@ export function getCartWithItems(cartId: number) {
 
 export function getAllCartsForLocation(locationId: number) {
   const carts = db().prepare(
-    "SELECT c.*, s.name as supplier_name FROM purchase_carts c JOIN purchase_suppliers s ON s.id = c.supplier_id WHERE c.location_id = ? AND c.status = 'draft'"
+    "SELECT c.*, s.name as supplier_name, s.send_method, s.min_order_value, s.approval_required FROM purchase_carts c JOIN purchase_suppliers s ON s.id = c.supplier_id WHERE c.location_id = ? AND c.status = 'draft'"
   ).all(locationId) as any[];
   return carts.map(cart => {
     const items = db().prepare(
@@ -303,8 +311,12 @@ export function upsertCartItem(cartId: number, productId: number, quantity: numb
     `).run(cartId, productId, extra?.product_name || '', extra?.product_uom || 'Units',
       quantity, extra?.price || 0, userId, now);
   }
-  // Update cart timestamp
   db().prepare('UPDATE purchase_carts SET updated_at = ? WHERE id = ?').run(now, cartId);
+}
+
+export function removeCartItem(cartId: number, productId: number) {
+  db().prepare('DELETE FROM purchase_cart_items WHERE cart_id = ? AND product_id = ?').run(cartId, productId);
+  db().prepare('UPDATE purchase_carts SET updated_at = ? WHERE id = ?').run(nowISO(), cartId);
 }
 
 export function clearCart(cartId: number) {
@@ -343,7 +355,9 @@ export function createOrder(data: {
 }
 
 export function getOrder(id: number) {
-  const order = db().prepare('SELECT * FROM purchase_orders WHERE id = ?').get(id) as any;
+  const order = db().prepare(
+    'SELECT o.*, s.name as supplier_name FROM purchase_orders o JOIN purchase_suppliers s ON s.id = o.supplier_id WHERE o.id = ?'
+  ).get(id) as any;
   if (!order) return null;
   order.lines = db().prepare('SELECT * FROM purchase_order_lines WHERE order_id = ?').all(id);
   return order;
@@ -369,6 +383,21 @@ export function updateOrderStatus(id: number, status: string, extra?: { odoo_po_
   db().prepare(`UPDATE purchase_orders SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 }
 
+export function cancelOrder(id: number, userId: number) {
+  const now = nowISO();
+  db().prepare(
+    'UPDATE purchase_orders SET status = ?, cancelled_by = ?, cancelled_at = ? WHERE id = ?'
+  ).run('cancelled', userId, now, id);
+}
+
+export function checkDuplicateOrder(supplierId: number, locationId: number): boolean {
+  const today = new Date().toISOString().split('T')[0];
+  const row = db().prepare(
+    "SELECT COUNT(*) as c FROM purchase_orders WHERE supplier_id = ? AND location_id = ? AND status != 'cancelled' AND created_at >= ?"
+  ).get(supplierId, locationId, today + 'T00:00:00') as any;
+  return (row?.c || 0) > 0;
+}
+
 export function countPendingApprovals(locationId?: number) {
   if (locationId) {
     return (db().prepare(
@@ -386,16 +415,16 @@ export function createReceipt(orderId: number, receivedBy: number) {
   if (!order) return null;
   const now = nowISO();
   const result = db().prepare(
-    'INSERT INTO purchase_receipts (order_id, status, received_by, notes, created_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(orderId, 'pending', receivedBy, '', now);
+    'INSERT INTO purchase_receipts (order_id, location_id, status, received_by, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(orderId, order.location_id, 'pending', receivedBy, '', now);
   const receiptId = result.lastInsertRowid as number;
 
   const insertLine = db().prepare(`
-    INSERT INTO purchase_receipt_lines (receipt_id, order_line_id, product_id, product_name, ordered_qty)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO purchase_receipt_lines (receipt_id, order_line_id, product_id, product_name, product_uom, ordered_qty)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
   for (const line of order.lines) {
-    insertLine.run(receiptId, line.id, line.product_id, line.product_name, line.quantity);
+    insertLine.run(receiptId, line.id, line.product_id, line.product_name, line.product_uom || 'Units', line.quantity);
   }
   return receiptId;
 }
@@ -407,17 +436,22 @@ export function getReceipt(id: number) {
   return receipt;
 }
 
+export function getReceiptByOrder(orderId: number) {
+  const receipt = db().prepare(
+    "SELECT * FROM purchase_receipts WHERE order_id = ? ORDER BY created_at DESC LIMIT 1"
+  ).get(orderId) as any;
+  if (!receipt) return null;
+  receipt.lines = db().prepare('SELECT * FROM purchase_receipt_lines WHERE receipt_id = ?').all(receipt.id);
+  return receipt;
+}
+
 export function updateReceiptLine(lineId: number, data: {
   received_qty?: number; has_issue?: number; issue_type?: string;
   issue_photo?: string; issue_notes?: string;
 }) {
   const sets: string[] = [];
   const vals: any[] = [];
-  if (data.received_qty !== undefined) {
-    sets.push('received_qty = ?', 'difference = received_qty - ordered_qty');
-    vals.push(data.received_qty);
-    // recalc difference after
-  }
+  if (data.received_qty !== undefined) { sets.push('received_qty = ?'); vals.push(data.received_qty); }
   if (data.has_issue !== undefined) { sets.push('has_issue = ?'); vals.push(data.has_issue); }
   if (data.issue_type !== undefined) { sets.push('issue_type = ?'); vals.push(data.issue_type); }
   if (data.issue_photo !== undefined) { sets.push('issue_photo = ?'); vals.push(data.issue_photo); }
@@ -425,8 +459,7 @@ export function updateReceiptLine(lineId: number, data: {
   if (sets.length === 0) return;
   vals.push(lineId);
   db().prepare(`UPDATE purchase_receipt_lines SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
-
-  // Fix difference calc
+  // Recalc difference
   if (data.received_qty !== undefined) {
     db().prepare('UPDATE purchase_receipt_lines SET difference = received_qty - ordered_qty WHERE id = ?').run(lineId);
   }
@@ -439,11 +472,31 @@ export function confirmReceipt(receiptId: number, confirmedBy: number, closeOrde
   ).run('confirmed', confirmedBy, now, receiptId);
 
   const receipt = getReceipt(receiptId);
-  if (receipt && closeOrder) {
-    updateOrderStatus(receipt.order_id, 'received');
-  } else if (receipt && !closeOrder) {
-    updateOrderStatus(receipt.order_id, 'partial');
+  if (receipt) {
+    if (closeOrder) {
+      updateOrderStatus(receipt.order_id, 'received');
+    } else {
+      updateOrderStatus(receipt.order_id, 'partial');
+    }
   }
+}
+
+export function updateReceiptNote(receiptId: number, photo: string) {
+  db().prepare('UPDATE purchase_receipts SET delivery_note_photo = ? WHERE id = ?').run(photo, receiptId);
+}
+
+// ============================================================
+// SETTINGS
+// ============================================================
+export function getSetting(key: string): string {
+  const row = db().prepare('SELECT value FROM purchase_settings WHERE key = ?').get(key) as any;
+  return row?.value || '';
+}
+
+export function setSetting(key: string, value: string) {
+  db().prepare(
+    'INSERT INTO purchase_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?'
+  ).run(key, value, value);
 }
 
 // Init on import
