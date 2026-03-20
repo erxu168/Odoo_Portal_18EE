@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import NumPad from '@/components/ui/NumPad';
+import Numpad from '@/components/ui/Numpad';
 
 interface MoDetailProps {
   moId: number;
@@ -168,13 +168,11 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
   const canCancel = !isDone && !isCancelled;
   const showProduce = !isDraft && !isDone && !isCancelled && (allWosDone || isToClose || workOrders.length === 0);
 
-  // Ingredient picking status — based on 'picked' field, not consumed_qty
   const pickedCount = components.filter((c: any) => c.picked === true).length;
   const totalComps = components.length;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-2">
           <button onClick={onBack} className="flex items-center gap-1 text-orange-600 text-[13px] font-semibold active:opacity-70">
@@ -208,7 +206,6 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         </div>
       )}
 
-      {/* Summary strip */}
       <div className="px-4 py-3">
         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex-1 text-center py-3 border-r border-gray-100">
@@ -226,7 +223,6 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         </div>
       </div>
 
-      {/* Tab selector */}
       <div className="px-4 mb-3">
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
           <button onClick={() => setTab('workorders')}
@@ -240,7 +236,6 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         </div>
       </div>
 
-      {/* Tab content */}
       <div className="px-4 pb-28">
         {tab === 'workorders' && (
           <div className="flex flex-col gap-2">
@@ -366,7 +361,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       )}
 
       {numpadComp && (
-        <NumPad
+        <Numpad
           label={numpadComp.product_id[1]}
           value={numpadComp.picked ? String(numpadComp.consumed_qty || 0) : '0'}
           unit={numpadComp.product_uom?.[1] || 'kg'}

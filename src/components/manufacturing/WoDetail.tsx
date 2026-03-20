@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import NumPad from '@/components/ui/NumPad';
+import Numpad from '@/components/ui/Numpad';
 
 interface WoDetailProps {
   moId: number;
@@ -59,9 +59,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       const thisWo = wos.find((w: any) => w.id === woId);
       setWo(thisWo);
 
-      // Component filtering by operation_id
-      // Rule 1: If this WO has components assigned to it -> show ONLY those
-      // Rule 2: If this WO has NO components assigned -> show entire BOM list
       const allComps = moData.order?.components || [];
       const woOperationId = thisWo?.operation_id?.[0] || null;
 
@@ -375,7 +372,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       )}
 
       {numpadComp && (
-        <NumPad
+        <Numpad
           label={numpadComp.product_id[1]}
           value={numpadComp.picked ? String(numpadComp.consumed_qty || 0) : '0'}
           unit={numpadComp.product_uom?.[1] || 'kg'}
