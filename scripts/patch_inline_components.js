@@ -7,8 +7,9 @@
  * INSIDE PurchasePage. Using <ManageGuideScreen /> creates a new component
  * type on every render, causing React to unmount/remount and lose input focus.
  *
- * Fix: Change <ComponentName /> to {ComponentName()} so React treats the
- * output as inline JSX in the parent tree.
+ * Fix: Context-aware replacement:
+ *   - Inside && expressions: `&& <Comp />` -> `&& Comp()` (no braces)
+ *   - As JSX children: `<Comp />` -> `{Comp()}` (need braces)
  *
  * Run from /opt/krawings-portal:
  *   node scripts/patch_inline_components.js
@@ -21,28 +22,30 @@ let content = fs.readFileSync(FILE, 'utf8');
 const original = content;
 let changes = 0;
 
-const replacements = [
-  ['<SupplierList />', '{SupplierList()}'],
-  ['<OrderGuide />', '{OrderGuide()}'],
-  ['<CartView />', '{CartView()}'],
-  ['<ReviewOrder />', '{ReviewOrder()}'],
-  ['<OrderSent />', '{OrderSent()}'],
-  ['<HistoryView />', '{HistoryView()}'],
-  ['<OrderDetail />', '{OrderDetail()}'],
-  ['<ReceiveList />', '{ReceiveList()}'],
-  ['<ReceiveCheck />', '{ReceiveCheck()}'],
-  ['<ReceiveIssue />', '{ReceiveIssue()}'],
-  ['<ManageScreen />', '{ManageScreen()}'],
-  ['<ManageGuideScreen />', '{ManageGuideScreen()}'],
+// All inline components to fix
+const components = [
+  'SupplierList', 'OrderGuide', 'CartView', 'ReviewOrder',
+  'OrderSent', 'HistoryView', 'OrderDetail', 'ReceiveList',
+  'ReceiveCheck', 'ReceiveIssue', 'ManageScreen', 'ManageGuideScreen',
 ];
 
-for (const [search, replacement] of replacements) {
-  if (content.includes(search)) {
-    content = content.split(search).join(replacement);
+for (const comp of components) {
+  const jsxTag = '<' + comp + ' />';
+
+  // Pass 1: Handle `&& <Comp />` — no braces needed (already in expression)
+  var andPattern = '&& ' + jsxTag;
+  var andReplace = '&& ' + comp + '()';
+  if (content.includes(andPattern)) {
+    content = content.split(andPattern).join(andReplace);
     changes++;
-    console.log('OK: ' + search + ' -> ' + replacement);
-  } else {
-    console.log('SKIP (not found): ' + search);
+    console.log('OK (&&): ' + andPattern + ' -> ' + andReplace);
+  }
+
+  // Pass 2: Handle remaining `<Comp />` as JSX children — need braces
+  if (content.includes(jsxTag)) {
+    content = content.split(jsxTag).join('{' + comp + '()}');
+    changes++;
+    console.log('OK (jsx): ' + jsxTag + ' -> {' + comp + '()}');
   }
 }
 
