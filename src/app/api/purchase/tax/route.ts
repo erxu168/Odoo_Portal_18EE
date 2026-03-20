@@ -11,7 +11,7 @@ import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 
 // Cache tax rates for 1 hour (they rarely change)
-let taxCache: Record<number, number> = {};
+const taxCache: Record&lt;number, number> = {};
 let taxCacheTime = 0;
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
 
       // Get all account.tax records once (usually < 20)
       const allTaxes = await odoo.searchRead('account.tax', [], ['id', 'name', 'amount', 'type_tax_use', 'price_include'], { limit: 50 });
-      const taxMap: Record<number, { amount: number; name: string }> = {};
+      const taxMap: Record&lt;number, { amount: number; name: string }> = {};
       for (const t of (allTaxes || [])) {
         taxMap[t.id] = { amount: t.amount, name: t.name };
       }
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const result: Record<number, number> = {};
+  const result: Record&lt;number, number> = {};
   for (const id of productIds) {
     result[id] = taxCache[id] ?? 0;
   }
