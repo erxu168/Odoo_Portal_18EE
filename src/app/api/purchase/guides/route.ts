@@ -2,11 +2,12 @@
  * /api/purchase/guides
  * GET    - get guide for a supplier+location
  * POST   - add item to guide (manager+)
- * DELETE - remove item from guide (manager+)
+ * DELETE - remove item from guide OR delete entire guide (manager+)
+ * PATCH  - update item price (manager+)
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice } from '@/lib/purchase-db';
+import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice, deleteGuide } from '@/lib/purchase-db';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -58,10 +59,21 @@ export async function DELETE(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const itemId = parseInt(searchParams.get('item_id') || '0');
-  if (!itemId) return NextResponse.json({ error: 'item_id required' }, { status: 400 });
+  const guideId = parseInt(searchParams.get('guide_id') || '0');
 
-  removeGuideItem(itemId);
-  return NextResponse.json({ message: 'Item removed' });
+  // Delete entire guide (and all its items via CASCADE)
+  if (guideId) {
+    deleteGuide(guideId);
+    return NextResponse.json({ message: 'Order list deleted' });
+  }
+
+  // Delete single item
+  if (itemId) {
+    removeGuideItem(itemId);
+    return NextResponse.json({ message: 'Item removed' });
+  }
+
+  return NextResponse.json({ error: 'item_id or guide_id required' }, { status: 400 });
 }
 
 export async function PATCH(request: Request) {
