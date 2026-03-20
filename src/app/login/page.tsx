@@ -9,10 +9,12 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [pendingContact, setPendingContact] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit() {
     setError(null);
+    setPendingContact(null);
     setLoading(true);
 
     try {
@@ -22,6 +24,12 @@ function LoginForm() {
         body: JSON.stringify({ email: email.trim(), password }),
       });
       const data = await res.json();
+
+      if (data.code === 'PENDING') {
+        setPendingContact(data.contact || 'Ethan');
+        setError(null);
+        return;
+      }
 
       if (!res.ok || data.error) {
         setError(data.error || 'Login failed. Check your email and password.');
@@ -42,6 +50,25 @@ function LoginForm() {
     <div className="flex-1 px-6 py-8">
       <h2 className="text-[20px] font-bold text-gray-900 mb-1">Welcome back</h2>
       <p className="text-[13px] text-gray-500 mb-6">Sign in with your staff account</p>
+
+      {/* Pending approval banner */}
+      {pendingContact && (
+        <div className="mb-4 px-4 py-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="#D97706" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+              </svg>
+            </div>
+            <div>
+              <div className="text-[13px] font-semibold text-amber-800">Your account is pending approval</div>
+              <div className="text-[12px] text-amber-700 mt-1 leading-relaxed">
+                Contact <span className="font-semibold">{pendingContact}</span> for faster approval. You'll be able to log in once your account is activated.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[13px]">
@@ -88,12 +115,23 @@ function LoginForm() {
         </button>
       </div>
 
-      <div className="text-center mt-6">
+      <div className="text-center mt-5">
         <button
           onClick={() => router.push('/forgot-password')}
           className="text-[13px] text-orange-600 font-semibold active:opacity-70"
         >
           Forgot your password?
+        </button>
+      </div>
+
+      {/* Register link */}
+      <div className="text-center mt-6 pt-6 border-t border-gray-100">
+        <div className="text-[13px] text-gray-400 mb-2">New here?</div>
+        <button
+          onClick={() => router.push('/register')}
+          className="w-full py-3.5 rounded-xl bg-white border border-gray-200 text-gray-700 text-[14px] font-semibold active:bg-gray-50"
+        >
+          Create an account
         </button>
       </div>
     </div>

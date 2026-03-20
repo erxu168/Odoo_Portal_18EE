@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { countUsersByStatus } from '@/lib/db';
+import { getCurrentUser, hasRole } from '@/lib/auth';
 
 /**
  * GET /api/dashboard
@@ -9,6 +11,7 @@ import { getOdoo } from '@/lib/odoo';
 export async function GET() {
   try {
     const odoo = getOdoo();
+    const user = getCurrentUser();
 
     // ── Live: MO counts from Odoo ──
     let activeMoCount = 0;
@@ -23,7 +26,6 @@ export async function GET() {
       );
       activeMoCount = activeMos.length;
 
-      // Due today or overdue
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
       const dueMos = await odoo.searchRead(
@@ -37,7 +39,6 @@ export async function GET() {
       );
       dueMoCount = dueMos.length;
 
-      // Done today
       const doneMos = await odoo.searchRead(
         'mrp.production',
         [
@@ -50,6 +51,16 @@ export async function GET() {
       doneTodayCount = doneMos.length;
     } catch (e) {
       console.error('Dashboard: failed to fetch MO counts', e);
+    }
+
+    // ── Live: pending registration count (admin/manager only) ──
+    let pendingRegistrations = 0;
+    if (user && hasRole(user, 'admin')) {
+      try {
+        pendingRegistrations = countUsersByStatus('pending');
+      } catch (e) {
+        console.error('Dashboard: failed to count pending registrations', e);
+      }
     }
 
     // ── Mock: shift info (until planning.slot is wired) ──
@@ -99,14 +110,14 @@ export async function GET() {
     return NextResponse.json({
       badges: {
         production: activeMoCount,
-        shifts: 3,       // mock
+        shifts: 3,
         tasks: tasks.overdue,
-        inventory: 0,    // mock
-        repair: 1,       // mock
-        purchase: 4,     // mock
-        leave: 24,       // mock (days remaining)
+        inventory: 0,
+        repair: 1,
+        purchase: 4,
+        leave: 24,
         payroll: 0,
-        contacts: 0,
+        contacts: pendingRegistrations,
         profile: 0,
         settings: 0,
       },
@@ -123,6 +134,7 @@ export async function GET() {
         end: shiftEnd,
       },
       tasks,
+      pendingRegistrations,
     });
   } catch (error: any) {
     console.error('GET /api/dashboard error:', error);
