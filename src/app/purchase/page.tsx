@@ -8,7 +8,7 @@ interface Supplier { id: number; name: string; email: string; product_count: num
 interface GuideItem { id: number; product_id: number; product_name: string; product_uom: string; price: number; price_source: string; category_name: string; }
 interface CartSummary { id: number; supplier_id: number; supplier_name: string; item_count: number; total: number; items: any[]; send_method: string; min_order_value: number; approval_required: number; }
 interface Order { id: number; supplier_name: string; odoo_po_name: string | null; status: string; total_amount: number; created_at: string; lines?: any[]; delivery_date: string | null; order_note: string; location_id: number; }
-interface ReceiptLine { id: number; product_id: number; product_name: string; product_uom: string; ordered_qty: number; received_qty: number | null; difference: number; has_issue: number; issue_type: string | null; issue_notes: string | null; }
+interface ReceiptLine { id: number; product_id: number; product_name: string; product_uom: string; ordered_qty: number; received_qty: number | null; difference: number; has_issue: number; issue_type: string | null; issue_notes: string | null; price?: number; subtotal?: number; issue_photo?: string | null; }
 interface OdooProduct { id: number; name: string; uom: string; category_name: string; price: number; }
 
 type Tab = 'order' | 'cart' | 'receive' | 'history';
@@ -42,6 +42,9 @@ export default function PurchasePage() {
   const [receiptLines, setReceiptLines] = useState<ReceiptLine[]>([]);
   const [issueLineId, setIssueLineId] = useState(0);
   const [issueLine, setIssueLine] = useState<ReceiptLine | null>(null);
+  const [recvOrder, setRecvOrder] = useState<any>(null);
+  const [recvNumpadLineId, setRecvNumpadLineId] = useState<number>(0);
+  const [issuePhoto, setIssuePhoto] = useState<string>('');
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [seedMsg, setSeedMsg] = useState('');
 
@@ -157,6 +160,7 @@ export default function PurchasePage() {
   }
 
   function openNumpad(product: GuideItem) {
+    setRecvNumpadLineId(0);
     setNumpadProduct(product);
     setNumpadValue(String(quantities[product.product_id] || ''));
     setNumpadOpen(true);
@@ -167,7 +171,13 @@ export default function PurchasePage() {
     else setNumpadValue(prev => prev + k);
   }
   function confirmNumpad() {
-    if (numpadProduct) updateCartQty(numpadProduct, parseFloat(numpadValue) || 0);
+    const val = parseFloat(numpadValue) || 0;
+    if (recvNumpadLineId) {
+      updateRecvQty(recvNumpadLineId, val);
+      setRecvNumpadLineId(0);
+    } else if (numpadProduct) {
+      updateCartQty(numpadProduct, val);
+    }
     setNumpadOpen(false);
   }
 
@@ -205,6 +215,7 @@ export default function PurchasePage() {
       const d = await r.json();
       setReceipt(d.receipt);
       setReceiptLines(d.receipt?.lines || []);
+      setRecvOrder(d.order || null);
     } catch (_e) {}
   }
 
@@ -220,16 +231,18 @@ export default function PurchasePage() {
   function openIssueReport(line: ReceiptLine) {
     setIssueLine(line);
     setIssueLineId(line.id);
+    setIssuePhoto('');
     setScreen('receive-issue');
   }
 
-  async function submitIssue(issueType: string, notes: string) {
+  async function submitIssue(issueType: string, notes: string, photo?: string) {
     await fetch('/api/purchase/receive', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'update_line', line_id: issueLineId, has_issue: 1, issue_type: issueType, issue_notes: notes }),
+      body: JSON.stringify({ action: 'update_line', line_id: issueLineId, has_issue: 1, issue_type: issueType, issue_notes: notes, issue_photo: photo || null }),
     });
     setReceiptLines(prev => prev.map(l => l.id === issueLineId ? { ...l, has_issue: 1, issue_type: issueType, issue_notes: notes } : l));
+    setIssuePhoto('');
     setScreen('receive-check');
   }
 
@@ -277,7 +290,6 @@ export default function PurchasePage() {
       const d = await r.json();
       setGuideItems(d.guide?.items || []);
     } catch (_e) { setGuideItems([]); }
-    // Fetch categories for filter
     try {
       const r = await fetch('/api/purchase/products?q=&limit=1');
       const d = await r.json();
@@ -285,7 +297,6 @@ export default function PurchasePage() {
     } catch (_e) {}
   }
 
-  // Search Odoo products (debounced)
   function searchProducts(query: string, category: string) {
     setMgSearch(query);
     if (mgDebounce.current) clearTimeout(mgDebounce.current);
@@ -307,7 +318,6 @@ export default function PurchasePage() {
 
   function handleMgCategoryChange(cat: string) {
     setMgCategory(cat);
-    // If a category is selected, search even without text
     if (cat !== 'All') {
       if (mgDebounce.current) clearTimeout(mgDebounce.current);
       mgDebounce.current = setTimeout(async () => {
@@ -337,17 +347,12 @@ export default function PurchasePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          supplier_id: guideSupplierId,
-          location_id: locationId,
-          product_id: product.id,
-          product_name: product.name,
-          product_uom: product.uom,
-          price: product.price,
-          price_source: 'odoo',
-          category_name: product.category_name,
+          supplier_id: guideSupplierId, location_id: locationId,
+          product_id: product.id, product_name: product.name,
+          product_uom: product.uom, price: product.price,
+          price_source: 'odoo', category_name: product.category_name,
         }),
       });
-      // Refresh guide items
       const r = await fetch(`/api/purchase/guides?supplier_id=${guideSupplierId}&location_id=${locationId}`);
       const d = await r.json();
       setGuideItems(d.guide?.items || []);
@@ -379,7 +384,9 @@ export default function PurchasePage() {
   // ========== ICONS ==========
   const HomeIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
   const BackIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 19l-7-7 7-7"/></svg>;
+  const WarningIcon = ({ color = '#D97706' }: { color?: string }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>;
 
+  // ========== HEADER ==========
   const Header = ({ title, subtitle, showBack, onBack }: { title: string; subtitle?: string; showBack?: boolean; onBack?: () => void }) => (
     <div className="bg-[#1A1F2E] px-5 pt-12 pb-0 relative overflow-hidden">
       <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
@@ -706,25 +713,74 @@ export default function PurchasePage() {
   );
 
   // ============== RECEIVE CHECK ==============
-  const ReceiveCheck = () => (
+  const ReceiveCheck = () => {
+    const orderTotal = recvOrder?.total_amount || 0;
+    const openRecvNumpad = (line: ReceiptLine) => {
+      setRecvNumpadLineId(line.id);
+      setNumpadProduct({ id: 0, product_id: line.product_id, product_name: line.product_name, product_uom: line.product_uom, price: line.price || 0, price_source: '', category_name: '' });
+      setNumpadValue(line.received_qty !== null ? String(line.received_qty) : '');
+      setNumpadOpen(true);
+    };
+
+    return (
     <div className="px-4 py-3 pb-40">
+      {/* Order info card */}
+      {recvOrder && (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <div className="text-[14px] font-bold text-[#1F2933]">{recvOrder.supplier_name}</div>
+              <div className="text-[11px] text-gray-500 font-mono mt-0.5">{recvOrder.odoo_po_name || `#${recvOrder.id}`}</div>
+            </div>
+            <StatusBadge status={recvOrder.status} />
+          </div>
+          <div className="text-[11px] text-gray-500">Ordered by <span className="font-semibold text-[#1F2933]">{recvOrder.ordered_by_name}</span></div>
+          <div className="text-[11px] text-gray-500">{new Date(recvOrder.created_at).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+          {recvOrder.delivery_date && <div className="text-[11px] text-gray-500">Delivery: {recvOrder.delivery_date}</div>}
+          {recvOrder.order_note && <div className="text-[11px] text-gray-500 mt-1 italic">{recvOrder.order_note}</div>}
+          <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
+            <span className="text-[11px] text-gray-400">{receiptLines.length} items</span>
+            <span className="text-[14px] font-bold font-mono text-[#1F2933]">&euro;{orderTotal.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
+
       <p className="text-[12px] text-gray-500 mb-3">Enter the quantity you actually received. Leave blank if not delivered yet.</p>
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
-        {receiptLines.map(line => (
-          <div key={line.id} className="flex items-center gap-2.5 py-3 border-b border-gray-100 last:border-0">
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-semibold text-[#1F2933]">{line.product_name}</div>
-              <div className="text-[11px] text-gray-500 font-mono">Ordered: {line.ordered_qty} {line.product_uom}</div>
-              {line.has_issue === 1 && <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-red-100 text-red-800 mt-1 inline-block">{line.issue_type || 'Issue'}</span>}
+        {receiptLines.map(line => {
+          const qty = line.received_qty;
+          const linePrice = line.price || 0;
+          return (
+          <div key={line.id} className="py-3 border-b border-gray-100 last:border-0">
+            <div className="flex items-center gap-2.5">
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-semibold text-[#1F2933]">{line.product_name}</div>
+                <div className="text-[11px] text-gray-500 font-mono">Ordered: {line.ordered_qty} {line.product_uom}{linePrice > 0 ? ` \u00b7 \u20ac${linePrice.toFixed(2)}/${line.product_uom}` : ''}</div>
+                {linePrice > 0 && <div className="text-[10px] text-gray-400 font-mono">Subtotal: &euro;{(line.ordered_qty * linePrice).toFixed(2)}</div>}
+                {line.has_issue === 1 && <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-red-100 text-red-800 mt-1 inline-block">{line.issue_type || 'Issue'}</span>}
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {qty !== null && qty > 0 ? (
+                  <div className="flex items-center">
+                    <button onClick={() => updateRecvQty(line.id, Math.max(0, (qty || 0) - 1))} className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100">-</button>
+                    <button onClick={() => openRecvNumpad(line)} className="w-10 h-8 flex items-center justify-center text-[14px] font-bold font-mono text-[#1F2933]">{qty}</button>
+                    <button onClick={() => updateRecvQty(line.id, (qty || 0) + 1)} className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100">+</button>
+                  </div>
+                ) : (
+                  <button onClick={() => openRecvNumpad(line)} className="h-8 px-3 rounded-lg border border-gray-200 bg-white text-[12px] font-semibold text-gray-500 active:bg-gray-100 font-mono">{qty === null ? 'Enter qty' : '0'}</button>
+                )}
+                {qty !== null && qty === line.ordered_qty && <span className="text-green-500 text-[15px]">&#10003;</span>}
+                {qty !== null && qty !== line.ordered_qty && qty < line.ordered_qty && <span className="text-red-600 text-[11px] font-bold font-mono">{line.difference}</span>}
+                <button onClick={() => openIssueReport(line)} className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 active:bg-red-100 ${line.has_issue ? 'bg-red-100' : 'bg-amber-50'}`}>
+                  <WarningIcon color={line.has_issue ? '#DC2626' : '#D97706'} />
+                </button>
+              </div>
             </div>
-            <input type="number" placeholder="-" value={line.received_qty ?? ''} onChange={e => updateRecvQty(line.id, parseFloat(e.target.value) || 0)}
-              className="w-16 h-9 rounded-lg border border-gray-200 text-center text-[14px] font-bold font-mono text-[#1F2933] outline-none focus:border-orange-400" />
-            {line.received_qty !== null && line.received_qty === line.ordered_qty && <span className="text-green-500 text-[16px]">&#10003;</span>}
-            {line.received_qty !== null && line.received_qty < line.ordered_qty && <span className="text-red-600 text-[12px] font-bold font-mono">{line.difference}</span>}
-            <button onClick={() => openIssueReport(line)} className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center text-[14px] flex-shrink-0 active:bg-red-100">&#128247;</button>
           </div>
-        ))}
+          );
+        })}
       </div>
+
       <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
         {isManager ? (
           <>
@@ -739,17 +795,60 @@ export default function PurchasePage() {
         )}
       </div>
     </div>
-  );
+    );
+  };
 
   // ============== RECEIVE ISSUE ==============
   const ReceiveIssue = () => {
     const [issueType, setIssueType] = useState(issueLine?.issue_type || 'Damaged');
     const [notes, setNotes] = useState(issueLine?.issue_notes || '');
-    const types = ['Damaged', 'Wrong item', 'Short delivery', 'Expired', 'Quality'];
+    const [localPhoto, setLocalPhoto] = useState(issuePhoto);
+    const types = ['Damaged', 'Wrong item', 'Short delivery', 'Expired', 'Quality', 'Other'];
+
+    function handleCameraCapture(e: React.ChangeEvent<HTMLInputElement>) {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result as string;
+        setLocalPhoto(base64);
+        setIssuePhoto(base64);
+      };
+      reader.readAsDataURL(file);
+    }
+
     return (
       <div className="px-4 py-3">
         <div className="text-[15px] font-bold text-[#1F2933] mb-1">{issueLine?.product_name}</div>
         <div className="text-[12px] text-gray-500 mb-4">Ordered: {issueLine?.ordered_qty} {issueLine?.product_uom}</div>
+
+        {/* Photo capture */}
+        <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Photo evidence</label>
+        {localPhoto ? (
+          <div className="mb-4 relative">
+            <img src={localPhoto} alt="Issue photo" className="w-full h-48 object-cover rounded-xl border border-gray-200" />
+            <button onClick={() => { setLocalPhoto(''); setIssuePhoto(''); }} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white text-[14px]">&times;</button>
+            <div className="mt-2 text-center">
+              <label className="text-[12px] font-semibold text-orange-600 cursor-pointer active:opacity-70">
+                Retake photo
+                <input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" />
+              </label>
+            </div>
+          </div>
+        ) : (
+          <label className="block mb-4 cursor-pointer">
+            <div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center active:bg-gray-50">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" className="mx-auto mb-2">
+                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              <div className="text-[13px] font-semibold text-[#1F2933]">Tap to take photo</div>
+              <div className="text-[11px] text-gray-400 mt-1">Camera or gallery</div>
+            </div>
+            <input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" />
+          </label>
+        )}
+
         <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Issue type</label>
         <div className="flex gap-1.5 flex-wrap mb-4">
           {types.map(t => (
@@ -758,7 +857,7 @@ export default function PurchasePage() {
         </div>
         <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Notes</label>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Describe the issue..." rows={3} className="w-full text-[13px] border border-gray-200 rounded-xl px-3 py-2 resize-none outline-none focus:border-orange-400 mb-4" />
-        <button onClick={() => submitIssue(issueType, notes)} className="w-full py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30">Submit report</button>
+        <button onClick={() => submitIssue(issueType, notes, localPhoto)} className="w-full py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30">Submit report</button>
       </div>
     );
   };
@@ -794,26 +893,21 @@ export default function PurchasePage() {
 
     return (
       <div className="px-4 py-3">
-        {/* Search to add products */}
         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-orange-400 transition-colors mb-2">
           <svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/><path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
           <input type="text" value={mgSearch} onChange={e => searchProducts(e.target.value, mgCategory)} placeholder="Search Odoo products to add..." className="flex-1 bg-transparent outline-none text-[14px] text-[#1F2933] placeholder-gray-400" />
           {mgSearch && <button onClick={() => { setMgSearch(''); setMgResults([]); }} className="text-gray-400 text-[18px]">&times;</button>}
         </div>
-
-        {/* Category filter pills */}
         <div className="flex gap-1.5 overflow-x-auto pb-3 -mx-1 px-1">
           {allFilterCats.map(cat => (
             <button key={cat} onClick={() => handleMgCategoryChange(cat)} className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap flex-shrink-0 ${mgCategory === cat ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{cat}</button>
           ))}
         </div>
-
-        {/* Search results */}
         {(mgSearch || mgCategory !== 'All') && (
           <div className="mb-4">
             <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
               {mgSearching ? 'Searching...' : `${searchResults.length} results`}
-              {searchResults.length > 0 && ' — tap + to add'}
+              {searchResults.length > 0 && ' \u2014 tap + to add'}
             </div>
             {mgSearching && <div className="flex justify-center py-4"><div className="w-6 h-6 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" /></div>}
             {!mgSearching && searchResults.length > 0 && (
@@ -841,34 +935,26 @@ export default function PurchasePage() {
             )}
           </div>
         )}
-
-        {/* Current guide items */}
-        <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
-          In guide ({guideItems.length})
-        </div>
+        <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">In guide ({guideItems.length})</div>
         {guideItems.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
-            <div className="text-[13px] text-gray-500">No products yet. Search above to add products from Odoo.</div>
-          </div>
+          <div className="bg-white border border-gray-200 rounded-xl p-6 text-center"><div className="text-[13px] text-gray-500">No products yet. Search above to add products from Odoo.</div></div>
         ) : (
-          <>
-            {guideCats.map(cat => (
-              <div key={cat}>
-                <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide pt-2 pb-1">{cat}</div>
-                <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-2">
-                  {guideItems.filter(i => (i.category_name || 'Other') === cat).map(item => (
-                    <div key={item.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-semibold text-[#1F2933] truncate">{item.product_name}</div>
-                        <div className="text-[11px] text-gray-500 font-mono">&euro;{item.price.toFixed(2)}/{item.product_uom}</div>
-                      </div>
-                      <button onClick={() => removeGuideItemAction(item.id)} className="text-[11px] font-semibold text-red-600 px-3 py-1.5 rounded-lg bg-red-50 border border-red-100 active:bg-red-100 flex-shrink-0">Remove</button>
+          guideCats.map(cat => (
+            <div key={cat}>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide pt-2 pb-1">{cat}</div>
+              <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-2">
+                {guideItems.filter(i => (i.category_name || 'Other') === cat).map(item => (
+                  <div key={item.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-[#1F2933] truncate">{item.product_name}</div>
+                      <div className="text-[11px] text-gray-500 font-mono">&euro;{item.price.toFixed(2)}/{item.product_uom}</div>
                     </div>
-                  ))}
-                </div>
+                    <button onClick={() => removeGuideItemAction(item.id)} className="text-[11px] font-semibold text-red-600 px-3 py-1.5 rounded-lg bg-red-50 border border-red-100 active:bg-red-100 flex-shrink-0">Remove</button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </>
+            </div>
+          ))
         )}
       </div>
     );
@@ -876,7 +962,7 @@ export default function PurchasePage() {
 
   // ============== NUMPAD ==============
   const Numpad = () => numpadOpen ? (
-    <div className="fixed inset-0 bg-black/40 z-[100] flex items-end justify-center" onClick={() => setNumpadOpen(false)}>
+    <div className="fixed inset-0 bg-black/40 z-[100] flex items-end justify-center" onClick={() => { setNumpadOpen(false); setRecvNumpadLineId(0); }}>
       <div className="bg-white rounded-t-[20px] w-full max-w-lg p-5 pb-7" onClick={e => e.stopPropagation()}>
         <div className="text-center pb-4"><div className="text-[12px] text-gray-400">{numpadProduct?.product_uom}</div><div className="text-[15px] font-bold text-[#1F2933]">{numpadProduct?.product_name}</div></div>
         <div className="text-center text-[36px] font-extrabold font-mono text-[#1F2933] pb-4">{numpadValue || '0'}</div>
