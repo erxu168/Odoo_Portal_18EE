@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import SwipeToDelete from '@/components/ui/SwipeToDelete';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -11,16 +11,11 @@ interface ManageOrdersProps {
   isAdmin: boolean;
   onOpenGuide: (supplier: any) => void;
   onDeleteGuide: (supplierId: number, supplierName: string) => void;
-  onAddSupplier: (odooPartner: any) => void;
+  onAddSupplier?: (odooPartner: any) => void;
   onSeed: () => void;
   seedMsg: string;
 }
 
-/**
- * ManageOrders — Edit order guides screen.
- * Top: existing order lists with swipe-to-delete.
- * Bottom: "Add supplier" search that queries Odoo live.
- */
 export default function ManageOrders({
   suppliers,
   isAdmin,
@@ -32,43 +27,50 @@ export default function ManageOrders({
 }: ManageOrdersProps) {
   const withGuides = suppliers.filter((s: any) => s.product_count > 0);
 
-  // Search state
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [debounceTimer, setDebounceTimer] = useState<any>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  function handleSearch(query: string) {
+  const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
     setSearchError('');
-    if (debounceTimer) clearTimeout(debounceTimer);
-    if (query.length < 2) { setSearchResults([]); return; }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.length < 2) { setSearchResults([]); setSearching(false); return; }
 
-    const timer = setTimeout(async () => {
-      setSearching(true);
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/purchase/suppliers/search?q=${encodeURIComponent(query)}&limit=15`);
+        const r = await fetch('/api/purchase/suppliers/search?q=' + encodeURIComponent(query) + '&limit=15');
+        if (!r.ok) { setSearchError('Search failed (' + r.status + ')'); setSearchResults([]); setSearching(false); return; }
         const d = await r.json();
         if (d.error) { setSearchError(d.error); setSearchResults([]); }
         else { setSearchResults(d.suppliers || []); }
-      } catch (e) { setSearchError('Search failed'); setSearchResults([]); }
+      } catch { setSearchError('Network error'); setSearchResults([]); }
       finally { setSearching(false); }
-    }, 400);
-    setDebounceTimer(timer);
-  }
+    }, 500);
+  }, []);
 
   function handleSelectSupplier(partner: any) {
-    onAddSupplier(partner);
+    if (onAddSupplier) onAddSupplier(partner);
     setShowSearch(false);
     setSearchQuery('');
     setSearchResults([]);
   }
 
+  function closeSearch() {
+    setShowSearch(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearching(false);
+    setSearchError('');
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }
+
   return (
     <div className="px-4 py-3">
-      {/* Existing order lists */}
       <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
         Order lists ({withGuides.length})
       </div>
@@ -76,7 +78,7 @@ export default function ManageOrders({
         <p className="text-[11px] text-gray-400 mb-3">Swipe left to delete an order list</p>
       )}
 
-      {suppliers.length === 0 ? (
+      {withGuides.length === 0 && suppliers.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-[13px] text-gray-500 mb-4">No suppliers yet. Seed from Odoo first.</div>
           {isAdmin && (
@@ -89,8 +91,7 @@ export default function ManageOrders({
       ) : (
         <>
           {withGuides.length === 0 && (
-            <div className="text-center py-6 mb-4">
-              <div className="text-[28px] mb-2">\ud83d\udccb</div>
+            <div className="text-center py-6 mb-2">
               <div className="text-[14px] font-semibold text-[#1F2933] mb-1">No order lists yet</div>
               <div className="text-[12px] text-gray-500">Search for a supplier below to create one</div>
             </div>
@@ -120,7 +121,7 @@ export default function ManageOrders({
         </>
       )}
 
-      {/* Add supplier — search from Odoo */}
+      {/* Add supplier search */}
       <div className="mt-4 pt-4 border-t border-gray-200">
         {!showSearch ? (
           <button
@@ -144,21 +145,25 @@ export default function ManageOrders({
                   type="text"
                   value={searchQuery}
                   onChange={e => handleSearch(e.target.value)}
-                  placeholder="Search Odoo suppliers..."
+                  placeholder="Type supplier name..."
                   className="flex-1 bg-transparent outline-none text-[14px] text-[#1F2933] placeholder-gray-400"
-                  autoFocus
                 />
                 {searchQuery && (
                   <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="text-gray-400 text-[18px]">&times;</button>
                 )}
               </div>
-              <button
-                onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchResults([]); }}
-                className="text-[12px] font-semibold text-gray-500 px-2 py-2"
-              >
+              <button onClick={closeSearch} className="text-[12px] font-semibold text-gray-500 px-2 py-2">
                 Cancel
               </button>
             </div>
+
+            {!searching && searchQuery.length === 0 && (
+              <div className="text-[12px] text-gray-400 text-center py-4">Type at least 2 characters to search Odoo suppliers</div>
+            )}
+
+            {!searching && searchQuery.length === 1 && (
+              <div className="text-[12px] text-gray-400 text-center py-4">Keep typing...</div>
+            )}
 
             {searching && (
               <div className="flex justify-center py-6">
@@ -171,7 +176,7 @@ export default function ManageOrders({
             )}
 
             {!searching && searchQuery.length >= 2 && searchResults.length === 0 && !searchError && (
-              <div className="text-[12px] text-gray-500 text-center py-6">No suppliers found in Odoo matching "{searchQuery}"</div>
+              <div className="text-[12px] text-gray-500 text-center py-6">No suppliers found matching &quot;{searchQuery}&quot;</div>
             )}
 
             {searchResults.length > 0 && (
@@ -181,9 +186,9 @@ export default function ManageOrders({
                     key={partner.odoo_id}
                     onClick={() => !partner.already_added && handleSelectSupplier(partner)}
                     disabled={partner.already_added}
-                    className={`w-full flex items-center gap-3 px-3.5 py-3 border-b border-gray-100 last:border-0 text-left transition-colors ${
-                      partner.already_added ? 'opacity-50 cursor-not-allowed' : 'active:bg-gray-50'
-                    }`}
+                    className={'w-full flex items-center gap-3 px-3.5 py-3 border-b border-gray-100 last:border-0 text-left transition-colors ' +
+                      (partner.already_added ? 'opacity-50 cursor-not-allowed' : 'active:bg-gray-50')
+                    }
                   >
                     <div className="w-9 h-9 rounded-lg bg-[#F1F3F5] flex items-center justify-center text-[12px] font-bold text-blue-600 flex-shrink-0">
                       {partner.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
@@ -204,10 +209,6 @@ export default function ManageOrders({
                   </button>
                 ))}
               </div>
-            )}
-
-            {searchQuery.length < 2 && searchQuery.length > 0 && (
-              <div className="text-[12px] text-gray-400 text-center py-4">Type at least 2 characters to search</div>
             )}
           </div>
         )}
