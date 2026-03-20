@@ -2,6 +2,12 @@
 
 import React from 'react';
 
+/**
+ * Shared UI components for inventory module.
+ * All colors follow DESIGN_GUIDE.md — semantic only.
+ * No purple. No decorative colors.
+ */
+
 // --- Filter Pill Bar ---
 export function FilterBar({ children }: { children: React.ReactNode }) {
   return <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-4 pb-3">{children}</div>;
@@ -18,20 +24,27 @@ export function FilterPill({ active, label, count, onClick }: { active: boolean;
   );
 }
 
-// --- Status Badge ---
+// --- Status Badge (semantic colors only) ---
 const STATUS_STYLES: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700',
-  in_progress: 'bg-blue-50 text-blue-700',
-  submitted: 'bg-purple-50 text-purple-700',
-  approved: 'bg-emerald-50 text-emerald-700',
-  rejected: 'bg-red-50 text-red-700',
-  daily: 'bg-emerald-50 text-emerald-700',
-  weekly: 'bg-blue-50 text-blue-700',
-  monthly: 'bg-purple-50 text-purple-700',
-  adhoc: 'bg-amber-50 text-amber-700',
-  person: 'bg-blue-50 text-blue-700',
-  department: 'bg-purple-50 text-purple-700',
-  shift: 'bg-orange-50 text-orange-700',
+  // Red = error/overdue/rejected
+  rejected:   'bg-red-100 text-red-800',
+  overdue:    'bg-red-100 text-red-800',
+  // Amber = warning/pending/in-progress
+  pending:    'bg-amber-100 text-amber-800',
+  in_progress:'bg-amber-100 text-amber-800',
+  adhoc:      'bg-amber-100 text-amber-800',
+  // Blue = info/active/confirmed
+  submitted:  'bg-blue-100 text-blue-800',
+  weekly:     'bg-blue-100 text-blue-800',
+  monthly:    'bg-blue-100 text-blue-800',
+  person:     'bg-blue-100 text-blue-800',
+  department: 'bg-blue-100 text-blue-800',
+  shift:      'bg-blue-100 text-blue-800',
+  // Green = success/done/approved
+  approved:   'bg-green-100 text-green-800',
+  daily:      'bg-green-100 text-green-800',
+  // Gray = neutral/draft
+  draft:      'bg-gray-100 text-gray-700',
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -42,7 +55,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export function StatusBadge({ status, label }: { status: string; label?: string }) {
   return (
-    <span className={`text-[11px] px-2.5 py-0.5 rounded-md font-semibold whitespace-nowrap ${STATUS_STYLES[status] || 'bg-gray-100 text-gray-500'}`}>
+    <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold whitespace-nowrap ${STATUS_STYLES[status] || 'bg-gray-100 text-gray-700'}`}>
       {label || STATUS_LABELS[status] || status}
     </span>
   );
@@ -64,7 +77,7 @@ export function Stepper({
       </button>
       <button onClick={(e) => { e.stopPropagation(); onTap(); }}
         className="min-w-[56px] h-11 flex flex-col items-center justify-center px-1 active:bg-gray-50">
-        <span className={`font-mono text-[15px] font-semibold leading-tight ${hasVal ? 'text-emerald-600' : 'text-gray-300'}`}>
+        <span className={`font-mono text-[15px] font-semibold leading-tight ${hasVal ? 'text-[#1F2933]' : 'text-gray-300'}`}>
           {hasVal ? value : '--'}
         </span>
         <span className="text-[9px] text-gray-400 leading-tight">{uom}</span>
@@ -101,7 +114,7 @@ export function SearchBar({ value, onChange, placeholder }: { value: string; onC
         </svg>
         <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || 'Search...'}
-          className="flex-1 bg-transparent outline-none text-[14px] text-gray-900 placeholder-gray-400" />
+          className="flex-1 bg-transparent outline-none text-[14px] text-[#1F2933] placeholder-gray-400" />
         {value && (
           <button onClick={() => onChange('')} className="text-gray-400 active:text-gray-600">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -125,7 +138,7 @@ export function BackHeader({ onBack, title, subtitle, right }: {
         </button>
         {right}
       </div>
-      <h1 className="text-[18px] font-bold text-gray-900">{title}</h1>
+      <h1 className="text-[18px] font-bold text-[#1F2933]">{title}</h1>
       {subtitle && <p className="text-[12px] text-gray-500 mt-0.5">{subtitle}</p>}
     </div>
   );
@@ -145,7 +158,7 @@ export function EmptyState({ icon, title, body }: { icon?: string; title: string
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center px-6">
       {icon && <div className="text-4xl mb-3">{icon}</div>}
-      <p className="text-[15px] font-semibold text-gray-900 mb-1">{title}</p>
+      <p className="text-[15px] font-semibold text-[#1F2933] mb-1">{title}</p>
       {body && <p className="text-[13px] text-gray-500 max-w-[220px] leading-relaxed">{body}</p>}
     </div>
   );
