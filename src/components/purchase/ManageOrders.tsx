@@ -25,7 +25,8 @@ export default function ManageOrders({
   onSeed,
   seedMsg,
 }: ManageOrdersProps) {
-  const withGuides = suppliers.filter((s: any) => s.product_count > 0);
+  const withProducts = suppliers.filter((s: any) => s.product_count > 0);
+  const emptyGuides = suppliers.filter((s: any) => s.product_count === 0);
 
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,33 +72,30 @@ export default function ManageOrders({
 
   return (
     <div className="px-4 py-3">
+      {/* Section 1: Suppliers with products — swipe to delete */}
       <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
-        Order lists ({withGuides.length})
+        Order lists ({withProducts.length})
       </div>
-      {withGuides.length > 0 && (
+      {withProducts.length > 0 && (
         <p className="text-[11px] text-gray-400 mb-3">Swipe left to delete an order list</p>
       )}
 
-      {withGuides.length === 0 && suppliers.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-[13px] text-gray-500 mb-4">No suppliers yet. Seed from Odoo first.</div>
-          {isAdmin && (
-            <button onClick={onSeed} className="py-3 px-6 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30">
-              Seed suppliers from Odoo
-            </button>
-          )}
-          {seedMsg && <p className="text-[12px] text-gray-500 mt-3">{seedMsg}</p>}
+      {suppliers.length === 0 ? (
+        <div className="text-center py-8">
+          <div className="text-[14px] font-semibold text-[#1F2933] mb-1">No suppliers yet</div>
+          <div className="text-[12px] text-gray-500 mb-4">Search for a supplier below to get started</div>
+          {isAdmin && seedMsg && <p className="text-[12px] text-gray-500 mt-3">{seedMsg}</p>}
         </div>
       ) : (
         <>
-          {withGuides.length === 0 && (
+          {withProducts.length === 0 && emptyGuides.length === 0 && (
             <div className="text-center py-6 mb-2">
               <div className="text-[14px] font-semibold text-[#1F2933] mb-1">No order lists yet</div>
               <div className="text-[12px] text-gray-500">Search for a supplier below to create one</div>
             </div>
           )}
 
-          {withGuides.map((s: any) => (
+          {withProducts.map((s: any) => (
             <SwipeToDelete key={s.id} onDelete={() => onDeleteGuide(s.id, s.name)}>
               <button
                 onClick={() => onOpenGuide(s)}
@@ -118,6 +116,35 @@ export default function ManageOrders({
               </button>
             </SwipeToDelete>
           ))}
+
+          {/* Section 2: Suppliers added but with 0 products — tap to add products, swipe to remove */}
+          {emptyGuides.length > 0 && (
+            <>
+              <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pt-4 pb-2">
+                Empty lists ({emptyGuides.length})
+              </div>
+              <p className="text-[11px] text-gray-400 mb-3">Tap to add products, swipe left to remove</p>
+              {emptyGuides.map((s: any) => (
+                <SwipeToDelete key={s.id} onDelete={() => onDeleteGuide(s.id, s.name)}>
+                  <button
+                    onClick={() => onOpenGuide(s)}
+                    className="w-full flex items-center gap-3 p-3.5 bg-gray-50 border border-dashed border-gray-300 rounded-xl active:bg-gray-100 transition-colors text-left"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-[14px] font-bold text-gray-400 flex-shrink-0">
+                      {s.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-gray-500 truncate">{s.name}</div>
+                      <div className="text-[11px] text-gray-400">No products yet {'\u2022'} Tap to add</div>
+                    </div>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2">
+                      <path d="M9 5l7 7-7 7"/>
+                    </svg>
+                  </button>
+                </SwipeToDelete>
+              ))}
+            </>
+          )}
         </>
       )}
 
