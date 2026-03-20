@@ -211,7 +211,6 @@ export default function PurchasePage() {
   const WarningIcon = ({ color = '#D97706' }: { color?: string }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>;
   const TrashIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>;
 
-  // Header with optional right-side element (location dropdown, etc.)
   const Header = ({ title, subtitle, showBack, onBack, rightElement }: { title: string; subtitle?: string; showBack?: boolean; onBack?: () => void; rightElement?: React.ReactNode }) => (
     <div className="bg-[#1A1F2E] px-5 pt-12 pb-3 relative overflow-hidden">
       <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
@@ -224,7 +223,6 @@ export default function PurchasePage() {
     </div>
   );
 
-  // Location dropdown element for headers that need it
   const locDropdown = <LocationDropdown locations={LOCATIONS} selectedId={locationId} onChange={setLocationId} variant="dark" />;
 
   const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) => (<div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-orange-400 transition-colors mb-3"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/><path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg><input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="flex-1 bg-transparent outline-none text-[14px] text-[#1F2933] placeholder-gray-400" />{value && <button onClick={() => onChange('')} className="text-gray-400 text-[18px]">&times;</button>}</div>);
@@ -257,7 +255,7 @@ export default function PurchasePage() {
     const cartItemCount = Object.values(quantities).filter(q => q > 0).length;
     const cartAmount = guideItems.reduce((sum, i) => sum + (quantities[i.product_id] || 0) * i.price, 0);
     return (<>
-      <div className="px-4 py-3 pb-28">
+      <div className="px-4 py-3 pb-44">
         {(() => { const supplier = suppliers.find(s => s.id === guideSupplierId); const days = (() => { try { return JSON.parse(supplier?.order_days || '[]'); } catch { return []; } })(); if (days.length === 0) return null; const dayStr = days.map((d: string) => d.charAt(0).toUpperCase() + d.slice(1)).join(' & '); return <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-blue-50 border border-blue-200 mb-3 text-[12px] text-blue-800"><span className="text-[14px] mt-0.5">&#128197;</span><span>Order days: <strong>{dayStr}</strong></span></div>; })()}
         <SearchInput value={guideSearch} onChange={setGuideSearch} placeholder="Search products..." />
         <div className="flex gap-1.5 overflow-x-auto pb-3 -mx-1 px-1">{allCategories.map(cat => (<button key={cat} onClick={() => setGuideCategory(cat)} className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap flex-shrink-0 ${guideCategory === cat ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{cat}</button>))}</div>
@@ -275,7 +273,7 @@ export default function PurchasePage() {
           </div>
         </div>))}
       </div>
-      {cartItemCount > 0 && (<div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50"><div className="flex justify-between items-center mb-2"><div><div className="text-[18px] font-extrabold font-mono text-[#1F2933]">&euro;{cartAmount.toFixed(2)}</div><div className="text-[11px] text-gray-500">{cartItemCount} items &bull; shared cart ({locName})</div></div></div><button onClick={() => changeTab('cart')} className="w-full py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all">View cart &rarr;</button></div>)}
+      {cartItemCount > 0 && (<div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50"><div className="flex justify-between items-center mb-2"><div><div className="text-[18px] font-extrabold font-mono text-[#1F2933]">&euro;{cartAmount.toFixed(2)}</div><div className="text-[11px] text-gray-500">{cartItemCount} items &bull; shared cart ({locName})</div></div></div><button onClick={() => changeTab('cart')} className="w-full py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all">View cart &rarr;</button></div>)}
     </>);
   };
 
@@ -332,7 +330,7 @@ export default function PurchasePage() {
     const { net, taxByRate, gross } = calcCartTax(cart);
     const belowMin = cart.min_order_value > 0 && net < cart.min_order_value;
 
-    return (<div className="px-4 py-3 pb-28">
+    return (<div className="px-4 py-3 pb-44">
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3">
         <div className="flex justify-between items-start mb-2">
           <div className="text-[15px] font-bold text-[#1F2933]">{cart.supplier_name}</div>
@@ -362,7 +360,7 @@ export default function PurchasePage() {
         {Object.entries(taxByRate).sort(([a],[b]) => Number(a)-Number(b)).map(([r, amt]) => (<div key={r} className="flex justify-between text-[11px] text-gray-400"><span>{r}% MwSt</span><span className="font-mono">&euro;{(amt as number).toFixed(2)}</span></div>))}
         <div className="flex justify-between text-[14px] font-bold text-[#1F2933] pt-1 border-t border-gray-200 mt-1"><span>Total (gross)</span><span className="font-mono">&euro;{gross.toFixed(2)}</span></div>
       </div>
-      <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
+      <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
         <button onClick={() => {
           const msg = belowMin
             ? `This order (\u20ac${net.toFixed(2)} net) is below the minimum of \u20ac${cart.min_order_value.toFixed(2)}. Send anyway to ${cart.supplier_name}?`
@@ -387,7 +385,7 @@ export default function PurchasePage() {
   const ReceiveCheck = () => {
     const orderTotal = recvOrder?.total_amount || 0;
     const openRecvNumpad = (line: ReceiptLine) => { setRecvNumpadLineId(line.id); setCartNumpadItem(null); setNumpadProduct({ id: 0, product_id: line.product_id, product_name: line.product_name, product_uom: line.product_uom, price: line.price || 0, price_source: '', category_name: '' }); setNumpadValue(line.received_qty !== null ? String(line.received_qty) : ''); setNumpadOpen(true); };
-    return (<div className="px-4 py-3 pb-40">
+    return (<div className="px-4 py-3 pb-56">
       {recvOrder && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3"><div className="flex justify-between items-start mb-2"><div><div className="text-[14px] font-bold text-[#1F2933]">{recvOrder.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{recvOrder.odoo_po_name || `#${recvOrder.id}`}</div></div><StatusBadge status={recvOrder.status} /></div><div className="text-[11px] text-gray-500">Ordered by <span className="font-semibold text-[#1F2933]">{recvOrder.ordered_by_name}</span></div><div className="text-[11px] text-gray-500">{new Date(recvOrder.created_at).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>{recvOrder.delivery_date && <div className="text-[11px] text-gray-500">Delivery: {recvOrder.delivery_date}</div>}{recvOrder.order_note && <div className="text-[11px] text-gray-500 mt-1 italic">{recvOrder.order_note}</div>}<div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100"><span className="text-[11px] text-gray-400">{receiptLines.length} items</span><span className="text-[14px] font-bold font-mono text-[#1F2933]">&euro;{orderTotal.toFixed(2)}</span></div></div>)}
       <p className="text-[12px] text-gray-500 mb-3">Enter the quantity you actually received. Leave blank if not delivered yet.</p>
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
@@ -403,7 +401,7 @@ export default function PurchasePage() {
             </div>
           </div></div>); })}
       </div>
-      <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
+      <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
         {isManager ? (<><div className="flex gap-2 mb-2"><button onClick={() => setConfirmDialog({ title: 'Confirm receipt?', message: 'This will update stock quantities in Odoo and close this order. This cannot be undone.', confirmLabel: 'Yes, confirm & close', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(true); } })} className="flex-1 py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700">Confirm &amp; close</button><button onClick={() => setConfirmDialog({ title: 'Keep as backorder?', message: 'Received quantities will be updated in Odoo. The remaining items will stay open for a future delivery.', confirmLabel: 'Yes, keep backorder', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(false); } })} className="flex-1 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold active:bg-gray-50">Keep as backorder</button></div><p className="text-[11px] text-gray-400 text-center">Confirming will update stock in Odoo.</p></>
         ) : (<p className="text-[12px] text-gray-500 text-center py-2">A manager must confirm receipt to update stock.</p>)}
       </div>
