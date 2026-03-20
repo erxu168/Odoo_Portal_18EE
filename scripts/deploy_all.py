@@ -75,7 +75,7 @@ if 'ManageOrders' not in t:
     )
     print('  OK: ManageOrders import')
 
-# 6. Add deleteSupplierGuide handler — passes ONLY supplier_id, no location_id
+# 6. Add deleteSupplierGuide handler
 if 'deleteSupplierGuide' not in t:
     fn = (
         'async function deleteSupplierGuide(suppId: number, suppName: string) {\n'
@@ -98,7 +98,7 @@ if 'deleteSupplierGuide' not in t:
     anchor = 'async function removeGuideItemAction(itemId: number)'
     if anchor in t:
         t = t.replace(anchor, fn + anchor)
-        print('  OK: deleteSupplierGuide handler (supplier_id only, no location filter)')
+        print('  OK: deleteSupplierGuide handler')
 
 # 7. Replace ManageScreen with ManageOrders component
 ms_start = t.find('const ManageScreen = ()')
@@ -115,17 +115,60 @@ if ms_start > 0 and ms_next > 0 and 'ManageOrders' not in t[ms_start:ms_next]:
     t = t.replace(old_manage, new_manage)
     print('  OK: ManageScreen replaced with ManageOrders')
 
+# 8. CRITICAL: Hide suppliers with 0 products from the main Order tab (SupplierList)
+#    The SupplierList shows all suppliers — filter to only ones with an order list
+#    Find the supplier filter/map in SupplierList and add product_count > 0 filter
+if 'product_count > 0' not in t:
+    # Pattern: suppliers are filtered by search then mapped
+    # Look for the .filter() that uses supplierSearch
+    old_filter = '.filter(s => s.name.toLowerCase().includes(supplierSearch.toLowerCase()))'
+    new_filter = '.filter(s => s.product_count > 0 && s.name.toLowerCase().includes(supplierSearch.toLowerCase()))'
+    if old_filter in t:
+        t = t.replace(old_filter, new_filter)
+        print('  OK: main Order tab only shows suppliers with products')
+    else:
+        # Try alternate patterns
+        old_filter2 = '.filter((s: any) => s.name.toLowerCase().includes(supplierSearch.toLowerCase()))'
+        new_filter2 = '.filter((s: any) => s.product_count > 0 && s.name.toLowerCase().includes(supplierSearch.toLowerCase()))'
+        if old_filter2 in t:
+            t = t.replace(old_filter2, new_filter2)
+            print('  OK: main Order tab only shows suppliers with products (typed)')
+        else:
+            print('  WARN: supplier filter pattern not found — checking for .map')
+            # Maybe suppliers are mapped directly without filter
+            # Find the map inside SupplierList
+            sl_start = t.find('const SupplierList')
+            if sl_start > 0:
+                # Find the next component definition to bound our search
+                sl_end = t.find('\n  const ', sl_start + 30)
+                if sl_end > 0:
+                    region = t[sl_start:sl_end]
+                    # Look for suppliers.filter or suppliers.map in this region
+                    if 'suppliers.filter' in region:
+                        # Insert product_count check into existing filter
+                        local_old = 'suppliers.filter(s =>'
+                        local_new = 'suppliers.filter(s => s.product_count > 0 &&'
+                        if local_old in region:
+                            t = t[:sl_start] + region.replace(local_old, local_new) + t[sl_end:]
+                            print('  OK: added product_count filter to SupplierList')
+                    elif 'suppliers.map' in region:
+                        # No filter exists, add one before map
+                        t = t[:sl_start] + region.replace('suppliers.map', 'suppliers.filter((s: any) => s.product_count > 0).map') + t[sl_end:]
+                        print('  OK: added product_count filter before supplier map')
+else:
+    print('  SKIP: product_count filter already present')
+
 write(p, t)
 print('  purchase/page.tsx written')
 
-# 8. Dashboard rename
+# 9. Dashboard rename
 d = 'src/components/dashboard/DashboardHome.tsx'
 dt = open(d).read()
 dt = dt.replace("id: 'purchase', label: 'Purchase'", "id: 'purchase', label: 'Orders'")
 write(d, dt)
 print('\n  OK: Dashboard Purchase -> Orders')
 
-# 9. AppTabBar
+# 10. AppTabBar
 tb = 'src/components/ui/AppTabBar.tsx'
 if os.path.exists(tb):
     tt = open(tb).read()
@@ -135,7 +178,7 @@ if os.path.exists(tb):
         write(tb, tt)
         print('  OK: AppTabBar')
 
-# 10. purchase-db.ts
+# 11. purchase-db.ts
 db = 'src/lib/purchase-db.ts'
 dbt = open(db).read()
 if 'deleteGuide' not in dbt:
@@ -150,7 +193,7 @@ if 'deleteGuide' not in dbt:
     write(db, dbt)
     print('  OK: deleteGuide added')
 
-# 11. Remove conflicting files
+# 12. Remove conflicting files
 for f in ['src/components/ui/NumPad.tsx', 'src/components/ui/PurchaseNumpad.tsx']:
     if os.path.exists(f):
         os.remove(f)
