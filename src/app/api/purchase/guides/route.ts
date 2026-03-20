@@ -7,7 +7,8 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice, deleteGuide } from '@/lib/purchase-db';
+import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice } from '@/lib/purchase-db';
+import { getDb } from '@/lib/db';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -37,7 +38,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'supplier_id, location_id, product_id required' }, { status: 400 });
   }
 
-  // Get or create guide
   let guide = getGuide(supplier_id, location_id);
   if (!guide) {
     const guideId = createGuide(supplier_id, location_id, '');
@@ -60,10 +60,32 @@ export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const itemId = parseInt(searchParams.get('item_id') || '0');
   const guideId = parseInt(searchParams.get('guide_id') || '0');
+  const supplierId = parseInt(searchParams.get('supplier_id') || '0');
+  const locationId = parseInt(searchParams.get('location_id') || '0');
 
-  // Delete entire guide (and all its items via CASCADE)
+  const db = getDb();
+
+  // Delete by guide_id
   if (guideId) {
-    deleteGuide(guideId);
+    db.prepare('DELETE FROM purchase_guide_items WHERE guide_id = ?').run(guideId);
+    db.prepare('DELETE FROM purchase_order_guides WHERE id = ?').run(guideId);
+    return NextResponse.json({ message: 'Order list deleted' });
+  }
+
+  // Delete by supplier_id + location_id (most reliable - no guide_id lookup needed)
+  if (supplierId && locationId) {
+    const guide = getGuide(supplierId, locationId);
+    if (guide) {
+      db.prepare('DELETE FROM purchase_guide_items WHERE guide_id = ?').run(guide.id);
+      db.prepare('DELETE FROM purchase_order_guides WHERE id = ?').run(guide.id);
+    }
+    // Also clean up any orphaned items for this supplier
+    db.prepare(`
+      DELETE FROM purchase_guide_items WHERE guide_id IN (
+        SELECT id FROM purchase_order_guides WHERE supplier_id = ? AND location_id = ?
+      )
+    `).run(supplierId, locationId);
+    db.prepare('DELETE FROM purchase_order_guides WHERE supplier_id = ? AND location_id = ?').run(supplierId, locationId);
     return NextResponse.json({ message: 'Order list deleted' });
   }
 
@@ -73,7 +95,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ message: 'Item removed' });
   }
 
-  return NextResponse.json({ error: 'item_id or guide_id required' }, { status: 400 });
+  return NextResponse.json({ error: 'item_id, guide_id, or supplier_id+location_id required' }, { status: 400 });
 }
 
 export async function PATCH(request: Request) {
