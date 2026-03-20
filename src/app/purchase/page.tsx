@@ -48,6 +48,7 @@ export default function PurchasePage() {
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [seedMsg, setSeedMsg] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; confirmLabel: string; variant: 'primary' | 'danger'; onConfirm: () => void } | null>(null);
+  const [taxRates, setTaxRates] = useState<Record<number, number>>({});
 
   const [supplierSearch, setSupplierSearch] = useState('');
   const [guideSearch, setGuideSearch] = useState('');
@@ -68,6 +69,9 @@ export default function PurchasePage() {
   const [numpadOpen, setNumpadOpen] = useState(false);
   const [numpadProduct, setNumpadProduct] = useState<GuideItem | null>(null);
   const [numpadValue, setNumpadValue] = useState('');
+  // Cart numpad: track which cart item is being edited
+  const [cartNumpadItem, setCartNumpadItem] = useState<any>(null);
+  const [cartNumpadCartId, setCartNumpadCartId] = useState(0);
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -78,8 +82,27 @@ export default function PurchasePage() {
   const fetchOrders = useCallback(async () => { try { const r = await fetch(`/api/purchase/orders?location_id=${locationId}&limit=30`); const d = await r.json(); setOrders(d.orders || []); } catch (_e) {} }, [locationId]);
   const fetchPending = useCallback(async () => { try { const r = await fetch(`/api/purchase/receive?location_id=${locationId}`); const d = await r.json(); setPendingDeliveries(d.pending || []); } catch (_e) {} }, [locationId]);
 
+  // Fetch tax rates for cart items
+  const fetchTaxRates = useCallback(async (productIds: number[]) => {
+    const uncached = productIds.filter(id => !(id in taxRates));
+    if (uncached.length === 0) return;
+    try {
+      const r = await fetch(`/api/purchase/tax?product_ids=${uncached.join(',')}`);
+      const d = await r.json();
+      if (d.taxes) setTaxRates(prev => ({ ...prev, ...d.taxes }));
+    } catch (_e) {}
+  }, [taxRates]);
+
   useEffect(() => { fetchSuppliers(); fetchCart(); }, [fetchSuppliers, fetchCart]);
   useEffect(() => { if (tab === 'history') fetchOrders(); if (tab === 'receive') fetchPending(); }, [locationId, tab, fetchOrders, fetchPending]);
+
+  // Fetch tax rates when cart loads
+  useEffect(() => {
+    if (tab === 'cart' && carts.length > 0) {
+      const allProductIds = carts.flatMap(c => c.items.map((i: any) => i.product_id));
+      if (allProductIds.length > 0) fetchTaxRates(allProductIds);
+    }
+  }, [tab, carts, fetchTaxRates]);
 
   function goHome() { router.push('/'); }
 
@@ -88,21 +111,49 @@ export default function PurchasePage() {
     try { const r = await fetch(`/api/purchase/guides?supplier_id=${supplier.id}&location_id=${locationId}`); const d = await r.json(); setGuideItems(d.guide?.items || []); const cr = await fetch(`/api/purchase/cart?location_id=${locationId}`); const cd = await cr.json(); const sc = (cd.carts || []).find((c: any) => c.supplier_id === supplier.id); const q: Record<number, number> = {}; if (sc) for (const i of sc.items) q[i.product_id] = i.quantity; setQuantities(q); } catch (_e) { setGuideItems([]); }
   }
 
-  function updateCartQty(product: GuideItem, qty: number) {
-    setQuantities(prev => ({ ...prev, [product.product_id]: qty }));
+  function updateCartQty(product: GuideItem | { product_id: number; product_name: string; product_uom: string; price: number }, qty: number, supplierId?: number) {
+    const supId = supplierId || guideSupplierId;
+    if ('id' in product) setQuantities(prev => ({ ...prev, [product.product_id]: qty }));
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => { await fetch('/api/purchase/cart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location_id: locationId, supplier_id: guideSupplierId, product_id: product.product_id, quantity: qty, product_name: product.product_name, product_uom: product.product_uom, price: product.price }) }); fetchCart(); }, 300);
+    debounceRef.current = setTimeout(async () => { await fetch('/api/purchase/cart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location_id: locationId, supplier_id: supId, product_id: product.product_id, quantity: qty, product_name: product.product_name, product_uom: product.product_uom, price: product.price }) }); fetchCart(); }, 300);
   }
 
-  function openNumpad(product: GuideItem) { setRecvNumpadLineId(0); setNumpadProduct(product); setNumpadValue(String(quantities[product.product_id] || '')); setNumpadOpen(true); }
-  function numpadKey(k: string) { if (k === 'del') setNumpadValue(prev => prev.slice(0, -1)); else if (k === '.' && numpadValue.includes('.')) return; else setNumpadValue(prev => prev + k); }
-  function confirmNumpad() { const val = parseFloat(numpadValue) || 0; if (recvNumpadLineId) { updateRecvQty(recvNumpadLineId, val); setRecvNumpadLineId(0); } else if (numpadProduct) { updateCartQty(numpadProduct, val); } setNumpadOpen(false); }
+  function openNumpad(product: GuideItem) { setRecvNumpadLineId(0); setCartNumpadItem(null); setNumpadProduct(product); setNumpadValue(String(quantities[product.product_id] || '')); setNumpadOpen(true); }
+
+  function openCartNumpad(item: any, cartId: number, supplierId: number) {
+    setRecvNumpadLineId(0); setCartNumpadItem({ ...item, supplier_id: supplierId }); setCartNumpadCartId(cartId);
+    setNumpadProduct({ id: 0, product_id: item.product_id, product_name: item.product_name, product_uom: item.product_uom, price: item.price, price_source: '', category_name: '' });
+    setNumpadValue(String(item.quantity || '')); setNumpadOpen(true);
+  }
+
+  function numpadKey(k: string) {
+    if (k === 'C') { setNumpadValue(''); return; }
+    if (k === 'del') { setNumpadValue(prev => prev.slice(0, -1)); return; }
+    if (k === '.' && numpadValue.includes('.')) return;
+    setNumpadValue(prev => prev + k);
+  }
+
+  function confirmNumpad() {
+    const val = parseFloat(numpadValue) || 0;
+    if (recvNumpadLineId) { updateRecvQty(recvNumpadLineId, val); setRecvNumpadLineId(0); }
+    else if (cartNumpadItem) {
+      updateCartQty({ product_id: cartNumpadItem.product_id, product_name: cartNumpadItem.product_name, product_uom: cartNumpadItem.product_uom, price: cartNumpadItem.price }, val, cartNumpadItem.supplier_id);
+      setCartNumpadItem(null);
+    }
+    else if (numpadProduct) { updateCartQty(numpadProduct, val); }
+    setNumpadOpen(false);
+  }
 
   function changeTab(t: Tab) { setTab(t); if (t === 'order') setScreen('suppliers'); else if (t === 'cart') { setScreen('cart'); fetchCart(); } else if (t === 'receive') { setScreen('receive-list'); fetchPending(); } else if (t === 'history') { setScreen('history'); fetchOrders(); } }
 
   async function sendOrder(cart: CartSummary) {
     setSending(true);
     try { await fetch('/api/purchase/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cart_id: cart.id, delivery_date: deliveryDate || null, order_note: orderNote }) }); await fetchCart(); if (carts.length <= 1) { setDeliveryDate(''); setOrderNote(''); setScreen('sent'); } } catch (_e) {} finally { setSending(false); }
+  }
+
+  async function removeCartItem(cartId: number, productId: number) {
+    await fetch('/api/purchase/cart', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cart_id: cartId, product_id: productId }) });
+    fetchCart();
   }
 
   async function openReceiveCheck(order: Order) {
@@ -183,39 +234,47 @@ export default function PurchasePage() {
   );
 
   const LocationPicker = () => (<div className="bg-[#1A1F2E] px-5 pb-3 flex gap-2 relative">{LOCATIONS.map(loc => (<button key={loc.id} onClick={() => setLocationId(loc.id)} className={`px-4 py-1.5 rounded-full text-[11px] font-bold transition-all ${locationId === loc.id ? 'bg-orange-500 text-white' : 'bg-white/10 text-white/45'}`}>{loc.name}</button>))}</div>);
-
   const Tabs = () => (<div className="flex gap-1 px-4 py-2.5 bg-white border-b border-gray-200 overflow-x-auto">{(['order', 'cart', 'receive', 'history'] as Tab[]).map(t => (<button key={t} onClick={() => changeTab(t)} className={`px-3.5 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap flex-shrink-0 transition-all ${tab === t ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'}`}>{t === 'order' ? 'Order' : t === 'cart' ? `Cart${cartTotal.items > 0 ? ` (${cartTotal.items})` : ''}` : t === 'receive' ? 'Receive' : 'History'}</button>))}</div>);
-
-  const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) => (
-    <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-orange-400 transition-colors mb-3">
-      <svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/><path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-      <input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="flex-1 bg-transparent outline-none text-[14px] text-[#1F2933] placeholder-gray-400" />
-      {value && <button onClick={() => onChange('')} className="text-gray-400 text-[18px]">&times;</button>}
-    </div>
-  );
-
+  const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) => (<div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-orange-400 transition-colors mb-3"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0"><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/><path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg><input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="flex-1 bg-transparent outline-none text-[14px] text-[#1F2933] placeholder-gray-400" />{value && <button onClick={() => onChange('')} className="text-gray-400 text-[18px]">&times;</button>}</div>);
   const StatusBadge = ({ status }: { status: string }) => { const m: Record<string, [string, string]> = { pending_approval: ['bg-amber-100 text-amber-800', 'Awaiting approval'], approved: ['bg-blue-100 text-blue-800', 'Approved'], sent: ['bg-blue-100 text-blue-800', 'Sent'], received: ['bg-green-100 text-green-800', 'Delivered'], partial: ['bg-amber-100 text-amber-800', 'Partial'], cancelled: ['bg-red-100 text-red-800', 'Cancelled'], draft: ['bg-gray-100 text-gray-700', 'Draft'] }; const [cls, label] = m[status] || ['bg-gray-100 text-gray-700', status]; return <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold ${cls}`}>{label}</span>; };
+
+  // ===== SWIPEABLE CART ROW =====
+  const SwipeRow = ({ children, onDelete }: { children: React.ReactNode; onDelete: () => void }) => {
+    const rowRef = useRef<HTMLDivElement>(null);
+    const startX = useRef(0); const currentX = useRef(0); const swiping = useRef(false);
+    const onTouchStart = (e: React.TouchEvent) => { startX.current = e.touches[0].clientX; swiping.current = true; };
+    const onTouchMove = (e: React.TouchEvent) => { if (!swiping.current || !rowRef.current) return; const dx = e.touches[0].clientX - startX.current; currentX.current = Math.min(0, Math.max(-80, dx)); rowRef.current.style.transform = `translateX(${currentX.current}px)`; };
+    const onTouchEnd = () => { if (!rowRef.current) return; swiping.current = false; if (currentX.current < -40) { rowRef.current.style.transform = 'translateX(-80px)'; } else { rowRef.current.style.transform = 'translateX(0)'; currentX.current = 0; } };
+    return (
+      <div className="relative overflow-hidden">
+        <div className="absolute right-0 top-0 bottom-0 w-20 bg-red-500 flex items-center justify-center">
+          <button onClick={onDelete} className="text-white text-[12px] font-bold w-full h-full">Delete</button>
+        </div>
+        <div ref={rowRef} className="relative bg-white transition-transform duration-150" style={{ transform: 'translateX(0)' }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+          {children}
+        </div>
+      </div>
+    );
+  };
 
   // ============== SUPPLIER LIST ==============
   const SupplierList = () => {
     const filtered = suppliers.filter(s => !supplierSearch || s.name.toLowerCase().includes(supplierSearch.toLowerCase()));
-    return (
-      <div className="px-4 py-3">
-        <SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />
-        {loading ? (<div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" /></div>
-        ) : filtered.length === 0 && suppliers.length === 0 ? (
-          <div className="text-center py-12"><div className="text-4xl mb-3">&#128722;</div><div className="text-[15px] font-semibold text-[#1F2933] mb-1">No suppliers yet</div><div className="text-[13px] text-gray-500 mb-4">Set up suppliers and order guides first.</div>{isAdmin && <><button onClick={runSeed} className="w-full max-w-[300px] py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30 mb-3">Seed suppliers from Odoo</button>{seedMsg && <p className="text-[12px] text-gray-500">{seedMsg}</p>}</>}</div>
-        ) : (<>
-          {filtered.map(s => { const days = (() => { try { return JSON.parse(s.order_days); } catch { return []; } })(); const dayStr = days.length > 0 ? days.map((d: string) => d.charAt(0).toUpperCase() + d.slice(1, 3)).join(' & ') : ''; return (
-            <button key={s.id} onClick={() => openGuide(s)} className="w-full flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] mb-2.5 active:scale-[0.98] transition-transform text-left">
-              <div className="w-12 h-12 rounded-[14px] bg-[#F1F3F5] flex items-center justify-center text-[16px] font-bold text-blue-600 flex-shrink-0">{s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
-              <div className="flex-1 min-w-0"><div className="text-[14px] font-bold text-[#1F2933] truncate">{s.name}</div><div className="text-[11px] text-gray-500 mt-0.5">{s.product_count} products in guide</div>{dayStr && <div className="text-[10px] font-semibold text-blue-600 mt-1">Orders: {dayStr}</div>}</div>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>
-            </button>); })}
-          {isManager && <div className="text-center mt-4"><button onClick={() => setScreen('manage')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage guides &amp; settings</button></div>}
-        </>)}
-      </div>
-    );
+    return (<div className="px-4 py-3">
+      <SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />
+      {loading ? (<div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" /></div>
+      ) : filtered.length === 0 && suppliers.length === 0 ? (
+        <div className="text-center py-12"><div className="text-4xl mb-3">&#128722;</div><div className="text-[15px] font-semibold text-[#1F2933] mb-1">No suppliers yet</div><div className="text-[13px] text-gray-500 mb-4">Set up suppliers and order guides first.</div>{isAdmin && <><button onClick={runSeed} className="w-full max-w-[300px] py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30 mb-3">Seed suppliers from Odoo</button>{seedMsg && <p className="text-[12px] text-gray-500">{seedMsg}</p>}</>}</div>
+      ) : (<>
+        {filtered.map(s => { const days = (() => { try { return JSON.parse(s.order_days); } catch { return []; } })(); const dayStr = days.length > 0 ? days.map((d: string) => d.charAt(0).toUpperCase() + d.slice(1, 3)).join(' & ') : ''; return (
+          <button key={s.id} onClick={() => openGuide(s)} className="w-full flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] mb-2.5 active:scale-[0.98] transition-transform text-left">
+            <div className="w-12 h-12 rounded-[14px] bg-[#F1F3F5] flex items-center justify-center text-[16px] font-bold text-blue-600 flex-shrink-0">{s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
+            <div className="flex-1 min-w-0"><div className="text-[14px] font-bold text-[#1F2933] truncate">{s.name}</div><div className="text-[11px] text-gray-500 mt-0.5">{s.product_count} products in guide</div>{dayStr && <div className="text-[10px] font-semibold text-blue-600 mt-1">Orders: {dayStr}</div>}</div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>
+          </button>); })}
+        {isManager && <div className="text-center mt-4"><button onClick={() => setScreen('manage')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage guides &amp; settings</button></div>}
+      </>)}
+    </div>);
   };
 
   // ============== ORDER GUIDE ==============
@@ -248,59 +307,83 @@ export default function PurchasePage() {
     </>);
   };
 
-  // ============== CART (with confirmation prompt on send) ==============
-  const CartView = () => (
+  // ============== CART (swipe to delete, tap to edit, tax breakdown) ==============
+  const CartView = () => {
+    // Calculate tax per cart
+    const calcTax = (cart: CartSummary) => {
+      let tax7 = 0, tax19 = 0, net = 0;
+      for (const item of cart.items) {
+        const lineNet = item.quantity * item.price;
+        net += lineNet;
+        const rate = taxRates[item.product_id] ?? 19;
+        if (rate <= 7) tax7 += lineNet * 0.07;
+        else tax19 += lineNet * 0.19;
+      }
+      return { net, tax7, tax19, gross: net + tax7 + tax19 };
+    };
+
+    return (
     <div className="px-4 py-3 pb-20">
       {carts.length === 0 ? (<div className="text-center py-16"><div className="text-4xl mb-3">&#128722;</div><div className="text-[15px] font-semibold text-[#1F2933] mb-1">Cart is empty</div><div className="text-[13px] text-gray-500">Go to a supplier and add products.</div></div>
       ) : (<>
         <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-2"><div className="flex items-center gap-3"><span className="text-[16px]">&#128197;</span><div className="flex-1"><div className="text-[13px] font-semibold text-[#1F2933]">Delivery date</div></div><input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="text-[13px] text-gray-600 border border-gray-200 rounded-lg px-2 py-1" /></div></div>
         <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3"><div className="text-[13px] font-semibold text-[#1F2933] mb-1">Order note</div><textarea value={orderNote} onChange={e => setOrderNote(e.target.value)} placeholder="Add a note for this order..." rows={2} className="w-full text-[13px] text-gray-600 border border-gray-200 rounded-lg px-3 py-2 resize-none outline-none focus:border-orange-400" /></div>
-        {carts.map(cart => (<div key={cart.id} className="mb-4">
+        {carts.map(cart => {
+          const { net, tax7, tax19, gross } = calcTax(cart);
+          const belowMin = cart.min_order_value > 0 && net < cart.min_order_value;
+          return (<div key={cart.id} className="mb-4">
           <div className="flex justify-between items-center py-2"><span className="text-[11px] font-bold tracking-wide uppercase text-gray-400">{cart.supplier_name}</span><div className="flex gap-1.5"><span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-blue-100 text-blue-800">{cart.send_method === 'whatsapp' ? 'WhatsApp' : 'Email'}</span>{cart.approval_required === 1 && <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-amber-100 text-amber-800">Approval required</span>}</div></div>
-          {cart.min_order_value > 0 && cart.total < cart.min_order_value && (<div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 mb-2 text-[11px] text-amber-800"><span>&#9888;&#65039;</span> Min. order: &euro;{cart.min_order_value.toFixed(2)}. You need &euro;{(cart.min_order_value - cart.total).toFixed(2)} more.</div>)}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">{cart.items.map((item: any) => (<div key={item.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0"><div className="flex-1 min-w-0"><div className="text-[13px] font-semibold text-[#1F2933] truncate">{item.product_name}</div><div className="text-[12px] text-gray-500 font-mono">{item.quantity} {item.product_uom} &bull; &euro;{(item.quantity * item.price).toFixed(2)}</div></div><div className="text-[14px] font-bold font-mono text-[#1F2933]">&euro;{(item.quantity * item.price).toFixed(2)}</div></div>))}</div>
-          <div className="flex justify-between items-center mt-1 px-1"><div className="text-[13px] font-bold font-mono text-[#1F2933]">&euro;{cart.total.toFixed(2)}</div><div className="text-[11px] text-gray-400">{cart.item_count} items</div></div>
-          <button onClick={() => setConfirmDialog({ title: 'Send order?', message: `Send ${cart.item_count} items (\u20ac${cart.total.toFixed(2)}) to ${cart.supplier_name}?`, confirmLabel: 'Yes, send order', variant: 'primary', onConfirm: () => { setConfirmDialog(null); sendOrder(cart); } })} disabled={sending} className="w-full mt-2 py-3 rounded-xl bg-orange-500 text-white text-[13px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 disabled:opacity-50 transition-all">
+          {belowMin && (<div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 mb-2 text-[11px] text-amber-800"><span>&#9888;&#65039;</span> Min. order: &euro;{cart.min_order_value.toFixed(2)}. You need &euro;{(cart.min_order_value - net).toFixed(2)} more.</div>)}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide px-3.5 pt-2.5 pb-1">Swipe left to remove &bull; tap to edit</div>
+            {cart.items.map((item: any) => (
+              <SwipeRow key={item.id} onDelete={() => removeCartItem(cart.id, item.product_id)}>
+                <button onClick={() => openCartNumpad(item, cart.id, cart.supplier_id)} className="w-full flex items-center gap-2.5 py-2.5 px-3.5 border-b border-gray-100 last:border-0 text-left active:bg-gray-50">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold text-[#1F2933] truncate">{item.product_name}</div>
+                    <div className="text-[11px] text-gray-500 font-mono">{item.quantity} {item.product_uom} &times; &euro;{item.price.toFixed(2)}</div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-[13px] font-bold font-mono text-[#1F2933]">&euro;{(item.quantity * item.price).toFixed(2)}</div>
+                    <div className="text-[9px] text-gray-400 font-mono">{(taxRates[item.product_id] ?? 19) <= 7 ? '7%' : '19%'} MwSt</div>
+                  </div>
+                </button>
+              </SwipeRow>
+            ))}
+          </div>
+          {/* Tax breakdown */}
+          <div className="bg-gray-50 rounded-xl px-3.5 py-2.5 mt-2 border border-gray-100">
+            <div className="flex justify-between text-[12px] text-gray-500"><span>Subtotal (net)</span><span className="font-mono">&euro;{net.toFixed(2)}</span></div>
+            {tax7 > 0 && <div className="flex justify-between text-[11px] text-gray-400"><span>7% MwSt</span><span className="font-mono">&euro;{tax7.toFixed(2)}</span></div>}
+            {tax19 > 0 && <div className="flex justify-between text-[11px] text-gray-400"><span>19% MwSt</span><span className="font-mono">&euro;{tax19.toFixed(2)}</span></div>}
+            <div className="flex justify-between text-[14px] font-bold text-[#1F2933] pt-1 border-t border-gray-200 mt-1"><span>Total (gross)</span><span className="font-mono">&euro;{gross.toFixed(2)}</span></div>
+          </div>
+          <button onClick={() => {
+            const msg = belowMin
+              ? `This order (\u20ac${net.toFixed(2)} net) is below the minimum of \u20ac${cart.min_order_value.toFixed(2)}. Send anyway to ${cart.supplier_name}?`
+              : `Send ${cart.item_count} items (\u20ac${gross.toFixed(2)} incl. tax) to ${cart.supplier_name}?`;
+            setConfirmDialog({ title: belowMin ? 'Below minimum order' : 'Send order?', message: msg, confirmLabel: belowMin ? 'Send anyway' : 'Yes, send order', variant: 'primary', onConfirm: () => { setConfirmDialog(null); sendOrder(cart); } });
+          }} disabled={sending} className="w-full mt-2 py-3 rounded-xl bg-orange-500 text-white text-[13px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 disabled:opacity-50 transition-all">
             {sending ? 'Sending...' : `Send to ${cart.supplier_name.split(' ')[0]} \u2192`}
           </button>
-        </div>))}
+        </div>); })}
       </>)}
     </div>
-  );
-
-  const OrderSent = () => (<div className="px-4 py-3 flex flex-col items-center pt-16"><div className="w-16 h-16 rounded-[18px] bg-green-100 flex items-center justify-center mb-4"><svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg></div><div className="text-[18px] font-bold text-[#1F2933] mb-2">Order sent!</div><div className="text-[13px] text-gray-500 text-center max-w-[280px] leading-relaxed mb-6">Your order has been submitted.</div><button onClick={() => changeTab('order')} className="w-full max-w-[300px] py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30 mb-3">Place another order</button><button onClick={() => changeTab('history')} className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold mb-3">View order history</button><button onClick={goHome} className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold">Back to dashboard</button></div>);
-
-  // ============== HISTORY ==============
-  const HistoryView = () => { const fm: Record<string, string[]> = { all: [], sent: ['sent'], delivered: ['received'], approval: ['pending_approval'], issues: ['partial'] }; const filtered = historyFilter === 'all' ? orders : orders.filter(o => fm[historyFilter]?.includes(o.status)); return (
-    <div className="px-4 py-3">
-      <div className="flex gap-1.5 overflow-x-auto pb-3">{['all', 'sent', 'delivered', 'approval', 'issues'].map(f => (<button key={f} onClick={() => setHistoryFilter(f)} className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap flex-shrink-0 capitalize ${historyFilter === f ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{f}</button>))}</div>
-      {filtered.length === 0 ? (<div className="text-center py-16"><div className="text-[15px] font-semibold text-[#1F2933] mb-1">No orders yet</div></div>
-      ) : (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">{filtered.map(order => (<button key={order.id} onClick={() => openOrderDetail(order)} className="w-full flex items-center gap-3 py-3 border-b border-gray-100 last:border-0 text-left active:bg-gray-50"><div className="flex-1 min-w-0"><div className="text-[13px] font-bold text-[#1F2933]">{order.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{order.odoo_po_name || `#${order.id}`} &bull; {new Date(order.created_at).toLocaleDateString('de-DE')}</div></div><div className="text-right flex-shrink-0"><div className="text-[13px] font-bold font-mono text-[#1F2933]">&euro;{order.total_amount.toFixed(2)}</div><StatusBadge status={order.status} /></div></button>))}</div>)}
-    </div>); };
-
-  // ============== ORDER DETAIL (with confirmation prompt on cancel) ==============
-  const OrderDetail = () => {
-    if (!selectedOrder) return null;
-    const canCancel = ['draft', 'pending_approval', 'approved'].includes(selectedOrder.status);
-    return (
-      <div className="px-4 py-3">
-        <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3"><div className="flex justify-between items-start mb-3"><div><div className="text-[16px] font-bold text-[#1F2933]">{selectedOrder.supplier_name}</div><div className="text-[12px] text-gray-500 font-mono mt-1">{selectedOrder.odoo_po_name || `#${selectedOrder.id}`}</div></div><StatusBadge status={selectedOrder.status} /></div><div className="text-[12px] text-gray-500 mb-1">Ordered: {new Date(selectedOrder.created_at).toLocaleString('de-DE')}</div>{selectedOrder.delivery_date && <div className="text-[12px] text-gray-500">Delivery: {selectedOrder.delivery_date}</div>}{selectedOrder.order_note && <div className="text-[12px] text-gray-500 mt-1">Note: {selectedOrder.order_note}</div>}</div>
-        {selectedOrder.lines && selectedOrder.lines.length > 0 && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-3">{selectedOrder.lines.map((line: any) => (<div key={line.id} className="flex justify-between py-2.5 border-b border-gray-100 last:border-0 text-[13px]"><div className="text-[#1F2933]">{line.product_name}</div><div className="font-mono text-gray-500">{line.quantity} {line.product_uom} &bull; &euro;{line.subtotal.toFixed(2)}</div></div>))}</div>)}
-        <div className="text-right text-[16px] font-bold font-mono text-[#1F2933] mb-4">&euro;{selectedOrder.total_amount.toFixed(2)}</div>
-        {canCancel && <button onClick={() => setConfirmDialog({ title: 'Cancel this order?', message: `Are you sure you want to cancel this order to ${selectedOrder.supplier_name}? This cannot be undone.`, confirmLabel: 'Yes, cancel order', variant: 'danger', onConfirm: () => { setConfirmDialog(null); cancelSelectedOrder(); } })} className="w-full py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100">Cancel order</button>}
-      </div>
     );
   };
 
-  // ============== RECEIVE LIST ==============
+  const OrderSent = () => (<div className="px-4 py-3 flex flex-col items-center pt-16"><div className="w-16 h-16 rounded-[18px] bg-green-100 flex items-center justify-center mb-4"><svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg></div><div className="text-[18px] font-bold text-[#1F2933] mb-2">Order sent!</div><div className="text-[13px] text-gray-500 text-center max-w-[280px] leading-relaxed mb-6">Your order has been submitted.</div><button onClick={() => changeTab('order')} className="w-full max-w-[300px] py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30 mb-3">Place another order</button><button onClick={() => changeTab('history')} className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold mb-3">View order history</button><button onClick={goHome} className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold">Back to dashboard</button></div>);
+
+  const HistoryView = () => { const fm: Record<string, string[]> = { all: [], sent: ['sent'], delivered: ['received'], approval: ['pending_approval'], issues: ['partial'] }; const filtered = historyFilter === 'all' ? orders : orders.filter(o => fm[historyFilter]?.includes(o.status)); return (<div className="px-4 py-3"><div className="flex gap-1.5 overflow-x-auto pb-3">{['all', 'sent', 'delivered', 'approval', 'issues'].map(f => (<button key={f} onClick={() => setHistoryFilter(f)} className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap flex-shrink-0 capitalize ${historyFilter === f ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{f}</button>))}</div>{filtered.length === 0 ? (<div className="text-center py-16"><div className="text-[15px] font-semibold text-[#1F2933] mb-1">No orders yet</div></div>) : (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">{filtered.map(order => (<button key={order.id} onClick={() => openOrderDetail(order)} className="w-full flex items-center gap-3 py-3 border-b border-gray-100 last:border-0 text-left active:bg-gray-50"><div className="flex-1 min-w-0"><div className="text-[13px] font-bold text-[#1F2933]">{order.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{order.odoo_po_name || `#${order.id}`} &bull; {new Date(order.created_at).toLocaleDateString('de-DE')}</div></div><div className="text-right flex-shrink-0"><div className="text-[13px] font-bold font-mono text-[#1F2933]">&euro;{order.total_amount.toFixed(2)}</div><StatusBadge status={order.status} /></div></button>))}</div>)}</div>); };
+
+  const OrderDetail = () => { if (!selectedOrder) return null; const canCancel = ['draft', 'pending_approval', 'approved'].includes(selectedOrder.status); return (<div className="px-4 py-3"><div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3"><div className="flex justify-between items-start mb-3"><div><div className="text-[16px] font-bold text-[#1F2933]">{selectedOrder.supplier_name}</div><div className="text-[12px] text-gray-500 font-mono mt-1">{selectedOrder.odoo_po_name || `#${selectedOrder.id}`}</div></div><StatusBadge status={selectedOrder.status} /></div><div className="text-[12px] text-gray-500 mb-1">Ordered: {new Date(selectedOrder.created_at).toLocaleString('de-DE')}</div>{selectedOrder.delivery_date && <div className="text-[12px] text-gray-500">Delivery: {selectedOrder.delivery_date}</div>}{selectedOrder.order_note && <div className="text-[12px] text-gray-500 mt-1">Note: {selectedOrder.order_note}</div>}</div>{selectedOrder.lines && selectedOrder.lines.length > 0 && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-3">{selectedOrder.lines.map((line: any) => (<div key={line.id} className="flex justify-between py-2.5 border-b border-gray-100 last:border-0 text-[13px]"><div className="text-[#1F2933]">{line.product_name}</div><div className="font-mono text-gray-500">{line.quantity} {line.product_uom} &bull; &euro;{line.subtotal.toFixed(2)}</div></div>))}</div>)}<div className="text-right text-[16px] font-bold font-mono text-[#1F2933] mb-4">&euro;{selectedOrder.total_amount.toFixed(2)}</div>{canCancel && <button onClick={() => setConfirmDialog({ title: 'Cancel this order?', message: `Are you sure you want to cancel this order to ${selectedOrder.supplier_name}? This cannot be undone.`, confirmLabel: 'Yes, cancel order', variant: 'danger', onConfirm: () => { setConfirmDialog(null); cancelSelectedOrder(); } })} className="w-full py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100">Cancel order</button>}</div>); };
+
   const ReceiveList = () => (<div className="px-4 py-3"><div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Pending deliveries</div>{pendingDeliveries.length === 0 ? (<div className="text-center py-16"><div className="text-[15px] font-semibold text-[#1F2933] mb-1">No pending deliveries</div><div className="text-[13px] text-gray-500">Sent orders will appear here.</div></div>) : (pendingDeliveries.map(order => (<button key={order.id} onClick={() => openReceiveCheck(order)} className="w-full flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-2.5 active:scale-[0.98] transition-transform text-left"><div className="w-10 h-10 rounded-xl bg-[#F1F3F5] flex items-center justify-center text-[14px] font-bold text-blue-600 flex-shrink-0">{(order.supplier_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2)}</div><div className="flex-1 min-w-0"><div className="text-[14px] font-bold text-[#1F2933]">{order.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{order.odoo_po_name || `#${order.id}`}</div></div><span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-amber-100 text-amber-800">{order.status === 'partial' ? 'Partial' : 'Pending'}</span></button>)))}</div>);
 
-  // ============== RECEIVE CHECK (with confirmation prompts) ==============
   const ReceiveCheck = () => {
     const orderTotal = recvOrder?.total_amount || 0;
-    const openRecvNumpad = (line: ReceiptLine) => { setRecvNumpadLineId(line.id); setNumpadProduct({ id: 0, product_id: line.product_id, product_name: line.product_name, product_uom: line.product_uom, price: line.price || 0, price_source: '', category_name: '' }); setNumpadValue(line.received_qty !== null ? String(line.received_qty) : ''); setNumpadOpen(true); };
-    return (
-    <div className="px-4 py-3 pb-40">
+    const openRecvNumpad = (line: ReceiptLine) => { setRecvNumpadLineId(line.id); setCartNumpadItem(null); setNumpadProduct({ id: 0, product_id: line.product_id, product_name: line.product_name, product_uom: line.product_uom, price: line.price || 0, price_source: '', category_name: '' }); setNumpadValue(line.received_qty !== null ? String(line.received_qty) : ''); setNumpadOpen(true); };
+    return (<div className="px-4 py-3 pb-40">
       {recvOrder && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3"><div className="flex justify-between items-start mb-2"><div><div className="text-[14px] font-bold text-[#1F2933]">{recvOrder.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{recvOrder.odoo_po_name || `#${recvOrder.id}`}</div></div><StatusBadge status={recvOrder.status} /></div><div className="text-[11px] text-gray-500">Ordered by <span className="font-semibold text-[#1F2933]">{recvOrder.ordered_by_name}</span></div><div className="text-[11px] text-gray-500">{new Date(recvOrder.created_at).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>{recvOrder.delivery_date && <div className="text-[11px] text-gray-500">Delivery: {recvOrder.delivery_date}</div>}{recvOrder.order_note && <div className="text-[11px] text-gray-500 mt-1 italic">{recvOrder.order_note}</div>}<div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100"><span className="text-[11px] text-gray-400">{receiptLines.length} items</span><span className="text-[14px] font-bold font-mono text-[#1F2933]">&euro;{orderTotal.toFixed(2)}</span></div></div>)}
       <p className="text-[12px] text-gray-500 mb-3">Enter the quantity you actually received. Leave blank if not delivered yet.</p>
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
@@ -317,42 +400,34 @@ export default function PurchasePage() {
           </div></div>); })}
       </div>
       <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
-        {isManager ? (<><div className="flex gap-2 mb-2">
-          <button onClick={() => setConfirmDialog({ title: 'Confirm receipt?', message: 'This will update stock quantities in Odoo and close this order. This cannot be undone.', confirmLabel: 'Yes, confirm & close', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(true); } })} className="flex-1 py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700">Confirm &amp; close</button>
-          <button onClick={() => setConfirmDialog({ title: 'Keep as backorder?', message: 'Received quantities will be updated in Odoo. The remaining items will stay open for a future delivery.', confirmLabel: 'Yes, keep backorder', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(false); } })} className="flex-1 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold active:bg-gray-50">Keep as backorder</button>
-        </div><p className="text-[11px] text-gray-400 text-center">Confirming will update stock in Odoo.</p></>
+        {isManager ? (<><div className="flex gap-2 mb-2"><button onClick={() => setConfirmDialog({ title: 'Confirm receipt?', message: 'This will update stock quantities in Odoo and close this order. This cannot be undone.', confirmLabel: 'Yes, confirm & close', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(true); } })} className="flex-1 py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700">Confirm &amp; close</button><button onClick={() => setConfirmDialog({ title: 'Keep as backorder?', message: 'Received quantities will be updated in Odoo. The remaining items will stay open for a future delivery.', confirmLabel: 'Yes, keep backorder', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(false); } })} className="flex-1 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold active:bg-gray-50">Keep as backorder</button></div><p className="text-[11px] text-gray-400 text-center">Confirming will update stock in Odoo.</p></>
         ) : (<p className="text-[12px] text-gray-500 text-center py-2">A manager must confirm receipt to update stock.</p>)}
       </div>
     </div>);
   };
 
-  // ============== RECEIVE ISSUE ==============
   const ReceiveIssue = () => {
     const [issueType, setIssueType] = useState(issueLine?.issue_type || 'Damaged');
     const [notes, setNotes] = useState(issueLine?.issue_notes || '');
     const [localPhoto, setLocalPhoto] = useState(issuePhoto);
     const types = ['Damaged', 'Wrong item', 'Short delivery', 'Expired', 'Quality', 'Other'];
     function handleCameraCapture(e: React.ChangeEvent<HTMLInputElement>) { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { const base64 = reader.result as string; setLocalPhoto(base64); setIssuePhoto(base64); }; reader.readAsDataURL(file); }
-    return (
-      <div className="px-4 py-3">
-        <div className="text-[15px] font-bold text-[#1F2933] mb-1">{issueLine?.product_name}</div>
-        <div className="text-[12px] text-gray-500 mb-4">Ordered: {issueLine?.ordered_qty} {issueLine?.product_uom}</div>
-        <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Photo evidence</label>
-        {localPhoto ? (<div className="mb-4 relative"><img src={localPhoto} alt="Issue photo" className="w-full h-48 object-cover rounded-xl border border-gray-200" /><button onClick={() => { setLocalPhoto(''); setIssuePhoto(''); }} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white text-[14px]">&times;</button><div className="mt-2 text-center"><label className="text-[12px] font-semibold text-orange-600 cursor-pointer active:opacity-70">Retake photo<input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" /></label></div></div>
-        ) : (<label className="block mb-4 cursor-pointer"><div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center active:bg-gray-50"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" className="mx-auto mb-2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><div className="text-[13px] font-semibold text-[#1F2933]">Tap to take photo</div><div className="text-[11px] text-gray-400 mt-1">Camera or gallery</div></div><input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" /></label>)}
-        <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Issue type</label>
-        <div className="flex gap-1.5 flex-wrap mb-4">{types.map(t => (<button key={t} onClick={() => setIssueType(t)} className={`px-3 py-1.5 rounded-full text-[11px] font-semibold ${issueType === t ? 'bg-red-500 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{t}</button>))}</div>
-        <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Notes</label>
-        <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Describe the issue..." rows={3} className="w-full text-[13px] border border-gray-200 rounded-xl px-3 py-2 resize-none outline-none focus:border-orange-400 mb-4" />
-        <button onClick={() => submitIssue(issueType, notes, localPhoto)} className="w-full py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30">Submit report</button>
-      </div>
-    );
+    return (<div className="px-4 py-3">
+      <div className="text-[15px] font-bold text-[#1F2933] mb-1">{issueLine?.product_name}</div>
+      <div className="text-[12px] text-gray-500 mb-4">Ordered: {issueLine?.ordered_qty} {issueLine?.product_uom}</div>
+      <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Photo evidence</label>
+      {localPhoto ? (<div className="mb-4 relative"><img src={localPhoto} alt="Issue photo" className="w-full h-48 object-cover rounded-xl border border-gray-200" /><button onClick={() => { setLocalPhoto(''); setIssuePhoto(''); }} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white text-[14px]">&times;</button><div className="mt-2 text-center"><label className="text-[12px] font-semibold text-orange-600 cursor-pointer active:opacity-70">Retake photo<input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" /></label></div></div>
+      ) : (<label className="block mb-4 cursor-pointer"><div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center active:bg-gray-50"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" className="mx-auto mb-2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><div className="text-[13px] font-semibold text-[#1F2933]">Tap to take photo</div><div className="text-[11px] text-gray-400 mt-1">Camera or gallery</div></div><input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" /></label>)}
+      <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Issue type</label>
+      <div className="flex gap-1.5 flex-wrap mb-4">{types.map(t => (<button key={t} onClick={() => setIssueType(t)} className={`px-3 py-1.5 rounded-full text-[11px] font-semibold ${issueType === t ? 'bg-red-500 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{t}</button>))}</div>
+      <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Notes</label>
+      <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Describe the issue..." rows={3} className="w-full text-[13px] border border-gray-200 rounded-xl px-3 py-2 resize-none outline-none focus:border-orange-400 mb-4" />
+      <button onClick={() => submitIssue(issueType, notes, localPhoto)} className="w-full py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30">Submit report</button>
+    </div>);
   };
 
-  // ============== MANAGE ==============
   const ManageScreen = () => (<div className="px-4 py-3"><div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Edit order guides</div>{suppliers.length === 0 ? (<div className="text-center py-12"><div className="text-[13px] text-gray-500 mb-4">No suppliers yet. Seed from Odoo first.</div>{isAdmin && <button onClick={runSeed} className="py-3 px-6 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30">Seed suppliers from Odoo</button>}{seedMsg && <p className="text-[12px] text-gray-500 mt-3">{seedMsg}</p>}</div>) : (suppliers.map(s => (<button key={s.id} onClick={() => openManageGuide(s)} className="w-full flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-2.5 active:scale-[0.98] transition-transform text-left"><div className="w-10 h-10 rounded-xl bg-[#F1F3F5] flex items-center justify-center text-[14px] font-bold text-blue-600 flex-shrink-0">{s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div><div className="flex-1 min-w-0"><div className="text-[13px] font-bold text-[#1F2933] truncate">{s.name}</div><div className="text-[11px] text-gray-500">{s.product_count} products &bull; Tap to edit</div></div><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg></button>)))}</div>);
 
-  // ============== MANAGE GUIDE ==============
   const ManageGuideScreen = () => {
     const guideProductIds = new Set(guideItems.map(i => i.product_id)); const searchResults = mgResults.filter(p => !guideProductIds.has(p.id)); const guideCats = Array.from(new Set(guideItems.map(i => i.category_name || 'Other'))); const allFilterCats = ['All', ...mgCategories.slice(0, 10)];
     return (<div className="px-4 py-3">
@@ -364,13 +439,22 @@ export default function PurchasePage() {
     </div>);
   };
 
-  // ============== NUMPAD ==============
+  // ============== NUMPAD (redesigned: . | 0 | C, del icon top-right of display) ==============
   const Numpad = () => numpadOpen ? (
-    <div className="fixed inset-0 bg-black/40 z-[100] flex items-end justify-center" onClick={() => { setNumpadOpen(false); setRecvNumpadLineId(0); }}>
+    <div className="fixed inset-0 bg-black/40 z-[100] flex items-end justify-center" onClick={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }}>
       <div className="bg-white rounded-t-[20px] w-full max-w-lg p-5 pb-7" onClick={e => e.stopPropagation()}>
-        <div className="text-center pb-4"><div className="text-[12px] text-gray-400">{numpadProduct?.product_uom}</div><div className="text-[15px] font-bold text-[#1F2933]">{numpadProduct?.product_name}</div></div>
-        <div className="text-center text-[36px] font-extrabold font-mono text-[#1F2933] pb-4">{numpadValue || '0'}</div>
-        <div className="grid grid-cols-3 gap-2 mb-3">{['1','2','3','4','5','6','7','8','9','.','0','del'].map(k => (<button key={k} onClick={() => numpadKey(k)} className="h-14 rounded-xl border border-gray-200 bg-white text-[20px] font-semibold text-[#1F2933] flex items-center justify-center active:bg-gray-100 font-mono">{k === 'del' ? '\u232B' : k}</button>))}</div>
+        <div className="text-center pb-2"><div className="text-[12px] text-gray-400">{numpadProduct?.product_uom}</div><div className="text-[15px] font-bold text-[#1F2933]">{numpadProduct?.product_name}</div></div>
+        <div className="flex items-center justify-center gap-3 pb-4">
+          <div className="text-center text-[36px] font-extrabold font-mono text-[#1F2933]">{numpadValue || '0'}</div>
+          <button onClick={() => numpadKey('del')} className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-gray-400 active:bg-gray-200" title="Backspace">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          {['1','2','3','4','5','6','7','8','9','.','0','C'].map(k => (
+            <button key={k} onClick={() => numpadKey(k)} className={`h-14 rounded-xl border border-gray-200 text-[20px] font-semibold flex items-center justify-center active:bg-gray-100 font-mono ${k === 'C' ? 'bg-red-50 text-red-500 border-red-200' : 'bg-white text-[#1F2933]'}`}>{k}</button>
+          ))}
+        </div>
         <button onClick={confirmNumpad} className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30">Confirm</button>
       </div>
     </div>
