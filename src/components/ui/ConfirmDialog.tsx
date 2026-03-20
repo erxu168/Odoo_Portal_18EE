@@ -3,8 +3,12 @@
 import React from 'react';
 
 /**
- * Reusable confirmation dialog — slides up from bottom.
+ * Reusable confirmation dialog - slides up from bottom.
  * UX rule: always show before any confirming/irreversible action.
+ *
+ * onConfirm: primary action (top button)
+ * onCancel: secondary action (bottom button)
+ * onDismiss: backdrop tap (defaults to onCancel if not provided)
  */
 interface ConfirmDialogProps {
   title: string;
@@ -14,15 +18,16 @@ interface ConfirmDialogProps {
   variant?: 'primary' | 'danger';
   onConfirm: () => void;
   onCancel: () => void;
+  onDismiss?: () => void;
 }
 
-export default function ConfirmDialog({ title, message, confirmLabel, cancelLabel = 'Cancel', variant = 'primary', onConfirm, onCancel }: ConfirmDialogProps) {
+export default function ConfirmDialog({ title, message, confirmLabel, cancelLabel = 'Cancel', variant = 'primary', onConfirm, onCancel, onDismiss }: ConfirmDialogProps) {
   const btnColor = variant === 'danger'
     ? 'bg-red-600 text-white active:bg-red-700 shadow-lg shadow-red-600/30'
     : 'bg-orange-500 text-white active:bg-orange-600 shadow-lg shadow-orange-500/30';
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-[110] flex items-end justify-center" onClick={onCancel}>
+    <div className="fixed inset-0 bg-black/40 z-[110] flex items-end justify-center" onClick={onDismiss || onCancel}>
       <div className="bg-white rounded-t-[20px] w-full max-w-lg p-5 pb-7" onClick={e => e.stopPropagation()}>
         <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto mb-4" />
         <h3 className="text-[16px] font-bold text-[#1F2933] mb-1">{title}</h3>
