@@ -2,11 +2,11 @@
  * /api/purchase/cart
  * GET  - get all carts for a location (with items + totals)
  * POST - add/update item in shared cart
- * DELETE - clear a cart
+ * DELETE - remove single item (with body: {cart_id, product_id}) or clear entire cart (query: ?cart_id=X)
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getOrCreateCart, upsertCartItem, getAllCartsForLocation, clearCart, getCartWithItems } from '@/lib/purchase-db';
+import { getOrCreateCart, upsertCartItem, getAllCartsForLocation, clearCart, getCartWithItems, removeCartItem } from '@/lib/purchase-db';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -46,7 +46,6 @@ export async function POST(request: Request) {
   const cart = getOrCreateCart(location_id, supplier_id, user.id);
   upsertCartItem(cart.id, product_id, quantity, user.id, { product_name, product_uom, price });
 
-  // Return updated cart
   const updated = getCartWithItems(cart.id);
   return NextResponse.json({ cart: updated });
 }
@@ -54,6 +53,22 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Support both body JSON (single item delete) and query param (clear cart)
+  try {
+    const body = await request.json();
+    if (body.cart_id && body.product_id) {
+      // Remove single item from cart
+      removeCartItem(body.cart_id, body.product_id);
+      return NextResponse.json({ message: 'Item removed' });
+    }
+    if (body.cart_id) {
+      clearCart(body.cart_id);
+      return NextResponse.json({ message: 'Cart cleared' });
+    }
+  } catch (_e) {
+    // No body — fall through to query params
+  }
 
   const { searchParams } = new URL(request.url);
   const cartId = parseInt(searchParams.get('cart_id') || '0');
