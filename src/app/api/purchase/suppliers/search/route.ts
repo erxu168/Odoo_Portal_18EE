@@ -1,8 +1,7 @@
 /**
  * /api/purchase/suppliers/search
  * GET - Search Odoo's res.partner for suppliers (supplier_rank > 0)
- * Returns suppliers from Odoo that match the search query.
- * This is a LIVE search against Odoo — not the local SQLite database.
+ * Live search against Odoo — not the local SQLite database.
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
@@ -25,7 +24,6 @@ export async function GET(request: Request) {
     const odoo = new OdooClient();
     await odoo.authenticate();
 
-    // Search res.partner where supplier_rank > 0 and name matches
     const domain = [
       ['supplier_rank', '>', 0],
       ['name', 'ilike', q],
@@ -34,7 +32,7 @@ export async function GET(request: Request) {
 
     const partners = await odoo.searchRead('res.partner', domain, [
       'id', 'name', 'email', 'phone', 'mobile',
-    ], limit, 0, 'name asc');
+    ], { limit, offset: 0, order: 'name asc' });
 
     // Check which ones already exist in local DB
     const { getDb } = await import('@/lib/db');
@@ -55,6 +53,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ suppliers });
   } catch (e: any) {
     console.error('Odoo supplier search error:', e);
-    return NextResponse.json({ error: 'Failed to search Odoo suppliers', detail: e.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to search Odoo', detail: e.message }, { status: 500 });
   }
 }
