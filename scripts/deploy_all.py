@@ -75,20 +75,20 @@ if 'ManageOrders' not in t:
     )
     print('  OK: ManageOrders import')
 
-# 6. Add deleteSupplierGuide handler
+# 6. Add deleteSupplierGuide handler — passes ONLY supplier_id, no location_id
 if 'deleteSupplierGuide' not in t:
     fn = (
         'async function deleteSupplierGuide(suppId: number, suppName: string) {\n'
         '    setConfirmDialog({\n'
         "      title: 'Delete order list for ' + suppName + '?',\n"
-        "      message: 'This will remove the order list and all products for ' + suppName + '. This cannot be undone.',\n"
+        "      message: 'This will permanently remove the order list and all products for ' + suppName + '. This cannot be undone.',\n"
         "      confirmLabel: 'Yes, delete it',\n"
         "      cancelLabel: 'Cancel',\n"
         "      variant: 'danger' as const,\n"
         '      onConfirm: async () => {\n'
         '        setConfirmDialog(null);\n'
         '        try {\n'
-        "          await fetch('/api/purchase/guides?supplier_id=' + suppId + '&location_id=' + locationId, { method: 'DELETE' });\n"
+        "          await fetch('/api/purchase/guides?supplier_id=' + suppId, { method: 'DELETE' });\n"
         '          fetchSuppliers();\n'
         '        } catch (e) { void e; }\n'
         '      }\n'
@@ -98,15 +98,13 @@ if 'deleteSupplierGuide' not in t:
     anchor = 'async function removeGuideItemAction(itemId: number)'
     if anchor in t:
         t = t.replace(anchor, fn + anchor)
-        print('  OK: deleteSupplierGuide handler')
+        print('  OK: deleteSupplierGuide handler (supplier_id only, no location filter)')
 
-# 7. Replace ManageScreen body with ManageOrders component
-# Find the ManageScreen definition and replace its body
+# 7. Replace ManageScreen with ManageOrders component
 ms_start = t.find('const ManageScreen = ()')
 ms_next = t.find('const ManageGuideScreen', ms_start + 1) if ms_start > 0 else -1
 
 if ms_start > 0 and ms_next > 0 and 'ManageOrders' not in t[ms_start:ms_next]:
-    # Replace everything from ManageScreen definition to ManageGuideScreen
     new_manage = (
         "const ManageScreen = () => "
         "<ManageOrders suppliers={suppliers} locationId={locationId} isAdmin={isAdmin} "
@@ -115,11 +113,7 @@ if ms_start > 0 and ms_next > 0 and 'ManageOrders' not in t[ms_start:ms_next]:
     )
     old_manage = t[ms_start:ms_next]
     t = t.replace(old_manage, new_manage)
-    print('  OK: ManageScreen replaced with ManageOrders component')
-elif ms_start > 0 and 'ManageOrders' in t[ms_start:ms_start+200]:
-    print('  SKIP: ManageScreen already uses ManageOrders')
-else:
-    print('  FAIL: ManageScreen not found')
+    print('  OK: ManageScreen replaced with ManageOrders')
 
 write(p, t)
 print('  purchase/page.tsx written')
