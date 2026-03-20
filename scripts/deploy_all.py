@@ -2,7 +2,7 @@
 """Master deploy script. Run AFTER git checkout + git pull + JS patches.
 Handles: numpad migration, delete guide, label guards.
 Run from /opt/krawings-portal"""
-import os, sys
+import os
 
 def write(path, t):
     open(path, 'w').write(t)
@@ -66,40 +66,47 @@ if 'deleteGuideAction' not in t:
 else:
     print('  SKIP: deleteGuideAction exists')
 
-# 4. Add delete button AT THE TOP — between Header and ManageGuideScreen in the RENDER section
-#    This is a stable, unique string that won't be affected by other patches
+# 4. Add delete button between Header and ManageGuideScreen in RENDER
+#    After patch_inline_components.js runs, <ManageGuideScreen /> becomes {ManageGuideScreen()}
+#    So we need to match the POST-PATCH version
 if 'Delete entire order list' not in t:
-    # The render section has this exact pattern:
-    old_render = "onBack={() => setScreen('manage')} /><ManageGuideScreen />"
-    if old_render in t:
-        delete_bar = (
-            "onBack={() => setScreen('manage')} />"
-            '{isManager && guideItems.length > 0 && ('
-            '<div className="px-4 pt-3">'
-            '<button onClick={() => deleteGuideAction()} '
-            'className="w-full py-2.5 rounded-xl bg-red-50 border border-red-200 '
-            'text-red-600 text-[12px] font-semibold active:bg-red-100 '
-            'flex items-center justify-center gap-2">'
-            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">'
-            '<polyline points="3 6 5 6 21 6"/>'
-            '<path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>'
-            '</svg>'
-            'Delete entire order list</button></div>)}'
-            '<ManageGuideScreen />'
-        )
-        t = t.replace(old_render, delete_bar)
-        print('  OK: delete button added (top of manage-guide screen)')
-    else:
-        print('  FAIL: manage-guide render pattern not found')
-        # Debug
-        idx = t.find('ManageGuideScreen')
-        if idx > 0:
-            print('  DEBUG: ManageGuideScreen found at index ' + str(idx))
-            # Show 200 chars before ManageGuideScreen in render
-            render_idx = t.find('ManageGuideScreen />', t.find('RENDER'))
-            if render_idx > 0:
-                print('  DEBUG: render usage at ' + str(render_idx))
-                print('  DEBUG: 100 chars before: ' + repr(t[render_idx-100:render_idx]))
+    # Try both patterns: post-patch (function call) and pre-patch (JSX)
+    targets = [
+        ("onBack={() => setScreen('manage')} />{ManageGuideScreen()}", 'post-patch {ManageGuideScreen()}'),
+        ("onBack={() => setScreen('manage')} /><ManageGuideScreen />", 'pre-patch <ManageGuideScreen />'),
+    ]
+    
+    found = False
+    for target, label in targets:
+        if target in t:
+            delete_bar = (
+                "onBack={() => setScreen('manage')} />"
+                '{isManager && guideItems.length > 0 && ('
+                '<div className="px-4 pt-3">'
+                '<button onClick={() => deleteGuideAction()} '
+                'className="w-full py-2.5 rounded-xl bg-red-50 border border-red-200 '
+                'text-red-600 text-[12px] font-semibold active:bg-red-100 '
+                'flex items-center justify-center gap-2">'
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">'
+                '<polyline points="3 6 5 6 21 6"/>'
+                '<path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>'
+                '</svg>'
+                'Delete entire order list</button></div>)}'
+            )
+            # Keep the ManageGuideScreen call after our button
+            mg_call = target.split('/>')[-1]  # {ManageGuideScreen()} or <ManageGuideScreen />
+            t = t.replace(target, delete_bar + mg_call)
+            print(f'  OK: delete button added ({label})')
+            found = True
+            break
+    
+    if not found:
+        print('  FAIL: neither post-patch nor pre-patch pattern found')
+        # Debug: show what's around ManageGuideScreen in the render section
+        ri = t.find('ManageGuideScreen', t.find('RENDER') if t.find('RENDER') > 0 else 0)
+        if ri > 0:
+            print('  DEBUG: context around ManageGuideScreen in render:')
+            print('  ' + repr(t[ri-80:ri+40]))
 else:
     print('  SKIP: delete button exists')
 
@@ -123,7 +130,7 @@ if 'deleteGuide' not in dt:
 else:
     print('  SKIP: deleteGuide exists')
 
-# 6. Update guides API route to import deleteGuide
+# 6. Update guides API route
 print('\n=== guides/route.ts ===')
 gr = 'src/app/api/purchase/guides/route.ts'
 gt = open(gr).read()
