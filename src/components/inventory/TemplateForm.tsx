@@ -163,18 +163,22 @@ export default function TemplateForm({ template, locations, departments, onSave,
   // ========== PRODUCT PICKER STEP ==========
   if (step === 'products') {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <BackHeader
-          onBack={() => setStep('config')}
-          title="Select products"
-          subtitle={`${selectedCount} selected`}
-          right={
-            <button onClick={() => setStep('config')}
-              className="text-orange-600 text-[13px] font-semibold active:opacity-70">
-              Done
-            </button>
-          }
-        />
+      <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col">
+        {/* Header with prominent Done button */}
+        <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200 flex items-center justify-between">
+          <button onClick={() => setStep('config')} className="flex items-center gap-1 text-gray-500 text-[13px] font-semibold active:opacity-70">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
+            Back
+          </button>
+          <div className="text-center">
+            <div className="text-[15px] font-bold text-gray-900">Select products</div>
+            <div className="text-[11px] text-gray-500">{selectedCount} selected</div>
+          </div>
+          <button onClick={() => setStep('config')}
+            className="bg-orange-500 text-white text-[13px] font-bold px-4 py-2 rounded-xl active:bg-orange-600 shadow-sm">
+            Done
+          </button>
+        </div>
 
         <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
 
@@ -247,10 +251,11 @@ export default function TemplateForm({ template, locations, departments, onSave,
           )}
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
+        {/* Big floating Done button */}
+        <div className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent pt-8">
           <button onClick={() => setStep('config')}
-            className="w-full py-4 rounded-xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all">
-            Done ({selectedCount} products)
+            className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[16px] font-bold shadow-xl shadow-orange-500/40 active:bg-orange-600 active:scale-[0.975] transition-all">
+            Done &mdash; {selectedCount} product{selectedCount !== 1 ? 's' : ''} selected
           </button>
         </div>
       </div>
@@ -259,12 +264,12 @@ export default function TemplateForm({ template, locations, departments, onSave,
 
   // ========== CONFIG STEP ==========
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col">
       <BackHeader onBack={onCancel}
         title={isEdit ? `Edit: ${template.name}` : 'New counting list'}
       />
 
-      <div className="flex-1 overflow-y-auto px-5 pt-4 pb-28">
+      <div className="flex-1 overflow-y-auto px-5 pt-4 pb-32">
         <div className="mb-5">
           <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">List name</label>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)}
@@ -437,16 +442,17 @@ export default function TemplateForm({ template, locations, departments, onSave,
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
+      {/* Big save button - above everything */}
+      <div className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent pt-8">
         <button onClick={handleSubmit} disabled={saving || !canSave}
-          className="w-full py-4 rounded-xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-50">
+          className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[16px] font-bold shadow-xl shadow-orange-500/40 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
           {saving
             ? 'Saving...'
             : selectedCount === 0
               ? 'Select products first'
               : isEdit
-                ? `Update list (${selectedCount} products)`
-                : `Create list (${selectedCount} products)`
+                ? `Save changes (${selectedCount} products)`
+                : `Create counting list (${selectedCount} products)`
           }
         </button>
       </div>
