@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Add delete order list feature: db function + handler + button."""
-import sys
+"""Add delete order list: db function + handler + button. Run from /opt/krawings-portal."""
 
 # 1. Add deleteGuide to purchase-db.ts
 f = 'src/lib/purchase-db.ts'
@@ -54,30 +53,35 @@ else:
 
 # 2b. Add delete button at bottom of ManageGuideScreen
 if 'Delete entire order list' not in t:
-    # Find the unique marker in ManageGuideScreen: the Remove button closing
-    marker = '>Remove</button></div>))}</div></div>)))'
-    idx = t.find(marker)
-    if idx > 0:
-        insert_at = idx + len(marker)
-        btn = (
-            '\n      {guideItems.length > 0 && (<div className="mt-6 pt-4 border-t border-gray-200">'
-            '<button onClick={() => deleteGuideAction()} className="w-full py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100">'
-            'Delete entire order list</button>'
-            '<p className="text-[11px] text-gray-400 text-center mt-2">'
-            'Removes all {guideItems.length} products from this supplier</p></div>)}'
-        )
-        t = t[:insert_at] + btn + t[insert_at:]
-        print('2b. delete button added')
-    else:
-        print('2b. SKIP - marker not found')
-        print('    Looking for: ' + marker[:60])
-        # Debug: show what comes after Remove</button>
-        ri = t.find('>Remove</button>')
-        if ri > 0:
-            print('    Found >Remove</button> at index ' + str(ri))
-            print('    Next 100 chars: ' + repr(t[ri+len('>Remove</button>'):ri+len('>Remove</button>')+100]))
+    # Strategy: find the LAST >Remove</button> in the file,
+    # then scan forward to find the closing of ManageGuideScreen's return.
+    # The pattern after Remove</button> is: </div>))}</div></div>)))}\n    </div>);
+    # We insert the delete button just before that final </div>);
+
+    last_remove = t.rfind('>Remove</button>')
+    if last_remove > 0:
+        # From Remove button, scan forward to find the next </div>);
+        # which closes ManageGuideScreen
+        search_from = last_remove + len('>Remove</button>')
+        close_marker = '</div>);\n'
+        close_idx = t.find(close_marker, search_from)
+        if close_idx > 0 and close_idx - search_from < 200:
+            # Insert before the closing </div>);
+            btn = (
+                '\n      {guideItems.length > 0 && (<div className="mt-6 pt-4 border-t border-gray-200">'
+                '<button onClick={() => deleteGuideAction()} className="w-full py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100">'
+                'Delete entire order list</button>'
+                '<p className="text-[11px] text-gray-400 text-center mt-2">'
+                'Removes all {guideItems.length} products from this supplier</p></div>)}\n'
+            )
+            t = t[:close_idx] + btn + t[close_idx:]
+            print('2b. delete button added before ManageGuideScreen closing')
         else:
-            print('    >Remove</button> NOT FOUND in file')
+            print('2b. FAILED - closing </div>); not found near Remove button')
+            print('    close_idx=' + str(close_idx) + ' distance=' + str(close_idx - search_from if close_idx > 0 else -1))
+            print('    next 200 chars: ' + repr(t[search_from:search_from+200]))
+    else:
+        print('2b. FAILED - no >Remove</button> found')
 else:
     print('2b. delete button already exists')
 
