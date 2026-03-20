@@ -57,7 +57,7 @@ export default function RegisterPage() {
         setError(data.error || 'Something went wrong.');
         setStep('error');
       }
-    } catch (err) {
+    } catch (_e) {
       setError('Connection failed. Please try again.');
       setStep('error');
     } finally {
@@ -94,7 +94,7 @@ export default function RegisterPage() {
       } else {
         setError(data.error || 'Registration failed.');
       }
-    } catch (err) {
+    } catch (_e) {
       setError('Connection failed. Please try again.');
     } finally {
       setLoading(false);
@@ -116,7 +116,7 @@ export default function RegisterPage() {
             <input type="text" value={identifier} onChange={(e) => setIdentifier(e.target.value)}
               placeholder="e.g. name@gmail.com or +49 170..."
               className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3.5 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-orange-400" />
-            <p className="text-[12px] text-gray-400 mt-1.5">We'll match this against our employee records</p>
+            <p className="text-[12px] text-gray-400 mt-1.5">This will be matched against our employee records</p>
           </div>
           <button onClick={handleLookup} disabled={loading || !identifier.trim()}
             className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
@@ -144,7 +144,6 @@ export default function RegisterPage() {
           <h1 className="text-[18px] font-bold text-gray-900">Confirm your identity</h1>
         </div>
         <div className="flex-1 px-6 pt-5 pb-28">
-          {/* Employee confirmation card */}
           <div className="bg-white border-2 border-orange-300 rounded-2xl p-5 text-center mb-6">
             <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center mx-auto mb-3">
               <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#F5800A" strokeWidth="2">

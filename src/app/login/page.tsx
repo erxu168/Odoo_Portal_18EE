@@ -51,7 +51,6 @@ function LoginForm() {
       <h2 className="text-[20px] font-bold text-gray-900 mb-1">Welcome back</h2>
       <p className="text-[13px] text-gray-500 mb-6">Sign in with your staff account</p>
 
-      {/* Pending approval banner */}
       {pendingContact && (
         <div className="mb-4 px-4 py-4 bg-amber-50 border border-amber-200 rounded-xl">
           <div className="flex items-start gap-3">
@@ -63,7 +62,7 @@ function LoginForm() {
             <div>
               <div className="text-[13px] font-semibold text-amber-800">Your account is pending approval</div>
               <div className="text-[12px] text-amber-700 mt-1 leading-relaxed">
-                Contact <span className="font-semibold">{pendingContact}</span> for faster approval. You'll be able to log in once your account is activated.
+                Contact <span className="font-semibold">{pendingContact}</span> for faster approval. You will be able to log in once your account is activated.
               </div>
             </div>
           </div>
@@ -124,7 +123,6 @@ function LoginForm() {
         </button>
       </div>
 
-      {/* Register link */}
       <div className="text-center mt-6 pt-6 border-t border-gray-100">
         <div className="text-[13px] text-gray-400 mb-2">New here?</div>
         <button
