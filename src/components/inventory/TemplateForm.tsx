@@ -89,11 +89,24 @@ export default function TemplateForm({ template, locations, departments, onSave,
     return list;
   }, [allProducts, search, catFilter, selectionFilter, selectedProductIds]);
 
+  // Selected products for review list
+  const selectedProducts = useMemo(() => {
+    return allProducts.filter((p) => selectedProductIds.has(p.id));
+  }, [allProducts, selectedProductIds]);
+
   function toggleProduct(productId: number) {
     setSelectedProductIds((prev) => {
       const next = new Set(prev);
       if (next.has(productId)) next.delete(productId);
       else next.add(productId);
+      return next;
+    });
+  }
+
+  function removeProduct(productId: number) {
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      next.delete(productId);
       return next;
     });
   }
@@ -149,22 +162,10 @@ export default function TemplateForm({ template, locations, departments, onSave,
     setSaving(false);
   }
 
-  function getSelectedCategorySummary(): string {
-    const catSet = new Set<string>();
-    allProducts
-      .filter((p) => selectedProductIds.has(p.id))
-      .forEach((p) => { if (p.categ_id?.[1]) catSet.add(p.categ_id[1]); });
-    const cats = Array.from(catSet);
-    if (cats.length === 0) return '';
-    const shown = cats.slice(0, 3).join(', ');
-    return cats.length > 3 ? `From: ${shown} +${cats.length - 3} more` : `From: ${shown}`;
-  }
-
   // ========== PRODUCT PICKER STEP ==========
   if (step === 'products') {
     return (
       <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col">
-        {/* Header with prominent Done button */}
         <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200 flex items-center justify-between">
           <button onClick={() => setStep('config')} className="flex items-center gap-1 text-gray-500 text-[13px] font-semibold active:opacity-70">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
@@ -217,7 +218,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-4 pb-24">
+        <div className="flex-1 overflow-y-auto px-4 pb-28">
           {loadingProducts ? <Spinner /> : filteredProducts.length === 0 ? (
             <div className="text-center py-12 text-[13px] text-gray-400">No products match filters</div>
           ) : (
@@ -251,8 +252,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
           )}
         </div>
 
-        {/* Big floating Done button */}
-        <div className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent pt-8">
+        <div className="fixed bottom-0 left-0 right-0 z-[61] px-4 pb-4 pt-2 bg-white border-t border-gray-200">
           <button onClick={() => setStep('config')}
             className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[16px] font-bold shadow-xl shadow-orange-500/40 active:bg-orange-600 active:scale-[0.975] transition-all">
             Done &mdash; {selectedCount} product{selectedCount !== 1 ? 's' : ''} selected
@@ -269,187 +269,176 @@ export default function TemplateForm({ template, locations, departments, onSave,
         title={isEdit ? `Edit: ${template.name}` : 'New counting list'}
       />
 
-      <div className="flex-1 overflow-y-auto px-5 pt-4 pb-32">
-        <div className="mb-5">
-          <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">List name</label>
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Daily bar count"
-            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-orange-400 transition-colors" />
-        </div>
-
-        <div className="mb-5">
-          <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Frequency</label>
-          <div className="flex gap-2 flex-wrap">
-            {FREQUENCIES.map((f) => (
-              <button key={f.id} onClick={() => setFrequency(f.id)}
-                className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all ${
-                  frequency === f.id
-                    ? 'bg-orange-50 border-orange-200 text-orange-700'
-                    : 'bg-white border-gray-200 text-gray-500'
-                }`}>
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-5">
-          <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Location</label>
-          <div className="flex gap-2 flex-wrap">
-            {locations.map((loc: any) => (
-              <button key={loc.id} onClick={() => setLocationId(loc.id)}
-                className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all ${
-                  locationId === loc.id
-                    ? 'bg-orange-50 border-orange-200 text-orange-700'
-                    : 'bg-white border-gray-200 text-gray-500'
-                }`}>
-                {loc.complete_name?.split('/')[0] || loc.name}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mb-5">
-          <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Products</label>
-          <button onClick={() => setStep('products')}
-            className="w-full bg-white border border-gray-200 rounded-xl p-4 text-left active:bg-gray-50 transition-colors">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[14px] font-semibold text-gray-900">
-                  {selectedCount === 0 ? 'Select products' : `${selectedCount} products selected`}
-                </div>
-                <div className="text-[12px] text-gray-500 mt-0.5">
-                  {selectedCount === 0
-                    ? 'Tap to browse and pick products for this list'
-                    : getSelectedCategorySummary()
-                  }
-                </div>
-              </div>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                selectedCount > 0 ? 'bg-orange-50' : 'bg-gray-100'
-              }`}>
-                {selectedCount > 0 ? (
-                  <span className="text-[14px] font-bold font-mono text-orange-600">{selectedCount}</span>
-                ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
-                    <path d="M12 5v14M5 12h14" strokeLinecap="round"/>
-                  </svg>
-                )}
-              </div>
-            </div>
-          </button>
-          {selectedCount === 0 && name.trim() && (
-            <p className="text-[11px] text-red-500 mt-1 px-1">Select at least one product to save</p>
-          )}
-        </div>
-
-        <div className="mb-5">
-          <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Assign to</label>
-          <div className="flex gap-2 mb-3 flex-wrap">
-            <button onClick={() => { setAssignType(null); setAssignId(null); }}
-              className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all flex-1 text-center min-w-[70px] ${
-                !assignType ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-500'
-              }`}>
-              Anyone
-            </button>
-            {ASSIGN_TYPES.map((at) => (
-              <button key={at.id} onClick={() => { setAssignType(at.id); setAssignId(null); }}
-                className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all flex-1 text-center min-w-[70px] ${
-                  assignType === at.id ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-500'
-                }`}>
-                {at.label}
-              </button>
-            ))}
-          </div>
-
-          {assignType === 'department' && (
-            <div className="bg-white border border-gray-200 rounded-xl p-3">
-              <select value={assignId || ''} onChange={(e) => setAssignId(e.target.value ? Number(e.target.value) : null)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[14px] text-gray-900 outline-none">
-                <option value="">Choose department...</option>
-                {departments.map((d: any) => (
-                  <option key={d.id} value={d.id}>{d.name} ({d.member_count} members)</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {assignType === 'person' && (
-            <div className="bg-white border border-gray-200 rounded-xl p-3">
-              <select value={assignId || ''} onChange={(e) => setAssignId(e.target.value ? Number(e.target.value) : null)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[14px] text-gray-900 outline-none">
-                <option value="">Choose person...</option>
-              </select>
-              <p className="text-[11px] text-gray-400 mt-1">Portal users will appear once employees are linked</p>
-            </div>
-          )}
-
-          {assignType === 'shift' && (
-            <div className="bg-white border border-gray-200 rounded-xl p-3">
-              <select value={assignId || ''} onChange={(e) => setAssignId(e.target.value ? Number(e.target.value) : null)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[14px] text-gray-900 outline-none">
-                <option value="">Choose shift...</option>
-              </select>
-              <p className="text-[11px] text-gray-400 mt-1">Planning roles will appear once configured in Odoo</p>
-            </div>
-          )}
-        </div>
-
-        {isEdit && (
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-5 pt-4 pb-4">
+          {/* Name */}
           <div className="mb-5">
-            <button onClick={() => setActive(!active)}
-              className="flex items-center justify-between w-full bg-white border border-gray-200 rounded-xl px-4 py-3">
-              <span className="text-[14px] font-semibold text-gray-900">Active</span>
-              <div className={`w-11 h-6 rounded-full relative transition-colors ${active ? 'bg-orange-500' : 'bg-gray-300'}`}>
-                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${active ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+            <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">List name</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Daily bar count"
+              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-orange-400 transition-colors" />
+          </div>
+
+          {/* Frequency */}
+          <div className="mb-5">
+            <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Frequency</label>
+            <div className="flex gap-2 flex-wrap">
+              {FREQUENCIES.map((f) => (
+                <button key={f.id} onClick={() => setFrequency(f.id)}
+                  className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all ${
+                    frequency === f.id
+                      ? 'bg-orange-50 border-orange-200 text-orange-700'
+                      : 'bg-white border-gray-200 text-gray-500'
+                  }`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Location */}
+          <div className="mb-5">
+            <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Location</label>
+            <div className="flex gap-2 flex-wrap">
+              {locations.map((loc: any) => (
+                <button key={loc.id} onClick={() => setLocationId(loc.id)}
+                  className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all ${
+                    locationId === loc.id
+                      ? 'bg-orange-50 border-orange-200 text-orange-700'
+                      : 'bg-white border-gray-200 text-gray-500'
+                  }`}>
+                  {loc.complete_name?.split('/')[0] || loc.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Assign to */}
+          <div className="mb-5">
+            <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Assign to</label>
+            <div className="flex gap-2 mb-3 flex-wrap">
+              <button onClick={() => { setAssignType(null); setAssignId(null); }}
+                className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all flex-1 text-center min-w-[70px] ${
+                  !assignType ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-500'
+                }`}>
+                Anyone
+              </button>
+              {ASSIGN_TYPES.map((at) => (
+                <button key={at.id} onClick={() => { setAssignType(at.id); setAssignId(null); }}
+                  className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all flex-1 text-center min-w-[70px] ${
+                    assignType === at.id ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-500'
+                  }`}>
+                  {at.label}
+                </button>
+              ))}
+            </div>
+
+            {assignType === 'department' && (
+              <div className="bg-white border border-gray-200 rounded-xl p-3">
+                <select value={assignId || ''} onChange={(e) => setAssignId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[14px] text-gray-900 outline-none">
+                  <option value="">Choose department...</option>
+                  {departments.map((d: any) => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.member_count} members)</option>
+                  ))}
+                </select>
               </div>
+            )}
+
+            {assignType === 'person' && (
+              <div className="bg-white border border-gray-200 rounded-xl p-3">
+                <select value={assignId || ''} onChange={(e) => setAssignId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[14px] text-gray-900 outline-none">
+                  <option value="">Choose person...</option>
+                </select>
+                <p className="text-[11px] text-gray-400 mt-1">Portal users will appear once employees are linked</p>
+              </div>
+            )}
+
+            {assignType === 'shift' && (
+              <div className="bg-white border border-gray-200 rounded-xl p-3">
+                <select value={assignId || ''} onChange={(e) => setAssignId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[14px] text-gray-900 outline-none">
+                  <option value="">Choose shift...</option>
+                </select>
+                <p className="text-[11px] text-gray-400 mt-1">Planning roles will appear once configured in Odoo</p>
+              </div>
+            )}
+          </div>
+
+          {isEdit && (
+            <div className="mb-5">
+              <button onClick={() => setActive(!active)}
+                className="flex items-center justify-between w-full bg-white border border-gray-200 rounded-xl px-4 py-3">
+                <span className="text-[14px] font-semibold text-gray-900">Active</span>
+                <div className={`w-11 h-6 rounded-full relative transition-colors ${active ? 'bg-orange-500' : 'bg-gray-300'}`}>
+                  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${active ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Products section */}
+        <div className="px-5 pb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-[11px] font-semibold tracking-wide uppercase text-gray-500">
+              Products ({selectedCount})
+            </label>
+            <button onClick={() => setStep('products')}
+              className="text-orange-600 text-[12px] font-semibold active:opacity-70">
+              {selectedCount === 0 ? '+ Add products' : 'Edit selection'}
             </button>
           </div>
-        )}
 
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <p className="text-[11px] font-semibold tracking-wide uppercase text-gray-400 mb-2">Summary</p>
-          <div className="flex flex-col gap-1.5 text-[13px]">
-            <div className="flex justify-between">
-              <span className="text-gray-500">Name</span>
-              <span className="font-semibold text-gray-900">{name || '---'}</span>
+          {selectedCount === 0 ? (
+            <button onClick={() => setStep('products')}
+              className="w-full bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center active:bg-gray-50 transition-colors">
+              <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center mx-auto mb-2">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F5800A" strokeWidth="2" strokeLinecap="round">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+              </div>
+              <div className="text-[14px] font-semibold text-gray-900">Add products to this list</div>
+              <div className="text-[12px] text-gray-500 mt-1">Browse, search, and select products</div>
+            </button>
+          ) : (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              {selectedProducts.map((p, idx) => {
+                const uom = p.uom_id?.[1] || 'Units';
+                const catName = p.categ_id?.[1] || '';
+                return (
+                  <div key={p.id}
+                    className={`flex items-center gap-3 px-4 py-2.5 ${idx < selectedProducts.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-gray-900 truncate">{p.name}</div>
+                      <div className="text-[11px] text-gray-400">{catName} &middot; {uom}</div>
+                    </div>
+                    <button onClick={() => removeProduct(p.id)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-500 flex-shrink-0">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M18 6L6 18M6 6l12 12"/>
+                      </svg>
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Frequency</span>
-              <span className="font-semibold text-gray-900">{FREQUENCIES.find(f => f.id === frequency)?.label}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Location</span>
-              <span className="font-semibold text-gray-900">
-                {locationId ? (locations.find((l: any) => l.id === locationId)?.complete_name?.split('/')[0] || '---') : '---'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Products</span>
-              <span className={`font-semibold font-mono ${selectedCount > 0 ? 'text-orange-600' : 'text-red-500'}`}>
-                {selectedCount > 0 ? selectedCount : 'None'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Assign to</span>
-              <span className="font-semibold text-gray-900">
-                {assignType
-                  ? `${assignType}${assignId ? ` #${assignId}` : ''}`
-                  : 'Anyone'}
-              </span>
-            </div>
-          </div>
+          )}
         </div>
+
+        {/* Spacer for save button */}
+        <div className="h-24" />
       </div>
 
-      {/* Big save button - above everything */}
-      <div className="absolute bottom-0 left-0 right-0 px-4 py-4 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent pt-8">
+      {/* Save button - fixed at bottom, high z-index */}
+      <div className="fixed bottom-0 left-0 right-0 z-[61] px-4 pb-4 pt-2 bg-white border-t border-gray-200">
         <button onClick={handleSubmit} disabled={saving || !canSave}
           className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[16px] font-bold shadow-xl shadow-orange-500/40 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
           {saving
             ? 'Saving...'
             : selectedCount === 0
-              ? 'Select products first'
+              ? 'Add products to save'
               : isEdit
                 ? `Save changes (${selectedCount} products)`
                 : `Create counting list (${selectedCount} products)`
