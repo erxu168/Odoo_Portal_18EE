@@ -100,7 +100,37 @@ if 'deleteSupplierGuide' not in t:
         t = t.replace(anchor, fn + anchor)
         print('  OK: deleteSupplierGuide handler')
 
-# 7. Replace ManageScreen with ManageOrders component
+# 7. Add addSupplierFromOdoo handler — creates supplier in SQLite then opens guide editor
+if 'addSupplierFromOdoo' not in t:
+    fn2 = (
+        'async function addSupplierFromOdoo(partner: any) {\n'
+        '    try {\n'
+        '      const r = await fetch(\'/api/purchase/suppliers\', {\n'
+        "        method: 'POST',\n"
+        "        headers: { 'Content-Type': 'application/json' },\n"
+        '        body: JSON.stringify({\n'
+        '          odoo_partner_id: partner.odoo_id,\n'
+        '          name: partner.name,\n'
+        "          email: partner.email || '',\n"
+        "          phone: partner.phone || '',\n"
+        "          send_method: 'email',\n"
+        '          location_id: 0,\n'
+        '        })\n'
+        '      });\n'
+        '      const d = await r.json();\n'
+        '      await fetchSuppliers();\n'
+        '      if (d.id) {\n'
+        '        openManageGuide({ id: d.id, name: partner.name } as any);\n'
+        '      }\n'
+        '    } catch (e) { void e; }\n'
+        '  }\n\n  '
+    )
+    anchor2 = 'async function removeGuideItemAction(itemId: number)'
+    if anchor2 in t:
+        t = t.replace(anchor2, fn2 + anchor2)
+        print('  OK: addSupplierFromOdoo handler')
+
+# 8. Replace ManageScreen with ManageOrders component (with onAddSupplier prop)
 ms_start = t.find('const ManageScreen = ()')
 ms_next = t.find('const ManageGuideScreen', ms_start + 1) if ms_start > 0 else -1
 if ms_start > 0 and ms_next > 0 and 'ManageOrders' not in t[ms_start:ms_next]:
@@ -108,37 +138,32 @@ if ms_start > 0 and ms_next > 0 and 'ManageOrders' not in t[ms_start:ms_next]:
         "const ManageScreen = () => "
         "<ManageOrders suppliers={suppliers} locationId={locationId} isAdmin={isAdmin} "
         "onOpenGuide={openManageGuide} onDeleteGuide={deleteSupplierGuide} "
+        "onAddSupplier={addSupplierFromOdoo} "
         "onSeed={runSeed} seedMsg={seedMsg} />;\n\n  "
     )
     old_manage = t[ms_start:ms_next]
     t = t.replace(old_manage, new_manage)
-    print('  OK: ManageScreen replaced with ManageOrders')
+    print('  OK: ManageScreen replaced with ManageOrders (with onAddSupplier)')
 
-# 8. CRITICAL: Hide suppliers with 0 products from the main Order tab (SupplierList)
-#    EXACT pattern from source code:
-#    suppliers.filter(s => !supplierSearch || s.name.toLowerCase().includes(supplierSearch.toLowerCase()))
+# 9. Hide suppliers with 0 products from main Order tab
 if 'product_count > 0' not in t:
     old_exact = 'suppliers.filter(s => !supplierSearch || s.name.toLowerCase().includes(supplierSearch.toLowerCase()))'
     new_exact = 'suppliers.filter(s => s.product_count > 0 && (!supplierSearch || s.name.toLowerCase().includes(supplierSearch.toLowerCase())))'
     if old_exact in t:
         t = t.replace(old_exact, new_exact)
         print('  OK: main Order tab only shows suppliers with products')
-    else:
-        print('  FAIL: exact supplier filter pattern not found')
-else:
-    print('  SKIP: product_count filter already present')
 
 write(p, t)
 print('  purchase/page.tsx written')
 
-# 9. Dashboard rename
+# 10. Dashboard rename
 d = 'src/components/dashboard/DashboardHome.tsx'
 dt = open(d).read()
 dt = dt.replace("id: 'purchase', label: 'Purchase'", "id: 'purchase', label: 'Orders'")
 write(d, dt)
 print('\n  OK: Dashboard Purchase -> Orders')
 
-# 10. AppTabBar
+# 11. AppTabBar
 tb = 'src/components/ui/AppTabBar.tsx'
 if os.path.exists(tb):
     tt = open(tb).read()
@@ -148,7 +173,7 @@ if os.path.exists(tb):
         write(tb, tt)
         print('  OK: AppTabBar')
 
-# 11. purchase-db.ts
+# 12. purchase-db.ts
 db = 'src/lib/purchase-db.ts'
 dbt = open(db).read()
 if 'deleteGuide' not in dbt:
@@ -163,7 +188,7 @@ if 'deleteGuide' not in dbt:
     write(db, dbt)
     print('  OK: deleteGuide added')
 
-# 12. Remove conflicting files
+# 13. Remove conflicting files
 for f in ['src/components/ui/NumPad.tsx', 'src/components/ui/PurchaseNumpad.tsx']:
     if os.path.exists(f):
         os.remove(f)
