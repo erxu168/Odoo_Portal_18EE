@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 
 // Types
 interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; min_order_value: number; approval_required: number; send_method: string; }
@@ -17,6 +18,7 @@ const LOCATIONS = [
 ];
 
 export default function PurchasePage() {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>('order');
   const [screen, setScreen] = useState<Screen>('suppliers');
   const [locationId, setLocationId] = useState(32); // default SSAM
@@ -150,23 +152,43 @@ export default function PurchasePage() {
     else if (t === 'history') { setScreen('history'); fetchOrders(); }
   }
 
+  function goHome() {
+    router.push('/');
+  }
+
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const locName = LOCATIONS.find(l => l.id === locationId)?.name || 'SSAM';
 
-  // ========== HEADER ==========
+  // ========== HEADER — always has home button ==========
   const Header = ({ title, subtitle, showBack, onBack }: { title: string; subtitle?: string; showBack?: boolean; onBack?: () => void }) => (
     <div className="bg-[#1A1F2E] px-5 pt-12 pb-0 relative overflow-hidden">
       <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
       <div className="flex items-center gap-3 relative pb-3">
-        {showBack && (
-          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+        {/* Left button: back arrow (in sub-screens) or home icon (on main screen) */}
+        <button
+          onClick={showBack ? onBack : goHome}
+          className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
+        >
+          {showBack ? (
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 19l-7-7 7-7"/></svg>
-          </button>
-        )}
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          )}
+        </button>
         <div className="flex-1">
           <h1 className="text-[20px] font-bold text-white">{title}</h1>
           {subtitle && <p className="text-[12px] text-white/45 mt-0.5">{subtitle}</p>}
         </div>
+        {/* Right button: home icon on sub-screens (so you can always get home) */}
+        {showBack && (
+          <button
+            onClick={goHome}
+            className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
+            title="Dashboard"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -409,8 +431,12 @@ export default function PurchasePage() {
         Place another order
       </button>
       <button onClick={() => changeTab('history')}
-        className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold">
+        className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold mb-3">
         View order history
+      </button>
+      <button onClick={goHome}
+        className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold">
+        Back to dashboard
       </button>
     </div>
   );
@@ -524,7 +550,7 @@ export default function PurchasePage() {
     <div className="min-h-screen bg-[#F6F7F9]">
       {screen === 'guide' ? (
         <>
-          <Header title={guideSupplierName} subtitle={`${locName} &bull; ${guideItems.length} products`}
+          <Header title={guideSupplierName} subtitle={`${locName} \u2022 ${guideItems.length} products`}
             showBack onBack={() => { setScreen('suppliers'); setTab('order'); }} />
           <OrderGuide />
         </>
@@ -535,7 +561,7 @@ export default function PurchasePage() {
         </>
       ) : (
         <>
-          <Header title="Purchase" subtitle={`Order from your suppliers`} />
+          <Header title="Purchase" subtitle="Order from your suppliers" />
           <LocationPicker />
           <Tabs />
           {tab === 'order' && <SupplierList />}
