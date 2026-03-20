@@ -4,7 +4,7 @@
  * Returns map: { product_id: tax_rate_percent }
  * Reads supplier_taxes_id (purchase taxes) from product.product,
  * then resolves the tax amount from account.tax.
- * Falls back to 19% if no tax configured.
+ * Mirrors Odoo exactly — if no tax configured, returns 0%.
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
@@ -54,28 +54,28 @@ export async function GET(request: Request) {
         if (taxIds.length > 0 && taxMap[taxIds[0]]) {
           taxCache[p.id] = taxMap[taxIds[0]].amount;
         } else {
-          taxCache[p.id] = 19; // Default to 19% if no tax configured
+          taxCache[p.id] = 0; // No tax configured in Odoo = 0%
         }
       }
 
-      // Mark products not found in Odoo as 19%
+      // Products not found in Odoo = 0%
       for (const id of uncached) {
-        if (!(id in taxCache)) taxCache[id] = 19;
+        if (!(id in taxCache)) taxCache[id] = 0;
       }
 
       taxCacheTime = now;
     } catch (e) {
       console.error('Failed to fetch tax rates from Odoo:', e);
-      // Default all to 19% on error
+      // On error, default to 0% (don't assume tax)
       for (const id of uncached) {
-        if (!(id in taxCache)) taxCache[id] = 19;
+        if (!(id in taxCache)) taxCache[id] = 0;
       }
     }
   }
 
   const result: Record<number, number> = {};
   for (const id of productIds) {
-    result[id] = taxCache[id] ?? 19;
+    result[id] = taxCache[id] ?? 0;
   }
 
   return NextResponse.json({ taxes: result });
