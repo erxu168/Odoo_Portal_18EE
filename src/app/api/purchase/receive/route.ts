@@ -17,7 +17,7 @@ export async function GET(request: Request) {
   const locationId = parseInt(searchParams.get('location_id') || '0');
   const orderId = searchParams.get('order_id');
 
-  // Get receipt for a specific order — return enriched data with order details
+  // Get receipt for a specific order
   if (orderId) {
     const order = getOrder(parseInt(orderId));
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
@@ -28,10 +28,8 @@ export async function GET(request: Request) {
       if (rid) receipt = getReceipt(rid);
     }
 
-    // Get orderer name from portal_users
     const orderer = getUserById(order.ordered_by);
 
-    // Merge price/uom from order lines into receipt lines for display
     const orderLineMap: Record<number, any> = {};
     for (const ol of order.lines) {
       orderLineMap[ol.id] = ol;
@@ -55,6 +53,7 @@ export async function GET(request: Request) {
         id: order.id,
         supplier_name: order.supplier_name,
         odoo_po_name: order.odoo_po_name,
+        odoo_po_id: order.odoo_po_id,
         ordered_by_name: orderer?.name || 'Unknown',
         created_at: order.created_at,
         delivery_date: order.delivery_date,
@@ -101,16 +100,23 @@ export async function POST(request: Request) {
     if (!hasRole(user, 'manager')) {
       return NextResponse.json({ error: 'Manager must confirm receipts' }, { status: 403 });
     }
-    const { receipt_id, close_order } = body;
+    const { receipt_id, close_order, delivery_note_photo } = body;
     if (!receipt_id) return NextResponse.json({ error: 'receipt_id required' }, { status: 400 });
+
+    // Save delivery note photo to SQLite
+    if (delivery_note_photo) {
+      updateReceiptNote(receipt_id, delivery_note_photo);
+    }
 
     confirmReceipt(receipt_id, user.id, close_order !== false);
 
-    // Update stock in Odoo
+    // Update stock in Odoo + upload delivery note
     const receipt = getReceipt(receipt_id);
     if (receipt) {
       try {
         const odoo = getOdoo();
+
+        // 1. Update stock quantities
         for (const line of receipt.lines) {
           if (line.received_qty !== null && line.received_qty > 0) {
             const quants = await odoo.searchRead('stock.quant',
@@ -125,6 +131,96 @@ export async function POST(request: Request) {
             }
           }
         }
+
+        // 2. Upload delivery note photo to Odoo as log note on purchase.order
+        const order = getOrder(receipt.order_id);
+        if (order?.odoo_po_id && delivery_note_photo) {
+          try {
+            // Strip data URL prefix to get raw base64
+            const base64Data = delivery_note_photo.replace(/^data:image\/[a-z]+;base64,/, '');
+
+            // Create ir.attachment
+            const attachmentId = await odoo.create('ir.attachment', {
+              name: `Delivery_Note_${order.odoo_po_name || order.id}_${new Date().toISOString().split('T')[0]}.jpg`,
+              type: 'binary',
+              datas: base64Data,
+              res_model: 'purchase.order',
+              res_id: order.odoo_po_id,
+              mimetype: 'image/jpeg',
+            });
+
+            // Build receipt summary for the log note
+            const receivedLines = receipt.lines.filter((l: any) => l.received_qty !== null && l.received_qty > 0);
+            const issueLines = receipt.lines.filter((l: any) => l.has_issue === 1);
+            const notReceived = receipt.lines.filter((l: any) => l.received_qty === null || l.received_qty === 0);
+
+            let noteHtml = `<p><strong>Receipt confirmed by ${user.name}</strong></p>`;
+            noteHtml += `<p>${receivedLines.length} items received`;
+            if (notReceived.length > 0) noteHtml += `, ${notReceived.length} not delivered`;
+            if (issueLines.length > 0) noteHtml += `, <span style="color:red">${issueLines.length} with issues</span>`;
+            noteHtml += `</p>`;
+
+            // List items with issues
+            if (issueLines.length > 0) {
+              noteHtml += '<ul>';
+              for (const il of issueLines) {
+                noteHtml += `<li><strong>${il.product_name}</strong>: ${il.issue_type || 'Issue'}`;
+                if (il.issue_notes) noteHtml += ` - ${il.issue_notes}`;
+                noteHtml += `</li>`;
+              }
+              noteHtml += '</ul>';
+            }
+
+            noteHtml += `<p><em>Delivery note photo attached.</em></p>`;
+
+            // Post log note with attachment
+            await odoo.call('purchase.order', 'message_post', [[order.odoo_po_id]], {
+              body: noteHtml,
+              message_type: 'comment',
+              subtype_xmlid: 'mail.mt_note',
+              attachment_ids: [attachmentId],
+            });
+
+            console.log(`Delivery note uploaded to Odoo PO ${order.odoo_po_name} (attachment ${attachmentId})`);
+          } catch (noteErr) {
+            console.error('Failed to upload delivery note to Odoo:', noteErr);
+            // Don't fail the whole confirm — stock is already updated
+          }
+        }
+
+        // 3. Post receipt summary even without photo
+        if (order?.odoo_po_id && !delivery_note_photo) {
+          try {
+            const receivedLines = receipt.lines.filter((l: any) => l.received_qty !== null && l.received_qty > 0);
+            const issueLines = receipt.lines.filter((l: any) => l.has_issue === 1);
+            const notReceived = receipt.lines.filter((l: any) => l.received_qty === null || l.received_qty === 0);
+
+            let noteHtml = `<p><strong>Receipt confirmed by ${user.name}</strong></p>`;
+            noteHtml += `<p>${receivedLines.length} items received`;
+            if (notReceived.length > 0) noteHtml += `, ${notReceived.length} not delivered`;
+            if (issueLines.length > 0) noteHtml += `, <span style="color:red">${issueLines.length} with issues</span>`;
+            noteHtml += `</p>`;
+
+            if (issueLines.length > 0) {
+              noteHtml += '<ul>';
+              for (const il of issueLines) {
+                noteHtml += `<li><strong>${il.product_name}</strong>: ${il.issue_type || 'Issue'}`;
+                if (il.issue_notes) noteHtml += ` - ${il.issue_notes}`;
+                noteHtml += `</li>`;
+              }
+              noteHtml += '</ul>';
+            }
+
+            await odoo.call('purchase.order', 'message_post', [[order.odoo_po_id]], {
+              body: noteHtml,
+              message_type: 'comment',
+              subtype_xmlid: 'mail.mt_note',
+            });
+          } catch (noteErr) {
+            console.error('Failed to post receipt note to Odoo:', noteErr);
+          }
+        }
+
       } catch (e) {
         console.error('Failed to update Odoo stock:', e);
       }
