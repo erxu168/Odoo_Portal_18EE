@@ -66,8 +66,6 @@ if old_manage_btn in t:
         )
         t = t.replace(search_anchor, new_btn)
         print('  OK: manage button moved to top of supplier list')
-    else:
-        print('  FAIL: SearchInput anchor not found')
 else:
     old_manage_btn2 = '{isManager && <div className="text-center mt-4"><button onClick={() => setScreen(\'manage\')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage guides &amp; settings</button></div>}'
     if old_manage_btn2 in t:
@@ -91,14 +89,8 @@ else:
             )
             t = t.replace(search_anchor, new_btn)
             print('  OK: manage button moved to top (pre-rename match)')
-        else:
-            print('  FAIL: SearchInput anchor not found')
-    elif 'Manage order lists' in t and 'text-center mt-4' in t:
-        print('  SKIP: manage button exists but pattern changed')
-    else:
-        print('  SKIP: manage button already moved or not found')
 
-# 5. Add deleteGuideAction handler (with confirmation dialog + smart message for empty/non-empty)
+# 5. Add deleteGuideAction handler
 if 'deleteGuideAction' not in t:
     handler = (
         'async function deleteGuideAction() {\n'
@@ -131,7 +123,7 @@ if 'deleteGuideAction' not in t:
         t = t.replace(anchor, handler + anchor)
         print('  OK: deleteGuideAction handler')
 
-# 6. Add delete button before {ManageGuideScreen()} — always show for managers, even on empty lists
+# 6. Add delete button before {ManageGuideScreen()}
 if 'Delete entire order list' not in t:
     target = '{ManageGuideScreen()}'
     if target in t:
@@ -149,7 +141,7 @@ if 'Delete entire order list' not in t:
             'Delete entire order list</button></div>)}'
         )
         t = t.replace(target, delete_bar + target)
-        print('  OK: delete button added (shows for all lists, empty or not)')
+        print('  OK: delete button added')
 
 write(p, t)
 print('  purchase/page.tsx written')
@@ -173,7 +165,7 @@ if os.path.exists(tb):
         write(tb, tt)
         print('  OK: renamed in AppTabBar')
 
-# 9. Add deleteGuide to purchase-db.ts
+# 9. Fix deleteGuide in purchase-db.ts — must delete items FIRST (SQLite foreign_keys is OFF by default, CASCADE doesn't work)
 print('\n=== purchase-db.ts ===')
 db = 'src/lib/purchase-db.ts'
 dbt = open(db).read()
@@ -181,14 +173,31 @@ if 'deleteGuide' not in dbt:
     dbt = dbt.replace(
         'export function updateGuideItemPrice(',
         'export function deleteGuide(guideId: number) {\n'
-        '  db().prepare(\'DELETE FROM purchase_order_guides WHERE id = ?\').run(guideId);\n'
+        '  // SQLite foreign_keys is OFF by default — CASCADE does not work.\n'
+        '  // Must delete items explicitly first.\n'
+        "  db().prepare('DELETE FROM purchase_guide_items WHERE guide_id = ?').run(guideId);\n"
+        "  db().prepare('DELETE FROM purchase_order_guides WHERE id = ?').run(guideId);\n"
         '}\n\n'
         'export function updateGuideItemPrice('
     )
     write(db, dbt)
-    print('  OK: deleteGuide added')
+    print('  OK: deleteGuide added (explicit item deletion, no CASCADE dependency)')
 else:
-    print('  SKIP: deleteGuide exists')
+    print('  SKIP: deleteGuide exists — patching to fix CASCADE bug')
+    # Fix existing deleteGuide that only deletes the guide row
+    old_fn = "export function deleteGuide(guideId: number) {\n  db().prepare('DELETE FROM purchase_order_guides WHERE id = ?').run(guideId);\n}"
+    new_fn = ("export function deleteGuide(guideId: number) {\n"
+              "  // SQLite foreign_keys is OFF by default — CASCADE does not work.\n"
+              "  // Must delete items explicitly first.\n"
+              "  db().prepare('DELETE FROM purchase_guide_items WHERE guide_id = ?').run(guideId);\n"
+              "  db().prepare('DELETE FROM purchase_order_guides WHERE id = ?').run(guideId);\n"
+              "}")
+    if old_fn in dbt:
+        dbt = dbt.replace(old_fn, new_fn)
+        write(db, dbt)
+        print('  OK: fixed deleteGuide to delete items first')
+    else:
+        print('  WARN: deleteGuide exists but pattern not matched — check manually')
 
 # 10. Update guides API route
 print('\n=== guides/route.ts ===')
