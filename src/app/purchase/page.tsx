@@ -116,15 +116,7 @@ export default function PurchasePage() {
     setNumpadValue(String(item.quantity || '')); setNumpadOpen(true);
   }
 
-  function numpadKey(k: string) {
-    if (k === 'C') { setNumpadValue(''); return; }
-    if (k === 'del') { setNumpadValue(prev => prev.slice(0, -1)); return; }
-    if (k === '.' && numpadValue.includes('.')) return;
-    setNumpadValue(prev => prev + k);
-  }
-
-  function confirmNumpad() {
-    const val = parseFloat(numpadValue) || 0;
+  function handleNumpadConfirm(val: number) {
     if (recvNumpadLineId) { updateRecvQty(recvNumpadLineId, val); setRecvNumpadLineId(0); }
     else if (cartNumpadItem) { updateCartQty({ product_id: cartNumpadItem.product_id, product_name: cartNumpadItem.product_name, product_uom: cartNumpadItem.product_uom, price: cartNumpadItem.price }, val, cartNumpadItem.supplier_id); setCartNumpadItem(null); }
     else if (numpadProduct) { updateCartQty(numpadProduct, val); }
@@ -469,7 +461,7 @@ export default function PurchasePage() {
       ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={locDropdown} />
         <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} onNavigate={changeTab} isManager={isManager} onManage={() => setScreen('manage')} locationName={locName} />
       </>)}
-      <Numpad open={numpadOpen} value={numpadValue} label={numpadProduct?.product_name} sublabel={numpadProduct?.product_uom} onKey={numpadKey} onConfirm={confirmNumpad} onClose={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }} />
+      <Numpad open={numpadOpen} value={numpadValue} onChange={setNumpadValue} label={numpadProduct?.product_name} sublabel={numpadProduct?.product_uom} onConfirm={handleNumpadConfirm} onClose={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }} />
       {confirmDialog && <ConfirmDialog title={confirmDialog.title} message={confirmDialog.message} confirmLabel={confirmDialog.confirmLabel} cancelLabel={confirmDialog.cancelLabel} variant={confirmDialog.variant} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
     </div>
   );
