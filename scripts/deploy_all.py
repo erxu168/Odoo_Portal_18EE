@@ -30,7 +30,7 @@ t = t.replace('label={numpadProduct?.product_name}', 'label={numpadProduct?.prod
 t = t.replace('sublabel={numpadProduct?.product_uom}', 'sublabel={numpadProduct?.product_uom || ""}')
 print('  OK: label null guards')
 
-# 3. Rename Purchase -> Orders (user-facing labels only)
+# 3. Rename Purchase -> Orders
 renames = [
     ("title=\"Purchase\"", "title=\"Orders\""),
     ("title=\"Manage Purchases\"", "title=\"Manage Orders\""),
@@ -43,7 +43,7 @@ for old, new in renames:
         t = t.replace(old, new)
         print(f'  OK: rename "{old[:40]}" -> "{new[:40]}"')
 
-# 4. Move "Manage order lists" button from bottom to top of SupplierList
+# 4. Move manage button to top
 old_manage_btn = '{isManager && <div className="text-center mt-4"><button onClick={() => setScreen(\'manage\')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage order lists</button></div>}'
 if old_manage_btn in t:
     t = t.replace(old_manage_btn, '')
@@ -65,14 +65,14 @@ if old_manage_btn in t:
             '</button>}'
         )
         t = t.replace(search_anchor, new_btn)
-        print('  OK: manage button moved to top of supplier list')
+        print('  OK: manage button moved to top')
 else:
-    old_manage_btn2 = '{isManager && <div className="text-center mt-4"><button onClick={() => setScreen(\'manage\')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage guides &amp; settings</button></div>}'
-    if old_manage_btn2 in t:
-        t = t.replace(old_manage_btn2, '')
-        search_anchor = 'SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />'
-        if search_anchor in t:
-            new_btn = (
+    old2 = '{isManager && <div className="text-center mt-4"><button onClick={() => setScreen(\'manage\')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage guides &amp; settings</button></div>}'
+    if old2 in t:
+        t = t.replace(old2, '')
+        sa = 'SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />'
+        if sa in t:
+            nb = (
                 'SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />'
                 '\n      {isManager && <button onClick={() => setScreen(\'manage\')} '
                 'className="w-full flex items-center justify-between px-3.5 py-3 mb-3 '
@@ -87,10 +87,10 @@ else:
                 '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>'
                 '</button>}'
             )
-            t = t.replace(search_anchor, new_btn)
-            print('  OK: manage button moved to top (pre-rename match)')
+            t = t.replace(sa, nb)
+            print('  OK: manage button moved to top (pre-rename)')
 
-# 5. Add deleteGuideAction handler
+# 5. deleteGuideAction — calls DELETE with supplier_id+location_id directly (no guide_id lookup)
 if 'deleteGuideAction' not in t:
     handler = (
         'async function deleteGuideAction() {\n'
@@ -107,10 +107,7 @@ if 'deleteGuideAction' not in t:
         '      onConfirm: async () => {\n'
         '        setConfirmDialog(null);\n'
         '        try {\n'
-        "          const gr = await fetch('/api/purchase/guides?supplier_id=' + guideSupplierId + '&location_id=' + locationId).then(r => r.json());\n"
-        '          if (gr.guide && gr.guide.id) {\n'
-        "            await fetch('/api/purchase/guides?guide_id=' + gr.guide.id, { method: 'DELETE' });\n"
-        '          }\n'
+        "          await fetch('/api/purchase/guides?supplier_id=' + guideSupplierId + '&location_id=' + locationId, { method: 'DELETE' });\n"
         '          fetchSuppliers();\n'
         "          setScreen('manage');\n"
         '        } catch (e) { void e; }\n'
@@ -121,9 +118,9 @@ if 'deleteGuideAction' not in t:
     anchor = 'async function removeGuideItemAction(itemId: number)'
     if anchor in t:
         t = t.replace(anchor, handler + anchor)
-        print('  OK: deleteGuideAction handler')
+        print('  OK: deleteGuideAction handler (direct supplier_id+location_id DELETE)')
 
-# 6. Add delete button before {ManageGuideScreen()}
+# 6. Delete button before {ManageGuideScreen()}
 if 'Delete entire order list' not in t:
     target = '{ManageGuideScreen()}'
     if target in t:
@@ -146,16 +143,15 @@ if 'Delete entire order list' not in t:
 write(p, t)
 print('  purchase/page.tsx written')
 
-# 7. Dashboard: rename Purchase -> Orders
+# 7. Dashboard rename
 print('\n=== Dashboard rename ===')
 d = 'src/components/dashboard/DashboardHome.tsx'
 dt = open(d).read()
 dt = dt.replace("id: 'purchase', label: 'Purchase'", "id: 'purchase', label: 'Orders'")
 write(d, dt)
-print('  OK: Purchase -> Orders on dashboard')
+print('  OK: Purchase -> Orders')
 
-# 8. AppTabBar: rename if present
-print('\n=== AppTabBar rename ===')
+# 8. AppTabBar rename
 tb = 'src/components/ui/AppTabBar.tsx'
 if os.path.exists(tb):
     tt = open(tb).read()
@@ -163,9 +159,10 @@ if os.path.exists(tb):
         tt = tt.replace("label: 'Purchase'", "label: 'Orders'")
         tt = tt.replace("'Purchase'", "'Orders'")
         write(tb, tt)
-        print('  OK: renamed in AppTabBar')
+        print('  OK: AppTabBar renamed')
 
-# 9. Fix deleteGuide in purchase-db.ts — must delete items FIRST (SQLite foreign_keys is OFF by default, CASCADE doesn't work)
+# 9. purchase-db.ts — deleteGuide not needed here anymore, API route handles it directly
+# But add it for backward compat if other code calls it
 print('\n=== purchase-db.ts ===')
 db = 'src/lib/purchase-db.ts'
 dbt = open(db).read()
@@ -173,50 +170,19 @@ if 'deleteGuide' not in dbt:
     dbt = dbt.replace(
         'export function updateGuideItemPrice(',
         'export function deleteGuide(guideId: number) {\n'
-        '  // SQLite foreign_keys is OFF by default — CASCADE does not work.\n'
-        '  // Must delete items explicitly first.\n'
         "  db().prepare('DELETE FROM purchase_guide_items WHERE guide_id = ?').run(guideId);\n"
         "  db().prepare('DELETE FROM purchase_order_guides WHERE id = ?').run(guideId);\n"
         '}\n\n'
         'export function updateGuideItemPrice('
     )
     write(db, dbt)
-    print('  OK: deleteGuide added (explicit item deletion, no CASCADE dependency)')
+    print('  OK: deleteGuide added')
 else:
-    print('  SKIP: deleteGuide exists — patching to fix CASCADE bug')
-    # Fix existing deleteGuide that only deletes the guide row
-    old_fn = "export function deleteGuide(guideId: number) {\n  db().prepare('DELETE FROM purchase_order_guides WHERE id = ?').run(guideId);\n}"
-    new_fn = ("export function deleteGuide(guideId: number) {\n"
-              "  // SQLite foreign_keys is OFF by default — CASCADE does not work.\n"
-              "  // Must delete items explicitly first.\n"
-              "  db().prepare('DELETE FROM purchase_guide_items WHERE guide_id = ?').run(guideId);\n"
-              "  db().prepare('DELETE FROM purchase_order_guides WHERE id = ?').run(guideId);\n"
-              "}")
-    if old_fn in dbt:
-        dbt = dbt.replace(old_fn, new_fn)
-        write(db, dbt)
-        print('  OK: fixed deleteGuide to delete items first')
-    else:
-        print('  WARN: deleteGuide exists but pattern not matched — check manually')
+    print('  SKIP: deleteGuide exists')
 
-# 10. Update guides API route
+# 10. guides/route.ts — already updated in repo, no patching needed
 print('\n=== guides/route.ts ===')
-gr = 'src/app/api/purchase/guides/route.ts'
-gt = open(gr).read()
-if 'deleteGuide' not in gt:
-    gt = gt.replace(
-        'updateGuideItemPrice }',
-        'updateGuideItemPrice, deleteGuide }'
-    )
-    if 'guide_id' not in gt:
-        old_del = "  const { searchParams } = new URL(request.url);\n  const itemId = parseInt(searchParams.get('item_id') || '0');\n  if (!itemId) return NextResponse.json({ error: 'item_id required' }, { status: 400 });\n\n  removeGuideItem(itemId);\n  return NextResponse.json({ message: 'Item removed' });"
-        new_del = "  const { searchParams } = new URL(request.url);\n  const itemId = parseInt(searchParams.get('item_id') || '0');\n  const guideId = parseInt(searchParams.get('guide_id') || '0');\n\n  if (guideId) {\n    deleteGuide(guideId);\n    return NextResponse.json({ message: 'Order list deleted' });\n  }\n  if (itemId) {\n    removeGuideItem(itemId);\n    return NextResponse.json({ message: 'Item removed' });\n  }\n  return NextResponse.json({ error: 'item_id or guide_id required' }, { status: 400 });"
-        gt = gt.replace(old_del, new_del)
-        print('  OK: DELETE handler updated')
-    write(gr, gt)
-    print('  OK: deleteGuide imported')
-else:
-    print('  SKIP: deleteGuide already in route')
+print('  OK: using repo version (supports supplier_id+location_id DELETE)')
 
 # 11. Remove conflicting files
 print('\n=== Remove conflicting files ===')
