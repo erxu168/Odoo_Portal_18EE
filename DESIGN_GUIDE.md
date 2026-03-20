@@ -6,6 +6,26 @@
 
 ---
 
+## 0. Navigation — EVERY page must have a way home
+
+**This is non-negotiable.** Every module page must always show a button to return to the dashboard.
+
+### Pattern:
+- **Main module screen** (top-level, e.g. supplier list): left header button = **home icon** → navigates to `/`
+- **Sub-screen** (detail view, e.g. order guide): left = **back arrow**, right = **home icon**
+- **Confirmation screens** (e.g. order sent): include a **"Back to dashboard"** text button
+- **Bottom tab bars**: do NOT count as navigation home — always add a header home button
+
+### Home icon SVG:
+```html
+<svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+  <polyline points="9 22 9 12 15 12 15 22"/>
+</svg>
+```
+
+---
+
 ## 1. Color system — semantic only
 
 Color MUST carry meaning. If it doesn't, use gray.
@@ -115,6 +135,7 @@ DO NOT use thick colored borders or full colored outlines.
 - Reduce gradient intensity by 50-70%: `rgba(245,128,10,0.08)` not `0.15`
 - Remove bright orange hotspot
 - Header should NOT compete with content below it
+- **Always include a home button** (see rule 0)
 
 ---
 
@@ -180,6 +201,7 @@ No random colored icons. Every icon color must have semantic meaning.
 - [ ] Do ALL badges look identical structurally?
 - [ ] Is the header competing with the content? (reduce if yes)
 - [ ] Are cards clearly separated from background?
+- [ ] **Can the user get back to the dashboard from this screen?**
 
 ---
 
