@@ -14,7 +14,7 @@ if 'deleteGuide' not in t:
 else:
     print('1. deleteGuide already exists')
 
-# 2. Add handler + button to page.tsx
+# 2. page.tsx: handler + button
 f = 'src/app/purchase/page.tsx'
 t = open(f).read()
 
@@ -47,41 +47,53 @@ if 'deleteGuideAction' not in t:
         'async function removeGuideItemAction(itemId: number)',
         handler + 'async function removeGuideItemAction(itemId: number)'
     )
-    print('2a. deleteGuideAction handler added')
+    print('2a. handler added')
 else:
-    print('2a. deleteGuideAction already exists')
+    print('2a. handler already exists')
 
-# 2b. Add delete button at bottom of ManageGuideScreen
+# 2b. Add delete button — find ManageGuideScreen's return closing
 if 'Delete entire order list' not in t:
-    # Strategy: find the LAST >Remove</button> in the file,
-    # then scan forward to find the closing of ManageGuideScreen's return.
-    # The pattern after Remove</button> is: </div>))}</div></div>)))}\n    </div>);
-    # We insert the delete button just before that final </div>);
-
-    last_remove = t.rfind('>Remove</button>')
-    if last_remove > 0:
-        # From Remove button, scan forward to find the next </div>);
-        # which closes ManageGuideScreen
-        search_from = last_remove + len('>Remove</button>')
-        close_marker = '</div>);\n'
-        close_idx = t.find(close_marker, search_from)
-        if close_idx > 0 and close_idx - search_from < 200:
-            # Insert before the closing </div>);
-            btn = (
-                '\n      {guideItems.length > 0 && (<div className="mt-6 pt-4 border-t border-gray-200">'
-                '<button onClick={() => deleteGuideAction()} className="w-full py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100">'
-                'Delete entire order list</button>'
-                '<p className="text-[11px] text-gray-400 text-center mt-2">'
-                'Removes all {guideItems.length} products from this supplier</p></div>)}\n'
-            )
-            t = t[:close_idx] + btn + t[close_idx:]
-            print('2b. delete button added before ManageGuideScreen closing')
+    # Find where ManageGuideScreen is defined
+    mg_start = t.find('const ManageGuideScreen')
+    if mg_start < 0:
+        mg_start = t.find('ManageGuideScreen = ()')
+    
+    if mg_start > 0:
+        # Find the next component or the RENDER section after ManageGuideScreen
+        # ManageGuideScreen ends before the RENDER comment or before the next component
+        render_marker = '// ============== RENDER =============='
+        render_idx = t.find(render_marker, mg_start)
+        
+        if render_idx < 0:
+            # Try finding the return statement
+            render_idx = t.find('  // ============== RENDER', mg_start)
+        
+        if render_idx > 0:
+            # Search backwards from render_idx to find the last }; which closes ManageGuideScreen
+            # The function ends with:  </div>);\n  };\n
+            search_region = t[mg_start:render_idx]
+            # Find the last </div>); in ManageGuideScreen
+            last_close = search_region.rfind('</div>);')
+            
+            if last_close > 0:
+                # Insert BEFORE this closing </div>);
+                abs_pos = mg_start + last_close
+                btn = (
+                    '\n      {guideItems.length > 0 && (<div className="mt-6 pt-4 border-t border-gray-200">'
+                    '<button onClick={() => deleteGuideAction()} className="w-full py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100">'
+                    'Delete entire order list</button>'
+                    '<p className="text-[11px] text-gray-400 text-center mt-2">'
+                    'Removes all {guideItems.length} products from this supplier</p></div>)}\n    '
+                )
+                t = t[:abs_pos] + btn + t[abs_pos:]
+                print('2b. delete button added')
+            else:
+                print('2b. FAIL - no </div>); found in ManageGuideScreen')
         else:
-            print('2b. FAILED - closing </div>); not found near Remove button')
-            print('    close_idx=' + str(close_idx) + ' distance=' + str(close_idx - search_from if close_idx > 0 else -1))
-            print('    next 200 chars: ' + repr(t[search_from:search_from+200]))
+            print('2b. FAIL - RENDER marker not found')
+            print('    Searching for: ' + render_marker)
     else:
-        print('2b. FAILED - no >Remove</button> found')
+        print('2b. FAIL - ManageGuideScreen not found')
 else:
     print('2b. delete button already exists')
 
