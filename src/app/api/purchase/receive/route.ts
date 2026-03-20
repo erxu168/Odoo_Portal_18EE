@@ -1,11 +1,12 @@
 /**
  * /api/purchase/receive
- * GET  - list orders pending receipt for a location
+ * GET  - list orders pending receipt for a location, or get receipt for specific order
  * POST - create or update a receipt
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { listOrders, createReceipt, getReceipt, getReceiptByOrder, updateReceiptLine, confirmReceipt, updateReceiptNote, getOrder } from '@/lib/purchase-db';
+import { getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 
 export async function GET(request: Request) {
@@ -16,15 +17,53 @@ export async function GET(request: Request) {
   const locationId = parseInt(searchParams.get('location_id') || '0');
   const orderId = searchParams.get('order_id');
 
-  // Get receipt for a specific order
+  // Get receipt for a specific order — return enriched data with order details
   if (orderId) {
+    const order = getOrder(parseInt(orderId));
+    if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+
     let receipt = getReceiptByOrder(parseInt(orderId));
     if (!receipt) {
-      // Auto-create receipt when viewing
       const rid = createReceipt(parseInt(orderId), user.id);
       if (rid) receipt = getReceipt(rid);
     }
-    return NextResponse.json({ receipt });
+
+    // Get orderer name from portal_users
+    const orderer = getUserById(order.ordered_by);
+
+    // Merge price/uom from order lines into receipt lines for display
+    const orderLineMap: Record<number, any> = {};
+    for (const ol of order.lines) {
+      orderLineMap[ol.id] = ol;
+    }
+    if (receipt?.lines) {
+      for (const rl of receipt.lines) {
+        const ol = orderLineMap[rl.order_line_id];
+        if (ol) {
+          rl.price = ol.price;
+          rl.subtotal = ol.subtotal;
+          if (!rl.product_uom || rl.product_uom === 'Units') {
+            rl.product_uom = ol.product_uom || 'Units';
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({
+      receipt,
+      order: {
+        id: order.id,
+        supplier_name: order.supplier_name,
+        odoo_po_name: order.odoo_po_name,
+        ordered_by_name: orderer?.name || 'Unknown',
+        created_at: order.created_at,
+        delivery_date: order.delivery_date,
+        order_note: order.order_note,
+        total_amount: order.total_amount,
+        status: order.status,
+        lines: order.lines,
+      }
+    });
   }
 
   if (!locationId) return NextResponse.json({ error: 'location_id required' }, { status: 400 });
