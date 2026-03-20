@@ -34,7 +34,6 @@ print('  OK: label null guards')
 renames = [
     ("title=\"Purchase\"", "title=\"Orders\""),
     ("title=\"Manage Purchases\"", "title=\"Manage Orders\""),
-    ("subtitle=\"Order from your suppliers\"", "subtitle=\"Order from your suppliers\""),  # keep this
     ("subtitle=\"Guides, suppliers, settings\"", "subtitle=\"Order lists & settings\""),
     ("Manage guides &amp; settings", "Manage order lists"),
     ("Manage guides & settings", "Manage order lists"),
@@ -44,7 +43,68 @@ for old, new in renames:
         t = t.replace(old, new)
         print(f'  OK: rename "{old[:40]}" -> "{new[:40]}"')
 
-# 4. Add deleteGuideAction handler
+# 4. Move "Manage order lists" button from bottom to top of SupplierList
+#    After rename, the bottom button is:
+#    {isManager && <div className="text-center mt-4"><button onClick={() => setScreen('manage')} className="text-[12px]...">Manage order lists</button></div>}
+#    We remove it from bottom and insert after SearchInput at the top
+old_manage_btn = '{isManager && <div className="text-center mt-4"><button onClick={() => setScreen(\'manage\')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage order lists</button></div>}'
+if old_manage_btn in t:
+    # Remove from bottom
+    t = t.replace(old_manage_btn, '')
+    # Insert after SearchInput in SupplierList - right before the loading check
+    search_anchor = 'SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />'
+    if search_anchor in t:
+        new_btn = (
+            'SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />'
+            '\n      {isManager && <button onClick={() => setScreen(\'manage\')} '
+            'className="w-full flex items-center justify-between px-3.5 py-3 mb-3 '
+            'bg-white border border-orange-200 rounded-xl active:bg-orange-50 transition-colors">'
+            '<div className="flex items-center gap-2.5">'
+            '<div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center">'
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EA580C" strokeWidth="2" strokeLinecap="round">'
+            '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>'
+            '</svg></div>'
+            '<div><div className="text-[13px] font-semibold text-[#1F2933]">Manage order lists</div>'
+            '<div className="text-[10px] text-gray-400">Add, edit or remove products</div></div></div>'
+            '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>'
+            '</button>}'
+        )
+        t = t.replace(search_anchor, new_btn)
+        print('  OK: manage button moved to top of supplier list')
+    else:
+        print('  FAIL: SearchInput anchor not found')
+else:
+    # Try the pre-rename version
+    old_manage_btn2 = '{isManager && <div className="text-center mt-4"><button onClick={() => setScreen(\'manage\')} className="text-[12px] font-semibold text-orange-600 px-4 py-2 rounded-lg bg-orange-50 active:bg-orange-100">Manage guides &amp; settings</button></div>}'
+    if old_manage_btn2 in t:
+        t = t.replace(old_manage_btn2, '')
+        search_anchor = 'SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />'
+        if search_anchor in t:
+            new_btn = (
+                'SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />'
+                '\n      {isManager && <button onClick={() => setScreen(\'manage\')} '
+                'className="w-full flex items-center justify-between px-3.5 py-3 mb-3 '
+                'bg-white border border-orange-200 rounded-xl active:bg-orange-50 transition-colors">'
+                '<div className="flex items-center gap-2.5">'
+                '<div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center">'
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EA580C" strokeWidth="2" strokeLinecap="round">'
+                '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>'
+                '</svg></div>'
+                '<div><div className="text-[13px] font-semibold text-[#1F2933]">Manage order lists</div>'
+                '<div className="text-[10px] text-gray-400">Add, edit or remove products</div></div></div>'
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>'
+                '</button>}'
+            )
+            t = t.replace(search_anchor, new_btn)
+            print('  OK: manage button moved to top (pre-rename match)')
+        else:
+            print('  FAIL: SearchInput anchor not found')
+    elif 'Manage order lists' in t and 'text-center mt-4' in t:
+        print('  SKIP: manage button exists but pattern changed - check manually')
+    else:
+        print('  SKIP: manage button already moved or not found')
+
+# 5. Add deleteGuideAction handler
 if 'deleteGuideAction' not in t:
     handler = (
         'async function deleteGuideAction() {\n'
@@ -73,9 +133,8 @@ if 'deleteGuideAction' not in t:
         t = t.replace(anchor, handler + anchor)
         print('  OK: deleteGuideAction handler')
 
-# 5. Add delete button - find {ManageGuideScreen()} in the render section and insert before it
+# 6. Add delete button before {ManageGuideScreen()}
 if 'Delete entire order list' not in t:
-    # After patch_inline_components.js: {ManageGuideScreen()}
     target = '{ManageGuideScreen()}'
     if target in t:
         delete_bar = (
@@ -92,33 +151,12 @@ if 'Delete entire order list' not in t:
             'Delete entire order list</button></div>)}'
         )
         t = t.replace(target, delete_bar + target)
-        print('  OK: delete button added before {ManageGuideScreen()}')
-    else:
-        # Try pre-patch version
-        target2 = '<ManageGuideScreen />'
-        if target2 in t:
-            delete_bar = (
-                '{isManager && guideItems.length > 0 && ('
-                '<div className="px-4 pt-3">'
-                '<button onClick={() => deleteGuideAction()} '
-                'className="w-full py-2.5 rounded-xl bg-red-50 border border-red-200 '
-                'text-red-600 text-[12px] font-semibold active:bg-red-100 '
-                'flex items-center justify-center gap-2">'
-                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">'
-                '<polyline points="3 6 5 6 21 6"/>'
-                '<path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>'
-                '</svg>'
-                'Delete entire order list</button></div>)}'
-            )
-            t = t.replace(target2, delete_bar + target2)
-            print('  OK: delete button added before <ManageGuideScreen />')
-        else:
-            print('  FAIL: ManageGuideScreen not found in render')
+        print('  OK: delete button added')
 
 write(p, t)
 print('  purchase/page.tsx written')
 
-# 6. Dashboard: rename Purchase -> Orders
+# 7. Dashboard: rename Purchase -> Orders
 print('\n=== Dashboard rename ===')
 d = 'src/components/dashboard/DashboardHome.tsx'
 dt = open(d).read()
@@ -126,20 +164,18 @@ dt = dt.replace("id: 'purchase', label: 'Purchase'", "id: 'purchase', label: 'Or
 write(d, dt)
 print('  OK: Purchase -> Orders on dashboard')
 
-# 7. AppTabBar: rename if present
+# 8. AppTabBar: rename if present
 print('\n=== AppTabBar rename ===')
 tb = 'src/components/ui/AppTabBar.tsx'
 if os.path.exists(tb):
     tt = open(tb).read()
-    if 'Purchase' in tt or 'Orders' in tt:
+    if 'Purchase' in tt:
         tt = tt.replace("label: 'Purchase'", "label: 'Orders'")
         tt = tt.replace("'Purchase'", "'Orders'")
         write(tb, tt)
         print('  OK: renamed in AppTabBar')
-    else:
-        print('  SKIP: no Purchase label in AppTabBar')
 
-# 8. Add deleteGuide to purchase-db.ts
+# 9. Add deleteGuide to purchase-db.ts
 print('\n=== purchase-db.ts ===')
 db = 'src/lib/purchase-db.ts'
 dbt = open(db).read()
@@ -156,7 +192,7 @@ if 'deleteGuide' not in dbt:
 else:
     print('  SKIP: deleteGuide exists')
 
-# 9. Update guides API route
+# 10. Update guides API route
 print('\n=== guides/route.ts ===')
 gr = 'src/app/api/purchase/guides/route.ts'
 gt = open(gr).read()
@@ -175,7 +211,7 @@ if 'deleteGuide' not in gt:
 else:
     print('  SKIP: deleteGuide already in route')
 
-# 10. Remove conflicting files
+# 11. Remove conflicting files
 print('\n=== Remove conflicting files ===')
 for f in ['src/components/ui/NumPad.tsx', 'src/components/ui/PurchaseNumpad.tsx']:
     if os.path.exists(f):
