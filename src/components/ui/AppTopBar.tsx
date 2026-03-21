@@ -17,7 +17,7 @@ export default function AppTopBar() {
 
   return (
     <div className="fixed top-0 left-0 right-0 z-50 max-w-lg mx-auto">
-      <div className="bg-[#1A1F2E] flex items-center justify-center px-4 py-1.5 border-b border-white/10">
+      <div className="bg-[#1A1F2E] flex items-center justify-end px-4 py-1.5 border-b border-white/10">
         <CompanySelector />
       </div>
     </div>
