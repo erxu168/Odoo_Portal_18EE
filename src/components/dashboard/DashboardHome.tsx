@@ -10,7 +10,7 @@ import { useRouter } from 'next/navigation';
  */
 const TILES = [
   {
-    id: 'production', label: 'Production', href: '/manufacturing',
+    id: 'production', label: 'Manufacturing', href: '/manufacturing',
     icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>,
   },
   {
