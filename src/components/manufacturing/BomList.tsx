@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Bom } from '@/types/manufacturing';
+import { useCompany } from '@/lib/company-context';
 
 interface BomListProps {
   onSelect: (bom: Bom) => void;
@@ -9,19 +10,20 @@ interface BomListProps {
 }
 
 export default function BomList({ onSelect, onBack }: BomListProps) {
+  const { companyId } = useCompany();
   const [boms, setBoms] = useState<Bom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
 
-  useEffect(() => { fetchBoms(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (companyId) fetchBoms(); }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchBoms() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/boms');
+      const res = await fetch(`/api/boms?company_id=${companyId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -58,17 +60,10 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6">
         <div className="text-center">
-          <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-red-50 flex items-center justify-center">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-          </div>
           <p className="text-[15px] text-gray-900 font-bold mb-1">Connection error</p>
           <p className="text-[13px] text-gray-500 mb-5">{error}</p>
-          <button onClick={fetchBoms} className="px-6 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-orange-500/30 active:scale-95 transition-transform">Retry</button>
-          {onBack && (
-            <button onClick={onBack} className="block mx-auto mt-3 text-[13px] text-gray-500 active:opacity-70">Go back</button>
-          )}
+          <button onClick={fetchBoms} className="px-6 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl">Retry</button>
+          {onBack && <button onClick={onBack} className="block mx-auto mt-3 text-[13px] text-gray-500">Go back</button>}
         </div>
       </div>
     );

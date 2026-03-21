@@ -4,7 +4,8 @@ import type { CreateMoRequest } from '@/types/manufacturing';
 
 /**
  * GET /api/manufacturing-orders
- * List manufacturing orders with optional filters
+ * List manufacturing orders with optional filters.
+ * Supports ?company_id=X to filter by company.
  */
 export async function GET(request: Request) {
   try {
@@ -13,6 +14,7 @@ export async function GET(request: Request) {
     const state = searchParams.get('state');
     const search = searchParams.get('search');
     const limit = parseInt(searchParams.get('limit') || '50');
+    const companyId = searchParams.get('company_id');
 
     const domain: any[] = [];
     if (state && state !== 'all') {
@@ -26,6 +28,9 @@ export async function GET(request: Request) {
       domain.push('|');
       domain.push(['name', 'ilike', search]);
       domain.push(['product_id.name', 'ilike', search]);
+    }
+    if (companyId) {
+      domain.push(['company_id', '=', parseInt(companyId)]);
     }
 
     const orders = await odoo.searchRead('mrp.production', domain, [
@@ -42,9 +47,10 @@ export async function GET(request: Request) {
       'qty_producing',
       'workorder_ids',
       'move_raw_ids',
+      'company_id',
+      'create_date',
     ], { limit, order: 'id desc' });
 
-    // Enrich with work order count and progress
     const enriched = orders.map((mo: any) => {
       const woCount = mo.workorder_ids?.length || 0;
       return {
@@ -98,7 +104,6 @@ export async function POST(request: Request) {
       },
     });
 
-    // Read back the created MO
     const created = await odoo.read('mrp.production', [moId], [
       'name',
       'product_id',

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useCompany } from '@/lib/company-context';
 
 interface PickListProps {
   onBack: () => void;
@@ -20,6 +21,7 @@ interface PickItem {
 }
 
 export default function PickList({ onBack, onHome }: PickListProps) {
+  const { companyId } = useCompany();
   const [items, setItems] = useState<PickItem[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [moCount, setMoCount] = useState(0);
@@ -28,13 +30,13 @@ export default function PickList({ onBack, onHome }: PickListProps) {
   const [activeCategory, setActiveCategory] = useState('All');
   const [collected, setCollected] = useState<Set<number>>(new Set());
 
-  useEffect(() => { fetchPickList(); }, []);
+  useEffect(() => { if (companyId) fetchPickList(); }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchPickList() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/manufacturing-orders/pick-list');
+      const res = await fetch(`/api/manufacturing-orders/pick-list?company_id=${companyId}`);
       if (!res.ok) throw new Error('Failed to load');
       const data = await res.json();
       setItems(data.items || []);
@@ -67,7 +69,6 @@ export default function PickList({ onBack, onHome }: PickListProps) {
 
   return (
     <div className="min-h-screen bg-[#F6F7F9]">
-      {/* Header */}
       <div className="bg-[#1A1F2E] px-5 pt-12 pb-3 relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
@@ -99,7 +100,6 @@ export default function PickList({ onBack, onHome }: PickListProps) {
         </div>
       ) : (
         <>
-          {/* Progress bar */}
           <div className="px-4 pt-3 pb-1">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-semibold text-gray-400">{collectedCount}/{totalCount} collected</span>
@@ -112,7 +112,6 @@ export default function PickList({ onBack, onHome }: PickListProps) {
             </div>
           </div>
 
-          {/* Category filter pills */}
           <div className="px-4 pt-2 pb-3">
             <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1">
               <button onClick={() => setActiveCategory('All')}
@@ -131,7 +130,6 @@ export default function PickList({ onBack, onHome }: PickListProps) {
             </div>
           </div>
 
-          {/* Component list grouped by category */}
           <div className="px-4 pb-24">
             {groupedCategories.map(cat => {
               const catItems = filtered.filter(i => i.category === cat);
@@ -153,14 +151,11 @@ export default function PickList({ onBack, onHome }: PickListProps) {
                             isCollected ? 'opacity-60' : ''
                           }`}
                         >
-                          {/* Checkbox */}
                           <div className={`w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
                             isCollected ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 bg-white'
                           }`}>
                             {isCollected && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
                           </div>
-
-                          {/* Product info */}
                           <div className="flex-1 min-w-0">
                             <div className={`text-[13px] font-semibold ${isCollected ? 'text-gray-400 line-through' : 'text-[#1F2933]'}`}>
                               {item.product_name}
@@ -169,8 +164,6 @@ export default function PickList({ onBack, onHome }: PickListProps) {
                               {item.mo_count} order{item.mo_count !== 1 ? 's' : ''}: {item.mo_names.join(', ')}
                             </div>
                           </div>
-
-                          {/* Quantity */}
                           <div className="text-right flex-shrink-0">
                             <div className={`text-[15px] font-bold font-mono ${isCollected ? 'text-emerald-500' : 'text-[#1F2933]'}`}>
                               {fmt(item.remaining > 0 ? item.remaining : item.total_demand)}

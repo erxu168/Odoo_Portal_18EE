@@ -1,22 +1,27 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useCompany } from '@/lib/company-context';
 
 interface MfgDashboardProps {
   onNavigate: (screen: string) => void;
 }
 
 export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
+  const { companyId } = useCompany();
   const [stats, setStats] = useState({ active: 0, confirmed: 0, inProgress: 0, done: 0, bomCount: 0, pickListCount: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!companyId) return;
+    setLoading(true);
     (async () => {
       try {
+        const cq = `company_id=${companyId}`;
         const [moRes, bomRes, pickRes] = await Promise.all([
-          fetch('/api/manufacturing-orders?limit=200').then(r => r.json()),
-          fetch('/api/boms').then(r => r.json()),
-          fetch('/api/manufacturing-orders/pick-list').then(r => r.json()).catch(() => ({ total_components: 0 })),
+          fetch(`/api/manufacturing-orders?limit=200&${cq}`).then(r => r.json()),
+          fetch(`/api/boms?${cq}`).then(r => r.json()),
+          fetch(`/api/manufacturing-orders/pick-list?${cq}`).then(r => r.json()).catch(() => ({ total_components: 0 })),
         ]);
         const mos = moRes.orders || [];
         const active = mos.filter((m: any) => m.state === 'confirmed' || m.state === 'progress').length;
@@ -27,7 +32,7 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
       } catch (e) { void e; }
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [companyId]);
 
   const tiles = [
     {

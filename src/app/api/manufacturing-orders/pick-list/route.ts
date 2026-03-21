@@ -4,15 +4,20 @@ import { getOdoo } from '@/lib/odoo';
 /**
  * GET /api/manufacturing-orders/pick-list
  * Returns aggregated component needs from all confirmed MOs,
- * grouped by product category. Used for the consolidated pick list.
+ * grouped by product category. Supports ?company_id=X filter.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const odoo = getOdoo();
+    const { searchParams } = new URL(request.url);
+    const companyId = searchParams.get('company_id');
 
-    // 1. Get all confirmed MOs
-    const mos = await odoo.searchRead('mrp.production',
-      [['state', '=', 'confirmed']],
+    const moDomain: any[] = [['state', '=', 'confirmed']];
+    if (companyId) {
+      moDomain.push(['company_id', '=', parseInt(companyId)]);
+    }
+
+    const mos = await odoo.searchRead('mrp.production', moDomain,
       ['name', 'product_id', 'product_qty', 'move_raw_ids'],
       { limit: 200, order: 'id asc' }
     );
@@ -21,7 +26,6 @@ export async function GET() {
       return NextResponse.json({ items: [], categories: [], mo_count: 0 });
     }
 
-    // 2. Collect all move IDs
     const allMoveIds: number[] = [];
     for (const mo of mos) {
       if (mo.move_raw_ids?.length) allMoveIds.push(...mo.move_raw_ids);
@@ -31,14 +35,12 @@ export async function GET() {
       return NextResponse.json({ items: [], categories: [], mo_count: mos.length });
     }
 
-    // 3. Read all component moves
     const moves = await odoo.searchRead('stock.move',
       [['id', 'in', allMoveIds]],
       ['product_id', 'product_uom_qty', 'quantity', 'product_uom', 'raw_material_production_id', 'picked', 'state'],
       { limit: 2000 }
     );
 
-    // 4. Aggregate by product_id
     const productMap: Record<number, {
       product_id: number;
       product_name: string;
@@ -49,7 +51,6 @@ export async function GET() {
       mo_count: number;
     }> = {};
 
-    // Build MO id->name lookup
     const moNameMap: Record<number, string> = {};
     for (const mo of mos) moNameMap[mo.id] = mo.name;
 
@@ -78,7 +79,6 @@ export async function GET() {
       }
     }
 
-    // 5. Get product categories
     const productIds = Object.keys(productMap).map(Number);
     const products = await odoo.searchRead('product.product',
       [['id', 'in', productIds]],
@@ -91,14 +91,12 @@ export async function GET() {
       categMap[p.id] = p.categ_id?.[1] || 'Uncategorized';
     }
 
-    // 6. Build final list with categories
     const items = Object.values(productMap).map(item => ({
       ...item,
       category: categMap[item.product_id] || 'Uncategorized',
       remaining: Math.max(0, item.total_demand - item.total_picked),
     }));
 
-    // Sort by category then product name
     items.sort((a, b) => a.category.localeCompare(b.category) || a.product_name.localeCompare(b.product_name));
 
     const categories = Array.from(new Set(items.map(i => i.category))).sort();

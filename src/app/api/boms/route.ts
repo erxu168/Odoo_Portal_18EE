@@ -9,14 +9,18 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const search = searchParams.get('search');
+    const companyId = searchParams.get('company_id');
 
-    // Build domain filter
     const domain: any[] = [['active', '=', true]];
     if (search) {
       domain.push(['product_tmpl_id.name', 'ilike', search]);
     }
+    if (companyId) {
+      domain.push('|');
+      domain.push(['company_id', '=', parseInt(companyId)]);
+      domain.push(['company_id', '=', false]);
+    }
 
-    // ── 1. Fetch all BOMs in one call ──────────────────────────────────────
     const boms = await odoo.searchRead('mrp.bom', domain, [
       'product_tmpl_id',
       'product_id',
@@ -25,9 +29,9 @@ export async function GET(request: Request) {
       'bom_line_ids',
       'type',
       'code',
+      'company_id',
     ], { order: 'product_tmpl_id asc' });
 
-    // ── 2. Batch-fetch ALL BOM lines in one call ──────────────────────────
     const allLineIds: number[] = [];
     for (const bom of boms) {
       allLineIds.push(...(bom.bom_line_ids || []));
@@ -42,7 +46,6 @@ export async function GET(request: Request) {
         ])
       : [];
 
-    // Index lines by BOM id
     const linesByBomId: Record<number, any[]> = {};
     for (const line of allLines) {
       const bomId = Array.isArray(line.bom_id) ? line.bom_id[0] : line.bom_id;
@@ -50,7 +53,6 @@ export async function GET(request: Request) {
       linesByBomId[bomId].push(line);
     }
 
-    // ── 3. Batch-fetch ALL stock quants in one call ───────────────────────
     const allProductIds = new Set<number>();
     for (const line of allLines) {
       if (line.product_id) allProductIds.add(line.product_id[0]);
@@ -67,14 +69,12 @@ export async function GET(request: Request) {
         )
       : [];
 
-    // Build global stock map: product_id -> available qty
     const stockMap: Record<number, number> = {};
     for (const q of quants) {
       const pid = q.product_id[0];
       stockMap[pid] = (stockMap[pid] || 0) + (q.quantity - q.reserved_quantity);
     }
 
-    // ── 4. Batch-fetch ALL product template categories in one call ────────
     const tmplIds = new Set<number>();
     for (const bom of boms) {
       if (bom.product_tmpl_id) tmplIds.add(bom.product_tmpl_id[0]);
@@ -93,11 +93,9 @@ export async function GET(request: Request) {
       categByTmplId[t.id] = t.categ_id?.[1] || 'Uncategorized';
     }
 
-    // ── 5. Assemble enriched data ─────────────────────────────────────────
     const enriched = boms.map((bom: any) => {
       const lines = linesByBomId[bom.id] || [];
 
-      // Calculate availability status
       let worstStatus: 'ok' | 'low' | 'out' = 'ok';
       let canMakeQty = Infinity;
       let hasAnyStock = false;
@@ -124,8 +122,6 @@ export async function GET(request: Request) {
 
       if (canMakeQty === Infinity) canMakeQty = 0;
 
-      // If no stock data exists at all, mark as 'none' instead of 'out'
-      // This distinguishes "no inventory tracked" from "out of stock"
       const availStatus = lines.length === 0
         ? 'ok'
         : !hasAnyStock
@@ -143,7 +139,6 @@ export async function GET(request: Request) {
       };
     });
 
-    // Filter by category if specified
     const filtered = category
       ? enriched.filter((b: any) =>
           b.category.toLowerCase().includes(category.toLowerCase()),

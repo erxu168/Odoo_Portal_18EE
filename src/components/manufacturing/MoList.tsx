@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import DateFilter, { DateRange, isInRange } from '@/components/ui/DateFilter';
+import { useCompany } from '@/lib/company-context';
 
 interface MoListProps {
   onSelect: (moId: number) => void;
   onCreate: () => void;
   onHome?: () => void;
-  /** 'production' shows open orders (confirmed/progress/to_close), 'completed' shows done only */
   mode?: 'production' | 'completed';
 }
 
@@ -46,6 +46,7 @@ function fmtDate(d: string | null | false) {
 }
 
 export default function MoList({ onSelect, onCreate, onHome, mode = 'production' }: MoListProps) {
+  const { companyId } = useCompany();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,13 +54,13 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
   const [datePreset, setDatePreset] = useState('all');
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
 
-  useEffect(() => { fetchOrders(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (companyId) fetchOrders(); }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchOrders() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/manufacturing-orders?limit=200');
+      const res = await fetch(`/api/manufacturing-orders?limit=200&company_id=${companyId}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${res.status}`);
@@ -74,14 +75,12 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
     }
   }
 
-  // Filter orders by status
   const statusFiltered = orders.filter(mo => {
     if (mode === 'completed') return mo.state === 'done';
     if (statusFilter === 'all') return ['confirmed', 'progress', 'to_close'].includes(mo.state);
     return mo.state === statusFilter;
   });
 
-  // Filter by date range
   const filtered = statusFiltered.filter(mo => {
     if (!dateRange) return true;
     const dateField = mode === 'completed' ? (mo.date_finished || mo.create_date) : (mo.date_start || mo.create_date);
@@ -99,7 +98,6 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
 
   return (
     <div className="min-h-screen bg-[#F6F7F9]">
-      {/* Header */}
       <div className="bg-[#1A1F2E] px-5 pt-12 pb-3 relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
@@ -120,21 +118,14 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
         </div>
       </div>
 
-      {/* Error state */}
       {error ? (
         <div className="flex flex-col items-center justify-center px-6 py-16">
-          <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-red-50 flex items-center justify-center">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-          </div>
           <p className="text-[15px] text-gray-900 font-bold mb-1">Could not load orders</p>
           <p className="text-[13px] text-gray-500 mb-5 text-center">{error}</p>
-          <button onClick={fetchOrders} className="px-6 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-orange-500/30 active:scale-95 transition-transform">Retry</button>
+          <button onClick={fetchOrders} className="px-6 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl">Retry</button>
         </div>
       ) : (
         <>
-          {/* Status filter pills */}
           {statusTabs.length > 1 && (
             <div className="px-4 pt-3 pb-1">
               <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1">
@@ -150,17 +141,14 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
             </div>
           )}
 
-          {/* Date filter */}
           <div className="px-4 pt-2 pb-3">
             <DateFilter value={datePreset} onChange={handleDateChange} />
           </div>
 
-          {/* Results count */}
           <div className="px-5 pb-2">
             <span className="text-[11px] font-semibold text-gray-400">{filtered.length} order{filtered.length !== 1 ? 's' : ''}</span>
           </div>
 
-          {/* MO cards */}
           <div className="px-4 pb-24">
             {loading ? (
               <div className="flex justify-center py-12">
