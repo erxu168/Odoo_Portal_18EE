@@ -40,6 +40,11 @@ const COMPLETED_FILTERS = [
   { id: 'done', label: 'Done' },
 ];
 
+function fmtDate(d: string | null | false) {
+  if (!d) return null;
+  return new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
 export default function MoList({ onSelect, onCreate, onHome, mode = 'production' }: MoListProps) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,12 +77,11 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
   // Filter orders by status
   const statusFiltered = orders.filter(mo => {
     if (mode === 'completed') return mo.state === 'done';
-    // production mode
     if (statusFilter === 'all') return ['confirmed', 'progress', 'to_close'].includes(mo.state);
     return mo.state === statusFilter;
   });
 
-  // Filter by date range (use create_date for completed, date_start or create_date for production)
+  // Filter by date range
   const filtered = statusFiltered.filter(mo => {
     if (!dateRange) return true;
     const dateField = mode === 'completed' ? (mo.date_finished || mo.create_date) : (mo.date_start || mo.create_date);
@@ -173,9 +177,8 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                   const deadlineStr = mo.date_deadline
                     ? new Date(mo.date_deadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
                     : null;
-                  const dateStr = mo.create_date
-                    ? new Date(mo.create_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
-                    : null;
+                  const doneDate = fmtDate(mo.date_finished);
+                  const startDate = fmtDate(mo.date_start);
 
                   return (
                     <button key={mo.id} onClick={() => onSelect(mo.id)}
@@ -209,8 +212,11 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                       {mode === 'production' && deadlineStr && (mo.state === 'confirmed' || mo.state === 'progress') && (
                         <div className="mt-2 text-[11px] text-gray-400">Due {deadlineStr}</div>
                       )}
-                      {mode === 'completed' && dateStr && (
-                        <div className="mt-2 text-[11px] text-gray-400">Completed {dateStr}</div>
+                      {mode === 'production' && startDate && mo.state === 'progress' && (
+                        <div className="mt-1 text-[11px] text-gray-400">Started {startDate}</div>
+                      )}
+                      {mode === 'completed' && doneDate && (
+                        <div className="mt-2 text-[11px] text-emerald-600 font-semibold">Done {doneDate}</div>
                       )}
                     </button>
                   );
