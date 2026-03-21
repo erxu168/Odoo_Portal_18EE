@@ -4,7 +4,7 @@ import { getUserById, updateUser, resetPassword } from '@/lib/db';
 
 /**
  * PATCH /api/admin/users/[id]
- * Update a user (role, active, name) or reset password. Admin only.
+ * Update a user (role, active, name, allowed_company_ids) or reset password. Admin only.
  */
 export async function PATCH(
   request: Request,
@@ -35,6 +35,15 @@ export async function PATCH(
     if (body.role !== undefined) updates.role = body.role;
     if (body.active !== undefined) updates.active = body.active ? 1 : 0;
     if (body.employee_id !== undefined) updates.employee_id = body.employee_id;
+    if (body.status !== undefined) updates.status = body.status;
+    if (body.allowed_company_ids !== undefined) {
+      // Validate: must be array of numbers
+      if (Array.isArray(body.allowed_company_ids) && body.allowed_company_ids.every((id: any) => typeof id === 'number')) {
+        updates.allowed_company_ids = body.allowed_company_ids;
+      } else {
+        return NextResponse.json({ error: 'allowed_company_ids must be an array of numbers' }, { status: 400 });
+      }
+    }
 
     if (Object.keys(updates).length > 0) {
       updateUser(userId, updates);

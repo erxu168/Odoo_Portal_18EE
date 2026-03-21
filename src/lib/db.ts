@@ -44,6 +44,7 @@ function initTables(db: Database.Database) {
       active INTEGER NOT NULL DEFAULT 1,
       login_count INTEGER NOT NULL DEFAULT 0,
       tour_seen INTEGER NOT NULL DEFAULT 0,
+      allowed_company_ids TEXT DEFAULT '[]',
       created_at TEXT NOT NULL,
       last_login TEXT
     );
@@ -79,8 +80,6 @@ function initTables(db: Database.Database) {
 
 /**
  * Migrate existing DBs that lack new columns.
- * SQLite doesn't support IF NOT EXISTS for ALTER TABLE ADD COLUMN,
- * so we check column existence first.
  */
 function migrateSchema(db: Database.Database) {
   const cols = db.prepare("PRAGMA table_info('portal_users')").all() as { name: string }[];
@@ -94,6 +93,9 @@ function migrateSchema(db: Database.Database) {
   if (!colNames.includes('tour_seen')) {
     db.exec('ALTER TABLE portal_users ADD COLUMN tour_seen INTEGER NOT NULL DEFAULT 0');
   }
+  if (!colNames.includes('allowed_company_ids')) {
+    db.exec("ALTER TABLE portal_users ADD COLUMN allowed_company_ids TEXT DEFAULT '[]'");
+  }
 }
 
 function seedAdmin(db: Database.Database) {
@@ -102,13 +104,13 @@ function seedAdmin(db: Database.Database) {
     const email = process.env.ODOO_USER || 'admin@krawings.de';
     const hash = bcrypt.hashSync('krawings2026', 10);
     db.prepare(
-      "INSERT INTO portal_users (name, email, password_hash, role, status, created_at) VALUES (?, ?, ?, ?, 'active', ?)"
+      "INSERT INTO portal_users (name, email, password_hash, role, status, allowed_company_ids, created_at) VALUES (?, ?, ?, ?, 'active', '[]', ?)"
     ).run('Admin', email, hash, 'admin', nowISO());
     console.log(`Portal: created initial admin user (${email}). Change the password!`);
   }
 }
 
-// ── User CRUD ──
+// -- User CRUD --
 
 export interface PortalUser {
   id: number;
@@ -120,13 +122,18 @@ export interface PortalUser {
   active: number;
   login_count: number;
   tour_seen: number;
+  allowed_company_ids: string; // JSON array string e.g. '[2,3]'
   created_at: string;
   last_login: string | null;
 }
 
-/**
- * Get user by email. Returns user regardless of status (caller checks status).
- */
+/** Parse allowed_company_ids JSON string to number array */
+export function parseCompanyIds(raw: string | null | undefined): number[] {
+  if (!raw) return [];
+  try { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr.filter(Number.isFinite) : []; }
+  catch { return []; }
+}
+
 export function getUserByEmail(email: string): PortalUser & { password_hash: string } | null {
   const db = getDb();
   return db.prepare(
@@ -134,9 +141,6 @@ export function getUserByEmail(email: string): PortalUser & { password_hash: str
   ).get(email) as (PortalUser & { password_hash: string }) | null;
 }
 
-/**
- * Check if an employee_id already has a portal account.
- */
 export function getUserByEmployeeId(employeeId: number): PortalUser | null {
   const db = getDb();
   return db.prepare(
@@ -147,21 +151,21 @@ export function getUserByEmployeeId(employeeId: number): PortalUser | null {
 export function getUserById(id: number): PortalUser | null {
   const db = getDb();
   return db.prepare(
-    'SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, created_at, last_login FROM portal_users WHERE id = ?'
+    'SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE id = ?'
   ).get(id) as PortalUser | null;
 }
 
 export function listUsers(): PortalUser[] {
   const db = getDb();
   return db.prepare(
-    'SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, created_at, last_login FROM portal_users ORDER BY created_at DESC'
+    'SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users ORDER BY created_at DESC'
   ).all() as PortalUser[];
 }
 
 export function listUsersByStatus(status: string): PortalUser[] {
   const db = getDb();
   return db.prepare(
-    'SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, created_at, last_login FROM portal_users WHERE status = ? AND active = 1 ORDER BY created_at DESC'
+    'SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE status = ? AND active = 1 ORDER BY created_at DESC'
   ).all(status) as PortalUser[];
 }
 
@@ -171,18 +175,19 @@ export function countUsersByStatus(status: string): number {
   return row.c;
 }
 
-export function createUser(name: string, email: string, password: string, role: string, extra?: { employee_id?: number; status?: string }): number {
+export function createUser(name: string, email: string, password: string, role: string, extra?: { employee_id?: number; status?: string; allowed_company_ids?: number[] }): number {
   const db = getDb();
   const hash = bcrypt.hashSync(password, 10);
   const status = extra?.status || 'active';
   const employeeId = extra?.employee_id || null;
+  const companyIds = JSON.stringify(extra?.allowed_company_ids || []);
   const result = db.prepare(
-    'INSERT INTO portal_users (name, email, password_hash, role, employee_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(name, email.toLowerCase().trim(), hash, role, employeeId, status, nowISO());
+    'INSERT INTO portal_users (name, email, password_hash, role, employee_id, status, allowed_company_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(name, email.toLowerCase().trim(), hash, role, employeeId, status, companyIds, nowISO());
   return result.lastInsertRowid as number;
 }
 
-export function updateUser(id: number, updates: { name?: string; role?: string; active?: number; employee_id?: number | null; status?: string }) {
+export function updateUser(id: number, updates: { name?: string; role?: string; active?: number; employee_id?: number | null; status?: string; allowed_company_ids?: number[] }) {
   const db = getDb();
   const sets: string[] = [];
   const vals: any[] = [];
@@ -191,6 +196,7 @@ export function updateUser(id: number, updates: { name?: string; role?: string; 
   if (updates.active !== undefined) { sets.push('active = ?'); vals.push(updates.active); }
   if (updates.employee_id !== undefined) { sets.push('employee_id = ?'); vals.push(updates.employee_id); }
   if (updates.status !== undefined) { sets.push('status = ?'); vals.push(updates.status); }
+  if (updates.allowed_company_ids !== undefined) { sets.push('allowed_company_ids = ?'); vals.push(JSON.stringify(updates.allowed_company_ids)); }
   if (sets.length === 0) return;
   vals.push(id);
   db.prepare(`UPDATE portal_users SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
@@ -202,19 +208,17 @@ export function resetPassword(id: number, newPassword: string) {
   db.prepare('UPDATE portal_users SET password_hash = ? WHERE id = ?').run(hash, id);
 }
 
-// ── Session CRUD (never expire — only logout removes) ──
+// -- Session CRUD --
 
 export function createSession(userId: number): string {
   const db = getDb();
   const token = crypto.randomUUID();
   const now = nowISO();
-  // Set expiry far in the future (100 years) — sessions only end on logout
   const expiresAt = new Date();
   expiresAt.setFullYear(expiresAt.getFullYear() + 100);
   db.prepare(
     'INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
   ).run(token, userId, now, expiresAt.toISOString());
-  // Increment login count
   db.prepare('UPDATE portal_users SET last_login = ?, login_count = login_count + 1 WHERE id = ?').run(now, userId);
   return token;
 }
@@ -223,15 +227,12 @@ export function getSessionUser(token: string): PortalUser | null {
   const db = getDb();
   const now = nowISO();
   const row = db.prepare(`
-    SELECT u.id, u.name, u.email, u.role, u.employee_id, u.status, u.active, u.login_count, u.tour_seen, u.created_at, u.last_login
+    SELECT u.id, u.name, u.email, u.role, u.employee_id, u.status, u.active, u.login_count, u.tour_seen, u.allowed_company_ids, u.created_at, u.last_login
     FROM sessions s
     JOIN portal_users u ON u.id = s.user_id
     WHERE s.token = ? AND u.active = 1 AND u.status = 'active' AND s.expires_at > ?
   `).get(token, now) as PortalUser | null;
-  if (!row) {
-    return null;
-  }
-  return row;
+  return row || null;
 }
 
 export function deleteSession(token: string) {
@@ -244,7 +245,7 @@ export function cleanExpiredSessions() {
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(nowISO());
 }
 
-// ── Registration Rate Limiting ──
+// -- Registration Rate Limiting --
 
 export function checkRegistrationRateLimit(identifier: string): { allowed: boolean; retryAfterMin: number } {
   const db = getDb();
@@ -254,7 +255,6 @@ export function checkRegistrationRateLimit(identifier: string): { allowed: boole
     'SELECT COUNT(*) as c FROM registration_attempts WHERE ip_or_identifier = ? AND attempted_at > ?'
   ).get(identifier, thirtyMinAgo.toISOString()) as { c: number };
   if (row.c >= 5) {
-    // Find oldest attempt in window to compute retry time
     const oldest = db.prepare(
       'SELECT attempted_at FROM registration_attempts WHERE ip_or_identifier = ? AND attempted_at > ? ORDER BY attempted_at ASC LIMIT 1'
     ).get(identifier, thirtyMinAgo.toISOString()) as { attempted_at: string } | undefined;
@@ -272,13 +272,12 @@ export function checkRegistrationRateLimit(identifier: string): { allowed: boole
 export function recordRegistrationAttempt(identifier: string) {
   const db = getDb();
   db.prepare('INSERT INTO registration_attempts (ip_or_identifier, attempted_at) VALUES (?, ?)').run(identifier, nowISO());
-  // Clean old attempts (older than 1 hour)
   const oneHourAgo = new Date();
   oneHourAgo.setHours(oneHourAgo.getHours() - 1);
   db.prepare('DELETE FROM registration_attempts WHERE attempted_at < ?').run(oneHourAgo.toISOString());
 }
 
-// ── Password Reset Tokens ──
+// -- Password Reset Tokens --
 
 const RESET_TOKEN_HOURS = 1;
 
