@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import AppTabBar from '@/components/ui/AppTabBar';
+import AppTopBar from '@/components/ui/AppTopBar';
 import { CompanyProvider } from '@/lib/company-context';
 
 export const metadata: Metadata = {
@@ -25,7 +26,8 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white min-h-screen">
         <CompanyProvider>
-          <main className="max-w-lg mx-auto pb-20">{children}</main>
+          <AppTopBar />
+          <main className="max-w-lg mx-auto pt-9 pb-20">{children}</main>
           <AppTabBar />
         </CompanyProvider>
       </body>

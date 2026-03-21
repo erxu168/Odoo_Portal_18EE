@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import CompanySelector from './CompanySelector';
 
 const TABS = [
   {
@@ -66,12 +65,7 @@ export default function AppTabBar() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 max-w-lg mx-auto">
-      {/* Company selector row */}
-      <div className="flex items-center justify-center px-3 pt-1.5 pb-0.5">
-        <CompanySelector />
-      </div>
-      {/* Tab buttons */}
-      <div className="flex h-12">
+      <div className="flex h-16">
         {TABS.map(tab => {
           const active = isActive(tab);
           return (
