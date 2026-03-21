@@ -33,6 +33,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const [numpadComp, setNumpadComp] = useState<any>(null);
   const [numpadSaving, setNumpadSaving] = useState(false);
   const [tolerancePct, setTolerancePct] = useState<number>(5);
+  const [showPdf, setShowPdf] = useState(false);
 
   useEffect(() => { fetchData(); return () => { if (timerRef.current) clearInterval(timerRef.current); }; }, [woId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -173,7 +174,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const hasPdf = worksheetType === 'pdf' && worksheetPdf;
   const hasGoogleSlide = worksheetType === 'google_slide' && worksheetGoogleSlide;
   const hasInstructions = hasText || hasPdf || hasGoogleSlide;
-  const pdfDataUrl = hasPdf ? `data:application/pdf;base64,${worksheetPdf}` : '';
 
   const arrow = '\u2192';
 
@@ -328,16 +328,19 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         {tab === 'instructions' && (
           <div className="flex flex-col gap-3">
             {hasPdf && (
-              <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
-                    <span className="text-[13px] font-semibold text-gray-700">PDF Worksheet</span>
-                  </div>
-                  <a href={pdfDataUrl} download="worksheet.pdf" className="text-[12px] text-green-700 font-semibold">Download</a>
+              <button onClick={() => setShowPdf(true)}
+                className="w-full bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-4 text-left active:bg-gray-50 active:scale-[0.98] transition-all">
+                <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="1.5">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>
+                  </svg>
                 </div>
-                <PdfViewer fileData={worksheetPdf} fileName="worksheet.pdf" maxHeight="500px" />
-              </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[14px] font-bold text-gray-900">PDF Worksheet</div>
+                  <div className="text-[12px] text-gray-500 mt-0.5">Tap to view fullscreen</div>
+                </div>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>
+              </button>
             )}
 
             {hasGoogleSlide && (
@@ -431,6 +434,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
             </div>
           </div>
         </div>
+      )}
+      {showPdf && hasPdf && (
+        <PdfViewer fileData={worksheetPdf} fileName="worksheet.pdf" onClose={() => setShowPdf(false)} />
       )}
       <style jsx>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
     </div>
