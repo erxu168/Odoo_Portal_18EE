@@ -113,7 +113,7 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
       {/* Create button */}
       <div className="px-4 pt-3 pb-1">
         <button onClick={() => setCreating(true)}
-          className="w-full py-3.5 rounded-xl bg-orange-500 text-white text-[14px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all">
+          className="w-full py-3.5 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">
           + New counting list
         </button>
       </div>
@@ -150,7 +150,7 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
                   className="bg-white border border-gray-200 rounded-2xl p-4 text-left active:scale-[0.98] transition-all">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[15px] font-bold text-gray-900">{tpl.name}</span>
-                    <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${tpl.active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${tpl.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {tpl.active ? 'Active' : 'Inactive'}
                     </span>
                   </div>

@@ -49,7 +49,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+        <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
       </div>
     );
   }
@@ -65,7 +65,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
           </div>
           <p className="text-[15px] text-gray-900 font-bold mb-1">Could not load recipe</p>
           <p className="text-[13px] text-gray-500 mb-5">{error || 'Recipe not found'}</p>
-          <button onClick={fetchBomDetail} className="px-6 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-orange-500/30 active:scale-95 transition-transform">Retry</button>
+          <button onClick={fetchBomDetail} className="px-6 py-3 bg-green-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-green-600/30 active:scale-95 transition-transform">Retry</button>
           <button onClick={onBack} className="block mx-auto mt-3 text-[13px] text-gray-500 active:opacity-70">Go back</button>
         </div>
       </div>
@@ -81,7 +81,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
-        <button onClick={onBack} className="flex items-center gap-1 mb-2 text-orange-600 text-[13px] font-semibold active:opacity-70">
+        <button onClick={onBack} className="flex items-center gap-1 mb-2 text-green-700 text-[13px] font-semibold active:opacity-70">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
           Recipes
         </button>
@@ -95,7 +95,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex-1 text-center py-3 border-r border-gray-100">
             <div className="text-[11px] text-gray-400 font-semibold tracking-wider">INGREDIENTS</div>
-            <div className="text-lg font-bold text-orange-500 mt-0.5 font-mono">{components.length}</div>
+            <div className="text-lg font-bold text-green-600 mt-0.5 font-mono">{components.length}</div>
           </div>
           <div className="flex-1 text-center py-3 border-r border-gray-100">
             <div className="text-[11px] text-gray-400 font-semibold tracking-wider">ON HAND</div>
@@ -103,7 +103,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
           </div>
           <div className="flex-1 text-center py-3">
             <div className="text-[11px] text-gray-400 font-semibold tracking-wider">CAN MAKE</div>
-            <div className="text-lg font-bold text-emerald-500 mt-0.5 font-mono">
+            <div className="text-lg font-bold text-green-500 mt-0.5 font-mono">
               {new Intl.NumberFormat('de-DE').format(canMakeQty)}{uom}
             </div>
           </div>
@@ -120,14 +120,14 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
             <button
               onClick={() => comp.is_sub_bom && toggleSubBom(comp.product_id)}
               className={`bg-white border rounded-xl px-4 py-3 flex justify-between items-center text-left w-full ${
-                comp.is_sub_bom ? 'border-orange-200 active:scale-[0.98] transition-transform' : 'border-gray-200'
+                comp.is_sub_bom ? 'border-green-200 active:scale-[0.98] transition-transform' : 'border-gray-200'
               }`}>
               <div className="flex items-center gap-2.5 min-w-0">
                 <StatusDot status={comp.status} />
                 <div className="min-w-0">
                   <div className="text-[14px] font-semibold text-gray-900 truncate">
                     {comp.product_name}
-                    {comp.is_sub_bom && <span className="ml-2 text-[10px] px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 font-semibold">Sub-recipe</span>}
+                    {comp.is_sub_bom && <span className="ml-2 text-[10px] px-2 py-0.5 rounded-md bg-green-50 text-green-800 font-semibold">Sub-recipe</span>}
                   </div>
                 </div>
               </div>
@@ -136,7 +136,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                   {new Intl.NumberFormat('de-DE').format(comp.required_qty)}{comp.uom}
                 </div>
                 <div className={`text-[11px] mt-0.5 ${
-                  comp.status === 'ok' ? 'text-emerald-600' : comp.status === 'low' ? 'text-amber-600' : 'text-red-600'
+                  comp.status === 'ok' ? 'text-green-600' : comp.status === 'low' ? 'text-amber-600' : 'text-red-600'
                 }`}>
                   {new Intl.NumberFormat('de-DE').format(comp.on_hand_qty)} {comp.uom} on hand
                 </div>
@@ -144,10 +144,10 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
             </button>
 
             {comp.is_sub_bom && expandedSubBoms.has(comp.product_id) && comp.sub_bom_lines && (
-              <div className="ml-5 border-l-2 border-orange-200">
-                <div className="ml-3 bg-white border border-orange-200 rounded-xl overflow-hidden">
+              <div className="ml-5 border-l-2 border-green-200">
+                <div className="ml-3 bg-white border border-green-200 rounded-xl overflow-hidden">
                   <div className="px-3.5 py-2.5 border-b border-gray-100 flex justify-between items-center">
-                    <span className="text-[13px] font-semibold text-orange-700">{comp.product_name} (sub-recipe)</span>
+                    <span className="text-[13px] font-semibold text-green-800">{comp.product_name} (sub-recipe)</span>
                     <span className="text-[11px] text-gray-400">{comp.sub_bom_lines.length} items</span>
                   </div>
                   <div className="divide-y divide-gray-100">
@@ -171,7 +171,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
 
       <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
         <button onClick={() => onCreateMo(bomId)}
-          className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform">
+          className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[15px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform">
           Create manufacturing order
         </button>
       </div>

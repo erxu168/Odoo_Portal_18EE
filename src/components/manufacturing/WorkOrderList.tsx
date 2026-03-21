@@ -77,7 +77,7 @@ export default function WorkOrderList({
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin mx-auto" />
+          <div className="w-8 h-8 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin mx-auto" />
           <p className="text-sm text-gray-500 mt-3">Loading...</p>
         </div>
       </div>
@@ -176,7 +176,7 @@ export default function WorkOrderList({
                       </button>
                       <button
                         onClick={() => handleWoAction(wo.id, 'done')}
-                        className="w-9 h-9 rounded-full bg-emerald-50 border border-emerald-300 flex items-center justify-center"
+                        className="w-9 h-9 rounded-full bg-green-50 border border-green-300 flex items-center justify-center"
                         title="Done"
                       >
                         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="rgb(5,150,105)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -207,7 +207,7 @@ export default function WorkOrderList({
               {(isActive || isDone || isReady) && (
                 <button
                   onClick={() => onSelectWo(wo.id)}
-                  className="mt-2.5 w-full text-center text-xs text-emerald-600 py-1"
+                  className="mt-2.5 w-full text-center text-xs text-green-600 py-1"
                 >
                   {isActive
                     ? 'Open work order \u2192'

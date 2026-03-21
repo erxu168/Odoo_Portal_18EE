@@ -149,7 +149,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const ss = String(timerSec % 60).padStart(2, '0');
 
   if (loading || !wo || !mo) {
-    return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="w-8 h-8 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" /></div>;
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><div className="w-8 h-8 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" /></div>;
   }
 
   const woIdx = allWos.findIndex((w: any) => w.id === woId);
@@ -171,7 +171,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
-        <button onClick={onBack} className="flex items-center gap-1 mb-2 text-orange-600 text-[13px] font-semibold active:opacity-70">
+        <button onClick={onBack} className="flex items-center gap-1 mb-2 text-green-700 text-[13px] font-semibold active:opacity-70">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
           {productName}
         </button>
@@ -181,24 +181,24 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
       <div className="flex gap-1 px-4 py-2.5">
         {allWos.map((w: any) => (
-          <div key={w.id} className={`flex-1 h-1 rounded-full ${w.state === 'done' ? 'bg-emerald-500' : w.id === woId ? 'bg-orange-500' : 'bg-gray-200'}`} />
+          <div key={w.id} className={`flex-1 h-1 rounded-full ${w.state === 'done' ? 'bg-green-500' : w.id === woId ? 'bg-green-600' : 'bg-gray-200'}`} />
         ))}
       </div>
 
       <div className="px-4 py-3">
         <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center">
-          <div className={`text-[52px] font-light tabular-nums tracking-widest leading-none font-mono ${running ? 'text-orange-500' : 'text-gray-900'}`}>
+          <div className={`text-[52px] font-light tabular-nums tracking-widest leading-none font-mono ${running ? 'text-green-600' : 'text-gray-900'}`}>
             {mm}:{ss}
           </div>
           <div className="text-xs text-gray-400 mt-2">Expected: {wo.duration_expected ? `${Math.round(wo.duration_expected)} min` : 'N/A'}</div>
           <div className="flex gap-3 justify-center mt-5">
             {wo.state === 'done' ? (
-              <span className="text-emerald-600 font-semibold text-sm">Completed</span>
+              <span className="text-green-600 font-semibold text-sm">Completed</span>
             ) : (
               <>
                 <button onClick={handleToggle} disabled={!!actionLoading}
                   className={`px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 active:scale-95 transition-transform disabled:opacity-50 ${
-                    running ? 'bg-amber-50 text-amber-600 border border-amber-200' : 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
+                    running ? 'bg-amber-50 text-amber-600 border border-amber-200' : 'bg-green-600 text-white shadow-lg shadow-green-600/30'
                   }`}>
                   {actionLoading === 'start' || actionLoading === 'pause' ? (
                     <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -209,7 +209,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                   )}
                 </button>
                 <button onClick={handleDoneRequest} disabled={!!actionLoading}
-                  className="px-6 py-3 rounded-xl bg-emerald-500 text-white font-bold text-sm flex items-center gap-2 active:scale-95 transition-transform disabled:opacity-50">
+                  className="px-6 py-3 rounded-xl bg-green-500 text-white font-bold text-sm flex items-center gap-2 active:scale-95 transition-transform disabled:opacity-50">
                   {actionLoading === 'done' ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
@@ -233,10 +233,10 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
       <div className="px-4 mb-3">
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
-          <button onClick={() => setTab('components')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'components' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>
+          <button onClick={() => setTab('components')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'components' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
             Ingredients ({pickedCount}/{totalComps})
           </button>
-          <button onClick={() => setTab('instructions')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'instructions' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500'}`}>
+          <button onClick={() => setTab('instructions')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'instructions' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
             Instructions{hasInstructions ? ' *' : ''}
           </button>
         </div>
@@ -249,13 +249,13 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
               <div className="flex items-center justify-between mb-1 px-1">
                 <p className="text-[11px] text-gray-400">Tap to weigh each ingredient</p>
                 {pickedCount === totalComps && totalComps > 0 && (
-                  <span className="text-[11px] font-semibold text-emerald-600">All collected</span>
+                  <span className="text-[11px] font-semibold text-green-600">All collected</span>
                 )}
               </div>
             )}
             {totalComps > 0 && (
               <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2">
-                <div className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                <div className="h-full bg-green-500 rounded-full transition-all duration-500"
                   style={{ width: `${totalComps > 0 ? (pickedCount / totalComps) * 100 : 0}%` }} />
               </div>
             )}
@@ -268,17 +268,17 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
               return (
                 <button key={c.id} onClick={() => setNumpadComp(c)}
                   className={`bg-white border rounded-xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
-                    isPicked ? 'border-emerald-200 bg-emerald-50/30' : 'border-gray-200'
+                    isPicked ? 'border-green-200 bg-green-50/30' : 'border-gray-200'
                   }`}>
-                  <div className={`w-1 flex-shrink-0 ${isPicked ? 'bg-emerald-500' : 'bg-gray-200'}`} />
+                  <div className={`w-1 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-200'}`} />
                   <div className="flex-1 flex items-center gap-3 px-4 py-3">
                     <div className={`w-7 h-7 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                      isPicked ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 bg-white'
+                      isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
                     }`}>
                       {isPicked && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className={`text-[14px] font-semibold ${isPicked ? 'text-emerald-700 line-through decoration-emerald-400' : 'text-gray-900'}`}>
+                      <div className={`text-[14px] font-semibold ${isPicked ? 'text-green-700 line-through decoration-green-400' : 'text-gray-900'}`}>
                         {c.product_id[1]}
                       </div>
                       <div className="text-[11px] text-gray-400 mt-0.5">
@@ -286,7 +286,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <div className={`text-[15px] font-bold tabular-nums font-mono ${isPicked ? 'text-emerald-600' : 'text-gray-400'}`}>
+                      <div className={`text-[15px] font-bold tabular-nums font-mono ${isPicked ? 'text-green-600' : 'text-gray-400'}`}>
                         {isPicked ? fmt(consumed) : fmt(required)}
                       </div>
                       <div className="text-[11px] text-gray-400">{compUom}</div>
@@ -308,7 +308,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
                     <span className="text-[13px] font-semibold text-gray-700">PDF Worksheet</span>
                   </div>
-                  <a href={pdfDataUrl} download="worksheet.pdf" className="text-[12px] text-orange-600 font-semibold">Download</a>
+                  <a href={pdfDataUrl} download="worksheet.pdf" className="text-[12px] text-green-700 font-semibold">Download</a>
                 </div>
                 <iframe src={pdfDataUrl} className="w-full border-0" style={{ height: '500px' }} title="PDF Worksheet" />
               </div>
@@ -321,7 +321,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
                     <span className="text-[13px] font-semibold text-gray-700">Google Slides</span>
                   </div>
-                  <a href={worksheetGoogleSlide} target="_blank" rel="noopener noreferrer" className="text-[12px] text-orange-600 font-semibold">Open in new tab</a>
+                  <a href={worksheetGoogleSlide} target="_blank" rel="noopener noreferrer" className="text-[12px] text-green-700 font-semibold">Open in new tab</a>
                 </div>
                 <iframe src={worksheetGoogleSlide.replace('/edit', '/embed')} className="w-full border-0" style={{ height: '400px' }} title="Google Slides Worksheet" allowFullScreen />
               </div>
@@ -365,7 +365,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       {wo.state !== 'done' && (
         <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
           <button onClick={handleDoneRequest} disabled={!!actionLoading}
-            className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+            className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[15px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
             {actionLoading === 'done' ? 'Finishing...' : nextWo && nextWo.state !== 'done' ? `Done ${arrow} ${nextWo.name}` : 'Mark step done'}
           </button>
         </div>
@@ -398,7 +398,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
             <div className="flex gap-3">
               <button onClick={() => setShowConfirm(false)} className="flex-1 py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-sm active:bg-gray-50">Not yet</button>
               <button onClick={handleDoneConfirmed} disabled={!!actionLoading}
-                className="flex-1 py-3.5 rounded-xl bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-500/30 active:scale-[0.975] transition-transform disabled:opacity-50 flex items-center justify-center gap-2">
+                className="flex-1 py-3.5 rounded-xl bg-green-500 text-white font-bold text-sm shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50 flex items-center justify-center gap-2">
                 {actionLoading === 'done' ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Yes, done'}
               </button>
             </div>

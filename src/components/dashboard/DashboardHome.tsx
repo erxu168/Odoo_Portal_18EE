@@ -150,8 +150,8 @@ export default function DashboardHome() {
           </button>
         </div>
         {shift && (
-          <div className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-xl relative ${shift.onShift ? 'bg-orange-500/10 border border-orange-500/20' : 'bg-white/5 border border-white/10'}`}>
-            <div className={`w-2.5 h-2.5 rounded-full ${shift.onShift ? 'bg-orange-500 shadow-[0_0_8px_rgba(245,128,10,0.5)] animate-pulse' : 'bg-gray-500'}`} />
+          <div className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-xl relative ${shift.onShift ? 'bg-green-600/10 border border-green-600/20' : 'bg-white/5 border border-white/10'}`}>
+            <div className={`w-2.5 h-2.5 rounded-full ${shift.onShift ? 'bg-green-600 shadow-[0_0_8px_rgba(245,128,10,0.5)] animate-pulse' : 'bg-gray-500'}`} />
             <div>
               <div className={`text-[13px] font-semibold ${shift.onShift ? 'text-white' : 'text-white/50'}`}>
                 {shift.onShift ? `${shift.name} \u00b7 ${shift.station}` : 'No shift right now'}
@@ -175,11 +175,11 @@ export default function DashboardHome() {
           <div className="flex items-center justify-between mb-2.5">
             <h2 className="text-[15px] font-bold text-[#1F2933]">Your current shift tasks</h2>
             <button onClick={() => handleTileTap(TILES.find(t => t.id === 'tasks')!)}
-              className="text-[12px] font-semibold text-orange-600 active:opacity-70">See all &rarr;</button>
+              className="text-[12px] font-semibold text-green-700 active:opacity-70">See all &rarr;</button>
           </div>
           <div className="flex items-center gap-2.5 mb-3">
             <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
-              <div className="h-full bg-orange-500 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
+              <div className="h-full bg-green-600 rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
             </div>
             <span className="text-[11px] font-semibold text-gray-400 font-mono">{tasksDone} / {tasksTotal}</span>
           </div>
@@ -237,7 +237,7 @@ export default function DashboardHome() {
 
       <div className="text-center py-6">
         <span className="text-[11px] text-gray-400 tracking-wider">
-          <span className="text-orange-500 font-semibold">KRAWINGS</span> SSAM &middot; Staff Portal
+          <span className="text-green-600 font-semibold">KRAWINGS</span> SSAM &middot; Staff Portal
         </span>
       </div>
     </div>

@@ -55,11 +55,11 @@ export default function NumpadModal({
       {/* Header */}
       <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
         <div className="flex items-center justify-between mb-1">
-          <button onClick={onClose} className="flex items-center gap-1 text-orange-600 text-[13px] font-semibold active:opacity-70">
+          <button onClick={onClose} className="flex items-center gap-1 text-green-700 text-[13px] font-semibold active:opacity-70">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
             Back
           </button>
-          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700">{locationName}</span>
+          <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-green-50 text-green-700">{locationName}</span>
         </div>
       </div>
 
@@ -108,7 +108,7 @@ export default function NumpadModal({
             Clear
           </button>
           <button onClick={handleSave}
-            className="flex-1 h-14 rounded-xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.98] transition-all">
+            className="flex-1 h-14 rounded-xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.98] transition-all">
             Save count
           </button>
         </div>

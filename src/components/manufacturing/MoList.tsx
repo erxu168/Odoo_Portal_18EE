@@ -13,10 +13,10 @@ interface MoListProps {
 
 const STATE_COLORS: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600',
-  confirmed: 'bg-orange-50 text-orange-700',
+  confirmed: 'bg-green-50 text-green-800',
   progress: 'bg-amber-50 text-amber-700',
   to_close: 'bg-blue-50 text-blue-700',
-  done: 'bg-emerald-50 text-emerald-700',
+  done: 'bg-green-50 text-green-700',
   cancel: 'bg-red-50 text-red-700',
 };
 
@@ -111,7 +111,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
             <p className="text-[12px] text-white/45 mt-0.5">{subtitle}</p>
           </div>
           {mode === 'production' && (
-            <button onClick={onCreate} className="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center active:bg-orange-600 shadow-lg shadow-orange-500/30">
+            <button onClick={onCreate} className="w-9 h-9 rounded-xl bg-green-600 flex items-center justify-center active:bg-green-700 shadow-lg shadow-green-600/30">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
             </button>
           )}
@@ -122,7 +122,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
         <div className="flex flex-col items-center justify-center px-6 py-16">
           <p className="text-[15px] text-gray-900 font-bold mb-1">Could not load orders</p>
           <p className="text-[13px] text-gray-500 mb-5 text-center">{error}</p>
-          <button onClick={fetchOrders} className="px-6 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl">Retry</button>
+          <button onClick={fetchOrders} className="px-6 py-3 bg-green-600 text-white text-sm font-bold rounded-xl">Retry</button>
         </div>
       ) : (
         <>
@@ -132,7 +132,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                 {statusTabs.map(tab => (
                   <button key={tab.id} onClick={() => setStatusFilter(tab.id)}
                     className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap flex-shrink-0 transition-all ${
-                      statusFilter === tab.id ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 border border-gray-200'
+                      statusFilter === tab.id ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'
                     }`}>
                     {tab.label}
                   </button>
@@ -152,7 +152,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
           <div className="px-4 pb-24">
             {loading ? (
               <div className="flex justify-center py-12">
-                <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+                <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
               </div>
             ) : filtered.length === 0 ? (
               <div className="text-center py-12">
@@ -171,7 +171,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                   return (
                     <button key={mo.id} onClick={() => onSelect(mo.id)}
                       className={`bg-white border rounded-2xl p-4 text-left active:scale-[0.98] transition-all ${
-                        mo.state === 'progress' ? 'border-orange-200 shadow-sm' : 'border-gray-200'
+                        mo.state === 'progress' ? 'border-green-200 shadow-sm' : 'border-gray-200'
                       }`}>
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[11px] text-gray-400 font-mono">{mo.name}</span>
@@ -192,7 +192,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                       {mode === 'production' && (mo.state === 'progress' || mo.state === 'confirmed') && mo.product_qty > 0 && (
                         <div className="flex items-center gap-2 mt-3">
                           <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-orange-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                            <div className="h-full bg-green-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
                           </div>
                           <span className="text-[11px] font-mono text-gray-400">{pct}%</span>
                         </div>
@@ -204,7 +204,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                         <div className="mt-1 text-[11px] text-gray-400">Started {startDate}</div>
                       )}
                       {mode === 'completed' && doneDate && (
-                        <div className="mt-2 text-[11px] text-emerald-600 font-semibold">Done {doneDate}</div>
+                        <div className="mt-2 text-[11px] text-green-600 font-semibold">Done {doneDate}</div>
                       )}
                     </button>
                   );

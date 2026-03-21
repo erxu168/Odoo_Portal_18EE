@@ -176,7 +176,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
             <div className="text-[11px] text-gray-500">{selectedCount} selected</div>
           </div>
           <button onClick={() => setStep('config')}
-            className="bg-orange-500 text-white text-[13px] font-bold px-4 py-2 rounded-xl active:bg-orange-600 shadow-sm">
+            className="bg-green-600 text-white text-[13px] font-bold px-4 py-2 rounded-xl active:bg-green-700 shadow-sm">
             Done
           </button>
         </div>
@@ -200,7 +200,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
 
         <div className="flex gap-2 px-4 pb-2">
           <button onClick={selectAllVisible}
-            className="flex-1 py-2 rounded-lg bg-orange-50 border border-orange-200 text-orange-700 text-[12px] font-semibold active:bg-orange-100">
+            className="flex-1 py-2 rounded-lg bg-green-50 border border-green-200 text-green-800 text-[12px] font-semibold active:bg-green-100">
             Select all visible ({filteredProducts.length})
           </button>
           <button onClick={deselectAllVisible}
@@ -212,7 +212,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
         {catFilter !== 'all' && (
           <div className="px-4 pb-2">
             <button onClick={() => selectByCategory(Number(catFilter))}
-              className="w-full py-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-[12px] font-semibold active:bg-emerald-100">
+              className="w-full py-2.5 rounded-lg bg-green-50 border border-green-200 text-green-700 text-[12px] font-semibold active:bg-green-100">
               Add entire category ({categories.find(c => String(c.id) === catFilter)?.name})
             </button>
           </div>
@@ -233,7 +233,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
                       isSelected ? '' : 'opacity-60'
                     }`}>
                     <div className={`w-6 h-6 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                      isSelected ? 'bg-orange-500 border-orange-500' : 'border-gray-300 bg-white'
+                      isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'
                     }`}>
                       {isSelected && (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
@@ -254,7 +254,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
 
         <div className="fixed bottom-0 left-0 right-0 z-[61] px-4 pb-4 pt-2 bg-white border-t border-gray-200">
           <button onClick={() => setStep('config')}
-            className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[16px] font-bold shadow-xl shadow-orange-500/40 active:bg-orange-600 active:scale-[0.975] transition-all">
+            className="w-full py-4 rounded-2xl bg-green-600 text-white text-[16px] font-bold shadow-xl shadow-green-600/40 active:bg-green-700 active:scale-[0.975] transition-all">
             Done &mdash; {selectedCount} product{selectedCount !== 1 ? 's' : ''} selected
           </button>
         </div>
@@ -276,7 +276,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
             <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">List name</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Daily bar count"
-              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-orange-400 transition-colors" />
+              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-green-500 transition-colors" />
           </div>
 
           {/* Frequency */}
@@ -287,7 +287,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
                 <button key={f.id} onClick={() => setFrequency(f.id)}
                   className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all ${
                     frequency === f.id
-                      ? 'bg-orange-50 border-orange-200 text-orange-700'
+                      ? 'bg-green-50 border-green-200 text-green-800'
                       : 'bg-white border-gray-200 text-gray-500'
                   }`}>
                   {f.label}
@@ -304,7 +304,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
                 <button key={loc.id} onClick={() => setLocationId(loc.id)}
                   className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all ${
                     locationId === loc.id
-                      ? 'bg-orange-50 border-orange-200 text-orange-700'
+                      ? 'bg-green-50 border-green-200 text-green-800'
                       : 'bg-white border-gray-200 text-gray-500'
                   }`}>
                   {loc.complete_name?.split('/')[0] || loc.name}
@@ -319,14 +319,14 @@ export default function TemplateForm({ template, locations, departments, onSave,
             <div className="flex gap-2 mb-3 flex-wrap">
               <button onClick={() => { setAssignType(null); setAssignId(null); }}
                 className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all flex-1 text-center min-w-[70px] ${
-                  !assignType ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-500'
+                  !assignType ? 'bg-green-50 border-green-200 text-green-800' : 'bg-white border-gray-200 text-gray-500'
                 }`}>
                 Anyone
               </button>
               {ASSIGN_TYPES.map((at) => (
                 <button key={at.id} onClick={() => { setAssignType(at.id); setAssignId(null); }}
                   className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-all flex-1 text-center min-w-[70px] ${
-                    assignType === at.id ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-500'
+                    assignType === at.id ? 'bg-green-50 border-green-200 text-green-800' : 'bg-white border-gray-200 text-gray-500'
                   }`}>
                   {at.label}
                 </button>
@@ -371,7 +371,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
               <button onClick={() => setActive(!active)}
                 className="flex items-center justify-between w-full bg-white border border-gray-200 rounded-xl px-4 py-3">
                 <span className="text-[14px] font-semibold text-gray-900">Active</span>
-                <div className={`w-11 h-6 rounded-full relative transition-colors ${active ? 'bg-orange-500' : 'bg-gray-300'}`}>
+                <div className={`w-11 h-6 rounded-full relative transition-colors ${active ? 'bg-green-600' : 'bg-gray-300'}`}>
                   <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${active ? 'translate-x-[22px]' : 'translate-x-0.5'}`} />
                 </div>
               </button>
@@ -386,7 +386,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
               Products ({selectedCount})
             </label>
             <button onClick={() => setStep('products')}
-              className="text-orange-600 text-[12px] font-semibold active:opacity-70">
+              className="text-green-700 text-[12px] font-semibold active:opacity-70">
               {selectedCount === 0 ? '+ Add products' : 'Edit selection'}
             </button>
           </div>
@@ -394,8 +394,8 @@ export default function TemplateForm({ template, locations, departments, onSave,
           {selectedCount === 0 ? (
             <button onClick={() => setStep('products')}
               className="w-full bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center active:bg-gray-50 transition-colors">
-              <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center mx-auto mb-2">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F5800A" strokeWidth="2" strokeLinecap="round">
+              <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2" strokeLinecap="round">
                   <path d="M12 5v14M5 12h14"/>
                 </svg>
               </div>
@@ -434,7 +434,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
       {/* Save button - fixed at bottom, high z-index */}
       <div className="fixed bottom-0 left-0 right-0 z-[61] px-4 pb-4 pt-2 bg-white border-t border-gray-200">
         <button onClick={handleSubmit} disabled={saving || !canSave}
-          className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[16px] font-bold shadow-xl shadow-orange-500/40 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
+          className="w-full py-4 rounded-2xl bg-green-600 text-white text-[16px] font-bold shadow-xl shadow-green-600/40 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
           {saving
             ? 'Saving...'
             : selectedCount === 0

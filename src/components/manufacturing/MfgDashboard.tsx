@@ -45,7 +45,7 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
         </svg>
       ),
       badge: stats.active > 0 ? stats.active : null,
-      badgeColor: 'bg-orange-500',
+      badgeColor: 'bg-green-600',
     },
     {
       key: 'create',
@@ -73,7 +73,7 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
         </svg>
       ),
       badge: stats.pickListCount > 0 ? stats.pickListCount : null,
-      badgeColor: 'bg-purple-500',
+      badgeColor: 'bg-blue-500',
     },
     {
       key: 'recipes',
@@ -109,7 +109,7 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
     <div className="px-4 py-5">
       {loading ? (
         <div className="flex justify-center py-16">
-          <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+          <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">

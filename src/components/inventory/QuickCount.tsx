@@ -135,15 +135,15 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       {/* Counted badge */}
       {countedN > 0 && (
         <div className="px-4 pb-2">
-          <span className="text-[12px] font-semibold text-orange-600">{countedN} product{countedN !== 1 ? 's' : ''} counted</span>
+          <span className="text-[12px] font-semibold text-green-700">{countedN} product{countedN !== 1 ? 's' : ''} counted</span>
         </div>
       )}
 
       {/* Product list */}
       <div className="flex-1 overflow-y-auto px-4 pb-24">
         {submitted && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-3 text-center">
-            <span className="text-[13px] font-semibold text-emerald-700">Quick counts submitted for review</span>
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-center">
+            <span className="text-[13px] font-semibold text-green-700">Quick counts submitted for review</span>
           </div>
         )}
         {filtered.length === 0 ? (
@@ -175,7 +175,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       {countedN > 0 && (
         <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
           <button onClick={handleSubmit} disabled={submitting}
-            className="w-full py-4 rounded-xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-50">
+            className="w-full py-4 rounded-xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
             {submitting ? 'Submitting...' : `Submit ${countedN} quick count${countedN !== 1 ? 's' : ''}`}
           </button>
         </div>

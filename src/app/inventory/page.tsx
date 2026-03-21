@@ -137,7 +137,7 @@ function TabButton({ active, label, onClick, children }: { active: boolean; labe
   return (
     <button onClick={onClick}
       className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors ${
-        active ? 'text-orange-600' : 'text-gray-400'
+        active ? 'text-green-700' : 'text-gray-400'
       }`}>
       {children}
       <span>{label}</span>

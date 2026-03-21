@@ -45,8 +45,8 @@ export default function ForgotPasswordPage() {
       <div className="flex-1 px-6 py-8">
         {sent ? (
           <div className="text-center">
-            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-orange-50 flex items-center justify-center">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F5800A" strokeWidth="2">
+            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-green-50 flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2">
                 <rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4l-10 8L2 4"/>
               </svg>
             </div>
@@ -56,7 +56,7 @@ export default function ForgotPasswordPage() {
             </p>
             <button
               onClick={() => router.push('/login')}
-              className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all"
+              className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all"
             >
               Back to login
             </button>
@@ -65,7 +65,7 @@ export default function ForgotPasswordPage() {
           <>
             <button
               onClick={() => router.push('/login')}
-              className="flex items-center gap-1 mb-4 text-orange-600 text-[13px] font-semibold active:opacity-70"
+              className="flex items-center gap-1 mb-4 text-green-700 text-[13px] font-semibold active:opacity-70"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
               Back to login
@@ -86,13 +86,13 @@ export default function ForgotPasswordPage() {
                 <input
                   type="email" value={email} onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com" autoComplete="email" autoFocus
-                  className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all"
+                  className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
                 />
               </div>
 
               <button
                 onClick={handleSubmit} disabled={loading || !email}
-                className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
+                className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />

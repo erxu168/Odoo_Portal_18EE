@@ -12,7 +12,7 @@ const config: Config = {
       colors: {
         background: 'var(--background)',
         foreground: 'var(--foreground)',
-        // Krawings brand orange — use as text-krawings-600, bg-krawings-50 etc.
+        // Krawings brand green — use as text-krawings-600, bg-krawings-50 etc.
         krawings: {
           50:  '#FFF4E6',
           100: '#FFE4BE',

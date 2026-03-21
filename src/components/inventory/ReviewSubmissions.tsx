@@ -141,7 +141,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                         {sess.status === 'submitted' && (
                           <div className="flex gap-2">
                             <button onClick={() => approveSession(sess.id)} disabled={isLoading}
-                              className="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-[13px] font-bold active:bg-emerald-600 disabled:opacity-50">
+                              className="flex-1 py-2.5 rounded-xl bg-green-500 text-white text-[13px] font-bold active:bg-green-600 disabled:opacity-50">
                               {isLoading ? '...' : 'Approve'}
                             </button>
                             <button onClick={() => rejectSession(sess.id)} disabled={isLoading}
@@ -185,7 +185,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                         {qc.status === 'pending' && (
                           <div className="flex gap-2 mt-3">
                             <button onClick={() => approveQuickCount(qc.id)} disabled={isLoading}
-                              className="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-[13px] font-bold active:bg-emerald-600 disabled:opacity-50">
+                              className="flex-1 py-2.5 rounded-xl bg-green-500 text-white text-[13px] font-bold active:bg-green-600 disabled:opacity-50">
                               {isLoading ? '...' : 'Approve'}
                             </button>
                           </div>

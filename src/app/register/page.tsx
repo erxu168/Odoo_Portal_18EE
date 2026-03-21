@@ -115,16 +115,16 @@ export default function RegisterPage() {
             <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Your email or phone number</label>
             <input type="text" value={identifier} onChange={(e) => setIdentifier(e.target.value)}
               placeholder="e.g. name@gmail.com or +49 170..."
-              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3.5 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-orange-400" />
+              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3.5 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-green-500" />
             <p className="text-[12px] text-gray-400 mt-1.5">This will be matched against our employee records</p>
           </div>
           <button onClick={handleLookup} disabled={loading || !identifier.trim()}
-            className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
+            className="w-full py-4 rounded-2xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
             {loading ? 'Searching...' : 'Find my account'}
           </button>
           <div className="text-center mt-5">
             <span className="text-[13px] text-gray-400">Already have an account? </span>
-            <button onClick={() => router.push('/login')} className="text-[13px] font-semibold text-orange-600">Log in</button>
+            <button onClick={() => router.push('/login')} className="text-[13px] font-semibold text-green-700">Log in</button>
           </div>
         </div>
       </div>
@@ -137,20 +137,20 @@ export default function RegisterPage() {
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
           <button onClick={() => { setStep('input'); setError(''); }}
-            className="flex items-center gap-1 text-orange-600 text-[13px] font-semibold mb-2">
+            className="flex items-center gap-1 text-green-700 text-[13px] font-semibold mb-2">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
             Back
           </button>
           <h1 className="text-[18px] font-bold text-gray-900">Confirm your identity</h1>
         </div>
         <div className="flex-1 px-6 pt-5 pb-28">
-          <div className="bg-white border-2 border-orange-300 rounded-2xl p-5 text-center mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-orange-50 flex items-center justify-center mx-auto mb-3">
-              <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#F5800A" strokeWidth="2">
+          <div className="bg-white border-2 border-green-300 rounded-2xl p-5 text-center mb-6">
+            <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mx-auto mb-3">
+              <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2">
                 <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
               </svg>
             </div>
-            <div className="text-[13px] font-semibold text-orange-600 mb-1">Is this you?</div>
+            <div className="text-[13px] font-semibold text-green-700 mb-1">Is this you?</div>
             <div className="text-[18px] font-bold text-gray-900">{employee.name}</div>
             {employee.department && (
               <div className="text-[13px] text-gray-500 mt-1">{employee.department}</div>
@@ -167,21 +167,21 @@ export default function RegisterPage() {
             <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Password</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="At least 8 characters, 1 number"
-              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3.5 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-orange-400" />
+              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3.5 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-green-500" />
           </div>
           <div className="mb-4">
             <label className="block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Confirm password</label>
             <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)}
               placeholder="Enter password again"
-              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3.5 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-orange-400" />
+              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3.5 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-green-500" />
           </div>
           <div className="text-[12px] text-gray-400">
-            Not you? <button onClick={() => { setStep('input'); setEmployee(null); }} className="text-orange-600 font-semibold">Try a different email</button>
+            Not you? <button onClick={() => { setStep('input'); setEmployee(null); }} className="text-green-700 font-semibold">Try a different email</button>
           </div>
         </div>
         <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 py-4 bg-white border-t border-gray-200 z-50">
           <button onClick={handleRegister} disabled={loading || !password || !confirmPw}
-            className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[16px] font-bold shadow-xl shadow-orange-500/40 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-40">
+            className="w-full py-4 rounded-2xl bg-green-600 text-white text-[16px] font-bold shadow-xl shadow-green-600/40 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40">
             {loading ? 'Creating account...' : 'Create my account'}
           </button>
         </div>
@@ -199,8 +199,8 @@ export default function RegisterPage() {
           <p className="text-[13px] text-white/50 mt-1 relative">Your account is being reviewed</p>
         </div>
         <div className="flex-1 px-6 pt-8 flex flex-col items-center">
-          <div className="w-[72px] h-[72px] rounded-[20px] bg-orange-50 flex items-center justify-center mb-4">
-            <svg width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="#F5800A" strokeWidth="2">
+          <div className="w-[72px] h-[72px] rounded-[20px] bg-green-50 flex items-center justify-center mb-4">
+            <svg width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
             </svg>
           </div>
@@ -250,7 +250,7 @@ export default function RegisterPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
         <button onClick={() => { setStep('input'); setError(''); setErrorCode(''); }}
-          className="flex items-center gap-1 text-orange-600 text-[13px] font-semibold mb-2">
+          className="flex items-center gap-1 text-green-700 text-[13px] font-semibold mb-2">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
           Back
         </button>
@@ -277,9 +277,9 @@ export default function RegisterPage() {
 
         {(errorCode === 'DUPLICATE_EMAIL' || errorCode === 'DUPLICATE_EMPLOYEE') && (
           <>
-            <div className="w-full max-w-[320px] bg-white border-2 border-orange-300 rounded-2xl p-5 text-center mb-5">
-              <div className="w-12 h-12 rounded-[14px] bg-orange-50 flex items-center justify-center mx-auto mb-3">
-                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="#F5800A" strokeWidth="2">
+            <div className="w-full max-w-[320px] bg-white border-2 border-green-300 rounded-2xl p-5 text-center mb-5">
+              <div className="w-12 h-12 rounded-[14px] bg-green-50 flex items-center justify-center mx-auto mb-3">
+                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2">
                   <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
                 </svg>
               </div>
@@ -290,10 +290,10 @@ export default function RegisterPage() {
               )}
             </div>
             <button onClick={() => router.push('/login')}
-              className="w-full max-w-[320px] py-4 rounded-2xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 mb-3">
+              className="w-full max-w-[320px] py-4 rounded-2xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 mb-3">
               Go to login
             </button>
-            <button onClick={() => router.push('/forgot-password')} className="text-[13px] font-semibold text-orange-600">
+            <button onClick={() => router.push('/forgot-password')} className="text-[13px] font-semibold text-green-700">
               Forgot your password?
             </button>
           </>

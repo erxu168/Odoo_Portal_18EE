@@ -85,7 +85,7 @@ function LoginForm() {
             placeholder="you@example.com"
             autoComplete="email"
             autoFocus
-            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all"
+            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
           />
         </div>
 
@@ -97,14 +97,14 @@ function LoginForm() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"
             autoComplete="current-password"
-            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all"
+            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
           />
         </div>
 
         <button
           onClick={handleSubmit}
           disabled={loading || !email || !password}
-          className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none mt-2 flex items-center justify-center gap-2"
+          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none mt-2 flex items-center justify-center gap-2"
         >
           {loading ? (
             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -117,7 +117,7 @@ function LoginForm() {
       <div className="text-center mt-5">
         <button
           onClick={() => router.push('/forgot-password')}
-          className="text-[13px] text-orange-600 font-semibold active:opacity-70"
+          className="text-[13px] text-green-700 font-semibold active:opacity-70"
         >
           Forgot your password?
         </button>
@@ -150,7 +150,7 @@ export default function LoginPage() {
 
       <Suspense fallback={
         <div className="flex-1 flex items-center justify-center">
-          <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+          <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
         </div>
       }>
         <LoginForm />

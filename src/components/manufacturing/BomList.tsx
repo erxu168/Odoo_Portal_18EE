@@ -51,7 +51,7 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+        <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
       </div>
     );
   }
@@ -62,7 +62,7 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
         <div className="text-center">
           <p className="text-[15px] text-gray-900 font-bold mb-1">Connection error</p>
           <p className="text-[13px] text-gray-500 mb-5">{error}</p>
-          <button onClick={fetchBoms} className="px-6 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl">Retry</button>
+          <button onClick={fetchBoms} className="px-6 py-3 bg-green-600 text-white text-sm font-bold rounded-xl">Retry</button>
           {onBack && <button onClick={onBack} className="block mx-auto mt-3 text-[13px] text-gray-500">Go back</button>}
         </div>
       </div>
@@ -94,7 +94,7 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
           <input
             type="text" placeholder="Search recipes..." value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400"
+            className="w-full pl-10 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
           />
         </div>
       </div>
@@ -103,7 +103,7 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
         {categories.map((cat) => (
           <button key={cat} onClick={() => setActiveCategory(cat)}
             className={`px-4 py-2 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
-              activeCategory === cat ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+              activeCategory === cat ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
             }`}>{cat}</button>
         ))}
       </div>
@@ -122,7 +122,7 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
             </div>
             <div className="flex items-center gap-2 ml-3 flex-shrink-0">
               <div className="text-right">
-                <div className="text-[14px] font-bold text-orange-500 tabular-nums font-mono">
+                <div className="text-[14px] font-bold text-green-600 tabular-nums font-mono">
                   {new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(bom.product_qty)}
                   <span className="text-gray-400 font-normal text-[12px] ml-0.5">{bom.product_uom_id[1]}</span>
                 </div>

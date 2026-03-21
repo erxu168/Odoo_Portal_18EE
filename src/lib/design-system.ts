@@ -15,7 +15,7 @@
  *
  * COLOR PHILOSOPHY:
  *   Color MUST carry meaning. If it doesn't, use gray.
- *   Only 5 semantic colors + brand accent + gray.
+ *   Only 5 semantic colors + brand green + gray.
  *   No purple. No random pastels. No decorative colors.
  */
 
@@ -25,11 +25,11 @@
 // COLOURS — semantic only
 // ─────────────────────────────────────────────
 export const colors = {
-  // Brand — Krawings orange (accent only, not for status)
-  brand:       '#F5800A',
-  brandDark:   '#E86000',
-  brandLight:  '#FFF7ED',
-  brandBorder: '#FDBA74',
+  // Brand — Krawings forest green (primary accent)
+  brand:       '#16A34A',
+  brandDark:   '#15803D',
+  brandLight:  '#F0FDF4',
+  brandBorder: '#BBF7D0',
 
   // Neutrals
   text1:   '#1F2933',  // primary text, headings
@@ -50,7 +50,7 @@ export const colors = {
 
   // Header
   headerBg: '#1A1F2E',
-  headerGlow: 'rgba(245,128,10,0.08)',  // reduced from 0.15
+  headerGlow: 'rgba(22,163,74,0.08)',  // reduced from 0.15
 
   // Semantic — the ONLY allowed status colors
   error:        '#DC2626',   // overdue, damage, rejected
@@ -93,7 +93,7 @@ export const ds = {
   // ── Bottom nav ──
   bottomNav:      'fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 flex max-w-lg mx-auto h-16',
   navBtn:         'flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold text-gray-400 dark:text-gray-500 transition-colors active:opacity-70',
-  navBtnActive:   'flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold text-orange-500 transition-colors',
+  navBtnActive:   'flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold text-green-600 transition-colors',
 
   // ── Cards (with subtle shadow) ──
   card:        'bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)]',
@@ -116,19 +116,19 @@ export const ds = {
 
   // ── Filter / tab pills ──
   filterBar:         'flex gap-2 overflow-x-auto px-4 py-2.5 scrollbar-hide',
-  filterTabActive:   'px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap bg-orange-500 text-white shadow-sm',
+  filterTabActive:   'px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap bg-green-600 text-white shadow-sm',
   filterTabInactive: 'px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap border bg-white border-gray-200 text-gray-500 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-400',
 
   // ── Buttons ──
-  btnPrimary:   'w-full bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white font-semibold rounded-xl py-3.5 text-[14px] transition-colors shadow-lg shadow-orange-500/30',
+  btnPrimary:   'w-full bg-green-600 hover:bg-green-700 active:bg-orange-700 text-white font-semibold rounded-xl py-3.5 text-[14px] transition-colors shadow-lg shadow-green-600/30',
   btnSecondary: 'w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-semibold rounded-xl py-3.5 text-[14px] active:bg-gray-50',
-  btnGhost:     'text-[13px] font-semibold text-orange-600 active:opacity-70',
-  btnBack:      'flex items-center gap-1 text-[13px] font-semibold text-orange-600 active:opacity-70',
+  btnGhost:     'text-[13px] font-semibold text-green-700 active:opacity-70',
+  btnBack:      'flex items-center gap-1 text-[13px] font-semibold text-green-700 active:opacity-70',
   btnDanger:    'w-full bg-red-50 border border-red-100 text-red-700 font-semibold rounded-xl py-3.5 text-[14px] active:bg-red-100',
   btnIcon:      'w-9 h-9 flex items-center justify-center rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 active:bg-gray-200',
 
   // ── Input / Form ──
-  input:     'w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-[14px] text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-colors',
+  input:     'w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-[14px] text-gray-900 dark:text-white placeholder-gray-400 outline-none focus:border-green-600 focus:ring-2 focus:ring-green-100 transition-colors',
   label:     'block text-[11px] font-semibold tracking-wide uppercase text-gray-500 mb-1.5',
   fieldRow:  'mb-4',
 
@@ -171,7 +171,7 @@ const badges = {
 
   // Warning / pending states
   due_soon:    { bg: '#FEF3C7', text: '#92400E', label: 'Due soon' },
-  pending:     { bg: '#FFF7ED', text: '#C2410C', label: 'Pending' },
+  pending:     { bg: '#F0FDF4', text: '#C2410C', label: 'Pending' },
   approval:    { bg: '#FEF3C7', text: '#92400E', label: 'Approval' },
   progress:    { bg: '#FEF3C7', text: '#92400E', label: 'In progress' },
   to_close:    { bg: '#FEF3C7', text: '#92400E', label: 'To close' },
@@ -199,7 +199,7 @@ const badges = {
   draft_plan:  { bg: '#F3F4F6', text: '#374151', label: 'Draft' },
 
   // Role badges
-  manager:     { bg: '#FFF7ED', text: '#C2410C', label: 'Manager' },
+  manager:     { bg: '#F0FDF4', text: '#C2410C', label: 'Manager' },
   admin:       { bg: '#FEE2E2', text: '#991B1B', label: 'Admin' },
 } as const;
 
@@ -227,7 +227,7 @@ export function getBadgeClass(state: string): string {
   if (b.bg === '#FEF3C7') return 'bg-amber-100 text-amber-800';
   if (b.bg === '#DBEAFE') return 'bg-blue-100 text-blue-800';
   if (b.bg === '#DCFCE7') return 'bg-green-100 text-green-800';
-  if (b.bg === '#FFF7ED') return 'bg-orange-50 text-orange-800';
+  if (b.bg === '#F0FDF4') return 'bg-green-50 text-orange-800';
   return 'bg-gray-100 text-gray-700';
 }
 

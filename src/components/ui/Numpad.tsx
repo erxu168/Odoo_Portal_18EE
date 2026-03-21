@@ -142,7 +142,7 @@ export default function Numpad({
           <div className="flex gap-2 mb-3">
             <button
               onClick={() => handleKey('MATCH')}
-              className="flex-1 h-10 rounded-xl bg-orange-50 border border-orange-200 text-orange-700 text-[13px] font-bold active:scale-95 transition-transform"
+              className="flex-1 h-10 rounded-xl bg-green-50 border border-green-200 text-green-800 text-[13px] font-bold active:scale-95 transition-transform"
             >
               Match ({demandQty})
             </button>
@@ -160,7 +160,7 @@ export default function Numpad({
           {/* Row 1: C (span 2) | Delete */}
           <button
             onClick={() => handleKey('C')}
-            className="col-span-2 h-14 rounded-xl bg-orange-50 border border-orange-200 text-orange-600 text-[18px] font-bold flex items-center justify-center active:bg-orange-100 active:scale-95 transition-transform select-none"
+            className="col-span-2 h-14 rounded-xl bg-green-50 border border-green-200 text-green-700 text-[18px] font-bold flex items-center justify-center active:bg-green-100 active:scale-95 transition-transform select-none"
           >
             C
           </button>
@@ -205,7 +205,7 @@ export default function Numpad({
         <button
           onClick={handleConfirm}
           disabled={loading}
-          className="w-full py-4 rounded-2xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-4 rounded-2xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />

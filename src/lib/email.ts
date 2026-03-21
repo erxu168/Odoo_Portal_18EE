@@ -57,7 +57,7 @@ export async function sendPasswordResetEmail(toEmail: string, toName: string, re
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Someone requested a password reset for your Krawings Staff Portal account.</p>
         <div style="text-align: center; margin: 28px 0;">
-          <a href="${resetUrl}" style="display: inline-block; padding: 14px 32px; background-color: #F5800A; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px;">Reset password</a>
+          <a href="${resetUrl}" style="display: inline-block; padding: 14px 32px; background-color: #16A34A; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px;">Reset password</a>
         </div>
         <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link expires in 1 hour. If you did not request this, ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />

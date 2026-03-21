@@ -105,7 +105,7 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
                 </div>
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
                   {sess.location_name && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-semibold">
+                    <span className="text-[11px] px-2 py-0.5 rounded-md bg-green-50 text-green-700 font-semibold">
                       {sess.location_name}
                     </span>
                   )}

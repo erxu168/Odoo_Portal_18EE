@@ -49,7 +49,7 @@ export default function CompanySelector() {
           hasMultiple ? 'bg-white/10 text-white/80 active:bg-white/20' : 'text-white/60'
         }`}
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F5800A" strokeWidth="2.5" strokeLinecap="round">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round">
           <path d="M3 21h18M3 7v14M21 7v14M7 7V3h10v4M9 21v-4h6v4" />
         </svg>
         <span>{shortName}</span>
@@ -70,13 +70,13 @@ export default function CompanySelector() {
                 key={c.id}
                 onClick={() => { setCompanyId(c.id); setOpen(false); }}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-semibold transition-colors ${
-                  isSelected ? 'bg-orange-50 text-orange-600' : 'text-gray-700 active:bg-gray-50'
+                  isSelected ? 'bg-green-50 text-green-700' : 'text-gray-700 active:bg-gray-50'
                 }`}
               >
                 <span className="flex-1 truncate">{c.name}</span>
                 {c.warehouse_code && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-mono">{c.warehouse_code}</span>}
                 {isSelected && (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#F5800A" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                 )}
               </button>
             );

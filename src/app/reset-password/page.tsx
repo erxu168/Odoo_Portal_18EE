@@ -44,7 +44,7 @@ function ResetForm() {
         <h2 className="text-[20px] font-bold text-gray-900 mb-2">Invalid link</h2>
         <p className="text-[14px] text-gray-500 mb-6">This reset link is invalid or has expired.</p>
         <button onClick={() => router.push('/forgot-password')}
-          className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all">
+          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all">
           Request a new link
         </button>
       </div>
@@ -54,7 +54,7 @@ function ResetForm() {
   if (success) {
     return (
       <div className="flex-1 px-6 py-8 text-center">
-        <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-emerald-50 flex items-center justify-center">
+        <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-green-50 flex items-center justify-center">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" strokeLinecap="round">
             <path d="M20 6L9 17l-5-5"/>
           </svg>
@@ -62,7 +62,7 @@ function ResetForm() {
         <h2 className="text-[20px] font-bold text-gray-900 mb-2">Password reset</h2>
         <p className="text-[14px] text-gray-500 mb-6">Your password has been changed. You can now sign in.</p>
         <button onClick={() => router.push('/login')}
-          className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all">
+          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all">
           Sign in
         </button>
       </div>
@@ -83,16 +83,16 @@ function ResetForm() {
           <label className="block text-[12px] font-semibold text-gray-500 tracking-wider uppercase mb-1.5">New password</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
             placeholder="At least 6 characters" autoFocus
-            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all" />
+            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all" />
         </div>
         <div>
           <label className="block text-[12px] font-semibold text-gray-500 tracking-wider uppercase mb-1.5">Confirm password</label>
           <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Type it again"
-            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all" />
+            className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all" />
         </div>
         <button onClick={handleSubmit} disabled={loading || !password || !confirmPassword}
-          className="w-full h-14 rounded-xl bg-orange-500 text-white font-bold text-[16px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2">
+          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2">
           {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Set new password'}
         </button>
       </div>
@@ -112,7 +112,7 @@ export default function ResetPasswordPage() {
       </div>
       <Suspense fallback={
         <div className="flex-1 flex items-center justify-center">
-          <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+          <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
         </div>
       }>
         <ResetForm />

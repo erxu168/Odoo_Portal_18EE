@@ -24,7 +24,7 @@ interface ConfirmDialogProps {
 export default function ConfirmDialog({ title, message, confirmLabel, cancelLabel = 'Cancel', variant = 'primary', onConfirm, onCancel, onDismiss }: ConfirmDialogProps) {
   const btnColor = variant === 'danger'
     ? 'bg-red-600 text-white active:bg-red-700 shadow-lg shadow-red-600/30'
-    : 'bg-orange-500 text-white active:bg-orange-600 shadow-lg shadow-orange-500/30';
+    : 'bg-green-600 text-white active:bg-green-700 shadow-lg shadow-green-600/30';
 
   return (
     <div className="fixed inset-0 bg-black/40 z-[110] flex items-end justify-center" onClick={onDismiss || onCancel}>

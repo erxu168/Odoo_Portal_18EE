@@ -92,7 +92,7 @@ export default function DateFilter({ value, onChange }: DateFilterProps) {
             onClick={() => handlePreset(p.key)}
             className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap flex-shrink-0 transition-all ${
               value === p.key
-                ? 'bg-orange-500 text-white'
+                ? 'bg-green-600 text-white'
                 : 'bg-white text-gray-500 border border-gray-200'
             }`}
           >
@@ -106,14 +106,14 @@ export default function DateFilter({ value, onChange }: DateFilterProps) {
             type="date"
             value={customFrom}
             onChange={e => handleCustomChange(e.target.value, customTo)}
-            className="flex-1 text-[12px] text-gray-600 border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-orange-400"
+            className="flex-1 text-[12px] text-gray-600 border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-green-500"
           />
           <span className="text-[11px] text-gray-400">to</span>
           <input
             type="date"
             value={customTo}
             onChange={e => handleCustomChange(customFrom, e.target.value)}
-            className="flex-1 text-[12px] text-gray-600 border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-orange-400"
+            className="flex-1 text-[12px] text-gray-600 border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:border-green-500"
           />
         </div>
       )}

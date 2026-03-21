@@ -17,7 +17,7 @@ export function FilterPill({ active, label, count, onClick }: { active: boolean;
   return (
     <button onClick={onClick}
       className={`px-3.5 py-2 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
-        active ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+        active ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
       }`}>
       {label}{count !== undefined ? ` (${count})` : ''}
     </button>
@@ -96,7 +96,7 @@ export function CountProgress({ counted, total }: { counted: number; total: numb
   return (
     <div className="flex items-center gap-2 px-5 py-2">
       <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-        <div className="h-full bg-orange-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+        <div className="h-full bg-green-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
       </div>
       <span className="text-[11px] font-mono text-gray-400">{counted}/{total}</span>
     </div>
@@ -107,7 +107,7 @@ export function CountProgress({ counted, total }: { counted: number; total: numb
 export function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div className="px-4 pb-3">
-      <div className="flex items-center gap-2.5 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-orange-400 transition-colors">
+      <div className="flex items-center gap-2.5 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-green-500 transition-colors">
         <svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0">
           <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
           <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -132,7 +132,7 @@ export function BackHeader({ onBack, title, subtitle, right }: {
   return (
     <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
       <div className="flex items-center justify-between mb-1">
-        <button onClick={onBack} className="flex items-center gap-1 text-orange-600 text-[13px] font-semibold active:opacity-70">
+        <button onClick={onBack} className="flex items-center gap-1 text-green-700 text-[13px] font-semibold active:opacity-70">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
           Back
         </button>
@@ -148,7 +148,7 @@ export function BackHeader({ onBack, title, subtitle, right }: {
 export function Spinner() {
   return (
     <div className="flex justify-center py-12">
-      <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+      <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
     </div>
   );
 }

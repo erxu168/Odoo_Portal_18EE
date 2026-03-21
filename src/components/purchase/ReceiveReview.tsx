@@ -78,7 +78,7 @@ export default function ReceiveReview({
         </div>
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-300 ${allChecked ? 'bg-green-500' : 'bg-orange-500'}`}
+            className={`h-full rounded-full transition-all duration-300 ${allChecked ? 'bg-green-500' : 'bg-green-600'}`}
             style={{ width: `${progressPct}%` }}
           />
         </div>
@@ -228,7 +228,7 @@ export default function ReceiveReview({
               &times;
             </button>
             <div className="mt-2 text-center">
-              <label className="text-[12px] font-semibold text-orange-600 cursor-pointer active:opacity-70">
+              <label className="text-[12px] font-semibold text-green-700 cursor-pointer active:opacity-70">
                 Retake photo
                 <input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" />
               </label>

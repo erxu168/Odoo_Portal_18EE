@@ -153,7 +153,7 @@ export default function ManageOrders({
         {!showSearch ? (
           <button
             onClick={() => setShowSearch(true)}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-orange-50 border border-orange-200 text-orange-600 text-[13px] font-semibold active:bg-orange-100 transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-green-50 border border-green-200 text-green-700 text-[13px] font-semibold active:bg-green-100 transition-colors"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
@@ -163,7 +163,7 @@ export default function ManageOrders({
         ) : (
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <div className="flex-1 flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-orange-400 transition-colors">
+              <div className="flex-1 flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-green-500 transition-colors">
                 <svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0">
                   <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
                   <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -194,7 +194,7 @@ export default function ManageOrders({
 
             {searching && (
               <div className="flex justify-center py-6">
-                <div className="w-6 h-6 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+                <div className="w-6 h-6 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
               </div>
             )}
 
@@ -227,7 +227,7 @@ export default function ManageOrders({
                     {partner.already_added ? (
                       <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-gray-100 text-gray-500 flex-shrink-0">Added</span>
                     ) : (
-                      <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#EA580C" strokeWidth="2" strokeLinecap="round">
                           <path d="M12 5v14M5 12h14"/>
                         </svg>

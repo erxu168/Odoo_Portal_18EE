@@ -37,16 +37,16 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
 
   const stateColors: Record<string, string> = {
     draft: 'bg-gray-100 text-gray-600',
-    confirmed: 'bg-indigo-50 text-indigo-700',
+    confirmed: 'bg-blue-50 text-blue-700',
     progress: 'bg-amber-50 text-amber-700',
-    done: 'bg-emerald-50 text-emerald-700',
+    done: 'bg-green-50 text-green-700',
     cancel: 'bg-red-50 text-red-700',
   };
   const stateLabels: Record<string, string> = {
     draft: 'Draft', confirmed: 'Confirmed', progress: 'In Progress', done: 'Done', cancel: 'Cancelled',
   };
   const stateDots: Record<string, string> = {
-    draft: 'bg-gray-400', confirmed: 'bg-indigo-500', progress: 'bg-amber-500', done: 'bg-emerald-500', cancel: 'bg-red-500',
+    draft: 'bg-gray-400', confirmed: 'bg-blue-500', progress: 'bg-amber-500', done: 'bg-green-500', cancel: 'bg-red-500',
   };
 
   const hour = new Date().getHours();
@@ -55,7 +55,7 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
       </div>
     );
   }
@@ -81,7 +81,7 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex-1 text-center py-3 border-r border-gray-100">
             <div className="text-[11px] text-gray-400 font-semibold tracking-wider">ACTIVE</div>
-            <div className="text-xl font-bold text-indigo-500 mt-1">{stats.active}</div>
+            <div className="text-xl font-bold text-blue-500 mt-1">{stats.active}</div>
           </div>
           <div className="flex-1 text-center py-3 border-r border-gray-100">
             <div className="text-[11px] text-gray-400 font-semibold tracking-wider">IN PROGRESS</div>
@@ -89,7 +89,7 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
           </div>
           <div className="flex-1 text-center py-3">
             <div className="text-[11px] text-gray-400 font-semibold tracking-wider">COMPLETED</div>
-            <div className="text-xl font-bold text-emerald-500 mt-1">{stats.done}</div>
+            <div className="text-xl font-bold text-green-500 mt-1">{stats.done}</div>
           </div>
         </div>
       </div>
@@ -101,24 +101,24 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
           {/* Production */}
           <button onClick={() => onSelectTab('production')} className="bg-white border border-gray-200 rounded-xl p-4 text-left active:bg-gray-50 transition-colors">
             <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4F6AF5" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>
               </div>
               <span className="text-sm font-bold text-gray-900">Production</span>
             </div>
-            <div className="text-2xl font-bold text-indigo-500">{stats.active}</div>
+            <div className="text-2xl font-bold text-blue-500">{stats.active}</div>
             <div className="text-[11px] text-gray-400 mt-0.5">active orders</div>
           </button>
 
           {/* Recipes */}
           <button onClick={() => onNavigate({ type: 'bom-list' })} className="bg-white border border-gray-200 rounded-xl p-4 text-left active:bg-gray-50 transition-colors">
             <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>
               </div>
               <span className="text-sm font-bold text-gray-900">Recipes</span>
             </div>
-            <div className="text-2xl font-bold text-emerald-500">{stats.bomCount}</div>
+            <div className="text-2xl font-bold text-green-500">{stats.bomCount}</div>
             <div className="text-[11px] text-gray-400 mt-0.5">BOMs</div>
           </button>
 
@@ -136,7 +136,7 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
           {/* Inventory */}
           <button onClick={() => onSelectTab('inventory')} className="bg-white border border-gray-200 rounded-xl p-4 text-left active:bg-gray-50 transition-colors">
             <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
                 <span className="text-base">\uD83D\uDCE6</span>
               </div>
               <span className="text-sm font-bold text-gray-900">Inventory</span>

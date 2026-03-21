@@ -134,7 +134,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         subtitle={`${session?.scheduled_date || ''} \u00B7 ${locationName} \u00B7 ${totalCount} products`}
         right={canSubmit && countedCount > 0 ? (
           <button onClick={handleSubmit} disabled={submitting}
-            className="text-orange-600 text-[13px] font-semibold active:opacity-70">
+            className="text-green-700 text-[13px] font-semibold active:opacity-70">
             Review
           </button>
         ) : undefined}
@@ -192,7 +192,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       {canSubmit && countedCount > 0 && (
         <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
           <button onClick={handleSubmit} disabled={submitting}
-            className="w-full py-4 rounded-xl bg-orange-500 text-white text-[15px] font-bold shadow-lg shadow-orange-500/30 active:bg-orange-600 active:scale-[0.975] transition-all disabled:opacity-50">
+            className="w-full py-4 rounded-xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
             {submitting ? 'Submitting...' : `Review & submit (${countedCount} items)`}
           </button>
         </div>

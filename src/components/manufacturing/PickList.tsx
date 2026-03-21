@@ -86,11 +86,11 @@ export default function PickList({ onBack, onHome }: PickListProps) {
       {error ? (
         <div className="px-4 py-16 text-center">
           <p className="text-[13px] text-gray-500 mb-4">{error}</p>
-          <button onClick={fetchPickList} className="px-6 py-3 bg-orange-500 text-white text-sm font-bold rounded-xl">Retry</button>
+          <button onClick={fetchPickList} className="px-6 py-3 bg-green-600 text-white text-sm font-bold rounded-xl">Retry</button>
         </div>
       ) : loading ? (
         <div className="flex justify-center py-16">
-          <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+          <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
         </div>
       ) : items.length === 0 ? (
         <div className="text-center py-16">
@@ -104,11 +104,11 @@ export default function PickList({ onBack, onHome }: PickListProps) {
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-semibold text-gray-400">{collectedCount}/{totalCount} collected</span>
               {collectedCount === totalCount && totalCount > 0 && (
-                <span className="text-[11px] font-semibold text-emerald-600">All collected!</span>
+                <span className="text-[11px] font-semibold text-green-600">All collected!</span>
               )}
             </div>
             <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${totalCount > 0 ? (collectedCount / totalCount) * 100 : 0}%` }} />
+              <div className="h-full bg-green-500 rounded-full transition-all duration-300" style={{ width: `${totalCount > 0 ? (collectedCount / totalCount) * 100 : 0}%` }} />
             </div>
           </div>
 
@@ -116,14 +116,14 @@ export default function PickList({ onBack, onHome }: PickListProps) {
             <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1">
               <button onClick={() => setActiveCategory('All')}
                 className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap flex-shrink-0 transition-all ${
-                  activeCategory === 'All' ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 border border-gray-200'
+                  activeCategory === 'All' ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'
                 }`}>All ({totalCount})</button>
               {categories.map(cat => {
                 const count = items.filter(i => i.category === cat).length;
                 return (
                   <button key={cat} onClick={() => setActiveCategory(cat)}
                     className={`px-3 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap flex-shrink-0 transition-all ${
-                      activeCategory === cat ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 border border-gray-200'
+                      activeCategory === cat ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'
                     }`}>{cat} ({count})</button>
                 );
               })}
@@ -152,7 +152,7 @@ export default function PickList({ onBack, onHome }: PickListProps) {
                           }`}
                         >
                           <div className={`w-6 h-6 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                            isCollected ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 bg-white'
+                            isCollected ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
                           }`}>
                             {isCollected && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
                           </div>
@@ -165,7 +165,7 @@ export default function PickList({ onBack, onHome }: PickListProps) {
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <div className={`text-[15px] font-bold font-mono ${isCollected ? 'text-emerald-500' : 'text-[#1F2933]'}`}>
+                            <div className={`text-[15px] font-bold font-mono ${isCollected ? 'text-green-500' : 'text-[#1F2933]'}`}>
                               {fmt(item.remaining > 0 ? item.remaining : item.total_demand)}
                             </div>
                             <div className="text-[10px] text-gray-400">{item.uom}</div>

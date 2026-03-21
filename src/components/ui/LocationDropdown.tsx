@@ -76,7 +76,7 @@ export default function LocationDropdown({
             : 'bg-gray-100 border border-gray-200 text-gray-700 active:bg-gray-200'
         }`}
       >
-        <span className={isDark ? 'text-orange-400' : 'text-orange-500'}>
+        <span className={isDark ? 'text-green-400' : 'text-green-600'}>
           <MapPinIcon />
         </span>
         <span>{selected?.name || 'Location'}</span>
@@ -111,16 +111,16 @@ export default function LocationDropdown({
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-[13px] font-semibold transition-colors ${
                   isDark
                     ? isSelected
-                      ? 'bg-orange-500/15 text-orange-400'
+                      ? 'bg-green-600/15 text-green-400'
                       : 'text-white/70 active:bg-white/5'
                     : isSelected
-                      ? 'bg-orange-50 text-orange-600'
+                      ? 'bg-green-50 text-green-700'
                       : 'text-gray-700 active:bg-gray-50'
                 }`}
               >
                 <span className="flex-1">{loc.name}</span>
                 {isSelected && (
-                  <span className={isDark ? 'text-orange-400' : 'text-orange-500'}>
+                  <span className={isDark ? 'text-green-400' : 'text-green-600'}>
                     <CheckIcon />
                   </span>
                 )}

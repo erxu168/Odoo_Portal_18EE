@@ -230,7 +230,7 @@ export default function PdfViewer({
         </div>
         <div className="text-[15px] font-bold text-gray-900 mb-1">Could not load PDF</div>
         <div className="text-[13px] text-gray-500 mb-4">{error}</div>
-        <button onClick={loadDocument} className="px-5 py-2.5 rounded-xl bg-orange-500 text-white text-[13px] font-bold active:bg-orange-600">Retry</button>
+        <button onClick={loadDocument} className="px-5 py-2.5 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700">Retry</button>
       </div>
     );
   }
@@ -239,7 +239,7 @@ export default function PdfViewer({
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
-        <div className="w-8 h-8 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin mb-3" />
+        <div className="w-8 h-8 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin mb-3" />
         <div className="text-[13px] text-gray-500">Loading PDF...</div>
       </div>
     );
@@ -302,7 +302,7 @@ export default function PdfViewer({
         </div>
         {rendering && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/50 pointer-events-none">
-            <div className="w-6 h-6 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+            <div className="w-6 h-6 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
           </div>
         )}
       </div>

@@ -92,7 +92,7 @@ export default function OrdersDashboard({
       sublabel: cartItemCount > 0 ? `${cartItemCount} items` : 'No items yet',
       icon: <CartIcon />,
       badgeCount: cartItemCount,
-      badgeColor: 'bg-orange-500',
+      badgeColor: 'bg-green-600',
     },
     {
       id: 'receive',
@@ -157,7 +157,7 @@ export default function OrdersDashboard({
         <div className="text-center mt-5">
           <button
             onClick={onManage}
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-orange-600 px-4 py-2.5 rounded-xl bg-orange-50 border border-orange-100 active:bg-orange-100 transition-colors"
+            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-green-700 px-4 py-2.5 rounded-xl bg-green-50 border border-green-100 active:bg-green-100 transition-colors"
           >
             <SettingsIcon />
             Manage guides &amp; settings

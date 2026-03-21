@@ -222,7 +222,7 @@ export default function AdminUsersPage() {
 
   const roleColors: Record<string, string> = {
     admin: 'bg-red-50 text-red-700',
-    manager: 'bg-orange-50 text-orange-700',
+    manager: 'bg-green-50 text-green-800',
     staff: 'bg-gray-100 text-gray-600',
   };
 
@@ -255,7 +255,7 @@ export default function AdminUsersPage() {
             </p>
           </div>
           <button onClick={() => setShowCreate(true)}
-            className="w-9 h-9 rounded-xl bg-orange-500 flex items-center justify-center active:bg-orange-600 shadow-lg shadow-orange-500/30">
+            className="w-9 h-9 rounded-xl bg-green-600 flex items-center justify-center active:bg-green-700 shadow-lg shadow-green-600/30">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
           </button>
         </div>
@@ -264,26 +264,26 @@ export default function AdminUsersPage() {
       <div className="flex gap-1.5 px-4 py-3">
         <button onClick={() => setTab('pending')}
           className={`px-4 py-2 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
-            tab === 'pending' ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+            tab === 'pending' ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
           }`}>
           Pending {pendingUsers.length > 0 && <span className="ml-1 text-[11px] font-mono">{pendingUsers.length}</span>}
         </button>
         <button onClick={() => setTab('active')}
           className={`px-4 py-2 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
-            tab === 'active' ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+            tab === 'active' ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
           }`}>
           Active {users.length > 0 && <span className="ml-1 text-[11px] font-mono">{users.length}</span>}
         </button>
         <button onClick={() => setTab('rejected')}
           className={`px-4 py-2 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
-            tab === 'rejected' ? 'bg-orange-500 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
+            tab === 'rejected' ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
           }`}>
           Rejected {rejectedUsers.length > 0 && <span className="ml-1 text-[11px] font-mono">{rejectedUsers.length}</span>}
         </button>
       </div>
 
       {successMsg && (
-        <div className="mx-4 mb-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-[13px] font-semibold">
+        <div className="mx-4 mb-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-[13px] font-semibold">
           {successMsg}
         </div>
       )}
@@ -298,7 +298,7 @@ export default function AdminUsersPage() {
       <div className="px-4 pb-24">
         {loading ? (
           <div className="flex justify-center py-12">
-            <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+            <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
           </div>
         ) : (
           <>
@@ -306,7 +306,7 @@ export default function AdminUsersPage() {
             {tab === 'pending' && (
               pendingUsers.length === 0 ? (
                 <div className="text-center py-16">
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-3">
+                  <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mx-auto mb-3">
                     <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                   </div>
                   <div className="text-[15px] font-semibold text-gray-900 mb-1">No pending registrations</div>
@@ -329,7 +329,7 @@ export default function AdminUsersPage() {
                           </div>
                           <div className="flex items-center gap-2 mt-2">
                             {u.employee_id && (
-                              <span className="text-[11px] px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-semibold">
+                              <span className="text-[11px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-semibold">
                                 Employee #{u.employee_id}
                               </span>
                             )}
@@ -345,7 +345,7 @@ export default function AdminUsersPage() {
                             <option value="admin">Admin</option>
                           </select>
                           <button onClick={() => handleApprove(u.id, selectedRole)} disabled={isLoading}
-                            className="flex-1 py-2.5 rounded-xl bg-emerald-500 text-white text-[13px] font-bold active:bg-emerald-600 disabled:opacity-50">
+                            className="flex-1 py-2.5 rounded-xl bg-green-500 text-white text-[13px] font-bold active:bg-green-600 disabled:opacity-50">
                             {isLoading ? '...' : 'Approve'}
                           </button>
                           <button onClick={() => handleReject(u.id)} disabled={isLoading}
@@ -389,7 +389,7 @@ export default function AdminUsersPage() {
                             <span className="text-[10px] px-2 py-0.5 rounded-md bg-red-50 text-red-600 font-semibold">No companies assigned</span>
                           ) : (
                             companies.filter(c => userCompanies.includes(c.id)).map(c => (
-                              <span key={c.id} className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-semibold">
+                              <span key={c.id} className="text-[10px] px-2 py-0.5 rounded-md bg-green-50 text-green-700 font-semibold">
                                 {c.warehouse_code || c.name}
                               </span>
                             ))
@@ -404,7 +404,7 @@ export default function AdminUsersPage() {
                             <option value="admin">Admin</option>
                           </select>
                           <button onClick={() => setExpandedUser(isExpanded ? null : u.id)}
-                            className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${isExpanded ? 'border-orange-300 text-orange-600 bg-orange-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
+                            className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${isExpanded ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
                             Companies
                           </button>
                           <button onClick={() => handleResetPassword(u)}
@@ -412,7 +412,7 @@ export default function AdminUsersPage() {
                             Reset pw
                           </button>
                           <button onClick={() => toggleActive(u)}
-                            className={`px-3 py-1 rounded-lg border text-[12px] ${u.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-emerald-200 text-emerald-600 active:bg-emerald-50'}`}>
+                            className={`px-3 py-1 rounded-lg border text-[12px] ${u.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-green-200 text-green-600 active:bg-green-50'}`}>
                             {u.active ? 'Deactivate' : 'Reactivate'}
                           </button>
                         </div>
@@ -430,7 +430,7 @@ export default function AdminUsersPage() {
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Company access</span>
                             <button onClick={() => assignAllCompanies(u)}
-                              className="text-[11px] font-semibold text-orange-600 active:opacity-70">
+                              className="text-[11px] font-semibold text-green-700 active:opacity-70">
                               Select all
                             </button>
                           </div>
@@ -440,10 +440,10 @@ export default function AdminUsersPage() {
                               return (
                                 <button key={c.id} onClick={() => toggleCompany(u, c.id)}
                                   className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-colors ${
-                                    checked ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-gray-200 active:bg-gray-50'
+                                    checked ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 active:bg-gray-50'
                                   }`}>
                                   <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                                    checked ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 bg-white'
+                                    checked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
                                   }`}>
                                     {checked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
                                   </div>
@@ -516,22 +516,22 @@ export default function AdminUsersPage() {
             <div className="flex flex-col gap-3">
               <input type="text" placeholder="Full name" value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                className="h-12 px-4 rounded-xl bg-white border border-gray-200 text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400" />
+                className="h-12 px-4 rounded-xl bg-white border border-gray-200 text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500" />
               <input type="email" placeholder="Email address" value={newEmail}
                 onChange={(e) => setNewEmail(e.target.value)}
-                className="h-12 px-4 rounded-xl bg-white border border-gray-200 text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400" />
+                className="h-12 px-4 rounded-xl bg-white border border-gray-200 text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500" />
               <input type="text" placeholder="Initial password" value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="h-12 px-4 rounded-xl bg-white border border-gray-200 text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-orange-400" />
+                className="h-12 px-4 rounded-xl bg-white border border-gray-200 text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500" />
               <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
-                className="h-12 px-4 rounded-xl bg-white border border-gray-200 text-[14px] text-gray-900 focus:outline-none focus:border-orange-400">
+                className="h-12 px-4 rounded-xl bg-white border border-gray-200 text-[14px] text-gray-900 focus:outline-none focus:border-green-500">
                 <option value="staff">Staff</option>
                 <option value="manager">Manager</option>
                 <option value="admin">Admin</option>
               </select>
               <button onClick={handleCreate}
                 disabled={creating || !newName || !newEmail || !newPassword}
-                className="h-14 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-all disabled:opacity-50 mt-1 flex items-center justify-center gap-2">
+                className="h-14 rounded-xl bg-green-600 text-white font-bold text-[15px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 mt-1 flex items-center justify-center gap-2">
                 {creating ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (

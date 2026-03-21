@@ -192,7 +192,7 @@ export default function ActiveWorkOrder({
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-gray-300 border-t-emerald-600 rounded-full animate-spin mx-auto" />
+          <div className="w-8 h-8 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin mx-auto" />
           <p className="text-sm text-gray-500 mt-3">Loading...</p>
         </div>
       </div>
@@ -261,7 +261,7 @@ export default function ActiveWorkOrder({
               key={w.id}
               className={`rounded-full ${
                 w.state === 'done'
-                  ? 'w-2 h-2 bg-emerald-500'
+                  ? 'w-2 h-2 bg-green-500'
                   : w.id === woId
                   ? 'w-2.5 h-2.5 bg-blue-500'
                   : 'w-2 h-2 bg-gray-300'
@@ -305,7 +305,7 @@ export default function ActiveWorkOrder({
           const onHand = c.on_hand_qty || 0;
           const availColor =
             onHand >= targetQty
-              ? 'text-emerald-600'
+              ? 'text-green-600'
               : onHand > 0
               ? 'text-amber-600'
               : 'text-red-600';
@@ -353,7 +353,7 @@ export default function ActiveWorkOrder({
                     placeholder="0"
                     className={`w-16 px-2 py-2 text-right text-[15px] font-medium rounded-lg border ${
                       isFilled
-                        ? 'border-emerald-400 text-emerald-600'
+                        ? 'border-green-400 text-green-600'
                         : 'border-gray-200 text-gray-900'
                     } bg-white`}
                   />
