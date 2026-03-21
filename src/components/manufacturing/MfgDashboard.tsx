@@ -108,13 +108,11 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {tiles.map((tile, idx) => (
+          {tiles.map(tile => (
             <button
               key={tile.key}
               onClick={() => onNavigate(tile.key)}
-              className={`relative bg-white rounded-2xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 text-left active:scale-[0.97] transition-transform ${
-                idx === tiles.length - 1 && tiles.length % 2 === 1 ? 'col-span-2' : ''
-              }`}
+              className="relative bg-white rounded-2xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 text-left active:scale-[0.97] transition-transform"
             >
               <div className="w-11 h-11 rounded-xl bg-[#F1F3F5] flex items-center justify-center text-blue-600 mb-3">
                 {tile.icon}
