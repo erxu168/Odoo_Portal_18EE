@@ -12,9 +12,13 @@ interface DateFilterProps {
   onChange: (preset: string, range: DateRange | null) => void;
 }
 
+function localDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function getRange(preset: string): DateRange | null {
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  const today = localDate(now);
   const dow = now.getDay(); // 0=Sun
   const mondayOffset = dow === 0 ? -6 : 1 - dow;
 
@@ -27,24 +31,24 @@ function getRange(preset: string): DateRange | null {
       mon.setDate(now.getDate() + mondayOffset);
       const sun = new Date(mon);
       sun.setDate(mon.getDate() + 6);
-      return { from: mon.toISOString().split('T')[0], to: sun.toISOString().split('T')[0] };
+      return { from: localDate(mon), to: localDate(sun) };
     }
     case 'last_week': {
       const mon = new Date(now);
       mon.setDate(now.getDate() + mondayOffset - 7);
       const sun = new Date(mon);
       sun.setDate(mon.getDate() + 6);
-      return { from: mon.toISOString().split('T')[0], to: sun.toISOString().split('T')[0] };
+      return { from: localDate(mon), to: localDate(sun) };
     }
     case 'this_month': {
       const first = new Date(now.getFullYear(), now.getMonth(), 1);
       const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      return { from: first.toISOString().split('T')[0], to: last.toISOString().split('T')[0] };
+      return { from: localDate(first), to: localDate(last) };
     }
     case 'last_month': {
       const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const last = new Date(now.getFullYear(), now.getMonth(), 0);
-      return { from: first.toISOString().split('T')[0], to: last.toISOString().split('T')[0] };
+      return { from: localDate(first), to: localDate(last) };
     }
     default:
       return null;
@@ -125,6 +129,6 @@ export default function DateFilter({ value, onChange }: DateFilterProps) {
 export function isInRange(dateStr: string | null | undefined, range: DateRange | null): boolean {
   if (!range) return true;
   if (!dateStr) return false;
-  const d = dateStr.split('T')[0];
+  const d = dateStr.substring(0, 10); // YYYY-MM-DD — handles both "T" and space separators
   return d >= range.from && d <= range.to;
 }
