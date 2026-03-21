@@ -32,8 +32,8 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
   const tiles = [
     {
       key: 'orders',
-      label: 'Manufacturing',
-      sublabel: 'Manufacturing orders',
+      label: 'Current orders',
+      sublabel: 'Active manufacturing',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/>
