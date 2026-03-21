@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Numpad from '@/components/ui/Numpad';
+import PdfViewer from '@/components/ui/PdfViewer';
 
 interface WoDetailProps {
   moId: number;
@@ -335,7 +336,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                   </div>
                   <a href={pdfDataUrl} download="worksheet.pdf" className="text-[12px] text-green-700 font-semibold">Download</a>
                 </div>
-                <iframe src={pdfDataUrl} className="w-full border-0" style={{ height: '500px' }} title="PDF Worksheet" />
+                <PdfViewer fileData={worksheetPdf} fileName="worksheet.pdf" maxHeight="500px" />
               </div>
             )}
 
