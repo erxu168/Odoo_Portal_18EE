@@ -38,6 +38,8 @@ interface NumpadProps {
   unit?: string;
   /** If set, shows a "Match" quick-fill button */
   demandQty?: number;
+  /** Tolerance percentage — hard blocks confirm if value is outside demand ± tolerance% */
+  tolerancePct?: number;
   /** Confirm button text. Default: "Confirm" */
   confirmLabel?: string;
   /** Loading state disables confirm button */
@@ -57,6 +59,7 @@ export default function Numpad({
   sublabel,
   unit,
   demandQty,
+  tolerancePct,
   confirmLabel = 'Confirm',
   loading = false,
   onConfirm,
@@ -73,6 +76,14 @@ export default function Numpad({
   // Determine which value to display
   const isControlled = controlledValue !== undefined && onChange !== undefined;
   const display = isControlled ? (controlledValue || '0') : internalValue;
+
+  // Tolerance enforcement
+  const currentNum = parseFloat(display) || 0;
+  const hasTolerance = tolerancePct !== undefined && demandQty !== undefined && demandQty > 0;
+  const toleranceMin = hasTolerance ? Math.round(demandQty! * (1 - tolerancePct! / 100) * 1000) / 1000 : 0;
+  const toleranceMax = hasTolerance ? Math.round(demandQty! * (1 + tolerancePct! / 100) * 1000) / 1000 : Infinity;
+  const isOutOfTolerance = hasTolerance && currentNum > 0 && (currentNum < toleranceMin || currentNum > toleranceMax);
+  const fmtTol = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(n);
 
   function applyKey(key: string): string {
     if (key === 'C') return '0';
@@ -131,11 +142,25 @@ export default function Numpad({
 
         {/* Display */}
         <div className="flex items-baseline gap-2 px-1 mb-3">
-          <div className="text-[36px] font-bold text-[#1F2933] tabular-nums font-mono min-h-[48px]">
+          <div className={`text-[36px] font-bold tabular-nums font-mono min-h-[48px] ${isOutOfTolerance ? 'text-red-600' : 'text-[#1F2933]'}`}>
             {display}
           </div>
           {unit && <div className="text-[16px] text-gray-400 font-semibold">{unit}</div>}
         </div>
+
+        {/* Tolerance range hint */}
+        {hasTolerance && (
+          <div className={`px-2 py-2 rounded-lg mb-2 text-[12px] font-semibold ${
+            isOutOfTolerance
+              ? 'bg-red-50 border border-red-200 text-red-700'
+              : 'bg-gray-50 text-gray-500'
+          }`}>
+            {isOutOfTolerance
+              ? `Outside tolerance! Allowed: ${fmtTol(toleranceMin)} \u2014 ${fmtTol(toleranceMax)} ${unit || ''} (\u00b1${tolerancePct}%)`
+              : `Target: ${fmtTol(demandQty!)} ${unit || ''} \u00b7 Allowed: ${fmtTol(toleranceMin)} \u2014 ${fmtTol(toleranceMax)} (\u00b1${tolerancePct}%)`
+            }
+          </div>
+        )}
 
         {/* Quick actions */}
         {demandQty !== undefined && demandQty > 0 && (
@@ -204,11 +229,17 @@ export default function Numpad({
         {/* Confirm button */}
         <button
           onClick={handleConfirm}
-          disabled={loading}
-          className="w-full py-4 rounded-2xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={loading || isOutOfTolerance}
+          className={`w-full py-4 rounded-2xl text-[15px] font-bold shadow-lg active:scale-[0.975] transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            isOutOfTolerance
+              ? 'bg-red-400 text-white shadow-red-400/30'
+              : 'bg-green-600 text-white shadow-green-600/30 active:bg-green-700'
+          }`}
         >
           {loading ? (
             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+          ) : isOutOfTolerance ? (
+            'Outside tolerance range'
           ) : (
             confirmLabel
           )}
