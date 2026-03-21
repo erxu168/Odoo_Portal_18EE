@@ -146,22 +146,40 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
 
   const shortComps = scaledComps.filter((c: any) => c.is_short);
 
+  // Resolve the correct product_id for MO creation
+  // Use resolved_product_id (from BOM detail API) > product_id > product_tmpl_id
+  function getProductId(): number {
+    if (selectedBom.resolved_product_id) return selectedBom.resolved_product_id;
+    if (selectedBom.product_id && selectedBom.product_id[0]) return selectedBom.product_id[0];
+    return selectedBom.product_tmpl_id[0];
+  }
+
+  // Get company_id from the BOM
+  function getCompanyId(): number | undefined {
+    if (selectedBom.company_id && selectedBom.company_id[0]) return selectedBom.company_id[0];
+    return undefined;
+  }
+
   // Submit
   async function handleConfirm() {
     if (!selectedBom || numQty <= 0) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
+      const body: any = {
+        product_id: getProductId(),
+        bom_id: selectedBom.id,
+        product_qty: numQty,
+        product_uom_id: selectedBom.product_uom_id[0],
+        date_deadline: scheduledDate,
+      };
+      const companyId = getCompanyId();
+      if (companyId) body.company_id = companyId;
+
       const res = await fetch('/api/manufacturing-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product_id: selectedBom.product_id?.[0] || selectedBom.product_tmpl_id[0],
-          bom_id: selectedBom.id,
-          product_qty: numQty,
-          product_uom_id: selectedBom.product_uom_id[0],
-          date_deadline: scheduledDate,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -189,16 +207,20 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
     setSubmitting(true);
     setSubmitError(null);
     try {
+      const body: any = {
+        product_id: getProductId(),
+        bom_id: selectedBom.id,
+        product_qty: numQty,
+        product_uom_id: selectedBom.product_uom_id[0],
+        date_deadline: scheduledDate,
+      };
+      const companyId = getCompanyId();
+      if (companyId) body.company_id = companyId;
+
       const res = await fetch('/api/manufacturing-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product_id: selectedBom.product_id?.[0] || selectedBom.product_tmpl_id[0],
-          bom_id: selectedBom.id,
-          product_qty: numQty,
-          product_uom_id: selectedBom.product_uom_id[0],
-          date_deadline: scheduledDate,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -218,7 +240,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
-          <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
+          <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(22,163,74,0.15)_0%,transparent_70%)]" />
           <div className="flex items-center gap-3 relative">
             <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 19l-7-7 7-7"/></svg>
@@ -232,7 +254,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
 
         {/* Progress */}
         <div className="flex gap-1 px-4 py-2.5">
-          <div className="flex-1 h-1 rounded-full bg-orange-500" />
+          <div className="flex-1 h-1 rounded-full bg-green-600" />
           <div className="flex-1 h-1 rounded-full bg-gray-200" />
           <div className="flex-1 h-1 rounded-full bg-gray-200" />
         </div>
@@ -246,7 +268,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
             <input
               type="text" placeholder="Search recipes..." value={search}
               onChange={(e) => setSearch(e.target.value)} autoFocus
-              className="w-full pl-10 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-400/20 focus:border-orange-400"
+              className="w-full pl-10 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
             />
           </div>
         </div>
@@ -256,7 +278,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
           {categories.map((cat) => (
             <button key={cat} onClick={() => setActiveCategory(cat)}
               className={`px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
-                activeCategory === cat ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 border border-gray-200'
+                activeCategory === cat ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'
               }`}>{cat}</button>
           ))}
         </div>
@@ -265,7 +287,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
         <div className="px-4 pb-6">
           {bomsLoading ? (
             <div className="flex justify-center py-12">
-              <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+              <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-gray-400 text-sm">No recipes found</div>
@@ -289,7 +311,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
 
         {detailLoading && (
           <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center">
-            <div className="w-10 h-10 border-3 border-white border-t-orange-500 rounded-full animate-spin" />
+            <div className="w-10 h-10 border-3 border-white border-t-green-600 rounded-full animate-spin" />
           </div>
         )}
       </div>
@@ -302,7 +324,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
       <div className="min-h-screen bg-gray-50">
         <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
           <button onClick={() => { setStep('select'); setSelectedBom(null); setComponents([]); }}
-            className="flex items-center gap-1 mb-2 text-orange-600 text-[13px] font-semibold active:opacity-70">
+            className="flex items-center gap-1 mb-2 text-green-700 text-[13px] font-semibold active:opacity-70">
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
             Change recipe
           </button>
@@ -312,8 +334,8 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
 
         {/* Progress */}
         <div className="flex gap-1 px-4 py-2.5">
-          <div className="flex-1 h-1 rounded-full bg-emerald-500" />
-          <div className="flex-1 h-1 rounded-full bg-orange-500" />
+          <div className="flex-1 h-1 rounded-full bg-green-500" />
+          <div className="flex-1 h-1 rounded-full bg-green-600" />
           <div className="flex-1 h-1 rounded-full bg-gray-200" />
         </div>
 
@@ -325,26 +347,26 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
               <div className="text-[11px] text-gray-400 mt-0.5">Enter ingredient amount to calculate output</div>
             </div>
             <button onClick={() => { setSqcEnabled(!sqcEnabled); if (sqcEnabled) { setQty(String(baseQty)); setDrivingCompQty(''); } }}
-              className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${sqcEnabled ? 'bg-orange-500' : 'bg-gray-300'}`}>
+              className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${sqcEnabled ? 'bg-green-600' : 'bg-gray-300'}`}>
               <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${sqcEnabled ? 'left-[18px]' : 'left-0.5'}`} />
             </button>
           </div>
 
           {sqcEnabled && (
-            <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 mb-3">
-              <label className="text-[12px] font-semibold text-orange-700 tracking-wider uppercase mb-1.5 block">Driving ingredient</label>
+            <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-3">
+              <label className="text-[12px] font-semibold text-green-800 tracking-wider uppercase mb-1.5 block">Driving ingredient</label>
               <select value={drivingCompId || ''} onChange={(e) => { setDrivingCompId(parseInt(e.target.value) || null); setDrivingCompQty(''); }}
-                className="w-full px-3 py-2.5 rounded-lg border border-orange-200 bg-white text-[14px] font-semibold text-orange-700 mb-2">
+                className="w-full px-3 py-2.5 rounded-lg border border-green-200 bg-white text-[14px] font-semibold text-green-800 mb-2">
                 <option value="">Select ingredient...</option>
                 {components.map((c: any) => <option key={c.product_id} value={c.product_id}>{c.product_name} ({c.uom})</option>)}
               </select>
               {drivingCompId && drivingComp && (
                 <div>
-                  <label className="text-[12px] font-semibold text-orange-700 tracking-wider uppercase mb-1.5 block">How much {drivingComp.product_name} do you have?</label>
-                  <div className="flex items-center border border-orange-200 rounded-lg bg-white overflow-hidden">
+                  <label className="text-[12px] font-semibold text-green-800 tracking-wider uppercase mb-1.5 block">How much {drivingComp.product_name} do you have?</label>
+                  <div className="flex items-center border border-green-200 rounded-lg bg-white overflow-hidden">
                     <input type="number" inputMode="decimal" value={drivingCompQty} onChange={(e) => setDrivingCompQty(e.target.value)}
                       placeholder={`e.g. ${drivingComp.required_qty || 0}`}
-                      className="flex-1 px-3 py-2.5 text-lg font-bold border-none bg-transparent focus:outline-none text-orange-600 placeholder:text-gray-300" />
+                      className="flex-1 px-3 py-2.5 text-lg font-bold border-none bg-transparent focus:outline-none text-green-700 placeholder:text-gray-300" />
                     <div className="px-3 py-2.5 text-sm text-gray-500 bg-gray-50 border-l border-gray-200">{drivingComp.uom || 'kg'}</div>
                   </div>
                 </div>
@@ -356,7 +378,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
           <label className="text-[12px] font-semibold text-gray-400 tracking-wider uppercase mb-1.5 block">Quantity to produce{sqcEnabled ? ' (calculated)' : ''}</label>
           <div className="flex items-center border border-gray-200 rounded-xl bg-white overflow-hidden mb-1.5">
             <input type="number" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value)} readOnly={sqcEnabled}
-              className={`flex-1 px-4 py-3 text-[22px] font-bold border-none bg-transparent focus:outline-none ${sqcEnabled ? 'text-orange-500' : 'text-gray-900'}`} />
+              className={`flex-1 px-4 py-3 text-[22px] font-bold border-none bg-transparent focus:outline-none ${sqcEnabled ? 'text-green-600' : 'text-gray-900'}`} />
             <div className="px-4 py-3 text-sm text-gray-500 bg-gray-50 border-l border-gray-200">{uom}</div>
           </div>
           <div className="text-[11px] text-gray-400 mb-3 px-1">
@@ -370,7 +392,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
               {shortcuts.map((s) => (
                 <button key={s.value} onClick={() => setQty(String(s.value))}
                   className={`px-3.5 py-1.5 rounded-full text-[12px] font-semibold border transition-all ${
-                    numQty === s.value ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-white text-gray-500 border-gray-200'
+                    numQty === s.value ? 'bg-green-50 text-green-800 border-green-200' : 'bg-white text-gray-500 border-gray-200'
                   }`}>{s.label} {uom}</button>
               ))}
             </div>
@@ -393,7 +415,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
             </div>
           )}
           {shortComps.length === 0 && scaledComps.length > 0 && (
-            <div className="mb-2 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[13px] text-emerald-700 flex items-center gap-2">
+            <div className="mb-2 px-3 py-2.5 bg-green-50 border border-green-200 rounded-xl text-[13px] text-green-700 flex items-center gap-2">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
               All {scaledComps.length} ingredients available
             </div>
@@ -408,12 +430,12 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
                     <span className={`text-[13px] font-semibold ${c.is_short ? 'text-red-700' : 'text-gray-900'}`}>{c.product_name}</span>
                     <div className="flex items-center gap-1.5">
                       {c.is_short && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 font-bold">SHORT</span>}
-                      <span className={`text-[13px] font-bold font-mono ${c.is_short ? 'text-red-600' : 'text-emerald-600'}`}>{fmt(c.on_hand_qty)}</span>
+                      <span className={`text-[13px] font-bold font-mono ${c.is_short ? 'text-red-600' : 'text-green-600'}`}>{fmt(c.on_hand_qty)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${c.is_short ? (pct >= 50 ? 'bg-amber-400' : 'bg-red-400') : 'bg-emerald-500'}`} style={{ width: `${pct}%` }} />
+                      <div className={`h-full rounded-full transition-all ${c.is_short ? (pct >= 50 ? 'bg-amber-400' : 'bg-red-400') : 'bg-green-500'}`} style={{ width: `${pct}%` }} />
                     </div>
                     <span className="text-[11px] text-gray-400 min-w-[60px] text-right">{fmt(c.scaled_qty)} {c.uom} need</span>
                   </div>
@@ -431,11 +453,11 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
         )}
         <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
           <button onClick={handleConfirm} disabled={submitting || numQty <= 0}
-            className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform disabled:opacity-50 mb-2">
+            className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[15px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50 mb-2">
             {submitting ? 'Creating...' : `Confirm order (${fmt(numQty)} ${uom})`}
           </button>
           <button onClick={handleSaveDraft} disabled={submitting || numQty <= 0}
-            className="w-full py-3 rounded-xl border border-orange-300 text-orange-600 font-bold text-[14px] active:scale-[0.975] transition-transform disabled:opacity-50">
+            className="w-full py-3 rounded-xl border border-green-300 text-green-700 font-bold text-[14px] active:scale-[0.975] transition-transform disabled:opacity-50">
             Save as draft
           </button>
         </div>
@@ -446,7 +468,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
   // Fallback loading
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="w-7 h-7 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin" />
+      <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
     </div>
   );
 }

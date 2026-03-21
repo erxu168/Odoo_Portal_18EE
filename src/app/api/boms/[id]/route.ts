@@ -76,7 +76,7 @@ export async function GET(
     const odoo = getOdoo();
     const bomId = parseInt(params.id);
 
-    // Fetch the BOM
+    // Fetch the BOM (include company_id)
     const boms = await odoo.read('mrp.bom', [bomId], [
       'product_tmpl_id',
       'product_id',
@@ -85,6 +85,7 @@ export async function GET(
       'bom_line_ids',
       'type',
       'code',
+      'company_id',
     ]);
 
     if (!boms.length) {
@@ -92,6 +93,21 @@ export async function GET(
     }
 
     const bom = boms[0];
+
+    // Resolve the product.product ID
+    // If bom.product_id is false, look up the default variant from the template
+    let resolvedProductId = bom.product_id ? bom.product_id[0] : null;
+    if (!resolvedProductId && bom.product_tmpl_id) {
+      const variants = await odoo.searchRead(
+        'product.product',
+        [['product_tmpl_id', '=', bom.product_tmpl_id[0]]],
+        ['id'],
+        { limit: 1 },
+      );
+      if (variants.length > 0) {
+        resolvedProductId = variants[0].id;
+      }
+    }
 
     // Fetch all BOM lines
     const lines = await odoo.read('mrp.bom.line', bom.bom_line_ids, [
@@ -169,6 +185,7 @@ export async function GET(
     return NextResponse.json({
       bom: {
         ...bom,
+        resolved_product_id: resolvedProductId,
         component_count: components.length,
         last_produced: lastMo[0]?.date_finished || null,
       },
