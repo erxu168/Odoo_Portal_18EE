@@ -185,6 +185,7 @@ export default function PdfViewer({
     }
   }
   function handleTouchMove(e: React.TouchEvent) {
+    // Only intercept 2-finger pinch — let 1-finger pan scroll naturally
     if (touchStateRef.current.isPinching && e.touches.length === 2) {
       e.preventDefault();
       const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -288,7 +289,7 @@ export default function PdfViewer({
       <div
         ref={containerRef}
         className="overflow-auto relative"
-        style={{ maxHeight, WebkitOverflowScrolling: 'touch' }}
+        style={{ maxHeight, WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y pinch-zoom' }}
         onTouchStart={(e) => { handleTouchStart(e); handleSwipeStart(e); }}
         onTouchMove={handleTouchMove}
         onTouchEnd={(e) => { handleTouchEnd(e); handleSwipeEnd(e); }}
@@ -297,7 +298,7 @@ export default function PdfViewer({
           <canvas
             ref={canvasRef}
             className="block shadow-lg rounded bg-white"
-            style={{ touchAction: zoom > 1 ? 'none' : 'pan-y' }}
+            style={{ touchAction: 'auto' }}
           />
         </div>
         {rendering && (
