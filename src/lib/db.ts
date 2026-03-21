@@ -75,6 +75,18 @@ function initTables(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_reset_expires ON password_reset_tokens(expires_at);
     CREATE INDEX IF NOT EXISTS idx_reg_attempts ON registration_attempts(ip_or_identifier, attempted_at);
+
+    CREATE TABLE IF NOT EXISTS portal_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS bom_tolerance (
+      bom_id INTEGER PRIMARY KEY,
+      tolerance_pct REAL NOT NULL DEFAULT 5,
+      updated_at TEXT
+    );
   `);
 }
 
@@ -122,12 +134,11 @@ export interface PortalUser {
   active: number;
   login_count: number;
   tour_seen: number;
-  allowed_company_ids: string; // JSON array string e.g. '[2,3]'
+  allowed_company_ids: string;
   created_at: string;
   last_login: string | null;
 }
 
-/** Parse allowed_company_ids JSON string to number array */
 export function parseCompanyIds(raw: string | null | undefined): number[] {
   if (!raw) return [];
   try { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr.filter(Number.isFinite) : []; }
@@ -136,37 +147,27 @@ export function parseCompanyIds(raw: string | null | undefined): number[] {
 
 export function getUserByEmail(email: string): PortalUser & { password_hash: string } | null {
   const db = getDb();
-  return db.prepare(
-    'SELECT * FROM portal_users WHERE email = ? AND active = 1'
-  ).get(email) as (PortalUser & { password_hash: string }) | null;
+  return db.prepare('SELECT * FROM portal_users WHERE email = ? AND active = 1').get(email) as (PortalUser & { password_hash: string }) | null;
 }
 
 export function getUserByEmployeeId(employeeId: number): PortalUser | null {
   const db = getDb();
-  return db.prepare(
-    'SELECT * FROM portal_users WHERE employee_id = ? AND active = 1'
-  ).get(employeeId) as PortalUser | null;
+  return db.prepare('SELECT * FROM portal_users WHERE employee_id = ? AND active = 1').get(employeeId) as PortalUser | null;
 }
 
 export function getUserById(id: number): PortalUser | null {
   const db = getDb();
-  return db.prepare(
-    'SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE id = ?'
-  ).get(id) as PortalUser | null;
+  return db.prepare('SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE id = ?').get(id) as PortalUser | null;
 }
 
 export function listUsers(): PortalUser[] {
   const db = getDb();
-  return db.prepare(
-    'SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users ORDER BY created_at DESC'
-  ).all() as PortalUser[];
+  return db.prepare('SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users ORDER BY created_at DESC').all() as PortalUser[];
 }
 
 export function listUsersByStatus(status: string): PortalUser[] {
   const db = getDb();
-  return db.prepare(
-    'SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE status = ? AND active = 1 ORDER BY created_at DESC'
-  ).all(status) as PortalUser[];
+  return db.prepare('SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE status = ? AND active = 1 ORDER BY created_at DESC').all(status) as PortalUser[];
 }
 
 export function countUsersByStatus(status: string): number {
@@ -216,9 +217,7 @@ export function createSession(userId: number): string {
   const now = nowISO();
   const expiresAt = new Date();
   expiresAt.setFullYear(expiresAt.getFullYear() + 100);
-  db.prepare(
-    'INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
-  ).run(token, userId, now, expiresAt.toISOString());
+  db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(token, userId, now, expiresAt.toISOString());
   db.prepare('UPDATE portal_users SET last_login = ?, login_count = login_count + 1 WHERE id = ?').run(now, userId);
   return token;
 }
@@ -289,17 +288,13 @@ export function createPasswordResetToken(userId: number): string {
   const now = nowISO();
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + RESET_TOKEN_HOURS);
-  db.prepare(
-    'INSERT INTO password_reset_tokens (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)'
-  ).run(token, userId, now, expiresAt.toISOString());
+  db.prepare('INSERT INTO password_reset_tokens (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(token, userId, now, expiresAt.toISOString());
   return token;
 }
 
 export function verifyPasswordResetToken(token: string): number | null {
   const db = getDb();
-  const row = db.prepare(
-    'SELECT user_id FROM password_reset_tokens WHERE token = ? AND expires_at > ?'
-  ).get(token, nowISO()) as { user_id: number } | null;
+  const row = db.prepare('SELECT user_id FROM password_reset_tokens WHERE token = ? AND expires_at > ?').get(token, nowISO()) as { user_id: number } | null;
   return row?.user_id || null;
 }
 
