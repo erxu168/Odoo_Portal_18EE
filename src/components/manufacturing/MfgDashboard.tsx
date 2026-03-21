@@ -7,21 +7,23 @@ interface MfgDashboardProps {
 }
 
 export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
-  const [stats, setStats] = useState({ active: 0, inProgress: 0, done: 0, bomCount: 0 });
+  const [stats, setStats] = useState({ active: 0, confirmed: 0, inProgress: 0, done: 0, bomCount: 0, pickListCount: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const [moRes, bomRes] = await Promise.all([
-          fetch('/api/manufacturing-orders?limit=50').then(r => r.json()),
+        const [moRes, bomRes, pickRes] = await Promise.all([
+          fetch('/api/manufacturing-orders?limit=200').then(r => r.json()),
           fetch('/api/boms').then(r => r.json()),
+          fetch('/api/manufacturing-orders/pick-list').then(r => r.json()).catch(() => ({ total_components: 0 })),
         ]);
         const mos = moRes.orders || [];
         const active = mos.filter((m: any) => m.state === 'confirmed' || m.state === 'progress').length;
+        const confirmed = mos.filter((m: any) => m.state === 'confirmed').length;
         const inProgress = mos.filter((m: any) => m.state === 'progress').length;
         const done = mos.filter((m: any) => m.state === 'done').length;
-        setStats({ active, inProgress, done, bomCount: bomRes.total || 0 });
+        setStats({ active, confirmed, inProgress, done, bomCount: bomRes.total || 0, pickListCount: pickRes.total_components || 0 });
       } catch (e) { void e; }
       finally { setLoading(false); }
     })();
@@ -53,6 +55,20 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
       ),
       badge: null,
       badgeColor: '',
+    },
+    {
+      key: 'pick-list',
+      label: 'Pick list',
+      sublabel: 'Collect ingredients',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/>
+          <path d="M9 14l2 2 4-4"/>
+        </svg>
+      ),
+      badge: stats.pickListCount > 0 ? stats.pickListCount : null,
+      badgeColor: 'bg-purple-500',
     },
     {
       key: 'recipes',
@@ -92,11 +108,13 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3">
-          {tiles.map(tile => (
+          {tiles.map((tile, idx) => (
             <button
               key={tile.key}
               onClick={() => onNavigate(tile.key)}
-              className="relative bg-white rounded-2xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 text-left active:scale-[0.97] transition-transform"
+              className={`relative bg-white rounded-2xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 text-left active:scale-[0.97] transition-transform ${
+                idx === tiles.length - 1 && tiles.length % 2 === 1 ? 'col-span-2' : ''
+              }`}
             >
               <div className="w-11 h-11 rounded-xl bg-[#F1F3F5] flex items-center justify-center text-blue-600 mb-3">
                 {tile.icon}
