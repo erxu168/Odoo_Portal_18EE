@@ -173,7 +173,7 @@ export default function DashboardHome() {
       {tasks && tasks.items && tasks.items.length > 0 && (
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between mb-2.5">
-            <h2 className="text-[15px] font-bold text-[#1F2933]">Shift tasks</h2>
+            <h2 className="text-[15px] font-bold text-[#1F2933]">Your current shift tasks</h2>
             <button onClick={() => handleTileTap(TILES.find(t => t.id === 'tasks')!)}
               className="text-[12px] font-semibold text-orange-600 active:opacity-70">See all &rarr;</button>
           </div>
