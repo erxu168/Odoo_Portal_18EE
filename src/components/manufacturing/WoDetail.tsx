@@ -31,6 +31,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
   const [numpadComp, setNumpadComp] = useState<any>(null);
   const [numpadSaving, setNumpadSaving] = useState(false);
+  const [tolerancePct, setTolerancePct] = useState<number>(5);
 
   useEffect(() => { fetchData(); return () => { if (timerRef.current) clearInterval(timerRef.current); }; }, [woId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -85,6 +86,16 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       setOperationNote(woDetail.operation_note || '');
       setWorksheetPdf(woDetail.worksheet || '');
       setWorksheetGoogleSlide(woDetail.worksheet_google_slide || '');
+
+      // Fetch tolerance for this BOM
+      const bomId = moData.order?.bom_id?.[0];
+      if (bomId) {
+        try {
+          const tolRes = await fetch(`/api/bom-tolerance?bom_id=${bomId}`);
+          const tolData = await tolRes.json();
+          setTolerancePct(tolData.tolerance_pct ?? 5);
+        } catch { /* fallback to default */ }
+      }
     } catch (err) { console.error('Failed to fetch WO:', err); }
     finally { setLoading(false); }
   }
@@ -282,14 +293,28 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                         {c.product_id[1]}
                       </div>
                       <div className="text-[11px] text-gray-400 mt-0.5">
-                        {isPicked ? `Collected ${fmt(consumed)} ${compUom}` : `Need ${fmt(required)} ${compUom}`}
+                        {isPicked
+                          ? `${fmt(consumed)} / ${fmt(required)} ${compUom}`
+                          : `Need ${fmt(required)} ${compUom}`
+                        }
                       </div>
+                      {isPicked && consumed !== required && Math.abs(consumed - required) > 0.001 && (
+                        <div className={`text-[10px] mt-0.5 font-semibold ${
+                          Math.abs(consumed - required) / required * 100 > tolerancePct
+                            ? 'text-red-600'
+                            : 'text-amber-600'
+                        }`}>
+                          {consumed > required ? '+' : ''}{fmt(consumed - required)} {compUom} ({consumed > required ? '+' : ''}{((consumed - required) / required * 100).toFixed(1)}%)
+                        </div>
+                      )}
                     </div>
                     <div className="text-right flex-shrink-0">
                       <div className={`text-[15px] font-bold tabular-nums font-mono ${isPicked ? 'text-green-600' : 'text-gray-400'}`}>
                         {isPicked ? fmt(consumed) : fmt(required)}
                       </div>
-                      <div className="text-[11px] text-gray-400">{compUom}</div>
+                      <div className="text-[11px] text-gray-400">
+                        {isPicked ? `/ ${fmt(required)} ${compUom}` : compUom}
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -377,6 +402,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
           value={numpadComp.picked ? String(numpadComp.consumed_qty || 0) : '0'}
           unit={numpadComp.product_uom?.[1] || 'kg'}
           demandQty={numpadComp.product_uom_qty}
+          tolerancePct={tolerancePct}
           loading={numpadSaving}
           onConfirm={handleNumpadConfirm}
           onClose={() => setNumpadComp(null)}
