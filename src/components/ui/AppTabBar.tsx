@@ -2,18 +2,7 @@
 
 import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-
-/**
- * App-wide bottom tab bar for Krawings Portal.
- * Visible on all main screens. Each tab retains its navigation state.
- *
- * Tabs:
- *   Home      - /
- *   Prep      - /manufacturing (Kitchen Prep)
- *   Orders    - /purchase
- *   Stock     - /inventory
- *   Profile   - /profile (placeholder)
- */
+import CompanySelector from './CompanySelector';
 
 const TABS = [
   {
@@ -66,7 +55,6 @@ export default function AppTabBar() {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Don't show on auth pages
   if (pathname === '/login' || pathname === '/register' || pathname === '/forgot-password' || pathname === '/reset-password') {
     return null;
   }
@@ -78,7 +66,12 @@ export default function AppTabBar() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 max-w-lg mx-auto">
-      <div className="flex h-16">
+      {/* Company selector row */}
+      <div className="flex items-center justify-center px-3 pt-1.5 pb-0.5">
+        <CompanySelector />
+      </div>
+      {/* Tab buttons */}
+      <div className="flex h-12">
         {TABS.map(tab => {
           const active = isActive(tab);
           return (
@@ -97,7 +90,6 @@ export default function AppTabBar() {
           );
         })}
       </div>
-      {/* Safe area spacer for iOS */}
       <div className="h-[env(safe-area-inset-bottom)]" />
     </div>
   );
