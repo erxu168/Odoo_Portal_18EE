@@ -11,9 +11,9 @@ import type {
   Frequency, AssignType, SessionStatus,
 } from '@/types/inventory';
 
-// ═══════════════════════════════════════════
+// ===
 // SCHEMA INIT
-// ═══════════════════════════════════════════
+// ===
 
 export function initInventoryTables() {
   const db = getDb();
@@ -84,9 +84,9 @@ function now(): string {
   return new Date().toISOString();
 }
 
-// ═══════════════════════════════════════════
+// ===
 // TEMPLATES CRUD
-// ═══════════════════════════════════════════
+// ===
 
 export function createTemplate(data: {
   name: string;
@@ -164,9 +164,9 @@ function parseTemplate(row: any): CountingTemplate {
   };
 }
 
-// ═══════════════════════════════════════════
+// ===
 // SESSIONS CRUD
-// ═══════════════════════════════════════════
+// ===
 
 export function createSession(data: {
   template_id: number;
@@ -231,9 +231,81 @@ export function updateSessionStatus(id: number, status: SessionStatus, extra?: {
   }
 }
 
-// ═══════════════════════════════════════════
+/**
+ * Generate counting sessions for today from all active templates.
+ * Skips templates that already have a session for today.
+ * Returns the number of new sessions created.
+ */
+export function generateTodaySessions(): { created: number; skipped: number } {
+  const db = getDb();
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const templates = listTemplates({ active: true });
+  let created = 0;
+  let skipped = 0;
+
+  for (const tmpl of templates) {
+    const existing = db.prepare(
+      'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+    ).get(tmpl.id, today);
+
+    if (existing) {
+      skipped++;
+      continue;
+    }
+
+    let assignedUserId: number | null = null;
+    if (tmpl.assign_type === 'person' && tmpl.assign_id) {
+      assignedUserId = tmpl.assign_id;
+    }
+
+    createSession({
+      template_id: tmpl.id,
+      scheduled_date: today,
+      location_id: tmpl.location_id,
+      assigned_user_id: assignedUserId,
+    });
+    created++;
+  }
+
+  return { created, skipped };
+}
+
+/**
+ * Generate a single session for today from a specific template.
+ * Returns the session ID, or null if one already exists.
+ */
+export function generateSessionForTemplate(templateId: number): number | null {
+  const db = getDb();
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const tmpl = getTemplate(templateId);
+  if (!tmpl || !tmpl.active) return null;
+
+  const existing = db.prepare(
+    'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+  ).get(templateId, today) as { id: number } | undefined;
+
+  if (existing) return existing.id;
+
+  let assignedUserId: number | null = null;
+  if (tmpl.assign_type === 'person' && tmpl.assign_id) {
+    assignedUserId = tmpl.assign_id;
+  }
+
+  return createSession({
+    template_id: templateId,
+    scheduled_date: today,
+    location_id: tmpl.location_id,
+    assigned_user_id: assignedUserId,
+  });
+}
+
+// ===
 // COUNT ENTRIES
-// ═══════════════════════════════════════════
+// ===
 
 export function upsertCountEntry(data: {
   session_id: number;
@@ -274,9 +346,9 @@ export function getSessionEntries(session_id: number): CountEntry[] {
   return db.prepare('SELECT * FROM count_entries WHERE session_id = ? ORDER BY counted_at DESC').all(session_id) as CountEntry[];
 }
 
-// ═══════════════════════════════════════════
+// ===
 // QUICK COUNTS
-// ═══════════════════════════════════════════
+// ===
 
 export function createQuickCount(data: {
   product_id: number;
