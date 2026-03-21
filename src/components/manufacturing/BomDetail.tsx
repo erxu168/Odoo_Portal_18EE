@@ -114,7 +114,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         <p className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase">Ingredients</p>
       </div>
 
-      <div className="px-4 pb-28 flex flex-col gap-1.5">
+      <div className="px-4 pb-44 flex flex-col gap-1.5">
         {components.map((comp) => (
           <React.Fragment key={comp.product_id}>
             <button
@@ -169,7 +169,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         ))}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
+      <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
         <button onClick={() => onCreateMo(bomId)}
           className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform">
           Create manufacturing order

@@ -34,8 +34,8 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
   }
 
   const categories = useMemo(() => {
-    const cats = new Set(boms.map((b) => b.category || 'Uncategorized'));
-    return ['All', ...Array.from(cats).sort()];
+    const cats = Array.from(new Set(boms.map((b) => b.category || 'Uncategorized'))).sort();
+    return ['All', ...cats.filter(c => c !== 'All')];
   }, [boms]);
 
   const filtered = useMemo(() => {
@@ -76,17 +76,17 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
-        <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
+      <div className="bg-[#1A1F2E] px-5 pt-12 pb-3 relative overflow-hidden">
+        <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
           {onBack && (
-            <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+            <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
             </button>
           )}
           <div className="flex-1">
             <h1 className="text-[20px] font-bold text-white">Recipes</h1>
-            <p className="text-[12px] text-white/50 mt-0.5">{filtered.length} active recipes</p>
+            <p className="text-[12px] text-white/45 mt-0.5">{filtered.length} active recipes</p>
           </div>
         </div>
       </div>
@@ -113,7 +113,7 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
         ))}
       </div>
 
-      <div className="px-4 pb-6 flex flex-col gap-2">
+      <div className="px-4 pb-24 flex flex-col gap-2">
         {filtered.map((bom) => (
           <button key={bom.id} onClick={() => onSelect(bom)}
             className="bg-white border border-gray-200 rounded-xl px-4 py-3.5 flex justify-between items-center text-left w-full active:scale-[0.98] transition-transform">
@@ -121,7 +121,7 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
               <div className="text-[14px] font-semibold text-gray-900 truncate">{bom.product_tmpl_id[1]}</div>
               <div className="text-[12px] text-gray-500 mt-0.5">
                 {bom.category !== 'All' ? bom.category : ''}
-                {bom.category !== 'All' && bom.component_count ? ' &middot; ' : ''}
+                {bom.category !== 'All' && bom.component_count ? ' \u00b7 ' : ''}
                 {bom.component_count} ingredient{bom.component_count !== 1 ? 's' : ''}
               </div>
             </div>
