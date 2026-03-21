@@ -32,6 +32,7 @@ export class OdooClient {
   private uid: number | null = null;
   private password: string;
   private sessionId: string | null = null;
+  private allowedCompanyIds: number[] = [];
 
   constructor(
     url: string = ODOO_URL,
@@ -99,6 +100,22 @@ export class OdooClient {
     if (!this.uid) {
       throw new Error('Authentication failed — invalid credentials');
     }
+
+    // Capture all allowed company IDs from session
+    // Odoo 18: result.user_companies.allowed_companies is { id: {id, name, ...}, ... }
+    try {
+      const uc = result.user_companies;
+      if (uc?.allowed_companies) {
+        this.allowedCompanyIds = Object.keys(uc.allowed_companies).map(Number);
+      }
+      if (this.allowedCompanyIds.length === 0 && uc?.current_company) {
+        this.allowedCompanyIds = [uc.current_company];
+      }
+      console.log('[OdooClient] allowed_company_ids:', this.allowedCompanyIds);
+    } catch {
+      console.warn('[OdooClient] Could not parse user_companies from session');
+    }
+
     return this.uid;
   }
 
@@ -109,6 +126,18 @@ export class OdooClient {
     if (!this.uid) {
       await this.authenticate();
     }
+  }
+
+  /**
+   * Build default context with company access
+   */
+  private getContext(extra: Record<string, any> = {}): Record<string, any> {
+    return {
+      lang: 'en_US',
+      tz: 'Europe/Berlin',
+      ...(this.allowedCompanyIds.length > 0 ? { allowed_company_ids: this.allowedCompanyIds } : {}),
+      ...extra,
+    };
   }
 
   /**
@@ -126,8 +155,8 @@ export class OdooClient {
       method,
       args,
       kwargs: {
-        context: { lang: 'en_US', tz: 'Europe/Berlin' },
-        ...kwargs,
+        context: this.getContext(kwargs.context || {}),
+        ...Object.fromEntries(Object.entries(kwargs).filter(([k]) => k !== 'context')),
       },
     });
   }
@@ -155,7 +184,7 @@ export class OdooClient {
         limit: options.limit || 200,
         offset: options.offset || 0,
         order: options.order || '',
-        context: { lang: 'en_US', tz: 'Europe/Berlin' },
+        context: this.getContext(),
       },
     });
   }
@@ -201,6 +230,13 @@ export class OdooClient {
   }
 
   /**
+   * Get the allowed company IDs for the authenticated user
+   */
+  getAllowedCompanyIds(): number[] {
+    return [...this.allowedCompanyIds];
+  }
+
+  /**
    * Execute a button/action method on records
    */
   async buttonCall(
@@ -220,4 +256,9 @@ export function getOdoo(): OdooClient {
     _instance = new OdooClient();
   }
   return _instance;
+}
+
+/** Force re-authentication on next call (e.g. after company changes) */
+export function resetOdooSession(): void {
+  _instance = null;
 }
