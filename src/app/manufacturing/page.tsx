@@ -73,7 +73,7 @@ export default function ManufacturingPage() {
       case 'dashboard':
         return (
           <>
-            <Header title="Manufacturing" subtitle="Manufacturing Production & recipes recipes" />
+            <Header title="Manufacturing" subtitle="Manufacturing Manufacturing Production & recipes recipes recipes" />
             <MfgDashboard onNavigate={handleDashboardNav} />
           </>
         );
