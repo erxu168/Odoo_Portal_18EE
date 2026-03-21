@@ -49,10 +49,10 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
     loadBoms();
   }, []);
 
-  // Categories from BOMs
+  // Categories from BOMs — deduplicated, "All" only once at the front
   const categories = useMemo(() => {
-    const cats = new Set(boms.map((b: any) => b.category || 'Uncategorized'));
-    return ['All', ...Array.from(cats).sort()];
+    const cats = Array.from(new Set(boms.map((b: any) => b.category || 'Uncategorized'))).sort();
+    return ['All', ...cats.filter(c => c !== 'All')];
   }, [boms]);
 
   // Filtered BOMs
@@ -145,7 +145,6 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
   }, [sqcEnabled, components, drivingCompId]);
 
   const shortComps = scaledComps.filter((c: any) => c.is_short);
-  const okComps = scaledComps.filter((c: any) => !c.is_short);
 
   // Submit
   async function handleConfirm() {
@@ -214,7 +213,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
 
   const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(n);
 
-  // ═══ STEP 1: Select Product ═══
+  // === STEP 1: Select Product ===
   if (step === 'select') {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -225,7 +224,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 19l-7-7 7-7"/></svg>
             </button>
             <div className="flex-1">
-              <h1 className="text-[20px] font-bold text-white">New order</h1>
+              <h1 className="text-[20px] font-bold text-white">Start production</h1>
               <p className="text-[12px] text-white/50 mt-0.5">Step 1 &mdash; Select a recipe</p>
             </div>
           </div>
@@ -297,7 +296,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
     );
   }
 
-  // ═══ STEP 2: Configure Quantity ═══
+  // === STEP 2: Configure Quantity ===
   if (step === 'configure' && selectedBom) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -430,7 +429,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-red-700 text-[13px]">{submitError}</div>
           </div>
         )}
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
           <button onClick={handleConfirm} disabled={submitting || numQty <= 0}
             className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform disabled:opacity-50 mb-2">
             {submitting ? 'Creating...' : `Confirm order (${fmt(numQty)} ${uom})`}
