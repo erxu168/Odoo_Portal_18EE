@@ -43,15 +43,23 @@ export default function TemplateForm({ template, locations, departments, onSave,
   const [selectionFilter, setSelectionFilter] = useState<'all' | 'selected' | 'unselected'>('all');
 
   const [step, setStep] = useState<'config' | 'products'>('config');
+  const [portalUsers, setPortalUsers] = useState<any[]>([]);
 
   const isEdit = !!template?.id;
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch('/api/inventory/products?limit=500');
-        const data = await res.json();
-        setAllProducts(data.products || []);
+        const [prodRes, userRes] = await Promise.all([
+          fetch('/api/inventory/products?limit=500'),
+          fetch('/api/admin/users'),
+        ]);
+        const prodData = await prodRes.json();
+        setAllProducts(prodData.products || []);
+        try {
+          const userData = await userRes.json();
+          setPortalUsers((userData.users || []).filter((u: any) => u.employee_id));
+        } catch { /* ignore user fetch errors */ }
       } catch (err) {
         console.error('Failed to load products:', err);
       } finally {
@@ -89,7 +97,6 @@ export default function TemplateForm({ template, locations, departments, onSave,
     return list;
   }, [allProducts, search, catFilter, selectionFilter, selectedProductIds]);
 
-  // Selected products for review list
   const selectedProducts = useMemo(() => {
     return allProducts.filter((p) => selectedProductIds.has(p.id));
   }, [allProducts, selectedProductIds]);
@@ -350,8 +357,13 @@ export default function TemplateForm({ template, locations, departments, onSave,
                 <select value={assignId || ''} onChange={(e) => setAssignId(e.target.value ? Number(e.target.value) : null)}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[14px] text-gray-900 outline-none">
                   <option value="">Choose person...</option>
+                  {portalUsers.map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                  ))}
                 </select>
-                <p className="text-[11px] text-gray-400 mt-1">Portal users will appear once employees are linked</p>
+                {portalUsers.length === 0 && (
+                  <p className="text-[11px] text-gray-400 mt-1">No staff accounts with linked employees found</p>
+                )}
               </div>
             )}
 
