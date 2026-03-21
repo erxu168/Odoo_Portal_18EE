@@ -11,8 +11,15 @@ interface User {
   status: string;
   employee_id: number | null;
   active: number;
+  allowed_company_ids: string;
   created_at: string;
   last_login: string | null;
+}
+
+interface Company {
+  id: number;
+  name: string;
+  warehouse_code: string | null;
 }
 
 export default function AdminUsersPage() {
@@ -20,6 +27,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [pendingUsers, setPendingUsers] = useState<User[]>([]);
   const [rejectedUsers, setRejectedUsers] = useState<User[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'pending' | 'active' | 'rejected'>('pending');
@@ -27,8 +35,8 @@ export default function AdminUsersPage() {
   const [creating, setCreating] = useState(false);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [expandedUser, setExpandedUser] = useState<number | null>(null);
 
-  // Create form
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -39,10 +47,11 @@ export default function AdminUsersPage() {
   async function fetchAll() {
     setLoading(true);
     try {
-      const [usersRes, pendingRes, rejectedRes] = await Promise.all([
+      const [usersRes, pendingRes, rejectedRes, companiesRes] = await Promise.all([
         fetch('/api/admin/users'),
         fetch('/api/admin/registrations?status=pending'),
         fetch('/api/admin/registrations?status=rejected'),
+        fetch('/api/companies'),
       ]);
       if (usersRes.status === 403) {
         setError('You need admin access to manage users.');
@@ -52,9 +61,11 @@ export default function AdminUsersPage() {
       const usersData = await usersRes.json();
       const pendingData = await pendingRes.json();
       const rejectedData = await rejectedRes.json();
+      const companiesData = await companiesRes.json();
       setUsers(usersData.users || []);
       setPendingUsers(pendingData.users || []);
       setRejectedUsers(rejectedData.users || []);
+      setCompanies(companiesData.companies || []);
     } catch {
       setError('Failed to load users.');
     } finally {
@@ -62,11 +73,45 @@ export default function AdminUsersPage() {
     }
   }
 
+  function parseCompanyIds(raw: string | null | undefined): number[] {
+    if (!raw) return [];
+    try { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : []; }
+    catch { return []; }
+  }
+
+  async function toggleCompany(user: User, companyId: number) {
+    const current = parseCompanyIds(user.allowed_company_ids);
+    const updated = current.includes(companyId)
+      ? current.filter(id => id !== companyId)
+      : [...current, companyId];
+    try {
+      await fetch(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allowed_company_ids: updated }),
+      });
+      setUsers(prev => prev.map(u =>
+        u.id === user.id ? { ...u, allowed_company_ids: JSON.stringify(updated) } : u
+      ));
+    } catch { /* ignore */ }
+  }
+
+  async function assignAllCompanies(user: User) {
+    const allIds = companies.map(c => c.id);
+    try {
+      await fetch(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allowed_company_ids: allIds }),
+      });
+      setUsers(prev => prev.map(u =>
+        u.id === user.id ? { ...u, allowed_company_ids: JSON.stringify(allIds) } : u
+      ));
+    } catch { /* ignore */ }
+  }
+
   async function handleApprove(userId: number, role: string) {
-    if (!role) {
-      setError('Please select a role before approving.');
-      return;
-    }
+    if (!role) { setError('Please select a role before approving.'); return; }
     setActionLoading(userId);
     setError(null);
     try {
@@ -82,9 +127,7 @@ export default function AdminUsersPage() {
       fetchAll();
     } catch (err: any) {
       setError(err.message || 'Approval failed');
-    } finally {
-      setActionLoading(null);
-    }
+    } finally { setActionLoading(null); }
   }
 
   async function handleReject(userId: number) {
@@ -101,9 +144,7 @@ export default function AdminUsersPage() {
       fetchAll();
     } catch (err: any) {
       setError(err.message || 'Rejection failed');
-    } finally {
-      setActionLoading(null);
-    }
+    } finally { setActionLoading(null); }
   }
 
   async function handleClearRejection(userId: number) {
@@ -121,9 +162,7 @@ export default function AdminUsersPage() {
       fetchAll();
     } catch (err: any) {
       setError(err.message || 'Failed to clear rejection');
-    } finally {
-      setActionLoading(null);
-    }
+    } finally { setActionLoading(null); }
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -143,9 +182,7 @@ export default function AdminUsersPage() {
       fetchAll();
     } catch (err: any) {
       setError(err.message || 'Failed to create user');
-    } finally {
-      setCreating(false);
-    }
+    } finally { setCreating(false); }
   }
 
   async function toggleActive(user: User) {
@@ -200,12 +237,10 @@ export default function AdminUsersPage() {
     return `${d}d ago`;
   }
 
-  // Track selected roles for pending users
   const [pendingRoles, setPendingRoles] = useState<Record<number, string>>({});
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
@@ -226,7 +261,6 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {/* Tab pills */}
       <div className="flex gap-1.5 px-4 py-3">
         <button onClick={() => setTab('pending')}
           className={`px-4 py-2 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
@@ -248,14 +282,12 @@ export default function AdminUsersPage() {
         </button>
       </div>
 
-      {/* Success message */}
       {successMsg && (
         <div className="mx-4 mb-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-[13px] font-semibold">
           {successMsg}
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="mx-4 mb-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[13px]">
           {error}
@@ -270,7 +302,7 @@ export default function AdminUsersPage() {
           </div>
         ) : (
           <>
-            {/* ===== PENDING TAB ===== */}
+            {/* PENDING TAB */}
             {tab === 'pending' && (
               pendingUsers.length === 0 ? (
                 <div className="text-center py-16">
@@ -278,7 +310,7 @@ export default function AdminUsersPage() {
                     <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                   </div>
                   <div className="text-[15px] font-semibold text-gray-900 mb-1">No pending registrations</div>
-                  <div className="text-[13px] text-gray-500">All caught up! New staff will appear here when they register.</div>
+                  <div className="text-[13px] text-gray-500">All caught up!</div>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
@@ -328,48 +360,117 @@ export default function AdminUsersPage() {
               )
             )}
 
-            {/* ===== ACTIVE TAB ===== */}
+            {/* ACTIVE TAB */}
             {tab === 'active' && (
               <div className="flex flex-col gap-2">
-                {users.map((u) => (
-                  <div key={u.id}
-                    className={`bg-white border border-gray-200 rounded-xl p-4 ${!u.active ? 'opacity-50' : ''}`}>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="text-[15px] font-semibold text-gray-900">{u.name}</div>
-                        <div className="text-[12px] text-gray-500 mt-0.5">{u.email}</div>
+                {users.map((u) => {
+                  const userCompanies = parseCompanyIds(u.allowed_company_ids);
+                  const isExpanded = expandedUser === u.id;
+                  const isAdmin = u.role === 'admin';
+                  return (
+                    <div key={u.id}
+                      className={`bg-white border border-gray-200 rounded-xl overflow-hidden ${!u.active ? 'opacity-50' : ''}`}>
+                      <div className="p-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="text-[15px] font-semibold text-gray-900">{u.name}</div>
+                            <div className="text-[12px] text-gray-500 mt-0.5">{u.email}</div>
+                          </div>
+                          <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${roleColors[u.role] || 'bg-gray-100 text-gray-500'}`}>
+                            {u.role}
+                          </span>
+                        </div>
+
+                        {/* Company access badges */}
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {isAdmin ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-semibold">All companies (admin)</span>
+                          ) : userCompanies.length === 0 ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-red-50 text-red-600 font-semibold">No companies assigned</span>
+                          ) : (
+                            companies.filter(c => userCompanies.includes(c.id)).map(c => (
+                              <span key={c.id} className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-semibold">
+                                {c.warehouse_code || c.name}
+                              </span>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-3 text-[12px]">
+                          <select value={u.role} onChange={(e) => handleChangeRole(u, e.target.value)}
+                            className="px-2 py-1 rounded-lg border border-gray-200 text-gray-700 bg-white text-[12px]">
+                            <option value="staff">Staff</option>
+                            <option value="manager">Manager</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                          <button onClick={() => setExpandedUser(isExpanded ? null : u.id)}
+                            className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${isExpanded ? 'border-orange-300 text-orange-600 bg-orange-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
+                            Companies
+                          </button>
+                          <button onClick={() => handleResetPassword(u)}
+                            className="px-3 py-1 rounded-lg border border-gray-200 text-gray-600 active:bg-gray-50 text-[12px]">
+                            Reset pw
+                          </button>
+                          <button onClick={() => toggleActive(u)}
+                            className={`px-3 py-1 rounded-lg border text-[12px] ${u.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-emerald-200 text-emerald-600 active:bg-emerald-50'}`}>
+                            {u.active ? 'Deactivate' : 'Reactivate'}
+                          </button>
+                        </div>
+
+                        {u.last_login && (
+                          <div className="text-[11px] text-gray-400 mt-2">
+                            Last login: {new Date(u.last_login).toLocaleString('de-DE')}
+                          </div>
+                        )}
                       </div>
-                      <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${roleColors[u.role] || 'bg-gray-100 text-gray-500'}`}>
-                        {u.role}
-                      </span>
+
+                      {/* Expanded company assignment */}
+                      {isExpanded && !isAdmin && (
+                        <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Company access</span>
+                            <button onClick={() => assignAllCompanies(u)}
+                              className="text-[11px] font-semibold text-orange-600 active:opacity-70">
+                              Select all
+                            </button>
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            {companies.map(c => {
+                              const checked = userCompanies.includes(c.id);
+                              return (
+                                <button key={c.id} onClick={() => toggleCompany(u, c.id)}
+                                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                                    checked ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-gray-200 active:bg-gray-50'
+                                  }`}>
+                                  <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                                    checked ? 'bg-emerald-500 border-emerald-500' : 'border-gray-300 bg-white'
+                                  }`}>
+                                    {checked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[13px] font-semibold text-gray-900">{c.name}</div>
+                                  </div>
+                                  {c.warehouse_code && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-mono flex-shrink-0">{c.warehouse_code}</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      {isExpanded && isAdmin && (
+                        <div className="border-t border-gray-100 px-4 py-3 bg-blue-50">
+                          <div className="text-[12px] text-blue-700">Admins automatically have access to all companies. No assignment needed.</div>
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 mt-3 text-[12px]">
-                      <select value={u.role} onChange={(e) => handleChangeRole(u, e.target.value)}
-                        className="px-2 py-1 rounded-lg border border-gray-200 text-gray-700 bg-white text-[12px]">
-                        <option value="staff">Staff</option>
-                        <option value="manager">Manager</option>
-                        <option value="admin">Admin</option>
-                      </select>
-                      <button onClick={() => handleResetPassword(u)}
-                        className="px-3 py-1 rounded-lg border border-gray-200 text-gray-600 active:bg-gray-50 text-[12px]">
-                        Reset pw
-                      </button>
-                      <button onClick={() => toggleActive(u)}
-                        className={`px-3 py-1 rounded-lg border text-[12px] ${u.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-emerald-200 text-emerald-600 active:bg-emerald-50'}`}>
-                        {u.active ? 'Deactivate' : 'Reactivate'}
-                      </button>
-                    </div>
-                    {u.last_login && (
-                      <div className="text-[11px] text-gray-400 mt-2">
-                        Last login: {new Date(u.last_login).toLocaleString('de-DE')}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
-            {/* ===== REJECTED TAB ===== */}
+            {/* REJECTED TAB */}
             {tab === 'rejected' && (
               rejectedUsers.length === 0 ? (
                 <div className="text-center py-16">
@@ -407,7 +508,7 @@ export default function AdminUsersPage() {
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowCreate(false)}>
           <div className="absolute inset-0 bg-black/40" />
-          <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-8"
+          <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-24"
             onClick={(e) => e.stopPropagation()}
             style={{ animation: 'slideUp .25s ease-out' }}>
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
