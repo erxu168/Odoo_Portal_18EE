@@ -8,6 +8,8 @@ import WoDetail from '@/components/manufacturing/WoDetail';
 import CreateMo from '@/components/manufacturing/CreateMo';
 import MfgDashboard from '@/components/manufacturing/MfgDashboard';
 import PickList from '@/components/manufacturing/PickList';
+import BomList from '@/components/manufacturing/BomList';
+import BomDetail from '@/components/manufacturing/BomDetail';
 
 type Screen =
   | { type: 'dashboard' }
@@ -15,7 +17,9 @@ type Screen =
   | { type: 'mo-detail'; moId: number }
   | { type: 'wo-detail'; moId: number; woId: number }
   | { type: 'create' }
-  | { type: 'pick-list' };
+  | { type: 'pick-list' }
+  | { type: 'bom-list' }
+  | { type: 'bom-detail'; bomId: number };
 
 export default function ManufacturingPage() {
   const router = useRouter();
@@ -51,7 +55,7 @@ export default function ManufacturingPage() {
   function handleDashboardNav(tile: string) {
     if (tile === 'orders') navigate({ type: 'mo-list', mode: 'production' });
     else if (tile === 'create') navigate({ type: 'create' });
-    else if (tile === 'recipes') navigate({ type: 'mo-list', mode: 'production' });
+    else if (tile === 'recipes') navigate({ type: 'bom-list' });
     else if (tile === 'completed') navigate({ type: 'mo-list', mode: 'completed' });
     else if (tile === 'pick-list') navigate({ type: 'pick-list' });
   }
@@ -116,6 +120,20 @@ export default function ManufacturingPage() {
       case 'pick-list':
         return (
           <PickList onBack={goDashboard} onHome={goHome} />
+        );
+      case 'bom-list':
+        return (
+          <BomList
+            onSelect={(bom) => navigate({ type: 'bom-detail', bomId: bom.id })}
+            onBack={goDashboard}
+          />
+        );
+      case 'bom-detail':
+        return (
+          <BomDetail
+            bomId={screen.bomId}
+            onBack={goBack}
+          />
         );
     }
   }
