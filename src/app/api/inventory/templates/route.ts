@@ -6,7 +6,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { initInventoryTables, createTemplate, listTemplates, updateTemplate, getTemplate } from '@/lib/inventory-db';
+import { initInventoryTables, createTemplate, listTemplates, updateTemplate, getTemplate, generateSessionForTemplate } from '@/lib/inventory-db';
 
 initInventoryTables();
 
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!hasRole(user, 'manager')) {
-    return NextResponse.json({ error: 'Forbidden — manager role required' }, { status: 403 });
+    return NextResponse.json({ error: 'Forbidden \u2014 manager role required' }, { status: 403 });
   }
 
   const body = await request.json();
@@ -51,7 +51,10 @@ export async function POST(request: Request) {
     created_by: user.id,
   });
 
-  return NextResponse.json({ id, message: 'Template created' }, { status: 201 });
+  // Auto-generate a counting session for today
+  const sessionId = generateSessionForTemplate(id);
+
+  return NextResponse.json({ id, session_id: sessionId, message: 'Template created + session generated for today' }, { status: 201 });
 }
 
 export async function PUT(request: Request) {

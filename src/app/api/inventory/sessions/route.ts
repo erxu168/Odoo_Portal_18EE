@@ -6,7 +6,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus } from '@/lib/inventory-db';
+import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions } from '@/lib/inventory-db';
 
 initInventoryTables();
 
@@ -36,6 +36,13 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
+
+  // Generate all today's sessions from active templates
+  if (body.action === 'generate_today') {
+    const result = generateTodaySessions();
+    return NextResponse.json({ ...result, message: `Generated ${result.created} sessions (${result.skipped} already existed)` });
+  }
+
   const { template_id, scheduled_date, location_id, assigned_user_id } = body;
 
   if (!template_id || !scheduled_date || !location_id) {
