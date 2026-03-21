@@ -89,7 +89,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
   });
 
   const statusTabs = mode === 'completed' ? COMPLETED_FILTERS : PRODUCTION_FILTERS;
-  const title = mode === 'completed' ? 'Completed' : 'Production';
+  const title = mode === 'completed' ? 'Completed' : 'Manufacturing';
   const subtitle = mode === 'completed' ? 'Finished orders' : 'Manufacturing orders';
 
   function handleDateChange(preset: string, range: DateRange | null) {

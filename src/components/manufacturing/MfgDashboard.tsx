@@ -32,7 +32,7 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
   const tiles = [
     {
       key: 'orders',
-      label: 'Production',
+      label: 'Manufacturing',
       sublabel: 'Manufacturing orders',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -44,7 +44,7 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
     },
     {
       key: 'create',
-      label: 'Start production',
+      label: 'Start manufacturing',
       sublabel: 'New batch',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

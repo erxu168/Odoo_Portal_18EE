@@ -224,7 +224,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 19l-7-7 7-7"/></svg>
             </button>
             <div className="flex-1">
-              <h1 className="text-[20px] font-bold text-white">Start production</h1>
+              <h1 className="text-[20px] font-bold text-white">Start manufacturing</h1>
               <p className="text-[12px] text-white/50 mt-0.5">Step 1 &mdash; Select a recipe</p>
             </div>
           </div>
