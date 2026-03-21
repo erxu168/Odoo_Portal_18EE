@@ -177,7 +177,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         <div className="flex items-center justify-between mb-2">
           <button onClick={onBack} className="flex items-center gap-1 text-orange-600 text-[13px] font-semibold active:opacity-70">
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
-            Production
+            Manufacturing
           </button>
           {canCancel && (
             <button
@@ -236,7 +236,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         </div>
       </div>
 
-      <div className="px-4 pb-28">
+      <div className="px-4 pb-44">
         {tab === 'workorders' && (
           <div className="flex flex-col gap-2">
             {workOrders.map((wo, idx) => (
@@ -325,13 +325,13 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       </div>
 
       {produceError && (
-        <div className="fixed bottom-24 left-0 right-0 max-w-lg mx-auto px-4">
+        <div className="fixed bottom-40 left-0 right-0 max-w-lg mx-auto px-4">
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-red-700 text-sm">{produceError}</div>
         </div>
       )}
 
       {isDraft && (
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
           <button onClick={handleConfirm} disabled={confirmLoading}
             className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
             {confirmLoading ? 'Confirming...' : 'Confirm order'}
@@ -340,7 +340,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       )}
 
       {showProduce && (
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
           <button onClick={handleProduce} disabled={producing}
             className="w-full py-4 rounded-xl bg-emerald-500 text-white font-bold text-[15px] shadow-lg shadow-emerald-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
             {producing ? 'Finishing...' : 'Produce & close'}
@@ -349,13 +349,13 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       )}
 
       {isDone && (
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
           <div className="w-full py-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-[15px] text-center">Order completed</div>
         </div>
       )}
 
       {isCancelled && (
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
           <div className="w-full py-4 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-[15px] text-center">Order cancelled</div>
         </div>
       )}
@@ -375,7 +375,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       {showCancelConfirm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowCancelConfirm(false)}>
           <div className="absolute inset-0 bg-black/40" />
-          <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-8" onClick={(e) => e.stopPropagation()} style={{animation: 'slideUp .25s ease-out'}}>
+          <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-24" onClick={(e) => e.stopPropagation()} style={{animation: 'slideUp .25s ease-out'}}>
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
             <div className="text-center mb-6">
               <h3 className="text-lg font-bold text-gray-900">Cancel this order?</h3>

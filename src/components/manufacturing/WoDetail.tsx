@@ -242,7 +242,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         </div>
       </div>
 
-      <div className="px-4 pb-24">
+      <div className="px-4 pb-40">
         {tab === 'components' && (
           <div className="flex flex-col gap-1.5">
             {totalComps > 0 && (
@@ -363,7 +363,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       </div>
 
       {wo.state !== 'done' && (
-        <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
           <button onClick={handleDoneRequest} disabled={!!actionLoading}
             className="w-full py-4 rounded-xl bg-orange-500 text-white font-bold text-[15px] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
             {actionLoading === 'done' ? 'Finishing...' : nextWo && nextWo.state !== 'done' ? `Done ${arrow} ${nextWo.name}` : 'Mark step done'}
@@ -386,7 +386,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       {showConfirm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowConfirm(false)}>
           <div className="absolute inset-0 bg-black/40" />
-          <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-8" onClick={(e) => e.stopPropagation()} style={{animation: 'slideUp .25s ease-out'}}>
+          <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-24" onClick={(e) => e.stopPropagation()} style={{animation: 'slideUp .25s ease-out'}}>
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
             <div className="text-center mb-6">
               <h3 className="text-lg font-bold text-gray-900">Finished this step?</h3>
