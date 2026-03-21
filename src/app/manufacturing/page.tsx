@@ -133,6 +133,7 @@ export default function ManufacturingPage() {
           <BomDetail
             bomId={screen.bomId}
             onBack={goBack}
+            onCreateMo={() => navigate({ type: 'create' })}
           />
         );
     }
