@@ -7,13 +7,16 @@ import AppDrawer from './AppDrawer';
 
 /**
  * Thin persistent top bar with hamburger menu and company selector.
- * Hidden on auth pages. Sits above all page headers.
+ * Hidden on auth pages and full-screen module pages (recipes, etc.)
  */
+
+const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/recipes'];
+
 export default function AppTopBar() {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  if (pathname === '/login' || pathname === '/register' || pathname === '/forgot-password' || pathname === '/reset-password') {
+  if (HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
     return null;
   }
 
