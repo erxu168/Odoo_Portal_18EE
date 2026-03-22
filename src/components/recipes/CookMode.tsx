@@ -21,6 +21,37 @@ interface Props {
 
 const TYPE_EMOJI: Record<string, string> = { prep: '\ud83d\udd2a', cook: '\ud83d\udd25', plate: '\ud83c\udf7d\ufe0f' };
 
+/**
+ * Parse instruction HTML into bullet points.
+ * Splits on sentence boundaries (. followed by space/uppercase).
+ * Preserves <b>bold</b> as React elements.
+ */
+function parseInstructions(html: string): string[] {
+  if (!html) return [];
+  // Strip HTML tags except <b>
+  let text = html.replace(/<\/?p>/gi, '').replace(/<br\s*\/?>/gi, '. ').trim();
+  // Remove all tags except <b> and </b>
+  text = text.replace(/<(?!\/?b\b)[^>]*>/gi, '');
+  // Split on sentence boundaries: period + space, or period + end
+  const raw = text.split(/\.\s+/).map(s => s.trim()).filter(s => s.length > 0);
+  // Re-add period if it was stripped
+  return raw.map(s => s.endsWith('.') ? s : s + '.');
+}
+
+/**
+ * Render a single bullet string, converting <b>text</b> to bold spans.
+ */
+function renderBulletText(text: string): React.ReactNode {
+  const parts = text.split(/(<b>.*?<\/b>)/gi);
+  return parts.map((part, i) => {
+    const boldMatch = part.match(/^<b>(.*?)<\/b>$/i);
+    if (boldMatch) {
+      return <strong key={i} className="text-white font-bold">{boldMatch[1]}</strong>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 export default function CookMode({ mode, recipeName, steps, onExit, onComplete }: Props) {
   const [currentStep, setCurrentStep] = useState(0);
   const [timerLeft, setTimerLeft] = useState(0);
@@ -175,7 +206,7 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
   if (!step) return null;
 
   const emoji = TYPE_EMOJI[step.step_type] || '\ud83d\udc68\u200d\ud83c\udf73';
-  const instrText = step.instruction?.replace(/<[^>]*>/g, '') || `Step ${currentStep + 1}`;
+  const bullets = parseInstructions(step.instruction);
 
   return (
     <div className={`min-h-screen bg-[#111] flex flex-col ${flashing ? 'animate-pulse bg-red-900' : ''}`}>
@@ -201,17 +232,17 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
       </div>
 
       <div className="flex-1 px-5 py-4 overflow-y-auto">
-        <div className="text-center mb-4">
+        <div className="text-center mb-5">
           <div className="text-5xl mb-2">{emoji}</div>
           <div className="text-[14px] font-bold text-white/70">{step.step_type.charAt(0).toUpperCase() + step.step_type.slice(1)}</div>
         </div>
 
         {step.ingredients && step.ingredients.length > 0 && (
-          <div className="mb-4">
-            <div className="text-[11px] font-semibold text-white/40 uppercase tracking-wider mb-2">{"You\u2019ll need"}</div>
+          <div className="mb-5">
+            <div className="text-[12px] font-semibold text-white/40 uppercase tracking-wider mb-2">{"\u2019ll need"}</div>
             <div className="flex flex-wrap gap-1.5">
               {step.ingredients.map(ing => (
-                <div key={ing.id} className="px-3 py-1.5 rounded-lg bg-white/10 text-[12px] text-white/80">
+                <div key={ing.id} className="px-3 py-1.5 rounded-lg bg-white/10 text-[13px] text-white/80">
                   {ing.uom && <span className="font-mono text-white/50 mr-1">{ing.uom}</span>}
                   {ing.name}
                 </div>
@@ -220,14 +251,34 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
           </div>
         )}
 
-        <div className="mb-4">
-          <div className="text-[11px] font-semibold text-white/40 uppercase tracking-wider mb-2">Instructions</div>
-          <div className="text-[15px] text-white/90 leading-relaxed whitespace-pre-wrap">{instrText}</div>
+        {/* Instructions — large bullet list */}
+        <div className="mb-5" data-dbg="instruction-box">
+          <div className="text-[12px] font-semibold text-white/40 uppercase tracking-wider mb-3">Instructions</div>
+          <div className="bg-white/5 rounded-2xl px-5 py-4">
+            {bullets.length > 0 ? (
+              <ul className="space-y-3">
+                {bullets.map((bullet, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-[11px] font-bold text-white/50 font-mono">{i + 1}</span>
+                    </div>
+                    <div className="text-[18px] text-white/90 leading-relaxed flex-1">
+                      {renderBulletText(bullet)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-[18px] text-white/90 leading-relaxed">
+                {step.instruction?.replace(/<[^>]*>/g, '') || `Step ${currentStep + 1}`}
+              </div>
+            )}
+          </div>
         </div>
 
         {step.tip && (
-          <div className="bg-white/5 rounded-xl px-4 py-3 mb-4">
-            <div className="text-[13px] text-amber-400">{'\ud83d\udca1'} {step.tip}</div>
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl px-5 py-3.5 mb-5">
+            <div className="text-[15px] text-amber-300 leading-relaxed">{'\ud83d\udca1'} {step.tip}</div>
           </div>
         )}
 
