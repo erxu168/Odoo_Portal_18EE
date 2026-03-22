@@ -2,8 +2,8 @@
  * POST /api/inventory/approve
  *
  * Manager/Admin approves a counting session.
- * Writes inventory_quantity to stock.quant in Odoo 18 EE,
- * then calls apply_inventory to commit the adjustment.
+ * Updates status to approved first, then attempts to write to Odoo.
+ * If Odoo write fails, session is still approved but with a warning.
  *
  * Body: { session_id: number, review_note?: string }
  */
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!hasRole(user, 'manager')) {
-    return NextResponse.json({ error: 'Forbidden — manager role required' }, { status: 403 });
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const body = await request.json();
@@ -41,27 +41,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No count entries to approve' }, { status: 400 });
   }
 
+  // Update status FIRST so it's approved even if Odoo write fails
+  updateSessionStatus(session_id, 'approved', {
+    reviewed_by: user.id,
+    review_note,
+  });
+
+  let odooWarning: string | null = null;
+
   try {
     const odoo = getOdoo();
 
-    // For each entry, find or create the stock.quant, set inventory_quantity
     for (const entry of entries) {
-      // Find existing quant
       const quants = await odoo.searchRead('stock.quant', [
         ['product_id', '=', entry.product_id],
         ['location_id', '=', session.location_id],
       ], ['id', 'quantity'], { limit: 1 });
 
       if (quants.length > 0) {
-        // Write counted quantity
         await odoo.write('stock.quant', [quants[0].id], {
           inventory_quantity: entry.counted_qty,
         });
       } else {
-        // No quant exists — create one with inventory adjustment
-        // Odoo will create the quant when we set inventory_quantity
-        // via the action_apply_inventory on the model
-        const newId = await odoo.create('stock.quant', {
+        await odoo.create('stock.quant', {
           product_id: entry.product_id,
           location_id: session.location_id,
           inventory_quantity: entry.counted_qty,
@@ -69,7 +71,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Apply all inventory adjustments at this location
     const allQuants = await odoo.searchRead('stock.quant', [
       ['location_id', '=', session.location_id],
       ['inventory_quantity_set', '=', true],
@@ -79,20 +80,14 @@ export async function POST(request: Request) {
       const quantIds = allQuants.map((q: any) => q.id);
       await odoo.call('stock.quant', 'action_apply_inventory', [quantIds]);
     }
-
-    // Mark session as approved in portal DB
-    updateSessionStatus(session_id, 'approved', {
-      reviewed_by: user.id,
-      review_note,
-    });
-
-    return NextResponse.json({
-      message: `Approved ${entries.length} counts — inventory updated in Odoo`,
-      entries_count: entries.length,
-    });
-
   } catch (err: any) {
-    console.error('Inventory approve error:', err.message);
-    return NextResponse.json({ error: `Odoo write failed: ${err.message}` }, { status: 500 });
+    console.error('Odoo inventory write failed (session still approved):', err.message);
+    odooWarning = `Approved but Odoo sync failed: ${err.message}`;
   }
+
+  return NextResponse.json({
+    message: odooWarning || `Approved ${entries.length} counts`,
+    warning: odooWarning,
+    entries_count: entries.length,
+  });
 }

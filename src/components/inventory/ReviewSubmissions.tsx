@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
+import StandardFilter from '@/components/ui/StandardFilter';
 
 interface ReviewSubmissionsProps {
   onViewSession: (sessionId: number) => void;
@@ -19,6 +20,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [reviewEntries, setReviewEntries] = useState<any[]>([]);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState<'approve' | 'reject' | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<{ from: string; to: string } | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -27,20 +30,32 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         fetch(`/api/inventory/sessions?status=${filter}`).then((r) => r.json()),
         fetch(`/api/inventory/quick-count?status=${filter}`).then((r) => r.json()),
       ]);
-      setSessions(sessRes.sessions || []);
-      setQuickCounts(qcRes.counts || []);
+      let sessData = sessRes.sessions || [];
+      const qcData = qcRes.counts || [];
+
+      // Apply date filter for approved/rejected
+      if (dateRange && (filter === 'approved' || filter === 'rejected')) {
+        sessData = sessData.filter((s: any) => {
+          const d = (s.reviewed_at || s.scheduled_date || '').substring(0, 10);
+          return d >= dateRange.from && d <= dateRange.to;
+        });
+      }
+
+      setSessions(sessData);
+      setQuickCounts(qcData);
     } catch (err) {
       console.error('Failed to fetch reviews:', err);
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filter, dateRange]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   async function openReview(sess: any) {
     setReviewLoading(true);
     setReviewSession(sess);
+    setErrorMsg(null);
     try {
       const countRes = await fetch(`/api/inventory/counts?session_id=${sess.id}`).then(r => r.json());
       setReviewEntries(countRes.entries || []);
@@ -73,20 +88,34 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   async function handleAction(action: 'approve' | 'reject') {
     if (!reviewSession) return;
     setActionLoading(reviewSession.id);
+    setErrorMsg(null);
     try {
+      let res: Response;
       if (action === 'approve') {
-        await fetch('/api/inventory/approve', {
+        res = await fetch('/api/inventory/approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ session_id: reviewSession.id }),
         });
       } else {
-        await fetch('/api/inventory/sessions', {
+        res = await fetch('/api/inventory/sessions', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: reviewSession.id, status: 'rejected' }),
         });
       }
+
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error || 'Action failed');
+        setShowConfirm(null);
+        return;
+      }
+
+      if (data.warning) {
+        setErrorMsg(data.warning);
+      }
+
       setShowConfirm(null);
       setReviewSession(null);
       setReviewProducts([]);
@@ -94,6 +123,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       fetchData();
     } catch (err) {
       console.error(`${action} failed:`, err);
+      setErrorMsg('Network error. Please try again.');
+      setShowConfirm(null);
     } finally {
       setActionLoading(null);
     }
@@ -117,8 +148,9 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
 
   const pendingSessions = sessions.filter((s) => s.status === 'submitted').length;
   const pendingQC = quickCounts.filter((q) => q.status === 'pending').length;
+  const showDateFilter = filter === 'approved' || filter === 'rejected';
 
-  // ── REVIEW DETAIL VIEW ──
+  // ---- REVIEW DETAIL VIEW ----
   if (reviewSession) {
     const entryMap: Record<number, number> = {};
     reviewEntries.forEach((e: any) => { entryMap[e.product_id] = e.counted_qty; });
@@ -128,10 +160,9 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
 
     return (
       <div className="flex flex-col min-h-0 flex-1">
-        {/* Header */}
         <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
           <div className="flex items-center justify-between mb-1">
-            <button onClick={() => { setReviewSession(null); setReviewProducts([]); setReviewEntries([]); }}
+            <button onClick={() => { setReviewSession(null); setReviewProducts([]); setReviewEntries([]); setErrorMsg(null); }}
               className="flex items-center gap-1 text-green-700 text-[13px] font-semibold active:opacity-70">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
               Back to list
@@ -143,9 +174,14 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
           </p>
         </div>
 
+        {errorMsg && (
+          <div className="mx-4 mt-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[12px] font-semibold">
+            {errorMsg}
+          </div>
+        )}
+
         {reviewLoading ? <Spinner /> : (
           <>
-            {/* Summary */}
             <div className="px-4 pt-4">
               <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
                 <div className="flex items-center justify-between mb-3">
@@ -169,7 +205,6 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               </div>
             </div>
 
-            {/* Product list */}
             <div className="flex-1 overflow-y-auto px-4 pb-36">
               {countedProducts.length > 0 && (
                 <>
@@ -215,7 +250,6 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               )}
             </div>
 
-            {/* Approve / Reject buttons */}
             {isSubmitted && (
               <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
                 <div className="flex gap-3">
@@ -231,7 +265,6 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               </div>
             )}
 
-            {/* Confirmation overlay */}
             {showConfirm && (
               <div className="fixed inset-0 z-[60] bg-black/50 flex items-end justify-center">
                 <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8">
@@ -266,7 +299,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     );
   }
 
-  // ── LIST VIEW ──
+  // ---- LIST VIEW ----
   return (
     <div className="flex flex-col min-h-0 flex-1">
       <div className="px-4 pt-3 pb-1">
@@ -291,10 +324,16 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
           {['submitted', 'approved', 'rejected'].map((s) => (
             <FilterPill key={s} active={filter === s}
               label={s.charAt(0).toUpperCase() + s.slice(1)}
-              onClick={() => setFilter(s)} />
+              onClick={() => { setFilter(s); setDateRange(null); }} />
           ))}
         </FilterBar>
       </div>
+
+      {showDateFilter && (
+        <div className="px-4 pb-2">
+          <StandardFilter onChange={(range) => setDateRange(range)} />
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-4 pb-24">
         {loading ? <Spinner /> : (
@@ -315,10 +354,17 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                       <div className="text-[12px] text-gray-500 mb-3">
                         {sess.scheduled_date} {sess.location_name && `\u00B7 ${sess.location_name}`}
                       </div>
-                      <button onClick={() => openReview(sess)}
-                        className="w-full py-2.5 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700 shadow-sm">
-                        Review
-                      </button>
+                      {sess.status === 'submitted' ? (
+                        <button onClick={() => openReview(sess)}
+                          className="w-full py-2.5 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700 shadow-sm">
+                          Review
+                        </button>
+                      ) : (
+                        <button onClick={() => openReview(sess)}
+                          className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[13px] font-semibold active:bg-gray-200">
+                          View details
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
