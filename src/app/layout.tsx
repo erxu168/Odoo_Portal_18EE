@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import AppTabBar from '@/components/ui/AppTabBar';
 import AppTopBar from '@/components/ui/AppTopBar';
+import MainWrapper from '@/components/ui/MainWrapper';
 import { CompanyProvider } from '@/lib/company-context';
 import DebugOverlay from '@/components/ui/DebugOverlay';
 
@@ -28,7 +29,7 @@ export default function RootLayout({
       <body className="antialiased bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white min-h-screen">
         <CompanyProvider>
           <AppTopBar />
-          <main className="max-w-lg mx-auto pt-9 pb-20">{children}</main>
+          <MainWrapper>{children}</MainWrapper>
           <AppTabBar />
           <DebugOverlay />
         </CompanyProvider>
