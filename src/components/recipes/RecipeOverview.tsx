@@ -55,7 +55,8 @@ export default function RecipeOverview({
 
   const totalTime = steps.reduce((s, st) => s + (st.timer_seconds || 0), 0);
   const diff = difficulty ? DIFF[difficulty] : null;
-  const accent = mode === 'cooking' ? 'green' : 'purple';
+  // FIX U1: Use full Tailwind class strings (no dynamic interpolation)
+  const spinnerBorder = mode === 'cooking' ? 'border-green-600' : 'border-purple-600';
   const emoji = mode === 'cooking' ? '\ud83c\udf73' : '\ud83c\udfed';
   const modeLabel = mode === 'cooking' ? 'COOKING GUIDE' : 'PRODUCTION GUIDE';
   const modeBg = mode === 'cooking' ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800';
@@ -101,7 +102,7 @@ export default function RecipeOverview({
         </div>
         {loading && (
           <div className="flex items-center justify-center py-8">
-            <div className="w-8 h-8 border-3 border-green-600 border-t-transparent rounded-full animate-spin" />
+            <div className={`w-8 h-8 border-3 ${spinnerBorder} border-t-transparent rounded-full animate-spin`} />
           </div>
         )}
         {!loading && steps.length > 0 && (

@@ -52,8 +52,9 @@ export async function GET(request: Request) {
     }));
 
     return NextResponse.json({ versions: enriched });
-  } catch (err: any) {
-    console.error('Recipe versions error:', err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Recipe versions error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
