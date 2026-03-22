@@ -2,10 +2,10 @@
  * GET /api/inventory/products
  *
  * Proxies product.product from Odoo 18 EE.
- * Query params: ?category_id=32&search=soju&limit=100
+ * Query params: ?category_id=32&search=soju&limit=100&ids=891,950,938
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 
 export async function GET(request: Request) {
@@ -15,11 +15,21 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const categoryId = searchParams.get('category_id');
   const search = searchParams.get('search');
+  const ids = searchParams.get('ids');
   const limit = parseInt(searchParams.get('limit') || '200');
 
   try {
     const odoo = getOdoo();
     const domain: any[] = [['type', '=', 'consu']];
+
+    // Filter by explicit product IDs (from counting template)
+    if (ids) {
+      const idList = ids.split(',').map(Number).filter(n => !isNaN(n) && n > 0);
+      if (idList.length > 0) {
+        domain.push(['id', 'in', idList]);
+      }
+    }
+
     if (categoryId) domain.push(['categ_id', '=', parseInt(categoryId)]);
     if (search) domain.push(['name', 'ilike', search]);
 

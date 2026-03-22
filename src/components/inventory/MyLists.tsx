@@ -9,6 +9,12 @@ interface MyListsProps {
   onHome: () => void;
 }
 
+const STATUS_FILTER_OPTIONS = [
+  { key: 'pending', label: 'To count' },
+  { key: 'submitted', label: 'Submitted' },
+  { key: 'approved', label: 'Approved' },
+];
+
 export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProps) {
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,18 +50,20 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const statusLabel = STATUS_FILTER_OPTIONS.find(o => o.key === statusFilter)?.label || statusFilter;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
-        <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
+        <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(22,163,74,0.08)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
           <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
           <div className="flex-1">
             <h1 className="text-[20px] font-bold text-white">
-              {userRole === 'admin' ? 'All Inventory' : 'Inventory'}
+              {userRole === 'admin' ? 'All Inventory' : 'My Counts'}
             </h1>
             <p className="text-[12px] text-white/50 mt-0.5">
               {userRole === 'admin' ? 'All counting sessions' : 'Your assigned counting lists'}
@@ -67,15 +75,15 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
       {/* Status filter */}
       <div className="pt-3">
         <FilterBar>
-          {['pending', 'submitted', 'approved'].map((s) => (
-            <FilterPill key={s} active={statusFilter === s}
-              label={s.charAt(0).toUpperCase() + s.slice(1)}
-              onClick={() => setStatusFilter(s)} />
+          {STATUS_FILTER_OPTIONS.map((opt) => (
+            <FilterPill key={opt.key} active={statusFilter === opt.key}
+              label={opt.label}
+              onClick={() => setStatusFilter(opt.key)} />
           ))}
         </FilterBar>
       </div>
 
-      {/* Location filter */}
+      {/* Location filter - only show if user has more than 1 location */}
       {locations.length > 1 && (
         <FilterBar>
           <FilterPill active={locationFilter === 'all'} label="All locations" onClick={() => setLocationFilter('all')} />
@@ -90,7 +98,7 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
       {/* Session cards */}
       <div className="px-4 pb-24">
         {loading ? <Spinner /> : sessions.length === 0 ? (
-          <EmptyState icon="\uD83D\uDCCB" title={`No ${statusFilter} lists`} body="Check back later or ask your manager to assign you a counting list." />
+          <EmptyState icon="\uD83D\uDCCB" title={`No ${statusLabel.toLowerCase()} lists`} body="Check back later or ask your manager to assign you a counting list." />
         ) : (
           <div className="flex flex-col gap-3">
             {sessions.map((sess: any) => (

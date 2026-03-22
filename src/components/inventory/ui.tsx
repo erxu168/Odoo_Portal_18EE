@@ -4,8 +4,7 @@ import React from 'react';
 
 /**
  * Shared UI components for inventory module.
- * All colors follow DESIGN_GUIDE.md — semantic only.
- * No purple. No decorative colors.
+ * All colors follow DESIGN_GUIDE.md \u2014 semantic only.
  */
 
 // --- Filter Pill Bar ---
@@ -26,29 +25,24 @@ export function FilterPill({ active, label, count, onClick }: { active: boolean;
 
 // --- Status Badge (semantic colors only) ---
 const STATUS_STYLES: Record<string, string> = {
-  // Red = error/overdue/rejected
   rejected:   'bg-red-100 text-red-800',
   overdue:    'bg-red-100 text-red-800',
-  // Amber = warning/pending/in-progress
-  pending:    'bg-amber-100 text-amber-800',
+  pending:    'bg-green-100 text-green-800',
   in_progress:'bg-amber-100 text-amber-800',
   adhoc:      'bg-amber-100 text-amber-800',
-  // Blue = info/active/confirmed
   submitted:  'bg-blue-100 text-blue-800',
   weekly:     'bg-blue-100 text-blue-800',
   monthly:    'bg-blue-100 text-blue-800',
   person:     'bg-blue-100 text-blue-800',
   department: 'bg-blue-100 text-blue-800',
   shift:      'bg-blue-100 text-blue-800',
-  // Green = success/done/approved
   approved:   'bg-green-100 text-green-800',
   daily:      'bg-green-100 text-green-800',
-  // Gray = neutral/draft
   draft:      'bg-gray-100 text-gray-700',
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pending', in_progress: 'In Progress', submitted: 'Submitted',
+  pending: 'To count', in_progress: 'Counting', submitted: 'Submitted',
   approved: 'Approved', rejected: 'Rejected',
   daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', adhoc: 'Ad-hoc',
 };
