@@ -43,17 +43,8 @@ const TILES = [
     icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
   },
   {
-    id: 'contacts', label: 'Staff', href: '/admin/users', minRole: 'admin',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
-  },
-  {
     id: 'profile', label: 'Profile', href: null, minRole: 'staff',
     icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
-  },
-  {
-    id: 'settings', label: 'Settings', href: '/admin/settings', minRole: 'manager',
-    isGray: true,
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>,
   },
 ];
 
@@ -85,7 +76,7 @@ export default function DashboardHome() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [comingSoon, setComingSoon] = useState<string | null>(null);
-  const [loggingOut, setLoggingOut] = useState(false);
+  // Logout moved to AppDrawer hamburger menu
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
 
@@ -113,12 +104,6 @@ export default function DashboardHome() {
   const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const dateStr = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
 
-  async function handleLogout() {
-    setLoggingOut(true);
-    try { await fetch('/api/auth/logout', { method: 'POST' }); router.push('/login'); router.refresh(); }
-    catch { setLoggingOut(false); }
-  }
-
   function handleTileTap(tile: any) {
     if (tile.href) { router.push(tile.href); }
     else { setComingSoon(tile.label); setTimeout(() => setComingSoon(null), 2000); }
@@ -136,23 +121,11 @@ export default function DashboardHome() {
     <div className="min-h-screen bg-[#F6F7F9]">
       <div className="bg-[#1A1F2E] px-6 pt-14 pb-6 rounded-b-[28px] relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(22,163,74,0.08)_0%,transparent_70%)]" />
-        <div className="flex items-start justify-between relative">
-          <div>
-            <h1 className="text-[22px] font-bold text-white">
-              {greeting}{firstName ? `, ${firstName}` : ''}
-            </h1>
-            <p className="text-[13px] text-white/50 mt-0.5">{dateStr}</p>
-          </div>
-          <button onClick={handleLogout} disabled={loggingOut}
-            className="mt-1 w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors" title="Sign out">
-            {loggingOut ? (
-              <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round">
-                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-            )}
-          </button>
+        <div className="relative">
+          <h1 className="text-[22px] font-bold text-white">
+            {greeting}{firstName ? `, ${firstName}` : ''}
+          </h1>
+          <p className="text-[13px] text-white/50 mt-0.5">{dateStr}</p>
         </div>
         {shift && (
           <div className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-xl relative ${shift.onShift ? 'bg-green-600/10 border border-green-600/20' : 'bg-white/5 border border-white/10'}`}>
