@@ -12,7 +12,7 @@
                 <field name="mode"/>
                 <field name="warehouse_ids" widget="many2many_tags"/>
                 <field name="recipe_count"/>
-                <field name="active" column_invisible="True"/>
+                <field name="active" column_invisible="1"/>
             </tree>
         </field>
     </record>
@@ -26,7 +26,7 @@
                     <group>
                         <group>
                             <field name="name"/>
-                            <field name="icon" placeholder="e.g. &#x1f373;"/>
+                            <field name="icon" placeholder="e.g. fire, star"/>
                             <field name="sequence"/>
                         </group>
                         <group>
