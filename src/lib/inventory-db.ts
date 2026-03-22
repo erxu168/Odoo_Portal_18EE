@@ -78,10 +78,23 @@ export function initInventoryTables() {
     CREATE INDEX IF NOT EXISTS idx_entries_session ON count_entries(session_id);
     CREATE INDEX IF NOT EXISTS idx_quick_status ON quick_counts(status);
   `);
+  migrateInventorySchema(db);
 }
 
 function now(): string {
   return new Date().toISOString();
+}
+
+// ===
+// SCHEMA MIGRATIONS
+// ===
+
+function migrateInventorySchema(db: ReturnType<typeof getDb>) {
+  const cols = db.prepare("PRAGMA table_info('counting_sessions')").all() as { name: string }[];
+  const colNames = cols.map(c => c.name);
+  if (!colNames.includes('proof_photo')) {
+    db.exec("ALTER TABLE counting_sessions ADD COLUMN proof_photo TEXT");
+  }
 }
 
 // ===
@@ -213,6 +226,11 @@ export function getSession(id: number): CountingSession | null {
     LEFT JOIN counting_templates t ON t.id = s.template_id
     WHERE s.id = ?
   `).get(id) as CountingSession | null;
+}
+
+export function saveSessionProofPhoto(id: number, photo: string) {
+  const db = getDb();
+  db.prepare('UPDATE counting_sessions SET proof_photo = ? WHERE id = ?').run(photo, id);
 }
 
 export function updateSessionStatus(id: number, status: SessionStatus, extra?: {

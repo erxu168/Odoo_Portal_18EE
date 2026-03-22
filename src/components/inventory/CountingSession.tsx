@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState } from './ui';
 import NumpadModal from './NumpadModal';
 
@@ -26,6 +26,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [submitting, setSubmitting] = useState(false);
   const [view, setView] = useState<View>('counting');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [proofPhoto, setProofPhoto] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -131,17 +134,49 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     setNumpad({ open: false, product: null });
   }
 
+  function handlePhotoCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      // Resize to max 800px to keep payload small
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxSize = 800;
+        let w = img.width, h = img.height;
+        if (w > maxSize || h > maxSize) {
+          if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+          else { w = Math.round(w * maxSize / h); h = maxSize; }
+        }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d')?.drawImage(img, 0, 0, w, h);
+        setProofPhoto(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  }
+
   async function handleSubmit() {
     setSubmitting(true);
+    setSubmitError(null);
     try {
-      await fetch('/api/inventory/sessions', {
+      const res = await fetch('/api/inventory/sessions', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: sessionId, status: 'submitted' }),
+        body: JSON.stringify({ id: sessionId, status: 'submitted', proof_photo: proofPhoto }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        setSubmitError(data.error || 'Submit failed.');
+        setShowConfirm(false);
+        return;
+      }
       onSubmit();
     } catch (err) {
       console.error('Submit failed:', err);
+      setSubmitError('Connection failed. Please try again.');
     } finally {
       setSubmitting(false);
       setShowConfirm(false);
@@ -203,6 +238,36 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {submitError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 mb-3">
+              <p className="text-[13px] font-semibold text-red-700">{submitError}</p>
+            </div>
+          )}
+
+          {/* Proof photo capture */}
+          {canSubmit && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
+              <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mb-2">Proof photo</p>
+              <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
+              {proofPhoto ? (
+                <div className="relative">
+                  <img src={proofPhoto} alt="Proof" className="w-full rounded-xl border border-gray-200" />
+                  <button onClick={() => { setProofPhoto(null); if (cameraRef.current) cameraRef.current.value = ''; }}
+                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center active:bg-black/70">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => cameraRef.current?.click()}
+                  className="w-full py-4 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-gray-50">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  Take a photo of the shelf
+                </button>
+              )}
+              <p className="text-[11px] text-gray-400 mt-2">Photo proof is required for submission.</p>
             </div>
           )}
         </div>

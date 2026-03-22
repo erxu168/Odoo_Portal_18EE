@@ -8,7 +8,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions } from '@/lib/inventory-db';
+import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate } from '@/lib/inventory-db';
 import { logAudit } from '@/lib/db';
 
 initInventoryTables();
@@ -65,12 +65,39 @@ export async function PUT(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const body = await request.json();
-  const { id, status, review_note } = body;
+  const { id, status, review_note, proof_photo } = body;
   if (!id || !status) return NextResponse.json({ error: 'id and status required' }, { status: 400 });
 
   // Staff can submit; managers can approve/reject/reopen
   if (['approved', 'rejected'].includes(status) && !hasRole(user, 'manager')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  // On submit: enforce count completion + save proof photo
+  if (status === 'submitted') {
+    const session = getSession(id);
+    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+
+    // Check count completion: require all products counted
+    const entries = getSessionEntries(id);
+    const template = getTemplate(session.template_id);
+    if (template) {
+      const productIds: number[] = (() => {
+        try { return JSON.parse((template as any).product_ids || '[]'); } catch { return []; }
+      })();
+      const expectedCount = productIds.length > 0 ? productIds.length : 0;
+      if (expectedCount > 0 && entries.length < expectedCount) {
+        return NextResponse.json({
+          error: `Please count all items before submitting. ${entries.length}/${expectedCount} counted.`,
+          code: 'INCOMPLETE_COUNT',
+        }, { status: 400 });
+      }
+    }
+
+    // Save proof photo if provided
+    if (proof_photo) {
+      saveSessionProofPhoto(id, proof_photo);
+    }
   }
 
   // Recount: manager reopens a rejected session so staff can try again
