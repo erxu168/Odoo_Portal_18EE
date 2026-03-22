@@ -119,7 +119,7 @@ export default function RecipesPage() {
   return (
     <RecipeDashboard
       userRole={userRole}
-      onNavigate={(id) => setScreen({ type: id as Screen['type'] })}
+      onNavigate={(id: string) => setScreen({ type: id } as Screen)}
       onHome={goHome}
     />
   );
