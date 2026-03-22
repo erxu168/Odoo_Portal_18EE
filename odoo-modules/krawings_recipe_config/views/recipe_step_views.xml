@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <record id="view_recipe_step_tree" model="ir.ui.view">
-        <field name="name">krawings.recipe.step.tree</field>
+    <record id="view_recipe_step_list" model="ir.ui.view">
+        <field name="name">krawings.recipe.step.list</field>
         <field name="model">krawings.recipe.step</field>
         <field name="arch" type="xml">
-            <tree>
+            <list>
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
                 <field name="step_type"/>
@@ -13,7 +13,7 @@
                 <field name="image_count"/>
                 <field name="product_tmpl_id" optional="show"/>
                 <field name="bom_id" optional="show"/>
-            </tree>
+            </list>
         </field>
     </record>
 
@@ -47,12 +47,12 @@
                         </page>
                         <page string="Images">
                             <field name="image_ids">
-                                <tree>
+                                <list>
                                     <field name="sort" widget="handle"/>
                                     <field name="image" widget="image" options="{'size': [100, 100]}"/>
                                     <field name="caption"/>
                                     <field name="source"/>
-                                </tree>
+                                </list>
                             </field>
                         </page>
                     </notebook>
@@ -61,18 +61,18 @@
         </field>
     </record>
 
-    <record id="view_recipe_version_tree" model="ir.ui.view">
-        <field name="name">krawings.recipe.version.tree</field>
+    <record id="view_recipe_version_list" model="ir.ui.view">
+        <field name="name">krawings.recipe.version.list</field>
         <field name="model">krawings.recipe.version</field>
         <field name="arch" type="xml">
-            <tree>
+            <list>
                 <field name="version"/>
                 <field name="status" decoration-success="status == 'approved'" decoration-warning="status == 'review'" decoration-danger="status == 'rejected'" widget="badge"/>
                 <field name="change_summary"/>
                 <field name="created_by_id"/>
                 <field name="approved_by_id"/>
                 <field name="create_date"/>
-            </tree>
+            </list>
         </field>
     </record>
 

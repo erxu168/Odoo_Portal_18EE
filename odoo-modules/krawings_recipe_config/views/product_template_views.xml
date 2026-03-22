@@ -21,14 +21,14 @@
                     </group>
                     <field name="x_recipe_step_ids" invisible="not x_recipe_guide"
                            context="{'default_product_tmpl_id': id}">
-                        <tree>
+                        <list>
                             <field name="sequence" widget="handle"/>
                             <field name="step_type"/>
                             <field name="instruction" widget="html"/>
                             <field name="timer_seconds"/>
                             <field name="image_count"/>
                             <field name="tip"/>
-                        </tree>
+                        </list>
                     </field>
                     <field name="x_recipe_version_ids" invisible="not x_recipe_guide"
                            string="Version History" readonly="1"/>
