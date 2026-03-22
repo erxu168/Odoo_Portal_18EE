@@ -2,6 +2,8 @@
  * GET /api/inventory/locations
  *
  * Proxies stock.location (internal) from Odoo 18 EE.
+ * Filters by user's allowed_company_ids so staff only see
+ * locations belonging to their companies.
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
@@ -13,9 +15,17 @@ export async function GET() {
 
   try {
     const odoo = getOdoo();
+
+    // Build domain: always internal locations, filtered by company if user has company restrictions
+    const domain: any[] = [['usage', '=', 'internal']];
+    const companyIds = user.allowed_company_ids;
+    if (companyIds && Array.isArray(companyIds) && companyIds.length > 0) {
+      domain.push(['company_id', 'in', companyIds]);
+    }
+
     const locations = await odoo.searchRead('stock.location',
-      [['usage', '=', 'internal']],
-      ['id', 'name', 'complete_name', 'barcode'],
+      domain,
+      ['id', 'name', 'complete_name', 'barcode', 'company_id'],
       { order: 'complete_name' }
     );
     return NextResponse.json({ locations });

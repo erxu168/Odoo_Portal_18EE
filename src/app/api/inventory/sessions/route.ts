@@ -2,6 +2,8 @@
  * /api/inventory/sessions
  *
  * GET  — list sessions (filter by status, template, location)
+ *       Staff: only sees sessions assigned to them
+ *       Manager/Admin: sees all sessions
  * POST — create a new session from a template (manager/admin)
  */
 import { NextResponse } from 'next/server';
@@ -19,10 +21,14 @@ export async function GET(request: Request) {
   const templateId = searchParams.get('template_id');
   const locationId = searchParams.get('location_id');
 
+  // Staff only see sessions assigned to them; managers/admins see all
+  const isStaff = !hasRole(user, 'manager');
+
   const sessions = listSessions({
     status: status || undefined,
     template_id: templateId ? parseInt(templateId) : undefined,
     location_id: locationId ? parseInt(locationId) : undefined,
+    assigned_user_id: isStaff ? user.id : undefined,
   });
 
   return NextResponse.json({ sessions });
