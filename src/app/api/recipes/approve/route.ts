@@ -31,9 +31,10 @@ export async function POST(request: Request) {
     const odoo = getOdoo();
 
     if (action === 'approve') {
+      // approved_by_id: portal user.id is not an Odoo res.users id
+      // For now we skip setting it — Odoo will use the authenticated RPC user
       await odoo.write('krawings.recipe.version', [version_id], {
         status: 'approved',
-        approved_by_id: user.odoo_uid || false,
         approved_at: new Date().toISOString().substring(0, 19).replace('T', ' '),
       });
 
@@ -68,8 +69,9 @@ export async function POST(request: Request) {
         message: 'Recipe rejected. Submitter will be notified.',
       });
     }
-  } catch (err: any) {
-    console.error('Recipe approve error:', err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Recipe approve error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
