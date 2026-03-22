@@ -1,0 +1,11 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_recipe_category_user,krawings.recipe.category user,model_krawings_recipe_category,base.group_user,1,0,0,0
+access_recipe_category_manager,krawings.recipe.category manager,model_krawings_recipe_category,mrp.group_mrp_manager,1,1,1,1
+access_recipe_step_user,krawings.recipe.step user,model_krawings_recipe_step,base.group_user,1,1,1,0
+access_recipe_step_manager,krawings.recipe.step manager,model_krawings_recipe_step,mrp.group_mrp_manager,1,1,1,1
+access_recipe_step_image_user,krawings.recipe.step.image user,model_krawings_recipe_step_image,base.group_user,1,1,1,0
+access_recipe_step_image_manager,krawings.recipe.step.image manager,model_krawings_recipe_step_image,mrp.group_mrp_manager,1,1,1,1
+access_recipe_version_user,krawings.recipe.version user,model_krawings_recipe_version,base.group_user,1,1,1,0
+access_recipe_version_manager,krawings.recipe.version manager,model_krawings_recipe_version,mrp.group_mrp_manager,1,1,1,1
+access_recipe_recording_user,krawings.recipe.recording user,model_krawings_recipe_recording,base.group_user,1,1,1,0
+access_recipe_recording_manager,krawings.recipe.recording manager,model_krawings_recipe_recording,mrp.group_mrp_manager,1,1,1,1

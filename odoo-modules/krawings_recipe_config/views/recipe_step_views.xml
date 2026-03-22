@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_recipe_step_tree" model="ir.ui.view">
+        <field name="name">krawings.recipe.step.tree</field>
+        <field name="model">krawings.recipe.step</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="step_type"/>
+                <field name="timer_seconds"/>
+                <field name="image_count"/>
+                <field name="product_tmpl_id" optional="show"/>
+                <field name="bom_id" optional="show"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_recipe_step_form" model="ir.ui.view">
+        <field name="name">krawings.recipe.step.form</field>
+        <field name="model">krawings.recipe.step</field>
+        <field name="arch" type="xml">
+            <form string="Recipe Step">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="step_type"/>
+                            <field name="timer_seconds"/>
+                        </group>
+                        <group>
+                            <field name="product_tmpl_id"/>
+                            <field name="bom_id"/>
+                            <field name="version_id"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Instruction">
+                            <field name="instruction"/>
+                        </page>
+                        <page string="Tip">
+                            <field name="tip"/>
+                        </page>
+                        <page string="Ingredients">
+                            <field name="ingredient_ids" widget="many2many_tags"/>
+                        </page>
+                        <page string="Images">
+                            <field name="image_ids">
+                                <tree>
+                                    <field name="sort" widget="handle"/>
+                                    <field name="image" widget="image" options="{'size': [100, 100]}"/>
+                                    <field name="caption"/>
+                                    <field name="source"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_recipe_version_tree" model="ir.ui.view">
+        <field name="name">krawings.recipe.version.tree</field>
+        <field name="model">krawings.recipe.version</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="version"/>
+                <field name="status" decoration-success="status == 'approved'" decoration-warning="status == 'review'" decoration-danger="status == 'rejected'" widget="badge"/>
+                <field name="change_summary"/>
+                <field name="created_by_id"/>
+                <field name="approved_by_id"/>
+                <field name="create_date"/>
+            </tree>
+        </field>
+    </record>
+
+</odoo>

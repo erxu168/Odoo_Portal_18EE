@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_recipe_category_tree" model="ir.ui.view">
+        <field name="name">krawings.recipe.category.tree</field>
+        <field name="model">krawings.recipe.category</field>
+        <field name="arch" type="xml">
+            <tree>
+                <field name="sequence" widget="handle"/>
+                <field name="icon"/>
+                <field name="name"/>
+                <field name="mode"/>
+                <field name="warehouse_ids" widget="many2many_tags"/>
+                <field name="recipe_count"/>
+                <field name="active" column_invisible="True"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_recipe_category_form" model="ir.ui.view">
+        <field name="name">krawings.recipe.category.form</field>
+        <field name="model">krawings.recipe.category</field>
+        <field name="arch" type="xml">
+            <form string="Recipe Category">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="icon" placeholder="e.g. &#x1f373;"/>
+                            <field name="sequence"/>
+                        </group>
+                        <group>
+                            <field name="mode"/>
+                            <field name="warehouse_ids" widget="many2many_tags"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_recipe_category" model="ir.actions.act_window">
+        <field name="name">Recipe Categories</field>
+        <field name="res_model">krawings.recipe.category</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+</odoo>

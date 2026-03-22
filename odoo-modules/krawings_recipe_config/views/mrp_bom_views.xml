@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_mrp_bom_form_recipe" model="ir.ui.view">
+        <field name="name">mrp.bom.form.recipe</field>
+        <field name="model">mrp.bom</field>
+        <field name="inherit_id" ref="mrp.mrp_bom_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Recipe Guide" name="recipe_guide">
+                    <group>
+                        <group>
+                            <field name="x_recipe_guide"/>
+                            <field name="x_recipe_published" invisible="not x_recipe_guide"/>
+                            <field name="x_recipe_difficulty" invisible="not x_recipe_guide"/>
+                        </group>
+                        <group>
+                            <field name="x_recipe_category_id" invisible="not x_recipe_guide"/>
+                            <field name="x_cook_time_min" invisible="not x_recipe_guide"/>
+                            <field name="x_recipe_step_count" invisible="not x_recipe_guide"/>
+                        </group>
+                    </group>
+                    <field name="x_recipe_step_ids" invisible="not x_recipe_guide"
+                           context="{'default_bom_id': id}">
+                        <tree>
+                            <field name="sequence" widget="handle"/>
+                            <field name="step_type"/>
+                            <field name="instruction" widget="html"/>
+                            <field name="timer_seconds"/>
+                            <field name="image_count"/>
+                            <field name="tip"/>
+                        </tree>
+                    </field>
+                    <field name="x_recipe_version_ids" invisible="not x_recipe_guide"
+                           string="Version History" readonly="1"/>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
