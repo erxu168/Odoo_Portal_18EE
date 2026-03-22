@@ -36,16 +36,18 @@ export async function GET(request: Request) {
     );
 
     // Resolve ingredient names
-    const allIngIds = new Set<number>();
+    const allIngIds: number[] = [];
     for (const s of steps) {
-      for (const id of (s.ingredient_ids || [])) allIngIds.add(id);
+      for (const id of (s.ingredient_ids || [])) {
+        if (allIngIds.indexOf(id) === -1) allIngIds.push(id);
+      }
     }
 
     const ingredientMap: Record<number, { name: string; uom: string }> = {};
-    if (allIngIds.size > 0) {
+    if (allIngIds.length > 0) {
       const ingredients = await odoo.read(
         'product.product',
-        [...allIngIds],
+        allIngIds,
         ['id', 'name', 'uom_id'],
       );
       for (const ing of ingredients) {
