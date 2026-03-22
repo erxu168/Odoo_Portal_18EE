@@ -17,6 +17,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [session, setSession] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [entries, setEntries] = useState<Record<number, number>>({});
+  const [systemQtys, setSystemQtys] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('all');
@@ -42,6 +43,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         entryMap[e.product_id] = e.counted_qty;
       }
       setEntries(entryMap);
+      setSystemQtys(countRes.system_qtys || {});
 
       let productIds: number[] = [];
       let categoryIds: number[] = [];
@@ -372,7 +374,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           uom={numpad.product?.uom_id?.[1] || 'Units'}
           initialValue={numpad.product ? (entries[numpad.product.id] ?? null) : null}
           showSystemQty={userRole !== 'staff'}
-          systemQty={null}
+          systemQty={numpad.product ? (systemQtys[numpad.product.id] ?? null) : null}
           locationName={locationName}
           onSave={handleNumpadSave}
           onClose={() => setNumpad({ open: false, product: null })}

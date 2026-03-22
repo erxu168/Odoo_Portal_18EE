@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions } from '@/lib/inventory-db';
+import { logAudit } from '@/lib/db';
 
 initInventoryTables();
 
@@ -67,11 +68,39 @@ export async function PUT(request: Request) {
   const { id, status, review_note } = body;
   if (!id || !status) return NextResponse.json({ error: 'id and status required' }, { status: 400 });
 
-  // Staff can submit, managers can approve/reject
+  // Staff can submit; managers can approve/reject/reopen
   if (['approved', 'rejected'].includes(status) && !hasRole(user, 'manager')) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  // Recount: manager reopens a rejected session so staff can try again
+  if (status === 'pending') {
+    if (!hasRole(user, 'manager')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const session = getSession(id);
+    if (!session || session.status !== 'rejected') {
+      return NextResponse.json({ error: 'Only rejected sessions can be reopened for recount' }, { status: 400 });
+    }
+    updateSessionStatus(id, 'pending');
+    logAudit({ user_id: user.id, user_name: user.name, action: 'recount', module: 'inventory', target_type: 'session', target_id: id, detail: `Reopened session for recount (was rejected)` });
+    return NextResponse.json({ message: 'Session reopened for recount' });
+  }
+
   updateSessionStatus(id, status, { reviewed_by: user.id, review_note });
+
+  // Audit log for approve/reject/submit
+  if (['approved', 'rejected', 'submitted'].includes(status)) {
+    logAudit({
+      user_id: user.id,
+      user_name: user.name,
+      action: status,
+      module: 'inventory',
+      target_type: 'session',
+      target_id: id,
+      detail: review_note || undefined,
+    });
+  }
+
   return NextResponse.json({ message: `Session ${status}` });
 }

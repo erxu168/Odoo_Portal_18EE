@@ -7,7 +7,8 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries } from '@/lib/inventory-db';
+import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession } from '@/lib/inventory-db';
+import { getOdoo } from '@/lib/odoo';
 
 initInventoryTables();
 
@@ -20,7 +21,30 @@ export async function GET(request: Request) {
   if (!sessionId) return NextResponse.json({ error: 'session_id required' }, { status: 400 });
 
   const entries = getSessionEntries(parseInt(sessionId));
-  return NextResponse.json({ entries });
+
+  // Fetch system quantities from Odoo stock.quant for this session's location
+  let systemQtys: Record<number, number> = {};
+  try {
+    const session = getSession(parseInt(sessionId));
+    if (session) {
+      const odoo = getOdoo();
+      const quants = await odoo.searchRead('stock.quant',
+        [['location_id', '=', session.location_id], ['quantity', '>', 0]],
+        ['product_id', 'quantity'],
+        { limit: 1000 },
+      );
+      for (const q of quants) {
+        if (q.product_id) {
+          const pid = Array.isArray(q.product_id) ? q.product_id[0] : q.product_id;
+          systemQtys[pid] = (systemQtys[pid] || 0) + q.quantity;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to fetch system quantities from Odoo:', e);
+  }
+
+  return NextResponse.json({ entries, system_qtys: systemQtys });
 }
 
 export async function POST(request: Request) {

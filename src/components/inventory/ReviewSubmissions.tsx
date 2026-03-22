@@ -54,6 +54,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const [reviewSystemQtys, setReviewSystemQtys] = useState<Record<number, number>>({});
+
   // ---- SESSION REVIEW ----
   async function openReview(sess: any) {
     setReviewLoading(true);
@@ -62,6 +64,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     try {
       const countRes = await fetch(`/api/inventory/counts?session_id=${sess.id}`).then(r => r.json());
       setReviewEntries(countRes.entries || []);
+      setReviewSystemQtys(countRes.system_qtys || {});
 
       let productIds: number[] = [];
       try { productIds = JSON.parse(sess.template_product_ids || '[]'); } catch { productIds = []; }
@@ -147,6 +150,24 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       console.error('QC action failed:', err);
       setErrorMsg('Network error. Please try again.');
       setQcConfirm(null);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleRecount(sessionId: number) {
+    setActionLoading(sessionId);
+    try {
+      const res = await fetch('/api/inventory/sessions', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: sessionId, status: 'pending' }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErrorMsg(data.error || 'Failed to reopen session'); return; }
+      fetchData();
+    } catch {
+      setErrorMsg('Network error. Please try again.');
     } finally {
       setActionLoading(null);
     }
@@ -314,12 +335,28 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                 <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mt-2 mb-2">Counted items</p>
                 {countedProducts.map((p) => {
                   const val = entryMap[p.id]; const uom = p.uom_id?.[1] || 'Units';
-                  return (<div key={p.id} className="flex items-center justify-between py-2.5 border-b border-gray-100">
+                  const sysQty = reviewSystemQtys[p.id];
+                  const hasSysQty = sysQty !== undefined && sysQty !== null;
+                  const diff = hasSysQty ? val - sysQty : null;
+                  const diffPct = hasSysQty && sysQty > 0 ? Math.round((diff! / sysQty) * 100) : null;
+                  const isVariance = diffPct !== null && Math.abs(diffPct) > 10;
+                  return (<div key={p.id} className={`flex items-center justify-between py-2.5 border-b ${isVariance ? 'border-red-100 bg-red-50/50' : 'border-gray-100'}`}>
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isVariance ? 'bg-red-100' : 'bg-green-100'}`}>
+                        {isVariance ? (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="3" strokeLinecap="round"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                        ) : (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        )}
                       </div>
-                      <span className="text-[13px] text-gray-900 truncate">{p.name}</span>
+                      <div className="min-w-0">
+                        <span className="text-[13px] text-gray-900 truncate block">{p.name}</span>
+                        {hasSysQty && (
+                          <span className={`text-[11px] ${isVariance ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                            System: {sysQty} {uom} {diff !== null && `(${diff > 0 ? '+' : ''}${diff})`}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <span className="text-[14px] font-mono font-semibold text-[#1F2933] flex-shrink-0 ml-3">{val} <span className="text-[11px] text-gray-400 font-normal">{uom}</span></span>
                   </div>);
@@ -420,6 +457,14 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                     <div className="text-[12px] text-gray-500 mb-3">{sess.scheduled_date} {sess.location_name && `\u00B7 ${sess.location_name}`}</div>
                     {sess.status === 'submitted' ? (
                       <button onClick={() => openReview(sess)} className="w-full py-2.5 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700 shadow-sm">Review</button>
+                    ) : sess.status === 'rejected' ? (
+                      <div className="flex gap-2">
+                        <button onClick={() => openReview(sess)} className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[13px] font-semibold active:bg-gray-200">View</button>
+                        <button onClick={() => handleRecount(sess.id)} disabled={actionLoading === sess.id}
+                          className="flex-1 py-2.5 rounded-xl border border-amber-300 text-amber-700 text-[13px] font-bold active:bg-amber-50 disabled:opacity-50">
+                          {actionLoading === sess.id ? '...' : 'Recount'}
+                        </button>
+                      </div>
                     ) : (
                       <button onClick={() => openReview(sess)} className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[13px] font-semibold active:bg-gray-200">View details</button>
                     )}

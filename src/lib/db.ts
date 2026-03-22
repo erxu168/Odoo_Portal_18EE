@@ -87,6 +87,20 @@ function initTables(db: Database.Database) {
       tolerance_pct REAL NOT NULL DEFAULT 5,
       updated_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      user_name TEXT,
+      action TEXT NOT NULL,
+      module TEXT NOT NULL,
+      target_type TEXT,
+      target_id INTEGER,
+      detail TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_module ON audit_log(module, created_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id);
   `);
 }
 
@@ -301,4 +315,41 @@ export function verifyPasswordResetToken(token: string): number | null {
 export function deletePasswordResetToken(token: string) {
   const db = getDb();
   db.prepare('DELETE FROM password_reset_tokens WHERE token = ?').run(token);
+}
+
+// -- Audit Log --
+
+export function logAudit(data: {
+  user_id?: number | null;
+  user_name?: string | null;
+  action: string;
+  module: string;
+  target_type?: string;
+  target_id?: number;
+  detail?: string;
+}) {
+  const db = getDb();
+  db.prepare(
+    'INSERT INTO audit_log (user_id, user_name, action, module, target_type, target_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    data.user_id ?? null,
+    data.user_name ?? null,
+    data.action,
+    data.module,
+    data.target_type ?? null,
+    data.target_id ?? null,
+    data.detail ?? null,
+    nowISO(),
+  );
+}
+
+export function getAuditLog(filters?: { module?: string; limit?: number }): any[] {
+  const db = getDb();
+  const where: string[] = [];
+  const vals: any[] = [];
+  if (filters?.module) { where.push('module = ?'); vals.push(filters.module); }
+  const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const limit = filters?.limit || 100;
+  vals.push(limit);
+  return db.prepare(`SELECT * FROM audit_log ${clause} ORDER BY created_at DESC LIMIT ?`).all(...vals);
 }

@@ -9,7 +9,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { listUsersByStatus, countUsersByStatus, updateUser, getUserById } from '@/lib/db';
+import { listUsersByStatus, countUsersByStatus, updateUser, getUserById, logAudit } from '@/lib/db';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -54,6 +54,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'User is not pending' }, { status: 400 });
     }
     updateUser(user_id, { status: 'active', role });
+    logAudit({ user_id: user.id, user_name: user.name, action: 'approve_user', module: 'admin', target_type: 'user', target_id: user_id, detail: `Approved ${target.name} as ${role}` });
     return NextResponse.json({ message: `${target.name} approved as ${role}` });
   }
 
@@ -62,6 +63,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'User is not pending' }, { status: 400 });
     }
     updateUser(user_id, { status: 'rejected' });
+    logAudit({ user_id: user.id, user_name: user.name, action: 'reject_user', module: 'admin', target_type: 'user', target_id: user_id, detail: `Rejected ${target.name}` });
     return NextResponse.json({ message: `${target.name} rejected` });
   }
 

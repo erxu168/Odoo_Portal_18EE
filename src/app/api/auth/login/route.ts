@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { getUserByEmail, createSession } from '@/lib/db';
+import { getUserByEmail, createSession, logAudit } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { COOKIE_NAME } from '@/lib/auth';
 
@@ -86,6 +86,7 @@ export async function POST(request: Request) {
 
     // Create session (also increments login_count)
     const token = createSession(user.id);
+    logAudit({ user_id: user.id, user_name: user.name, action: 'login', module: 'auth' });
 
     const response = NextResponse.json({
       user: {
