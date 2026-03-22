@@ -3,11 +3,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 /**
- * Krawings Debug Overlay v2
- * - Screen tab: shows current route, screen ID, component, context
- * - Element tab: LIVE inspector — hover (desktop) or drag finger (mobile)
- *   over any element and the panel + highlight update in real-time.
- *   Tap/click to PIN an element. Tap elsewhere to unpin.
+ * Krawings Debug Overlay v2.1
+ * - Screen tab: route, screen ID, component, context
+ * - Element tab: LIVE inspector — hover/drag over any element
+ * - Tap/click to PIN. Debug overlay buttons always work.
  * Activate: ?debug=1 in URL. Persists in localStorage.
  */
 
@@ -39,7 +38,6 @@ interface ElInfo {
   interactable: boolean;
 }
 
-// --- Global debug state ---
 let _debugInfo: DebugInfo = {};
 let _listeners: Array<() => void> = [];
 
@@ -63,11 +61,15 @@ function useDebugInfo(): DebugInfo {
   return _debugInfo;
 }
 
-// --- Element analysis ---
 const TW_PREFIXES = ['bg-', 'text-', 'px-', 'py-', 'p-', 'mx-', 'my-', 'm-', 'w-', 'h-', 'min-', 'max-', 'flex', 'grid', 'gap-', 'rounded', 'border', 'shadow', 'font-', 'leading-', 'tracking-', 'z-', 'fixed', 'absolute', 'relative', 'sticky', 'overflow', 'opacity', 'transition', 'animate-', 'items-', 'justify-', 'self-'];
 
 function isTailwind(cls: string): boolean {
   return TW_PREFIXES.some(p => cls.startsWith(p));
+}
+
+function isDebugEl(el: EventTarget | null): boolean {
+  if (!el || !(el instanceof HTMLElement)) return false;
+  return !!el.closest('[data-debug-overlay]');
 }
 
 function getElInfo(el: HTMLElement): ElInfo {
@@ -134,7 +136,6 @@ function describeEl(info: ElInfo): string {
   return `<${info.tag}>${info.id ? ' #' + info.id : ''}`;
 }
 
-// --- Component ---
 export default function DebugOverlay() {
   const [visible, setVisible] = useState(false);
   const [enabled, setEnabled] = useState(false);
@@ -147,7 +148,11 @@ export default function DebugOverlay() {
   const highlightRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
   const lastElRef = useRef<Element | null>(null);
+  const inspectRef = useRef(false);
   const info = useDebugInfo();
+
+  // Keep ref in sync so event handlers always see current value
+  inspectRef.current = inspectMode;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -171,7 +176,6 @@ export default function DebugOverlay() {
     }).catch(() => {});
   }, [enabled]);
 
-  // Position highlight + floating label
   const positionHighlight = useCallback((elInfo: ElInfo) => {
     if (!highlightRef.current || !labelRef.current) return;
     const r = elInfo.rect;
@@ -182,16 +186,11 @@ export default function DebugOverlay() {
     hl.style.top = `${r.y - 2}px`;
     hl.style.width = `${r.w + 4}px`;
     hl.style.height = `${r.h + 4}px`;
-    // Label above or below element
     const labelText = `${elInfo.tag}${elInfo.id ? '#' + elInfo.id : ''} ${r.w}\u00d7${r.h}`;
     lb.textContent = labelText;
     lb.style.display = 'block';
     lb.style.left = `${Math.max(4, r.x)}px`;
-    if (r.y > 28) {
-      lb.style.top = `${r.y - 24}px`;
-    } else {
-      lb.style.top = `${r.y + r.h + 4}px`;
-    }
+    lb.style.top = r.y > 28 ? `${r.y - 24}px` : `${r.y + r.h + 4}px`;
   }, []);
 
   const hideHighlight = useCallback(() => {
@@ -199,92 +198,88 @@ export default function DebugOverlay() {
     if (labelRef.current) labelRef.current.style.display = 'none';
   }, []);
 
-  // LIVE hover tracking (mousemove + touchmove)
-  const handleMove = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!inspectMode) return;
-
-    const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
-    const target = document.elementFromPoint(clientX, clientY);
-
-    if (!target || !(target instanceof HTMLElement)) return;
-    if (target.closest('[data-debug-overlay]')) return;
-
-    // Skip if same element as last time (perf)
-    if (target === lastElRef.current) return;
-    lastElRef.current = target;
-
-    const elInfo = getElInfo(target);
-    setHovered(elInfo);
-    positionHighlight(elInfo);
-
-    // Auto-show panel on element tab if not pinned
-    if (!pinned) {
-      setTab('element');
-      setVisible(true);
-    }
-  }, [inspectMode, pinned, positionHighlight]);
-
-  // Tap/click to PIN element
-  const handleClick = useCallback((e: MouseEvent | TouchEvent) => {
-    if (!inspectMode) return;
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-
-    const clientX = 'touches' in e ? e.changedTouches[0].clientX : (e as MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.changedTouches[0].clientY : (e as MouseEvent).clientY;
-    const target = document.elementFromPoint(clientX, clientY);
-
-    if (!target || !(target instanceof HTMLElement)) return;
-    if (target.closest('[data-debug-overlay]')) return;
-
-    const elInfo = getElInfo(target);
-    setPinned(prev => {
-      // If already pinned to this element, unpin
-      if (prev && prev.rect.x === elInfo.rect.x && prev.rect.y === elInfo.rect.y) return null;
-      return elInfo;
-    });
-    setHovered(elInfo);
-    positionHighlight(elInfo);
-    setTab('element');
-    setVisible(true);
-  }, [inspectMode, positionHighlight]);
-
-  // Prevent touchmove from scrolling in inspect mode
-  const handleTouchMove = useCallback((e: TouchEvent) => {
-    if (!inspectMode) return;
-    e.preventDefault();
-    handleMove(e);
-  }, [inspectMode, handleMove]);
-
-  // Attach/detach listeners
+  // Attach all inspect listeners in a single effect using refs
   useEffect(() => {
     if (!inspectMode) {
       hideHighlight();
       lastElRef.current = null;
       return;
     }
-    // Desktop: mousemove for live hover, click to pin
-    document.addEventListener('mousemove', handleMove, true);
-    document.addEventListener('click', handleClick, true);
-    // Mobile: touchmove for live tracking, touchend to pin
-    document.addEventListener('touchmove', handleTouchMove, { capture: true, passive: false });
-    document.addEventListener('touchend', handleClick, true);
-    // Block normal interactions while inspecting
-    const blockDefault = (e: Event) => { if (inspectMode) { e.preventDefault(); e.stopPropagation(); } };
+
+    function getTarget(e: MouseEvent | TouchEvent): HTMLElement | null {
+      const clientX = 'touches' in e ? (e.touches[0] || e.changedTouches[0]).clientX : (e as MouseEvent).clientX;
+      const clientY = 'touches' in e ? (e.touches[0] || e.changedTouches[0]).clientY : (e as MouseEvent).clientY;
+      const el = document.elementFromPoint(clientX, clientY);
+      if (!el || !(el instanceof HTMLElement)) return null;
+      return el;
+    }
+
+    function onMove(e: MouseEvent | TouchEvent) {
+      if (!inspectRef.current) return;
+      const target = getTarget(e);
+      if (!target || isDebugEl(target)) return;
+      if (target === lastElRef.current) return;
+      lastElRef.current = target;
+      const elInfo = getElInfo(target);
+      setHovered(elInfo);
+      positionHighlight(elInfo);
+      setTab('element');
+      setVisible(true);
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      if (!inspectRef.current) return;
+      // Only prevent default on non-debug elements
+      if (!isDebugEl(e.target)) e.preventDefault();
+      onMove(e);
+    }
+
+    function onClick(e: MouseEvent | TouchEvent) {
+      if (!inspectRef.current) return;
+      // ALWAYS let debug overlay clicks through
+      if (isDebugEl(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      const target = getTarget(e);
+      if (!target || isDebugEl(target)) return;
+
+      const elInfo = getElInfo(target);
+      setPinned(prev => {
+        if (prev && prev.rect.x === elInfo.rect.x && prev.rect.y === elInfo.rect.y) return null;
+        return elInfo;
+      });
+      setHovered(elInfo);
+      positionHighlight(elInfo);
+      setTab('element');
+      setVisible(true);
+    }
+
+    function blockDefault(e: Event) {
+      if (!inspectRef.current) return;
+      // ALWAYS let debug overlay interactions through
+      if (isDebugEl(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    document.addEventListener('touchend', onClick, true);
     document.addEventListener('mousedown', blockDefault, true);
     document.addEventListener('touchstart', blockDefault, { capture: true, passive: false });
 
     return () => {
-      document.removeEventListener('mousemove', handleMove, true);
-      document.removeEventListener('click', handleClick, true);
-      document.removeEventListener('touchmove', handleTouchMove, true);
-      document.removeEventListener('touchend', handleClick, true);
+      document.removeEventListener('mousemove', onMove, true);
+      document.removeEventListener('click', onClick, true);
+      document.removeEventListener('touchmove', onTouchMove, true);
+      document.removeEventListener('touchend', onClick, true);
       document.removeEventListener('mousedown', blockDefault, true);
       document.removeEventListener('touchstart', blockDefault, true);
     };
-  }, [inspectMode, handleMove, handleClick, handleTouchMove, hideHighlight]);
+  }, [inspectMode, positionHighlight, hideHighlight]);
 
   if (!enabled) return null;
 
@@ -318,7 +313,6 @@ export default function DebugOverlay() {
 
   return (
     <>
-      {/* Highlight outline around hovered/pinned element */}
       <div ref={highlightRef} style={{
         display: 'none', position: 'fixed', zIndex: 9997, pointerEvents: 'none',
         border: `2px solid ${pinned ? '#ff4444' : '#e91e9e'}`,
@@ -326,7 +320,6 @@ export default function DebugOverlay() {
         borderRadius: '3px', transition: 'left 0.08s, top 0.08s, width 0.08s, height 0.08s',
       }} />
 
-      {/* Floating tag label near hovered element */}
       <div ref={labelRef} style={{
         display: 'none', position: 'fixed', zIndex: 9997, pointerEvents: 'none',
         background: pinned ? '#ff4444' : '#e91e9e', color: 'white',
@@ -334,7 +327,6 @@ export default function DebugOverlay() {
         padding: '1px 6px', borderRadius: '3px', whiteSpace: 'nowrap',
       }} />
 
-      {/* Buttons */}
       <div data-debug-overlay="true" className="fixed bottom-4 right-4 z-[9999] flex gap-2">
         {inspectMode && (
           <button onClick={() => { setInspectMode(false); setPinned(null); hideHighlight(); }}
@@ -350,12 +342,10 @@ export default function DebugOverlay() {
         </button>
       </div>
 
-      {/* Panel */}
       {visible && (
         <div data-debug-overlay="true"
           className="fixed bottom-20 right-2 z-[9998] w-[85vw] max-w-[340px] rounded-2xl shadow-2xl overflow-hidden"
           style={{ background: 'rgba(20, 0, 30, 0.95)', border: '1px solid rgba(233, 30, 158, 0.3)', maxHeight: '55vh' }}>
-          {/* Header */}
           <div className="px-3 py-2 flex items-center justify-between" style={{ background: 'rgba(233, 30, 158, 0.15)' }}>
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${inspectMode ? 'bg-red-400' : 'bg-green-400'} animate-pulse`} />
@@ -370,12 +360,11 @@ export default function DebugOverlay() {
                 className={`px-2 py-0.5 rounded text-[9px] font-bold transition-colors ${inspectMode ? 'bg-red-500 text-white' : 'bg-white/10 text-white/50'}`}>
                 {inspectMode ? 'STOP' : '\ud83d\udd0d Inspect'}
               </button>
-              <button onClick={() => { localStorage.removeItem('kw_debug'); setEnabled(false); setInspectMode(false); }}
+              <button onClick={() => { setInspectMode(false); setPinned(null); hideHighlight(); localStorage.removeItem('kw_debug'); setEnabled(false); }}
                 className="text-[9px] text-white/30 active:text-white/60">OFF</button>
             </div>
           </div>
 
-          {/* Tabs */}
           <div className="flex border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
             <button onClick={() => setTab('screen')}
               className={`flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider ${tab === 'screen' ? 'text-pink-400 border-b-2 border-pink-400' : 'text-white/25'}`}>
@@ -387,7 +376,6 @@ export default function DebugOverlay() {
             </button>
           </div>
 
-          {/* Content */}
           <div className="px-3 py-2 space-y-0.5 overflow-y-auto" style={{ maxHeight: '38vh' }}>
             {tab === 'element' && !displayed && (
               <div className="text-center py-4">
@@ -395,7 +383,7 @@ export default function DebugOverlay() {
                   {inspectMode ? 'Move finger/cursor over elements' : 'Enable inspector to start'}
                 </div>
                 {!inspectMode && (
-                  <button onClick={() => { setInspectMode(true); }}
+                  <button onClick={() => setInspectMode(true)}
                     className="px-4 py-2 rounded-lg text-[11px] font-bold text-pink-400 bg-pink-400/10 active:bg-pink-400/20">
                     {'\ud83d\udd0d'} Start Inspecting
                   </button>
@@ -411,7 +399,6 @@ export default function DebugOverlay() {
             ))}
           </div>
 
-          {/* Actions */}
           <div className="px-3 py-1.5 border-t flex gap-2" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
             <button onClick={() => window.location.reload()}
               className="flex-1 py-1 rounded-lg text-[9px] font-bold text-white/50 bg-white/5 active:bg-white/10">Reload</button>
@@ -423,7 +410,7 @@ export default function DebugOverlay() {
             }}
               className="flex-1 py-1 rounded-lg text-[9px] font-bold text-white/50 bg-white/5 active:bg-white/10">Copy</button>
             {pinned && (
-              <button onClick={() => { setPinned(null); }}
+              <button onClick={() => setPinned(null)}
                 className="flex-1 py-1 rounded-lg text-[9px] font-bold text-red-400 bg-red-400/10 active:bg-red-400/20">Unpin</button>
             )}
           </div>
