@@ -21,11 +21,12 @@ interface Props {
 
 const TYPE_EMOJI: Record<string, string> = { prep: '\ud83d\udd2a', cook: '\ud83d\udd25', plate: '\ud83c\udf7d\ufe0f' };
 
+// FIX L2: Split on period + space + uppercase letter only (avoids breaking "approx. 200" or "e.g. mix")
 function parseInstructions(html: string): string[] {
   if (!html) return [];
   let text = html.replace(/<\/?p>/gi, '').replace(/<br\s*\/?>/gi, '. ').trim();
   text = text.replace(/<(?!\/?b\b)[^>]*>/gi, '');
-  const raw = text.split(/\.\s+/).map(s => s.trim()).filter(s => s.length > 0);
+  const raw = text.split(/\.(?=\s+[A-Z])/).map(s => s.trim()).filter(s => s.length > 0);
   return raw.map(s => s.endsWith('.') ? s : s + '.');
 }
 
@@ -63,6 +64,16 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
   useEffect(() => {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
+
+  // FIX L4: Reset timer state when step changes (prevents stale timer leaking between steps)
+  useEffect(() => {
+    setTimerLeft(0);
+    setTimerTotal(0);
+    setTimerRunning(false);
+    setTimerDone(false);
+    setOverdue(0);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+  }, [currentStep]);
 
   const triggerAlert = useCallback(() => {
     if (alertSound) {
@@ -116,7 +127,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
     resetTimer();
     nextStep();
   }
-  // Full reset — clears everything including timerLeft so next step starts clean
   function resetTimer() {
     setTimerRunning(false);
     setTimerDone(false);
