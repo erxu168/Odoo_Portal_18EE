@@ -2,15 +2,19 @@
 
 import React, { useState, useEffect } from 'react';
 
+// FIX F5: Interface matches the ENRICHED versions API response (flat strings, not Odoo tuples)
 interface Version {
   id: number;
-  product_tmpl_id: [number, string] | false;
-  bom_id: [number, string] | false;
+  recipe_name: string;
+  recipe_type: 'cooking_guide' | 'production_guide';
+  product_tmpl_id: number | null;
+  bom_id: number | null;
   version: number;
   status: string;
   change_summary: string;
-  created_by_id: [number, string] | false;
-  create_date: string;
+  created_by: string;
+  created_at: string;
+  step_count: number;
 }
 
 interface Props {
@@ -41,8 +45,7 @@ export default function ApprovalList({ userRole, onReview, onBack, onHome }: Pro
 
   const filtered = versions.filter(v => {
     if (!search) return true;
-    const name = v.product_tmpl_id ? v.product_tmpl_id[1] : v.bom_id ? v.bom_id[1] : '';
-    return name.toLowerCase().includes(search.toLowerCase());
+    return v.recipe_name.toLowerCase().includes(search.toLowerCase());
   });
 
   const isManager = userRole === 'manager' || userRole === 'admin';
@@ -88,9 +91,8 @@ export default function ApprovalList({ userRole, onReview, onBack, onHome }: Pro
         )}
         <div className="flex flex-col gap-3">
           {filtered.map(v => {
-            const name = v.product_tmpl_id ? v.product_tmpl_id[1] : v.bom_id ? v.bom_id[1] : 'Unknown';
-            const isProduct = !!v.product_tmpl_id;
-            const submitter = v.created_by_id ? v.created_by_id[1] : 'Unknown';
+            const isProduct = v.recipe_type === 'cooking_guide';
+            const submitter = v.created_by || 'Unknown';
             const initials = submitter.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
             return (
               <div key={v.id} className="bg-white rounded-xl border border-gray-200 p-4">
@@ -98,17 +100,18 @@ export default function ApprovalList({ userRole, onReview, onBack, onHome }: Pro
                   <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-[13px] font-bold flex-shrink-0">{initials}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold text-gray-900">{submitter}</div>
-                    <div className="text-[11px] text-gray-500">{v.create_date ? v.create_date.substring(0, 16) : ''}</div>
+                    <div className="text-[11px] text-gray-500">{v.created_at ? v.created_at.substring(0, 16) : ''}</div>
                   </div>
                   <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-100 text-amber-800 uppercase">Pending</span>
                 </div>
                 <div className="mb-2">
-                  <div className="text-[14px] font-bold text-gray-900">{name}
+                  <div className="text-[14px] font-bold text-gray-900">{v.recipe_name}
                     <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded uppercase font-bold ${isProduct ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'}`}>
                       {isProduct ? 'COOKING' : 'PROD'}
                     </span>
                   </div>
                   {v.change_summary && <div className="text-[12px] text-gray-600 mt-1">{v.change_summary}</div>}
+                  <div className="text-[11px] text-gray-400 mt-1">{v.step_count} steps</div>
                 </div>
                 {isManager && (
                   <button onClick={() => onReview(v)}

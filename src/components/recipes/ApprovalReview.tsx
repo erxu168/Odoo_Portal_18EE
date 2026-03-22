@@ -21,6 +21,21 @@ interface Props {
 
 const TYPE_EMOJI: Record<string, string> = { prep: '\ud83d\udd2a', cook: '\ud83d\udd25', plate: '\ud83c\udf7d\ufe0f' };
 
+// FIX S3: Safe text rendering instead of dangerouslySetInnerHTML
+function renderSafeHtml(html: string): React.ReactNode {
+  if (!html) return null;
+  // Strip all tags except <b>, render bold as <strong>
+  const cleaned = html.replace(/<\/?p>/gi, '').replace(/<br\s*\/?>/gi, ' ');
+  const parts = cleaned.split(/(<b>.*?<\/b>)/gi);
+  return parts.map((part, i) => {
+    const boldMatch = part.match(/^<b>(.*?)<\/b>$/i);
+    if (boldMatch) return <strong key={i} className="font-bold">{boldMatch[1]}</strong>;
+    // Strip any remaining HTML tags
+    const safe = part.replace(/<[^>]*>/g, '');
+    return <span key={i}>{safe}</span>;
+  });
+}
+
 export default function ApprovalReview({ recipeName, productTmplId, bomId, changeSummary, onApprove, onReject, onBack, approving }: Props) {
   const [steps, setSteps] = useState<StepData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +43,7 @@ export default function ApprovalReview({ recipeName, productTmplId, bomId, chang
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
@@ -45,16 +61,14 @@ export default function ApprovalReview({ recipeName, productTmplId, bomId, chang
     load();
   }, [productTmplId, bomId]);
 
+  // FIX L5: Use IntersectionObserver instead of scroll math
   useEffect(() => {
-    function handleScroll() {
-      if (!listRef.current) return;
-      const el = listRef.current;
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
-      if (atBottom) setScrolledAll(true);
-    }
-    const el = listRef.current;
-    if (el) el.addEventListener('scroll', handleScroll);
-    return () => { if (el) el.removeEventListener('scroll', handleScroll); };
+    if (!sentinelRef.current || steps.length <= 3) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setScrolledAll(true);
+    }, { threshold: 0.1 });
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
   }, [steps]);
 
   function handleApprove() {
@@ -118,13 +132,15 @@ export default function ApprovalReview({ recipeName, productTmplId, bomId, chang
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 capitalize">{step.step_type}</span>
                         {step.timer_seconds > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono">{Math.ceil(step.timer_seconds / 60)}m</span>}
                       </div>
-                      <div className="text-[13px] text-gray-800" dangerouslySetInnerHTML={{ __html: step.instruction || '' }} />
+                      <div className="text-[13px] text-gray-800">{renderSafeHtml(step.instruction)}</div>
                       {step.tip && <div className="text-[11px] text-amber-600 mt-1">{'\ud83d\udca1'} {step.tip}</div>}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
+            {/* Sentinel element for IntersectionObserver */}
+            <div ref={sentinelRef} className="h-1" />
           </div>
         )}
       </div>

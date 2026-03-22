@@ -14,12 +14,13 @@ export interface RecordedStep {
 interface Props {
   recipeName: string;
   mode: 'cooking' | 'production';
+  initialSteps?: RecordedStep[];
   onFinish: (steps: RecordedStep[]) => void;
   onBack: () => void;
 }
 
-export default function ActiveRecording({ recipeName, mode, onFinish, onBack }: Props) {
-  const [steps, setSteps] = useState<RecordedStep[]>([]);
+export default function ActiveRecording({ recipeName, mode, initialSteps, onFinish, onBack }: Props) {
+  const [steps, setSteps] = useState<RecordedStep[]>(initialSteps || []);
   const [instruction, setInstruction] = useState('');
   const [stepType, setStepType] = useState<'prep' | 'cook' | 'plate'>('prep');
   const [timerMin, setTimerMin] = useState(0);
@@ -29,6 +30,8 @@ export default function ActiveRecording({ recipeName, mode, onFinish, onBack }: 
   const [recording, setRecording] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stepsRef = useRef(steps);
+  stepsRef.current = steps;
 
   React.useEffect(() => {
     if (!recording) return;
@@ -53,29 +56,41 @@ export default function ActiveRecording({ recipeName, mode, onFinish, onBack }: 
     e.target.value = '';
   }
 
-  function saveStep() {
-    if (!instruction.trim()) return;
-    setSteps(prev => [...prev, {
+  function buildCurrentStep(): RecordedStep | null {
+    if (!instruction.trim()) return null;
+    return {
       id: `step_${Date.now()}`, step_type: stepType,
       instruction: instruction.trim(), timer_seconds: timerMin * 60,
       tip: tip.trim(), photos: [...photos],
-    }]);
+    };
+  }
+
+  function saveStep() {
+    const newStep = buildCurrentStep();
+    if (!newStep) return;
+    setSteps(prev => [...prev, newStep]);
     setInstruction(''); setTimerMin(0); setTip(''); setPhotos([]);
   }
 
-  function handleEnd() {
-    if (instruction.trim()) saveStep();
+  // FIX F2: Build final array synchronously — no stale state
+  function handleFinishRecording() {
     setRecording(false);
-  }
-
-  function handleFinish() {
-    if (steps.length === 0 && instruction.trim()) saveStep();
-    onFinish(steps);
+    const currentStep = buildCurrentStep();
+    const finalSteps = currentStep
+      ? [...stepsRef.current, currentStep]
+      : [...stepsRef.current];
+    onFinish(finalSteps);
   }
 
   function handleExit() {
     if (!confirm('End recording? You can still review and submit saved steps.')) return;
-    handleEnd();
+    // Save any in-progress step, then go back
+    const currentStep = buildCurrentStep();
+    const finalSteps = currentStep
+      ? [...stepsRef.current, currentStep]
+      : [...stepsRef.current];
+    setRecording(false);
+    onFinish(finalSteps);
   }
 
   const hasContent = instruction.trim().length > 0;
@@ -91,7 +106,7 @@ export default function ActiveRecording({ recipeName, mode, onFinish, onBack }: 
           <span className="text-[14px] font-bold text-white font-mono">{formatElapsed(elapsed)}</span>
           <span className="text-[12px] text-white/40 bg-white/10 px-2 py-0.5 rounded">{steps.length} steps</span>
         </div>
-        <button onClick={handleEnd} className="px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/30 text-[13px] font-bold text-red-400 active:bg-red-500/30">End</button>
+        <button onClick={handleFinishRecording} className="px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/30 text-[13px] font-bold text-red-400 active:bg-red-500/30">End</button>
       </div>
       <div className="px-5 py-2">
         <div className="text-[11px] text-white/40 font-semibold">{recipeName} {'\u00b7'} {mode === 'cooking' ? 'Cooking' : 'Production'}</div>
@@ -151,7 +166,7 @@ export default function ActiveRecording({ recipeName, mode, onFinish, onBack }: 
           className={`flex-1 py-3.5 rounded-2xl text-[15px] font-bold transition-all ${
             hasContent ? 'bg-green-600 text-white active:bg-green-700' : 'bg-white/10 text-white/30'
           }`}>Save step +</button>
-        <button onClick={() => { handleEnd(); handleFinish(); }}
+        <button onClick={handleFinishRecording}
           className="px-6 py-3.5 rounded-2xl text-[15px] font-bold text-amber-400 border border-amber-400/30 bg-amber-400/10 active:bg-amber-400/20">Finish</button>
       </div>
     </div>
