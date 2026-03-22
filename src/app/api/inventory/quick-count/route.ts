@@ -2,6 +2,7 @@
  * /api/inventory/quick-count
  *
  * GET  — list quick counts (filter by status)
+ *        Accepts 'submitted' as alias for 'pending' (for consistency with session statuses)
  * POST — submit a batch of quick counts
  */
 import { NextResponse } from 'next/server';
@@ -15,7 +16,10 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
-  const status = searchParams.get('status') || undefined;
+  let status = searchParams.get('status') || undefined;
+
+  // Map 'submitted' to 'pending' for quick counts (sessions use 'submitted', quick counts use 'pending')
+  if (status === 'submitted') status = 'pending';
 
   // Staff sees their own, manager/admin sees all
   const filters: any = { status };
