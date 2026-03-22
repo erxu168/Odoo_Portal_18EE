@@ -2,7 +2,7 @@
  * POST /api/inventory/quick-count/approve
  *
  * Manager approves a single quick count.
- * Writes inventory_quantity to stock.quant in Odoo.
+ * Updates status FIRST, then attempts Odoo write.
  *
  * Body: { id: number }
  */
@@ -25,7 +25,6 @@ export async function POST(request: Request) {
   const { id } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-  // Get the quick count record
   const db = getDb();
   const qc = db.prepare('SELECT * FROM quick_counts WHERE id = ?').get(id) as any;
   if (!qc) return NextResponse.json({ error: 'Quick count not found' }, { status: 404 });
@@ -33,10 +32,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Already processed' }, { status: 400 });
   }
 
+  // Update status FIRST so it's approved even if Odoo write fails
+  approveQuickCount(id, user.id);
+
+  let warning: string | null = null;
+
   try {
     const odoo = getOdoo();
 
-    // Find existing quant
     const quants = await odoo.searchRead('stock.quant', [
       ['product_id', '=', qc.product_id],
       ['location_id', '=', qc.location_id],
@@ -54,7 +57,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // Apply inventory
     const toApply = await odoo.searchRead('stock.quant', [
       ['product_id', '=', qc.product_id],
       ['location_id', '=', qc.location_id],
@@ -64,13 +66,13 @@ export async function POST(request: Request) {
     if (toApply.length > 0) {
       await odoo.call('stock.quant', 'action_apply_inventory', [toApply.map((q: any) => q.id)]);
     }
-
-    // Update portal DB
-    approveQuickCount(id, user.id);
-
-    return NextResponse.json({ message: 'Quick count approved and applied to Odoo' });
   } catch (err: any) {
-    console.error('QC approve error:', err.message);
-    return NextResponse.json({ error: `Odoo write failed: ${err.message}` }, { status: 500 });
+    console.error('QC Odoo write failed (still approved):', err.message);
+    warning = `Approved but Odoo sync failed: ${err.message}`;
   }
+
+  return NextResponse.json({
+    message: warning || 'Quick count approved',
+    warning,
+  });
 }
