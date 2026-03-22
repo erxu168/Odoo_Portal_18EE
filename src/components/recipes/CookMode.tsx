@@ -113,10 +113,16 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
   function resumeTimer() { setTimerRunning(true); }
   function skipTimer() {
     if (!confirm('Skip timer? Timer has not finished. Are you sure?')) return;
-    stopTimer(); nextStep();
+    resetTimer();
+    nextStep();
   }
-  function stopTimer() {
-    setTimerRunning(false); setTimerDone(false); setOverdue(0);
+  // Full reset — clears everything including timerLeft so next step starts clean
+  function resetTimer() {
+    setTimerRunning(false);
+    setTimerDone(false);
+    setTimerLeft(0);
+    setTimerTotal(0);
+    setOverdue(0);
     if (intervalRef.current) clearInterval(intervalRef.current);
   }
   function addTime(sec: number) { setTimerLeft(p => p + sec); setTimerTotal(p => p + sec); }
@@ -127,7 +133,7 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
   }
 
   function nextStep() {
-    stopTimer();
+    resetTimer();
     if (isLastStep) { setShowPlating(true); }
     else { setCurrentStep(p => p + 1); }
   }
@@ -139,7 +145,7 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
 
   function handleExit() {
     if (!confirm('Exit cooking? Progress will be lost.')) return;
-    stopTimer(); onExit();
+    resetTimer(); onExit();
   }
 
   function getTimerColor(): string {
@@ -239,7 +245,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
           </div>
         )}
 
-        {/* Instructions — large numbered bullet list */}
         <div className="mb-5" data-dbg="instruction-box">
           <div className="text-[12px] font-semibold text-white/40 uppercase tracking-wider mb-3">Instructions</div>
           <div className="bg-white/5 rounded-2xl px-5 py-4">
