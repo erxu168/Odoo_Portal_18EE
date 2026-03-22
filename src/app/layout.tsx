@@ -3,6 +3,7 @@ import './globals.css';
 import AppTabBar from '@/components/ui/AppTabBar';
 import AppTopBar from '@/components/ui/AppTopBar';
 import { CompanyProvider } from '@/lib/company-context';
+import DebugOverlay from '@/components/ui/DebugOverlay';
 
 export const metadata: Metadata = {
   title: 'Krawings Portal',
@@ -29,6 +30,7 @@ export default function RootLayout({
           <AppTopBar />
           <main className="max-w-lg mx-auto pt-9 pb-20">{children}</main>
           <AppTabBar />
+          <DebugOverlay />
         </CompanyProvider>
       </body>
     </html>
