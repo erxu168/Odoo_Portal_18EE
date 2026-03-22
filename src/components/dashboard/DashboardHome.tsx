@@ -140,12 +140,7 @@ export default function DashboardHome() {
             </div>
           </div>
         )}
-        {!shift && !loading && (
-          <div className="mt-3 flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 border border-white/10">
-            <div className="w-2.5 h-2.5 rounded-full bg-gray-500" />
-            <div className="text-[13px] text-white/50">Loading shift info...</div>
-          </div>
-        )}
+        {/* Shift info appears here when planning module is connected */}
       </div>
 
       {tasks && tasks.items && tasks.items.length > 0 && (

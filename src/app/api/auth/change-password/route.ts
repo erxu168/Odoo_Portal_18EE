@@ -24,9 +24,16 @@ export async function POST(request: Request) {
       );
     }
 
-    if (new_password.length < 6) {
+    if (new_password.length < 8) {
       return NextResponse.json(
-        { error: 'New password must be at least 6 characters.' },
+        { error: 'New password must be at least 8 characters.' },
+        { status: 400 },
+      );
+    }
+
+    if (!/\d/.test(new_password)) {
+      return NextResponse.json(
+        { error: 'New password must contain at least one number.' },
         { status: 400 },
       );
     }

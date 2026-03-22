@@ -63,77 +63,21 @@ export async function GET() {
       }
     }
 
-    // ── Mock: shift info (until planning.slot is wired) ──
-    const hour = new Date().getHours();
-    let shiftName = 'Morning shift';
-    const shiftStation = 'Kitchen';
-    let shiftStart = '06:00';
-    let shiftEnd = '14:00';
-    let onShift = true;
-    if (hour >= 14 && hour < 22) {
-      shiftName = 'Evening shift';
-      shiftStart = '16:00';
-      shiftEnd = '23:00';
-    } else if (hour >= 22 || hour < 6) {
-      onShift = false;
-    }
-
-    // ── Mock: task counts (until restaurant.shift.task is wired) ──
-    const tasks = {
-      total: 4,
-      done: 1,
-      overdue: 1,
-      items: [
-        {
-          id: 1, name: 'Clean deep fryer station',
-          category: 'Evening prep', photoRequired: true,
-          status: 'overdue', dueLabel: '15m overdue',
-        },
-        {
-          id: 2, name: 'Check walk-in fridge temps',
-          category: 'Food safety', photoRequired: false,
-          status: 'due_soon', dueLabel: 'Due 19:00',
-        },
-        {
-          id: 3, name: 'Restock sauce station',
-          category: 'Evening prep', photoRequired: false,
-          status: 'upcoming', dueLabel: '20:00',
-        },
-        {
-          id: 4, name: 'Mise en place check',
-          category: 'Opening', photoRequired: false,
-          status: 'done', dueLabel: 'Done',
-        },
-      ],
-    };
+    // Shift and tasks not yet wired to Odoo planning module.
+    // Return null so the dashboard knows these are unavailable (not mock data).
 
     return NextResponse.json({
       badges: {
         production: activeMoCount,
-        shifts: 3,
-        tasks: tasks.overdue,
-        inventory: 0,
-        repair: 1,
-        purchase: 4,
-        leave: 24,
-        payroll: 0,
         contacts: pendingRegistrations,
-        profile: 0,
-        settings: 0,
       },
       production: {
         active: activeMoCount,
         due: dueMoCount,
         doneToday: doneTodayCount,
       },
-      shift: {
-        onShift,
-        name: shiftName,
-        station: shiftStation,
-        start: shiftStart,
-        end: shiftEnd,
-      },
-      tasks,
+      shift: null,
+      tasks: null,
       pendingRegistrations,
     });
   } catch (error: any) {

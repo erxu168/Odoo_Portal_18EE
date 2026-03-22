@@ -216,7 +216,7 @@ export function createSession(userId: number): string {
   const token = crypto.randomUUID();
   const now = nowISO();
   const expiresAt = new Date();
-  expiresAt.setFullYear(expiresAt.getFullYear() + 100);
+  expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
   db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(token, userId, now, expiresAt.toISOString());
   db.prepare('UPDATE portal_users SET last_login = ?, login_count = login_count + 1 WHERE id = ?').run(now, userId);
   return token;

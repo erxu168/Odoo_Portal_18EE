@@ -103,6 +103,12 @@ export async function POST(request: Request) {
     const { receipt_id, close_order, delivery_note_photo } = body;
     if (!receipt_id) return NextResponse.json({ error: 'receipt_id required' }, { status: 400 });
 
+    // Idempotency guard: prevent double-confirmation
+    const existingReceipt = getReceipt(receipt_id);
+    if (existingReceipt && existingReceipt.status === 'confirmed') {
+      return NextResponse.json({ message: 'Receipt already confirmed' });
+    }
+
     // Save delivery note photo to SQLite
     if (delivery_note_photo) {
       updateReceiptNote(receipt_id, delivery_note_photo);

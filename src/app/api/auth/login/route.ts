@@ -97,12 +97,11 @@ export async function POST(request: Request) {
       },
     });
 
-    // Sessions never expire (maxAge omitted = session cookie, but we set far future)
     response.cookies.set(COOKIE_NAME, token, {
       httpOnly: true,
       sameSite: 'lax',
       path: '/',
-      maxAge: 365 * 24 * 60 * 60 * 100, // 100 years
+      maxAge: 30 * 24 * 60 * 60, // 30 days
     });
 
     return response;
