@@ -81,7 +81,6 @@ export default function RecipesPage() {
 
   useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.role) setUserRole(d.user.role); }).catch(() => {}); }, []);
 
-  // Debug overlay tracking
   useEffect(() => {
     const d = DBG[screen.type];
     setDebugInfo({
@@ -99,6 +98,7 @@ export default function RecipesPage() {
   function goHome() { router.push('/'); }
   function goDashboard() { setScreen({ type: 'dashboard' }); }
 
+  // ===== COOK FLOW =====
   if (screen.type === 'dashboard') return <RecipeDashboard userRole={userRole} onNavigate={(id: string) => setScreen({ type: id } as Screen)} onHome={goHome} />;
 
   if (screen.type === 'cooking-guide') return (
@@ -141,6 +141,7 @@ export default function RecipesPage() {
       onDashboard={goDashboard} onCookAnother={() => setScreen({ type: ctx.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })} />
   );
 
+  // ===== RECORD FLOW =====
   if (screen.type === 'record') return (
     <RecordSelect userRole={userRole}
       onSelectRecipe={(r, m) => { setRecCtx({ mode: m, recipeId: r.id, recipeName: r.name, recordedSteps: [] }); setScreen({ type: 'active-recording' }); }}
@@ -154,8 +155,10 @@ export default function RecipesPage() {
       onCreated={(d) => { setRecCtx({ mode: d.mode === 'cooking_guide' ? 'cooking' : 'production', recipeId: 0, recipeName: d.name, recordedSteps: [] }); setScreen({ type: 'active-recording' }); }} />
   );
 
+  // FIX F1: Pass initialSteps so "add more" preserves existing steps
   if (screen.type === 'active-recording') return (
     <ActiveRecording recipeName={recCtx.recipeName} mode={recCtx.mode}
+      initialSteps={recCtx.recordedSteps}
       onFinish={(s) => { setRecCtx(p => ({ ...p, recordedSteps: s })); setScreen({ type: 'recording-summary' }); }}
       onBack={() => setScreen({ type: 'record' })} />
   );
@@ -165,38 +168,82 @@ export default function RecipesPage() {
       steps={recCtx.recordedSteps}
       onEditStep={(i) => setScreen({ type: 'edit-step', stepIndex: i })}
       onDeleteStep={(i) => setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, idx) => idx !== i) }))}
-      onAddStep={() => setScreen({ type: 'active-recording' })}
+      // FIX F1: "Add step" creates blank step and opens edit-step (no more losing steps)
+      onAddStep={() => {
+        const blank: RecordedStep = { id: `step_${Date.now()}`, step_type: 'prep', instruction: '', timer_seconds: 0, tip: '', photos: [] };
+        const newIdx = recCtx.recordedSteps.length;
+        setRecCtx(p => ({ ...p, recordedSteps: [...p.recordedSteps, blank] }));
+        setScreen({ type: 'edit-step', stepIndex: newIdx });
+      }}
       submitting={submitting}
       onSubmit={async () => {
+        // FIX F6: Block submit for local-only dishes (no Odoo ID yet)
+        if (recCtx.recipeId <= 0) {
+          alert('This dish was created locally and has not been synced to Odoo yet. Please ask a manager to sync it before submitting steps.');
+          return;
+        }
+        if (recCtx.recordedSteps.length === 0) {
+          alert('No steps to submit. Record at least one step first.');
+          return;
+        }
+        // Check all steps have instructions
+        const emptySteps = recCtx.recordedSteps.filter(s => !s.instruction.trim());
+        if (emptySteps.length > 0) {
+          alert(`${emptySteps.length} step(s) have no instructions. Edit them before submitting.`);
+          return;
+        }
         setSubmitting(true);
         try {
           const body: Record<string, unknown> = {
             steps: recCtx.recordedSteps.map(s => ({ step_type: s.step_type, instruction: s.instruction, timer_seconds: s.timer_seconds, tip: s.tip, images: s.photos.map(p => ({ data: p.split(',')[1] || p, source: 'record' })) })),
             change_summary: 'New recipe recording from portal',
           };
-          if (recCtx.recipeId > 0) { if (recCtx.mode === 'cooking') body.product_tmpl_id = recCtx.recipeId; else body.bom_id = recCtx.recipeId; }
+          if (recCtx.mode === 'cooking') body.product_tmpl_id = recCtx.recipeId;
+          else body.bom_id = recCtx.recipeId;
           const res = await fetch('/api/recipes/steps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
           if (res.ok) { alert('Recipe submitted for review!'); goDashboard(); }
-          else { const err = await res.json(); alert(`Error: ${err.error || 'Failed'}`); }
-        } catch (_e) { alert('Failed to submit. Check connection.'); }
+          else { const err = await res.json(); alert(`Failed to submit: ${err.error || 'Unknown error'}. Please try again.`); }
+        } catch (_e) { alert('Failed to submit. Check your internet connection and try again.'); }
         finally { setSubmitting(false); }
       }}
-      onBack={() => setScreen({ type: 'active-recording' })} onHome={goHome} />
+      // Back from summary goes to recipe select (not back to recording)
+      onBack={() => setScreen({ type: 'record' })} onHome={goHome} />
   );
 
   if (screen.type === 'edit-step') {
     const step = recCtx.recordedSteps[screen.stepIndex];
     if (!step) { setScreen({ type: 'recording-summary' }); return null; }
     return <EditStep step={step} stepIndex={screen.stepIndex}
-      onSave={(u) => { setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.map((s, i) => i === screen.stepIndex ? u : s) })); setScreen({ type: 'recording-summary' }); }}
-      onBack={() => setScreen({ type: 'recording-summary' })} />;
+      onSave={(u) => {
+        // If instruction is empty, remove the step (was a blank "add step")
+        if (!u.instruction.trim()) {
+          setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) }));
+        } else {
+          setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.map((s, i) => i === screen.stepIndex ? u : s) }));
+        }
+        setScreen({ type: 'recording-summary' });
+      }}
+      onBack={() => {
+        // If this was a blank step (from "add step"), remove it on back
+        if (!step.instruction.trim()) {
+          setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) }));
+        }
+        setScreen({ type: 'recording-summary' });
+      }} />;
   }
 
+  // ===== APPROVAL FLOW =====
+  // FIX F5: Uses new flat Version interface from ApprovalList
   if (screen.type === 'approvals') return (
     <ApprovalList userRole={userRole}
       onReview={(v) => {
-        const nm = v.product_tmpl_id ? v.product_tmpl_id[1] : v.bom_id ? v.bom_id[1] : 'Unknown';
-        setAprCtx({ versionId: v.id, recipeName: nm, productTmplId: v.product_tmpl_id ? v.product_tmpl_id[0] : undefined, bomId: v.bom_id ? v.bom_id[0] : undefined, changeSummary: v.change_summary || '' });
+        setAprCtx({
+          versionId: v.id,
+          recipeName: v.recipe_name,
+          productTmplId: v.product_tmpl_id || undefined,
+          bomId: v.bom_id || undefined,
+          changeSummary: v.change_summary || '',
+        });
         setScreen({ type: 'approval-review' });
       }}
       onBack={goDashboard} onHome={goHome} />
@@ -209,23 +256,24 @@ export default function RecipesPage() {
         setSubmitting(true);
         try {
           const res = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'approve' }) });
-          if (res.ok) { alert('Recipe approved!'); setScreen({ type: 'approvals' }); }
-          else { const err = await res.json(); alert(`Error: ${err.error}`); }
-        } catch (_e) { alert('Failed to approve.'); }
+          if (res.ok) { alert('Recipe approved and published!'); setScreen({ type: 'approvals' }); }
+          else { const err = await res.json(); alert(`Approval failed: ${err.error || 'Unknown error'}`); }
+        } catch (_e) { alert('Failed to approve. Check your connection.'); }
         finally { setSubmitting(false); }
       }}
       onReject={async (reason) => {
         setSubmitting(true);
         try {
           const res = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'reject', reason }) });
-          if (res.ok) { alert('Recipe rejected.'); setScreen({ type: 'approvals' }); }
-          else { const err = await res.json(); alert(`Error: ${err.error}`); }
-        } catch (_e) { alert('Failed to reject.'); }
+          if (res.ok) { alert('Recipe rejected. The submitter will be notified.'); setScreen({ type: 'approvals' }); }
+          else { const err = await res.json(); alert(`Rejection failed: ${err.error || 'Unknown error'}`); }
+        } catch (_e) { alert('Failed to reject. Check your connection.'); }
         finally { setSubmitting(false); }
       }}
       onBack={() => setScreen({ type: 'approvals' })} />
   );
 
+  // ===== PLACEHOLDER =====
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-[#1A1F2E] px-5 pt-14 pb-5">

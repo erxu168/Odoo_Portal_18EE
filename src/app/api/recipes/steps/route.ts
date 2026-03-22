@@ -8,6 +8,10 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 
+// FIX S2: Image size limits
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB per image
+const MAX_IMAGES_PER_STEP = 5;
+
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -89,11 +93,45 @@ export async function POST(request: Request) {
     if (!product_tmpl_id && !bom_id) {
       return NextResponse.json({ error: 'product_tmpl_id or bom_id required' }, { status: 400 });
     }
+    if (steps.length > 50) {
+      return NextResponse.json({ error: 'Maximum 50 steps per recipe' }, { status: 400 });
+    }
+
+    // FIX S2: Validate image sizes before sending to Odoo
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      if (s.images?.length) {
+        if (s.images.length > MAX_IMAGES_PER_STEP) {
+          return NextResponse.json({ error: `Step ${i + 1}: maximum ${MAX_IMAGES_PER_STEP} images per step` }, { status: 400 });
+        }
+        for (const img of s.images) {
+          const approxBytes = (img.data?.length || 0) * 0.75;
+          if (approxBytes > MAX_IMAGE_BYTES) {
+            return NextResponse.json({ error: `Step ${i + 1}: image too large (max 5MB). Reduce photo quality or resolution.` }, { status: 400 });
+          }
+        }
+      }
+      // Validate instruction is not empty
+      if (!s.instruction?.trim()) {
+        return NextResponse.json({ error: `Step ${i + 1}: instruction cannot be empty` }, { status: 400 });
+      }
+    }
 
     const odoo = getOdoo();
 
+    // FIX F7: Auto-increment version number
+    const versionDomain: any[] = [];
+    if (product_tmpl_id) versionDomain.push(['product_tmpl_id', '=', product_tmpl_id]);
+    if (bom_id) versionDomain.push(['bom_id', '=', bom_id]);
+    const existingVersions = await odoo.searchRead(
+      'krawings.recipe.version', versionDomain,
+      ['version'], { order: 'version desc', limit: 1 },
+    );
+    const nextVersion = (existingVersions.length > 0 ? (existingVersions[0].version || 0) : 0) + 1;
+
     // 1. Create version record
-    const versionVals: any = {
+    const versionVals: Record<string, unknown> = {
+      version: nextVersion,
       status: 'review',
       change_summary: change_summary || 'New recipe recording',
     };
@@ -106,7 +144,7 @@ export async function POST(request: Request) {
     const createdIds: number[] = [];
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
-      const stepVals: any = {
+      const stepVals: Record<string, unknown> = {
         sequence: (i + 1) * 10,
         step_type: s.step_type || 'prep',
         instruction: s.instruction || '',
@@ -141,6 +179,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       version_id: versionId,
+      version: nextVersion,
       step_ids: createdIds,
     });
   } catch (err: unknown) {
