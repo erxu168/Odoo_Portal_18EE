@@ -21,7 +21,7 @@ interface Props {
 
 const TYPE_EMOJI: Record<string, string> = { prep: '\ud83d\udd2a', cook: '\ud83d\udd25', plate: '\ud83c\udf7d\ufe0f' };
 
-export default function CookMode({ mode, recipeName, steps, batch, onExit, onComplete }: Props) {
+export default function CookMode({ mode, recipeName, steps, onExit, onComplete }: Props) {
   const [currentStep, setCurrentStep] = useState(0);
   const [timerLeft, setTimerLeft] = useState(0);
   const [timerTotal, setTimerTotal] = useState(0);
@@ -45,28 +45,6 @@ export default function CookMode({ mode, recipeName, steps, batch, onExit, onCom
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
-  useEffect(() => {
-    if (!timerRunning) return;
-    intervalRef.current = setInterval(() => {
-      setTimerLeft(prev => {
-        if (prev <= 1) {
-          setTimerDone(true);
-          setTimerRunning(false);
-          triggerAlert();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [timerRunning]);
-
-  useEffect(() => {
-    if (!timerDone) return;
-    const iv = setInterval(() => setOverdue(p => p + 1), 1000);
-    return () => clearInterval(iv);
-  }, [timerDone]);
-
   const triggerAlert = useCallback(() => {
     if (alertSound) {
       try {
@@ -81,6 +59,28 @@ export default function CookMode({ mode, recipeName, steps, batch, onExit, onCom
     if (alertFlash) { setFlashing(true); setTimeout(() => setFlashing(false), 1000); }
   }, [alertSound, alertVibrate, alertFlash]);
 
+  useEffect(() => {
+    if (!timerRunning) return;
+    intervalRef.current = setInterval(() => {
+      setTimerLeft(prev => {
+        if (prev <= 1) {
+          setTimerDone(true);
+          setTimerRunning(false);
+          triggerAlert();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [timerRunning, triggerAlert]);
+
+  useEffect(() => {
+    if (!timerDone) return;
+    const iv = setInterval(() => setOverdue(p => p + 1), 1000);
+    return () => clearInterval(iv);
+  }, [timerDone]);
+
   function startTimer() {
     if (!step) return;
     setTimerLeft(step.timer_seconds);
@@ -93,7 +93,7 @@ export default function CookMode({ mode, recipeName, steps, batch, onExit, onCom
   function pauseTimer() { setTimerRunning(false); }
   function resumeTimer() { setTimerRunning(true); }
   function skipTimer() {
-    if (!confirm('Skip timer? Timer hasn\'t finished. Are you sure?')) return;
+    if (!confirm('Skip timer? Timer has not finished. Are you sure?')) return;
     stopTimer(); nextStep();
   }
   function stopTimer() {
@@ -208,7 +208,7 @@ export default function CookMode({ mode, recipeName, steps, batch, onExit, onCom
 
         {step.ingredients && step.ingredients.length > 0 && (
           <div className="mb-4">
-            <div className="text-[11px] font-semibold text-white/40 uppercase tracking-wider mb-2">You'll need</div>
+            <div className="text-[11px] font-semibold text-white/40 uppercase tracking-wider mb-2">{"You\u2019ll need"}</div>
             <div className="flex flex-wrap gap-1.5">
               {step.ingredients.map(ing => (
                 <div key={ing.id} className="px-3 py-1.5 rounded-lg bg-white/10 text-[12px] text-white/80">
