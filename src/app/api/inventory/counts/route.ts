@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const entries = getSessionEntries(parseInt(sessionId));
 
   // Fetch system quantities from Odoo stock.quant for this session's location
-  let systemQtys: Record<number, number> = {};
+  const systemQtys: Record<number, number> = {};
   try {
     const session = getSession(parseInt(sessionId));
     if (session) {

@@ -18,7 +18,7 @@ import {
 } from '@/lib/recipe-db';
 import type { LocalRecipe, LocalIngredient } from '@/types/recipe';
 
-export async function GET(request: Request) {
+export async function GET() {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -30,12 +30,13 @@ export async function GET(request: Request) {
       pending_count: pendingCount,
       unsynced_recipes: unsyncedRecipes.length,
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
-export async function POST(request: Request) {
+export async function POST() {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -57,9 +58,10 @@ export async function POST(request: Request) {
 
         updateSyncItem(item.id, 'done');
         results.push({ id: item.id, action: item.action, success: true });
-      } catch (err: any) {
-        updateSyncItem(item.id, 'failed', err.message);
-        results.push({ id: item.id, action: item.action, success: false, error: err.message });
+      } catch (innerErr: unknown) {
+        const innerMsg = innerErr instanceof Error ? innerErr.message : 'Unknown error';
+        updateSyncItem(item.id, 'failed', innerMsg);
+        results.push({ id: item.id, action: item.action, success: false, error: innerMsg });
       }
     }
 
@@ -67,9 +69,10 @@ export async function POST(request: Request) {
       processed: results.length,
       results,
     });
-  } catch (err: any) {
-    console.error('Recipe sync error:', err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Recipe sync error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -116,7 +119,7 @@ async function syncCreateRecipe(odoo: any, localId: number): Promise<void> {
 
     for (const ing of ingredients) {
       if (!ing.name) continue;
-      let productIds = await odoo.searchRead(
+      const productIds = await odoo.searchRead(
         'product.product',
         [['name', 'ilike', ing.name]],
         ['id'],

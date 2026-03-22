@@ -41,7 +41,7 @@ export async function GET(request: Request) {
       for (const id of (s.ingredient_ids || [])) allIngIds.add(id);
     }
 
-    let ingredientMap: Record<number, { name: string; uom: string }> = {};
+    const ingredientMap: Record<number, { name: string; uom: string }> = {};
     if (allIngIds.size > 0) {
       const ingredients = await odoo.read(
         'product.product',
@@ -66,9 +66,10 @@ export async function GET(request: Request) {
     }));
 
     return NextResponse.json({ steps: enrichedSteps });
-  } catch (err: any) {
-    console.error('Recipe steps GET error:', err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Recipe steps GET error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -140,8 +141,9 @@ export async function POST(request: Request) {
       version_id: versionId,
       step_ids: createdIds,
     });
-  } catch (err: any) {
-    console.error('Recipe steps POST error:', err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Recipe steps POST error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
