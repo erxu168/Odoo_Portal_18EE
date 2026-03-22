@@ -197,7 +197,7 @@ export function listSessions(filters?: {
   if (filters?.assigned_user_id) { where.push('s.assigned_user_id = ?'); vals.push(filters.assigned_user_id); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
   return db.prepare(`
-    SELECT s.*, t.name as template_name
+    SELECT s.*, t.name as template_name, t.product_ids as template_product_ids, t.category_ids as template_category_ids
     FROM counting_sessions s
     LEFT JOIN counting_templates t ON t.id = s.template_id
     ${clause}
@@ -208,7 +208,7 @@ export function listSessions(filters?: {
 export function getSession(id: number): CountingSession | null {
   const db = getDb();
   return db.prepare(`
-    SELECT s.*, t.name as template_name
+    SELECT s.*, t.name as template_name, t.product_ids as template_product_ids, t.category_ids as template_category_ids
     FROM counting_sessions s
     LEFT JOIN counting_templates t ON t.id = s.template_id
     WHERE s.id = ?

@@ -42,8 +42,27 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       }
       setEntries(entryMap);
 
-      // TODO: filter products by template categories
-      setProducts(prodRes.products || []);
+      // Filter products by template's product_ids, then category_ids as fallback
+      let allProducts = prodRes.products || [];
+      if (sess) {
+        const templateProductIds: number[] = (() => {
+          try { const arr = JSON.parse(sess.template_product_ids || '[]'); return Array.isArray(arr) ? arr : []; }
+          catch { return []; }
+        })();
+        const templateCategoryIds: number[] = (() => {
+          try { const arr = JSON.parse(sess.template_category_ids || '[]'); return Array.isArray(arr) ? arr : []; }
+          catch { return []; }
+        })();
+
+        if (templateProductIds.length > 0) {
+          const idSet = new Set(templateProductIds);
+          allProducts = allProducts.filter((p: any) => idSet.has(p.id));
+        } else if (templateCategoryIds.length > 0) {
+          const catSet = new Set(templateCategoryIds);
+          allProducts = allProducts.filter((p: any) => p.categ_id && catSet.has(p.categ_id[0]));
+        }
+      }
+      setProducts(allProducts);
     } catch (err) {
       console.error('Failed to load session:', err);
     } finally {
