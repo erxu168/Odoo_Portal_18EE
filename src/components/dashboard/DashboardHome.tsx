@@ -15,6 +15,10 @@ const TILES = [
     icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>,
   },
   {
+    id: 'recipes', label: 'Recipe Guide', href: '/recipes', minRole: 'staff',
+    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>,
+  },
+  {
     id: 'shifts', label: 'Shift Schedule', href: null, minRole: 'staff',
     icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
   },
@@ -73,10 +77,8 @@ export default function DashboardHome() {
   const [badges, setBadges] = useState<Record<string, number>>({});
   const [shift, setShift] = useState<any>(null);
   const [tasks, setTasks] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [comingSoon, setComingSoon] = useState<string | null>(null);
-  // Logout moved to AppDrawer hamburger menu
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
 
@@ -93,7 +95,6 @@ export default function DashboardHome() {
         if (data.shift) setShift(data.shift);
         if (data.tasks) setTasks(data.tasks);
       } catch (e) { console.error('Dashboard fetch failed:', e); }
-      finally { setLoading(false); }
     }
     load();
   }, []);
@@ -140,7 +141,6 @@ export default function DashboardHome() {
             </div>
           </div>
         )}
-        {/* Shift info appears here when planning module is connected */}
       </div>
 
       {tasks && tasks.items && tasks.items.length > 0 && (
@@ -193,14 +193,13 @@ export default function DashboardHome() {
           {visibleTiles.map((tile: any) => {
             const count = badges[tile.id] || 0;
             const badgeColor = getBadgeColor(tile.id, count);
-            const isGray = tile.isGray;
             return (
               <button key={tile.id} onClick={() => handleTileTap(tile)}
                 className="aspect-square rounded-2xl bg-white border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] flex flex-col items-center justify-center gap-2 relative active:scale-95 transition-transform">
                 {count > 0 && (
                   <span className={`absolute top-2 right-2 min-w-[20px] h-5 px-1.5 rounded-full text-white text-[11px] font-bold font-mono leading-5 text-center ${badgeColor}`}>{count}</span>
                 )}
-                <div className={`w-12 h-12 rounded-[14px] flex items-center justify-center bg-[#F1F3F5] ${isGray ? 'text-gray-500' : 'text-blue-600'}`}>{tile.icon}</div>
+                <div className="w-12 h-12 rounded-[14px] flex items-center justify-center bg-[#F1F3F5] text-blue-600">{tile.icon}</div>
                 <span className="text-[12px] font-semibold text-[#1F2933] text-center px-1 leading-tight">{tile.label}</span>
               </button>
             );
