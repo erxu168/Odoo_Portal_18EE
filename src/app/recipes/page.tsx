@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { setDebugInfo } from '@/components/ui/DebugOverlay';
 import RecipeDashboard from '@/components/recipes/RecipeDashboard';
 import CookingGuideBrowse from '@/components/recipes/CookingGuideBrowse';
 import ProductionGuideBrowse from '@/components/recipes/ProductionGuideBrowse';
@@ -40,6 +41,26 @@ interface ApprovalCtx {
   productTmplId?: number; bomId?: number; changeSummary: string;
 }
 
+const DBG: Record<string, [string, string]> = {
+  'dashboard': ['S0: Recipe Dashboard', 'RecipeDashboard'],
+  'cooking-guide': ['S1: Cooking Guide Browse', 'CookingGuideBrowse'],
+  'production-guide': ['S1B: Production Guide Browse', 'ProductionGuideBrowse'],
+  'overview': ['S2: Recipe Overview', 'RecipeOverview'],
+  'batch-size': ['S3: Batch Size', 'BatchSize'],
+  'ingredient-check': ['S4: Ingredient Check', 'IngredientCheck'],
+  'cook-mode': ['S5: Cook Mode', 'CookMode'],
+  'complete': ['S7: Complete', 'CookComplete'],
+  'record': ['S10: Record Select', 'RecordSelect'],
+  'create-dish': ['S10C: Create New Dish', 'CreateDish'],
+  'active-recording': ['S11: Active Recording', 'ActiveRecording'],
+  'recording-summary': ['S12: Recording Summary', 'RecordingSummary'],
+  'edit-step': ['S13: Edit Step', 'EditStep'],
+  'edit': ['S8: Recipe Editor', 'placeholder'],
+  'approvals': ['S9: Approvals List', 'ApprovalList'],
+  'approval-review': ['S14: Approval Review', 'ApprovalReview'],
+  'stats': ['Stats', 'placeholder'],
+};
+
 type Screen =
   | { type: 'dashboard' } | { type: 'cooking-guide' } | { type: 'production-guide' }
   | { type: 'overview' } | { type: 'batch-size' } | { type: 'ingredient-check' }
@@ -59,6 +80,21 @@ export default function RecipesPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.role) setUserRole(d.user.role); }).catch(() => {}); }, []);
+
+  // Debug overlay tracking
+  useEffect(() => {
+    const d = DBG[screen.type];
+    setDebugInfo({
+      module: 'Recipe Guide',
+      screen: d ? d[0] : screen.type,
+      component: d ? d[1] : screen.type,
+      mode: ctx.mode,
+      recipeId: ctx.recipeId || recCtx.recipeId || undefined,
+      recipeName: ctx.recipeName || recCtx.recipeName || undefined,
+      batch: ctx.batch,
+      stepCount: ctx.steps.length || recCtx.recordedSteps.length || undefined,
+    });
+  }, [screen, ctx, recCtx]);
 
   function goHome() { router.push('/'); }
   function goDashboard() { setScreen({ type: 'dashboard' }); }
@@ -190,7 +226,6 @@ export default function RecipesPage() {
       onBack={() => setScreen({ type: 'approvals' })} />
   );
 
-  // Placeholder (edit, stats)
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-[#1A1F2E] px-5 pt-14 pb-5">
