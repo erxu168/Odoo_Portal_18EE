@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { parseCompanyIds } from '@/lib/db';
 
 export async function GET() {
   const user = requireAuth();
@@ -16,10 +17,9 @@ export async function GET() {
   try {
     const odoo = getOdoo();
 
-    // Build domain: always internal locations, filtered by company if user has company restrictions
     const domain: any[] = [['usage', '=', 'internal']];
-    const companyIds = user.allowed_company_ids;
-    if (companyIds && Array.isArray(companyIds) && companyIds.length > 0) {
+    const companyIds = parseCompanyIds(user.allowed_company_ids);
+    if (companyIds.length > 0) {
       domain.push(['company_id', 'in', companyIds]);
     }
 
