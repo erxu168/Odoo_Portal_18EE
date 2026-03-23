@@ -108,6 +108,7 @@ export default function RecipesPage() {
   function goHome() { router.push('/'); }
   function goDashboard() { setScreen({ type: 'dashboard' }); }
   function goKitchenBoard() { setScreen({ type: 'active-sessions' }); }
+  function goBackSmart() { if (activeSessions.length > 0) goKitchenBoard(); else goDashboard(); }
 
   const updateSession = useCallback((id: string, updates: Partial<CookingSession>) => {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
@@ -158,11 +159,11 @@ export default function RecipesPage() {
 
   if (screen.type === 'cooking-guide') return (<>{alertEl}<CookingGuideBrowse userRole={userRole}
     onSelectRecipe={(r) => { const c = r.x_recipe_category_id; setCtx({ mode: 'cooking', recipeId: r.id, recipeName: r.name, difficulty: r.x_recipe_difficulty || undefined, categoryName: c ? c[1] : undefined, steps: [], batch: 1, multiplier: 1 }); setScreen({ type: 'overview' }); }}
-    onBack={() => activeSessions.length > 0 ? goKitchenBoard() : goDashboard()} onHome={goHome} /></>);
+    onBack={goBackSmart} onHome={goHome} /></>);
 
   if (screen.type === 'production-guide') return (<>{alertEl}<ProductionGuideBrowse userRole={userRole}
     onSelectRecipe={(r) => { const nm = r.product_tmpl_id ? r.product_tmpl_id[1] : `BoM #${r.id}`; const c = r.x_recipe_category_id; setCtx({ mode: 'production', recipeId: r.id, recipeName: nm, difficulty: r.x_recipe_difficulty || undefined, categoryName: c ? c[1] : undefined, productQty: r.product_qty, steps: [], batch: 10, multiplier: 1 }); setScreen({ type: 'overview' }); }}
-    onBack={() => activeSessions.length > 0 ? goKitchenBoard() : goDashboard()} onHome={goHome} /></>);
+    onBack={goBackSmart} onHome={goHome} /></>);
 
   if (screen.type === 'overview') return (<>{alertEl}<RecipeOverview mode={ctx.mode} recipeId={ctx.recipeId} recipeName={ctx.recipeName} difficulty={ctx.difficulty} categoryName={ctx.categoryName} productQty={ctx.productQty}
     onBack={() => setScreen({ type: ctx.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })} onHome={goHome}
@@ -178,7 +179,7 @@ export default function RecipesPage() {
 
   if (screen.type === 'cook-mode') {
     const session = sessions.find(s => s.id === screen.sessionId);
-    if (!session) { activeSessions.length > 0 ? goKitchenBoard() : goDashboard(); return null; }
+    if (!session) { goBackSmart(); return null; }
     return (<>{alertEl}<CookMode session={session} sessionCount={activeSessions.length}
       onUpdateSession={updateSession}
       onDashboard={goKitchenBoard}
@@ -190,8 +191,8 @@ export default function RecipesPage() {
   }
 
   if (screen.type === 'complete') return (<>{alertEl}<CookComplete mode={screen.mode} recipeName={screen.recipeName} stepCount={screen.stepCount} elapsedSeconds={screen.elapsed} batch={screen.batch}
-    onDashboard={() => activeSessions.length > 0 ? goKitchenBoard() : goDashboard()}
-    onCookAnother={() => activeSessions.length > 0 ? goKitchenBoard() : setScreen({ type: screen.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })} /></>);
+    onDashboard={goBackSmart}
+    onCookAnother={goBackSmart} /></>);
 
   // ===== RECORD FLOW =====
   if (screen.type === 'record') return (<RecordSelect userRole={userRole}
