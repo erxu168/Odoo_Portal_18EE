@@ -20,6 +20,10 @@ import RecordingSummary from '@/components/recipes/RecordingSummary';
 import EditStep from '@/components/recipes/EditStep';
 import ApprovalList from '@/components/recipes/ApprovalList';
 import ApprovalReview from '@/components/recipes/ApprovalReview';
+import EditRecipeBrowse from '@/components/recipes/EditRecipeBrowse';
+import EditRecipeOverview from '@/components/recipes/EditRecipeOverview';
+import EditMetadata from '@/components/recipes/EditMetadata';
+import Toast from '@/components/ui/Toast';
 
 interface RecipeCtx {
   mode: 'cooking' | 'production'; recipeId: number; recipeName: string;
@@ -28,6 +32,11 @@ interface RecipeCtx {
 }
 interface RecordCtx { mode: 'cooking' | 'production'; recipeId: number; recipeName: string; recordedSteps: RecordedStep[]; }
 interface ApprovalCtx { versionId: number; recipeName: string; productTmplId?: number; bomId?: number; changeSummary: string; }
+interface EditCtx {
+  mode: 'cooking' | 'production'; recipeId: number; recipeName: string;
+  difficulty: string; categoryId: number | null; categoryName: string;
+  productQty: number; steps: RecordedStep[]; isPublished: boolean;
+}
 
 const DBG: Record<string, [string, string]> = {
   'dashboard': ['S0: Recipe Dashboard', 'RecipeDashboard'],
@@ -46,6 +55,11 @@ const DBG: Record<string, [string, string]> = {
   'edit-step': ['S13: Edit Step', 'EditStep'],
   'approvals': ['S9: Approvals List', 'ApprovalList'],
   'approval-review': ['S14: Approval Review', 'ApprovalReview'],
+  'edit-browse': ['E1: Edit Browse', 'EditRecipeBrowse'],
+  'edit-overview': ['E2: Edit Overview', 'EditRecipeOverview'],
+  'edit-metadata': ['E3: Edit Metadata', 'EditMetadata'],
+  'edit-steps': ['E4: Edit Steps', 'RecordingSummary'],
+  'edit-step-detail': ['E5: Edit Step Detail', 'EditStep'],
 };
 
 type Screen =
@@ -58,7 +72,9 @@ type Screen =
   | { type: 'active-recording' } | { type: 'recording-summary' }
   | { type: 'edit-step'; stepIndex: number }
   | { type: 'approvals' } | { type: 'approval-review' }
-  | { type: 'edit' } | { type: 'stats' };
+  | { type: 'edit-browse' } | { type: 'edit-overview' } | { type: 'edit-metadata' }
+  | { type: 'edit-steps' } | { type: 'edit-step-detail'; stepIndex: number }
+  | { type: 'stats' };
 
 export default function RecipesPage() {
   const router = useRouter();
@@ -77,6 +93,7 @@ export default function RecipesPage() {
   const [ctx, setCtx] = useState<RecipeCtx>({ mode: 'cooking', recipeId: 0, recipeName: '', steps: [], batch: 1, multiplier: 1 });
   const [recCtx, setRecCtx] = useState<RecordCtx>({ mode: 'cooking', recipeId: 0, recipeName: '', recordedSteps: [] });
   const [aprCtx, setAprCtx] = useState<ApprovalCtx>({ versionId: 0, recipeName: '', changeSummary: '' });
+  const [editCtx, setEditCtx] = useState<EditCtx>({ mode: 'cooking', recipeId: 0, recipeName: '', difficulty: '', categoryId: null, categoryName: '', productQty: 0, steps: [], isPublished: true });
   const [submitting, setSubmitting] = useState(false);
   const [sessions, setSessions] = useState<CookingSession[]>(() => {
     if (typeof window === 'undefined') return [];
@@ -130,8 +147,8 @@ export default function RecipesPage() {
 
   useEffect(() => {
     const d = DBG[screen.type];
-    setDebugInfo({ module: 'Chef Guide', screen: d ? d[0] : screen.type, component: d ? d[1] : screen.type, mode: ctx.mode, recipeId: ctx.recipeId || recCtx.recipeId || undefined, recipeName: ctx.recipeName || recCtx.recipeName || undefined, batch: ctx.batch, stepCount: ctx.steps.length || recCtx.recordedSteps.length || undefined });
-  }, [screen, ctx, recCtx]);
+    setDebugInfo({ module: 'Chef Guide', screen: d ? d[0] : screen.type, component: d ? d[1] : screen.type, mode: ctx.mode, recipeId: ctx.recipeId || recCtx.recipeId || editCtx.recipeId || undefined, recipeName: ctx.recipeName || recCtx.recipeName || editCtx.recipeName || undefined, batch: ctx.batch, stepCount: ctx.steps.length || recCtx.recordedSteps.length || editCtx.steps.length || undefined });
+  }, [screen, ctx, recCtx, editCtx]);
 
   function goHome() { router.push('/'); }
   function goDashboard() { setScreen({ type: 'dashboard' }); }
@@ -179,6 +196,7 @@ export default function RecipesPage() {
     onNavigate={(id: string) => {
       if (id === 'cooking-guide') { setBrowseMode('cooking'); goKitchenBoard(); return; }
       if (id === 'production-guide') { setBrowseMode('production'); goKitchenBoard(); return; }
+      if (id === 'edit') { setScreen({ type: 'edit-browse' }); return; }
       setScreen({ type: id } as Screen);
     }} onHome={goHome} /></>);
 
@@ -195,6 +213,11 @@ export default function RecipesPage() {
     onBack={() => activeSessions.length > 0 ? goKitchenBoard() : goDashboard()} onHome={goHome} /></>);
 
   if (screen.type === 'overview') return (<>{alertEl}<RecipeOverview mode={ctx.mode} recipeId={ctx.recipeId} recipeName={ctx.recipeName} difficulty={ctx.difficulty} categoryName={ctx.categoryName} productQty={ctx.productQty}
+    userRole={userRole}
+    onEdit={() => {
+      setEditCtx({ mode: ctx.mode, recipeId: ctx.recipeId, recipeName: ctx.recipeName, difficulty: ctx.difficulty || '', categoryId: null, categoryName: ctx.categoryName || '', productQty: ctx.productQty || 0, steps: [], isPublished: true });
+      setScreen({ type: 'edit-overview' });
+    }}
     onBack={() => setScreen({ type: ctx.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })} onHome={goHome}
     onStartCooking={(steps) => { setCtx(p => ({ ...p, steps })); setScreen({ type: 'batch-size' }); }} /></>);
 
@@ -297,10 +320,130 @@ export default function RecipesPage() {
     onReject={async (reason) => { setSubmitting(true); try { const r = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'reject', reason }) }); if (r.ok) { showToast('Recipe rejected. Submitter will be notified.', 'success'); setTimeout(() => setScreen({ type: 'approvals' }), 1500); } else { const e = await r.json(); showToast(`Rejection failed: ${e.error}`, 'error'); } } catch (_e) { showToast('Connection failed.', 'error'); } finally { setSubmitting(false); } }}
     onBack={() => setScreen({ type: 'approvals' })} />);
 
+  // ===== EDIT FLOW =====
+  if (screen.type === 'edit-browse') return (<>{alertEl}<EditRecipeBrowse userRole={userRole}
+    onSelectRecipe={(r) => {
+      setEditCtx({ mode: r.mode, recipeId: r.id, recipeName: r.name, difficulty: r.difficulty, categoryId: r.categoryId, categoryName: r.categoryName, productQty: r.productQty, steps: [], isPublished: r.isPublished });
+      setScreen({ type: 'edit-overview' });
+    }}
+    onBack={goDashboard} onHome={goHome} /></>);
+
+  if (screen.type === 'edit-overview') return (<>{alertEl}<EditRecipeOverview
+    mode={editCtx.mode} recipeId={editCtx.recipeId} recipeName={editCtx.recipeName}
+    difficulty={editCtx.difficulty} categoryName={editCtx.categoryName} productQty={editCtx.productQty}
+    isPublished={editCtx.isPublished} userRole={userRole}
+    onEditMetadata={() => setScreen({ type: 'edit-metadata' })}
+    onEditSteps={(steps) => { setEditCtx(p => ({ ...p, steps })); setScreen({ type: 'edit-steps' }); }}
+    onTogglePublish={async () => {
+      const action = editCtx.isPublished ? 'unpublish' : 'publish';
+      try {
+        const body: Record<string, unknown> = { action };
+        if (editCtx.mode === 'cooking') body.product_tmpl_id = editCtx.recipeId; else body.bom_id = editCtx.recipeId;
+        const res = await fetch('/api/recipes/publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (res.ok) {
+          setEditCtx(p => ({ ...p, isPublished: !p.isPublished }));
+          showToast(`Recipe ${action === 'publish' ? 'published' : 'unpublished'}!`, 'success');
+        } else {
+          const e = await res.json();
+          showToast(`Failed: ${e.error}`, 'error');
+        }
+      } catch (_e) { showToast('Connection failed.', 'error'); }
+    }}
+    onDelete={async () => {
+      try {
+        const body: Record<string, unknown> = {};
+        if (editCtx.mode === 'cooking') body.product_tmpl_id = editCtx.recipeId; else body.bom_id = editCtx.recipeId;
+        const res = await fetch('/api/recipes/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (res.ok) {
+          showToast('Recipe deleted.', 'success');
+          setTimeout(() => setScreen({ type: 'edit-browse' }), 1500);
+        } else {
+          const e = await res.json();
+          showToast(`Failed: ${e.error}`, 'error');
+        }
+      } catch (_e) { showToast('Connection failed.', 'error'); }
+    }}
+    onBack={() => setScreen({ type: 'edit-browse' })} onHome={goHome} /></>);
+
+  if (screen.type === 'edit-metadata') return (<>{alertEl}<EditMetadata
+    mode={editCtx.mode} recipeName={editCtx.recipeName} difficulty={editCtx.difficulty}
+    categoryId={editCtx.categoryId} productQty={editCtx.productQty}
+    onSave={async (metadata) => {
+      try {
+        const body: Record<string, unknown> = {
+          name: metadata.name,
+          x_recipe_category_id: metadata.categoryId,
+          x_recipe_difficulty: metadata.difficulty || false,
+        };
+        if (editCtx.mode === 'cooking') body.product_tmpl_id = editCtx.recipeId; else { body.bom_id = editCtx.recipeId; body.product_qty = metadata.productQty; }
+        const res = await fetch('/api/recipes/metadata', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (res.ok) {
+          setEditCtx(p => ({ ...p, recipeName: metadata.name, difficulty: metadata.difficulty, categoryId: metadata.categoryId, productQty: metadata.productQty }));
+          showToast('Details updated!', 'success');
+          setTimeout(() => setScreen({ type: 'edit-overview' }), 1000);
+        } else {
+          const e = await res.json();
+          showToast(`Failed: ${e.error}`, 'error');
+        }
+      } catch (_e) { showToast('Connection failed.', 'error'); }
+    }}
+    onBack={() => setScreen({ type: 'edit-overview' })} onHome={goHome} /></>);
+
+  if (screen.type === 'edit-steps') {
+    const canSaveDirect = userRole === 'admin' || userRole === 'manager';
+    return (
+    <>{alertEl}<RecordingSummary recipeName={editCtx.recipeName} recipeId={editCtx.recipeId} mode={editCtx.mode} steps={editCtx.steps}
+      userRole={userRole}
+      onEditStep={(i) => setScreen({ type: 'edit-step-detail', stepIndex: i })}
+      onDeleteStep={(i) => setEditCtx(p => ({ ...p, steps: p.steps.filter((_, idx) => idx !== i) }))}
+      onAddStep={() => { const b: RecordedStep = { id: `step_${Date.now()}`, step_type: 'prep', instruction: '', timer_seconds: 0, tip: '', photos: [] }; const n = editCtx.steps.length; setEditCtx(p => ({ ...p, steps: [...p.steps, b] })); setScreen({ type: 'edit-step-detail', stepIndex: n }); }}
+      onReorder={(reordered) => setEditCtx(p => ({ ...p, steps: reordered }))}
+      submitting={submitting}
+      toastMessage={toast?.msg} toastType={toast?.type} onDismissToast={() => setToast(null)}
+      onSubmit={async () => {
+        if (editCtx.recipeId <= 0) {
+          showToast('Recipe must be linked to Odoo before saving.', 'error');
+          return;
+        }
+        if (editCtx.steps.length === 0) { showToast('Add at least one step before saving.', 'error'); return; }
+        const empty = editCtx.steps.filter(s => !s.instruction.trim());
+        if (empty.length > 0) { showToast(`${empty.length} step(s) have no instructions. Edit them first.`, 'error'); return; }
+        setSubmitting(true);
+        try {
+          const body: Record<string, unknown> = {
+            steps: editCtx.steps.map(s => ({ step_type: s.step_type, instruction: s.instruction, timer_seconds: s.timer_seconds, tip: s.tip, images: s.photos.map(p => ({ data: p.split(',')[1] || p, source: 'edit' })) })),
+            change_summary: 'Recipe steps edited',
+            auto_publish: canSaveDirect,
+          };
+          if (editCtx.mode === 'cooking') body.product_tmpl_id = editCtx.recipeId; else body.bom_id = editCtx.recipeId;
+          const res = await fetch('/api/recipes/steps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          if (res.ok) {
+            showToast(canSaveDirect ? 'Recipe saved and published!' : 'Submitted for review!', 'success');
+            setTimeout(() => setScreen({ type: 'edit-overview' }), 1500);
+          } else {
+            const e = await res.json();
+            showToast(`Could not save: ${e.error || 'Unknown error'}`, 'error');
+          }
+        } catch (_e) { showToast('Connection failed. Please try again.', 'error'); } finally { setSubmitting(false); }
+      }}
+      onBack={() => setScreen({ type: 'edit-overview' })} onHome={goHome} /></>
+    );
+  }
+
+  if (screen.type === 'edit-step-detail') {
+    const step = editCtx.steps[screen.stepIndex];
+    if (!step) { setScreen({ type: 'edit-steps' }); return null; }
+    return <EditStep step={step} stepIndex={screen.stepIndex}
+      onSave={(u) => { if (!u.instruction.trim()) setEditCtx(p => ({ ...p, steps: p.steps.filter((_, i) => i !== screen.stepIndex) })); else setEditCtx(p => ({ ...p, steps: p.steps.map((s, i) => i === screen.stepIndex ? u : s) })); setScreen({ type: 'edit-steps' }); }}
+      onBack={() => { if (!step.instruction.trim()) setEditCtx(p => ({ ...p, steps: p.steps.filter((_, i) => i !== screen.stepIndex) })); setScreen({ type: 'edit-steps' }); }}
+      onHome={goHome} />;
+  }
+
   // ===== PLACEHOLDER =====
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {alertEl}
+      {toast && <Toast message={toast.msg} type={toast.type} visible={true} onDismiss={() => setToast(null)} />}
       <div className="bg-[#1A1F2E] px-5 pt-14 pb-5"><div className="flex items-center gap-3">
         <button onClick={goDashboard} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg></button>
         <div className="flex-1"><h1 className="text-[20px] font-bold text-white capitalize">{screen.type.replace(/-/g, ' ')}</h1></div>
