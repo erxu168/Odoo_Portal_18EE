@@ -23,6 +23,7 @@ interface StepData {
   id: number; sequence: number; step_type: string; instruction: string;
   timer_seconds: number; tip: string; image_count: number;
   ingredients: { id: number; name: string; uom: string }[];
+  images?: { id: number; image: string; caption: string }[];
 }
 
 interface RecipeCtx {
@@ -155,7 +156,6 @@ export default function RecipesPage() {
       onCreated={(d) => { setRecCtx({ mode: d.mode === 'cooking_guide' ? 'cooking' : 'production', recipeId: 0, recipeName: d.name, recordedSteps: [] }); setScreen({ type: 'active-recording' }); }} />
   );
 
-  // FIX F1: Pass initialSteps so "add more" preserves existing steps
   if (screen.type === 'active-recording') return (
     <ActiveRecording recipeName={recCtx.recipeName} mode={recCtx.mode}
       initialSteps={recCtx.recordedSteps}
@@ -168,7 +168,6 @@ export default function RecipesPage() {
       steps={recCtx.recordedSteps}
       onEditStep={(i) => setScreen({ type: 'edit-step', stepIndex: i })}
       onDeleteStep={(i) => setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, idx) => idx !== i) }))}
-      // FIX F1: "Add step" creates blank step and opens edit-step (no more losing steps)
       onAddStep={() => {
         const blank: RecordedStep = { id: `step_${Date.now()}`, step_type: 'prep', instruction: '', timer_seconds: 0, tip: '', photos: [] };
         const newIdx = recCtx.recordedSteps.length;
@@ -177,7 +176,6 @@ export default function RecipesPage() {
       }}
       submitting={submitting}
       onSubmit={async () => {
-        // FIX F6: Block submit for local-only dishes (no Odoo ID yet)
         if (recCtx.recipeId <= 0) {
           alert('This dish was created locally and has not been synced to Odoo yet. Please ask a manager to sync it before submitting steps.');
           return;
@@ -186,7 +184,6 @@ export default function RecipesPage() {
           alert('No steps to submit. Record at least one step first.');
           return;
         }
-        // Check all steps have instructions
         const emptySteps = recCtx.recordedSteps.filter(s => !s.instruction.trim());
         if (emptySteps.length > 0) {
           alert(`${emptySteps.length} step(s) have no instructions. Edit them before submitting.`);
@@ -206,7 +203,6 @@ export default function RecipesPage() {
         } catch (_e) { alert('Failed to submit. Check your internet connection and try again.'); }
         finally { setSubmitting(false); }
       }}
-      // Back from summary goes to recipe select (not back to recording)
       onBack={() => setScreen({ type: 'record' })} onHome={goHome} />
   );
 
@@ -215,7 +211,6 @@ export default function RecipesPage() {
     if (!step) { setScreen({ type: 'recording-summary' }); return null; }
     return <EditStep step={step} stepIndex={screen.stepIndex}
       onSave={(u) => {
-        // If instruction is empty, remove the step (was a blank "add step")
         if (!u.instruction.trim()) {
           setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) }));
         } else {
@@ -224,7 +219,6 @@ export default function RecipesPage() {
         setScreen({ type: 'recording-summary' });
       }}
       onBack={() => {
-        // If this was a blank step (from "add step"), remove it on back
         if (!step.instruction.trim()) {
           setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) }));
         }
@@ -233,7 +227,6 @@ export default function RecipesPage() {
   }
 
   // ===== APPROVAL FLOW =====
-  // FIX F5: Uses new flat Version interface from ApprovalList
   if (screen.type === 'approvals') return (
     <ApprovalList userRole={userRole}
       onReview={(v) => {
