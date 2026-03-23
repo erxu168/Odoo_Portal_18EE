@@ -3,6 +3,7 @@
  * POST /api/recipes/steps — create steps from recording
  *
  * Steps live in Odoo (krawings.recipe.step) — single source of truth.
+ * Images are NOT loaded here — use /api/recipes/steps/images?step_id=X for lazy loading.
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
@@ -61,27 +62,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // Fetch images for all steps that have images
-    const stepIds = steps.filter((s: any) => (s.image_count || 0) > 0).map((s: any) => s.id);
-    const imageMap: Record<number, { id: number; image: string; caption: string }[]> = {};
-    if (stepIds.length > 0) {
-      const images = await odoo.searchRead(
-        'krawings.recipe.step.image',
-        [['step_id', 'in', stepIds]],
-        ['id', 'step_id', 'image', 'caption', 'sort'],
-        { order: 'sort', limit: 200 },
-      );
-      for (const img of images) {
-        const sid = img.step_id?.[0] || img.step_id;
-        if (!imageMap[sid]) imageMap[sid] = [];
-        imageMap[sid].push({
-          id: img.id,
-          image: img.image || '',
-          caption: img.caption || '',
-        });
-      }
-    }
-
+    // No image data fetched here — use /api/recipes/steps/images?step_id=X
     const enrichedSteps = steps.map((s: any) => ({
       ...s,
       ingredients: (s.ingredient_ids || []).map((id: number) => ({
@@ -89,7 +70,6 @@ export async function GET(request: Request) {
         name: ingredientMap[id]?.name || `Product #${id}`,
         uom: ingredientMap[id]?.uom || '',
       })),
-      images: imageMap[s.id] || [],
     }));
 
     return NextResponse.json({ steps: enrichedSteps });
@@ -127,7 +107,7 @@ export async function POST(request: Request) {
         for (const img of s.images) {
           const approxBytes = (img.data?.length || 0) * 0.75;
           if (approxBytes > MAX_IMAGE_BYTES) {
-            return NextResponse.json({ error: `Step ${i + 1}: image too large (max 5MB). Reduce photo quality or resolution.` }, { status: 400 });
+            return NextResponse.json({ error: `Step ${i + 1}: image too large (max 5MB).` }, { status: 400 });
           }
         }
       }
@@ -148,32 +128,25 @@ export async function POST(request: Request) {
     const nextVersion = (existingVersions.length > 0 ? (existingVersions[0].version || 0) : 0) + 1;
 
     const versionVals: Record<string, unknown> = {
-      version: nextVersion,
-      status: 'review',
+      version: nextVersion, status: 'review',
       change_summary: change_summary || 'New recipe recording',
     };
     if (product_tmpl_id) versionVals.product_tmpl_id = product_tmpl_id;
     if (bom_id) versionVals.bom_id = bom_id;
 
     const versionId = await odoo.create('krawings.recipe.version', versionVals);
-
     const createdIds: number[] = [];
+
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
       const stepVals: Record<string, unknown> = {
-        sequence: (i + 1) * 10,
-        step_type: s.step_type || 'prep',
-        instruction: s.instruction || '',
-        timer_seconds: s.timer_seconds || 0,
-        tip: s.tip || '',
-        version_id: versionId,
+        sequence: (i + 1) * 10, step_type: s.step_type || 'prep',
+        instruction: s.instruction || '', timer_seconds: s.timer_seconds || 0,
+        tip: s.tip || '', version_id: versionId,
       };
       if (product_tmpl_id) stepVals.product_tmpl_id = product_tmpl_id;
       if (bom_id) stepVals.bom_id = bom_id;
-
-      if (s.ingredient_ids?.length) {
-        stepVals.ingredient_ids = [[6, 0, s.ingredient_ids]];
-      }
+      if (s.ingredient_ids?.length) stepVals.ingredient_ids = [[6, 0, s.ingredient_ids]];
 
       const stepId = await odoo.create('krawings.recipe.step', stepVals);
       createdIds.push(stepId);
@@ -181,22 +154,15 @@ export async function POST(request: Request) {
       if (s.images?.length) {
         for (let j = 0; j < s.images.length; j++) {
           await odoo.create('krawings.recipe.step.image', {
-            step_id: stepId,
-            image: s.images[j].data,
-            caption: s.images[j].caption || '',
-            source: s.images[j].source || 'record',
+            step_id: stepId, image: s.images[j].data,
+            caption: s.images[j].caption || '', source: s.images[j].source || 'record',
             sort: (j + 1) * 10,
           });
         }
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      version_id: versionId,
-      version: nextVersion,
-      step_ids: createdIds,
-    });
+    return NextResponse.json({ success: true, version_id: versionId, version: nextVersion, step_ids: createdIds });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Recipe steps POST error:', message);

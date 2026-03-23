@@ -41,15 +41,14 @@ function renderBulletText(text: string): React.ReactNode {
   });
 }
 
-function PhotoCarousel({ images }: { images: StepImage[] }) {
+function PhotoCarousel({ images, loading }: { images: StepImage[]; loading: boolean }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fsScrollRef = useRef<HTMLDivElement>(null);
 
   function handleScroll(e: React.UIEvent<HTMLDivElement>) {
-    const el = e.currentTarget;
-    setActiveIdx(Math.round(el.scrollLeft / el.clientWidth));
+    setActiveIdx(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth));
   }
 
   useEffect(() => {
@@ -60,8 +59,16 @@ function PhotoCarousel({ images }: { images: StepImage[] }) {
 
   useEffect(() => {
     setActiveIdx(0);
+    setFullscreen(false);
     if (scrollRef.current) scrollRef.current.scrollTo({ left: 0, behavior: 'instant' as ScrollBehavior });
   }, [images]);
+
+  // Loading shimmer
+  if (loading) return (
+    <div className="px-4 mb-3">
+      <div className="aspect-[16/10] rounded-2xl bg-white/5 animate-pulse" />
+    </div>
+  );
 
   if (!images || images.length === 0) return null;
 
@@ -132,6 +139,55 @@ function PhotoCarousel({ images }: { images: StepImage[] }) {
   );
 }
 
+/** Hook: lazy-load images for a step, with cache + prefetch */
+function useStepImages(steps: StepData[], currentStep: number) {
+  const [imageCache, setImageCache] = useState<Record<number, StepImage[]>>({});
+  const [loadingStep, setLoadingStep] = useState<number | null>(null);
+  const fetchedRef = useRef<Set<number>>(new Set());
+
+  const fetchImages = useCallback(async (stepId: number) => {
+    if (fetchedRef.current.has(stepId)) return;
+    fetchedRef.current.add(stepId);
+    try {
+      const res = await fetch(`/api/recipes/steps/images?step_id=${stepId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setImageCache(prev => ({ ...prev, [stepId]: data.images || [] }));
+      }
+    } catch (e) {
+      console.error('Image fetch error:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    const step = steps[currentStep];
+    if (!step || (step.image_count || 0) === 0) {
+      setLoadingStep(null);
+      return;
+    }
+
+    // Load current step images
+    if (!fetchedRef.current.has(step.id)) {
+      setLoadingStep(step.id);
+      fetchImages(step.id).then(() => setLoadingStep(null));
+    } else {
+      setLoadingStep(null);
+    }
+
+    // Prefetch next step images
+    const next = steps[currentStep + 1];
+    if (next && (next.image_count || 0) > 0) {
+      fetchImages(next.id);
+    }
+  }, [currentStep, steps, fetchImages]);
+
+  const step = steps[currentStep];
+  const images = step ? (imageCache[step.id] || []) : [];
+  const isLoading = step ? loadingStep === step.id : false;
+
+  return { images, isLoading };
+}
+
 export default function CookMode({ mode, recipeName, steps, onExit, onComplete }: Props) {
   const [currentStep, setCurrentStep] = useState(0);
   const [timerLeft, setTimerLeft] = useState(0);
@@ -152,6 +208,9 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
   const hasTimer = step && step.timer_seconds > 0;
   const isLastStep = currentStep >= steps.length - 1;
   const timerActive = timerRunning || timerDone || timerLeft > 0;
+
+  // Lazy-load images per step with prefetch
+  const { images: stepImages, isLoading: imagesLoading } = useStepImages(steps, currentStep);
 
   useEffect(() => {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
@@ -252,7 +311,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
   if (!step) return null;
 
   const bullets = parseInstructions(step.instruction);
-  const stepImages = step.images || [];
   const typeBadge = TYPE_COLOR[step.step_type] || 'bg-white/10 text-white/60';
   const typeLabel = TYPE_LABEL[step.step_type] || step.step_type.toUpperCase();
 
@@ -287,7 +345,10 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
       </div>
 
       <div className="flex-1 overflow-y-auto pb-4">
-        <PhotoCarousel images={stepImages} />
+        {/* Photos — lazy loaded per step */}
+        {(step.image_count || 0) > 0 && (
+          <PhotoCarousel images={stepImages} loading={imagesLoading} />
+        )}
 
         {step.ingredients && step.ingredients.length > 0 && (
           <div className="px-4 mb-3">
@@ -362,9 +423,7 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
         )}
       </div>
 
-      {/* ── BOTTOM ACTIONS ── */}
       <div className="px-4 pb-4 pt-2 space-y-1.5">
-        {/* Timer not started yet: Start + Skip */}
         {hasTimer && !timerActive && (
           <>
             <button onClick={startTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">
@@ -375,7 +434,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
             </button>
           </>
         )}
-        {/* Timer running: Pause + Skip */}
         {hasTimer && timerRunning && (
           <>
             <button onClick={pauseTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-amber-600 active:bg-amber-700">
@@ -386,7 +444,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
             </button>
           </>
         )}
-        {/* Timer paused: Resume + Skip */}
         {hasTimer && !timerRunning && timerLeft > 0 && !timerDone && (
           <>
             <button onClick={resumeTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">
@@ -397,13 +454,11 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
             </button>
           </>
         )}
-        {/* Timer done: Next step */}
         {hasTimer && timerDone && (
           <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">
             {isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}
           </button>
         )}
-        {/* No timer: Next step */}
         {!hasTimer && (
           <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">
             {isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}
