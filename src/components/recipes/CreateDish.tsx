@@ -12,7 +12,7 @@ interface Props {
   mode: 'cooking' | 'production';
   onBack: () => void;
   onHome: () => void;
-  onCreated: (dish: { name: string; categoryId: number | null; baseServings: number; mode: string }) => void;
+  onCreated: (dish: { name: string; categoryId: number | null; baseServings: number; mode: string; odooId: number | null }) => void;
 }
 
 export default function CreateDish({ mode, onBack, onHome, onCreated }: Props) {
@@ -46,12 +46,20 @@ export default function CreateDish({ mode, onBack, onHome, onCreated }: Props) {
         body: JSON.stringify({
           name: name.trim(),
           category_id: selectedCat,
+          category_name: categories.find(c => c.id === selectedCat)?.name || '',
           base_servings: baseServings,
           mode: mode === 'cooking' ? 'cooking_guide' : 'production_guide',
         }),
       });
       if (res.ok) {
-        onCreated({ name: name.trim(), categoryId: selectedCat, baseServings, mode: mode === 'cooking' ? 'cooking_guide' : 'production_guide' });
+        const data = await res.json();
+        onCreated({
+          name: name.trim(),
+          categoryId: selectedCat,
+          baseServings,
+          mode: mode === 'cooking' ? 'cooking_guide' : 'production_guide',
+          odooId: data.odoo_id || null,
+        });
       }
     } catch (e) { console.error('Create error:', e); }
     finally { setSaving(false); }

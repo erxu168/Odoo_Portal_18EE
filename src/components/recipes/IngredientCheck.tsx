@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 interface StepIngredient { id: number; name: string; uom: string; }
 interface StepData {
@@ -31,6 +32,7 @@ export default function IngredientCheck({ mode, recipeName, steps, onBack, onHom
   }, [steps]);
 
   const [checked, setChecked] = useState<Record<number, boolean>>({});
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
   const checkedCount = Object.values(checked).filter(Boolean).length;
   const allChecked = checkedCount >= ingredients.length;
 
@@ -39,9 +41,7 @@ export default function IngredientCheck({ mode, recipeName, steps, onBack, onHom
   }
 
   function skipCheck() {
-    if (window.confirm('Skip ingredient check?\n\nYou\'ll go straight to cooking without verifying you have everything.')) {
-      onStartCook();
-    }
+    setShowSkipConfirm(true);
   }
 
   const accentBg = mode === 'cooking' ? 'bg-green-600' : 'bg-purple-600';
@@ -112,6 +112,17 @@ export default function IngredientCheck({ mode, recipeName, steps, onBack, onHom
             Skip check \u2014 I have everything
           </button>
         </div>
+      )}
+      {showSkipConfirm && (
+        <ConfirmDialog
+          title="Skip ingredient check?"
+          message="You'll go straight to cooking without verifying you have everything."
+          confirmLabel="Skip and cook"
+          cancelLabel="Go back"
+          variant="primary"
+          onConfirm={() => { setShowSkipConfirm(false); onStartCook(); }}
+          onCancel={() => setShowSkipConfirm(false)}
+        />
       )}
     </div>
   );

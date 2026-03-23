@@ -332,7 +332,7 @@ export default function DebugOverlay() {
 }
 
 function inferMod(r: string): string {
-  if (r.startsWith('/recipes')) return 'Recipe Guide';
+  if (r.startsWith('/recipes')) return 'Chef Guide';
   if (r.startsWith('/manufacturing')) return 'Manufacturing';
   if (r.startsWith('/inventory')) return 'Inventory';
   if (r.startsWith('/purchase')) return 'Purchase';

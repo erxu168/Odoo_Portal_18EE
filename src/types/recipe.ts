@@ -1,5 +1,5 @@
 /**
- * Krawings Recipe Guide Module — Type definitions
+ * Krawings Chef Guide Module — Type definitions
  */
 
 // -- Odoo-sourced types (from krawings_recipe_config module) --

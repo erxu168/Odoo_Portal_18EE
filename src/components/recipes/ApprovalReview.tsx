@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 interface StepData {
   id: number; sequence: number; step_type: string; instruction: string;
@@ -42,6 +43,7 @@ export default function ApprovalReview({ recipeName, productTmplId, bomId, chang
   const [scrolledAll, setScrolledAll] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -72,8 +74,7 @@ export default function ApprovalReview({ recipeName, productTmplId, bomId, chang
   }, [steps]);
 
   function handleApprove() {
-    if (!confirm('Approve this recipe? It will be published and visible to all cooks.')) return;
-    onApprove();
+    setShowApproveConfirm(true);
   }
 
   function handleReject() {
@@ -170,6 +171,17 @@ export default function ApprovalReview({ recipeName, productTmplId, bomId, chang
           </div>
         )}
       </div>
+      {showApproveConfirm && (
+        <ConfirmDialog
+          title="Approve this recipe?"
+          message="It will be published and visible to all cooks."
+          confirmLabel="Approve"
+          cancelLabel="Cancel"
+          variant="primary"
+          onConfirm={() => { setShowApproveConfirm(false); onApprove(); }}
+          onCancel={() => setShowApproveConfirm(false)}
+        />
+      )}
     </div>
   );
 }

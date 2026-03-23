@@ -143,7 +143,7 @@ export default function RecipeOverview({
         {!loading && steps.length === 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center">
             <div className="text-3xl mb-2">{'\ud83d\udcdd'}</div>
-            <p className="text-[14px] font-semibold text-amber-900">No recipe guide yet</p>
+            <p className="text-[14px] font-semibold text-amber-900">No chef guide yet</p>
             <p className="text-[12px] text-amber-700 mt-1">Use the Record feature to create a step-by-step guide for this dish.</p>
           </div>
         )}

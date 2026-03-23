@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { type CookingSession, computeTimer, formatTimer } from '@/lib/cooking-sessions';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 interface Props {
   sessions: CookingSession[];
@@ -14,6 +15,7 @@ interface Props {
 
 export default function ActiveSessions({ sessions, onSelectSession, onNewDish, onBack, onHome, onEndSession }: Props) {
   const [now, setNow] = useState(Date.now());
+  const [endingSessionId, setEndingSessionId] = useState<string | null>(null);
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(iv);
@@ -35,18 +37,21 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
       {/* Header */}
-      <div className="px-4 pt-12 pb-1 flex items-center gap-2">
-        <button onClick={onBack} className="h-8 px-3 rounded-lg bg-white/10 flex items-center gap-1.5 active:bg-white/20">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
-          <span className="text-[13px] font-semibold text-white">Dashboard</span>
-        </button>
-        <div className="flex-1">
-          <div className="text-[17px] font-bold text-white text-right">Kitchen board</div>
-          <div className="text-[11px] text-white/40 text-right">{active.length}/10 dishes</div>
+      <div className="px-4 pt-12 pb-1">
+        <div className="flex items-center gap-2 mb-1">
+          <button onClick={onBack} className="h-8 px-3 rounded-lg bg-white/10 flex items-center gap-1.5 active:bg-white/20">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
+            <span className="text-[13px] font-semibold text-white">Dashboard</span>
+          </button>
+          <div className="flex-1" />
+          <button onClick={onHome} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center active:bg-white/20">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
+          </button>
         </div>
-        <button onClick={onHome} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center active:bg-white/20">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
-        </button>
+        <div className="text-center">
+          <div className="text-[20px] font-bold text-white">Kitchen board</div>
+          <div className="text-[12px] text-white/40">{active.length}/10 dishes active</div>
+        </div>
       </div>
 
       {/* Grid of session cards */}
@@ -84,9 +89,23 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
 
                 <div className="text-[14px] font-bold text-white truncate pr-4 mb-1">{session.recipeName}</div>
 
-                <div className="text-[11px] text-white/40 mb-2">
-                  {session.showPlating ? 'Plating' : `Step ${session.currentStep + 1}/${session.steps.length}`}
-                  {step && <span className="ml-1 capitalize">{`\u00b7 ${step.step_type}`}</span>}
+                <div className="mb-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[11px] text-white/40">
+                      {session.showPlating ? 'Plating' : `Step ${session.currentStep + 1}/${session.steps.length}`}
+                    </span>
+                    {step && <span className="text-[11px] text-white/40 capitalize">{`\u00b7 ${step.step_type}`}</span>}
+                  </div>
+                  {/* Progress bar */}
+                  <div className="flex gap-0.5">
+                    {session.steps.map((_, i) => (
+                      <div key={i} className={`h-[3px] rounded-full flex-1 ${
+                        i < session.currentStep ? 'bg-green-500' 
+                        : i === session.currentStep ? (isOverdue ? 'bg-red-400' : isUrgent ? 'bg-amber-400' : timer.running ? 'bg-green-400' : 'bg-white/40')
+                        : 'bg-white/10'
+                      }`} />
+                    ))}
+                  </div>
                 </div>
 
                 {isOverdue && (
@@ -105,7 +124,7 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
                   <div className="text-[13px] text-white/20">Ready</div>
                 )}
 
-                <div className="mt-2 flex justify-end" onClick={(e) => { e.stopPropagation(); if (confirm(`End ${session.recipeName}?`)) onEndSession(session.id); }}>
+                <div className="mt-2 flex justify-end" onClick={(e) => { e.stopPropagation(); setEndingSessionId(session.id); }}>
                   <span className="text-[10px] text-red-400/40 active:text-red-400">{'\u00d7'} end</span>
                 </div>
               </button>
@@ -123,6 +142,22 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
           )}
         </div>
       </div>
+
+      {/* End session confirm */}
+      {endingSessionId && (() => {
+        const s = sessions.find(x => x.id === endingSessionId);
+        return (
+          <ConfirmDialog
+            title={`End ${s?.recipeName || 'session'}?`}
+            message="All progress for this dish will be lost."
+            confirmLabel="End session"
+            cancelLabel="Keep cooking"
+            variant="danger"
+            onConfirm={() => { onEndSession(endingSessionId); setEndingSessionId(null); }}
+            onCancel={() => setEndingSessionId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

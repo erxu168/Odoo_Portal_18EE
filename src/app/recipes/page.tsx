@@ -62,15 +62,43 @@ type Screen =
 
 export default function RecipesPage() {
   const router = useRouter();
-  const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  const [screen, setScreen] = useState<Screen>(() => {
+    if (typeof window === 'undefined') return { type: 'dashboard' };
+    try {
+      const saved = localStorage.getItem('kw_cook_sessions');
+      if (saved) {
+        const parsed = JSON.parse(saved) as CookingSession[];
+        if (parsed.some(s => s.status === 'active')) return { type: 'active-sessions' };
+      }
+    } catch (_e) { /* */ }
+    return { type: 'dashboard' };
+  });
   const [userRole, setUserRole] = useState<string>('staff');
   const [ctx, setCtx] = useState<RecipeCtx>({ mode: 'cooking', recipeId: 0, recipeName: '', steps: [], batch: 1, multiplier: 1 });
   const [recCtx, setRecCtx] = useState<RecordCtx>({ mode: 'cooking', recipeId: 0, recipeName: '', recordedSteps: [] });
   const [aprCtx, setAprCtx] = useState<ApprovalCtx>({ versionId: 0, recipeName: '', changeSummary: '' });
   const [submitting, setSubmitting] = useState(false);
-  const [sessions, setSessions] = useState<CookingSession[]>([]);
+  const [sessions, setSessions] = useState<CookingSession[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = localStorage.getItem('kw_cook_sessions');
+      if (saved) {
+        const parsed = JSON.parse(saved) as CookingSession[];
+        return parsed.filter(s => s.status === 'active');
+      }
+    } catch (_e) { /* */ }
+    return [];
+  });
   const [alertBanner, setAlertBanner] = useState<{ sessionId: string; recipeName: string } | null>(null);
   const alertedRef = useRef<Set<string>>(new Set());
+  const [browseMode, setBrowseMode] = useState<'cooking' | 'production'>('cooking');
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
+  function showToast(msg: string, type: 'success' | 'error' | 'info' = 'info') { setToast({ msg, type }); }
+
+  // Persist sessions to localStorage on every change
+  useEffect(() => {
+    try { localStorage.setItem('kw_cook_sessions', JSON.stringify(sessions)); } catch (_e) { /* */ }
+  }, [sessions]);
 
   useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.role) setUserRole(d.user.role); }).catch(() => {}); }, []);
 
@@ -102,7 +130,7 @@ export default function RecipesPage() {
 
   useEffect(() => {
     const d = DBG[screen.type];
-    setDebugInfo({ module: 'Recipe Guide', screen: d ? d[0] : screen.type, component: d ? d[1] : screen.type, mode: ctx.mode, recipeId: ctx.recipeId || recCtx.recipeId || undefined, recipeName: ctx.recipeName || recCtx.recipeName || undefined, batch: ctx.batch, stepCount: ctx.steps.length || recCtx.recordedSteps.length || undefined });
+    setDebugInfo({ module: 'Chef Guide', screen: d ? d[0] : screen.type, component: d ? d[1] : screen.type, mode: ctx.mode, recipeId: ctx.recipeId || recCtx.recipeId || undefined, recipeName: ctx.recipeName || recCtx.recipeName || undefined, batch: ctx.batch, stepCount: ctx.steps.length || recCtx.recordedSteps.length || undefined });
   }, [screen, ctx, recCtx]);
 
   function goHome() { router.push('/'); }
@@ -149,21 +177,22 @@ export default function RecipesPage() {
   // ===== COOK FLOW =====
   if (screen.type === 'dashboard') return (<>{alertEl}<RecipeDashboard userRole={userRole}
     onNavigate={(id: string) => {
-      if ((id === 'cooking-guide' || id === 'production-guide') && activeSessions.length > 0) goKitchenBoard();
-      else setScreen({ type: id } as Screen);
+      if (id === 'cooking-guide') { setBrowseMode('cooking'); goKitchenBoard(); return; }
+      if (id === 'production-guide') { setBrowseMode('production'); goKitchenBoard(); return; }
+      setScreen({ type: id } as Screen);
     }} onHome={goHome} /></>);
 
   if (screen.type === 'active-sessions') return (<>{alertEl}<ActiveSessions sessions={sessions}
     onSelectSession={(id) => setScreen({ type: 'cook-mode', sessionId: id })}
-    onNewDish={goDashboard} onBack={goDashboard} onHome={goHome} onEndSession={removeSession} /></>);
+    onNewDish={() => setScreen({ type: browseMode === 'cooking' ? 'cooking-guide' : 'production-guide' })} onBack={goDashboard} onHome={goHome} onEndSession={removeSession} /></>);
 
   if (screen.type === 'cooking-guide') return (<>{alertEl}<CookingGuideBrowse userRole={userRole}
     onSelectRecipe={(r) => { const c = r.x_recipe_category_id; setCtx({ mode: 'cooking', recipeId: r.id, recipeName: r.name, difficulty: r.x_recipe_difficulty || undefined, categoryName: c ? c[1] : undefined, steps: [], batch: 1, multiplier: 1 }); setScreen({ type: 'overview' }); }}
-    onBack={goBackSmart} onHome={goHome} /></>);
+    onBack={() => activeSessions.length > 0 ? goKitchenBoard() : goDashboard()} onHome={goHome} /></>);
 
   if (screen.type === 'production-guide') return (<>{alertEl}<ProductionGuideBrowse userRole={userRole}
     onSelectRecipe={(r) => { const nm = r.product_tmpl_id ? r.product_tmpl_id[1] : `BoM #${r.id}`; const c = r.x_recipe_category_id; setCtx({ mode: 'production', recipeId: r.id, recipeName: nm, difficulty: r.x_recipe_difficulty || undefined, categoryName: c ? c[1] : undefined, productQty: r.product_qty, steps: [], batch: 10, multiplier: 1 }); setScreen({ type: 'overview' }); }}
-    onBack={goBackSmart} onHome={goHome} /></>);
+    onBack={() => activeSessions.length > 0 ? goKitchenBoard() : goDashboard()} onHome={goHome} /></>);
 
   if (screen.type === 'overview') return (<>{alertEl}<RecipeOverview mode={ctx.mode} recipeId={ctx.recipeId} recipeName={ctx.recipeName} difficulty={ctx.difficulty} categoryName={ctx.categoryName} productQty={ctx.productQty}
     onBack={() => setScreen({ type: ctx.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })} onHome={goHome}
@@ -179,10 +208,11 @@ export default function RecipesPage() {
 
   if (screen.type === 'cook-mode') {
     const session = sessions.find(s => s.id === screen.sessionId);
-    if (!session) { goBackSmart(); return null; }
+    if (!session) { if (activeSessions.length > 0) goKitchenBoard(); else goDashboard(); return null; }
     return (<>{alertEl}<CookMode session={session} sessionCount={activeSessions.length}
       onUpdateSession={updateSession}
       onDashboard={goKitchenBoard}
+      onEndSession={(sid) => { removeSession(sid); goBackSmart(); }}
       onComplete={(sid, elapsed) => {
         const s = sessions.find(x => x.id === sid);
         removeSession(sid);
@@ -191,8 +221,8 @@ export default function RecipesPage() {
   }
 
   if (screen.type === 'complete') return (<>{alertEl}<CookComplete mode={screen.mode} recipeName={screen.recipeName} stepCount={screen.stepCount} elapsedSeconds={screen.elapsed} batch={screen.batch}
-    onDashboard={goBackSmart}
-    onCookAnother={goBackSmart} /></>);
+    onDashboard={() => activeSessions.length > 0 ? goKitchenBoard() : goDashboard()}
+    onCookAnother={() => activeSessions.length > 0 ? goKitchenBoard() : setScreen({ type: screen.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })} /></>);
 
   // ===== RECORD FLOW =====
   if (screen.type === 'record') return (<RecordSelect userRole={userRole}
@@ -201,39 +231,59 @@ export default function RecipesPage() {
 
   if (screen.type === 'create-dish') return (<CreateDish mode={screen.createMode}
     onBack={() => setScreen({ type: 'record' })} onHome={goHome}
-    onCreated={(d) => { setRecCtx({ mode: d.mode === 'cooking_guide' ? 'cooking' : 'production', recipeId: 0, recipeName: d.name, recordedSteps: [] }); setScreen({ type: 'active-recording' }); }} />);
+    onCreated={(d) => { setRecCtx({ mode: d.mode === 'cooking_guide' ? 'cooking' : 'production', recipeId: d.odooId || 0, recipeName: d.name, recordedSteps: [] }); setScreen({ type: 'active-recording' }); }} />);
 
   if (screen.type === 'active-recording') return (<ActiveRecording recipeName={recCtx.recipeName} mode={recCtx.mode} initialSteps={recCtx.recordedSteps}
-    onFinish={(s) => { setRecCtx(p => ({ ...p, recordedSteps: s })); setScreen({ type: 'recording-summary' }); }} onBack={() => setScreen({ type: 'record' })} />);
+    onFinish={(s) => { setRecCtx(p => ({ ...p, recordedSteps: s })); setScreen({ type: 'recording-summary' }); }} onBack={() => setScreen({ type: 'record' })} onHome={goHome} />);
 
-  if (screen.type === 'recording-summary') return (
+  if (screen.type === 'recording-summary') {
+    const canSaveDirect = userRole === 'admin' || userRole === 'manager';
+    return (
     <RecordingSummary recipeName={recCtx.recipeName} recipeId={recCtx.recipeId} mode={recCtx.mode} steps={recCtx.recordedSteps}
+      userRole={userRole}
       onEditStep={(i) => setScreen({ type: 'edit-step', stepIndex: i })}
       onDeleteStep={(i) => setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, idx) => idx !== i) }))}
       onAddStep={() => { const b: RecordedStep = { id: `step_${Date.now()}`, step_type: 'prep', instruction: '', timer_seconds: 0, tip: '', photos: [] }; const n = recCtx.recordedSteps.length; setRecCtx(p => ({ ...p, recordedSteps: [...p.recordedSteps, b] })); setScreen({ type: 'edit-step', stepIndex: n }); }}
+      onReorder={(reordered) => setRecCtx(p => ({ ...p, recordedSteps: reordered }))}
       submitting={submitting}
+      toastMessage={toast?.msg} toastType={toast?.type} onDismissToast={() => setToast(null)}
       onSubmit={async () => {
-        if (recCtx.recipeId <= 0) { alert('Dish not synced to Odoo yet.'); return; }
-        if (recCtx.recordedSteps.length === 0) { alert('No steps.'); return; }
+        if (recCtx.recipeId <= 0) {
+          showToast('This dish needs to be linked to Odoo before saving steps. Please select an existing recipe or ask an admin to create it in Odoo.', 'error');
+          return;
+        }
+        if (recCtx.recordedSteps.length === 0) { showToast('Add at least one step before saving.', 'error'); return; }
         const empty = recCtx.recordedSteps.filter(s => !s.instruction.trim());
-        if (empty.length > 0) { alert(`${empty.length} step(s) need instructions.`); return; }
+        if (empty.length > 0) { showToast(`${empty.length} step(s) have no instructions. Edit them first.`, 'error'); return; }
         setSubmitting(true);
         try {
-          const body: Record<string, unknown> = { steps: recCtx.recordedSteps.map(s => ({ step_type: s.step_type, instruction: s.instruction, timer_seconds: s.timer_seconds, tip: s.tip, images: s.photos.map(p => ({ data: p.split(',')[1] || p, source: 'record' })) })), change_summary: 'New recipe recording' };
+          const body: Record<string, unknown> = {
+            steps: recCtx.recordedSteps.map(s => ({ step_type: s.step_type, instruction: s.instruction, timer_seconds: s.timer_seconds, tip: s.tip, images: s.photos.map(p => ({ data: p.split(',')[1] || p, source: 'record' })) })),
+            change_summary: 'New recipe recording',
+            auto_publish: canSaveDirect,
+          };
           if (recCtx.mode === 'cooking') body.product_tmpl_id = recCtx.recipeId; else body.bom_id = recCtx.recipeId;
           const res = await fetch('/api/recipes/steps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          if (res.ok) { alert('Submitted for review!'); goDashboard(); } else { const e = await res.json(); alert(`Failed: ${e.error}`); }
-        } catch (_e) { alert('Failed. Check connection.'); } finally { setSubmitting(false); }
+          if (res.ok) {
+            showToast(canSaveDirect ? 'Recipe saved and published!' : 'Submitted for review!', 'success');
+            setTimeout(goDashboard, 1500);
+          } else {
+            const e = await res.json();
+            showToast(`Could not save: ${e.error || 'Unknown error'}`, 'error');
+          }
+        } catch (_e) { showToast('Connection failed. Please try again.', 'error'); } finally { setSubmitting(false); }
       }}
-      onBack={() => setScreen({ type: 'record' })} onHome={goHome} />
-  );
+      onBack={() => setScreen({ type: 'active-recording' })} onHome={goHome} />
+    );
+  }
 
   if (screen.type === 'edit-step') {
     const step = recCtx.recordedSteps[screen.stepIndex];
     if (!step) { setScreen({ type: 'recording-summary' }); return null; }
     return <EditStep step={step} stepIndex={screen.stepIndex}
       onSave={(u) => { if (!u.instruction.trim()) setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) })); else setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.map((s, i) => i === screen.stepIndex ? u : s) })); setScreen({ type: 'recording-summary' }); }}
-      onBack={() => { if (!step.instruction.trim()) setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) })); setScreen({ type: 'recording-summary' }); }} />;
+      onBack={() => { if (!step.instruction.trim()) setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) })); setScreen({ type: 'recording-summary' }); }}
+      onHome={goHome} />;
   }
 
   // ===== APPROVALS =====
@@ -243,8 +293,8 @@ export default function RecipesPage() {
 
   if (screen.type === 'approval-review') return (<ApprovalReview versionId={aprCtx.versionId} recipeName={aprCtx.recipeName}
     productTmplId={aprCtx.productTmplId} bomId={aprCtx.bomId} changeSummary={aprCtx.changeSummary} approving={submitting}
-    onApprove={async () => { setSubmitting(true); try { const r = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'approve' }) }); if (r.ok) { alert('Approved!'); setScreen({ type: 'approvals' }); } else { const e = await r.json(); alert(`Failed: ${e.error}`); } } catch (_e) { alert('Failed.'); } finally { setSubmitting(false); } }}
-    onReject={async (reason) => { setSubmitting(true); try { const r = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'reject', reason }) }); if (r.ok) { alert('Rejected.'); setScreen({ type: 'approvals' }); } else { const e = await r.json(); alert(`Failed: ${e.error}`); } } catch (_e) { alert('Failed.'); } finally { setSubmitting(false); } }}
+    onApprove={async () => { setSubmitting(true); try { const r = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'approve' }) }); if (r.ok) { showToast('Recipe approved and published!', 'success'); setTimeout(() => setScreen({ type: 'approvals' }), 1500); } else { const e = await r.json(); showToast(`Approval failed: ${e.error}`, 'error'); } } catch (_e) { showToast('Connection failed.', 'error'); } finally { setSubmitting(false); } }}
+    onReject={async (reason) => { setSubmitting(true); try { const r = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'reject', reason }) }); if (r.ok) { showToast('Recipe rejected. Submitter will be notified.', 'success'); setTimeout(() => setScreen({ type: 'approvals' }), 1500); } else { const e = await r.json(); showToast(`Rejection failed: ${e.error}`, 'error'); } } catch (_e) { showToast('Connection failed.', 'error'); } finally { setSubmitting(false); } }}
     onBack={() => setScreen({ type: 'approvals' })} />);
 
   // ===== PLACEHOLDER =====

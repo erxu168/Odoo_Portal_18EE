@@ -132,7 +132,7 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome }: Props)
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
           </button>
           <div className="flex-1">
-            <h1 className="text-[22px] font-bold text-white">Recipe Guide</h1>
+            <h1 className="text-[22px] font-bold text-white">Chef Guide</h1>
             <p className="text-[12px] text-white/50 mt-0.5">SSAM Korean BBQ</p>
           </div>
         </div>
@@ -184,7 +184,7 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome }: Props)
 
       <div className="text-center py-6">
         <span className="text-[11px] text-gray-400 tracking-wider">
-          <span className="text-green-600 font-semibold">KRAWINGS</span> Recipe Guide
+          <span className="text-green-600 font-semibold">KRAWINGS</span> Chef Guide
         </span>
       </div>
     </div>

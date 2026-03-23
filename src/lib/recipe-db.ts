@@ -1,5 +1,5 @@
 /**
- * Krawings Recipe Guide — SQLite database layer
+ * Krawings Chef Guide — SQLite database layer
  *
  * Handles local storage for:
  * - Locally-created recipes (pre-Odoo sync)

@@ -86,7 +86,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { product_tmpl_id, bom_id, steps, change_summary } = body;
+    const { product_tmpl_id, bom_id, steps, change_summary, auto_publish } = body;
 
     if (!steps || !Array.isArray(steps) || steps.length === 0) {
       return NextResponse.json({ error: 'steps array required' }, { status: 400 });
@@ -128,9 +128,13 @@ export async function POST(request: Request) {
     const nextVersion = (existingVersions.length > 0 ? (existingVersions[0].version || 0) : 0) + 1;
 
     const versionVals: Record<string, unknown> = {
-      version: nextVersion, status: 'review',
+      version: nextVersion,
+      status: auto_publish ? 'approved' : 'review',
       change_summary: change_summary || 'New recipe recording',
     };
+    if (auto_publish) {
+      versionVals.approved_at = new Date().toISOString().substring(0, 19).replace('T', ' ');
+    }
     if (product_tmpl_id) versionVals.product_tmpl_id = product_tmpl_id;
     if (bom_id) versionVals.bom_id = bom_id;
 
@@ -159,6 +163,16 @@ export async function POST(request: Request) {
             sort: (j + 1) * 10,
           });
         }
+      }
+    }
+
+    // Auto-publish: set x_recipe_published on the product/bom
+    if (auto_publish) {
+      if (product_tmpl_id) {
+        await odoo.write('product.template', [product_tmpl_id], { x_recipe_published: true });
+      }
+      if (bom_id) {
+        await odoo.write('mrp.bom', [bom_id], { x_recipe_published: true });
       }
     }
 

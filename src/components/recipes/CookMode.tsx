@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { type CookingSession, type StepImage, computeTimer, formatTimer } from '@/lib/cooking-sessions';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 const TYPE_LABEL: Record<string, string> = { prep: 'PREP', cook: 'COOK', plate: 'PLATE' };
 const TYPE_COLOR: Record<string, string> = { prep: 'bg-blue-500/20 text-blue-400', cook: 'bg-orange-500/20 text-orange-400', plate: 'bg-emerald-500/20 text-emerald-400' };
@@ -73,12 +74,15 @@ interface Props {
   onUpdateSession: (id: string, updates: Partial<CookingSession>) => void;
   onDashboard: () => void;
   onComplete: (sessionId: string, elapsed: number) => void;
+  onEndSession: (sessionId: string) => void;
   sessionCount: number;
 }
 
-export default function CookMode({ session, onUpdateSession, onDashboard, onComplete, sessionCount }: Props) {
+export default function CookMode({ session, onUpdateSession, onDashboard, onComplete, onEndSession, sessionCount }: Props) {
   const [now, setNow] = useState(Date.now());
   const [flashing, setFlashing] = useState(false);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [showPrevConfirm, setShowPrevConfirm] = useState(false);
   const prevDoneRef = useRef(false);
 
   useEffect(() => {
@@ -137,6 +141,13 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
   }
   function prevStep() {
     if (session.currentStep <= 0) return;
+    if (timer.running || (timer.active && !timer.done)) {
+      setShowPrevConfirm(true);
+      return;
+    }
+    doPrevStep();
+  }
+  function doPrevStep() {
     onUpdateSession(session.id, { currentStep: session.currentStep - 1, timerEndAt: null, timerTotal: 0, timerPausedLeft: null, showPlating: false });
   }
   function handleComplete() {
@@ -158,15 +169,23 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
     return (
       <div className="min-h-screen bg-[#111] flex flex-col">
         <div className="px-4 pt-12 pb-2 flex items-center gap-2">
-          <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          </button>
           {/* Back to last cook step */}
           <button onClick={() => onUpdateSession(session.id, { showPlating: false })} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
-          {sessionCount > 1 && <span className="text-[11px] font-bold text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-lg">{sessionCount} dishes</span>}
-          <div className="flex-1"><div className="text-[18px] font-bold text-white">Plating</div></div>
+          <div className="flex-1">
+            <div className="text-[18px] font-bold text-white">Plating</div>
+            <div className="text-[11px] text-white/30 truncate">{session.recipeName}</div>
+          </div>
+          {/* Dashboard button — top right */}
+          <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30 relative flex-shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+            {sessionCount > 1 && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center">
+                <span className="text-[9px] font-bold text-black">{sessionCount}</span>
+              </div>
+            )}
+          </button>
         </div>
         <div className="flex-1 flex items-center justify-center px-8">
           <div className="text-center">
@@ -177,8 +196,21 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
             </p>
           </div>
         </div>
-        <div className="px-5 py-6">
+        <div className="px-5 py-6 space-y-2">
           <button onClick={handleComplete} className="w-full py-4 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{'\u2713'} Dish complete</button>
+          <button onClick={() => setShowEndConfirm(true)}
+            className="w-full py-2 text-[12px] text-red-400/50 font-medium active:text-red-400">{'\u00d7'} End session</button>
+          {showEndConfirm && (
+            <ConfirmDialog
+              title={`End ${session.recipeName}?`}
+              message="This will cancel the cooking session. Progress will be lost."
+              confirmLabel="End session"
+              cancelLabel="Keep cooking"
+              variant="danger"
+              onConfirm={() => { setShowEndConfirm(false); onEndSession(session.id); }}
+              onCancel={() => setShowEndConfirm(false)}
+            />
+          )}
         </div>
       </div>
     );
@@ -192,18 +224,9 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
 
   return (
     <div className={`min-h-screen bg-[#0a0a0a] flex flex-col ${flashing ? 'animate-pulse bg-red-900' : ''}`}>
-      {/* HEADER: Dashboard + Back + Step info */}
+      {/* HEADER: Back left, Step info center, Dashboard right */}
       <div className="px-4 pt-12 pb-1 flex items-center gap-1.5">
-        {/* Dashboard button */}
-        <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30 relative flex-shrink-0">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-          {sessionCount > 1 && (
-            <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center">
-              <span className="text-[9px] font-bold text-black">{sessionCount}</span>
-            </div>
-          )}
-        </button>
-        {/* Previous step button */}
+        {/* Previous step button — only from step 2 onward */}
         {session.currentStep > 0 && (
           <button onClick={prevStep} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20 flex-shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
@@ -217,6 +240,15 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
           </div>
           <div className="text-[11px] text-white/30 truncate">{session.recipeName}</div>
         </div>
+        {/* Dashboard button — top right corner */}
+        <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30 relative flex-shrink-0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          {sessionCount > 1 && (
+            <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center">
+              <span className="text-[9px] font-bold text-black">{sessionCount}</span>
+            </div>
+          )}
+        </button>
       </div>
 
       {/* PROGRESS BAR */}
@@ -247,33 +279,47 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
           )}
         </div>
         {step.tip && <div className="mx-4 mt-3 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/15"><div className="text-[14px] text-amber-300/90 leading-snug">{'\ud83d\udca1'} {step.tip}</div></div>}
+      </div>
 
+      {/* FIXED BOTTOM: Timer + Actions — always visible */}
+      <div className="flex-shrink-0 border-t border-white/10 bg-[#0a0a0a] px-4 pb-4 pt-3">
         {hasTimer && timer.active && (
-          <div className="flex flex-col items-center pt-4 pb-2">
-            <div className="relative">
-              <svg width="120" height="120" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
-                <circle cx="50" cy="50" r="45" fill="none" stroke={getTimerColor()} strokeWidth="5" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={ringOffset} style={{ transform: 'rotate(-90deg)', transformOrigin: 'center', transition: 'stroke-dashoffset 0.5s, stroke 0.5s' }} />
+          <div className="flex items-center justify-center gap-4 mb-3">
+            <div className="relative flex-shrink-0">
+              <svg width="72" height="72" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+                <circle cx="50" cy="50" r="45" fill="none" stroke={getTimerColor()} strokeWidth="6" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={ringOffset} style={{ transform: 'rotate(-90deg)', transformOrigin: 'center', transition: 'stroke-dashoffset 0.5s, stroke 0.5s' }} />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className={`text-[28px] font-bold font-mono ${timer.done ? 'text-red-500' : 'text-white'}`}>{timer.done ? `+${formatTimer(timer.overdue)}` : formatTimer(timer.left)}</span>
+                <span className={`text-[18px] font-bold font-mono ${timer.done ? 'text-red-500' : 'text-white'}`}>{timer.done ? `+${formatTimer(timer.overdue)}` : formatTimer(timer.left)}</span>
               </div>
             </div>
-            {timer.done && <div className="text-[12px] font-bold text-red-400 uppercase tracking-wider mt-1">OVERDUE</div>}
-            {timer.running && <div className="flex gap-2 mt-2"><button onClick={() => addTime(30)} className="px-3 py-1 rounded-lg bg-white/8 text-[12px] text-white/60 active:bg-white/15">+30s</button><button onClick={() => addTime(60)} className="px-3 py-1 rounded-lg bg-white/8 text-[12px] text-white/60 active:bg-white/15">+1m</button></div>}
-            {timer.done && <div className="flex gap-2 mt-2"><button onClick={() => snooze(60)} className="px-3 py-1.5 rounded-lg bg-white/8 text-[13px] text-white/70 font-semibold active:bg-white/15">+1 min</button><button onClick={() => snooze(120)} className="px-3 py-1.5 rounded-lg bg-white/8 text-[13px] text-white/70 font-semibold active:bg-white/15">+2 min</button></div>}
+            <div className="flex flex-col gap-1.5">
+              {timer.done && <div className="text-[12px] font-bold text-red-400 uppercase tracking-wider">OVERDUE</div>}
+              {timer.running && <div className="flex gap-1.5"><button onClick={() => addTime(30)} className="px-3 py-1 rounded-lg bg-white/8 text-[12px] text-white/60 active:bg-white/15">+30s</button><button onClick={() => addTime(60)} className="px-3 py-1 rounded-lg bg-white/8 text-[12px] text-white/60 active:bg-white/15">+1m</button></div>}
+              {timer.done && <div className="flex gap-1.5"><button onClick={() => snooze(60)} className="px-2.5 py-1 rounded-lg bg-white/8 text-[12px] text-white/70 font-semibold active:bg-white/15">+1 min</button><button onClick={() => snooze(120)} className="px-2.5 py-1 rounded-lg bg-white/8 text-[12px] text-white/70 font-semibold active:bg-white/15">+2 min</button></div>}
+            </div>
           </div>
         )}
+        <div className="space-y-1.5">
+          {hasTimer && !timer.active && (<><button onClick={startTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Start timer ({formatTimer(step.timer_seconds)})</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
+          {hasTimer && timer.running && (<><button onClick={pauseTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-amber-600 active:bg-amber-700">{'\u23f8'}  Pause</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
+          {hasTimer && !timer.running && timer.active && !timer.done && (<><button onClick={resumeTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Resume</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
+          {hasTimer && timer.done && <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}</button>}
+          {!hasTimer && <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}</button>}
+        </div>
       </div>
-
-      {/* BOTTOM ACTIONS */}
-      <div className="px-4 pb-4 pt-2 space-y-1.5">
-        {hasTimer && !timer.active && (<><button onClick={startTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Start timer ({formatTimer(step.timer_seconds)})</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
-        {hasTimer && timer.running && (<><button onClick={pauseTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-amber-600 active:bg-amber-700">{'\u23f8'}  Pause</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
-        {hasTimer && !timer.running && timer.active && !timer.done && (<><button onClick={resumeTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Resume</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
-        {hasTimer && timer.done && <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}</button>}
-        {!hasTimer && <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}</button>}
-      </div>
+      {showPrevConfirm && (
+        <ConfirmDialog
+          title="Go back a step?"
+          message="The current timer will be reset. You can restart it when you return."
+          confirmLabel="Go back"
+          cancelLabel="Stay here"
+          variant="primary"
+          onConfirm={() => { setShowPrevConfirm(false); doPrevStep(); }}
+          onCancel={() => setShowPrevConfirm(false)}
+        />
+      )}
     </div>
   );
 }
