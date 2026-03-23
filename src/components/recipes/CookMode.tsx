@@ -135,6 +135,10 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
       onUpdateSession(session.id, { currentStep: session.currentStep + 1, timerEndAt: null, timerTotal: 0, timerPausedLeft: null });
     }
   }
+  function prevStep() {
+    if (session.currentStep <= 0) return;
+    onUpdateSession(session.id, { currentStep: session.currentStep - 1, timerEndAt: null, timerTotal: 0, timerPausedLeft: null, showPlating: false });
+  }
   function handleComplete() {
     onComplete(session.id, Math.round((Date.now() - session.startedAt) / 1000));
   }
@@ -154,9 +158,12 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
     return (
       <div className="min-h-screen bg-[#111] flex flex-col">
         <div className="px-4 pt-12 pb-2 flex items-center gap-2">
-          {/* Dashboard button */}
           <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </button>
+          {/* Back to last cook step */}
+          <button onClick={() => onUpdateSession(session.id, { showPlating: false })} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
           {sessionCount > 1 && <span className="text-[11px] font-bold text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-lg">{sessionCount} dishes</span>}
           <div className="flex-1"><div className="text-[18px] font-bold text-white">Plating</div></div>
@@ -185,10 +192,10 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
 
   return (
     <div className={`min-h-screen bg-[#0a0a0a] flex flex-col ${flashing ? 'animate-pulse bg-red-900' : ''}`}>
-      {/* \u2500\u2500 HEADER with Dashboard button \u2500\u2500 */}
-      <div className="px-4 pt-12 pb-1 flex items-center gap-2">
-        {/* Dashboard button \u2014 always visible, amber accent */}
-        <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30 relative">
+      {/* HEADER: Dashboard + Back + Step info */}
+      <div className="px-4 pt-12 pb-1 flex items-center gap-1.5">
+        {/* Dashboard button */}
+        <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30 relative flex-shrink-0">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           {sessionCount > 1 && (
             <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center">
@@ -196,6 +203,12 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
             </div>
           )}
         </button>
+        {/* Previous step button */}
+        {session.currentStep > 0 && (
+          <button onClick={prevStep} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20 flex-shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
+          </button>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-[15px] font-bold text-white">Step {session.currentStep + 1}<span className="text-white/30 font-normal">/{session.steps.length}</span></span>
@@ -206,14 +219,14 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
         </div>
       </div>
 
-      {/* \u2500\u2500 PROGRESS BAR \u2500\u2500 */}
+      {/* PROGRESS BAR */}
       <div className="flex items-center gap-1 px-4 py-1.5">
         {session.steps.map((_, i) => (
           <div key={i} className={`h-[3px] rounded-full flex-1 transition-colors ${i < session.currentStep ? 'bg-green-500' : i === session.currentStep ? (session.mode === 'cooking' ? 'bg-green-400' : 'bg-purple-400') : 'bg-white/10'}`} />
         ))}
       </div>
 
-      {/* \u2500\u2500 SCROLLABLE CONTENT \u2500\u2500 */}
+      {/* SCROLLABLE CONTENT */}
       <div className="flex-1 overflow-y-auto pb-4">
         <PhotoCarousel images={stepImages} />
         {step.ingredients && step.ingredients.length > 0 && (
@@ -253,7 +266,7 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
         )}
       </div>
 
-      {/* \u2500\u2500 BOTTOM ACTIONS \u2500\u2500 */}
+      {/* BOTTOM ACTIONS */}
       <div className="px-4 pb-4 pt-2 space-y-1.5">
         {hasTimer && !timer.active && (<><button onClick={startTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Start timer ({formatTimer(step.timer_seconds)})</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
         {hasTimer && timer.running && (<><button onClick={pauseTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-amber-600 active:bg-amber-700">{'\u23f8'}  Pause</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
