@@ -26,16 +26,8 @@ interface RecipeCtx {
   difficulty?: string; categoryName?: string; productQty?: number;
   steps: StepData[]; batch: number; multiplier: number;
 }
-
-interface RecordCtx {
-  mode: 'cooking' | 'production'; recipeId: number; recipeName: string;
-  recordedSteps: RecordedStep[];
-}
-
-interface ApprovalCtx {
-  versionId: number; recipeName: string;
-  productTmplId?: number; bomId?: number; changeSummary: string;
-}
+interface RecordCtx { mode: 'cooking' | 'production'; recipeId: number; recipeName: string; recordedSteps: RecordedStep[]; }
+interface ApprovalCtx { versionId: number; recipeName: string; productTmplId?: number; bomId?: number; changeSummary: string; }
 
 const DBG: Record<string, [string, string]> = {
   'dashboard': ['S0: Recipe Dashboard', 'RecipeDashboard'],
@@ -45,7 +37,7 @@ const DBG: Record<string, [string, string]> = {
   'batch-size': ['S3: Batch Size', 'BatchSize'],
   'ingredient-check': ['S4: Ingredient Check', 'IngredientCheck'],
   'cook-mode': ['S5: Cook Mode', 'CookMode'],
-  'active-sessions': ['Sessions Dashboard', 'ActiveSessions'],
+  'active-sessions': ['Kitchen Board', 'ActiveSessions'],
   'complete': ['S7: Complete', 'CookComplete'],
   'record': ['S10: Record Select', 'RecordSelect'],
   'create-dish': ['S10C: Create New Dish', 'CreateDish'],
@@ -76,15 +68,13 @@ export default function RecipesPage() {
   const [recCtx, setRecCtx] = useState<RecordCtx>({ mode: 'cooking', recipeId: 0, recipeName: '', recordedSteps: [] });
   const [aprCtx, setAprCtx] = useState<ApprovalCtx>({ versionId: 0, recipeName: '', changeSummary: '' });
   const [submitting, setSubmitting] = useState(false);
-
-  // ===== CONCURRENT SESSIONS =====
   const [sessions, setSessions] = useState<CookingSession[]>([]);
   const [alertBanner, setAlertBanner] = useState<{ sessionId: string; recipeName: string } | null>(null);
   const alertedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.role) setUserRole(d.user.role); }).catch(() => {}); }, []);
 
-  // Timer alert check — runs every 500ms, fires alert when any session timer completes
+  // Global timer alert — fires on ANY screen when a session timer completes
   useEffect(() => {
     const iv = setInterval(() => {
       const now = Date.now();
@@ -94,7 +84,6 @@ export default function RecipesPage() {
         if (s.timerEndAt <= now && !alertedRef.current.has(key)) {
           alertedRef.current.add(key);
           setAlertBanner({ sessionId: s.id, recipeName: s.recipeName });
-          // Sound
           try {
             const ac = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
             const o = ac.createOscillator(); const g = ac.createGain();
@@ -102,9 +91,7 @@ export default function RecipesPage() {
             o.frequency.value = 880; o.type = 'square'; g.gain.value = 0.3;
             o.start(); o.stop(ac.currentTime + 0.5);
           } catch (_e) { /* */ }
-          // Vibrate
           if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-          // Auto-dismiss after 8 seconds
           const sid = s.id;
           setTimeout(() => setAlertBanner(prev => prev?.sessionId === sid ? null : prev), 8000);
         }
@@ -113,59 +100,34 @@ export default function RecipesPage() {
     return () => clearInterval(iv);
   }, [sessions]);
 
-  // Debug overlay tracking
   useEffect(() => {
     const d = DBG[screen.type];
-    setDebugInfo({
-      module: 'Recipe Guide',
-      screen: d ? d[0] : screen.type,
-      component: d ? d[1] : screen.type,
-      mode: ctx.mode,
-      recipeId: ctx.recipeId || recCtx.recipeId || undefined,
-      recipeName: ctx.recipeName || recCtx.recipeName || undefined,
-      batch: ctx.batch,
-      stepCount: ctx.steps.length || recCtx.recordedSteps.length || undefined,
-    });
+    setDebugInfo({ module: 'Recipe Guide', screen: d ? d[0] : screen.type, component: d ? d[1] : screen.type, mode: ctx.mode, recipeId: ctx.recipeId || recCtx.recipeId || undefined, recipeName: ctx.recipeName || recCtx.recipeName || undefined, batch: ctx.batch, stepCount: ctx.steps.length || recCtx.recordedSteps.length || undefined });
   }, [screen, ctx, recCtx]);
 
   function goHome() { router.push('/'); }
   function goDashboard() { setScreen({ type: 'dashboard' }); }
+  function goKitchenBoard() { setScreen({ type: 'active-sessions' }); }
 
-  // Session helpers
   const updateSession = useCallback((id: string, updates: Partial<CookingSession>) => {
     setSessions(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
   }, []);
-
-  function removeSession(id: string) {
-    setSessions(prev => prev.filter(s => s.id !== id));
-  }
-
+  function removeSession(id: string) { setSessions(prev => prev.filter(s => s.id !== id)); }
   function createCookingSession(): string {
     const id = createSessionId();
-    const newSession: CookingSession = {
-      id,
-      recipeId: ctx.recipeId,
-      recipeName: ctx.recipeName,
-      mode: ctx.mode,
-      steps: ctx.steps,
-      currentStep: 0,
-      batch: ctx.batch,
-      multiplier: ctx.multiplier,
-      timerEndAt: null,
-      timerTotal: 0,
-      timerPausedLeft: null,
-      showPlating: false,
-      status: 'active',
-      startedAt: Date.now(),
-    };
-    setSessions(prev => [...prev, newSession]);
+    setSessions(prev => [...prev, {
+      id, recipeId: ctx.recipeId, recipeName: ctx.recipeName, mode: ctx.mode, steps: ctx.steps,
+      currentStep: 0, batch: ctx.batch, multiplier: ctx.multiplier,
+      timerEndAt: null, timerTotal: 0, timerPausedLeft: null,
+      showPlating: false, status: 'active', startedAt: Date.now(),
+    }]);
     return id;
   }
 
   const activeSessions = sessions.filter(s => s.status === 'active');
 
-  // ===== ALERT BANNER (rendered on top of everything) =====
-  const alertBannerEl = alertBanner && (
+  // Alert banner — renders on top of everything
+  const alertEl = alertBanner && (
     <div className="fixed top-0 left-0 right-0 z-[100] animate-pulse"
       style={{ background: 'linear-gradient(135deg, #dc2626, #b91c1c)' }}
       onClick={() => { setScreen({ type: 'cook-mode', sessionId: alertBanner.sessionId }); setAlertBanner(null); }}>
@@ -176,7 +138,7 @@ export default function RecipesPage() {
           <div className="text-[13px] text-white/80">Timer done! Tap to continue</div>
         </div>
         <button onClick={(e) => { e.stopPropagation(); setAlertBanner(null); }}
-          className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0 active:bg-white/30">
+          className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center active:bg-white/30">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
@@ -184,174 +146,83 @@ export default function RecipesPage() {
   );
 
   // ===== COOK FLOW =====
-  if (screen.type === 'dashboard') return (
-    <>
-      {alertBannerEl}
-      <RecipeDashboard userRole={userRole}
-        onNavigate={(id: string) => {
-          // If there are active sessions and user taps cooking/production guide, offer to go to sessions
-          if ((id === 'cooking-guide' || id === 'production-guide') && activeSessions.length > 0) {
-            setScreen({ type: 'active-sessions' });
-          } else {
-            setScreen({ type: id } as Screen);
-          }
-        }}
-        onHome={goHome} />
-    </>
-  );
+  if (screen.type === 'dashboard') return (<>{alertEl}<RecipeDashboard userRole={userRole}
+    onNavigate={(id: string) => {
+      if ((id === 'cooking-guide' || id === 'production-guide') && activeSessions.length > 0) goKitchenBoard();
+      else setScreen({ type: id } as Screen);
+    }} onHome={goHome} /></>);
 
-  if (screen.type === 'active-sessions') return (
-    <>
-      {alertBannerEl}
-      <ActiveSessions sessions={sessions}
-        onSelectSession={(id) => setScreen({ type: 'cook-mode', sessionId: id })}
-        onNewDish={() => setScreen({ type: 'dashboard' })}
-        onBack={goDashboard}
-        onHome={goHome}
-        onEndSession={removeSession} />
-    </>
-  );
+  if (screen.type === 'active-sessions') return (<>{alertEl}<ActiveSessions sessions={sessions}
+    onSelectSession={(id) => setScreen({ type: 'cook-mode', sessionId: id })}
+    onNewDish={goDashboard} onBack={goDashboard} onHome={goHome} onEndSession={removeSession} /></>);
 
-  if (screen.type === 'cooking-guide') return (
-    <>
-      {alertBannerEl}
-      <CookingGuideBrowse userRole={userRole}
-        onSelectRecipe={(r) => { const c = r.x_recipe_category_id; setCtx({ mode: 'cooking', recipeId: r.id, recipeName: r.name, difficulty: r.x_recipe_difficulty || undefined, categoryName: c ? c[1] : undefined, steps: [], batch: 1, multiplier: 1 }); setScreen({ type: 'overview' }); }}
-        onBack={() => activeSessions.length > 0 ? setScreen({ type: 'active-sessions' }) : goDashboard()} onHome={goHome} />
-    </>
-  );
+  if (screen.type === 'cooking-guide') return (<>{alertEl}<CookingGuideBrowse userRole={userRole}
+    onSelectRecipe={(r) => { const c = r.x_recipe_category_id; setCtx({ mode: 'cooking', recipeId: r.id, recipeName: r.name, difficulty: r.x_recipe_difficulty || undefined, categoryName: c ? c[1] : undefined, steps: [], batch: 1, multiplier: 1 }); setScreen({ type: 'overview' }); }}
+    onBack={() => activeSessions.length > 0 ? goKitchenBoard() : goDashboard()} onHome={goHome} /></>);
 
-  if (screen.type === 'production-guide') return (
-    <>
-      {alertBannerEl}
-      <ProductionGuideBrowse userRole={userRole}
-        onSelectRecipe={(r) => { const nm = r.product_tmpl_id ? r.product_tmpl_id[1] : `BoM #${r.id}`; const c = r.x_recipe_category_id; setCtx({ mode: 'production', recipeId: r.id, recipeName: nm, difficulty: r.x_recipe_difficulty || undefined, categoryName: c ? c[1] : undefined, productQty: r.product_qty, steps: [], batch: 10, multiplier: 1 }); setScreen({ type: 'overview' }); }}
-        onBack={() => activeSessions.length > 0 ? setScreen({ type: 'active-sessions' }) : goDashboard()} onHome={goHome} />
-    </>
-  );
+  if (screen.type === 'production-guide') return (<>{alertEl}<ProductionGuideBrowse userRole={userRole}
+    onSelectRecipe={(r) => { const nm = r.product_tmpl_id ? r.product_tmpl_id[1] : `BoM #${r.id}`; const c = r.x_recipe_category_id; setCtx({ mode: 'production', recipeId: r.id, recipeName: nm, difficulty: r.x_recipe_difficulty || undefined, categoryName: c ? c[1] : undefined, productQty: r.product_qty, steps: [], batch: 10, multiplier: 1 }); setScreen({ type: 'overview' }); }}
+    onBack={() => activeSessions.length > 0 ? goKitchenBoard() : goDashboard()} onHome={goHome} /></>);
 
-  if (screen.type === 'overview') return (
-    <>
-      {alertBannerEl}
-      <RecipeOverview mode={ctx.mode} recipeId={ctx.recipeId} recipeName={ctx.recipeName} difficulty={ctx.difficulty} categoryName={ctx.categoryName} productQty={ctx.productQty}
-        onBack={() => setScreen({ type: ctx.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })} onHome={goHome}
-        onStartCooking={(steps) => { setCtx(p => ({ ...p, steps })); setScreen({ type: 'batch-size' }); }} />
-    </>
-  );
+  if (screen.type === 'overview') return (<>{alertEl}<RecipeOverview mode={ctx.mode} recipeId={ctx.recipeId} recipeName={ctx.recipeName} difficulty={ctx.difficulty} categoryName={ctx.categoryName} productQty={ctx.productQty}
+    onBack={() => setScreen({ type: ctx.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })} onHome={goHome}
+    onStartCooking={(steps) => { setCtx(p => ({ ...p, steps })); setScreen({ type: 'batch-size' }); }} /></>);
 
-  if (screen.type === 'batch-size') return (
-    <>
-      {alertBannerEl}
-      <BatchSize mode={ctx.mode} recipeName={ctx.recipeName} baseBatch={ctx.mode === 'cooking' ? 1 : (ctx.productQty || 10)}
-        onBack={() => setScreen({ type: 'overview' })} onHome={goHome}
-        onConfirm={(b, m) => { setCtx(p => ({ ...p, batch: b, multiplier: m })); setScreen({ type: 'ingredient-check' }); }} />
-    </>
-  );
+  if (screen.type === 'batch-size') return (<>{alertEl}<BatchSize mode={ctx.mode} recipeName={ctx.recipeName} baseBatch={ctx.mode === 'cooking' ? 1 : (ctx.productQty || 10)}
+    onBack={() => setScreen({ type: 'overview' })} onHome={goHome}
+    onConfirm={(b, m) => { setCtx(p => ({ ...p, batch: b, multiplier: m })); setScreen({ type: 'ingredient-check' }); }} /></>);
 
-  if (screen.type === 'ingredient-check') return (
-    <>
-      {alertBannerEl}
-      <IngredientCheck mode={ctx.mode} recipeName={ctx.recipeName} steps={ctx.steps} multiplier={ctx.multiplier}
-        onBack={() => setScreen({ type: 'batch-size' })} onHome={goHome}
-        onStartCook={() => {
-          // Create session and jump straight into CookMode
-          const sessionId = createCookingSession();
-          setScreen({ type: 'cook-mode', sessionId });
-        }} />
-    </>
-  );
+  if (screen.type === 'ingredient-check') return (<>{alertEl}<IngredientCheck mode={ctx.mode} recipeName={ctx.recipeName} steps={ctx.steps} multiplier={ctx.multiplier}
+    onBack={() => setScreen({ type: 'batch-size' })} onHome={goHome}
+    onStartCook={() => { const sid = createCookingSession(); setScreen({ type: 'cook-mode', sessionId: sid }); }} /></>);
 
   if (screen.type === 'cook-mode') {
     const session = sessions.find(s => s.id === screen.sessionId);
-    if (!session) {
-      // Session was removed (ended), go to active sessions or dashboard
-      if (activeSessions.length > 0) { setScreen({ type: 'active-sessions' }); }
-      else { goDashboard(); }
-      return null;
-    }
-    return (
-      <>
-        {alertBannerEl}
-        <CookMode
-          session={session}
-          sessionCount={activeSessions.length}
-          onUpdateSession={updateSession}
-          onPark={() => setScreen({ type: 'active-sessions' })}
-          onComplete={(sid, elapsed) => {
-            const s = sessions.find(x => x.id === sid);
-            removeSession(sid);
-            setScreen({
-              type: 'complete',
-              recipeName: s?.recipeName || ctx.recipeName,
-              mode: s?.mode || ctx.mode,
-              stepCount: s?.steps.length || 0,
-              elapsed,
-              batch: s?.batch || 1,
-            });
-          }} />
-      </>
-    );
+    if (!session) { activeSessions.length > 0 ? goKitchenBoard() : goDashboard(); return null; }
+    return (<>{alertEl}<CookMode session={session} sessionCount={activeSessions.length}
+      onUpdateSession={updateSession}
+      onDashboard={goKitchenBoard}
+      onComplete={(sid, elapsed) => {
+        const s = sessions.find(x => x.id === sid);
+        removeSession(sid);
+        setScreen({ type: 'complete', recipeName: s?.recipeName || '', mode: s?.mode || 'cooking', stepCount: s?.steps.length || 0, elapsed, batch: s?.batch || 1 });
+      }} /></>);
   }
 
-  if (screen.type === 'complete') return (
-    <>
-      {alertBannerEl}
-      <CookComplete mode={screen.mode} recipeName={screen.recipeName} stepCount={screen.stepCount} elapsedSeconds={screen.elapsed} batch={screen.batch}
-        onDashboard={() => activeSessions.length > 0 ? setScreen({ type: 'active-sessions' }) : goDashboard()}
-        onCookAnother={() => activeSessions.length > 0 ? setScreen({ type: 'active-sessions' }) : setScreen({ type: screen.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })} />
-    </>
-  );
+  if (screen.type === 'complete') return (<>{alertEl}<CookComplete mode={screen.mode} recipeName={screen.recipeName} stepCount={screen.stepCount} elapsedSeconds={screen.elapsed} batch={screen.batch}
+    onDashboard={() => activeSessions.length > 0 ? goKitchenBoard() : goDashboard()}
+    onCookAnother={() => activeSessions.length > 0 ? goKitchenBoard() : setScreen({ type: screen.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })} /></>);
 
-  // ===== RECORD FLOW (unchanged) =====
-  if (screen.type === 'record') return (
-    <RecordSelect userRole={userRole}
-      onSelectRecipe={(r, m) => { setRecCtx({ mode: m, recipeId: r.id, recipeName: r.name, recordedSteps: [] }); setScreen({ type: 'active-recording' }); }}
-      onCreateNew={(m) => setScreen({ type: 'create-dish', createMode: m })}
-      onBack={goDashboard} onHome={goHome} />
-  );
+  // ===== RECORD FLOW =====
+  if (screen.type === 'record') return (<RecordSelect userRole={userRole}
+    onSelectRecipe={(r, m) => { setRecCtx({ mode: m, recipeId: r.id, recipeName: r.name, recordedSteps: [] }); setScreen({ type: 'active-recording' }); }}
+    onCreateNew={(m) => setScreen({ type: 'create-dish', createMode: m })} onBack={goDashboard} onHome={goHome} />);
 
-  if (screen.type === 'create-dish') return (
-    <CreateDish mode={screen.createMode}
-      onBack={() => setScreen({ type: 'record' })} onHome={goHome}
-      onCreated={(d) => { setRecCtx({ mode: d.mode === 'cooking_guide' ? 'cooking' : 'production', recipeId: 0, recipeName: d.name, recordedSteps: [] }); setScreen({ type: 'active-recording' }); }} />
-  );
+  if (screen.type === 'create-dish') return (<CreateDish mode={screen.createMode}
+    onBack={() => setScreen({ type: 'record' })} onHome={goHome}
+    onCreated={(d) => { setRecCtx({ mode: d.mode === 'cooking_guide' ? 'cooking' : 'production', recipeId: 0, recipeName: d.name, recordedSteps: [] }); setScreen({ type: 'active-recording' }); }} />);
 
-  if (screen.type === 'active-recording') return (
-    <ActiveRecording recipeName={recCtx.recipeName} mode={recCtx.mode}
-      initialSteps={recCtx.recordedSteps}
-      onFinish={(s) => { setRecCtx(p => ({ ...p, recordedSteps: s })); setScreen({ type: 'recording-summary' }); }}
-      onBack={() => setScreen({ type: 'record' })} />
-  );
+  if (screen.type === 'active-recording') return (<ActiveRecording recipeName={recCtx.recipeName} mode={recCtx.mode} initialSteps={recCtx.recordedSteps}
+    onFinish={(s) => { setRecCtx(p => ({ ...p, recordedSteps: s })); setScreen({ type: 'recording-summary' }); }} onBack={() => setScreen({ type: 'record' })} />);
 
   if (screen.type === 'recording-summary') return (
-    <RecordingSummary recipeName={recCtx.recipeName} recipeId={recCtx.recipeId} mode={recCtx.mode}
-      steps={recCtx.recordedSteps}
+    <RecordingSummary recipeName={recCtx.recipeName} recipeId={recCtx.recipeId} mode={recCtx.mode} steps={recCtx.recordedSteps}
       onEditStep={(i) => setScreen({ type: 'edit-step', stepIndex: i })}
       onDeleteStep={(i) => setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, idx) => idx !== i) }))}
-      onAddStep={() => {
-        const blank: RecordedStep = { id: `step_${Date.now()}`, step_type: 'prep', instruction: '', timer_seconds: 0, tip: '', photos: [] };
-        const newIdx = recCtx.recordedSteps.length;
-        setRecCtx(p => ({ ...p, recordedSteps: [...p.recordedSteps, blank] }));
-        setScreen({ type: 'edit-step', stepIndex: newIdx });
-      }}
+      onAddStep={() => { const b: RecordedStep = { id: `step_${Date.now()}`, step_type: 'prep', instruction: '', timer_seconds: 0, tip: '', photos: [] }; const n = recCtx.recordedSteps.length; setRecCtx(p => ({ ...p, recordedSteps: [...p.recordedSteps, b] })); setScreen({ type: 'edit-step', stepIndex: n }); }}
       submitting={submitting}
       onSubmit={async () => {
-        if (recCtx.recipeId <= 0) { alert('This dish was created locally and has not been synced to Odoo yet.'); return; }
-        if (recCtx.recordedSteps.length === 0) { alert('No steps to submit.'); return; }
+        if (recCtx.recipeId <= 0) { alert('Dish not synced to Odoo yet.'); return; }
+        if (recCtx.recordedSteps.length === 0) { alert('No steps.'); return; }
         const empty = recCtx.recordedSteps.filter(s => !s.instruction.trim());
-        if (empty.length > 0) { alert(`${empty.length} step(s) have no instructions.`); return; }
+        if (empty.length > 0) { alert(`${empty.length} step(s) need instructions.`); return; }
         setSubmitting(true);
         try {
-          const body: Record<string, unknown> = {
-            steps: recCtx.recordedSteps.map(s => ({ step_type: s.step_type, instruction: s.instruction, timer_seconds: s.timer_seconds, tip: s.tip, images: s.photos.map(p => ({ data: p.split(',')[1] || p, source: 'record' })) })),
-            change_summary: 'New recipe recording from portal',
-          };
+          const body: Record<string, unknown> = { steps: recCtx.recordedSteps.map(s => ({ step_type: s.step_type, instruction: s.instruction, timer_seconds: s.timer_seconds, tip: s.tip, images: s.photos.map(p => ({ data: p.split(',')[1] || p, source: 'record' })) })), change_summary: 'New recipe recording' };
           if (recCtx.mode === 'cooking') body.product_tmpl_id = recCtx.recipeId; else body.bom_id = recCtx.recipeId;
           const res = await fetch('/api/recipes/steps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-          if (res.ok) { alert('Recipe submitted for review!'); goDashboard(); }
-          else { const err = await res.json(); alert(`Failed: ${err.error || 'Unknown error'}`); }
-        } catch (_e) { alert('Failed to submit. Check connection.'); }
-        finally { setSubmitting(false); }
+          if (res.ok) { alert('Submitted for review!'); goDashboard(); } else { const e = await res.json(); alert(`Failed: ${e.error}`); }
+        } catch (_e) { alert('Failed. Check connection.'); } finally { setSubmitting(false); }
       }}
       onBack={() => setScreen({ type: 'record' })} onHome={goHome} />
   );
@@ -360,74 +231,35 @@ export default function RecipesPage() {
     const step = recCtx.recordedSteps[screen.stepIndex];
     if (!step) { setScreen({ type: 'recording-summary' }); return null; }
     return <EditStep step={step} stepIndex={screen.stepIndex}
-      onSave={(u) => {
-        if (!u.instruction.trim()) setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) }));
-        else setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.map((s, i) => i === screen.stepIndex ? u : s) }));
-        setScreen({ type: 'recording-summary' });
-      }}
-      onBack={() => {
-        if (!step.instruction.trim()) setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) }));
-        setScreen({ type: 'recording-summary' });
-      }} />;
+      onSave={(u) => { if (!u.instruction.trim()) setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) })); else setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.map((s, i) => i === screen.stepIndex ? u : s) })); setScreen({ type: 'recording-summary' }); }}
+      onBack={() => { if (!step.instruction.trim()) setRecCtx(p => ({ ...p, recordedSteps: p.recordedSteps.filter((_, i) => i !== screen.stepIndex) })); setScreen({ type: 'recording-summary' }); }} />;
   }
 
-  // ===== APPROVAL FLOW (unchanged) =====
-  if (screen.type === 'approvals') return (
-    <ApprovalList userRole={userRole}
-      onReview={(v) => {
-        setAprCtx({ versionId: v.id, recipeName: v.recipe_name, productTmplId: v.product_tmpl_id || undefined, bomId: v.bom_id || undefined, changeSummary: v.change_summary || '' });
-        setScreen({ type: 'approval-review' });
-      }}
-      onBack={goDashboard} onHome={goHome} />
-  );
+  // ===== APPROVALS =====
+  if (screen.type === 'approvals') return (<ApprovalList userRole={userRole}
+    onReview={(v) => { setAprCtx({ versionId: v.id, recipeName: v.recipe_name, productTmplId: v.product_tmpl_id || undefined, bomId: v.bom_id || undefined, changeSummary: v.change_summary || '' }); setScreen({ type: 'approval-review' }); }}
+    onBack={goDashboard} onHome={goHome} />);
 
-  if (screen.type === 'approval-review') return (
-    <ApprovalReview versionId={aprCtx.versionId} recipeName={aprCtx.recipeName}
-      productTmplId={aprCtx.productTmplId} bomId={aprCtx.bomId} changeSummary={aprCtx.changeSummary} approving={submitting}
-      onApprove={async () => {
-        setSubmitting(true);
-        try {
-          const res = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'approve' }) });
-          if (res.ok) { alert('Recipe approved!'); setScreen({ type: 'approvals' }); }
-          else { const err = await res.json(); alert(`Failed: ${err.error}`); }
-        } catch (_e) { alert('Failed to approve.'); }
-        finally { setSubmitting(false); }
-      }}
-      onReject={async (reason) => {
-        setSubmitting(true);
-        try {
-          const res = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'reject', reason }) });
-          if (res.ok) { alert('Recipe rejected.'); setScreen({ type: 'approvals' }); }
-          else { const err = await res.json(); alert(`Failed: ${err.error}`); }
-        } catch (_e) { alert('Failed to reject.'); }
-        finally { setSubmitting(false); }
-      }}
-      onBack={() => setScreen({ type: 'approvals' })} />
-  );
+  if (screen.type === 'approval-review') return (<ApprovalReview versionId={aprCtx.versionId} recipeName={aprCtx.recipeName}
+    productTmplId={aprCtx.productTmplId} bomId={aprCtx.bomId} changeSummary={aprCtx.changeSummary} approving={submitting}
+    onApprove={async () => { setSubmitting(true); try { const r = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'approve' }) }); if (r.ok) { alert('Approved!'); setScreen({ type: 'approvals' }); } else { const e = await r.json(); alert(`Failed: ${e.error}`); } } catch (_e) { alert('Failed.'); } finally { setSubmitting(false); } }}
+    onReject={async (reason) => { setSubmitting(true); try { const r = await fetch('/api/recipes/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version_id: aprCtx.versionId, action: 'reject', reason }) }); if (r.ok) { alert('Rejected.'); setScreen({ type: 'approvals' }); } else { const e = await r.json(); alert(`Failed: ${e.error}`); } } catch (_e) { alert('Failed.'); } finally { setSubmitting(false); } }}
+    onBack={() => setScreen({ type: 'approvals' })} />);
 
   // ===== PLACEHOLDER =====
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {alertBannerEl}
-      <div className="bg-[#1A1F2E] px-5 pt-14 pb-5">
-        <div className="flex items-center gap-3">
-          <button onClick={goDashboard} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
-          </button>
-          <div className="flex-1">
-            <h1 className="text-[20px] font-bold text-white capitalize">{screen.type.replace(/-/g, ' ')}</h1>
-            <p className="text-[12px] text-white/50 mt-0.5">Recipe Guide</p>
-          </div>
-        </div>
-      </div>
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="text-center">
-          <div className="text-5xl mb-4">{'\ud83d\udee0\ufe0f'}</div>
-          <h2 className="text-lg font-bold text-gray-800 mb-2 capitalize">{screen.type.replace(/-/g, ' ')}</h2>
-          <p className="text-sm text-gray-500 mb-6">Coming soon</p>
-          <button onClick={goDashboard} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-xl active:bg-green-700">Back to Recipe Guide</button>
-        </div>
-      </div>
+      {alertEl}
+      <div className="bg-[#1A1F2E] px-5 pt-14 pb-5"><div className="flex items-center gap-3">
+        <button onClick={goDashboard} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg></button>
+        <div className="flex-1"><h1 className="text-[20px] font-bold text-white capitalize">{screen.type.replace(/-/g, ' ')}</h1></div>
+      </div></div>
+      <div className="flex-1 flex items-center justify-center p-8"><div className="text-center">
+        <div className="text-5xl mb-4">{'\ud83d\udee0\ufe0f'}</div>
+        <h2 className="text-lg font-bold text-gray-800 mb-2 capitalize">{screen.type.replace(/-/g, ' ')}</h2>
+        <p className="text-sm text-gray-500 mb-6">Coming soon</p>
+        <button onClick={goDashboard} className="px-6 py-3 bg-green-600 text-white font-semibold rounded-xl active:bg-green-700">Back</button>
+      </div></div>
     </div>
   );
 }
