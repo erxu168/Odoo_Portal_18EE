@@ -41,7 +41,6 @@ function renderBulletText(text: string): React.ReactNode {
   });
 }
 
-/** Edge-to-edge swipeable photos — tap for fullscreen */
 function PhotoCarousel({ images }: { images: StepImage[] }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
@@ -197,7 +196,7 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
   function startTimer() { if (!step) return; setTimerLeft(step.timer_seconds); setTimerTotal(step.timer_seconds); setTimerRunning(true); setTimerDone(false); setOverdue(0); }
   function pauseTimer() { setTimerRunning(false); }
   function resumeTimer() { setTimerRunning(true); }
-  function skipTimer() { if (!confirm('Skip timer?')) return; resetTimer(); nextStep(); }
+  function skipTimer() { resetTimer(); nextStep(); }
   function resetTimer() { setTimerRunning(false); setTimerDone(false); setTimerLeft(0); setTimerTotal(0); setOverdue(0); if (intervalRef.current) clearInterval(intervalRef.current); }
   function addTime(sec: number) { setTimerLeft(p => p + sec); setTimerTotal(p => p + sec); }
   function snooze(sec: number) { setTimerDone(false); setOverdue(0); setTimerLeft(sec); setTimerTotal(sec); setTimerRunning(true); }
@@ -221,7 +220,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
   const circumference = 2 * Math.PI * 45;
   const ringOffset = timerTotal > 0 ? circumference * (1 - timerLeft / timerTotal) : 0;
 
-  // ===== PLATING SCREEN =====
   if (showPlating) {
     return (
       <div className="min-h-screen bg-[#111] flex flex-col">
@@ -261,7 +259,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
   return (
     <div className={`min-h-screen bg-[#0a0a0a] flex flex-col ${flashing ? 'animate-pulse bg-red-900' : ''}`}>
 
-      {/* ── COMPACT HEADER ── */}
       <div className="px-4 pt-12 pb-1 flex items-center gap-2">
         <button onClick={handleExit} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center active:bg-white/20">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -281,7 +278,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
         </button>
       </div>
 
-      {/* ── PROGRESS BAR ── */}
       <div className="flex items-center gap-1 px-4 py-1.5">
         {steps.map((_, i) => (
           <div key={i} className={`h-[3px] rounded-full flex-1 transition-colors ${
@@ -290,13 +286,9 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
         ))}
       </div>
 
-      {/* ── SCROLLABLE CONTENT ── */}
       <div className="flex-1 overflow-y-auto pb-4">
-
-        {/* Photos — edge to edge feel */}
         <PhotoCarousel images={stepImages} />
 
-        {/* Ingredients — compact horizontal chips */}
         {step.ingredients && step.ingredients.length > 0 && (
           <div className="px-4 mb-3">
             <div className="flex flex-wrap gap-1.5">
@@ -310,7 +302,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
           </div>
         )}
 
-        {/* ── INSTRUCTIONS — THE MAIN EVENT ── */}
         <div className="px-4" data-dbg="instruction-box">
           {bullets.length > 0 ? (
             <div className="space-y-3">
@@ -332,14 +323,12 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
           )}
         </div>
 
-        {/* Tip — compact inline */}
         {step.tip && (
           <div className="mx-4 mt-3 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/15">
             <div className="text-[14px] text-amber-300/90 leading-snug">{'\ud83d\udca1'} {step.tip}</div>
           </div>
         )}
 
-        {/* Timer — inline when active, large and prominent */}
         {hasTimer && timerActive && (
           <div className="flex flex-col items-center pt-4 pb-2">
             <div className="relative">
@@ -373,31 +362,48 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
         )}
       </div>
 
-      {/* ── STICKY BOTTOM ACTION ── */}
+      {/* ── BOTTOM ACTIONS ── */}
       <div className="px-4 pb-4 pt-2 space-y-1.5">
+        {/* Timer not started yet: Start + Skip */}
         {hasTimer && !timerActive && (
-          <button onClick={startTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">
-            {'\u25b6'}  Start timer ({formatTime(step.timer_seconds)})
-          </button>
+          <>
+            <button onClick={startTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">
+              {'\u25b6'}  Start timer ({formatTime(step.timer_seconds)})
+            </button>
+            <button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">
+              Skip timer {'\u2192'} next step
+            </button>
+          </>
         )}
+        {/* Timer running: Pause + Skip */}
         {hasTimer && timerRunning && (
           <>
             <button onClick={pauseTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-amber-600 active:bg-amber-700">
               {'\u23f8'}  Pause
             </button>
-            <button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer</button>
+            <button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">
+              Skip timer {'\u2192'} next step
+            </button>
           </>
         )}
+        {/* Timer paused: Resume + Skip */}
         {hasTimer && !timerRunning && timerLeft > 0 && !timerDone && (
-          <button onClick={resumeTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">
-            {'\u25b6'}  Resume
-          </button>
+          <>
+            <button onClick={resumeTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">
+              {'\u25b6'}  Resume
+            </button>
+            <button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">
+              Skip timer {'\u2192'} next step
+            </button>
+          </>
         )}
+        {/* Timer done: Next step */}
         {hasTimer && timerDone && (
           <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">
             {isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}
           </button>
         )}
+        {/* No timer: Next step */}
         {!hasTimer && (
           <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">
             {isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}
@@ -405,7 +411,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
         )}
       </div>
 
-      {/* ── SETTINGS SHEET ── */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-end" onClick={() => setShowSettings(false)}>
           <div className="absolute inset-0 bg-black/60" />
