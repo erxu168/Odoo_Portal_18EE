@@ -3,13 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { type CookingSession, computeTimer, formatTimer } from '@/lib/cooking-sessions';
 
-const TYPE_LABEL: Record<string, string> = { prep: 'PREP', cook: 'COOK', plate: 'PLATE' };
-const TYPE_COLOR: Record<string, string> = {
-  prep: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  cook: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  plate: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-};
-
 interface Props {
   sessions: CookingSession[];
   onSelectSession: (id: string) => void;
@@ -28,103 +21,113 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
 
   const active = sessions.filter(s => s.status === 'active');
 
-  function cardStyle(s: CookingSession): string {
-    const t = computeTimer(s, now);
-    if (t.done) return 'border-red-500 bg-red-500/5';
-    if (t.running && t.left < 60) return 'border-amber-500 bg-amber-500/5';
-    if (t.running) return 'border-green-500/50 bg-green-500/5';
-    return 'border-white/10 bg-white/5';
-  }
+  // Sort: overdue first, then running (least time left first), then waiting
+  const sorted = [...active].sort((a, b) => {
+    const ta = computeTimer(a, now);
+    const tb = computeTimer(b, now);
+    if (ta.done && !tb.done) return -1;
+    if (!ta.done && tb.done) return 1;
+    if (ta.running && !tb.running) return -1;
+    if (!ta.running && tb.running) return 1;
+    if (ta.running && tb.running) return ta.left - tb.left;
+    return 0;
+  });
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
-      <div className="px-4 pt-12 pb-2 flex items-center gap-2">
+      {/* Header */}
+      <div className="px-4 pt-12 pb-1 flex items-center gap-2">
         <button onClick={onBack} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center active:bg-white/20">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
         </button>
         <div className="flex-1">
-          <div className="text-[17px] font-bold text-white">Active sessions</div>
-          <div className="text-[11px] text-white/40">{active.length} {active.length === 1 ? 'dish' : 'dishes'} cooking</div>
+          <div className="text-[17px] font-bold text-white">Kitchen board</div>
+          <div className="text-[11px] text-white/40">{active.length}/10 dishes active</div>
         </div>
         <button onClick={onHome} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center active:bg-white/20">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
         </button>
       </div>
 
-      <div className="flex-1 px-4 pt-3 pb-6 overflow-y-auto">
+      {/* Grid of session cards */}
+      <div className="flex-1 px-3 pt-3 pb-6 overflow-y-auto">
         {active.length === 0 && (
-          <div className="text-center py-16">
-            <div className="text-5xl mb-4">{"\ud83c\udf73"}</div>
-            <div className="text-[16px] font-bold text-white/80 mb-2">No active sessions</div>
-            <div className="text-[13px] text-white/40 mb-6">Start cooking a dish to see it here</div>
-            <button onClick={onNewDish} className="px-6 py-3 rounded-2xl bg-green-600 text-white font-bold text-[15px] active:bg-green-700">Start cooking</button>
+          <div className="text-center py-20">
+            <div className="text-5xl mb-4">{'\ud83c\udf73'}</div>
+            <div className="text-[16px] font-bold text-white/80 mb-2">Kitchen is quiet</div>
+            <div className="text-[13px] text-white/40 mb-6">Start cooking to see dishes here</div>
+            <button onClick={onNewDish} className="px-6 py-3 rounded-2xl bg-green-600 text-white font-bold text-[15px] active:bg-green-700">{'\u002b'} Start cooking</button>
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
-          {active.map((session, idx) => {
+        <div className="grid grid-cols-2 gap-2.5">
+          {sorted.map((session) => {
             const timer = computeTimer(session, now);
             const step = session.steps[session.currentStep];
-            const stepType = step?.step_type || 'prep';
-            const typeBadge = TYPE_COLOR[stepType] || 'bg-white/10 text-white/50 border-white/20';
-            const typeLabel = TYPE_LABEL[stepType] || stepType.toUpperCase();
+            const isOverdue = timer.done;
+            const isUrgent = timer.running && timer.left < 60;
+
+            let borderColor = 'border-white/10';
+            let bg = 'bg-white/[0.03]';
+            if (isOverdue) { borderColor = 'border-red-500'; bg = 'bg-red-500/10'; }
+            else if (isUrgent) { borderColor = 'border-amber-500'; bg = 'bg-amber-500/5'; }
+            else if (timer.running) { borderColor = 'border-green-500/40'; bg = 'bg-green-500/5'; }
 
             return (
-              <div key={session.id} className={`rounded-2xl border-2 overflow-hidden transition-colors ${cardStyle(session)}`}>
-                <button onClick={() => onSelectSession(session.id)} className="w-full text-left p-4 active:opacity-80">
-                  <div className="flex items-start gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-[16px] font-bold font-mono ${
-                      session.mode === 'cooking' ? 'bg-green-500/20 text-green-400' : 'bg-purple-500/20 text-purple-400'
-                    }`}>{idx + 1}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[16px] font-bold text-white mb-0.5 truncate">{session.recipeName}</div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[12px] text-white/50">{session.showPlating ? 'Plating' : `Step ${session.currentStep + 1}/${session.steps.length}`}</span>
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${typeBadge}`}>{typeLabel}</span>
-                      </div>
-                      {timer.done && (
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                          <span className="text-[15px] font-bold text-red-400 font-mono">+{formatTimer(timer.overdue)}</span>
-                          <span className="text-[11px] font-bold text-red-400 uppercase">overdue</span>
-                        </div>
-                      )}
-                      {timer.running && (
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${timer.left < 60 ? 'bg-amber-500' : 'bg-green-500'} animate-pulse`} />
-                          <span className={`text-[15px] font-bold font-mono ${timer.left < 60 ? 'text-amber-400' : 'text-green-400'}`}>{formatTimer(timer.left)}</span>
-                          <span className="text-[11px] text-white/30">remaining</span>
-                        </div>
-                      )}
-                      {timer.active && !timer.running && !timer.done && (
-                        <div className="text-[13px] text-white/40">{"\u23f8"} Paused at {formatTimer(timer.left)}</div>
-                      )}
-                      {!timer.active && step && step.timer_seconds > 0 && (
-                        <div className="text-[13px] text-white/30">{"\u23f1"} Timer: {formatTimer(step.timer_seconds)} (not started)</div>
-                      )}
-                      {!timer.active && (!step || step.timer_seconds === 0) && (
-                        <div className="text-[13px] text-white/30">Waiting for you</div>
-                      )}
-                    </div>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" className="flex-shrink-0 mt-2"><path d="M9 18l6-6-6-6"/></svg>
-                  </div>
-                </button>
-                <div className="px-4 pb-3 flex justify-end">
-                  <button onClick={() => { if (confirm(`End ${session.recipeName}?`)) onEndSession(session.id); }}
-                    className="text-[11px] text-red-400/50 font-medium active:text-red-400">End session</button>
+              <button key={session.id}
+                onClick={() => onSelectSession(session.id)}
+                className={`relative rounded-2xl border-2 ${borderColor} ${bg} p-3 text-left active:opacity-80 transition-colors overflow-hidden`}>
+
+                {/* Pulsing dot for running/overdue */}
+                {(timer.running || isOverdue) && (
+                  <div className={`absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full animate-pulse ${isOverdue ? 'bg-red-500' : isUrgent ? 'bg-amber-500' : 'bg-green-500'}`} />
+                )}
+
+                {/* Dish name */}
+                <div className="text-[14px] font-bold text-white truncate pr-4 mb-1">{session.recipeName}</div>
+
+                {/* Step info */}
+                <div className="text-[11px] text-white/40 mb-2">
+                  {session.showPlating ? 'Plating' : `Step ${session.currentStep + 1}/${session.steps.length}`}
+                  {step && <span className="ml-1 capitalize">{`\u00b7 ${step.step_type}`}</span>}
                 </div>
-              </div>
+
+                {/* Timer display — big and prominent */}
+                {isOverdue && (
+                  <div className="text-[24px] font-bold text-red-400 font-mono leading-none">+{formatTimer(timer.overdue)}</div>
+                )}
+                {timer.running && !isOverdue && (
+                  <div className={`text-[24px] font-bold font-mono leading-none ${isUrgent ? 'text-amber-400' : 'text-green-400'}`}>{formatTimer(timer.left)}</div>
+                )}
+                {timer.active && !timer.running && !isOverdue && (
+                  <div className="text-[18px] text-white/30 font-mono leading-none">{'\u23f8'} {formatTimer(timer.left)}</div>
+                )}
+                {!timer.active && step && step.timer_seconds > 0 && (
+                  <div className="text-[14px] text-white/20 font-mono">{'\u23f1'} {formatTimer(step.timer_seconds)}</div>
+                )}
+                {!timer.active && (!step || step.timer_seconds === 0) && (
+                  <div className="text-[13px] text-white/20">Ready</div>
+                )}
+
+                {/* End session — small, bottom corner */}
+                <div className="mt-2 flex justify-end" onClick={(e) => { e.stopPropagation(); if (confirm(`End ${session.recipeName}?`)) onEndSession(session.id); }}>
+                  <span className="text-[10px] text-red-400/40 active:text-red-400">{'\u00d7'} end</span>
+                </div>
+              </button>
             );
           })}
-        </div>
 
-        {active.length > 0 && (
-          <button onClick={onNewDish}
-            className="w-full mt-4 py-4 rounded-2xl border-2 border-dashed border-white/15 flex items-center justify-center gap-2 active:bg-white/5">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-            <span className="text-[15px] font-semibold text-white/40">Start another dish</span>
-          </button>
-        )}
+          {/* + New dish card */}
+          {active.length < 10 && (
+            <button onClick={onNewDish}
+              className="rounded-2xl border-2 border-dashed border-white/10 p-3 flex flex-col items-center justify-center min-h-[130px] active:bg-white/5 transition-colors">
+              <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mb-2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+              </div>
+              <div className="text-[13px] font-semibold text-white/30">New dish</div>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

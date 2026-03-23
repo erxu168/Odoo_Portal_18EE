@@ -71,14 +71,13 @@ function PhotoCarousel({ images }: { images: StepImage[] }) {
 interface Props {
   session: CookingSession;
   onUpdateSession: (id: string, updates: Partial<CookingSession>) => void;
-  onPark: () => void;
+  onDashboard: () => void;
   onComplete: (sessionId: string, elapsed: number) => void;
   sessionCount: number;
 }
 
-export default function CookMode({ session, onUpdateSession, onPark, onComplete, sessionCount }: Props) {
+export default function CookMode({ session, onUpdateSession, onDashboard, onComplete, sessionCount }: Props) {
   const [now, setNow] = useState(Date.now());
-  const [showSettings, setShowSettings] = useState(false);
   const [flashing, setFlashing] = useState(false);
   const prevDoneRef = useRef(false);
 
@@ -122,10 +121,7 @@ export default function CookMode({ session, onUpdateSession, onPark, onComplete,
     if (!session.timerPausedLeft) return;
     onUpdateSession(session.id, { timerEndAt: Date.now() + session.timerPausedLeft * 1000, timerPausedLeft: null });
   }
-  function resetTimer() {
-    onUpdateSession(session.id, { timerEndAt: null, timerTotal: 0, timerPausedLeft: null });
-  }
-  function skipTimer() { resetTimer(); nextStep(); }
+  function skipTimer() { onUpdateSession(session.id, { timerEndAt: null, timerTotal: 0, timerPausedLeft: null }); nextStep(); }
   function addTime(sec: number) {
     if (session.timerEndAt) onUpdateSession(session.id, { timerEndAt: session.timerEndAt + sec * 1000, timerTotal: session.timerTotal + sec });
   }
@@ -153,14 +149,17 @@ export default function CookMode({ session, onUpdateSession, onPark, onComplete,
   const circumference = 2 * Math.PI * 45;
   const ringOffset = timer.total > 0 ? circumference * (1 - timer.left / timer.total) : 0;
 
+  // ===== PLATING =====
   if (session.showPlating) {
     return (
       <div className="min-h-screen bg-[#111] flex flex-col">
-        <div className="px-5 pt-14 pb-4 flex items-center gap-3">
-          <button onClick={() => onUpdateSession(session.id, { showPlating: false })} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
+        <div className="px-4 pt-12 pb-2 flex items-center gap-2">
+          {/* Dashboard button */}
+          <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           </button>
-          <div className="flex-1"><div className="text-[20px] font-bold text-white">Plating</div></div>
+          {sessionCount > 1 && <span className="text-[11px] font-bold text-amber-400 bg-amber-500/15 px-2 py-0.5 rounded-lg">{sessionCount} dishes</span>}
+          <div className="flex-1"><div className="text-[18px] font-bold text-white">Plating</div></div>
         </div>
         <div className="flex-1 flex items-center justify-center px-8">
           <div className="text-center">
@@ -186,9 +185,16 @@ export default function CookMode({ session, onUpdateSession, onPark, onComplete,
 
   return (
     <div className={`min-h-screen bg-[#0a0a0a] flex flex-col ${flashing ? 'animate-pulse bg-red-900' : ''}`}>
+      {/* \u2500\u2500 HEADER with Dashboard button \u2500\u2500 */}
       <div className="px-4 pt-12 pb-1 flex items-center gap-2">
-        <button onClick={onPark} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center active:bg-white/20">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
+        {/* Dashboard button \u2014 always visible, amber accent */}
+        <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30 relative">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          {sessionCount > 1 && (
+            <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center">
+              <span className="text-[9px] font-bold text-black">{sessionCount}</span>
+            </div>
+          )}
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -198,20 +204,16 @@ export default function CookMode({ session, onUpdateSession, onPark, onComplete,
           </div>
           <div className="text-[11px] text-white/30 truncate">{session.recipeName}</div>
         </div>
-        {sessionCount > 1 && (
-          <button onClick={onPark} className="px-2 py-1 rounded-lg bg-amber-500/15 border border-amber-500/25 text-[10px] font-bold text-amber-400 active:bg-amber-500/25 mr-1">
-            {sessionCount - 1} other{sessionCount > 2 ? 's' : ''}
-          </button>
-        )}
-        <button onClick={() => setShowSettings(true)} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center active:bg-white/20 text-[15px]">{'\u2699\ufe0f'}</button>
       </div>
 
+      {/* \u2500\u2500 PROGRESS BAR \u2500\u2500 */}
       <div className="flex items-center gap-1 px-4 py-1.5">
         {session.steps.map((_, i) => (
           <div key={i} className={`h-[3px] rounded-full flex-1 transition-colors ${i < session.currentStep ? 'bg-green-500' : i === session.currentStep ? (session.mode === 'cooking' ? 'bg-green-400' : 'bg-purple-400') : 'bg-white/10'}`} />
         ))}
       </div>
 
+      {/* \u2500\u2500 SCROLLABLE CONTENT \u2500\u2500 */}
       <div className="flex-1 overflow-y-auto pb-4">
         <PhotoCarousel images={stepImages} />
         {step.ingredients && step.ingredients.length > 0 && (
@@ -251,6 +253,7 @@ export default function CookMode({ session, onUpdateSession, onPark, onComplete,
         )}
       </div>
 
+      {/* \u2500\u2500 BOTTOM ACTIONS \u2500\u2500 */}
       <div className="px-4 pb-4 pt-2 space-y-1.5">
         {hasTimer && !timer.active && (<><button onClick={startTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Start timer ({formatTimer(step.timer_seconds)})</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
         {hasTimer && timer.running && (<><button onClick={pauseTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-amber-600 active:bg-amber-700">{'\u23f8'}  Pause</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
@@ -258,24 +261,6 @@ export default function CookMode({ session, onUpdateSession, onPark, onComplete,
         {hasTimer && timer.done && <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}</button>}
         {!hasTimer && <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}</button>}
       </div>
-
-      {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-end" onClick={() => setShowSettings(false)}>
-          <div className="absolute inset-0 bg-black/60" />
-          <div className="relative w-full bg-white rounded-t-3xl px-5 pt-5 pb-8" onClick={e => e.stopPropagation()}>
-            <div className="w-10 h-1 rounded-full bg-gray-300 mx-auto mb-4" />
-            <h3 className="text-[18px] font-bold text-gray-900 mb-4">Session options</h3>
-            <button onClick={() => { setShowSettings(false); onPark(); }} className="w-full py-3 rounded-2xl text-[15px] font-bold text-amber-700 bg-amber-50 border border-amber-200 active:bg-amber-100 mb-2">
-              {'\u23f8'} Park this dish
-            </button>
-            <button onClick={() => { if (confirm(`End ${session.recipeName}? Progress will be lost.`)) { setShowSettings(false); onComplete(session.id, 0); } }}
-              className="w-full py-3 rounded-2xl text-[15px] font-bold text-red-600 bg-red-50 border border-red-200 active:bg-red-100">
-              End session
-            </button>
-            <button onClick={() => setShowSettings(false)} className="w-full mt-4 py-3 rounded-2xl text-[15px] font-bold text-gray-600 border border-gray-200 active:bg-gray-50">Cancel</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
