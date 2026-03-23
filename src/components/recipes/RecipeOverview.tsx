@@ -31,6 +31,16 @@ const DIFF: Record<string, { bg: string; text: string; label: string }> = {
   hard: { bg: 'bg-red-100', text: 'text-red-800', label: 'Hard' },
 };
 
+const TYPE_EMOJI: Record<string, string> = { prep: '\ud83d\udd2a', cook: '\ud83d\udd25', plate: '\ud83c\udf7d\ufe0f' };
+
+/** Extract first sentence from HTML instruction */
+function firstSentence(html: string): string {
+  const plain = html.replace(/<[^>]*>/g, '').trim();
+  // Split on period followed by space + uppercase (same logic as CookMode)
+  const match = plain.match(/^(.+?\.)(?=\s+[A-Z])/);
+  return match ? match[1] : plain;
+}
+
 export default function RecipeOverview({
   mode, recipeId, recipeName, difficulty, categoryName, productQty,
   onBack, onHome, onStartCooking,
@@ -55,7 +65,6 @@ export default function RecipeOverview({
 
   const totalTime = steps.reduce((s, st) => s + (st.timer_seconds || 0), 0);
   const diff = difficulty ? DIFF[difficulty] : null;
-  // FIX U1: Use full Tailwind class strings (no dynamic interpolation)
   const spinnerBorder = mode === 'cooking' ? 'border-green-600' : 'border-purple-600';
   const emoji = mode === 'cooking' ? '\ud83c\udf73' : '\ud83c\udfed';
   const modeLabel = mode === 'cooking' ? 'COOKING GUIDE' : 'PRODUCTION GUIDE';
@@ -108,20 +117,26 @@ export default function RecipeOverview({
         {!loading && steps.length > 0 && (
           <div>
             <div className="text-[13px] font-bold text-gray-900 mb-3">Steps overview</div>
-            <div className="flex flex-col gap-1.5">
-              {steps.map((step, i) => (
-                <div key={step.id} className="flex items-center gap-3 py-2.5 px-3 bg-white rounded-xl border border-gray-100">
-                  <div className={`w-8 h-8 rounded-lg ${mode === 'cooking' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'} flex items-center justify-center text-[13px] font-bold font-mono flex-shrink-0`}>{i + 1}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-gray-800 truncate">
-                      {step.instruction ? step.instruction.replace(/<[^>]*>/g, '').substring(0, 50) : `Step ${i + 1}`}
+            <div className="flex flex-col gap-2">
+              {steps.map((step, i) => {
+                const stepEmoji = TYPE_EMOJI[step.step_type] || '\ud83d\udc68\u200d\ud83c\udf73';
+                const summary = step.instruction ? firstSentence(step.instruction) : `Step ${i + 1}`;
+                return (
+                  <div key={step.id} className="flex items-start gap-3 py-3 px-3.5 bg-white rounded-xl border border-gray-100">
+                    <div className={`w-8 h-8 rounded-lg ${mode === 'cooking' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'} flex items-center justify-center text-[13px] font-bold font-mono flex-shrink-0`}>{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-[12px]">{stepEmoji}</span>
+                        <span className="text-[11px] text-gray-400 font-semibold capitalize">{step.step_type}</span>
+                        {step.timer_seconds > 0 && (
+                          <span className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded font-mono">{Math.ceil(step.timer_seconds / 60)}m</span>
+                        )}
+                      </div>
+                      <div className="text-[13px] text-gray-700 leading-snug">{summary}</div>
                     </div>
                   </div>
-                  <div className="text-[11px] text-gray-400 font-mono flex-shrink-0">
-                    {step.timer_seconds > 0 ? `${Math.ceil(step.timer_seconds / 60)} min` : '\u2014'}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
