@@ -3,10 +3,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface StepIngredient { id: number; name: string; uom: string; }
+interface StepImage { id: number; image: string; caption: string; }
 interface StepData {
   id: number; sequence: number; step_type: string; instruction: string;
   timer_seconds: number; tip: string; image_count: number;
   ingredients: StepIngredient[];
+  images?: StepImage[];
 }
 
 interface Props {
@@ -21,7 +23,6 @@ interface Props {
 
 const TYPE_EMOJI: Record<string, string> = { prep: '\ud83d\udd2a', cook: '\ud83d\udd25', plate: '\ud83c\udf7d\ufe0f' };
 
-// FIX L2: Split on period + space + uppercase letter only (avoids breaking "approx. 200" or "e.g. mix")
 function parseInstructions(html: string): string[] {
   if (!html) return [];
   let text = html.replace(/<\/?p>/gi, '').replace(/<br\s*\/?>/gi, '. ').trim();
@@ -39,6 +40,144 @@ function renderBulletText(text: string): React.ReactNode {
     }
     return <span key={i}>{part}</span>;
   });
+}
+
+/** Swipeable photo carousel with fullscreen tap-to-zoom */
+function PhotoCarousel({ images }: { images: StepImage[] }) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const fsScrollRef = useRef<HTMLDivElement>(null);
+
+  // Track scroll position to update dot indicator
+  function handleScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    const idx = Math.round(el.scrollLeft / el.clientWidth);
+    setActiveIdx(idx);
+  }
+
+  // Open fullscreen at the same photo index
+  function openFullscreen(idx: number) {
+    setActiveIdx(idx);
+    setFullscreen(true);
+  }
+
+  // Sync fullscreen scroll to the tapped index
+  useEffect(() => {
+    if (fullscreen && fsScrollRef.current) {
+      fsScrollRef.current.scrollTo({ left: activeIdx * fsScrollRef.current.clientWidth, behavior: 'instant' as ScrollBehavior });
+    }
+  }, [fullscreen, activeIdx]);
+
+  // Reset carousel index when images change (new step)
+  useEffect(() => {
+    setActiveIdx(0);
+    if (scrollRef.current) scrollRef.current.scrollTo({ left: 0, behavior: 'instant' as ScrollBehavior });
+  }, [images]);
+
+  if (!images || images.length === 0) return null;
+
+  return (
+    <>
+      {/* Inline carousel */}
+      <div className="mb-5" data-dbg="photo-carousel">
+        <div className="text-[12px] font-semibold text-white/40 uppercase tracking-wider mb-2">
+          {'\ud83d\udcf7'} Photos {images.length > 1 && <span className="normal-case">({activeIdx + 1}/{images.length})</span>}
+        </div>
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar rounded-2xl gap-0"
+          style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}
+        >
+          {images.map((img, i) => (
+            <div
+              key={img.id}
+              className="w-full flex-shrink-0 snap-center"
+              onClick={() => openFullscreen(i)}
+            >
+              <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-white/5 relative">
+                <img
+                  src={`data:image/jpeg;base64,${img.image}`}
+                  alt={img.caption || `Step photo ${i + 1}`}
+                  className="w-full h-full object-cover"
+                />
+                {img.caption && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3">
+                    <div className="text-[13px] text-white/90">{img.caption}</div>
+                  </div>
+                )}
+                {/* Expand icon */}
+                <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/40 flex items-center justify-center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+                    <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Dot indicators */}
+        {images.length > 1 && (
+          <div className="flex justify-center gap-1.5 mt-2">
+            {images.map((_, i) => (
+              <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i === activeIdx ? 'bg-white' : 'bg-white/25'}`} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Fullscreen overlay */}
+      {fullscreen && (
+        <div className="fixed inset-0 z-[60] bg-black flex flex-col">
+          {/* Header */}
+          <div className="px-5 pt-14 pb-3 flex items-center gap-3">
+            <button onClick={() => setFullscreen(false)} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+            <div className="flex-1 text-center">
+              <span className="text-[14px] font-bold text-white">{activeIdx + 1} / {images.length}</span>
+            </div>
+            <div className="w-9" />
+          </div>
+          {/* Full-size swipeable */}
+          <div
+            ref={fsScrollRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              const idx = Math.round(el.scrollLeft / el.clientWidth);
+              setActiveIdx(idx);
+            }}
+            className="flex-1 flex overflow-x-auto snap-x snap-mandatory no-scrollbar"
+            style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}
+          >
+            {images.map((img, i) => (
+              <div key={img.id} className="w-full flex-shrink-0 snap-center flex items-center justify-center px-2">
+                <img
+                  src={`data:image/jpeg;base64,${img.image}`}
+                  alt={img.caption || `Photo ${i + 1}`}
+                  className="max-w-full max-h-full object-contain rounded-xl"
+                />
+              </div>
+            ))}
+          </div>
+          {/* Caption + dots */}
+          <div className="px-5 py-4">
+            {images[activeIdx]?.caption && (
+              <div className="text-[14px] text-white/80 text-center mb-2">{images[activeIdx].caption}</div>
+            )}
+            {images.length > 1 && (
+              <div className="flex justify-center gap-1.5">
+                {images.map((_, i) => (
+                  <div key={i} className={`w-2 h-2 rounded-full transition-colors ${i === activeIdx ? 'bg-white' : 'bg-white/25'}`} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function CookMode({ mode, recipeName, steps, onExit, onComplete }: Props) {
@@ -65,7 +204,6 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
-  // FIX L4: Reset timer state when step changes (prevents stale timer leaking between steps)
   useEffect(() => {
     setTimerLeft(0);
     setTimerTotal(0);
@@ -211,6 +349,7 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
 
   const emoji = TYPE_EMOJI[step.step_type] || '\ud83d\udc68\u200d\ud83c\udf73';
   const bullets = parseInstructions(step.instruction);
+  const stepImages = step.images || [];
 
   return (
     <div className={`min-h-screen bg-[#111] flex flex-col ${flashing ? 'animate-pulse bg-red-900' : ''}`}>
@@ -240,6 +379,9 @@ export default function CookMode({ mode, recipeName, steps, onExit, onComplete }
           <div className="text-5xl mb-2">{emoji}</div>
           <div className="text-[14px] font-bold text-white/70">{step.step_type.charAt(0).toUpperCase() + step.step_type.slice(1)}</div>
         </div>
+
+        {/* Photo carousel — large, swipeable, tap for fullscreen */}
+        <PhotoCarousel images={stepImages} />
 
         {step.ingredients && step.ingredients.length > 0 && (
           <div className="mb-5">

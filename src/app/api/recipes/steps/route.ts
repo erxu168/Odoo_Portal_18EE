@@ -8,8 +8,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 
-// FIX S2: Image size limits
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB per image
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGES_PER_STEP = 5;
 
 export async function GET(request: Request) {
@@ -62,6 +61,27 @@ export async function GET(request: Request) {
       }
     }
 
+    // Fetch images for all steps that have images
+    const stepIds = steps.filter((s: any) => (s.image_count || 0) > 0).map((s: any) => s.id);
+    const imageMap: Record<number, { id: number; image: string; caption: string }[]> = {};
+    if (stepIds.length > 0) {
+      const images = await odoo.searchRead(
+        'krawings.recipe.step.image',
+        [['step_id', 'in', stepIds]],
+        ['id', 'step_id', 'image', 'caption', 'sort'],
+        { order: 'sort', limit: 200 },
+      );
+      for (const img of images) {
+        const sid = img.step_id?.[0] || img.step_id;
+        if (!imageMap[sid]) imageMap[sid] = [];
+        imageMap[sid].push({
+          id: img.id,
+          image: img.image || '',
+          caption: img.caption || '',
+        });
+      }
+    }
+
     const enrichedSteps = steps.map((s: any) => ({
       ...s,
       ingredients: (s.ingredient_ids || []).map((id: number) => ({
@@ -69,6 +89,7 @@ export async function GET(request: Request) {
         name: ingredientMap[id]?.name || `Product #${id}`,
         uom: ingredientMap[id]?.uom || '',
       })),
+      images: imageMap[s.id] || [],
     }));
 
     return NextResponse.json({ steps: enrichedSteps });
@@ -97,7 +118,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Maximum 50 steps per recipe' }, { status: 400 });
     }
 
-    // FIX S2: Validate image sizes before sending to Odoo
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
       if (s.images?.length) {
@@ -111,7 +131,6 @@ export async function POST(request: Request) {
           }
         }
       }
-      // Validate instruction is not empty
       if (!s.instruction?.trim()) {
         return NextResponse.json({ error: `Step ${i + 1}: instruction cannot be empty` }, { status: 400 });
       }
@@ -119,7 +138,6 @@ export async function POST(request: Request) {
 
     const odoo = getOdoo();
 
-    // FIX F7: Auto-increment version number
     const versionDomain: any[] = [];
     if (product_tmpl_id) versionDomain.push(['product_tmpl_id', '=', product_tmpl_id]);
     if (bom_id) versionDomain.push(['bom_id', '=', bom_id]);
@@ -129,7 +147,6 @@ export async function POST(request: Request) {
     );
     const nextVersion = (existingVersions.length > 0 ? (existingVersions[0].version || 0) : 0) + 1;
 
-    // 1. Create version record
     const versionVals: Record<string, unknown> = {
       version: nextVersion,
       status: 'review',
@@ -140,7 +157,6 @@ export async function POST(request: Request) {
 
     const versionId = await odoo.create('krawings.recipe.version', versionVals);
 
-    // 2. Create step records
     const createdIds: number[] = [];
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
@@ -162,7 +178,6 @@ export async function POST(request: Request) {
       const stepId = await odoo.create('krawings.recipe.step', stepVals);
       createdIds.push(stepId);
 
-      // 3. Upload images if provided (base64)
       if (s.images?.length) {
         for (let j = 0; j < s.images.length; j++) {
           await odoo.create('krawings.recipe.step.image', {
