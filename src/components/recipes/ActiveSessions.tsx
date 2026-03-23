@@ -21,7 +21,6 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
 
   const active = sessions.filter(s => s.status === 'active');
 
-  // Sort: overdue first, then running (least time left first), then waiting
   const sorted = [...active].sort((a, b) => {
     const ta = computeTimer(a, now);
     const tb = computeTimer(b, now);
@@ -37,12 +36,13 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
     <div className="min-h-screen bg-[#0a0a0a] flex flex-col">
       {/* Header */}
       <div className="px-4 pt-12 pb-1 flex items-center gap-2">
-        <button onClick={onBack} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center active:bg-white/20">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
+        <button onClick={onBack} className="h-8 px-3 rounded-lg bg-white/10 flex items-center gap-1.5 active:bg-white/20">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
+          <span className="text-[13px] font-semibold text-white">Dashboard</span>
         </button>
         <div className="flex-1">
-          <div className="text-[17px] font-bold text-white">Kitchen board</div>
-          <div className="text-[11px] text-white/40">{active.length}/10 dishes active</div>
+          <div className="text-[17px] font-bold text-white text-right">Kitchen board</div>
+          <div className="text-[11px] text-white/40 text-right">{active.length}/10 dishes</div>
         </div>
         <button onClick={onHome} className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center active:bg-white/20">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
@@ -78,21 +78,17 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
                 onClick={() => onSelectSession(session.id)}
                 className={`relative rounded-2xl border-2 ${borderColor} ${bg} p-3 text-left active:opacity-80 transition-colors overflow-hidden`}>
 
-                {/* Pulsing dot for running/overdue */}
                 {(timer.running || isOverdue) && (
                   <div className={`absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full animate-pulse ${isOverdue ? 'bg-red-500' : isUrgent ? 'bg-amber-500' : 'bg-green-500'}`} />
                 )}
 
-                {/* Dish name */}
                 <div className="text-[14px] font-bold text-white truncate pr-4 mb-1">{session.recipeName}</div>
 
-                {/* Step info */}
                 <div className="text-[11px] text-white/40 mb-2">
                   {session.showPlating ? 'Plating' : `Step ${session.currentStep + 1}/${session.steps.length}`}
                   {step && <span className="ml-1 capitalize">{`\u00b7 ${step.step_type}`}</span>}
                 </div>
 
-                {/* Timer display — big and prominent */}
                 {isOverdue && (
                   <div className="text-[24px] font-bold text-red-400 font-mono leading-none">+{formatTimer(timer.overdue)}</div>
                 )}
@@ -109,7 +105,6 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
                   <div className="text-[13px] text-white/20">Ready</div>
                 )}
 
-                {/* End session — small, bottom corner */}
                 <div className="mt-2 flex justify-end" onClick={(e) => { e.stopPropagation(); if (confirm(`End ${session.recipeName}?`)) onEndSession(session.id); }}>
                   <span className="text-[10px] text-red-400/40 active:text-red-400">{'\u00d7'} end</span>
                 </div>
@@ -117,7 +112,6 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
             );
           })}
 
-          {/* + New dish card */}
           {active.length < 10 && (
             <button onClick={onNewDish}
               className="rounded-2xl border-2 border-dashed border-white/10 p-3 flex flex-col items-center justify-center min-h-[130px] active:bg-white/5 transition-colors">
