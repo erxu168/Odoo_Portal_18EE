@@ -14,6 +14,7 @@ interface Props {
   difficulty: string;
   categoryId: number | null;
   productQty: number;
+  submitting?: boolean;
   onSave: (metadata: { name: string; difficulty: string; categoryId: number | null; productQty: number }) => void;
   onBack: () => void;
   onHome: () => void;
@@ -25,9 +26,22 @@ const DIFFICULTIES = [
   { value: 'hard', label: 'Hard', emoji: '\ud83d\udd25', bg: 'bg-red-100 border-red-300 text-red-800', activeBg: 'bg-red-600 border-red-600 text-white' },
 ];
 
+const MODE_STYLES = {
+  cooking: {
+    filterActive: 'bg-green-600 text-white border-green-600',
+    spinner: 'border-green-600',
+    saveBtn: 'bg-green-600 active:bg-green-700 shadow-lg',
+  },
+  production: {
+    filterActive: 'bg-purple-600 text-white border-purple-600',
+    spinner: 'border-purple-600',
+    saveBtn: 'bg-purple-600 active:bg-purple-700 shadow-lg',
+  },
+};
+
 export default function EditMetadata({
   mode, recipeName, difficulty, categoryId, productQty,
-  onSave, onBack, onHome,
+  submitting, onSave, onBack, onHome,
 }: Props) {
   const [name, setName] = useState(recipeName);
   const [diff, setDiff] = useState(difficulty);
@@ -36,13 +50,15 @@ export default function EditMetadata({
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const styles = MODE_STYLES[mode];
+
   useEffect(() => {
     async function fetchCategories() {
       try {
         const res = await fetch('/api/recipes/categories');
         if (res.ok) {
           const data = await res.json();
-          const filtered = (data.categories || []).filter(
+          const filtered = ((data?.categories) || []).filter(
             (c: Category) => c.mode === (mode === 'cooking' ? 'cooking_guide' : 'production_guide')
           );
           setCategories(filtered);
@@ -54,9 +70,7 @@ export default function EditMetadata({
   }, [mode]);
 
   const hasChanges = name.trim() !== recipeName || diff !== difficulty || catId !== categoryId || (mode === 'production' && qty !== productQty);
-  const canSave = name.trim().length >= 2 && hasChanges;
-
-  const accentColor = mode === 'cooking' ? 'green' : 'purple';
+  const canSave = name.trim().length >= 2 && hasChanges && !submitting;
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -96,7 +110,7 @@ export default function EditMetadata({
           <label className="text-[13px] font-bold text-gray-900 mb-2 block">Category</label>
           {loading ? (
             <div className="flex items-center justify-center py-4">
-              <div className={`w-6 h-6 border-2 border-${accentColor}-600 border-t-transparent rounded-full animate-spin`} />
+              <div className={`w-6 h-6 border-2 ${styles.spinner} border-t-transparent rounded-full animate-spin`} />
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -104,7 +118,7 @@ export default function EditMetadata({
                 onClick={() => setCatId(null)}
                 className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-colors ${
                   catId === null
-                    ? `bg-${accentColor}-600 text-white border-${accentColor}-600`
+                    ? styles.filterActive
                     : 'bg-white text-gray-600 border-gray-200 active:bg-gray-50'
                 }`}
               >None</button>
@@ -114,7 +128,7 @@ export default function EditMetadata({
                   onClick={() => setCatId(catId === cat.id ? null : cat.id)}
                   className={`px-4 py-2.5 rounded-xl text-[13px] font-semibold border transition-colors ${
                     catId === cat.id
-                      ? `bg-${accentColor}-600 text-white border-${accentColor}-600`
+                      ? styles.filterActive
                       : 'bg-white text-gray-600 border-gray-200 active:bg-gray-50'
                   }`}
                 >{cat.name}</button>
@@ -169,12 +183,10 @@ export default function EditMetadata({
           onClick={() => onSave({ name: name.trim(), difficulty: diff, categoryId: catId, productQty: qty })}
           disabled={!canSave}
           className={`w-full py-4 rounded-2xl text-[16px] font-bold text-white transition-all ${
-            canSave
-              ? `bg-${accentColor}-600 active:bg-${accentColor}-700 shadow-lg`
-              : 'bg-gray-300 cursor-not-allowed'
+            canSave ? styles.saveBtn : 'bg-gray-300 cursor-not-allowed'
           }`}
         >
-          Save Changes
+          {submitting ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
     </div>

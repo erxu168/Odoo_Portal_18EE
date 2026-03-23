@@ -44,6 +44,11 @@ const DIFFICULTY_STYLES: Record<string, { bg: string; text: string; label: strin
   hard:   { bg: 'bg-red-100',   text: 'text-red-800',   label: 'Hard' },
 };
 
+const TAB_STYLES = {
+  cooking: { filterActive: 'bg-green-600 text-white border-green-600', spinner: 'border-green-600' },
+  production: { filterActive: 'bg-purple-600 text-white border-purple-600', spinner: 'border-purple-600' },
+};
+
 export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Props) {
   const [tab, setTab] = useState<'cooking' | 'production'>('cooking');
   const [cookingRecipes, setCookingRecipes] = useState<CookingRecipe[]>([]);
@@ -92,7 +97,7 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
     return true;
   });
 
-  const accentColor = tab === 'cooking' ? 'green' : 'purple';
+  const styles = TAB_STYLES[tab];
   const filtered = tab === 'cooking' ? filteredCooking : filteredProduction;
 
   // Reset category filter when switching tabs
@@ -106,7 +111,7 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
-        <div className={`absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(${tab === 'cooking' ? '22,163,74' : '139,92,246'},0.08)_0%,transparent_70%)]`} />
+        <div className={`absolute -top-10 -right-5 w-44 h-44 rounded-full ${tab === 'cooking' ? 'bg-[radial-gradient(circle,rgba(22,163,74,0.08)_0%,transparent_70%)]' : 'bg-[radial-gradient(circle,rgba(139,92,246,0.08)_0%,transparent_70%)]'}`} />
         <div className="flex items-center gap-3 relative">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
@@ -168,7 +173,7 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
               onClick={() => setActiveCategory(null)}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-[12px] font-semibold border transition-colors ${
                 activeCategory === null
-                  ? `bg-${accentColor}-600 text-white border-${accentColor}-600`
+                  ? styles.filterActive
                   : 'bg-white text-gray-600 border-gray-200 active:bg-gray-50'
               }`}
             >All</button>
@@ -178,7 +183,7 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
                 onClick={() => setActiveCategory(activeCategory === cat.id ? null : cat.id)}
                 className={`flex-shrink-0 px-4 py-2 rounded-full text-[12px] font-semibold border transition-colors ${
                   activeCategory === cat.id
-                    ? `bg-${accentColor}-600 text-white border-${accentColor}-600`
+                    ? styles.filterActive
                     : 'bg-white text-gray-600 border-gray-200 active:bg-gray-50'
                 }`}
               >{cat.name}</button>
@@ -191,7 +196,7 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
       <div className="px-5 pt-4 pb-8 flex-1">
         {loading && (
           <div className="flex items-center justify-center py-12">
-            <div className={`w-8 h-8 border-3 border-${accentColor}-600 border-t-transparent rounded-full animate-spin`} />
+            <div className={`w-8 h-8 border-3 ${styles.spinner} border-t-transparent rounded-full animate-spin`} />
           </div>
         )}
 

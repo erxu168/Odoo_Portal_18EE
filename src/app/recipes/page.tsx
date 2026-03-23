@@ -368,7 +368,9 @@ export default function RecipesPage() {
   if (screen.type === 'edit-metadata') return (<>{alertEl}<EditMetadata
     mode={editCtx.mode} recipeName={editCtx.recipeName} difficulty={editCtx.difficulty}
     categoryId={editCtx.categoryId} productQty={editCtx.productQty}
+    submitting={submitting}
     onSave={async (metadata) => {
+      setSubmitting(true);
       try {
         const body: Record<string, unknown> = {
           name: metadata.name,
@@ -385,7 +387,7 @@ export default function RecipesPage() {
           const e = await res.json();
           showToast(`Failed: ${e.error}`, 'error');
         }
-      } catch (_e) { showToast('Connection failed.', 'error'); }
+      } catch (_e) { showToast('Connection failed.', 'error'); } finally { setSubmitting(false); }
     }}
     onBack={() => setScreen({ type: 'edit-overview' })} onHome={goHome} /></>);
 

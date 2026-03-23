@@ -98,9 +98,11 @@ export default function EditRecipeOverview({
               const imgRes = await fetch(`/api/recipes/steps/images?step_id=${step.id}`);
               if (imgRes.ok) {
                 const imgData = await imgRes.json();
-                photos = (imgData.images || []).map((img: { image: string }) =>
-                  img.image.startsWith('data:') ? img.image : `data:image/png;base64,${img.image}`
-                );
+                photos = (imgData.images || [])
+                  .filter((img: { image: string }) => img?.image)
+                  .map((img: { image: string }) =>
+                    img.image.startsWith('data:') ? img.image : `data:image/png;base64,${img.image}`
+                  );
               }
             } catch { /* skip failed images */ }
             loaded++;

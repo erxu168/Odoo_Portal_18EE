@@ -21,8 +21,16 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'product_tmpl_id or bom_id required' }, { status: 400 });
     }
 
+    if (name !== undefined && typeof name === 'string' && name.trim().length < 2) {
+      return NextResponse.json({ error: 'Recipe name must be at least 2 characters' }, { status: 400 });
+    }
+
     if (x_recipe_difficulty && !['easy', 'medium', 'hard'].includes(x_recipe_difficulty)) {
       return NextResponse.json({ error: 'x_recipe_difficulty must be easy, medium, or hard' }, { status: 400 });
+    }
+
+    if (product_qty !== undefined && (typeof product_qty !== 'number' || product_qty <= 0)) {
+      return NextResponse.json({ error: 'product_qty must be a positive number' }, { status: 400 });
     }
 
     const odoo = getOdoo();
