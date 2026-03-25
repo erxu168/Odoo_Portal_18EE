@@ -5,7 +5,7 @@ import { type CookingSession, type StepImage, computeTimer, formatTimer } from '
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 const TYPE_LABEL: Record<string, string> = { prep: 'PREP', cook: 'COOK', plate: 'PLATE' };
-const TYPE_COLOR: Record<string, string> = { prep: 'bg-blue-500/20 text-blue-400', cook: 'bg-orange-500/20 text-orange-400', plate: 'bg-emerald-500/20 text-emerald-400' };
+const TYPE_COLOR: Record<string, string> = { prep: 'bg-blue-500/25 text-blue-300', cook: 'bg-orange-500/25 text-orange-300', plate: 'bg-emerald-500/25 text-emerald-300' };
 
 function parseInstructions(html: string): string[] {
   if (!html) return [];
@@ -39,20 +39,20 @@ function PhotoCarousel({ images }: { images: StepImage[] }) {
         <div ref={scrollRef} onScroll={handleScroll} className="flex overflow-x-auto snap-x snap-mandatory no-scrollbar" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
           {images.map((img, i) => (
             <div key={img.id} className="w-full flex-shrink-0 snap-center px-4" onClick={() => { setActiveIdx(i); setFullscreen(true); }}>
-              <div className="aspect-[16/10] rounded-2xl overflow-hidden bg-white/5 relative">
+              <div className="aspect-[16/10] rounded-2xl overflow-hidden bg-zinc-800 relative">
                 <img src={`data:image/jpeg;base64,${img.image}`} alt={img.caption || `Photo ${i + 1}`} className="w-full h-full object-cover" />
-                {img.caption && <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-6"><div className="text-[13px] text-white/90">{img.caption}</div></div>}
+                {img.caption && <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-6"><div className="text-[13px] text-white">{img.caption}</div></div>}
                 <div className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></div>
               </div>
             </div>
           ))}
         </div>
-        {images.length > 1 && <div className="flex justify-center gap-1.5 mt-1.5">{images.map((_, i) => <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === activeIdx ? 'bg-white' : 'bg-white/25'}`} />)}</div>}
+        {images.length > 1 && <div className="flex justify-center gap-1.5 mt-1.5">{images.map((_, i) => <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === activeIdx ? 'bg-white' : 'bg-zinc-600'}`} />)}</div>}
       </div>
       {fullscreen && (
         <div className="fixed inset-0 z-[60] bg-black flex flex-col">
           <div className="px-5 pt-14 pb-3 flex items-center gap-3">
-            <button onClick={() => setFullscreen(false)} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            <button onClick={() => setFullscreen(false)} className="w-9 h-9 rounded-xl bg-zinc-700 flex items-center justify-center active:bg-zinc-600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
             <div className="flex-1 text-center"><span className="text-[14px] font-bold text-white">{activeIdx + 1} / {images.length}</span></div>
             <div className="w-9" />
           </div>
@@ -60,8 +60,8 @@ function PhotoCarousel({ images }: { images: StepImage[] }) {
             {images.map((img, i) => <div key={img.id} className="w-full flex-shrink-0 snap-center flex items-center justify-center px-2"><img src={`data:image/jpeg;base64,${img.image}`} alt={img.caption || `Photo ${i + 1}`} className="max-w-full max-h-full object-contain rounded-xl" /></div>)}
           </div>
           <div className="px-5 py-4">
-            {images[activeIdx]?.caption && <div className="text-[14px] text-white/80 text-center mb-2">{images[activeIdx].caption}</div>}
-            {images.length > 1 && <div className="flex justify-center gap-1.5">{images.map((_, i) => <div key={i} className={`w-2 h-2 rounded-full ${i === activeIdx ? 'bg-white' : 'bg-white/25'}`} />)}</div>}
+            {images[activeIdx]?.caption && <div className="text-[14px] text-zinc-200 text-center mb-2">{images[activeIdx].caption}</div>}
+            {images.length > 1 && <div className="flex justify-center gap-1.5">{images.map((_, i) => <div key={i} className={`w-2 h-2 rounded-full ${i === activeIdx ? 'bg-white' : 'bg-zinc-600'}`} />)}</div>}
           </div>
         </div>
       )}
@@ -167,18 +167,18 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
   // ===== PLATING =====
   if (session.showPlating) {
     return (
-      <div className="min-h-screen bg-[#111] flex flex-col">
+      <div className="min-h-screen bg-[#1C1C1E] flex flex-col">
         <div className="px-4 pt-12 pb-2 flex items-center gap-2">
           {/* Back to last cook step */}
-          <button onClick={() => onUpdateSession(session.id, { showPlating: false })} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20">
+          <button onClick={() => onUpdateSession(session.id, { showPlating: false })} className="w-9 h-9 rounded-xl bg-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
           <div className="flex-1">
             <div className="text-[18px] font-bold text-white">Plating</div>
-            <div className="text-[11px] text-white/30 truncate">{session.recipeName}</div>
+            <div className="text-[11px] text-zinc-400 truncate">{session.recipeName}</div>
           </div>
           {/* Dashboard button — top right */}
-          <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30 relative flex-shrink-0">
+          <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/25 border border-amber-600/40 flex items-center justify-center active:bg-amber-500/40 relative flex-shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
             {sessionCount > 1 && (
               <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center">
@@ -191,7 +191,7 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
           <div className="text-center">
             <div className="text-7xl mb-6">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>}</div>
             <div className="text-[22px] font-bold text-white mb-4">{session.recipeName}</div>
-            <p className="text-[15px] text-white/60 leading-relaxed">
+            <p className="text-[15px] text-zinc-300 leading-relaxed">
               {session.mode === 'cooking' ? 'Plate the dish according to SSAM standards.' : 'Portion into containers. Label with date, batch #, and use-by.'}
             </p>
           </div>
@@ -199,7 +199,7 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
         <div className="px-5 py-6 space-y-2">
           <button onClick={handleComplete} className="w-full py-4 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{'\u2713'} Dish complete</button>
           <button onClick={() => setShowEndConfirm(true)}
-            className="w-full py-2 text-[12px] text-red-400/50 font-medium active:text-red-400">{'\u00d7'} End session</button>
+            className="w-full py-2 text-[12px] text-red-400/70 font-medium active:text-red-400">{'\u00d7'} End session</button>
           {showEndConfirm && (
             <ConfirmDialog
               title={`End ${session.recipeName}?`}
@@ -219,29 +219,29 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
   if (!step) return null;
   const bullets = parseInstructions(step.instruction);
   const stepImages = step.images || [];
-  const typeBadge = TYPE_COLOR[step.step_type] || 'bg-white/10 text-white/60';
+  const typeBadge = TYPE_COLOR[step.step_type] || 'bg-zinc-700 text-zinc-300';
   const typeLabel = TYPE_LABEL[step.step_type] || step.step_type.toUpperCase();
 
   return (
-    <div className={`min-h-screen bg-[#0a0a0a] flex flex-col ${flashing ? 'animate-pulse bg-red-900' : ''}`}>
+    <div className={`min-h-screen bg-[#1C1C1E] flex flex-col ${flashing ? 'animate-pulse bg-red-900' : ''}`}>
       {/* HEADER: Back left, Step info center, Dashboard right */}
       <div className="px-4 pt-12 pb-1 flex items-center gap-1.5">
         {/* Previous step button — only from step 2 onward */}
         {session.currentStep > 0 && (
-          <button onClick={prevStep} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20 flex-shrink-0">
+          <button onClick={prevStep} className="w-9 h-9 rounded-xl bg-zinc-700 flex items-center justify-center active:bg-zinc-600 flex-shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[15px] font-bold text-white">Step {session.currentStep + 1}<span className="text-white/30 font-normal">/{session.steps.length}</span></span>
+            <span className="text-[15px] font-bold text-white">Step {session.currentStep + 1}<span className="text-zinc-400 font-normal">/{session.steps.length}</span></span>
             <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${typeBadge}`}>{typeLabel}</span>
-            {hasTimer && !timer.active && <span className="text-[11px] text-white/30 font-mono">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M10 2h4M21 7l-2-2"/></svg>} {formatTimer(step.timer_seconds)}</span>}
+            {hasTimer && !timer.active && <span className="text-[11px] text-zinc-400 font-mono">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M10 2h4M21 7l-2-2"/></svg>} {formatTimer(step.timer_seconds)}</span>}
           </div>
-          <div className="text-[11px] text-white/30 truncate">{session.recipeName}</div>
+          <div className="text-[11px] text-zinc-400 truncate">{session.recipeName}</div>
         </div>
         {/* Dashboard button — top right corner */}
-        <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center active:bg-amber-500/30 relative flex-shrink-0">
+        <button onClick={onDashboard} className="w-9 h-9 rounded-xl bg-amber-500/25 border border-amber-600/40 flex items-center justify-center active:bg-amber-500/40 relative flex-shrink-0">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           {sessionCount > 1 && (
             <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center">
@@ -254,7 +254,7 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
       {/* PROGRESS BAR */}
       <div className="flex items-center gap-1 px-4 py-1.5">
         {session.steps.map((_, i) => (
-          <div key={i} className={`h-[3px] rounded-full flex-1 transition-colors ${i < session.currentStep ? 'bg-green-500' : i === session.currentStep ? (session.mode === 'cooking' ? 'bg-green-400' : 'bg-purple-400') : 'bg-white/10'}`} />
+          <div key={i} className={`h-[3px] rounded-full flex-1 transition-colors ${i < session.currentStep ? 'bg-green-500' : i === session.currentStep ? (session.mode === 'cooking' ? 'bg-green-400' : 'bg-purple-400') : 'bg-zinc-700'}`} />
         ))}
       </div>
 
@@ -265,8 +265,8 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
           <div className="px-4 mb-3"><div className="flex flex-wrap gap-1.5">{step.ingredients.map(ing => {
             const scaledQty = ing.qty > 0 ? Math.round(ing.qty * session.multiplier * 100) / 100 : 0;
             return (
-              <div key={ing.id} className="px-2.5 py-1 rounded-lg bg-white/8 border border-white/10 text-[13px] text-white/80">
-                {scaledQty > 0 && <span className="font-mono text-green-400/80 mr-1">{scaledQty}{ing.uom ? ` ${ing.uom}` : ''}</span>}
+              <div key={ing.id} className="px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-[13px] text-zinc-200">
+                {scaledQty > 0 && <span className="font-mono text-green-400 mr-1">{scaledQty}{ing.uom ? ` ${ing.uom}` : ''}</span>}
                 {ing.name}
               </div>
             );
@@ -276,24 +276,24 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
           {bullets.length > 0 ? (
             <div className="space-y-3">{bullets.map((bullet, i) => (
               <div key={i} className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-full bg-white/8 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-[12px] font-bold text-white/40 font-mono">{i + 1}</span></div>
-                <div className="text-[20px] text-white/90 leading-[1.45] flex-1">{renderBulletText(bullet)}</div>
+                <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-[12px] font-bold text-zinc-400 font-mono">{i + 1}</span></div>
+                <div className="text-[20px] text-white leading-[1.45] flex-1">{renderBulletText(bullet)}</div>
               </div>
             ))}</div>
           ) : (
-            <div className="text-[20px] text-white/90 leading-[1.45]">{step.instruction?.replace(/<[^>]*>/g, '') || `Step ${session.currentStep + 1}`}</div>
+            <div className="text-[20px] text-white leading-[1.45]">{step.instruction?.replace(/<[^>]*>/g, '') || `Step ${session.currentStep + 1}`}</div>
           )}
         </div>
-        {step.tip && <div className="mx-4 mt-3 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/15"><div className="text-[14px] text-amber-300/90 leading-snug">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/></svg>} {step.tip}</div></div>}
+        {step.tip && <div className="mx-4 mt-3 px-3 py-2.5 rounded-xl bg-amber-900/40 border border-amber-700/50"><div className="text-[14px] text-amber-200 leading-snug">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/></svg>} {step.tip}</div></div>}
       </div>
 
       {/* FIXED BOTTOM: Timer + Actions — always visible */}
-      <div className="flex-shrink-0 border-t border-white/10 bg-[#0a0a0a] px-4 pb-4 pt-3">
+      <div className="flex-shrink-0 border-t border-zinc-700 bg-[#1C1C1E] px-4 pb-4 pt-3">
         {hasTimer && timer.active && (
           <div className="flex items-center justify-center gap-4 mb-3">
             <div className="relative flex-shrink-0">
               <svg width="72" height="72" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+                <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="6" />
                 <circle cx="50" cy="50" r="45" fill="none" stroke={getTimerColor()} strokeWidth="6" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={ringOffset} style={{ transform: 'rotate(-90deg)', transformOrigin: 'center', transition: 'stroke-dashoffset 0.5s, stroke 0.5s' }} />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
@@ -302,15 +302,15 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
             </div>
             <div className="flex flex-col gap-1.5">
               {timer.done && <div className="text-[12px] font-bold text-red-400 uppercase tracking-wider">OVERDUE</div>}
-              {timer.running && <div className="flex gap-1.5"><button onClick={() => addTime(30)} className="px-3 py-1 rounded-lg bg-white/8 text-[12px] text-white/60 active:bg-white/15">+30s</button><button onClick={() => addTime(60)} className="px-3 py-1 rounded-lg bg-white/8 text-[12px] text-white/60 active:bg-white/15">+1m</button></div>}
-              {timer.done && <div className="flex gap-1.5"><button onClick={() => snooze(60)} className="px-2.5 py-1 rounded-lg bg-white/8 text-[12px] text-white/70 font-semibold active:bg-white/15">+1 min</button><button onClick={() => snooze(120)} className="px-2.5 py-1 rounded-lg bg-white/8 text-[12px] text-white/70 font-semibold active:bg-white/15">+2 min</button></div>}
+              {timer.running && <div className="flex gap-1.5"><button onClick={() => addTime(30)} className="px-3 py-1 rounded-lg bg-zinc-800 text-[12px] text-zinc-300 active:bg-zinc-600">+30s</button><button onClick={() => addTime(60)} className="px-3 py-1 rounded-lg bg-zinc-800 text-[12px] text-zinc-300 active:bg-zinc-600">+1m</button></div>}
+              {timer.done && <div className="flex gap-1.5"><button onClick={() => snooze(60)} className="px-2.5 py-1 rounded-lg bg-zinc-800 text-[12px] text-white/70 font-semibold active:bg-zinc-600">+1 min</button><button onClick={() => snooze(120)} className="px-2.5 py-1 rounded-lg bg-zinc-800 text-[12px] text-white/70 font-semibold active:bg-zinc-600">+2 min</button></div>}
             </div>
           </div>
         )}
         <div className="space-y-1.5">
-          {hasTimer && !timer.active && (<><button onClick={startTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Start timer ({formatTimer(step.timer_seconds)})</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
-          {hasTimer && timer.running && (<><button onClick={pauseTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-amber-600 active:bg-amber-700">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>}  Pause</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
-          {hasTimer && !timer.running && timer.active && !timer.done && (<><button onClick={resumeTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Resume</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
+          {hasTimer && !timer.active && (<><button onClick={startTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Start timer ({formatTimer(step.timer_seconds)})</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-zinc-400 font-medium active:text-zinc-300">Skip timer {'\u2192'} next step</button></>)}
+          {hasTimer && timer.running && (<><button onClick={pauseTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-amber-600 active:bg-amber-700">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>}  Pause</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-zinc-400 font-medium active:text-zinc-300">Skip timer {'\u2192'} next step</button></>)}
+          {hasTimer && !timer.running && timer.active && !timer.done && (<><button onClick={resumeTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Resume</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-zinc-400 font-medium active:text-zinc-300">Skip timer {'\u2192'} next step</button></>)}
           {hasTimer && timer.done && <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}</button>}
           {!hasTimer && <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}</button>}
         </div>
