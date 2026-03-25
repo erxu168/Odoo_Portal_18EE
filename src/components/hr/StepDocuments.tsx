@@ -25,6 +25,7 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
   const [docs, setDocs] = useState<UploadedDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeDocKey, setActiveDocKey] = useState<string | null>(null);
+  const [disclaimerChecked, setDisclaimerChecked] = useState(false);
 
   // Profile photo state
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -138,7 +139,9 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
     }
   }
 
-  const required = DOCUMENT_TYPES.filter((dt) => dt.required);
+  // Split out the Rote Karte from other required docs
+  const roteKarteType = DOCUMENT_TYPES.find((dt) => dt.key === "gesundheitszeugnis");
+  const requiredOther = DOCUMENT_TYPES.filter((dt) => dt.required && dt.key !== "gesundheitszeugnis");
   const optional = DOCUMENT_TYPES.filter((dt) => !dt.required);
 
   const hasPhoto = photoPreview || photoSaved;
@@ -249,11 +252,22 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
           onChange={handlePhotoFile}
         />
 
+        {/* Rote Karte section — info + upload together */}
         <RoteKarteInfo />
-        <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
+        {roteKarteType && (
+          <DocCard
+            docType={roteKarteType}
+            uploadedDocs={getDocsForType("gesundheitszeugnis")}
+            loading={loading}
+            onTap={() => setActiveDocKey("gesundheitszeugnis")}
+          />
+        )}
+
+        {/* Other required documents */}
+        <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mt-4 mb-2">
           Required documents
         </div>
-        {required.map((dt) => {
+        {requiredOther.map((dt) => {
           const existing = getDocsForType(dt.key);
           return (
             <DocCard
@@ -266,6 +280,7 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
           );
         })}
 
+        {/* Additional documents */}
         <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mt-4 mb-2">
           Additional documents (if applicable)
         </div>
@@ -281,6 +296,42 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
             />
           );
         })}
+
+        {/* Legal disclaimer */}
+        <div className="mt-5 mb-2">
+          <button
+            onClick={() => setDisclaimerChecked(!disclaimerChecked)}
+            className="w-full flex items-start gap-3 p-4 rounded-2xl border border-gray-200 bg-white text-left active:bg-gray-50"
+          >
+            <div
+              className={
+                "w-6 h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors " +
+                (disclaimerChecked
+                  ? "bg-green-600 border-green-600"
+                  : "border-gray-300 bg-white")
+              }
+            >
+              {disclaimerChecked && (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              )}
+            </div>
+            <div className="flex-1">
+              <div className="text-[13px] font-semibold text-gray-900 leading-snug">
+                I acknowledge the legal document requirements
+              </div>
+              <p className="text-[12px] text-gray-500 leading-relaxed mt-1.5">
+                I understand that I am required by German law to carry valid
+                identification documents at all times while working. This
+                includes my ID card or passport, work permit (if applicable),
+                and Rote Karte (Gesundheitszeugnis). I understand that failure
+                to present these documents during an inspection may result in
+                fines or other legal consequences for myself and my employer.
+              </p>
+            </div>
+          </button>
+        </div>
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
@@ -292,7 +343,8 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
         </button>
         <button
           onClick={onNext}
-          className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85"
+          disabled={!disclaimerChecked}
+          className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40"
         >
           Continue
         </button>
