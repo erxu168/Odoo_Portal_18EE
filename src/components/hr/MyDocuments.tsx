@@ -264,6 +264,27 @@ export default function MyDocuments({ onBack }: Props) {
                 onDelete={(doc) => setDeleteTarget(doc)}
               />
             ))}
+
+            {/* Legal disclaimer */}
+            <div className="mt-5 mb-2 p-4 rounded-2xl border border-gray-200 bg-white">
+              <div className="flex items-start gap-3">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-amber-500 flex-shrink-0 mt-0.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <div>
+                  <div className="text-[13px] font-semibold text-gray-900 leading-snug mb-1">Legal document requirements</div>
+                  <p className="text-[12px] text-gray-500 leading-relaxed">
+                    You are required by German law to carry valid identification
+                    documents at all times while working. This includes your ID card
+                    or passport, work permit (if applicable), and Rote Karte
+                    (Gesundheitszeugnis). Failure to present these documents during
+                    an inspection may result in fines or other legal consequences
+                    for yourself and your employer.
+                  </p>
+                </div>
+              </div>
+            </div>
           </>
         )}
       </div>
