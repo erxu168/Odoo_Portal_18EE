@@ -139,10 +139,10 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
     }
   }
 
-  // Split out the Rote Karte from other required docs
-  const roteKarteType = DOCUMENT_TYPES.find((dt) => dt.key === "gesundheitszeugnis");
+  // Rote Karte excluded from normal required loop (rendered inside RoteKarteInfo)
   const requiredOther = DOCUMENT_TYPES.filter((dt) => dt.required && dt.key !== "gesundheitszeugnis");
   const optional = DOCUMENT_TYPES.filter((dt) => !dt.required);
+  const roteKarteUploaded = getDocsForType("gesundheitszeugnis").length;
 
   const hasPhoto = photoPreview || photoSaved;
 
@@ -166,7 +166,6 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
               : "border-gray-300 bg-white border-dashed")
           }
         >
-          {/* Avatar + status */}
           <div className="flex items-center gap-3.5 mb-3">
             <div
               className={
@@ -186,47 +185,30 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[14px] font-semibold text-gray-900">
-                Profile Photo
-              </div>
+              <div className="text-[14px] font-semibold text-gray-900">Profile Photo</div>
               {uploadingPhoto ? (
                 <div className="flex items-center gap-2 mt-0.5">
                   <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
                   <span className="text-[12px] text-green-600 font-semibold">Uploading...</span>
                 </div>
               ) : hasPhoto ? (
-                <div className="text-[12px] text-green-600 font-semibold mt-0.5">
-                  Uploaded &middot; Use buttons below to replace
-                </div>
+                <div className="text-[12px] text-green-600 font-semibold mt-0.5">Uploaded &middot; Use buttons below to replace</div>
               ) : (
-                <div className="text-[12px] text-gray-400 mt-0.5">
-                  Take a selfie or choose a photo from your device
-                </div>
+                <div className="text-[12px] text-gray-400 mt-0.5">Take a selfie or choose a photo from your device</div>
               )}
             </div>
-            {hasPhoto && (
-              <span className="text-green-600 text-xl flex-shrink-0">{"\u2713"}</span>
-            )}
+            {hasPhoto && <span className="text-green-600 text-xl flex-shrink-0">{"\u2713"}</span>}
           </div>
-
-          {/* Dual action buttons */}
           <div className="flex gap-2.5">
-            <button
-              onClick={() => selfieInputRef.current?.click()}
-              disabled={uploadingPhoto}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl active:bg-gray-50 active:shadow-lg transition-all disabled:opacity-40"
-            >
+            <button onClick={() => selfieInputRef.current?.click()} disabled={uploadingPhoto}
+              className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl active:bg-gray-50 active:shadow-lg transition-all disabled:opacity-40">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
-                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
-                <circle cx="12" cy="13" r="4" />
+                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
               </svg>
               <span className="text-[13px] font-semibold text-gray-900">Take Selfie</span>
             </button>
-            <button
-              onClick={() => photoFileInputRef.current?.click()}
-              disabled={uploadingPhoto}
-              className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl active:bg-gray-50 active:shadow-lg transition-all disabled:opacity-40"
-            >
+            <button onClick={() => photoFileInputRef.current?.click()} disabled={uploadingPhoto}
+              className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl active:bg-gray-50 active:shadow-lg transition-all disabled:opacity-40">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
                 <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
               </svg>
@@ -234,39 +216,21 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
             </button>
           </div>
         </div>
+        <input ref={selfieInputRef} type="file" accept="image/*" capture="user" className="hidden" onChange={handlePhotoFile} />
+        <input ref={photoFileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoFile} />
 
-        {/* Hidden file inputs for profile photo */}
-        <input
-          ref={selfieInputRef}
-          type="file"
-          accept="image/*"
-          capture="user"
-          className="hidden"
-          onChange={handlePhotoFile}
-        />
-        <input
-          ref={photoFileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handlePhotoFile}
-        />
-
-        {/* Rote Karte section — info + upload together */}
-        <RoteKarteInfo />
-        {roteKarteType && (
-          <DocCard
-            docType={roteKarteType}
-            uploadedDocs={getDocsForType("gesundheitszeugnis")}
-            loading={loading}
-            onTap={() => setActiveDocKey("gesundheitszeugnis")}
-          />
-        )}
-
-        {/* Other required documents */}
-        <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mt-4 mb-2">
+        {/* Required documents — all under one header */}
+        <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
           Required documents
         </div>
+
+        {/* Rote Karte info + upload (first item under Required) */}
+        <RoteKarteInfo
+          onUpload={() => setActiveDocKey("gesundheitszeugnis")}
+          uploadedCount={roteKarteUploaded}
+        />
+
+        {/* Other required docs */}
         {requiredOther.map((dt) => {
           const existing = getDocsForType(dt.key);
           return (
@@ -306,9 +270,7 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
             <div
               className={
                 "w-6 h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors " +
-                (disclaimerChecked
-                  ? "bg-green-600 border-green-600"
-                  : "border-gray-300 bg-white")
+                (disclaimerChecked ? "bg-green-600 border-green-600" : "border-gray-300 bg-white")
               }
             >
               {disclaimerChecked && (
@@ -335,17 +297,11 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
-        <button
-          onClick={onPrev}
-          className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85"
-        >
+        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85">
           Back
         </button>
-        <button
-          onClick={onNext}
-          disabled={!disclaimerChecked}
-          className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40"
-        >
+        <button onClick={onNext} disabled={!disclaimerChecked}
+          className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40">
           Continue
         </button>
       </div>
@@ -370,35 +326,23 @@ function DocCard({ docType, uploadedDocs, loading, onTap }: DocCardProps) {
       disabled={loading}
       className={
         "w-full flex items-center gap-3.5 p-4 rounded-2xl border-[1.5px] text-left mb-3 transition-colors active:shadow-lg disabled:opacity-60 " +
-        (hasUploads
-          ? "border-green-600 bg-green-50 border-solid"
-          : "border-gray-300 bg-white border-dashed")
+        (hasUploads ? "border-green-600 bg-green-50 border-solid" : "border-gray-300 bg-white border-dashed")
       }
     >
-      <div
-        className={
-          "w-12 h-12 rounded-xl flex items-center justify-center text-[24px] flex-shrink-0 " +
-          (hasUploads ? "bg-green-100" : "bg-gray-100")
-        }
-      >
+      <div className={"w-12 h-12 rounded-xl flex items-center justify-center text-[24px] flex-shrink-0 " + (hasUploads ? "bg-green-100" : "bg-gray-100")}>
         {docType.icon}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-[14px] font-semibold text-gray-900">
-            {docType.label}
-          </span>
+          <span className="text-[14px] font-semibold text-gray-900">{docType.label}</span>
           <span className="text-[12px] text-gray-400">({docType.labelDe})</span>
         </div>
         {hasUploads ? (
           <div className="text-[12px] text-green-600 font-semibold mt-0.5">
-            {count} {count === 1 ? "file" : "files"} uploaded &middot; Tap to
-            view or add more
+            {count} {count === 1 ? "file" : "files"} uploaded &middot; Tap to view or add more
           </div>
         ) : (
-          <div className="text-[12px] text-gray-400 mt-0.5">
-            Tap to capture or upload
-          </div>
+          <div className="text-[12px] text-gray-400 mt-0.5">Tap to capture or upload</div>
         )}
       </div>
       {hasUploads ? (

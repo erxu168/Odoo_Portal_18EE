@@ -3,6 +3,18 @@ import { getCurrentUser, hasRole } from '@/lib/auth';
 import { OdooClient } from '@/lib/odoo';
 import { DOCUMENT_TYPES } from '@/types/hr';
 
+/** Maps doc type key → employee field that tracks admin confirmation */
+const DOC_CONFIRMED_FIELD: Record<string, string> = {
+  ausweis: 'kw_doc_ausweis_ok',
+  steuer_id: 'kw_doc_steuer_id_ok',
+  sv_ausweis: 'kw_doc_sv_ausweis_ok',
+  gesundheitszeugnis: 'kw_doc_gesundheitszeugnis_ok',
+  aufenthaltstitel: 'kw_doc_aufenthaltstitel_ok',
+  krankenkasse: 'kw_doc_krankenkasse_ok',
+  lohnsteuer: 'kw_doc_lohnsteuer_ok',
+  vertrag: 'kw_doc_vertrag_ok',
+};
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -79,7 +91,7 @@ export async function DELETE(
     const odoo = new OdooClient();
     await odoo.authenticate();
 
-    // Fetch the doc to verify ownership and get metadata for logging
+    // Fetch the doc to verify ownership and get metadata
     const docs = await odoo.read('documents.document', [docId], [
       'name', 'res_model', 'res_id', 'tag_ids',
     ]);
@@ -99,16 +111,33 @@ export async function DELETE(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Resolve doc type label for logging
+    // Resolve doc type from tags
     const tagIds: number[] = (doc.tag_ids as number[]) || [];
     const tagIdToType: Record<number, typeof DOCUMENT_TYPES[number]> = {};
     for (const dt of DOCUMENT_TYPES) {
       tagIdToType[dt.tagId] = dt;
     }
     const docType = tagIds.map((tid) => tagIdToType[tid]).find(Boolean);
+    const docTypeKey = docType?.key || '';
     const docTypeLabel = docType
       ? `${docType.label} (${docType.labelDe})`
       : 'Unknown type';
+
+    // Check if this doc type has been admin-confirmed — only admin/manager can delete confirmed docs
+    const confirmedField = DOC_CONFIRMED_FIELD[docTypeKey];
+    if (confirmedField && !hasRole(user, 'manager')) {
+      // Read the employee record to check confirmation status
+      const employees = await odoo.searchRead('hr.employee', [
+        ['id', '=', targetId],
+      ], [confirmedField], { limit: 1 });
+
+      if (employees && employees.length > 0 && employees[0][confirmedField]) {
+        return NextResponse.json(
+          { error: 'This document has been verified by an admin and cannot be deleted. Contact your manager if you need to replace it.' },
+          { status: 403 }
+        );
+      }
+    }
 
     // Archive the document (soft delete)
     await odoo.write('documents.document', [docId], { active: false });

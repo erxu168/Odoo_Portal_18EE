@@ -63,6 +63,11 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
   } | null>(null);
   const [loadingViewerId, setLoadingViewerId] = useState<number | null>(null);
 
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<ExistingDoc | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   // Hidden file inputs
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -195,6 +200,32 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
     }
   }
 
+  // --- Delete existing doc ---
+
+  async function handleDeleteDoc(doc: ExistingDoc) {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const res = await fetch("/api/hr/documents/" + doc.id, { method: "DELETE" });
+      if (res.ok) {
+        setDeleteTarget(null);
+        setExistingDocs((prev) => prev.filter((d) => d.id !== doc.id));
+        setThumbnails((prev) => {
+          const copy = { ...prev };
+          delete copy[doc.id];
+          return copy;
+        });
+      } else {
+        const data = await res.json();
+        setDeleteError(data.error || "Cannot delete this document");
+      }
+    } catch (_e: unknown) {
+      setDeleteError("Failed to delete document");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   // --- Existing doc viewer ---
 
   async function handleViewExisting(doc: ExistingDoc) {
@@ -228,6 +259,39 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
   }
 
   // --- Render: Inline viewer overlay ---
+
+  // --- Render: Delete confirmation ---
+  if (deleteTarget) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-6">
+        <div className="bg-white rounded-2xl p-6 max-w-[340px] w-full shadow-xl">
+          <div className="text-[16px] font-bold text-gray-900 mb-2">Delete document?</div>
+          <p className="text-[13px] text-gray-500 mb-1">
+            <span className="font-semibold text-gray-700">{deleteTarget.name}</span>
+          </p>
+          <p className="text-[13px] text-gray-500 mb-4">
+            This will archive the file in Odoo. The change will be logged.
+          </p>
+          {deleteError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+              <p className="text-[12px] text-red-700 font-semibold">{deleteError}</p>
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button onClick={() => { setDeleteTarget(null); setDeleteError(null); }} disabled={deleting}
+              className="flex-1 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl active:opacity-85 disabled:opacity-40">
+              Cancel
+            </button>
+            <button onClick={() => handleDeleteDoc(deleteTarget)} disabled={deleting}
+              className="flex-1 py-3 bg-red-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40 flex items-center justify-center gap-2">
+              {deleting && <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (viewerData) {
     const isPdf = viewerData.mimetype === "application/pdf";
@@ -365,12 +429,15 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
                       </div>
                     )}
 
-                    {/* Green check badge */}
-                    <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-green-600 flex items-center justify-center">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round">
-                        <path d="M20 6L9 17l-5-5" />
+                    {/* Delete button */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(doc); }}
+                      className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-black/50 text-white flex items-center justify-center active:bg-red-600 z-10"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                        <path d="M18 6L6 18M6 6l12 12" />
                       </svg>
-                    </div>
+                    </button>
 
                     {/* File name */}
                     <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/60 to-transparent">
