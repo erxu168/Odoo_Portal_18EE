@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import AppHeader from "@/components/ui/AppHeader";
 import PdfViewer from "@/components/ui/PdfViewer";
 import type { DocumentType } from "@/types/hr";
@@ -16,6 +16,11 @@ interface ExistingDoc {
   name: string;
   doc_type_key: string;
   mimetype?: string;
+}
+
+interface ThumbnailData {
+  base64: string;
+  mimetype: string;
 }
 
 interface Props {
@@ -47,13 +52,16 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
   // Preview/review state
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
+  // Thumbnails for existing docs
+  const [thumbnails, setThumbnails] = useState<Record<number, ThumbnailData>>({});
+
   // Inline viewer for existing docs
   const [viewerData, setViewerData] = useState<{
     base64: string;
     mimetype: string;
     name: string;
   } | null>(null);
-  const [loadingViewer, setLoadingViewer] = useState(false);
+  const [loadingViewerId, setLoadingViewerId] = useState<number | null>(null);
 
   // Hidden file inputs
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +78,31 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
       })
       .catch(() => {});
   }, [docType.key]);
+
+  // Fetch thumbnails for existing docs in background
+  const fetchThumbnails = useCallback(async () => {
+    if (existingDocs.length === 0) return;
+    for (const doc of existingDocs) {
+      if (thumbnails[doc.id]) continue;
+      try {
+        const res = await fetch("/api/hr/documents/" + doc.id);
+        if (res.ok) {
+          const data = await res.json();
+          setThumbnails((prev) => ({
+            ...prev,
+            [doc.id]: { base64: data.data_base64, mimetype: data.mimetype },
+          }));
+        }
+      } catch {
+        // skip failed thumbnails
+      }
+    }
+  }, [existingDocs, thumbnails]);
+
+  useEffect(() => {
+    fetchThumbnails();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existingDocs]);
 
   // --- Capture handlers ---
 
@@ -101,7 +134,8 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      const isPdf = file.type === "application/pdf" || dataUrl.includes("application/pdf");
+      const isPdf =
+        file.type === "application/pdf" || dataUrl.includes("application/pdf");
       setCaptures((prev) => [...prev, { id: nextId(), dataUrl, isPdf }]);
     };
     reader.readAsDataURL(file);
@@ -113,13 +147,9 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
   }
 
   function retakeCapture(id: string) {
-    const idx = captures.findIndex((c) => c.id === id);
     removeCapture(id);
     setPreviewIndex(null);
-    // Open camera after a short delay
-    setTimeout(() => {
-      handleCameraCapture();
-    }, 150);
+    setTimeout(() => handleCameraCapture(), 150);
   }
 
   // --- Save handler ---
@@ -130,7 +160,6 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
     setUploadProgress({ current: 0, total: captures.length });
 
     try {
-      // Prepare all files
       const files: { filename: string; data_base64: string }[] = [];
       for (let i = 0; i < captures.length; i++) {
         setUploadProgress({ current: i + 1, total: captures.length });
@@ -152,10 +181,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
       const res = await fetch("/api/hr/documents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          doc_type_key: docType.key,
-          files,
-        }),
+        body: JSON.stringify({ doc_type_key: docType.key, files }),
       });
 
       if (res.ok) {
@@ -172,7 +198,14 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
   // --- Existing doc viewer ---
 
   async function handleViewExisting(doc: ExistingDoc) {
-    setLoadingViewer(true);
+    // If we already fetched the data for thumbnail, reuse it
+    const cached = thumbnails[doc.id];
+    if (cached) {
+      setViewerData({ base64: cached.base64, mimetype: cached.mimetype, name: doc.name });
+      return;
+    }
+
+    setLoadingViewerId(doc.id);
     try {
       const res = await fetch("/api/hr/documents/" + doc.id);
       if (res.ok) {
@@ -182,11 +215,15 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
           mimetype: data.mimetype,
           name: data.name,
         });
+        setThumbnails((prev) => ({
+          ...prev,
+          [doc.id]: { base64: data.data_base64, mimetype: data.mimetype },
+        }));
       }
     } catch (_e: unknown) {
       console.error("Failed to load document");
     } finally {
-      setLoadingViewer(false);
+      setLoadingViewerId(null);
     }
   }
 
@@ -227,15 +264,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
             onClick={() => setPreviewIndex(null)}
             className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="white"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
@@ -246,9 +275,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
           {cap.isPdf ? (
             <div className="bg-white rounded-xl p-8 text-center">
               <div className="text-5xl mb-3">{"\u{1F4C4}"}</div>
-              <div className="text-[14px] font-semibold text-gray-900">
-                PDF document
-              </div>
+              <div className="text-[14px] font-semibold text-gray-900">PDF document</div>
             </div>
           ) : (
             <img
@@ -265,14 +292,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
             onClick={() => removeCapture(cap.id)}
             className="flex-1 py-4 bg-red-500/20 text-red-400 font-semibold rounded-xl active:opacity-85 flex items-center justify-center gap-2"
           >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
             </svg>
             Delete
@@ -281,14 +301,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
             onClick={() => retakeCapture(cap.id)}
             className="flex-1 py-4 bg-white/20 text-white font-semibold rounded-xl active:opacity-85 flex items-center justify-center gap-2"
           >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M23 4v6h-6" />
               <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
             </svg>
@@ -315,47 +328,69 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
       />
 
       <div className="p-5">
-        {/* Existing uploaded docs */}
+        {/* Existing uploaded docs with thumbnails */}
         {existingDocs.length > 0 && (
           <div className="mb-4">
             <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
-              Currently uploaded
+              Currently uploaded ({existingDocs.length})
             </div>
-            {existingDocs.map((doc) => (
-              <button
-                key={doc.id}
-                onClick={() => handleViewExisting(doc)}
-                disabled={loadingViewer}
-                className="w-full mb-2 p-3.5 bg-green-50 border border-green-600 rounded-2xl flex items-center gap-3 text-left active:shadow-lg disabled:opacity-60"
-              >
-                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center text-green-600 flex-shrink-0">
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
+            <div className="grid grid-cols-3 gap-2.5 mb-2">
+              {existingDocs.map((doc) => {
+                const thumb = thumbnails[doc.id];
+                const isImage = thumb && !thumb.mimetype.includes("pdf");
+                const isPdf = thumb && thumb.mimetype === "application/pdf";
+                const isLoading = loadingViewerId === doc.id;
+
+                return (
+                  <button
+                    key={doc.id}
+                    onClick={() => handleViewExisting(doc)}
+                    disabled={isLoading}
+                    className="relative aspect-square rounded-xl overflow-hidden border-2 border-green-600 bg-green-50 active:opacity-80 disabled:opacity-60"
                   >
-                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                  </svg>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-green-700 truncate">
-                    {doc.name}
-                  </div>
-                  <div className="text-[11px] text-green-600 mt-0.5">
-                    Tap to view
-                  </div>
-                </div>
-                {loadingViewer && (
-                  <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                )}
-              </button>
-            ))}
-            <p className="text-[12px] text-gray-400 mt-1">
-              New uploads will replace existing files.
+                    {isImage ? (
+                      <img
+                        src={`data:${thumb.mimetype};base64,${thumb.base64}`}
+                        alt={doc.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : isPdf ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50">
+                        <div className="text-3xl">{"\u{1F4C4}"}</div>
+                        <span className="text-[9px] text-gray-500 font-semibold mt-1 px-1 truncate max-w-full">PDF</span>
+                      </div>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-green-50">
+                        <div className="w-5 h-5 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    )}
+
+                    {/* Green check badge */}
+                    <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-green-600 flex items-center justify-center">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                    </div>
+
+                    {/* File name */}
+                    <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1 bg-gradient-to-t from-black/60 to-transparent">
+                      <span className="text-[9px] text-white font-semibold truncate block">
+                        {doc.name}
+                      </span>
+                    </div>
+
+                    {/* Loading overlay */}
+                    {isLoading && (
+                      <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                        <div className="w-5 h-5 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[12px] text-gray-400">
+              Tap to view &middot; New uploads will replace these files
             </p>
           </div>
         )}
@@ -379,9 +414,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
                     {cap.isPdf ? (
                       <div className="w-full h-full bg-gray-50 flex flex-col items-center justify-center">
                         <div className="text-3xl">{"\u{1F4C4}"}</div>
-                        <span className="text-[10px] text-gray-400 font-semibold mt-1">
-                          PDF
-                        </span>
+                        <span className="text-[10px] text-gray-400 font-semibold mt-1">PDF</span>
                       </div>
                     ) : (
                       <img
@@ -403,15 +436,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
                     }}
                     className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center active:bg-red-600"
                   >
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                    >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                       <path d="M18 6L6 18M6 6l12 12" />
                     </svg>
                   </button>
@@ -423,20 +448,10 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
                 onClick={handleCameraCapture}
                 className="aspect-square rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-1 bg-white active:bg-gray-50"
               >
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-gray-400"
-                >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
-                <span className="text-[10px] text-gray-400 font-semibold">
-                  Add
-                </span>
+                <span className="text-[10px] text-gray-400 font-semibold">Add</span>
               </button>
             </div>
           </div>
@@ -448,40 +463,20 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
             onClick={handleCameraCapture}
             className="flex-1 flex items-center justify-center gap-2.5 py-4 bg-white border-[1.5px] border-gray-200 rounded-2xl active:bg-gray-50 active:shadow-lg transition-all"
           >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="text-green-600"
-            >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
               <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
-            <span className="text-[14px] font-semibold text-gray-900">
-              Take Photo
-            </span>
+            <span className="text-[14px] font-semibold text-gray-900">Take Photo</span>
           </button>
           <button
             onClick={handleFilePick}
             className="flex-1 flex items-center justify-center gap-2.5 py-4 bg-white border-[1.5px] border-gray-200 rounded-2xl active:bg-gray-50 active:shadow-lg transition-all"
           >
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="text-green-600"
-            >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
             </svg>
-            <span className="text-[14px] font-semibold text-gray-900">
-              Choose Files
-            </span>
+            <span className="text-[14px] font-semibold text-gray-900">Choose Files</span>
           </button>
         </div>
 
@@ -553,11 +548,7 @@ function ImageOverlay({
 }) {
   const imgSrc = `data:${mimetype};base64,${base64}`;
   const [scale, setScale] = useState(1);
-  const pinchRef = useRef({
-    active: false,
-    initialDist: 0,
-    initialScale: 1,
-  });
+  const pinchRef = useRef({ active: false, initialDist: 0, initialScale: 1 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -571,31 +562,16 @@ function ImageOverlay({
     const el = containerRef.current;
     if (!el) return;
 
-    function onGestureStart(e: any) {
-      e.preventDefault();
-      pinchRef.current = { active: true, initialDist: 0, initialScale: scale };
-    }
-    function onGestureChange(e: any) {
-      e.preventDefault();
-      setScale(
-        Math.max(0.5, Math.min(5, pinchRef.current.initialScale * e.scale))
-      );
-    }
-    function onGestureEnd(e: any) {
-      e.preventDefault();
-      pinchRef.current.active = false;
-    }
+    function onGestureStart(e: any) { e.preventDefault(); pinchRef.current = { active: true, initialDist: 0, initialScale: scale }; }
+    function onGestureChange(e: any) { e.preventDefault(); setScale(Math.max(0.5, Math.min(5, pinchRef.current.initialScale * e.scale))); }
+    function onGestureEnd(e: any) { e.preventDefault(); pinchRef.current.active = false; }
 
     function onTouchStart(e: TouchEvent) {
       if (e.touches.length === 2) {
         e.preventDefault();
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
-        pinchRef.current = {
-          active: true,
-          initialDist: Math.hypot(dx, dy),
-          initialScale: scale,
-        };
+        pinchRef.current = { active: true, initialDist: Math.hypot(dx, dy), initialScale: scale };
       }
     }
     function onTouchMove(e: TouchEvent) {
@@ -604,13 +580,10 @@ function ImageOverlay({
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.hypot(dx, dy);
-        const s = dist / pinchRef.current.initialDist;
-        setScale(Math.max(0.5, Math.min(5, pinchRef.current.initialScale * s)));
+        setScale(Math.max(0.5, Math.min(5, pinchRef.current.initialScale * (dist / pinchRef.current.initialDist))));
       }
     }
-    function onTouchEnd(e: TouchEvent) {
-      if (e.touches.length < 2) pinchRef.current.active = false;
-    }
+    function onTouchEnd(e: TouchEvent) { if (e.touches.length < 2) pinchRef.current.active = false; }
 
     el.addEventListener("gesturestart", onGestureStart, { passive: false });
     el.addEventListener("gesturechange", onGestureChange, { passive: false });
@@ -631,46 +604,20 @@ function ImageOverlay({
 
   return (
     <div className="fixed inset-0 z-[200] bg-black/95 flex flex-col">
-      {/* Top bar */}
       <div className="flex items-center justify-end px-4 py-3 bg-black/80 backdrop-blur-sm flex-shrink-0">
         {scale !== 1 && (
-          <button
-            onClick={() => setScale(1)}
-            className="mr-auto px-3 py-1 rounded-full bg-white/10 text-white/80 text-[11px] font-mono font-bold active:bg-white/20"
-          >
+          <button onClick={() => setScale(1)} className="mr-auto px-3 py-1 rounded-full bg-white/10 text-white/80 text-[11px] font-mono font-bold active:bg-white/20">
             {Math.round(scale * 100)}% — tap to reset
           </button>
         )}
-        <button
-          onClick={onClose}
-          className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="white"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          >
+        <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20 transition-colors">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
         </button>
       </div>
-
-      {/* Image area */}
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-auto overscroll-contain flex items-center justify-center"
-        style={{ WebkitOverflowScrolling: "touch" }}
-      >
-        <img
-          src={imgSrc}
-          alt="Document"
-          className="max-w-full max-h-full object-contain transition-transform duration-100"
-          style={{ transform: `scale(${scale})`, touchAction: "pan-x pan-y" }}
-        />
+      <div ref={containerRef} className="flex-1 overflow-auto overscroll-contain flex items-center justify-center" style={{ WebkitOverflowScrolling: "touch" }}>
+        <img src={imgSrc} alt="Document" className="max-w-full max-h-full object-contain transition-transform duration-100" style={{ transform: `scale(${scale})`, touchAction: "pan-x pan-y" }} />
       </div>
     </div>
   );
@@ -684,22 +631,14 @@ function compressImage(dataUrl: string): Promise<string> {
       let w = img.width;
       let h = img.height;
       if (w > MAX || h > MAX) {
-        if (w > h) {
-          h = Math.round((h * MAX) / w);
-          w = MAX;
-        } else {
-          w = Math.round((w * MAX) / h);
-          h = MAX;
-        }
+        if (w > h) { h = Math.round((h * MAX) / w); w = MAX; }
+        else { w = Math.round((w * MAX) / h); h = MAX; }
       }
       const canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("No canvas context"));
-        return;
-      }
+      if (!ctx) { reject(new Error("No canvas context")); return; }
       ctx.drawImage(img, 0, 0, w, h);
       const result = canvas.toDataURL("image/jpeg", 0.85);
       resolve(result.split(",")[1]);

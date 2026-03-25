@@ -29,7 +29,8 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoSaved, setPhotoSaved] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const selfieInputRef = useRef<HTMLInputElement>(null);
+  const photoFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadDocs();
@@ -66,12 +67,6 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
   }
 
   // Profile photo handlers
-  function handlePhotoCapture() {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  }
-
   function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -155,67 +150,100 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
           pages per document.
         </p>
 
-        {/* Profile photo card */}
+        {/* Profile photo section */}
         <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
           Profile photo
         </div>
-        <button
-          onClick={handlePhotoCapture}
-          disabled={uploadingPhoto}
+        <div
           className={
-            "w-full flex items-center gap-3.5 p-4 rounded-2xl border-[1.5px] text-left mb-5 transition-colors active:shadow-lg disabled:opacity-60 " +
+            "w-full rounded-2xl border-[1.5px] p-4 mb-5 " +
             (hasPhoto
               ? "border-green-600 bg-green-50 border-solid"
               : "border-gray-300 bg-white border-dashed")
           }
         >
-          <div
-            className={
-              "w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden " +
-              (hasPhoto ? "bg-green-100" : "bg-gray-100")
-            }
-          >
-            {photoPreview ? (
-              <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
-            ) : photoSaved ? (
-              <img src="/api/hr/employee/photo" alt="Profile" className="w-full h-full object-cover" />
-            ) : (
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
-                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-[14px] font-semibold text-gray-900">
-              Profile Photo
+          {/* Avatar + status */}
+          <div className="flex items-center gap-3.5 mb-3">
+            <div
+              className={
+                "w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden " +
+                (hasPhoto ? "bg-green-100" : "bg-gray-100")
+              }
+            >
+              {photoPreview ? (
+                <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
+              ) : photoSaved ? (
+                <img src="/api/hr/employee/photo" alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-400">
+                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              )}
             </div>
-            {uploadingPhoto ? (
-              <div className="flex items-center gap-2 mt-0.5">
-                <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-                <span className="text-[12px] text-green-600 font-semibold">Uploading...</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[14px] font-semibold text-gray-900">
+                Profile Photo
               </div>
-            ) : hasPhoto ? (
-              <div className="text-[12px] text-green-600 font-semibold mt-0.5">
-                Uploaded &middot; Tap to replace
-              </div>
-            ) : (
-              <div className="text-[12px] text-gray-400 mt-0.5">
-                Take a selfie or choose a photo
-              </div>
+              {uploadingPhoto ? (
+                <div className="flex items-center gap-2 mt-0.5">
+                  <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-[12px] text-green-600 font-semibold">Uploading...</span>
+                </div>
+              ) : hasPhoto ? (
+                <div className="text-[12px] text-green-600 font-semibold mt-0.5">
+                  Uploaded &middot; Use buttons below to replace
+                </div>
+              ) : (
+                <div className="text-[12px] text-gray-400 mt-0.5">
+                  Take a selfie or choose a photo from your device
+                </div>
+              )}
+            </div>
+            {hasPhoto && (
+              <span className="text-green-600 text-xl flex-shrink-0">{"\u2713"}</span>
             )}
           </div>
-          {hasPhoto ? (
-            <span className="text-green-600 text-xl flex-shrink-0">{"\u2713"}</span>
-          ) : (
-            <span className="text-gray-300 text-2xl flex-shrink-0">+</span>
-          )}
-        </button>
+
+          {/* Dual action buttons */}
+          <div className="flex gap-2.5">
+            <button
+              onClick={() => selfieInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl active:bg-gray-50 active:shadow-lg transition-all disabled:opacity-40"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
+                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+              <span className="text-[13px] font-semibold text-gray-900">Take Selfie</span>
+            </button>
+            <button
+              onClick={() => photoFileInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl active:bg-gray-50 active:shadow-lg transition-all disabled:opacity-40"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+              </svg>
+              <span className="text-[13px] font-semibold text-gray-900">Choose Photo</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Hidden file inputs for profile photo */}
         <input
-          ref={fileInputRef}
+          ref={selfieInputRef}
           type="file"
           accept="image/*"
           capture="user"
+          className="hidden"
+          onChange={handlePhotoFile}
+        />
+        <input
+          ref={photoFileInputRef}
+          type="file"
+          accept="image/*"
           className="hidden"
           onChange={handlePhotoFile}
         />
