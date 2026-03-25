@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef } from "react";
 import type { EmployeeData } from "@/types/hr";
 import { DOCUMENT_TYPES } from "@/types/hr";
 import DocumentCapture from "@/components/hr/DocumentCapture";
+import RoteKarteInfo from "@/components/hr/RoteKarteInfo";
 
 interface Props {
   employee: EmployeeData;
@@ -248,6 +249,7 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
           onChange={handlePhotoFile}
         />
 
+        <RoteKarteInfo />
         <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
           Required documents
         </div>

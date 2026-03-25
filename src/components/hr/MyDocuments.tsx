@@ -5,6 +5,7 @@ import AppHeader from "@/components/ui/AppHeader";
 import PdfViewer from "@/components/ui/PdfViewer";
 import DocumentCapture from "@/components/hr/DocumentCapture";
 import { DOCUMENT_TYPES } from "@/types/hr";
+import RoteKarteInfo from "@/components/hr/RoteKarteInfo";
 import type { DocumentType } from "@/types/hr";
 
 interface Doc {
@@ -231,6 +232,7 @@ export default function MyDocuments({ onBack }: Props) {
           </div>
         ) : (
           <>
+            <RoteKarteInfo />
             <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
               Required documents
             </div>
