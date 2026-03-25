@@ -10,7 +10,7 @@ import AppDrawer from './AppDrawer';
  * Hidden on auth pages and full-screen module pages (recipes, etc.)
  */
 
-const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/recipes'];
+const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password'];
 
 export default function AppTopBar() {
   const pathname = usePathname();
