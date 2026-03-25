@@ -11,46 +11,57 @@ import { useRouter } from 'next/navigation';
  */
 const TILES = [
   {
-    id: 'production', label: 'Manufacturing', href: '/manufacturing', minRole: 'staff',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>,
+    id: 'production', label: 'Manufacturing', sub: 'Production orders', href: '/manufacturing', minRole: 'staff',
+    color: 'bg-orange-50 border-orange-200', iconBg: 'bg-orange-100',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>,
   },
   {
-    id: 'recipes', label: 'Chef Guide', href: '/recipes', minRole: 'staff',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>,
+    id: 'recipes', label: 'Chef Guide', sub: 'Recipes & guides', href: '/recipes', minRole: 'staff',
+    color: 'bg-amber-50 border-amber-200', iconBg: 'bg-amber-100',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>,
   },
   {
-    id: 'shifts', label: 'Shift Schedule', href: null, minRole: 'staff',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+    id: 'shifts', label: 'Shift Schedule', sub: 'View your shifts', href: null, minRole: 'staff',
+    color: 'bg-purple-50 border-purple-200', iconBg: 'bg-purple-100',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
   },
   {
-    id: 'tasks', label: 'My Tasks', href: null, minRole: 'staff',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>,
+    id: 'tasks', label: 'My Tasks', sub: 'Daily checklist', href: null, minRole: 'staff',
+    color: 'bg-red-50 border-red-200', iconBg: 'bg-red-100',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>,
   },
   {
-    id: 'inventory', label: 'Inventory', href: '/inventory', minRole: 'staff',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>,
+    id: 'inventory', label: 'Inventory', sub: 'Stock counts', href: '/inventory', minRole: 'staff',
+    color: 'bg-teal-50 border-teal-200', iconBg: 'bg-teal-100',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>,
   },
   {
-    id: 'repair', label: 'Report Repair', href: null, minRole: 'staff',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>,
+    id: 'repair', label: 'Report Repair', sub: 'Equipment issues', href: null, minRole: 'staff',
+    color: 'bg-rose-50 border-rose-200', iconBg: 'bg-rose-100',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>,
   },
   {
-    id: 'purchase', label: 'Purchase', href: '/purchase', minRole: 'staff',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>,
+    id: 'purchase', label: 'Purchase', sub: 'Orders & receiving', href: '/purchase', minRole: 'staff',
+    color: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-100',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>,
   },
   {
-    id: 'leave', label: 'Leave', href: null, minRole: 'staff',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>,
+    id: 'leave', label: 'Leave', sub: 'Request time off', href: null, minRole: 'staff',
+    color: 'bg-green-50 border-green-200', iconBg: 'bg-green-100',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>,
   },
   {
-    id: 'payroll', label: 'Payroll', href: null, minRole: 'staff',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
+    id: 'payroll', label: 'Payroll', sub: 'Payslips', href: null, minRole: 'staff',
+    color: 'bg-indigo-50 border-indigo-200', iconBg: 'bg-indigo-100',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
   },
   {
-    id: 'profile', label: 'Profile', href: null, minRole: 'staff',
-    icon: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+    id: 'hr', label: 'HR & Onboarding', sub: 'Documents & profile', href: '/hr', minRole: 'staff',
+    color: 'bg-cyan-50 border-cyan-200', iconBg: 'bg-cyan-100',
+    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>,
   },
 ];
+
 
 const ROLE_LEVEL: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
 
@@ -119,7 +130,7 @@ export default function DashboardHome() {
   const firstName = userName ? userName.split(' ')[0] : '';
 
   return (
-    <div className="min-h-screen bg-[#F6F7F9]">
+    <div className="min-h-screen bg-gray-50">
       <div className="bg-[#1A1F2E] px-6 pt-14 pb-6 rounded-b-[28px] relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(22,163,74,0.08)_0%,transparent_70%)]" />
         <div className="relative">
@@ -146,7 +157,7 @@ export default function DashboardHome() {
       {tasks && tasks.items && tasks.items.length > 0 && (
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between mb-2.5">
-            <h2 className="text-[15px] font-bold text-[#1F2933]">Your current shift tasks</h2>
+            <h2 className="text-[15px] font-bold text-gray-900">Your current shift tasks</h2>
             <button onClick={() => handleTileTap(TILES.find((t: any) => t.id === 'tasks')!)}
               className="text-[12px] font-semibold text-green-700 active:opacity-70">See all &rarr;</button>
           </div>
@@ -170,7 +181,7 @@ export default function DashboardHome() {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[13px] font-semibold ${isDone ? 'line-through text-gray-400' : 'text-[#1F2933]'}`}>{task.name}</div>
+                    <div className={`text-[13px] font-semibold ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.name}</div>
                     <div className="text-[11px] text-gray-500 mt-0.5">{task.category}{task.photoRequired ? ' \u00b7 Photo required' : ''}</div>
                   </div>
                   <div className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold font-mono ${s.pill} ${s.pillText}`}>{task.dueLabel}</div>
@@ -200,7 +211,7 @@ export default function DashboardHome() {
                   <span className={`absolute top-2 right-2 min-w-[20px] h-5 px-1.5 rounded-full text-white text-[11px] font-bold font-mono leading-5 text-center ${badgeColor}`}>{count}</span>
                 )}
                 <div className="w-12 h-12 rounded-[14px] flex items-center justify-center bg-[#F1F3F5] text-blue-600">{tile.icon}</div>
-                <span className="text-[12px] font-semibold text-[#1F2933] text-center px-1 leading-tight">{tile.label}</span>
+                <span className="text-[12px] font-semibold text-gray-900 text-center px-1 leading-tight">{tile.label}</span>
               </button>
             );
           })}

@@ -77,6 +77,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
     {
       id: 'my-lists',
       label: 'My Lists',
+      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-100',
       sublabel: stats.pending > 0 ? `${stats.pending} pending` : 'Assigned counts',
       badge: stats.pending,
       icon: (
@@ -89,6 +90,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
     {
       id: 'quick-count',
       label: 'Quick Count',
+      color: 'bg-teal-50 border-teal-200', iconBg: 'bg-teal-100',
       sublabel: 'Search + count any item',
       badge: 0,
       icon: (
@@ -102,6 +104,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
     ...(canManage ? [{
       id: 'manage',
       label: 'Manage Lists',
+      color: 'bg-purple-50 border-purple-200', iconBg: 'bg-purple-100',
       sublabel: stats.templates > 0 ? `${stats.templates} templates` : 'Create templates',
       badge: 0,
       icon: (
@@ -114,6 +117,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
     ...(canManage ? [{
       id: 'review',
       label: 'Review',
+      color: 'bg-amber-50 border-amber-200', iconBg: 'bg-amber-100',
       sublabel: (stats.submitted + stats.quickPending) > 0 ? `${stats.submitted + stats.quickPending} to review` : 'Approve counts',
       badge: stats.submitted + stats.quickPending,
       icon: (
@@ -146,19 +150,17 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         <div className="grid grid-cols-2 gap-3">
           {tiles.map((tile) => (
             <button key={tile.id} onClick={() => onNavigate(tile.id)}
-              className="aspect-square rounded-2xl bg-white border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] flex flex-col items-center justify-center gap-2.5 relative active:scale-95 transition-transform p-3">
+              className={`relative p-4 rounded-2xl border ${(tile as any).color || 'bg-white border-gray-200'} text-left active:scale-[0.97] transition-transform shadow-sm`}>
               {tile.badge > 0 && (
-                <span className="absolute top-2.5 right-2.5 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold font-mono leading-[22px] text-center">
+                <span className="absolute top-3 right-3 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold font-mono leading-[22px] text-center">
                   {tile.badge}
                 </span>
               )}
-              <div className="w-14 h-14 rounded-[16px] flex items-center justify-center bg-[#F1F3F5] text-green-700">
+              <div className={`w-11 h-11 rounded-xl ${(tile as any).iconBg || 'bg-gray-100'} flex items-center justify-center mb-3`}>
                 {tile.icon}
               </div>
-              <div className="text-center">
-                <div className="text-[13px] font-bold text-gray-900">{tile.label}</div>
-                <div className="text-[11px] text-gray-500 mt-0.5">{tile.sublabel}</div>
-              </div>
+              <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">{tile.sublabel}</div>
             </button>
           ))}
         </div>
