@@ -90,6 +90,7 @@ export default function DashboardHome() {
   const [tasks, setTasks] = useState<any>(null);
   const [now, setNow] = useState(new Date());
   const [comingSoon, setComingSoon] = useState<string | null>(null);
+  const [photoLoaded, setPhotoLoaded] = useState(false);
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
 
@@ -133,11 +134,21 @@ export default function DashboardHome() {
     <div className="min-h-screen bg-gray-50">
       <div className="bg-[#2563EB] px-6 pt-14 pb-6 rounded-b-[28px] relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(22,163,74,0.08)_0%,transparent_70%)]" />
-        <div className="relative">
-          <h1 className="text-[22px] font-bold text-white">
-            {greeting}{firstName ? `, ${firstName}` : ''}
-          </h1>
-          <p className="text-[13px] text-white/50 mt-0.5">{dateStr}</p>
+        <div className="relative flex items-center justify-between">
+          <div>
+            <h1 className="text-[22px] font-bold text-white">
+              {greeting}{firstName ? `, ${firstName}` : ''}
+            </h1>
+            <p className="text-[13px] text-white/50 mt-0.5">{dateStr}</p>
+          </div>
+          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-white/30">
+            {photoLoaded ? (
+              <img src="/api/hr/employee/photo" alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-white text-[14px] font-bold">{firstName ? firstName[0].toUpperCase() : ''}</span>
+            )}
+            <img src="/api/hr/employee/photo" alt="" className="hidden" onLoad={() => setPhotoLoaded(true)} onError={() => setPhotoLoaded(false)} />
+          </div>
         </div>
         {shift && (
           <div className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-xl relative ${shift.onShift ? 'bg-green-600/10 border border-green-600/20' : 'bg-white/5 border border-white/10'}`}>
