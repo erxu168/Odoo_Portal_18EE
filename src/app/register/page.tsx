@@ -105,7 +105,7 @@ export default function RegisterPage() {
   if (step === 'input') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <div className="bg-[#1A1F2E] px-6 pt-14 pb-6 relative overflow-hidden">
+        <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden">
           <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
           <h1 className="text-[22px] font-bold text-white relative">Register</h1>
           <p className="text-[13px] text-white/50 mt-1 relative">Use the email or phone you gave when you were hired</p>
@@ -193,7 +193,7 @@ export default function RegisterPage() {
   if (step === 'pending') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <div className="bg-[#1A1F2E] px-6 pt-14 pb-6 relative overflow-hidden">
+        <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden">
           <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
           <h1 className="text-[22px] font-bold text-white relative">Almost there!</h1>
           <p className="text-[13px] text-white/50 mt-1 relative">Your account is being reviewed</p>

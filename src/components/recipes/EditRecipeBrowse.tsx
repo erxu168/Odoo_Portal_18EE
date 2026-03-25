@@ -110,7 +110,7 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
+      <div className="bg-[#2563EB] px-5 pt-14 pb-5 relative overflow-hidden">
         <div className={`absolute -top-10 -right-5 w-44 h-44 rounded-full ${tab === 'cooking' ? 'bg-[radial-gradient(circle,rgba(22,163,74,0.08)_0%,transparent_70%)]' : 'bg-[radial-gradient(circle,rgba(139,92,246,0.08)_0%,transparent_70%)]'}`} />
         <div className="flex items-center gap-3 relative">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">

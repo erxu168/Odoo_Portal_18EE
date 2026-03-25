@@ -23,7 +23,7 @@ export default function AppTopBar() {
   return (
     <>
       <div className="fixed top-0 left-0 right-0 z-50 max-w-lg mx-auto">
-        <div className="bg-[#1A1F2E] flex items-center justify-between px-4 py-1.5 border-b border-white/10">
+        <div className="bg-[#2563EB] flex items-center justify-between px-4 py-1.5 border-b border-white/10">
           <button
             onClick={() => setDrawerOpen(true)}
             className="w-9 h-9 flex items-center justify-center rounded-lg active:bg-white/10 transition-colors"

@@ -125,7 +125,7 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-[#1A1F2E] px-5 pt-14 pb-6 rounded-b-[28px] relative overflow-hidden">
+      <div className="bg-[#2563EB] px-5 pt-14 pb-6 rounded-b-[28px] relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(22,163,74,0.08)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
           <button onClick={onHome}
