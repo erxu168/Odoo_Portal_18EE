@@ -138,7 +138,7 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-[#2563EB] px-5 pt-14 pb-5">
+      <div className="bg-[#2563EB] px-5 pt-14 pb-5 rounded-b-[28px]">
         <div className="flex items-center gap-3">
           <button onClick={() => router.push('/')}
             className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">

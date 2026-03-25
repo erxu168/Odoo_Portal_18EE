@@ -34,43 +34,83 @@ export async function GET(request: Request) {
       'krawings.recipe.step', domain,
       [
         'id', 'sequence', 'step_type', 'instruction', 'timer_seconds',
-        'tip', 'ingredient_ids', 'image_count', 'version_id',
+        'tip', 'ingredient_ids', 'step_ingredient_ids', 'image_count', 'version_id',
       ],
       { order: 'sequence', limit: 100 },
     );
 
-    // Resolve ingredient names
-    const allIngIds: number[] = [];
+    // Read step_ingredient pivot records (new model with qty)
+    const allPivotIds: number[] = [];
     for (const s of steps) {
-      for (const id of (s.ingredient_ids || [])) {
-        if (allIngIds.indexOf(id) === -1) allIngIds.push(id);
+      for (const id of (s.step_ingredient_ids || [])) {
+        if (allPivotIds.indexOf(id) === -1) allPivotIds.push(id);
       }
     }
 
-    const ingredientMap: Record<number, { name: string; uom: string }> = {};
-    if (allIngIds.length > 0) {
-      const ingredients = await odoo.read(
-        'product.product',
-        allIngIds,
-        ['id', 'name', 'uom_id'],
-      );
-      for (const ing of ingredients) {
-        ingredientMap[ing.id] = {
-          name: ing.name,
-          uom: ing.uom_id?.[1] || '',
+    interface PivotRecord { product_id: [number, string]; qty: number; uom_id: [number, string] | false; }
+    const pivotMap = new Map<number, PivotRecord>();
+    if (allPivotIds.length > 0) {
+      try {
+        const pivots = await odoo.read(
+          'krawings.recipe.step.ingredient', allPivotIds,
+          ['id', 'product_id', 'qty', 'uom_id', 'sequence'],
+        );
+        for (const p of pivots) {
+          pivotMap.set(p.id, p);
+        }
+      } catch (_e) {
+        // Model may not exist yet if upgrade hasn't run — fall back to old M2M
+      }
+    }
+
+    // Fallback: resolve old M2M ingredient_ids for steps without pivot data
+    const allOldIngIds: number[] = [];
+    for (const s of steps) {
+      if ((s.step_ingredient_ids || []).length === 0) {
+        for (const id of (s.ingredient_ids || [])) {
+          if (allOldIngIds.indexOf(id) === -1) allOldIngIds.push(id);
+        }
+      }
+    }
+    const oldIngMap: Record<number, { name: string; uom: string }> = {};
+    if (allOldIngIds.length > 0) {
+      const oldIngs = await odoo.read('product.product', allOldIngIds, ['id', 'name', 'uom_id']);
+      for (const ing of oldIngs) {
+        oldIngMap[ing.id] = { name: ing.name, uom: ing.uom_id?.[1] || '' };
+      }
+    }
+
+    // Enrich steps with ingredient data
+    const enrichedSteps = steps.map((s: any) => {
+      // Prefer new pivot model
+      if ((s.step_ingredient_ids || []).length > 0) {
+        return {
+          ...s,
+          ingredients: s.step_ingredient_ids.map((pivotId: number) => {
+            const p = pivotMap.get(pivotId);
+            if (!p) return null;
+            return {
+              id: Array.isArray(p.product_id) ? p.product_id[0] : 0,
+              name: Array.isArray(p.product_id) ? p.product_id[1] : 'Unknown',
+              qty: p.qty || 0,
+              uom: Array.isArray(p.uom_id) ? p.uom_id[1] : '',
+              uom_id: Array.isArray(p.uom_id) ? p.uom_id[0] : null,
+            };
+          }).filter(Boolean),
         };
       }
-    }
-
-    // No image data fetched here — use /api/recipes/steps/images?step_id=X
-    const enrichedSteps = steps.map((s: any) => ({
-      ...s,
-      ingredients: (s.ingredient_ids || []).map((id: number) => ({
-        id,
-        name: ingredientMap[id]?.name || `Product #${id}`,
-        uom: ingredientMap[id]?.uom || '',
-      })),
-    }));
+      // Fallback to old M2M (no quantities)
+      return {
+        ...s,
+        ingredients: (s.ingredient_ids || []).map((id: number) => ({
+          id,
+          name: oldIngMap[id]?.name || `Product #${id}`,
+          qty: 0,
+          uom: oldIngMap[id]?.uom || '',
+          uom_id: null,
+        })),
+      };
+    });
 
     return NextResponse.json({ steps: enrichedSteps });
   } catch (err: unknown) {
@@ -150,10 +190,37 @@ export async function POST(request: Request) {
       };
       if (product_tmpl_id) stepVals.product_tmpl_id = product_tmpl_id;
       if (bom_id) stepVals.bom_id = bom_id;
-      if (s.ingredient_ids?.length) stepVals.ingredient_ids = [[6, 0, s.ingredient_ids]];
+
+      // Legacy M2M: also set ingredient_ids for backward compat
+      const productIds: number[] = (s.ingredients || []).map((ing: any) => ing.product_id).filter(Boolean);
+      if (s.ingredient_ids?.length) {
+        stepVals.ingredient_ids = [[6, 0, s.ingredient_ids]];
+      } else if (productIds.length > 0) {
+        stepVals.ingredient_ids = [[6, 0, productIds]];
+      }
 
       const stepId = await odoo.create('krawings.recipe.step', stepVals);
       createdIds.push(stepId);
+
+      // Create pivot records (new model with qty/uom)
+      if (s.ingredients?.length) {
+        for (let k = 0; k < s.ingredients.length; k++) {
+          const ing = s.ingredients[k];
+          if (!ing.product_id) continue;
+          try {
+            await odoo.create('krawings.recipe.step.ingredient', {
+              step_id: stepId,
+              product_id: ing.product_id,
+              qty: ing.qty || 0,
+              uom_id: ing.uom_id || false,
+              sequence: (k + 1) * 10,
+            });
+          } catch (_e) {
+            // New model may not exist yet — silently skip
+            console.warn('Could not create step ingredient pivot record:', _e);
+          }
+        }
+      }
 
       if (s.images?.length) {
         for (let j = 0; j < s.images.length; j++) {

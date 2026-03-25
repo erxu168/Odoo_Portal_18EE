@@ -58,7 +58,7 @@ export default function ChangePasswordPage() {
   if (success) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden">
+        <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden rounded-b-[28px]">
           <h1 className="text-[22px] font-bold text-white">Password Changed</h1>
         </div>
         <div className="flex-1 px-6 pt-8 flex flex-col items-center">
@@ -78,7 +78,7 @@ export default function ChangePasswordPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden">
+      <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden rounded-b-[28px]">
         <div className="flex items-center gap-3">
           <button onClick={() => router.back()}
             className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">

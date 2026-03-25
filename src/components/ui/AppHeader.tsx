@@ -48,7 +48,7 @@ export default function AppHeader({ supertitle, title, subtitle, showBack, onBac
   }
 
   return (
-    <div className="bg-[#2563EB] px-5 pt-12 pb-0 relative overflow-hidden">
+    <div className="bg-[#2563EB] px-5 pt-12 pb-0 relative overflow-hidden rounded-b-[28px]">
       <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
       <div className="flex items-center gap-3 relative pb-3">
         <button

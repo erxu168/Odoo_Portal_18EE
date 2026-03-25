@@ -65,7 +65,7 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
         className={`fixed top-0 left-0 bottom-0 z-[61] w-[280px] max-w-[85vw] bg-white flex flex-col transition-transform duration-300 ease-out ${open ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {/* User header */}
-        <div className="bg-[#2563EB] px-5 pt-14 pb-5">
+        <div className="bg-[#2563EB] px-5 pt-14 pb-5 rounded-b-[28px]">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
               <span className="text-white text-[14px] font-bold">{initials}</span>
