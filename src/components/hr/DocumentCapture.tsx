@@ -1,19 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import AppHeader from "@/components/ui/AppHeader";
 import PdfViewer from "@/components/ui/PdfViewer";
 import type { DocumentType } from "@/types/hr";
 
-interface CapturedImage {
-  slotKey: string;
+interface CapturedFile {
+  id: string;
   dataUrl: string;
+  isPdf: boolean;
 }
 
-interface UploadedDoc {
+interface ExistingDoc {
   id: number;
   name: string;
   doc_type_key: string;
+  mimetype?: string;
 }
 
 interface Props {
@@ -22,115 +24,140 @@ interface Props {
   onSaved: () => void;
 }
 
-const SLOT_CONFIG: Record<string, { key: string; label: string }[]> = {
-  ausweis: [
-    { key: "front", label: "Front side" },
-    { key: "back", label: "Back side" },
-  ],
-  aufenthaltstitel: [
-    { key: "front", label: "Front side" },
-    { key: "back", label: "Back side" },
-    { key: "visa_sticker", label: "Visa sticker page" },
-  ],
-  steuer_id: [{ key: "page", label: "Tax ID letter" }],
-  sv_ausweis: [{ key: "page", label: "SV Card" }],
-  gesundheitszeugnis: [{ key: "page", label: "Health certificate" }],
-  krankenkasse: [{ key: "page", label: "Insurance confirmation" }],
-  lohnsteuer: [{ key: "page", label: "Tax certificate" }],
-  vertrag: [{ key: "page", label: "Contract document" }],
+const DOC_HINTS: Record<string, string> = {
+  ausweis: "Capture both the front and back of your ID card or passport.",
+  aufenthaltstitel: "Capture the front, back, and any visa sticker pages.",
+  vertrag: "If your contract has multiple pages, add each page separately.",
 };
 
-export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
-  const [captures, setCaptures] = useState<CapturedImage[]>([]);
-  const [preview, setPreview] = useState<{ slotKey: string; dataUrl: string } | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [existingDoc, setExistingDoc] = useState<UploadedDoc | null>(null);
+let _nextId = 1;
+function nextId() {
+  return "cap_" + _nextId++;
+}
 
-  // Inline viewer state
-  const [viewerData, setViewerData] = useState<{ base64: string; mimetype: string } | null>(null);
+export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
+  const [captures, setCaptures] = useState<CapturedFile[]>([]);
+  const [existingDocs, setExistingDocs] = useState<ExistingDoc[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
+
+  // Preview/review state
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+
+  // Inline viewer for existing docs
+  const [viewerData, setViewerData] = useState<{
+    base64: string;
+    mimetype: string;
+    name: string;
+  } | null>(null);
   const [loadingViewer, setLoadingViewer] = useState(false);
 
-  const slots = SLOT_CONFIG[docType.key] || [{ key: "page", label: "Document" }];
+  // Hidden file inputs
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch("/api/hr/documents")
       .then((r) => r.json())
       .then((d) => {
-        const found = (d.documents || []).find(
-          (doc: UploadedDoc) => doc.doc_type_key === docType.key
+        const matching = (d.documents || []).filter(
+          (doc: ExistingDoc) => doc.doc_type_key === docType.key
         );
-        if (found) setExistingDoc(found);
+        setExistingDocs(matching);
       })
       .catch(() => {});
   }, [docType.key]);
 
-  function getCaptureForSlot(slotKey: string): CapturedImage | undefined {
-    return captures.find((c) => c.slotKey === slotKey);
+  // --- Capture handlers ---
+
+  function handleCameraCapture() {
+    cameraInputRef.current?.click();
   }
 
-  function handleCapture(slotKey: string) {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*,.pdf";
-    input.setAttribute("capture", "environment");
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setPreview({ slotKey, dataUrl });
-      };
-      reader.readAsDataURL(file);
+  function handleFilePick() {
+    fileInputRef.current?.click();
+  }
+
+  function handleCameraFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    readFileToCapture(file);
+    e.target.value = "";
+  }
+
+  function handleDeviceFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    for (let i = 0; i < files.length; i++) {
+      readFileToCapture(files[i]);
+    }
+    e.target.value = "";
+  }
+
+  function readFileToCapture(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const isPdf = file.type === "application/pdf" || dataUrl.includes("application/pdf");
+      setCaptures((prev) => [...prev, { id: nextId(), dataUrl, isPdf }]);
     };
-    input.click();
+    reader.readAsDataURL(file);
   }
 
-  function confirmPreview() {
-    if (!preview) return;
-    setCaptures((prev) => {
-      const filtered = prev.filter((c) => c.slotKey !== preview.slotKey);
-      return [...filtered, { slotKey: preview.slotKey, dataUrl: preview.dataUrl }];
-    });
-    setPreview(null);
+  function removeCapture(id: string) {
+    setCaptures((prev) => prev.filter((c) => c.id !== id));
+    setPreviewIndex(null);
   }
 
-  function retakePreview() {
-    if (!preview) return;
-    const slotKey = preview.slotKey;
-    setPreview(null);
-    setTimeout(() => handleCapture(slotKey), 100);
+  function retakeCapture(id: string) {
+    const idx = captures.findIndex((c) => c.id === id);
+    removeCapture(id);
+    setPreviewIndex(null);
+    // Open camera after a short delay
+    setTimeout(() => {
+      handleCameraCapture();
+    }, 150);
   }
 
-  function removeCapture(slotKey: string) {
-    setCaptures((prev) => prev.filter((c) => c.slotKey !== slotKey));
-  }
+  // --- Save handler ---
 
   async function handleSave() {
     if (captures.length === 0) return;
     setUploading(true);
+    setUploadProgress({ current: 0, total: captures.length });
+
     try {
-      const images: string[] = [];
-      for (const cap of captures) {
-        if (cap.dataUrl.includes("application/pdf")) {
-          images.push(cap.dataUrl.split(",")[1]);
+      // Prepare all files
+      const files: { filename: string; data_base64: string }[] = [];
+      for (let i = 0; i < captures.length; i++) {
+        setUploadProgress({ current: i + 1, total: captures.length });
+        const cap = captures[i];
+        let base64: string;
+
+        if (cap.isPdf) {
+          base64 = cap.dataUrl.split(",")[1];
         } else {
-          const compressed = await compressImage(cap.dataUrl);
-          images.push(compressed);
+          base64 = await compressImage(cap.dataUrl);
         }
+
+        const ext = cap.isPdf ? ".pdf" : ".jpg";
+        const suffix = captures.length > 1 ? `_p${i + 1}` : "";
+        const filename = `${docType.key}_${new Date().toISOString().slice(0, 10)}${suffix}${ext}`;
+        files.push({ filename, data_base64: base64 });
       }
-      const finalBase64 = images.length === 1 ? images[0] : images[0];
-      const ext = captures[0].dataUrl.includes("application/pdf") ? ".pdf" : ".jpg";
-      const filename = docType.key + "_" + new Date().toISOString().slice(0, 10) + ext;
+
       const res = await fetch("/api/hr/documents", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           doc_type_key: docType.key,
-          filename,
-          data_base64: finalBase64,
+          files,
         }),
       });
+
       if (res.ok) {
         onSaved();
       }
@@ -138,17 +165,23 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
       console.error("Upload failed");
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   }
 
-  async function handleViewExisting() {
-    if (!existingDoc) return;
+  // --- Existing doc viewer ---
+
+  async function handleViewExisting(doc: ExistingDoc) {
     setLoadingViewer(true);
     try {
-      const res = await fetch("/api/hr/documents/" + existingDoc.id);
+      const res = await fetch("/api/hr/documents/" + doc.id);
       if (res.ok) {
         const data = await res.json();
-        setViewerData({ base64: data.data_base64, mimetype: data.mimetype });
+        setViewerData({
+          base64: data.data_base64,
+          mimetype: data.mimetype,
+          name: data.name,
+        });
       }
     } catch (_e: unknown) {
       console.error("Failed to load document");
@@ -157,61 +190,120 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
     }
   }
 
-  // Inline overlay viewer
+  // --- Render: Inline viewer overlay ---
+
   if (viewerData) {
     const isPdf = viewerData.mimetype === "application/pdf";
     if (isPdf) {
       return (
         <PdfViewer
           fileData={viewerData.base64}
-          fileName={existingDoc?.name}
+          fileName={viewerData.name}
           onClose={() => setViewerData(null)}
         />
       );
     }
-    // Image overlay with pinch-zoom
-    return <ImageOverlay base64={viewerData.base64} mimetype={viewerData.mimetype} onClose={() => setViewerData(null)} />;
+    return (
+      <ImageOverlay
+        base64={viewerData.base64}
+        mimetype={viewerData.mimetype}
+        onClose={() => setViewerData(null)}
+      />
+    );
   }
 
-  if (preview) {
+  // --- Render: Full-size preview of a new capture ---
+
+  if (previewIndex !== null && captures[previewIndex]) {
+    const cap = captures[previewIndex];
     return (
-      <div className="min-h-screen bg-black flex flex-col">
-        <div className="flex-1 flex items-center justify-center p-4">
-          {preview.dataUrl.includes("application/pdf") ? (
+      <div className="fixed inset-0 z-[200] bg-black flex flex-col">
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-4 py-3 bg-black/80 backdrop-blur-sm flex-shrink-0">
+          <span className="text-white/60 text-[13px] font-mono">
+            {previewIndex + 1} / {captures.length}
+          </span>
+          <button
+            onClick={() => setPreviewIndex(null)}
+            className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Image */}
+        <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
+          {cap.isPdf ? (
             <div className="bg-white rounded-xl p-8 text-center">
-              <div className="text-4xl mb-2">{"\u{1F4C4}"}</div>
-              <div className="text-[14px] font-semibold">PDF file selected</div>
+              <div className="text-5xl mb-3">{"\u{1F4C4}"}</div>
+              <div className="text-[14px] font-semibold text-gray-900">
+                PDF document
+              </div>
             </div>
           ) : (
             <img
-              src={preview.dataUrl}
-              alt="Preview"
+              src={cap.dataUrl}
+              alt={`Page ${previewIndex + 1}`}
               className="max-w-full max-h-[70vh] rounded-xl object-contain"
             />
           )}
         </div>
-        <div className="p-4 pb-8 text-center">
-          <p className="text-white/70 text-[13px] mb-4">
-            Make sure all text is readable, no blur, and good lighting.
-          </p>
-          <div className="flex gap-3">
-            <button
-              onClick={retakePreview}
-              className="flex-1 py-4 bg-white/20 text-white font-semibold rounded-xl active:opacity-85"
+
+        {/* Actions */}
+        <div className="p-4 pb-8 flex gap-3">
+          <button
+            onClick={() => removeCapture(cap.id)}
+            className="flex-1 py-4 bg-red-500/20 text-red-400 font-semibold rounded-xl active:opacity-85 flex items-center justify-center gap-2"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
             >
-              Retake
-            </button>
-            <button
-              onClick={confirmPreview}
-              className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85"
+              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+            </svg>
+            Delete
+          </button>
+          <button
+            onClick={() => retakeCapture(cap.id)}
+            className="flex-1 py-4 bg-white/20 text-white font-semibold rounded-xl active:opacity-85 flex items-center justify-center gap-2"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
             >
-              Use this photo
-            </button>
-          </div>
+              <path d="M23 4v6h-6" />
+              <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10" />
+            </svg>
+            Retake
+          </button>
         </div>
       </div>
     );
   }
+
+  // --- Render: Main capture screen ---
+
+  const hint =
+    DOC_HINTS[docType.key] ||
+    "Take clear photos or choose files from your device.";
 
   return (
     <div className="min-h-screen bg-[#f8faf9] pb-40">
@@ -223,86 +315,202 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
       />
 
       <div className="p-5">
-        {existingDoc && (
-          <button
-            onClick={handleViewExisting}
-            disabled={loadingViewer}
-            className="w-full mb-4 p-4 bg-green-50 border border-green-600 rounded-2xl flex items-center gap-3 text-left active:shadow-lg disabled:opacity-60"
-          >
-            <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center text-[24px]">
-              {"\u2713"}
+        {/* Existing uploaded docs */}
+        {existingDocs.length > 0 && (
+          <div className="mb-4">
+            <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
+              Currently uploaded
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[14px] font-semibold text-green-700">
-                Currently uploaded
-              </div>
-              <div className="text-[12px] text-green-600 mt-0.5">
-                {existingDoc.name} &middot; Tap to view
-              </div>
-            </div>
-            {loadingViewer && (
-              <div className="w-5 h-5 border-2 border-green-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-            )}
-          </button>
+            {existingDocs.map((doc) => (
+              <button
+                key={doc.id}
+                onClick={() => handleViewExisting(doc)}
+                disabled={loadingViewer}
+                className="w-full mb-2 p-3.5 bg-green-50 border border-green-600 rounded-2xl flex items-center gap-3 text-left active:shadow-lg disabled:opacity-60"
+              >
+                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center text-green-600 flex-shrink-0">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-green-700 truncate">
+                    {doc.name}
+                  </div>
+                  <div className="text-[11px] text-green-600 mt-0.5">
+                    Tap to view
+                  </div>
+                </div>
+                {loadingViewer && (
+                  <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                )}
+              </button>
+            ))}
+            <p className="text-[12px] text-gray-400 mt-1">
+              New uploads will replace existing files.
+            </p>
+          </div>
         )}
 
-        <p className="text-[13px] text-gray-500 mb-4">
-          {slots.length > 1
-            ? "This document requires multiple photos. Capture each side separately."
-            : "Take a clear photo or select a file from your device."}
-        </p>
+        {/* Hint text */}
+        <p className="text-[13px] text-gray-500 mb-4">{hint}</p>
 
-        {slots.map((slot) => {
-          const captured = getCaptureForSlot(slot.key);
-          return (
-            <div key={slot.key} className="mb-3">
-              <div className="text-[12px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
-                {slot.label}
-              </div>
-              {captured ? (
-                <div className="relative rounded-2xl overflow-hidden border-2 border-green-600">
-                  {captured.dataUrl.includes("application/pdf") ? (
-                    <div className="h-40 bg-gray-50 flex items-center justify-center">
-                      <div className="text-4xl">{"\u{1F4C4}"}</div>
-                    </div>
-                  ) : (
-                    <img
-                      src={captured.dataUrl}
-                      alt={slot.label}
-                      className="w-full h-40 object-cover"
-                    />
-                  )}
+        {/* Capture gallery */}
+        {captures.length > 0 && (
+          <div className="mb-4">
+            <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
+              New captures ({captures.length})
+            </div>
+            <div className="grid grid-cols-3 gap-2.5">
+              {captures.map((cap, idx) => (
+                <div key={cap.id} className="relative aspect-square">
                   <button
-                    onClick={() => removeCapture(slot.key)}
-                    className="absolute top-2 right-2 w-8 h-8 bg-black/60 text-white rounded-full flex items-center justify-center text-[16px] font-bold"
+                    onClick={() => setPreviewIndex(idx)}
+                    className="w-full h-full rounded-xl overflow-hidden border-2 border-green-600 active:opacity-80"
                   >
-                    X
+                    {cap.isPdf ? (
+                      <div className="w-full h-full bg-gray-50 flex flex-col items-center justify-center">
+                        <div className="text-3xl">{"\u{1F4C4}"}</div>
+                        <span className="text-[10px] text-gray-400 font-semibold mt-1">
+                          PDF
+                        </span>
+                      </div>
+                    ) : (
+                      <img
+                        src={cap.dataUrl}
+                        alt={`Page ${idx + 1}`}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
                   </button>
+                  {/* Page number badge */}
+                  <div className="absolute bottom-1.5 left-1.5 w-5 h-5 rounded-full bg-black/60 text-white text-[10px] font-bold flex items-center justify-center">
+                    {idx + 1}
+                  </div>
+                  {/* Delete button */}
                   <button
-                    onClick={() => handleCapture(slot.key)}
-                    className="absolute bottom-2 right-2 px-3 py-1.5 bg-black/60 text-white rounded-lg text-[12px] font-semibold"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeCapture(cap.id);
+                    }}
+                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center active:bg-red-600"
                   >
-                    Retake
+                    <svg
+                      width="12"
+                      height="12"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                    >
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
                   </button>
                 </div>
-              ) : (
-                <button
-                  onClick={() => handleCapture(slot.key)}
-                  className="w-full h-40 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center gap-2 bg-white active:bg-gray-50"
+              ))}
+
+              {/* Add more button in the grid */}
+              <button
+                onClick={handleCameraCapture}
+                className="aspect-square rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-1 bg-white active:bg-gray-50"
+              >
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-gray-400"
                 >
-                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-[24px]">
-                    {"\u{1F4F7}"}
-                  </div>
-                  <span className="text-[13px] text-gray-500 font-medium">
-                    Tap to capture
-                  </span>
-                </button>
-              )}
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                <span className="text-[10px] text-gray-400 font-semibold">
+                  Add
+                </span>
+              </button>
             </div>
-          );
-        })}
+          </div>
+        )}
+
+        {/* Source buttons */}
+        <div className="flex gap-3 mb-2">
+          <button
+            onClick={handleCameraCapture}
+            className="flex-1 flex items-center justify-center gap-2.5 py-4 bg-white border-[1.5px] border-gray-200 rounded-2xl active:bg-gray-50 active:shadow-lg transition-all"
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="text-green-600"
+            >
+              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+            <span className="text-[14px] font-semibold text-gray-900">
+              Take Photo
+            </span>
+          </button>
+          <button
+            onClick={handleFilePick}
+            className="flex-1 flex items-center justify-center gap-2.5 py-4 bg-white border-[1.5px] border-gray-200 rounded-2xl active:bg-gray-50 active:shadow-lg transition-all"
+          >
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="text-green-600"
+            >
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+            </svg>
+            <span className="text-[14px] font-semibold text-gray-900">
+              Choose Files
+            </span>
+          </button>
+        </div>
+
+        {captures.length === 0 && (
+          <p className="text-[12px] text-gray-400 text-center mt-2">
+            You can add multiple pages or files for this document.
+          </p>
+        )}
+
+        {/* Hidden file inputs */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleCameraFile}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.pdf,application/pdf"
+          multiple
+          className="hidden"
+          onChange={handleDeviceFiles}
+        />
       </div>
 
+      {/* Bottom bar */}
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
         <button
           onClick={onBack}
@@ -313,9 +521,20 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
         <button
           onClick={handleSave}
           disabled={uploading || captures.length === 0}
-          className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40"
+          className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40 flex items-center justify-center gap-2"
         >
-          {uploading ? "Uploading..." : "Save document"}
+          {uploading ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              {uploadProgress
+                ? `Uploading ${uploadProgress.current}/${uploadProgress.total}...`
+                : "Uploading..."}
+            </>
+          ) : captures.length > 0 ? (
+            `Save ${captures.length} ${captures.length === 1 ? "file" : "files"}`
+          ) : (
+            "Save document"
+          )}
         </button>
       </div>
     </div>
@@ -323,31 +542,60 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
 }
 
 /** Fullscreen image overlay with pinch-to-zoom */
-function ImageOverlay({ base64, mimetype, onClose }: { base64: string; mimetype: string; onClose: () => void }) {
+function ImageOverlay({
+  base64,
+  mimetype,
+  onClose,
+}: {
+  base64: string;
+  mimetype: string;
+  onClose: () => void;
+}) {
   const imgSrc = `data:${mimetype};base64,${base64}`;
   const [scale, setScale] = useState(1);
-  const pinchRef = React.useRef({ active: false, initialDist: 0, initialScale: 1 });
-  const containerRef = React.useRef<HTMLDivElement>(null);
+  const pinchRef = useRef({
+    active: false,
+    initialDist: 0,
+    initialScale: 1,
+  });
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, []);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
-    function onGestureStart(e: any) { e.preventDefault(); pinchRef.current = { active: true, initialDist: 0, initialScale: scale }; }
-    function onGestureChange(e: any) { e.preventDefault(); setScale(Math.max(0.5, Math.min(5, pinchRef.current.initialScale * e.scale))); }
-    function onGestureEnd(e: any) { e.preventDefault(); pinchRef.current.active = false; }
+    function onGestureStart(e: any) {
+      e.preventDefault();
+      pinchRef.current = { active: true, initialDist: 0, initialScale: scale };
+    }
+    function onGestureChange(e: any) {
+      e.preventDefault();
+      setScale(
+        Math.max(0.5, Math.min(5, pinchRef.current.initialScale * e.scale))
+      );
+    }
+    function onGestureEnd(e: any) {
+      e.preventDefault();
+      pinchRef.current.active = false;
+    }
 
     function onTouchStart(e: TouchEvent) {
       if (e.touches.length === 2) {
         e.preventDefault();
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
-        pinchRef.current = { active: true, initialDist: Math.hypot(dx, dy), initialScale: scale };
+        pinchRef.current = {
+          active: true,
+          initialDist: Math.hypot(dx, dy),
+          initialScale: scale,
+        };
       }
     }
     function onTouchMove(e: TouchEvent) {
@@ -397,7 +645,15 @@ function ImageOverlay({ base64, mimetype, onClose }: { base64: string; mimetype:
           onClick={onClose}
           className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+          >
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
         </button>

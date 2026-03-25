@@ -35,7 +35,6 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
     loadDocs();
   }, []);
 
-  // Detect if employee already has a photo
   useEffect(() => {
     if (employee && (employee as any).image_1920) {
       setPhotoSaved(true);
@@ -56,8 +55,8 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
     }
   }
 
-  function getDocForType(key: string): UploadedDoc | undefined {
-    return docs.find((d) => d.doc_type_key === key);
+  function getDocsForType(key: string): UploadedDoc[] {
+    return docs.filter((d) => d.doc_type_key === key);
   }
 
   function handleDocSaved() {
@@ -85,7 +84,6 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
       });
     };
     reader.readAsDataURL(file);
-    // Reset input so same file can be re-selected
     e.target.value = "";
   }
 
@@ -99,7 +97,6 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
         canvas.height = size;
         const ctx = canvas.getContext("2d");
         if (!ctx) { reject(new Error("No canvas context")); return; }
-        // Center crop
         const srcSize = Math.min(img.width, img.height);
         const sx = (img.width - srcSize) / 2;
         const sy = (img.height - srcSize) / 2;
@@ -154,8 +151,8 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
     <div className="pb-40">
       <div className="p-5">
         <p className="text-[13px] text-gray-500 mb-4">
-          Tap each card to take a photo or upload a file. Use good lighting and
-          make sure all text is readable.
+          Tap each card to take photos or upload files. You can add multiple
+          pages per document.
         </p>
 
         {/* Profile photo card */}
@@ -227,12 +224,12 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
           Required documents
         </div>
         {required.map((dt) => {
-          const existing = getDocForType(dt.key);
+          const existing = getDocsForType(dt.key);
           return (
             <DocCard
               key={dt.key}
               docType={dt}
-              uploaded={existing}
+              uploadedDocs={existing}
               loading={loading}
               onTap={() => setActiveDocKey(dt.key)}
             />
@@ -243,12 +240,12 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
           Additional documents (if applicable)
         </div>
         {optional.map((dt) => {
-          const existing = getDocForType(dt.key);
+          const existing = getDocsForType(dt.key);
           return (
             <DocCard
               key={dt.key}
               docType={dt}
-              uploaded={existing}
+              uploadedDocs={existing}
               loading={loading}
               onTap={() => setActiveDocKey(dt.key)}
             />
@@ -276,19 +273,22 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
 
 interface DocCardProps {
   docType: (typeof DOCUMENT_TYPES)[number];
-  uploaded?: { id: number; name: string; doc_type_key: string; size_kb?: number; create_date?: string };
+  uploadedDocs: UploadedDoc[];
   loading: boolean;
   onTap: () => void;
 }
 
-function DocCard({ docType, uploaded, loading, onTap }: DocCardProps) {
+function DocCard({ docType, uploadedDocs, loading, onTap }: DocCardProps) {
+  const count = uploadedDocs.length;
+  const hasUploads = count > 0;
+
   return (
     <button
       onClick={onTap}
       disabled={loading}
       className={
         "w-full flex items-center gap-3.5 p-4 rounded-2xl border-[1.5px] text-left mb-3 transition-colors active:shadow-lg disabled:opacity-60 " +
-        (uploaded
+        (hasUploads
           ? "border-green-600 bg-green-50 border-solid"
           : "border-gray-300 bg-white border-dashed")
       }
@@ -296,7 +296,7 @@ function DocCard({ docType, uploaded, loading, onTap }: DocCardProps) {
       <div
         className={
           "w-12 h-12 rounded-xl flex items-center justify-center text-[24px] flex-shrink-0 " +
-          (uploaded ? "bg-green-100" : "bg-gray-100")
+          (hasUploads ? "bg-green-100" : "bg-gray-100")
         }
       >
         {docType.icon}
@@ -308,9 +308,10 @@ function DocCard({ docType, uploaded, loading, onTap }: DocCardProps) {
           </span>
           <span className="text-[12px] text-gray-400">({docType.labelDe})</span>
         </div>
-        {uploaded ? (
+        {hasUploads ? (
           <div className="text-[12px] text-green-600 font-semibold mt-0.5">
-            {uploaded.name} &middot; Tap to view or replace
+            {count} {count === 1 ? "file" : "files"} uploaded &middot; Tap to
+            view or add more
           </div>
         ) : (
           <div className="text-[12px] text-gray-400 mt-0.5">
@@ -318,7 +319,7 @@ function DocCard({ docType, uploaded, loading, onTap }: DocCardProps) {
           </div>
         )}
       </div>
-      {uploaded ? (
+      {hasUploads ? (
         <span className="text-green-600 text-xl flex-shrink-0">{"\u2713"}</span>
       ) : (
         <span className="text-gray-300 text-2xl flex-shrink-0">+</span>
