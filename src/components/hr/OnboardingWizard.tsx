@@ -8,6 +8,7 @@ import StepBank from '@/components/hr/StepBank';
 import StepTax from '@/components/hr/StepTax';
 import StepInsurance from '@/components/hr/StepInsurance';
 import StepDocuments from '@/components/hr/StepDocuments';
+import StepConcurrentEmployment from '@/components/hr/StepConcurrentEmployment';
 import StepConsents from '@/components/hr/StepConsents';
 import StepReview from '@/components/hr/StepReview';
 import type { EmployeeData } from '@/types/hr';
@@ -25,6 +26,7 @@ const STEP_TITLES = [
   'Tax details',
   'Health & social insurance',
   'Upload documents',
+  'Concurrent employment',
   'Review',
   'Acknowledgments & submit',
 ];
@@ -128,8 +130,9 @@ export default function OnboardingWizard({ initialStep, onBack, onDone }: Props)
       {step === 2 && <StepTax employee={employee} onNext={handleNext} onPrev={handlePrev} saving={saving} />}
       {step === 3 && <StepInsurance employee={employee} onNext={handleNext} onPrev={handlePrev} saving={saving} />}
       {step === 4 && <StepDocuments employee={employee} onNext={() => setStep(5)} onPrev={handlePrev} onRefresh={loadEmployee} />}
-      {step === 5 && <StepReview employee={employee} onPrev={handlePrev} onSubmit={() => setStep(6)} saving={saving} onSave={saveFields} />}
-      {step === 6 && <StepConsents onNext={onDone} onPrev={handlePrev} />}
+      {step === 5 && <StepConcurrentEmployment onNext={() => setStep(6)} onPrev={handlePrev} />}
+      {step === 6 && <StepReview employee={employee} onPrev={handlePrev} onSubmit={() => setStep(7)} saving={saving} onSave={saveFields} />}
+      {step === 7 && <StepConsents onNext={onDone} onPrev={handlePrev} />}
     </div>
   );
 }
