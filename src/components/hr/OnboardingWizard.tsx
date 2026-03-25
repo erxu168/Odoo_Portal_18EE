@@ -25,8 +25,8 @@ const STEP_TITLES = [
   'Tax details',
   'Health & social insurance',
   'Upload documents',
-  'Acknowledgments',
-  'Review & submit',
+  'Review',
+  'Acknowledgments & submit',
 ];
 
 const TOTAL_STEPS = STEP_TITLES.length;
@@ -128,8 +128,8 @@ export default function OnboardingWizard({ initialStep, onBack, onDone }: Props)
       {step === 2 && <StepTax employee={employee} onNext={handleNext} onPrev={handlePrev} saving={saving} />}
       {step === 3 && <StepInsurance employee={employee} onNext={handleNext} onPrev={handlePrev} saving={saving} />}
       {step === 4 && <StepDocuments employee={employee} onNext={() => setStep(5)} onPrev={handlePrev} onRefresh={loadEmployee} />}
-      {step === 5 && <StepConsents onNext={() => setStep(6)} onPrev={handlePrev} />}
-      {step === 6 && <StepReview employee={employee} onPrev={handlePrev} onSubmit={onDone} saving={saving} onSave={saveFields} />}
+      {step === 5 && <StepReview employee={employee} onPrev={handlePrev} onSubmit={() => setStep(6)} saving={saving} onSave={saveFields} />}
+      {step === 6 && <StepConsents onNext={onDone} onPrev={handlePrev} />}
     </div>
   );
 }
