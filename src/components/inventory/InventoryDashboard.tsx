@@ -81,7 +81,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
       sublabel: stats.pending > 0 ? `${stats.pending} pending` : 'Assigned counts',
       badge: stats.pending,
       icon: (
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="3" y="3" width="18" height="18" rx="3"/>
           <path d="M7 8h10M7 12h10M7 16h6" strokeLinecap="round"/>
         </svg>
@@ -94,7 +94,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
       sublabel: 'Search + count any item',
       badge: 0,
       icon: (
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="11" cy="11" r="7"/>
           <path d="M16.5 16.5L21 21" strokeLinecap="round"/>
           <path d="M8 11h6M11 8v6" strokeLinecap="round"/>
@@ -108,7 +108,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
       sublabel: stats.templates > 0 ? `${stats.templates} templates` : 'Create templates',
       badge: 0,
       icon: (
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round"/>
           <circle cx="19" cy="18" r="3"/>
         </svg>
@@ -121,7 +121,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
       sublabel: (stats.submitted + stats.quickPending) > 0 ? `${stats.submitted + stats.quickPending} to review` : 'Approve counts',
       badge: stats.submitted + stats.quickPending,
       icon: (
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M4 12l5 5L20 6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/>
         </svg>
       ),
