@@ -114,15 +114,18 @@ export async function POST(req: NextRequest) {
       ['res_id', '=', targetId],
       ['tag_ids', 'in', [docType.tagId]],
       ['type', '=', 'binary'],
-    ], ['id']);
+    ], ['id', 'name']);
 
+    const archivedNames: string[] = [];
     if (existing && existing.length > 0) {
       const oldIds = existing.map((d: Record<string, unknown>) => d.id as number);
+      archivedNames.push(...existing.map((d: Record<string, unknown>) => d.name as string));
       await odoo.write('documents.document', oldIds, { active: false });
     }
 
     // Create all new documents
     const createdIds: number[] = [];
+    const createdNames: string[] = [];
     for (const file of files) {
       const docId = await odoo.create('documents.document', {
         name: file.filename,
@@ -133,6 +136,31 @@ export async function POST(req: NextRequest) {
         res_id: targetId,
       });
       createdIds.push(docId as number);
+      createdNames.push(file.filename);
+    }
+
+    // Log the change in Odoo chatter
+    try {
+      let logBody = '';
+      if (archivedNames.length > 0) {
+        logBody = `<p><strong>Document replaced: ${docType.label} (${docType.labelDe})</strong></p>`
+          + `<p>Archived: ${archivedNames.join(', ')}</p>`
+          + `<p>New upload: ${createdNames.join(', ')} (${files.length} ${files.length === 1 ? 'file' : 'files'})</p>`
+          + `<p><em>Changed via Staff Portal by ${user.name || user.email}</em></p>`;
+      } else {
+        logBody = `<p><strong>Document uploaded: ${docType.label} (${docType.labelDe})</strong></p>`
+          + `<p>Files: ${createdNames.join(', ')} (${files.length} ${files.length === 1 ? 'file' : 'files'})</p>`
+          + `<p><em>Uploaded via Staff Portal by ${user.name || user.email}</em></p>`;
+      }
+
+      await odoo.call('hr.employee', 'message_post', [[targetId]], {
+        body: logBody,
+        message_type: 'comment',
+        subtype_xmlid: 'mail.mt_note',
+      });
+    } catch (logErr) {
+      // Don't fail the upload if logging fails
+      console.error('Failed to log document change:', logErr);
     }
 
     return NextResponse.json({
