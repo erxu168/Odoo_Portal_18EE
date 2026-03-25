@@ -25,7 +25,19 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
   const [docs, setDocs] = useState<UploadedDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeDocKey, setActiveDocKey] = useState<string | null>(null);
-  const [disclaimerChecked, setDisclaimerChecked] = useState(false);
+  const [consents, setConsents] = useState<Record<string, boolean>>({
+    legalDocs: false,
+    dataProtection: false,
+    digitalStorage: false,
+    ifsg: false,
+    photoConsent: false,
+  });
+
+  function toggleConsent(key: string) {
+    setConsents((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  const allConsentsChecked = Object.values(consents).every(Boolean);
 
   // Profile photo state
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -261,38 +273,52 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
           );
         })}
 
-        {/* Legal disclaimer */}
+        {/* Legal consents */}
         <div className="mt-5 mb-2">
-          <button
-            onClick={() => setDisclaimerChecked(!disclaimerChecked)}
-            className="w-full flex items-start gap-3 p-4 rounded-2xl border border-gray-200 bg-white text-left active:bg-gray-50"
-          >
-            <div
-              className={
-                "w-6 h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors " +
-                (disclaimerChecked ? "bg-green-600 border-green-600" : "border-gray-300 bg-white")
-              }
-            >
-              {disclaimerChecked && (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
-                  <path d="M20 6L9 17l-5-5" />
-                </svg>
-              )}
-            </div>
-            <div className="flex-1">
-              <div className="text-[13px] font-semibold text-gray-900 leading-snug">
-                I acknowledge the legal document requirements
-              </div>
-              <p className="text-[12px] text-gray-500 leading-relaxed mt-1.5">
-                I understand that I am required by German law to carry valid
-                identification documents at all times while working. This
-                includes my ID card or passport, work permit (if applicable),
-                and Rote Karte (Gesundheitszeugnis). I understand that failure
-                to present these documents during an inspection may result in
-                fines or other legal consequences for myself and my employer.
-              </p>
-            </div>
-          </button>
+          <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
+            Required acknowledgments
+          </div>
+          <p className="text-[12px] text-gray-500 mb-3">
+            Please read and check each item to continue. All acknowledgments are required.
+          </p>
+
+          <ConsentCheckbox
+            checked={consents.legalDocs}
+            onToggle={() => toggleConsent("legalDocs")}
+            title="Legal document requirements"
+            text="I understand that I am required by German law to carry valid identification documents at all times while working. This includes my ID card or passport, work permit (if applicable), and Rote Karte (Gesundheitszeugnis). Failure to present these documents during an inspection may result in fines for myself and my employer."
+          />
+
+          <ConsentCheckbox
+            checked={consents.dataProtection}
+            onToggle={() => toggleConsent("dataProtection")}
+            title="Data protection notice (DSGVO / GDPR)"
+            text="I acknowledge that my personal data (name, address, date of birth, tax ID, social security number, bank details, and employment-related information) is processed by my employer for the purpose of administering the employment relationship, payroll, and tax/social security compliance. This processing is based on Section 26 BDSG and Art. 6(1)(b)(c) GDPR. I have the right to access, rectify, or request deletion of my data, and to lodge a complaint with the supervisory authority. Data is retained in accordance with statutory retention periods (6-10 years)."
+          />
+
+          <ConsentCheckbox
+            checked={consents.digitalStorage}
+            onToggle={() => toggleConsent("digitalStorage")}
+            title="Consent to digital document storage"
+            text="I consent to the digital storage of copies of my personal documents (ID, tax certificate, social security card, health certificate, and other uploaded documents) in a secure, access-restricted electronic personnel file system. Documents will be deleted after the end of statutory retention periods following termination of employment. I understand this consent is voluntary and I may withdraw it at any time in writing without disadvantage to my employment."
+            legalRef="Art. 6(1)(a) GDPR, Section 20(2) PAuswG"
+          />
+
+          <ConsentCheckbox
+            checked={consents.ifsg}
+            onToggle={() => toggleConsent("ifsg")}
+            title="Infection protection obligations (IfSG §43)"
+            text="I confirm that I hold a valid health certificate (Rote Karte / Gesundheitszeugnis). I understand that I am legally prohibited from working with food if I am suffering from or suspect any condition listed in §42 IfSG (including infectious gastroenteritis, Hepatitis A/E, or infected wounds). I am obligated to immediately inform my employer if any such condition arises. I agree to participate in the required annual follow-up briefing (§43(4) IfSG)."
+            legalRef="§43 Infektionsschutzgesetz (IfSG)"
+          />
+
+          <ConsentCheckbox
+            checked={consents.photoConsent}
+            onToggle={() => toggleConsent("photoConsent")}
+            title="Profile photo consent"
+            text="I voluntarily consent to my employer using my profile photo for internal purposes including my employee profile, scheduling systems, and internal communications. I may withdraw this consent at any time in writing, and my photo will be removed from all systems. Refusal has no negative consequences for my employment."
+            legalRef="Art. 6(1)(a) GDPR, §22 KunstUrhG"
+          />
         </div>
       </div>
 
@@ -300,12 +326,59 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
         <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85">
           Back
         </button>
-        <button onClick={onNext} disabled={!disclaimerChecked}
+        <button onClick={onNext} disabled={!allConsentsChecked}
           className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40">
           Continue
         </button>
       </div>
     </div>
+  );
+}
+
+function ConsentCheckbox({
+  checked,
+  onToggle,
+  title,
+  text,
+  legalRef,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  title: string;
+  text: string;
+  legalRef?: string;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-start gap-3 p-4 rounded-2xl border border-gray-200 bg-white text-left active:bg-gray-50 mb-2.5"
+    >
+      <div
+        className={
+          "w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors " +
+          (checked ? "bg-green-600 border-green-600" : "border-gray-300 bg-white")
+        }
+      >
+        {checked && (
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        )}
+      </div>
+      <div className="flex-1">
+        <div className="text-[13px] font-semibold text-gray-900 leading-snug">
+          {title}
+        </div>
+        <p className="text-[12px] text-gray-500 leading-relaxed mt-1">
+          {text}
+        </p>
+        {legalRef && (
+          <p className="text-[10px] text-gray-400 mt-1 font-mono">
+            {legalRef}
+          </p>
+        )}
+      </div>
+    </button>
   );
 }
 
