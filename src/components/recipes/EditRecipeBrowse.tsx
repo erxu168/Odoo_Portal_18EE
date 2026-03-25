@@ -209,7 +209,7 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
 
         {!loading && !error && filtered.length === 0 && (
           <div className="text-center py-12">
-            <div className="text-4xl mb-3">{'\ud83d\udd0d'}</div>
+            <div className="text-4xl mb-3">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>}</div>
             <p className="text-[14px] text-gray-500 font-medium">No recipes found</p>
             <p className="text-[12px] text-gray-400 mt-1">
               {search ? 'Try a different search term' : 'No recipes in this category'}
@@ -237,7 +237,7 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
                   <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">
                     {recipe.image_128
                       ? <img src={`data:image/png;base64,${recipe.image_128}`} alt="" className="w-full h-full rounded-xl object-cover" />
-                      : '\ud83c\udf73'
+                      : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
                     }
                   </div>
                   <div className="flex-1 min-w-0">
@@ -281,7 +281,7 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
                 className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] active:scale-[0.98] transition-transform"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-14 h-14 rounded-xl bg-purple-50 flex items-center justify-center text-2xl flex-shrink-0">{'\ud83c\udfed'}</div>
+                  <div className="w-14 h-14 rounded-xl bg-purple-50 flex items-center justify-center text-2xl flex-shrink-0">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[15px] font-bold text-gray-900 truncate">{name}</div>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">

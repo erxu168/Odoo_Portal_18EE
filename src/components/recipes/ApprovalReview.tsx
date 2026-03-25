@@ -20,7 +20,7 @@ interface Props {
   approving: boolean;
 }
 
-const TYPE_EMOJI: Record<string, string> = { prep: '\ud83d\udd2a', cook: '\ud83d\udd25', plate: '\ud83c\udf7d\ufe0f' };
+const TYPE_EMOJI: Record<string, React.ReactNode> = { prep: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2l10 10-3 3L3 5z"/><path d="M16 12l6 6-3 3-6-6"/></svg>, cook: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12c2-2.96 0-7-1-8 0 3.038-1.773 4.741-3 6-1.226 1.26-2 3.24-2 5a6 6 0 1012 0c0-1.532-1.056-3.94-2-5-1.786 3-2.791 3-4 2z"/></svg>, plate: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg> };
 
 // FIX S3: Safe text rendering instead of dangerouslySetInnerHTML
 function renderSafeHtml(html: string): React.ReactNode {
@@ -125,7 +125,7 @@ export default function ApprovalReview({ recipeName, productTmplId, bomId, chang
                 <div key={step.id} className="bg-white rounded-xl border border-gray-200 p-3.5">
                   <div className="flex items-start gap-3">
                     <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[14px] flex-shrink-0">
-                      {TYPE_EMOJI[step.step_type] || '\ud83d\udc68\u200d\ud83c\udf73'}
+                      {TYPE_EMOJI[step.step_type] || <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M20 21v-2a4 4 0 00-8 0v2"/></svg>}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -134,7 +134,7 @@ export default function ApprovalReview({ recipeName, productTmplId, bomId, chang
                         {step.timer_seconds > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono">{Math.ceil(step.timer_seconds / 60)}m</span>}
                       </div>
                       <div className="text-[13px] text-gray-800">{renderSafeHtml(step.instruction)}</div>
-                      {step.tip && <div className="text-[11px] text-amber-600 mt-1">{'\ud83d\udca1'} {step.tip}</div>}
+                      {step.tip && <div className="text-[11px] text-amber-600 mt-1">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/></svg>} {step.tip}</div>}
                     </div>
                   </div>
                 </div>

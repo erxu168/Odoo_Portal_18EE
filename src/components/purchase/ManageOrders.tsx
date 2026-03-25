@@ -165,8 +165,8 @@ export default function ManageOrders({
             <div className="flex items-center gap-2 mb-3">
               <div className="flex-1 flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-green-500 transition-colors">
                 <svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0">
-                  <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="2"/>
+                  <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
                 <input
                   type="text"

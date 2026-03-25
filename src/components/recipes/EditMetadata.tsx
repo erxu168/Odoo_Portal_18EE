@@ -21,9 +21,9 @@ interface Props {
 }
 
 const DIFFICULTIES = [
-  { value: 'easy', label: 'Easy', emoji: '\ud83d\ude0a', bg: 'bg-green-100 border-green-300 text-green-800', activeBg: 'bg-green-600 border-green-600 text-white' },
-  { value: 'medium', label: 'Medium', emoji: '\ud83d\udc68\u200d\ud83c\udf73', bg: 'bg-amber-100 border-amber-300 text-amber-800', activeBg: 'bg-amber-600 border-amber-600 text-white' },
-  { value: 'hard', label: 'Hard', emoji: '\ud83d\udd25', bg: 'bg-red-100 border-red-300 text-red-800', activeBg: 'bg-red-600 border-red-600 text-white' },
+  { value: 'easy', label: 'Easy', emoji: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>, bg: 'bg-green-100 border-green-300 text-green-800', activeBg: 'bg-green-600 border-green-600 text-white' },
+  { value: 'medium', label: 'Medium', emoji: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M20 21v-2a4 4 0 00-8 0v2"/></svg>, bg: 'bg-amber-100 border-amber-300 text-amber-800', activeBg: 'bg-amber-600 border-amber-600 text-white' },
+  { value: 'hard', label: 'Hard', emoji: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12c2-2.96 0-7-1-8 0 3.038-1.773 4.741-3 6-1.226 1.26-2 3.24-2 5a6 6 0 1012 0c0-1.532-1.056-3.94-2-5-1.786 3-2.791 3-4 2z"/></svg>, bg: 'bg-red-100 border-red-300 text-red-800', activeBg: 'bg-red-600 border-red-600 text-white' },
 ];
 
 const MODE_STYLES = {

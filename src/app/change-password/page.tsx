@@ -63,7 +63,7 @@ export default function ChangePasswordPage() {
         </div>
         <div className="flex-1 px-6 pt-8 flex flex-col items-center">
           <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mb-4">
-            <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
           </div>
           <div className="text-[18px] font-bold text-gray-900 mb-2">All set!</div>
           <div className="text-[14px] text-gray-500 text-center mb-6">Your password has been updated.</div>

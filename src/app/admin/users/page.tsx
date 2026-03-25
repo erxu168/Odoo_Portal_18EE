@@ -307,7 +307,7 @@ export default function AdminUsersPage() {
               pendingUsers.length === 0 ? (
                 <div className="text-center py-16">
                   <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mx-auto mb-3">
-                    <svg width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                    <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                   </div>
                   <div className="text-[15px] font-semibold text-gray-900 mb-1">No pending registrations</div>
                   <div className="text-[13px] text-gray-500">All caught up!</div>

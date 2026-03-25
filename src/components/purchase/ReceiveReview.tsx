@@ -241,7 +241,7 @@ export default function ReceiveReview({
         ) : (
           <label className="block cursor-pointer">
             <div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-5 text-center active:bg-gray-50">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" className="mx-auto mb-1.5">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" className="mx-auto mb-1.5">
                 <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
                 <circle cx="12" cy="13" r="4" />
               </svg>

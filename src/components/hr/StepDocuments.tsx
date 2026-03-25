@@ -178,7 +178,7 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
               ) : photoSaved ? (
                 <img src="/api/hr/employee/photo" alt="Profile" className="w-full h-full object-cover" />
               ) : (
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-gray-400">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
                   <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
                   <circle cx="12" cy="7" r="4" />
                 </svg>

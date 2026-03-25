@@ -94,8 +94,8 @@ export default function NumpadModal({
               }`}>
               {key === 'del' ? (
                 <svg width="20" height="20" viewBox="0 0 22 22" fill="none">
-                  <path d="M8 5L3 11L8 17H19V5H8Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M12 9L16 13M16 9L12 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <path d="M8 5L3 11L8 17H19V5H8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M12 9L16 13M16 9L12 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
               ) : key}
             </button>

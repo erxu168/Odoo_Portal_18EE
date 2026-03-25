@@ -304,7 +304,7 @@ export default function DebugOverlay() {
               <div className="text-center py-4">
                 <div className="text-[12px] text-white/25 mb-2">{inspectMode ? 'Tap any element, then use \u25b2\u25bc to walk the tree' : 'Enable inspector to start'}</div>
                 {!inspectMode && (
-                  <button onClick={() => setInspectMode(true)} className="px-4 py-2 rounded-lg text-[11px] font-bold text-pink-400 bg-pink-400/10 active:bg-pink-400/20">{'\ud83d\udd0d'} Start Inspecting</button>
+                  <button onClick={() => setInspectMode(true)} className="px-4 py-2 rounded-lg text-[11px] font-bold text-pink-400 bg-pink-400/10 active:bg-pink-400/20">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>} Start Inspecting</button>
                 )}
               </div>
             )}

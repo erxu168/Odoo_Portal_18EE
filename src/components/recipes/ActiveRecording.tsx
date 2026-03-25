@@ -4,6 +4,15 @@ import React, { useState, useRef, useCallback } from 'react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Toast from '@/components/ui/Toast';
 
+export interface RecordedIngredient {
+  id: string;            // local ID for UI tracking
+  productId: number;     // Odoo product.product ID
+  name: string;          // product name
+  qty: number;           // quantity
+  uomId: number | null;  // Odoo uom.uom ID
+  uomName: string;       // UoM display name
+}
+
 export interface RecordedStep {
   id: string;
   step_type: 'prep' | 'cook' | 'plate';
@@ -11,6 +20,7 @@ export interface RecordedStep {
   timer_seconds: number;
   tip: string;
   photos: string[];
+  ingredientIds: string[];  // references RecordedIngredient.id
 }
 
 const LS_KEY = 'kw_recording_steps';
@@ -41,12 +51,14 @@ interface Props {
   recipeName: string;
   mode: 'cooking' | 'production';
   initialSteps?: RecordedStep[];
+  ingredients: RecordedIngredient[];
+  onIngredientsChange: (ingredients: RecordedIngredient[]) => void;
   onFinish: (steps: RecordedStep[]) => void;
   onBack: () => void;
   onHome: () => void;
 }
 
-export default function ActiveRecording({ recipeName, mode, initialSteps, onFinish, onBack, onHome }: Props) {
+export default function ActiveRecording({ recipeName, mode, initialSteps, ingredients, onIngredientsChange, onFinish, onBack, onHome }: Props) {
   const [steps, setSteps] = useState<RecordedStep[]>(() => {
     if (initialSteps && initialSteps.length > 0) return initialSteps;
     return loadSavedSteps(recipeName);
@@ -56,6 +68,16 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, onFini
   const [timerSec, setTimerSec] = useState(0);
   const [tip, setTip] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
+  const [selectedIngIds, setSelectedIngIds] = useState<string[]>([]);
+  const [showIngredientManager, setShowIngredientManager] = useState(false);
+  const [productQuery, setProductQuery] = useState('');
+  const [productResults, setProductResults] = useState<{ id: number; name: string; uom_id: number | null; uom_name: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [newIngQty, setNewIngQty] = useState('');
+  const [uoms, setUoms] = useState<{ id: number; name: string; category: string }[]>([]);
+  const [selectedUomId, setSelectedUomId] = useState<number | null>(null);
+  const [showUomPicker, setShowUomPicker] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [recording, setRecording] = useState(true);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -115,6 +137,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, onFini
       id: `step_${Date.now()}`, step_type: stepType,
       instruction: instruction.trim(), timer_seconds: timerSec,
       tip: tip.trim(), photos: [...photos],
+      ingredientIds: [...selectedIngIds],
     };
   }
 
@@ -123,7 +146,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, onFini
     if (!newStep) return;
     const newSteps = [...stepsRef.current, newStep];
     updateSteps(newSteps);
-    setInstruction(''); setTimerSec(0); setTip(''); setPhotos([]);
+    setInstruction(''); setTimerSec(0); setTip(''); setPhotos([]); setSelectedIngIds([]);
     setToast({ msg: `Step ${newSteps.length} saved`, type: 'success' });
   }
 
@@ -158,6 +181,61 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, onFini
     setTimerSec(prev => Math.max(0, prev + sec));
   }
 
+  function searchProducts(q: string) {
+    setProductQuery(q);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (q.trim().length < 1) { setProductResults([]); return; }
+    searchTimerRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/products/search?q=${encodeURIComponent(q.trim())}&limit=10`);
+        if (res.ok) {
+          const data = await res.json();
+          setProductResults(data.products || []);
+        }
+      } catch (_e) { /* */ }
+      setSearching(false);
+    }, 300);
+  }
+
+  function addIngredientFromProduct(product: { id: number; name: string; uom_id: number | null; uom_name: string }) {
+    // Don't add duplicates
+    if (ingredients.some(i => i.productId === product.id)) {
+      setToast({ msg: `${product.name} already added`, type: 'info' });
+      return;
+    }
+    const ing: RecordedIngredient = {
+      id: `ing_${Date.now()}`,
+      productId: product.id,
+      name: product.name,
+      qty: parseFloat(newIngQty) || 0,
+      uomId: selectedUomId || product.uom_id,
+      uomName: selectedUomId ? (uoms.find(u => u.id === selectedUomId)?.name || product.uom_name) : product.uom_name,
+    };
+    onIngredientsChange([...ingredients, ing]);
+    setProductQuery(''); setProductResults([]); setNewIngQty(''); setSelectedUomId(null);
+  }
+
+  function removeIngredient(id: string) {
+    onIngredientsChange(ingredients.filter(i => i.id !== id));
+    setSelectedIngIds(prev => prev.filter(sid => sid !== id));
+  }
+
+  function toggleIngForStep(id: string) {
+    setSelectedIngIds(prev => prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]);
+  }
+
+  async function loadUoms() {
+    if (uoms.length > 0) return;
+    try {
+      const res = await fetch('/api/uom');
+      if (res.ok) {
+        const data = await res.json();
+        setUoms(data.uoms || []);
+      }
+    } catch (_e) { /* */ }
+  }
+
   const hasContent = instruction.trim().length > 0;
 
   return (
@@ -176,6 +254,119 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, onFini
           onConfirm={confirmExit}
           onCancel={() => setShowExitConfirm(false)}
         />
+      )}
+
+      {/* Ingredient Manager Overlay */}
+      {showIngredientManager && (
+        <div className="fixed inset-0 z-[50] bg-[#111] flex flex-col">
+          <div className="px-5 pt-14 pb-3 flex items-center gap-3">
+            <button onClick={() => setShowIngredientManager(false)} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+            <div className="flex-1">
+              <div className="text-[18px] font-bold text-white">Ingredients</div>
+              <div className="text-[11px] text-white/40">{recipeName}</div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-5 py-3">
+            {/* Search for Odoo products */}
+            <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
+              <div className="text-[12px] text-white/50 font-semibold mb-2">Search ingredient</div>
+              <input type="text" value={productQuery} onChange={(e) => searchProducts(e.target.value)}
+                placeholder="Type to search products..." maxLength={100}
+                className="w-full px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-[14px] text-white placeholder-white/30 mb-2" />
+
+              {/* Qty + UoM row */}
+              <div className="flex gap-2 mb-2">
+                <input type="text" value={newIngQty} onChange={(e) => setNewIngQty(e.target.value)}
+                  placeholder="Qty" maxLength={10} inputMode="decimal"
+                  className="w-20 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-[14px] text-white placeholder-white/30" />
+                <button onClick={() => { loadUoms(); setShowUomPicker(!showUomPicker); }}
+                  className="flex-1 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-[14px] text-left text-white/60 active:bg-white/10">
+                  {selectedUomId ? uoms.find(u => u.id === selectedUomId)?.name || 'Unit' : 'Select unit...'}
+                </button>
+              </div>
+
+              {/* UoM picker */}
+              {showUomPicker && uoms.length > 0 && (
+                <div className="mb-2 max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-[#1a1a1a]">
+                  {uoms.map(u => (
+                    <button key={u.id} onClick={() => { setSelectedUomId(u.id); setShowUomPicker(false); }}
+                      className={`w-full text-left px-3 py-2 text-[13px] border-b border-white/5 active:bg-white/10 ${
+                        selectedUomId === u.id ? 'text-green-400 bg-green-500/10' : 'text-white/70'
+                      }`}>
+                      {u.name} <span className="text-white/30 text-[11px]">{u.category}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Search results */}
+              {searching && <div className="text-[12px] text-white/30 py-2">Searching...</div>}
+              {productResults.length > 0 && (
+                <div className="space-y-1">
+                  {productResults.map(p => {
+                    const alreadyAdded = ingredients.some(i => i.productId === p.id);
+                    return (
+                      <button key={p.id} onClick={() => !alreadyAdded && addIngredientFromProduct(p)}
+                        disabled={alreadyAdded}
+                        className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                          alreadyAdded ? 'bg-white/[0.02] opacity-40' : 'bg-white/[0.04] active:bg-white/10'
+                        }`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[13px] font-semibold text-white truncate">{p.name}</div>
+                          <div className="text-[11px] text-white/30">{p.uom_name}{alreadyAdded ? ' \u00b7 already added' : ''}</div>
+                        </div>
+                        {!alreadyAdded && (
+                          <div className="w-7 h-7 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {productQuery.length > 0 && !searching && productResults.length === 0 && (
+                <div className="text-[12px] text-white/30 py-2">No products found for &ldquo;{productQuery}&rdquo;</div>
+              )}
+            </div>
+
+            {/* Current ingredients list */}
+            {ingredients.length === 0 ? (
+              <div className="text-center py-10">
+                <div className="text-4xl mb-3">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M7 21h10M12 21V11"/><circle cx="12" cy="7" r="4"/><circle cx="7" cy="9" r="3"/><circle cx="17" cy="9" r="3"/></svg>}</div>
+                <div className="text-[14px] text-white/40">No ingredients yet</div>
+                <div className="text-[12px] text-white/25 mt-1">Search and add ingredients above</div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {ingredients.map((ing) => (
+                  <div key={ing.id} className="flex items-center gap-3 px-3 py-3 rounded-xl bg-white/[0.03] border border-white/10">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] font-semibold text-white truncate">{ing.name}</div>
+                      <div className="text-[12px] text-white/40 font-mono">
+                        {ing.qty > 0 ? ing.qty : ''}{ing.uomName ? ` ${ing.uomName}` : ''}
+                      </div>
+                    </div>
+                    <button onClick={() => removeIngredient(ing.id)}
+                      className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center active:bg-red-500/20">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="px-5 py-4">
+            <button onClick={() => { setShowIngredientManager(false); setProductQuery(''); setProductResults([]); setShowUomPicker(false); }}
+              className="w-full py-3.5 rounded-2xl text-[15px] font-bold text-white bg-green-600 active:bg-green-700">
+              Done ({ingredients.length} ingredient{ingredients.length !== 1 ? 's' : ''})
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="px-5 pt-14 pb-3 flex items-center gap-3">
@@ -198,7 +389,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, onFini
       <div className="px-5 mb-3">
         <button onClick={() => fileRef.current?.click()}
           className="w-full h-32 rounded-2xl bg-white/5 border border-white/10 border-dashed flex flex-col items-center justify-center active:bg-white/10">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
             <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/>
           </svg>
           <span className="text-[12px] text-white/40 mt-2">Tap to take photo</span>
@@ -253,6 +444,38 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, onFini
         <input type="text" value={tip} onChange={(e) => setTip(e.target.value)}
           placeholder="Chef tip (optional)" maxLength={500}
           className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-[13px] text-white placeholder-white/30 mb-3" />
+
+        {/* Ingredients for this step */}
+        <div className="mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[12px] text-white/40 font-semibold">Ingredients</span>
+            <button onClick={() => setShowIngredientManager(true)}
+              className="px-2.5 py-1 rounded-lg bg-white/10 text-[11px] text-white/60 font-semibold active:bg-white/20">
+              {ingredients.length > 0 ? `Manage (${ingredients.length})` : '+ Add ingredients'}
+            </button>
+          </div>
+          {ingredients.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {ingredients.map(ing => {
+                const isSelected = selectedIngIds.includes(ing.id);
+                return (
+                  <button key={ing.id} onClick={() => toggleIngForStep(ing.id)}
+                    className={`px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors ${
+                      isSelected
+                        ? 'border-green-500 bg-green-500/15 text-green-400'
+                        : 'border-white/10 bg-white/5 text-white/50'
+                    }`}>
+                    {ing.qty > 0 && <span className="font-mono mr-1">{ing.qty}{ing.uomName ? ` ${ing.uomName}` : ''}</span>}
+                    {ing.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {ingredients.length > 0 && selectedIngIds.length === 0 && (
+            <p className="text-[11px] text-white/30 mt-1.5">Tap ingredients used in this step</p>
+          )}
+        </div>
       </div>
       <div className="px-5 py-4 flex gap-3">
         <button onClick={saveStep} disabled={!hasContent}

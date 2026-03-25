@@ -54,7 +54,7 @@ export default function RecipeDetail({
   const accent = mode === 'cooking' ? 'green' : 'purple';
   const accentBg = mode === 'cooking' ? 'bg-green-600' : 'bg-purple-600';
   const accentActive = mode === 'cooking' ? 'active:bg-green-700' : 'active:bg-purple-700';
-  const emoji = mode === 'cooking' ? '\ud83c\udf73' : '\ud83c\udfed';
+  const emoji = mode === 'cooking' ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>;
 
   useEffect(() => {
     async function fetchSteps() {

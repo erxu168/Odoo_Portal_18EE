@@ -58,7 +58,7 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
       <div className="flex-1 px-3 pt-3 pb-6 overflow-y-auto">
         {active.length === 0 && (
           <div className="text-center py-20">
-            <div className="text-5xl mb-4">{'\ud83c\udf73'}</div>
+            <div className="text-5xl mb-4">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>}</div>
             <div className="text-[16px] font-bold text-white/80 mb-2">Kitchen is quiet</div>
             <div className="text-[13px] text-white/40 mb-6">Start cooking to see dishes here</div>
             <button onClick={onNewDish} className="px-6 py-3 rounded-2xl bg-green-600 text-white font-bold text-[15px] active:bg-green-700">{'\u002b'} Start cooking</button>
@@ -115,10 +115,10 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
                   <div className={`text-[24px] font-bold font-mono leading-none ${isUrgent ? 'text-amber-400' : 'text-green-400'}`}>{formatTimer(timer.left)}</div>
                 )}
                 {timer.active && !timer.running && !isOverdue && (
-                  <div className="text-[18px] text-white/30 font-mono leading-none">{'\u23f8'} {formatTimer(timer.left)}</div>
+                  <div className="text-[18px] text-white/30 font-mono leading-none">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>} {formatTimer(timer.left)}</div>
                 )}
                 {!timer.active && step && step.timer_seconds > 0 && (
-                  <div className="text-[14px] text-white/20 font-mono">{'\u23f1'} {formatTimer(step.timer_seconds)}</div>
+                  <div className="text-[14px] text-white/20 font-mono">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M10 2h4M21 7l-2-2"/></svg>} {formatTimer(step.timer_seconds)}</div>
                 )}
                 {!timer.active && (!step || step.timer_seconds === 0) && (
                   <div className="text-[13px] text-white/20">Ready</div>

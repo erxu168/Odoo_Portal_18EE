@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import type { RecordedStep } from './ActiveRecording';
+import type { RecordedStep, RecordedIngredient } from './ActiveRecording';
 import Toast from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
@@ -26,6 +26,7 @@ interface Props {
   recipeId: number;
   mode: 'cooking' | 'production';
   steps: RecordedStep[];
+  ingredients?: RecordedIngredient[];
   userRole: string;
   onEditStep: (index: number) => void;
   onDeleteStep: (index: number) => void;
@@ -40,11 +41,11 @@ interface Props {
   onDismissToast?: () => void;
 }
 
-const TYPE_EMOJI: Record<string, string> = { prep: '\ud83d\udd2a', cook: '\ud83d\udd25', plate: '\ud83c\udf7d\ufe0f' };
+const TYPE_EMOJI: Record<string, React.ReactNode> = { prep: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2l10 10-3 3L3 5z"/><path d="M16 12l6 6-3 3-6-6"/></svg>, cook: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12c2-2.96 0-7-1-8 0 3.038-1.773 4.741-3 6-1.226 1.26-2 3.24-2 5a6 6 0 1012 0c0-1.532-1.056-3.94-2-5-1.786 3-2.791 3-4 2z"/></svg>, plate: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg> };
 
 // ===== Sortable Step Card =====
-function SortableStepCard({ step, index, onEdit, onDelete }: {
-  step: RecordedStep; index: number;
+function SortableStepCard({ step, index, ingredients, onEdit, onDelete }: {
+  step: RecordedStep; index: number; ingredients: RecordedIngredient[];
   onEdit: () => void; onDelete: () => void;
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -84,7 +85,7 @@ function SortableStepCard({ step, index, onEdit, onDelete }: {
         <div className="flex-1 p-3.5">
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-[14px] flex-shrink-0">
-              {TYPE_EMOJI[step.step_type] || '\ud83d\udc68\u200d\ud83c\udf73'}
+              {TYPE_EMOJI[step.step_type] || <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M20 21v-2a4 4 0 00-8 0v2"/></svg>}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
@@ -94,7 +95,21 @@ function SortableStepCard({ step, index, onEdit, onDelete }: {
                 {step.photos.length > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600">{step.photos.length} photo{step.photos.length > 1 ? 's' : ''}</span>}
               </div>
               <div className="text-[13px] text-gray-800 line-clamp-2">{step.instruction}</div>
-              {step.tip && <div className="text-[11px] text-amber-600 mt-1">{'\ud83d\udca1'} {step.tip}</div>}
+              {step.tip && <div className="text-[11px] text-amber-600 mt-1">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/></svg>} {step.tip}</div>}
+              {step.ingredientIds && step.ingredientIds.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {step.ingredientIds.map(iid => {
+                    const ing = ingredients.find(i => i.id === iid);
+                    if (!ing) return null;
+                    return (
+                      <span key={iid} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100">
+                        {ing.qty > 0 && <span className="font-mono mr-0.5">{ing.qty}{ing.uomName ? ` ${ing.uomName}` : ''}</span>}
+                        {ing.name}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex gap-2 mt-2.5 pt-2.5 border-t border-gray-100">
@@ -121,7 +136,7 @@ function SortableStepCard({ step, index, onEdit, onDelete }: {
 
 // ===== Main Component =====
 export default function RecordingSummary({
-  recipeName, steps, userRole,
+  recipeName, steps, ingredients = [], userRole,
   onEditStep, onDeleteStep, onAddStep, onReorder, onSubmit,
   onBack, onHome, submitting,
   toastMessage, toastType, onDismissToast,
@@ -182,6 +197,11 @@ export default function RecordingSummary({
           </div>
           <div className="w-px h-8 bg-gray-100" />
           <div className="text-center flex-1">
+            <div className="text-[18px] font-bold text-gray-900 font-mono">{ingredients.length}</div>
+            <div className="text-[10px] text-gray-400 font-semibold uppercase">Ingred.</div>
+          </div>
+          <div className="w-px h-8 bg-gray-100" />
+          <div className="text-center flex-1">
             <div className="text-[18px] font-bold text-gray-900 font-mono">{steps.filter(s => s.photos.length > 0).length}</div>
             <div className="text-[10px] text-gray-400 font-semibold uppercase">Photos</div>
           </div>
@@ -208,6 +228,7 @@ export default function RecordingSummary({
                   key={step.id}
                   step={step}
                   index={i}
+                  ingredients={ingredients}
                   onEdit={() => onEditStep(i)}
                   onDelete={() => onDeleteStep(i)}
                 />

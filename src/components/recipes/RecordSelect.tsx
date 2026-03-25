@@ -123,7 +123,7 @@ export default function RecordSelect({ onSelectRecipe, onCreateNew, onBack, onHo
               <button key={recipe.id} onClick={() => onSelectRecipe(recipe, mode)}
                 className="w-full flex items-center gap-3 px-4 py-3.5 bg-white border border-gray-200 rounded-xl text-left active:scale-[0.98] transition-transform">
                 <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${mode === 'cooking' ? 'bg-orange-50' : 'bg-purple-50'}`}>
-                  {mode === 'cooking' ? '\ud83c\udf73' : '\ud83c\udfed'}
+                  {mode === 'cooking' ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[14px] font-semibold text-gray-800 truncate">{recipe.name}</div>
@@ -136,7 +136,7 @@ export default function RecordSelect({ onSelectRecipe, onCreateNew, onBack, onHo
                   </div>
                 </div>
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${hasSteps ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-500'}`}>
-                  {hasSteps ? '\u270f\ufe0f' : '\u23fa'}
+                  {hasSteps ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>}
                 </div>
               </button>
             );

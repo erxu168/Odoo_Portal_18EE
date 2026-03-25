@@ -20,6 +20,7 @@ interface RecordedStep {
   timer_seconds: number;
   tip: string;
   photos: string[];
+  ingredientIds: string[];
 }
 
 interface Props {
@@ -45,7 +46,7 @@ const DIFF: Record<string, { bg: string; text: string; label: string }> = {
   hard: { bg: 'bg-red-100', text: 'text-red-800', label: 'Hard' },
 };
 
-const TYPE_EMOJI: Record<string, string> = { prep: '\ud83d\udd2a', cook: '\ud83d\udd25', plate: '\ud83c\udf7d\ufe0f' };
+const TYPE_EMOJI: Record<string, React.ReactNode> = { prep: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2l10 10-3 3L3 5z"/><path d="M16 12l6 6-3 3-6-6"/></svg>, cook: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12c2-2.96 0-7-1-8 0 3.038-1.773 4.741-3 6-1.226 1.26-2 3.24-2 5a6 6 0 1012 0c0-1.532-1.056-3.94-2-5-1.786 3-2.791 3-4 2z"/></svg>, plate: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg> };
 
 function firstSentence(html: string): string {
   const plain = html.replace(/<[^>]*>/g, '').trim();
@@ -115,6 +116,7 @@ export default function EditRecipeOverview({
             timer_seconds: step.timer_seconds,
             tip: step.tip || '',
             photos,
+            ingredientIds: [],
           };
         })
       );
@@ -130,7 +132,7 @@ export default function EditRecipeOverview({
 
   const totalTime = steps.reduce((s, st) => s + (st.timer_seconds || 0), 0);
   const diff = difficulty ? DIFF[difficulty] : null;
-  const emoji = mode === 'cooking' ? '\ud83c\udf73' : '\ud83c\udfed';
+  const emoji = mode === 'cooking' ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>;
   const modeLabel = mode === 'cooking' ? 'COOKING GUIDE' : 'PRODUCTION GUIDE';
   const modeBg = mode === 'cooking' ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800';
   const accentBg = mode === 'cooking' ? 'bg-green-600 active:bg-green-700' : 'bg-purple-600 active:bg-purple-700';
@@ -146,7 +148,7 @@ export default function EditRecipeOverview({
         <div className="fixed inset-0 z-[80] bg-black/50 flex items-end justify-center" onClick={() => setConfirmAction(null)}>
           <div className="w-full max-w-lg bg-white rounded-t-3xl px-5 pt-6 pb-8 animate-[slideUp_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
             <div className="text-center mb-6">
-              <div className="text-4xl mb-3">{confirmAction === 'delete' ? '\u26a0\ufe0f' : '\ud83d\udcf0'}</div>
+              <div className="text-4xl mb-3">{confirmAction === 'delete' ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 22h16a2 2 0 002-2V4a2 2 0 00-2-2H8a2 2 0 00-2 2v16a2 2 0 01-2 2zm0 0a2 2 0 01-2-2v-9c0-1.1.9-2 2-2h2"/></svg>}</div>
               <h3 className="text-[18px] font-bold text-gray-900 mb-2">
                 {confirmAction === 'delete' ? 'Delete this recipe?' : confirmAction === 'unpublish' ? 'Unpublish this recipe?' : 'Publish this recipe?'}
               </h3>
@@ -300,7 +302,7 @@ export default function EditRecipeOverview({
             <div className="text-[13px] font-bold text-gray-900 mb-3">Steps overview</div>
             <div className="flex flex-col gap-2">
               {steps.map((step, i) => {
-                const stepEmoji = TYPE_EMOJI[step.step_type] || '\ud83d\udc68\u200d\ud83c\udf73';
+                const stepEmoji = TYPE_EMOJI[step.step_type] || <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M20 21v-2a4 4 0 00-8 0v2"/></svg>;
                 const summary = step.instruction ? firstSentence(step.instruction) : `Step ${i + 1}`;
                 return (
                   <div key={step.id} className="flex items-start gap-3 py-3 px-3.5 bg-white rounded-xl border border-gray-100">
@@ -327,7 +329,7 @@ export default function EditRecipeOverview({
 
         {!loading && steps.length === 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-center mt-5">
-            <div className="text-3xl mb-2">{'\ud83d\udcdd'}</div>
+            <div className="text-3xl mb-2">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>}</div>
             <p className="text-[14px] font-semibold text-amber-900">No steps recorded yet</p>
             <p className="text-[12px] text-amber-700 mt-1">Tap &quot;Edit Steps&quot; to add steps to this recipe.</p>
           </div>

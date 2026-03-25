@@ -445,7 +445,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         {loading ? <Spinner /> : (<>
           {tab === 'sessions' && (
             sessions.length === 0 ? (
-              <EmptyState icon={'\u2705'} title={`No ${filter} sessions`} />
+              <EmptyState icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>} title={`No ${filter} sessions`} />
             ) : (
               <div className="flex flex-col gap-3">
                 {sessions.map((sess: any) => (
@@ -476,7 +476,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
 
           {tab === 'quick' && (
             quickCounts.length === 0 ? (
-              <EmptyState icon={'\uD83D\uDD0D'} title={`No ${filter} quick counts`} />
+              <EmptyState icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>} title={`No ${filter} quick counts`} />
             ) : (
               <div className="flex flex-col gap-3">
                 {quickCounts.map((qc: any) => (

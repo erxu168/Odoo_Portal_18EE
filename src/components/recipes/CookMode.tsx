@@ -189,7 +189,7 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
         </div>
         <div className="flex-1 flex items-center justify-center px-8">
           <div className="text-center">
-            <div className="text-7xl mb-6">{'\ud83c\udf7d\ufe0f'}</div>
+            <div className="text-7xl mb-6">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>}</div>
             <div className="text-[22px] font-bold text-white mb-4">{session.recipeName}</div>
             <p className="text-[15px] text-white/60 leading-relaxed">
               {session.mode === 'cooking' ? 'Plate the dish according to SSAM standards.' : 'Portion into containers. Label with date, batch #, and use-by.'}
@@ -236,7 +236,7 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
           <div className="flex items-center gap-2">
             <span className="text-[15px] font-bold text-white">Step {session.currentStep + 1}<span className="text-white/30 font-normal">/{session.steps.length}</span></span>
             <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${typeBadge}`}>{typeLabel}</span>
-            {hasTimer && !timer.active && <span className="text-[11px] text-white/30 font-mono">{'\u23f1'} {formatTimer(step.timer_seconds)}</span>}
+            {hasTimer && !timer.active && <span className="text-[11px] text-white/30 font-mono">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2"/><path d="M10 2h4M21 7l-2-2"/></svg>} {formatTimer(step.timer_seconds)}</span>}
           </div>
           <div className="text-[11px] text-white/30 truncate">{session.recipeName}</div>
         </div>
@@ -262,9 +262,15 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
       <div className="flex-1 overflow-y-auto pb-4">
         <PhotoCarousel images={stepImages} />
         {step.ingredients && step.ingredients.length > 0 && (
-          <div className="px-4 mb-3"><div className="flex flex-wrap gap-1.5">{step.ingredients.map(ing => (
-            <div key={ing.id} className="px-2.5 py-1 rounded-lg bg-white/8 border border-white/10 text-[13px] text-white/80">{ing.uom && <span className="font-mono text-white/40 mr-1">{ing.uom}</span>}{ing.name}</div>
-          ))}</div></div>
+          <div className="px-4 mb-3"><div className="flex flex-wrap gap-1.5">{step.ingredients.map(ing => {
+            const scaledQty = ing.qty > 0 ? Math.round(ing.qty * session.multiplier * 100) / 100 : 0;
+            return (
+              <div key={ing.id} className="px-2.5 py-1 rounded-lg bg-white/8 border border-white/10 text-[13px] text-white/80">
+                {scaledQty > 0 && <span className="font-mono text-green-400/80 mr-1">{scaledQty}{ing.uom ? ` ${ing.uom}` : ''}</span>}
+                {ing.name}
+              </div>
+            );
+          })}</div></div>
         )}
         <div className="px-4" data-dbg="instruction-box">
           {bullets.length > 0 ? (
@@ -278,7 +284,7 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
             <div className="text-[20px] text-white/90 leading-[1.45]">{step.instruction?.replace(/<[^>]*>/g, '') || `Step ${session.currentStep + 1}`}</div>
           )}
         </div>
-        {step.tip && <div className="mx-4 mt-3 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/15"><div className="text-[14px] text-amber-300/90 leading-snug">{'\ud83d\udca1'} {step.tip}</div></div>}
+        {step.tip && <div className="mx-4 mt-3 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/15"><div className="text-[14px] text-amber-300/90 leading-snug">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/></svg>} {step.tip}</div></div>}
       </div>
 
       {/* FIXED BOTTOM: Timer + Actions — always visible */}
@@ -303,7 +309,7 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
         )}
         <div className="space-y-1.5">
           {hasTimer && !timer.active && (<><button onClick={startTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Start timer ({formatTimer(step.timer_seconds)})</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
-          {hasTimer && timer.running && (<><button onClick={pauseTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-amber-600 active:bg-amber-700">{'\u23f8'}  Pause</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
+          {hasTimer && timer.running && (<><button onClick={pauseTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-amber-600 active:bg-amber-700">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>}  Pause</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
           {hasTimer && !timer.running && timer.active && !timer.done && (<><button onClick={resumeTimer} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700">{'\u25b6'}  Resume</button><button onClick={skipTimer} className="w-full py-1.5 text-[12px] text-white/40 font-medium active:text-white/60">Skip timer {'\u2192'} next step</button></>)}
           {hasTimer && timer.done && <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}</button>}
           {!hasTimer && <button onClick={nextStep} className="w-full py-3.5 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">{isLastStep ? 'Done \u2192 Plating' : 'Done \u2192 Next step'}</button>}

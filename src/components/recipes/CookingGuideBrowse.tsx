@@ -178,7 +178,7 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack, onHome }: P
                   <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">
                     {recipe.image_128
                       ? <img src={`data:image/png;base64,${recipe.image_128}`} alt="" className="w-full h-full rounded-xl object-cover" />
-                      : '\ud83c\udf73'
+                      : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
                     }
                   </div>
                   <div className="flex-1 min-w-0">

@@ -103,8 +103,8 @@ export function SearchBar({ value, onChange, placeholder }: { value: string; onC
     <div className="px-4 pb-3">
       <div className="flex items-center gap-2.5 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-green-500 transition-colors">
         <svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0">
-          <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
-          <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="2"/>
+          <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
         </svg>
         <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || 'Search...'}
@@ -148,7 +148,7 @@ export function Spinner() {
 }
 
 // --- Empty State ---
-export function EmptyState({ icon, title, body }: { icon?: string; title: string; body?: string }) {
+export function EmptyState({ icon, title, body }: { icon?: React.ReactNode; title: string; body?: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center px-6">
       {icon && <div className="text-4xl mb-3">{icon}</div>}

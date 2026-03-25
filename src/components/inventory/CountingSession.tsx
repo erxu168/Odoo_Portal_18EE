@@ -228,7 +228,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           {uncountedProducts.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-3">
               <div className="flex items-start gap-2.5">
-                <span className="text-amber-600 text-[16px] mt-0.5">{'\u26A0'}</span>
+                <span className="text-amber-600 text-[16px] mt-0.5">{<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>}</span>
                 <div>
                   <p className="text-[13px] font-semibold text-amber-800">
                     {uncountedProducts.length} item{uncountedProducts.length > 1 ? 's' : ''} not counted
