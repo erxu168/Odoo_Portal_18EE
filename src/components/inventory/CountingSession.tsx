@@ -199,14 +199,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               Edit counts
             </button>
           </div>
-          <h1 className="text-[18px] font-bold text-[#1F2933]">Review count</h1>
+          <h1 className="text-[18px] font-bold text-gray-900">Review count</h1>
           <p className="text-[12px] text-gray-500 mt-0.5">{session?.template_name} {'\u00B7'} {session?.scheduled_date}</p>
         </div>
 
         <div className="px-4 pt-4">
           <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[13px] font-bold text-[#1F2933]">Count summary</span>
+              <span className="text-[13px] font-bold text-gray-900">Count summary</span>
               <span className="text-[12px] font-mono text-gray-500">{countedCount}/{totalCount}</span>
             </div>
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
@@ -287,7 +287,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                       </div>
                       <span className="text-[13px] text-gray-900 truncate">{p.name}</span>
                     </div>
-                    <span className="text-[14px] font-mono font-semibold text-[#1F2933] flex-shrink-0 ml-3">
+                    <span className="text-[14px] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3">
                       {val} <span className="text-[11px] text-gray-400 font-normal">{uom}</span>
                     </span>
                   </div>
@@ -329,7 +329,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         {showConfirm && (
           <div className="fixed inset-0 z-[60] bg-black/50 flex items-end justify-center">
             <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8">
-              <h3 className="text-[17px] font-bold text-[#1F2933] mb-2">Submit this count?</h3>
+              <h3 className="text-[17px] font-bold text-gray-900 mb-2">Submit this count?</h3>
               <p className="text-[13px] text-gray-500 mb-1">
                 {countedCount} of {totalCount} items counted.
                 {uncountedProducts.length > 0 && ` ${uncountedProducts.length} item${uncountedProducts.length > 1 ? 's' : ''} will be marked as not counted.`}

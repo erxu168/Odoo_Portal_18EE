@@ -199,19 +199,20 @@ export default function DashboardHome() {
       )}
 
       <div className="px-5 pt-3">
-        <p className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase mb-2">Apps</p>
-        <div className="grid grid-cols-3 gap-3">
+        <p className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase mb-3">Apps</p>
+        <div className="grid grid-cols-2 gap-3">
           {visibleTiles.map((tile: any) => {
             const count = badges[tile.id] || 0;
             const badgeColor = getBadgeColor(tile.id, count);
             return (
               <button key={tile.id} onClick={() => handleTileTap(tile)}
-                className="aspect-square rounded-2xl bg-white border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] flex flex-col items-center justify-center gap-2 relative active:scale-95 transition-transform">
+                className={`relative p-4 rounded-2xl border ${tile.color || 'bg-white border-gray-200'} text-left active:scale-[0.97] transition-transform shadow-sm`}>
                 {count > 0 && (
-                  <span className={`absolute top-2 right-2 min-w-[20px] h-5 px-1.5 rounded-full text-white text-[11px] font-bold font-mono leading-5 text-center ${badgeColor}`}>{count}</span>
+                  <span className={`absolute top-3 right-3 min-w-[22px] h-[22px] px-1.5 rounded-full text-white text-[11px] font-bold font-mono leading-[22px] text-center ${badgeColor}`}>{count}</span>
                 )}
-                <div className="w-12 h-12 rounded-[14px] flex items-center justify-center bg-[#F1F3F5] text-blue-600">{tile.icon}</div>
-                <span className="text-[12px] font-semibold text-gray-900 text-center px-1 leading-tight">{tile.label}</span>
+                <div className={`w-11 h-11 rounded-xl ${tile.iconBg || 'bg-gray-100'} flex items-center justify-center mb-3`}>{tile.icon}</div>
+                <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
+                <div className="text-[11px] text-gray-500 mt-0.5">{tile.sub || ''}</div>
               </button>
             );
           })}

@@ -119,10 +119,10 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
               onClick={() => onNavigate(tile.key)}
               className="relative bg-white rounded-2xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 text-left active:scale-[0.97] transition-transform"
             >
-              <div className="w-11 h-11 rounded-xl bg-[#F1F3F5] flex items-center justify-center text-blue-600 mb-3">
+              <div className="w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center text-blue-600 mb-3">
                 {tile.icon}
               </div>
-              <div className="text-[14px] font-bold text-[#1F2933]">{tile.label}</div>
+              <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
               <div className="text-[11px] text-gray-500 mt-0.5">{tile.sublabel}</div>
               {tile.badge !== null && (
                 <span className={`absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full ${tile.badgeColor} text-white text-[11px] font-bold flex items-center justify-center`}>

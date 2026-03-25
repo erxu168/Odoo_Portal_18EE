@@ -139,13 +139,13 @@ export default function OrdersDashboard({
             )}
 
             {/* Icon container */}
-            <div className="w-14 h-14 rounded-[16px] bg-[#F1F3F5] flex items-center justify-center text-blue-600">
+            <div className="w-14 h-14 rounded-[16px] bg-gray-100 flex items-center justify-center text-blue-600">
               {tile.icon}
             </div>
 
             {/* Label */}
             <div className="text-center">
-              <div className="text-[14px] font-bold text-[#1F2933]">{tile.label}</div>
+              <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
               <div className="text-[11px] text-gray-400 mt-0.5">{tile.sublabel}</div>
             </div>
           </button>

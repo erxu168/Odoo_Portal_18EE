@@ -122,13 +122,13 @@ export default function StandardFilter({ onChange }: StandardFilterProps) {
             <label className="text-[10px] text-gray-400 font-semibold uppercase">From</label>
             <input type="date" value={customFrom}
               onChange={(e) => handleCustomDate('from', e.target.value)}
-              className="w-full mt-0.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-[13px] text-[#1F2933] outline-none focus:border-green-500" />
+              className="w-full mt-0.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-[13px] text-gray-900 outline-none focus:border-green-500" />
           </div>
           <div className="flex-1">
             <label className="text-[10px] text-gray-400 font-semibold uppercase">To</label>
             <input type="date" value={customTo}
               onChange={(e) => handleCustomDate('to', e.target.value)}
-              className="w-full mt-0.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-[13px] text-[#1F2933] outline-none focus:border-green-500" />
+              className="w-full mt-0.5 px-3 py-2 bg-white border border-gray-200 rounded-xl text-[13px] text-gray-900 outline-none focus:border-green-500" />
           </div>
         </div>
       )}

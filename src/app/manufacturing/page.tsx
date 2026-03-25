@@ -140,7 +140,7 @@ export default function ManufacturingPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#F6F7F9]">
+    <div className="flex flex-col min-h-screen bg-gray-50">
       {renderScreen()}
     </div>
   );

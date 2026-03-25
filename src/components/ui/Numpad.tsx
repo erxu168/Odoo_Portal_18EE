@@ -136,13 +136,13 @@ export default function Numpad({
         {(label || sublabel) && (
           <div className="px-1 mb-1">
             {sublabel && <div className="text-[12px] text-gray-400">{sublabel}</div>}
-            {label && <div className="text-[14px] font-bold text-[#1F2933]">{label}</div>}
+            {label && <div className="text-[14px] font-bold text-gray-900">{label}</div>}
           </div>
         )}
 
         {/* Display */}
         <div className="flex items-baseline gap-2 px-1 mb-3">
-          <div className={`text-[36px] font-bold tabular-nums font-mono min-h-[48px] ${isOutOfTolerance ? 'text-red-600' : 'text-[#1F2933]'}`}>
+          <div className={`text-[36px] font-bold tabular-nums font-mono min-h-[48px] ${isOutOfTolerance ? 'text-red-600' : 'text-gray-900'}`}>
             {display}
           </div>
           {unit && <div className="text-[16px] text-gray-400 font-semibold">{unit}</div>}
@@ -205,7 +205,7 @@ export default function Numpad({
             <button
               key={k}
               onClick={() => handleKey(k)}
-              className={`${keyClass} border border-gray-200 bg-white text-[#1F2933] active:bg-gray-100`}
+              className={`${keyClass} border border-gray-200 bg-white text-gray-900 active:bg-gray-100`}
             >
               {k}
             </button>
@@ -214,13 +214,13 @@ export default function Numpad({
           {/* Row 5: 0 (span 2) | decimal */}
           <button
             onClick={() => handleKey('0')}
-            className={`${keyClass} col-span-2 border border-gray-200 bg-white text-[#1F2933] active:bg-gray-100`}
+            className={`${keyClass} col-span-2 border border-gray-200 bg-white text-gray-900 active:bg-gray-100`}
           >
             0
           </button>
           <button
             onClick={() => handleKey('.')}
-            className={`${keyClass} border border-gray-200 bg-white text-[#1F2933] active:bg-gray-100`}
+            className={`${keyClass} border border-gray-200 bg-white text-gray-900 active:bg-gray-100`}
           >
             .
           </button>

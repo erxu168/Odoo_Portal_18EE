@@ -73,8 +73,8 @@ export default function ReceiveReview({
       {/* Progress bar */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-[13px] font-bold text-[#1F2933]">Inspection progress</span>
-          <span className="text-[12px] font-mono font-bold text-[#1F2933]">{checkedCount}/{totalLines}</span>
+          <span className="text-[13px] font-bold text-gray-900">Inspection progress</span>
+          <span className="text-[12px] font-mono font-bold text-gray-900">{checkedCount}/{totalLines}</span>
         </div>
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
@@ -92,7 +92,7 @@ export default function ReceiveReview({
       {/* Summary stats */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <div className="bg-white border border-gray-200 rounded-xl p-3 text-center">
-          <div className="text-[18px] font-extrabold font-mono text-[#1F2933]">{linesWithQty.length}</div>
+          <div className="text-[18px] font-extrabold font-mono text-gray-900">{linesWithQty.length}</div>
           <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Received</div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-3 text-center">
@@ -169,7 +169,7 @@ export default function ReceiveReview({
                   </svg>
                 </button>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-[#1F2933]">{line.product_name}</div>
+                  <div className="text-[13px] font-semibold text-gray-900">{line.product_name}</div>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-[11px] text-gray-500 font-mono">
                       {qty !== null ? qty : '\u2014'} / {line.ordered_qty} {line.product_uom}
@@ -202,7 +202,7 @@ export default function ReceiveReview({
                   )}
                 </div>
                 {line.price && line.price > 0 && qty !== null && qty > 0 && (
-                  <div className="text-[12px] font-bold font-mono text-[#1F2933] flex-shrink-0">
+                  <div className="text-[12px] font-bold font-mono text-gray-900 flex-shrink-0">
                     &euro;{(qty * line.price).toFixed(2)}
                   </div>
                 )}
@@ -245,7 +245,7 @@ export default function ReceiveReview({
                 <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
                 <circle cx="12" cy="13" r="4" />
               </svg>
-              <div className="text-[12px] font-semibold text-[#1F2933]">Take photo of delivery note</div>
+              <div className="text-[12px] font-semibold text-gray-900">Take photo of delivery note</div>
               <div className="text-[10px] text-gray-400 mt-0.5">Saved to Odoo as proof of delivery</div>
             </div>
             <input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" />
@@ -277,7 +277,7 @@ export default function ReceiveReview({
                   </svg>
                 )}
               </div>
-              <span className="text-[12px] text-[#1F2933] leading-relaxed">
+              <span className="text-[12px] text-gray-900 leading-relaxed">
                 I confirm all quantities are correct and have been physically verified.
               </span>
             </label>

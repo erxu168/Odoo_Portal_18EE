@@ -82,7 +82,7 @@ export default function ManageOrders({
 
       {suppliers.length === 0 ? (
         <div className="text-center py-8">
-          <div className="text-[14px] font-semibold text-[#1F2933] mb-1">No suppliers yet</div>
+          <div className="text-[14px] font-semibold text-gray-900 mb-1">No suppliers yet</div>
           <div className="text-[12px] text-gray-500 mb-4">Search for a supplier below to get started</div>
           {isAdmin && seedMsg && <p className="text-[12px] text-gray-500 mt-3">{seedMsg}</p>}
         </div>
@@ -90,7 +90,7 @@ export default function ManageOrders({
         <>
           {withProducts.length === 0 && emptyGuides.length === 0 && (
             <div className="text-center py-6 mb-2">
-              <div className="text-[14px] font-semibold text-[#1F2933] mb-1">No order lists yet</div>
+              <div className="text-[14px] font-semibold text-gray-900 mb-1">No order lists yet</div>
               <div className="text-[12px] text-gray-500">Search for a supplier below to create one</div>
             </div>
           )}
@@ -101,11 +101,11 @@ export default function ManageOrders({
                 onClick={() => onOpenGuide(s)}
                 className="w-full flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:scale-[0.98] transition-transform text-left"
               >
-                <div className="w-10 h-10 rounded-xl bg-[#F1F3F5] flex items-center justify-center text-[14px] font-bold text-blue-600 flex-shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-[14px] font-bold text-blue-600 flex-shrink-0">
                   {s.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-bold text-[#1F2933] truncate">{s.name}</div>
+                  <div className="text-[13px] font-bold text-gray-900 truncate">{s.name}</div>
                   <div className="text-[11px] text-gray-500">
                     {s.product_count} products {'\u2022'} Tap to edit
                   </div>
@@ -173,7 +173,7 @@ export default function ManageOrders({
                   value={searchQuery}
                   onChange={e => handleSearch(e.target.value)}
                   placeholder="Type supplier name..."
-                  className="flex-1 bg-transparent outline-none text-[14px] text-[#1F2933] placeholder-gray-400"
+                  className="flex-1 bg-transparent outline-none text-[14px] text-gray-900 placeholder-gray-400"
                 />
                 {searchQuery && (
                   <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="text-gray-400 text-[18px]">&times;</button>
@@ -217,11 +217,11 @@ export default function ManageOrders({
                       (partner.already_added ? 'opacity-50 cursor-not-allowed' : 'active:bg-gray-50')
                     }
                   >
-                    <div className="w-9 h-9 rounded-lg bg-[#F1F3F5] flex items-center justify-center text-[12px] font-bold text-blue-600 flex-shrink-0">
+                    <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-[12px] font-bold text-blue-600 flex-shrink-0">
                       {partner.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold text-[#1F2933] truncate">{partner.name}</div>
+                      <div className="text-[13px] font-semibold text-gray-900 truncate">{partner.name}</div>
                       {partner.email && <div className="text-[11px] text-gray-400 truncate">{partner.email}</div>}
                     </div>
                     {partner.already_added ? (

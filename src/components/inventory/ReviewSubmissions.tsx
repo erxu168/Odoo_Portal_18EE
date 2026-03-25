@@ -195,7 +195,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               Back to list
             </button>
           </div>
-          <h1 className="text-[18px] font-bold text-[#1F2933]">Review quick count</h1>
+          <h1 className="text-[18px] font-bold text-gray-900">Review quick count</h1>
           <p className="text-[12px] text-gray-500 mt-0.5">Submitted {submittedDate} {'\u00B7'} by user #{reviewQC.counted_by}</p>
         </div>
 
@@ -210,7 +210,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[16px] font-bold text-[#1F2933] truncate">{productName}</div>
+                <div className="text-[16px] font-bold text-gray-900 truncate">{productName}</div>
                 {catName && <div className="text-[11px] text-gray-400">{catName}</div>}
               </div>
             </div>
@@ -248,7 +248,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         {qcConfirm && (
           <div className="fixed inset-0 z-[60] bg-black/50 flex items-end justify-center">
             <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8">
-              <h3 className="text-[17px] font-bold text-[#1F2933] mb-2">
+              <h3 className="text-[17px] font-bold text-gray-900 mb-2">
                 {qcConfirm === 'approve' ? 'Approve this quick count?' : 'Reject this quick count?'}
               </h3>
               <p className="text-[13px] text-gray-500 mb-5">
@@ -295,7 +295,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               Back to list
             </button>
           </div>
-          <h1 className="text-[18px] font-bold text-[#1F2933]">{reviewSession.template_name || `Session #${reviewSession.id}`}</h1>
+          <h1 className="text-[18px] font-bold text-gray-900">{reviewSession.template_name || `Session #${reviewSession.id}`}</h1>
           <p className="text-[12px] text-gray-500 mt-0.5">
             {reviewSession.scheduled_date} {'\u00B7'} {reviewSession.location_name || ''} {'\u00B7'} Counted by user #{reviewSession.assigned_user_id}
           </p>
@@ -310,7 +310,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
             <div className="px-4 pt-4">
               <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[13px] font-bold text-[#1F2933]">Count summary</span>
+                  <span className="text-[13px] font-bold text-gray-900">Count summary</span>
                   <span className="text-[12px] font-mono text-gray-500">{countedProducts.length}/{reviewProducts.length}</span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
@@ -358,7 +358,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                         )}
                       </div>
                     </div>
-                    <span className="text-[14px] font-mono font-semibold text-[#1F2933] flex-shrink-0 ml-3">{val} <span className="text-[11px] text-gray-400 font-normal">{uom}</span></span>
+                    <span className="text-[14px] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3">{val} <span className="text-[11px] text-gray-400 font-normal">{uom}</span></span>
                   </div>);
                 })}
               </>)}
@@ -390,7 +390,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
             {showConfirm && (
               <div className="fixed inset-0 z-[60] bg-black/50 flex items-end justify-center">
                 <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8">
-                  <h3 className="text-[17px] font-bold text-[#1F2933] mb-2">{showConfirm === 'approve' ? 'Approve this count?' : 'Reject this count?'}</h3>
+                  <h3 className="text-[17px] font-bold text-gray-900 mb-2">{showConfirm === 'approve' ? 'Approve this count?' : 'Reject this count?'}</h3>
                   <p className="text-[13px] text-gray-500 mb-5">
                     {showConfirm === 'approve' ? `This will accept ${countedProducts.length} counted items and update inventory in Odoo.` : 'The staff member will be notified and can recount.'}
                   </p>
