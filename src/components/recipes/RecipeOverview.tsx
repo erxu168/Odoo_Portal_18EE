@@ -76,19 +76,19 @@ export default function RecipeOverview({
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 relative overflow-hidden">
         <div className="flex items-center gap-3 relative">
-          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
           <div className="flex-1 min-w-0">
             <h1 className="text-[20px] font-bold text-white truncate">{recipeName}</h1>
-            <p className="text-[12px] text-white/50 mt-0.5">{categoryName || (mode === 'cooking' ? 'Cooking Guide' : 'Production Guide')}</p>
+            <p className="text-[12px] text-zinc-400 mt-0.5">{categoryName || (mode === 'cooking' ? 'Cooking Guide' : 'Production Guide')}</p>
           </div>
           {onEdit && (
-            <button onClick={onEdit} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+            <button onClick={onEdit} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             </button>
           )}
-          <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+          <button onClick={onHome} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
           </button>
         </div>

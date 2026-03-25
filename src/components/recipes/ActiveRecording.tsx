@@ -239,7 +239,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
   const hasContent = instruction.trim().length > 0;
 
   return (
-    <div className="min-h-screen bg-[#111] flex flex-col">
+    <div className="min-h-screen bg-[#1C1C1E] flex flex-col">
       {/* Toast */}
       {toast && <Toast message={toast.msg} type={toast.type} visible={true} onDismiss={() => setToast(null)} duration={2000} />}
 
@@ -258,52 +258,52 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
 
       {/* Ingredient Manager Overlay */}
       {showIngredientManager && (
-        <div className="fixed inset-0 z-[50] bg-[#111] flex flex-col">
+        <div className="fixed inset-0 z-[50] bg-[#1C1C1E] flex flex-col">
           <div className="px-5 pt-14 pb-3 flex items-center gap-3">
-            <button onClick={() => setShowIngredientManager(false)} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+            <button onClick={() => setShowIngredientManager(false)} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
             <div className="flex-1">
               <div className="text-[18px] font-bold text-white">Ingredients</div>
-              <div className="text-[11px] text-white/40">{recipeName}</div>
+              <div className="text-[11px] text-zinc-400">{recipeName}</div>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto px-5 py-3">
             {/* Search for Odoo products */}
-            <div className="mb-4 p-3 rounded-xl bg-white/5 border border-white/10">
-              <div className="text-[12px] text-white/50 font-semibold mb-2">Search ingredient</div>
+            <div className="mb-4 p-3 rounded-xl bg-zinc-800 border border-zinc-700">
+              <div className="text-[12px] text-zinc-400 font-semibold mb-2">Search ingredient</div>
               <input type="text" value={productQuery} onChange={(e) => searchProducts(e.target.value)}
                 placeholder="Type to search products..." maxLength={100}
-                className="w-full px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-[14px] text-white placeholder-white/30 mb-2" />
+                className="w-full px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-[14px] text-white placeholder-white/30 mb-2" />
 
               {/* Qty + UoM row */}
               <div className="flex gap-2 mb-2">
                 <input type="text" value={newIngQty} onChange={(e) => setNewIngQty(e.target.value)}
                   placeholder="Qty" maxLength={10} inputMode="decimal"
-                  className="w-20 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-[14px] text-white placeholder-white/30" />
+                  className="w-20 px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-[14px] text-white placeholder-white/30" />
                 <button onClick={() => { loadUoms(); setShowUomPicker(!showUomPicker); }}
-                  className="flex-1 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-[14px] text-left text-white/60 active:bg-white/10">
+                  className="flex-1 px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-[14px] text-left text-zinc-300 active:bg-zinc-700">
                   {selectedUomId ? uoms.find(u => u.id === selectedUomId)?.name || 'Unit' : 'Select unit...'}
                 </button>
               </div>
 
               {/* UoM picker */}
               {showUomPicker && uoms.length > 0 && (
-                <div className="mb-2 max-h-40 overflow-y-auto rounded-lg border border-white/10 bg-[#1a1a1a]">
+                <div className="mb-2 max-h-40 overflow-y-auto rounded-lg border border-zinc-700 bg-[#1a1a1a]">
                   {uoms.map(u => (
                     <button key={u.id} onClick={() => { setSelectedUomId(u.id); setShowUomPicker(false); }}
-                      className={`w-full text-left px-3 py-2 text-[13px] border-b border-white/5 active:bg-white/10 ${
+                      className={`w-full text-left px-3 py-2 text-[13px] border-b border-white/5 active:bg-zinc-700 ${
                         selectedUomId === u.id ? 'text-green-400 bg-green-500/10' : 'text-white/70'
                       }`}>
-                      {u.name} <span className="text-white/30 text-[11px]">{u.category}</span>
+                      {u.name} <span className="text-zinc-400 text-[11px]">{u.category}</span>
                     </button>
                   ))}
                 </div>
               )}
 
               {/* Search results */}
-              {searching && <div className="text-[12px] text-white/30 py-2">Searching...</div>}
+              {searching && <div className="text-[12px] text-zinc-400 py-2">Searching...</div>}
               {productResults.length > 0 && (
                 <div className="space-y-1">
                   {productResults.map(p => {
@@ -312,11 +312,11 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
                       <button key={p.id} onClick={() => !alreadyAdded && addIngredientFromProduct(p)}
                         disabled={alreadyAdded}
                         className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                          alreadyAdded ? 'bg-white/[0.02] opacity-40' : 'bg-white/[0.04] active:bg-white/10'
+                          alreadyAdded ? 'bg-white/[0.02] opacity-40' : 'bg-white/[0.04] active:bg-zinc-700'
                         }`}>
                         <div className="flex-1 min-w-0">
                           <div className="text-[13px] font-semibold text-white truncate">{p.name}</div>
-                          <div className="text-[11px] text-white/30">{p.uom_name}{alreadyAdded ? ' \u00b7 already added' : ''}</div>
+                          <div className="text-[11px] text-zinc-400">{p.uom_name}{alreadyAdded ? ' \u00b7 already added' : ''}</div>
                         </div>
                         {!alreadyAdded && (
                           <div className="w-7 h-7 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
@@ -329,7 +329,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
                 </div>
               )}
               {productQuery.length > 0 && !searching && productResults.length === 0 && (
-                <div className="text-[12px] text-white/30 py-2">No products found for &ldquo;{productQuery}&rdquo;</div>
+                <div className="text-[12px] text-zinc-400 py-2">No products found for &ldquo;{productQuery}&rdquo;</div>
               )}
             </div>
 
@@ -337,21 +337,21 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
             {ingredients.length === 0 ? (
               <div className="text-center py-10">
                 <div className="text-4xl mb-3">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M7 21h10M12 21V11"/><circle cx="12" cy="7" r="4"/><circle cx="7" cy="9" r="3"/><circle cx="17" cy="9" r="3"/></svg>}</div>
-                <div className="text-[14px] text-white/40">No ingredients yet</div>
+                <div className="text-[14px] text-zinc-400">No ingredients yet</div>
                 <div className="text-[12px] text-white/25 mt-1">Search and add ingredients above</div>
               </div>
             ) : (
               <div className="space-y-2">
                 {ingredients.map((ing) => (
-                  <div key={ing.id} className="flex items-center gap-3 px-3 py-3 rounded-xl bg-white/[0.03] border border-white/10">
+                  <div key={ing.id} className="flex items-center gap-3 px-3 py-3 rounded-xl bg-zinc-800/80 border border-zinc-700">
                     <div className="flex-1 min-w-0">
                       <div className="text-[14px] font-semibold text-white truncate">{ing.name}</div>
-                      <div className="text-[12px] text-white/40 font-mono">
+                      <div className="text-[12px] text-zinc-400 font-mono">
                         {ing.qty > 0 ? ing.qty : ''}{ing.uomName ? ` ${ing.uomName}` : ''}
                       </div>
                     </div>
                     <button onClick={() => removeIngredient(ing.id)}
-                      className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center active:bg-red-500/20">
+                      className="w-8 h-8 rounded-lg bg-red-500/15 flex items-center justify-center active:bg-red-500/20">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                     </button>
                   </div>
@@ -370,36 +370,36 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
       )}
 
       <div className="px-5 pt-14 pb-3 flex items-center gap-3">
-        <button onClick={handleExit} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+        <button onClick={handleExit} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
         <div className="flex-1 flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
           <span className="text-[14px] font-bold text-white font-mono">{formatElapsed(elapsed)}</span>
-          <span className="text-[12px] text-white/40 bg-white/10 px-2 py-0.5 rounded">{steps.length} steps</span>
+          <span className="text-[12px] text-zinc-400 bg-zinc-700 px-2 py-0.5 rounded">{steps.length} steps</span>
         </div>
         <button onClick={handleFinishRecording} className="px-3 py-1.5 rounded-lg bg-red-500/20 border border-red-500/30 text-[13px] font-bold text-red-400 active:bg-red-500/30">End</button>
-        <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+        <button onClick={onHome} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
         </button>
       </div>
       <div className="px-5 py-2">
-        <div className="text-[11px] text-white/40 font-semibold">{recipeName} {'\u00b7'} {mode === 'cooking' ? 'Cooking' : 'Production'}</div>
+        <div className="text-[11px] text-zinc-400 font-semibold">{recipeName} {'\u00b7'} {mode === 'cooking' ? 'Cooking' : 'Production'}</div>
       </div>
       <div className="px-5 mb-3">
         <button onClick={() => fileRef.current?.click()}
-          className="w-full h-32 rounded-2xl bg-white/5 border border-white/10 border-dashed flex flex-col items-center justify-center active:bg-white/10">
+          className="w-full h-32 rounded-2xl bg-zinc-800 border border-zinc-700 border-dashed flex flex-col items-center justify-center active:bg-zinc-700">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
             <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/>
           </svg>
-          <span className="text-[12px] text-white/40 mt-2">Tap to take photo</span>
+          <span className="text-[12px] text-zinc-400 mt-2">Tap to take photo</span>
         </button>
         <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFileChange} className="hidden" />
       </div>
       {photos.length > 0 && (
         <div className="px-5 mb-3 flex gap-2 overflow-x-auto no-scrollbar">
           {photos.map((p, i) => (
-            <div key={i} className="w-16 h-16 rounded-xl bg-white/10 flex-shrink-0 relative overflow-hidden">
+            <div key={i} className="w-16 h-16 rounded-xl bg-zinc-700 flex-shrink-0 relative overflow-hidden">
               <img src={p} alt="" className="w-full h-full object-cover" />
               <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
                 className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center">
@@ -415,42 +415,42 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
             {(['prep', 'cook', 'plate'] as const).map(t => (
               <button key={t} onClick={() => setStepType(t)}
                 className={`px-3 py-1.5 rounded-lg text-[12px] font-bold capitalize transition-colors ${
-                  stepType === t ? 'bg-white/20 text-white' : 'bg-white/5 text-white/40'
+                  stepType === t ? 'bg-zinc-600 text-white' : 'bg-zinc-800 text-zinc-400'
                 }`}>{t}</button>
             ))}
           </div>
           <textarea value={instruction} onChange={(e) => setInstruction(e.target.value)}
             placeholder="Describe this step..." rows={3} maxLength={2000}
-            className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-[14px] text-white placeholder-white/30 resize-none" />
+            className="w-full px-4 py-3 rounded-xl bg-zinc-800 border border-zinc-700 text-[14px] text-white placeholder-white/30 resize-none" />
         </div>
 
         {/* P7: Timer with seconds precision */}
         <div className="mb-3">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[12px] text-white/40 font-semibold">Timer</span>
+            <span className="text-[12px] text-zinc-400 font-semibold">Timer</span>
             <span className="text-[14px] font-bold text-white font-mono">{formatTimerDisplay(timerSec)}</span>
           </div>
           <div className="flex gap-1.5 flex-wrap">
-            <button onClick={() => addTimerSeconds(30)} className="px-3 py-1.5 rounded-lg bg-white/10 text-[12px] text-white/60 active:bg-white/20 font-mono">+30s</button>
-            <button onClick={() => addTimerSeconds(60)} className="px-3 py-1.5 rounded-lg bg-white/10 text-[12px] text-white/60 active:bg-white/20 font-mono">+1m</button>
-            <button onClick={() => addTimerSeconds(300)} className="px-3 py-1.5 rounded-lg bg-white/10 text-[12px] text-white/60 active:bg-white/20 font-mono">+5m</button>
-            <button onClick={() => addTimerSeconds(600)} className="px-3 py-1.5 rounded-lg bg-white/10 text-[12px] text-white/60 active:bg-white/20 font-mono">+10m</button>
+            <button onClick={() => addTimerSeconds(30)} className="px-3 py-1.5 rounded-lg bg-zinc-700 text-[12px] text-zinc-300 active:bg-zinc-600 font-mono">+30s</button>
+            <button onClick={() => addTimerSeconds(60)} className="px-3 py-1.5 rounded-lg bg-zinc-700 text-[12px] text-zinc-300 active:bg-zinc-600 font-mono">+1m</button>
+            <button onClick={() => addTimerSeconds(300)} className="px-3 py-1.5 rounded-lg bg-zinc-700 text-[12px] text-zinc-300 active:bg-zinc-600 font-mono">+5m</button>
+            <button onClick={() => addTimerSeconds(600)} className="px-3 py-1.5 rounded-lg bg-zinc-700 text-[12px] text-zinc-300 active:bg-zinc-600 font-mono">+10m</button>
             {timerSec > 0 && (
-              <button onClick={() => setTimerSec(0)} className="px-3 py-1.5 rounded-lg bg-red-500/10 text-[12px] text-red-400 active:bg-red-500/20 font-semibold">Clear</button>
+              <button onClick={() => setTimerSec(0)} className="px-3 py-1.5 rounded-lg bg-red-500/15 text-[12px] text-red-400 active:bg-red-500/20 font-semibold">Clear</button>
             )}
           </div>
         </div>
 
         <input type="text" value={tip} onChange={(e) => setTip(e.target.value)}
           placeholder="Chef tip (optional)" maxLength={500}
-          className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-[13px] text-white placeholder-white/30 mb-3" />
+          className="w-full px-4 py-2.5 rounded-xl bg-zinc-800 border border-zinc-700 text-[13px] text-white placeholder-white/30 mb-3" />
 
         {/* Ingredients for this step */}
         <div className="mb-3">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[12px] text-white/40 font-semibold">Ingredients</span>
+            <span className="text-[12px] text-zinc-400 font-semibold">Ingredients</span>
             <button onClick={() => setShowIngredientManager(true)}
-              className="px-2.5 py-1 rounded-lg bg-white/10 text-[11px] text-white/60 font-semibold active:bg-white/20">
+              className="px-2.5 py-1 rounded-lg bg-zinc-700 text-[11px] text-zinc-300 font-semibold active:bg-zinc-600">
               {ingredients.length > 0 ? `Manage (${ingredients.length})` : '+ Add ingredients'}
             </button>
           </div>
@@ -463,7 +463,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
                     className={`px-2.5 py-1.5 rounded-lg text-[12px] font-medium border transition-colors ${
                       isSelected
                         ? 'border-green-500 bg-green-500/15 text-green-400'
-                        : 'border-white/10 bg-white/5 text-white/50'
+                        : 'border-zinc-700 bg-zinc-800 text-zinc-400'
                     }`}>
                     {ing.qty > 0 && <span className="font-mono mr-1">{ing.qty}{ing.uomName ? ` ${ing.uomName}` : ''}</span>}
                     {ing.name}
@@ -473,14 +473,14 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
             </div>
           )}
           {ingredients.length > 0 && selectedIngIds.length === 0 && (
-            <p className="text-[11px] text-white/30 mt-1.5">Tap ingredients used in this step</p>
+            <p className="text-[11px] text-zinc-400 mt-1.5">Tap ingredients used in this step</p>
           )}
         </div>
       </div>
       <div className="px-5 py-4 flex gap-3">
         <button onClick={saveStep} disabled={!hasContent}
           className={`flex-1 py-3.5 rounded-2xl text-[15px] font-bold transition-all ${
-            hasContent ? 'bg-green-600 text-white active:bg-green-700' : 'bg-white/10 text-white/30'
+            hasContent ? 'bg-green-600 text-white active:bg-green-700' : 'bg-zinc-700 text-zinc-400'
           }`}>Save step +</button>
         <button onClick={handleFinishRecording}
           className="px-6 py-3.5 rounded-2xl text-[15px] font-bold text-amber-400 border border-amber-400/30 bg-amber-400/10 active:bg-amber-400/20">Finish</button>

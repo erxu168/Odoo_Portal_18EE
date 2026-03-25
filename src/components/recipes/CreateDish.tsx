@@ -12,7 +12,7 @@ interface Props {
   mode: 'cooking' | 'production';
   onBack: () => void;
   onHome: () => void;
-  onCreated: (dish: { name: string; categoryId: number | null; baseServings: number; mode: string; odooId: number | null }) => void;
+  onCreated: (dish: { name: string; categoryId: number | null; baseServings: number; mode: string; odooId: number }) => void;
 }
 
 export default function CreateDish({ mode, onBack, onHome, onCreated }: Props) {
@@ -21,6 +21,7 @@ export default function CreateDish({ mode, onBack, onHome, onCreated }: Props) {
   const [selectedCat, setSelectedCat] = useState<number | null>(null);
   const [baseServings, setBaseServings] = useState(mode === 'cooking' ? 1 : 10);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetch('/api/recipes/categories')
@@ -39,6 +40,7 @@ export default function CreateDish({ mode, onBack, onHome, onCreated }: Props) {
   async function handleCreate() {
     if (!canSave) return;
     setSaving(true);
+    setError('');
     try {
       const res = await fetch('/api/recipes/create', {
         method: 'POST',
@@ -46,22 +48,23 @@ export default function CreateDish({ mode, onBack, onHome, onCreated }: Props) {
         body: JSON.stringify({
           name: name.trim(),
           category_id: selectedCat,
-          category_name: categories.find(c => c.id === selectedCat)?.name || '',
           base_servings: baseServings,
           mode: mode === 'cooking' ? 'cooking_guide' : 'production_guide',
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await res.json();
+      if (res.ok && data.odoo_id) {
         onCreated({
           name: name.trim(),
           categoryId: selectedCat,
           baseServings,
           mode: mode === 'cooking' ? 'cooking_guide' : 'production_guide',
-          odooId: data.odoo_id || null,
+          odooId: data.odoo_id,
         });
+      } else {
+        setError(data.error || 'Failed to create dish. Please try again.');
       }
-    } catch (e) { console.error('Create error:', e); }
+    } catch (_e) { setError('Connection failed. Please check your network and try again.'); }
     finally { setSaving(false); }
   }
 
@@ -69,14 +72,14 @@ export default function CreateDish({ mode, onBack, onHome, onCreated }: Props) {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-[#1A1F2E] px-5 pt-14 pb-5">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
           <div className="flex-1">
             <h1 className="text-[20px] font-bold text-white">Create New Dish</h1>
-            <p className="text-[12px] text-white/50 mt-0.5">{mode === 'cooking' ? 'Cooking Guide' : 'Production Guide'}</p>
+            <p className="text-[12px] text-zinc-400 mt-0.5">{mode === 'cooking' ? 'Cooking Guide' : 'Production Guide'}</p>
           </div>
-          <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+          <button onClick={onHome} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
           </button>
         </div>
@@ -110,9 +113,11 @@ export default function CreateDish({ mode, onBack, onHome, onCreated }: Props) {
             <span className="text-[14px] text-gray-500 font-medium">{unit}</span>
           </div>
         </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-[12px] text-blue-800">
-          This dish will be saved locally and synced to Odoo when connected.
-        </div>
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-[12px] text-red-800">
+            {error}
+          </div>
+        )}
       </div>
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-4 max-w-lg mx-auto space-y-2">
         <button onClick={handleCreate} disabled={!canSave || saving}

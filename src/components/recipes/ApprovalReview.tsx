@@ -88,12 +88,12 @@ export default function ApprovalReview({ recipeName, productTmplId, bomId, chang
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-[#1A1F2E] px-5 pt-14 pb-5">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
           <div className="flex-1">
             <h1 className="text-[20px] font-bold text-white">Review Recipe</h1>
-            <p className="text-[12px] text-white/50 mt-0.5">Pending approval</p>
+            <p className="text-[12px] text-zinc-400 mt-0.5">Pending approval</p>
           </div>
         </div>
       </div>

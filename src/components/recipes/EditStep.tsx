@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import type { RecordedStep } from './ActiveRecording';
+import type { RecordedStep, RecordedIngredient } from './ActiveRecording';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Toast from '@/components/ui/Toast';
 
@@ -11,6 +11,7 @@ const MAX_PHOTO_BYTES = MAX_PHOTO_MB * 1024 * 1024;
 interface Props {
   step: RecordedStep;
   stepIndex: number;
+  ingredients?: RecordedIngredient[];
   onSave: (updated: RecordedStep) => void;
   onBack: () => void;
   onHome: () => void;
@@ -25,12 +26,13 @@ function formatTimerDisplay(sec: number): string {
   return `${m}m ${s}s`;
 }
 
-export default function EditStep({ step, stepIndex, onSave, onBack, onHome }: Props) {
+export default function EditStep({ step, stepIndex, ingredients = [], onSave, onBack, onHome }: Props) {
   const [stepType, setStepType] = useState(step.step_type);
   const [instruction, setInstruction] = useState(step.instruction);
   const [timerSec, setTimerSec] = useState(step.timer_seconds);
   const [tip, setTip] = useState(step.tip);
   const [photos, setPhotos] = useState<string[]>([...step.photos]);
+  const [selectedIngIds, setSelectedIngIds] = useState<string[]>([...(step.ingredientIds || [])]);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -65,7 +67,7 @@ export default function EditStep({ step, stepIndex, onSave, onBack, onHome }: Pr
       setShowDeleteConfirm(true);
       return;
     }
-    onSave({ ...step, step_type: stepType, instruction: instruction.trim(), timer_seconds: timerSec, tip: tip.trim(), photos });
+    onSave({ ...step, step_type: stepType, instruction: instruction.trim(), timer_seconds: timerSec, tip: tip.trim(), photos, ingredientIds: selectedIngIds });
   }
 
   return (
@@ -88,13 +90,13 @@ export default function EditStep({ step, stepIndex, onSave, onBack, onHome }: Pr
 
       <div className="bg-[#1A1F2E] px-5 pt-14 pb-5">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
           <div className="flex-1">
             <h1 className="text-[20px] font-bold text-white">Edit Step {stepIndex + 1}</h1>
           </div>
-          <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+          <button onClick={onHome} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
           </button>
         </div>
@@ -166,6 +168,32 @@ export default function EditStep({ step, stepIndex, onSave, onBack, onHome }: Pr
             <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFileChange} className="hidden" />
           </div>
         </div>
+
+        {/* Ingredient selection */}
+        {ingredients.length > 0 && (
+          <div className="mb-4">
+            <label className="text-[13px] font-bold text-gray-900 mb-2 block">Ingredients for this step</label>
+            <p className="text-[11px] text-gray-400 mb-2">Tap to select which ingredients are used in this step</p>
+            <div className="flex flex-wrap gap-2">
+              {ingredients.map(ing => {
+                const isSelected = selectedIngIds.includes(ing.id);
+                return (
+                  <button key={ing.id}
+                    onClick={() => setSelectedIngIds(prev => prev.includes(ing.id) ? prev.filter(x => x !== ing.id) : [...prev, ing.id])}
+                    className={`px-3 py-2 rounded-xl text-[13px] font-medium border-2 transition-colors ${
+                      isSelected
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-gray-200 bg-white text-gray-600 active:bg-gray-50'
+                    }`}>
+                    {isSelected && <span className="mr-1">{'\u2713'}</span>}
+                    {ing.qty > 0 && <span className="font-mono mr-1">{ing.qty}{ing.uomName ? ` ${ing.uomName}` : ''}</span>}
+                    {ing.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-4 max-w-lg mx-auto">
         <button onClick={handleSave}
