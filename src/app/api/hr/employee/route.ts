@@ -3,7 +3,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { OdooClient } from '@/lib/odoo';
 import { EMPLOYEE_READ_FIELDS } from '@/types/hr';
 
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
     const user = getCurrentUser();
     if (!user || !user.employee_id) {
@@ -12,6 +12,16 @@ export async function GET(_req: NextRequest) {
 
     const odoo = new OdooClient();
     await odoo.authenticate();
+
+    // Country search for autocomplete
+    const { searchParams } = new URL(req.url);
+    const countryQuery = searchParams.get('search_countries');
+    if (countryQuery) {
+      const countries = await odoo.searchRead('res.country', [
+        ['name', 'ilike', countryQuery],
+      ], ['name'], { limit: 10, order: 'name' });
+      return NextResponse.json({ countries: (countries || []).map((c: any) => ({ id: c.id, name: c.name })) });
+    }
 
     const employees = await odoo.searchRead('hr.employee', [
       ['id', '=', user.employee_id],
