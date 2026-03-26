@@ -4,7 +4,7 @@
  * navigation between sessions. All state lives in React; no localStorage for V1.
  */
 
-export interface StepIngredient { id: number; name: string; uom: string; }
+export interface StepIngredient { id: number; name: string; qty: number; uom: string; uom_id: number | null; }
 export interface StepImage { id: number; image: string; caption: string; }
 export interface StepData {
   id: number; sequence: number; step_type: string; instruction: string;

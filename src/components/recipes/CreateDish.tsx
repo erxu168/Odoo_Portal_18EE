@@ -11,7 +11,7 @@ interface Category {
 interface Props {
   mode: 'cooking' | 'production';
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
   onCreated: (dish: { name: string; categoryId: number | null; baseServings: number; mode: string; odooId: number }) => void;
 }
 

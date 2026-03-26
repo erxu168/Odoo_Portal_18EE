@@ -95,6 +95,8 @@ export async function POST(request: Request) {
         email: user.email,
         role: user.role,
         login_count: user.login_count + 1,
+        must_change_password: !!user.must_change_password,
+        is_candidate: !!user.applicant_id && !user.employee_id,
       },
     });
 

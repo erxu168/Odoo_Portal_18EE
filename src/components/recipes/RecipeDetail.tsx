@@ -24,7 +24,7 @@ interface Props {
   ingredientCount?: number;   // for production (from bom_line_ids)
   productQty?: number;        // for production (base kg)
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
   onStartCook: (recipeId: number, batch: number) => void;
 }
 

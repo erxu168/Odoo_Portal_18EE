@@ -9,7 +9,7 @@ interface Props {
   onSelectSession: (id: string) => void;
   onNewDish: () => void;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
   onEndSession: (id: string) => void;
 }
 
@@ -43,13 +43,10 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
             <span className="text-[13px] font-semibold text-white">Dashboard</span>
           </button>
-          <div className="flex-1" />
-          <button onClick={onHome} className="w-8 h-8 rounded-lg bg-zinc-700 flex items-center justify-center active:bg-zinc-600">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
-          </button>
+
         </div>
         <div className="text-center">
-          <div className="text-[20px] font-bold text-white">Kitchen board</div>
+          <div className="text-[20px] font-bold text-white">Cooking Board</div>
           <div className="text-[12px] text-zinc-400">{active.length}/10 dishes active</div>
         </div>
       </div>

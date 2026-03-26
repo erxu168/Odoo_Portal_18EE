@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { useTopBar } from './TopBarContext';
 
 const TABS = [
   {
@@ -54,13 +55,14 @@ const TABS = [
  * Bottom tab bar. Hidden on auth pages and full-screen module pages (recipes, etc.)
  */
 
-const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/recipes'];
+const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password'];
 
 export default function AppTabBar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { hidden } = useTopBar();
 
-  if (HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
+  if (hidden || HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
     return null;
   }
 

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserByEmail, resetPassword } from '@/lib/db';
+import { getUserByEmail, resetPassword, updateUser } from '@/lib/db';
 
 /**
  * POST /api/auth/change-password
@@ -52,8 +52,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Set new password
+    // Set new password and clear forced change flag
     resetPassword(user.id, new_password);
+    updateUser(user.id, { must_change_password: 0 });
 
     return NextResponse.json({ message: 'Password changed successfully.' });
   } catch (error: any) {

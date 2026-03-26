@@ -35,7 +35,7 @@ interface Props {
   userRole: string;
   onSelectRecipe: (recipe: { id: number; name: string; mode: 'cooking' | 'production'; difficulty: string; categoryId: number | null; categoryName: string; productQty: number; isPublished: boolean }) => void;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
 }
 
 const DIFFICULTY_STYLES: Record<string, { bg: string; text: string; label: string }> = {

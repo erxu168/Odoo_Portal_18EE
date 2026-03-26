@@ -44,6 +44,12 @@ class KrawingsRecipeStep(models.Model):
         help='Which ingredients are used in this specific step',
     )
 
+    # New: Ingredients with quantities
+    step_ingredient_ids = fields.One2many(
+        'krawings.recipe.step.ingredient', 'step_id',
+        string='Step Ingredients (with qty)',
+    )
+
     # Images
     image_ids = fields.One2many(
         'krawings.recipe.step.image', 'step_id',

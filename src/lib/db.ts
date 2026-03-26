@@ -122,6 +122,13 @@ function migrateSchema(db: Database.Database) {
   if (!colNames.includes('allowed_company_ids')) {
     db.exec("ALTER TABLE portal_users ADD COLUMN allowed_company_ids TEXT DEFAULT '[]'");
   }
+  if (!colNames.includes('applicant_id')) {
+    db.exec('ALTER TABLE portal_users ADD COLUMN applicant_id INTEGER');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_users_applicant ON portal_users(applicant_id)');
+  }
+  if (!colNames.includes('must_change_password')) {
+    db.exec('ALTER TABLE portal_users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
+  }
 }
 
 function seedAdmin(db: Database.Database) {
@@ -144,6 +151,8 @@ export interface PortalUser {
   email: string;
   role: 'staff' | 'manager' | 'admin';
   employee_id: number | null;
+  applicant_id: number | null;
+  must_change_password: number;
   status: string;
   active: number;
   login_count: number;
@@ -169,19 +178,24 @@ export function getUserByEmployeeId(employeeId: number): PortalUser | null {
   return db.prepare('SELECT * FROM portal_users WHERE employee_id = ? AND active = 1').get(employeeId) as PortalUser | null;
 }
 
+export function getUserByApplicantId(applicantId: number): PortalUser | null {
+  const db = getDb();
+  return db.prepare('SELECT * FROM portal_users WHERE applicant_id = ? AND active = 1').get(applicantId) as PortalUser | null;
+}
+
 export function getUserById(id: number): PortalUser | null {
   const db = getDb();
-  return db.prepare('SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE id = ?').get(id) as PortalUser | null;
+  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE id = ?').get(id) as PortalUser | null;
 }
 
 export function listUsers(): PortalUser[] {
   const db = getDb();
-  return db.prepare('SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users ORDER BY created_at DESC').all() as PortalUser[];
+  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users ORDER BY created_at DESC').all() as PortalUser[];
 }
 
 export function listUsersByStatus(status: string): PortalUser[] {
   const db = getDb();
-  return db.prepare('SELECT id, name, email, role, employee_id, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE status = ? AND active = 1 ORDER BY created_at DESC').all(status) as PortalUser[];
+  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE status = ? AND active = 1 ORDER BY created_at DESC').all(status) as PortalUser[];
 }
 
 export function countUsersByStatus(status: string): number {
@@ -190,19 +204,21 @@ export function countUsersByStatus(status: string): number {
   return row.c;
 }
 
-export function createUser(name: string, email: string, password: string, role: string, extra?: { employee_id?: number; status?: string; allowed_company_ids?: number[] }): number {
+export function createUser(name: string, email: string, password: string, role: string, extra?: { employee_id?: number; applicant_id?: number; status?: string; allowed_company_ids?: number[]; must_change_password?: boolean }): number {
   const db = getDb();
   const hash = bcrypt.hashSync(password, 10);
   const status = extra?.status || 'active';
   const employeeId = extra?.employee_id || null;
+  const applicantId = extra?.applicant_id || null;
+  const mustChange = extra?.must_change_password ? 1 : 0;
   const companyIds = JSON.stringify(extra?.allowed_company_ids || []);
   const result = db.prepare(
-    'INSERT INTO portal_users (name, email, password_hash, role, employee_id, status, allowed_company_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(name, email.toLowerCase().trim(), hash, role, employeeId, status, companyIds, nowISO());
+    'INSERT INTO portal_users (name, email, password_hash, role, employee_id, applicant_id, must_change_password, status, allowed_company_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(name, email.toLowerCase().trim(), hash, role, employeeId, applicantId, mustChange, status, companyIds, nowISO());
   return result.lastInsertRowid as number;
 }
 
-export function updateUser(id: number, updates: { name?: string; role?: string; active?: number; employee_id?: number | null; status?: string; allowed_company_ids?: number[] }) {
+export function updateUser(id: number, updates: { name?: string; role?: string; active?: number; employee_id?: number | null; applicant_id?: number | null; must_change_password?: number; status?: string; allowed_company_ids?: number[] }) {
   const db = getDb();
   const sets: string[] = [];
   const vals: any[] = [];
@@ -210,6 +226,8 @@ export function updateUser(id: number, updates: { name?: string; role?: string; 
   if (updates.role !== undefined) { sets.push('role = ?'); vals.push(updates.role); }
   if (updates.active !== undefined) { sets.push('active = ?'); vals.push(updates.active); }
   if (updates.employee_id !== undefined) { sets.push('employee_id = ?'); vals.push(updates.employee_id); }
+  if (updates.applicant_id !== undefined) { sets.push('applicant_id = ?'); vals.push(updates.applicant_id); }
+  if (updates.must_change_password !== undefined) { sets.push('must_change_password = ?'); vals.push(updates.must_change_password); }
   if (updates.status !== undefined) { sets.push('status = ?'); vals.push(updates.status); }
   if (updates.allowed_company_ids !== undefined) { sets.push('allowed_company_ids = ?'); vals.push(JSON.stringify(updates.allowed_company_ids)); }
   if (sets.length === 0) return;
@@ -240,7 +258,7 @@ export function getSessionUser(token: string): PortalUser | null {
   const db = getDb();
   const now = nowISO();
   const row = db.prepare(`
-    SELECT u.id, u.name, u.email, u.role, u.employee_id, u.status, u.active, u.login_count, u.tour_seen, u.allowed_company_ids, u.created_at, u.last_login
+    SELECT u.id, u.name, u.email, u.role, u.employee_id, u.applicant_id, u.must_change_password, u.status, u.active, u.login_count, u.tour_seen, u.allowed_company_ids, u.created_at, u.last_login
     FROM sessions s
     JOIN portal_users u ON u.id = s.user_id
     WHERE s.token = ? AND u.active = 1 AND u.status = 'active' AND s.expires_at > ?

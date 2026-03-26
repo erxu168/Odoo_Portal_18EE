@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 interface Props {
   userRole: string;
   onNavigate: (screen: string) => void;
-  onHome: () => void;
+  onHome?: () => void;
   onSettings?: () => void;
 }
 

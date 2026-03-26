@@ -21,7 +21,7 @@ interface Props {
   categoryName?: string;
   productQty?: number;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
   onStartCooking: (steps: StepData[]) => void;
   onEdit?: () => void;
   userRole?: string;

@@ -37,7 +37,7 @@ interface Props {
   onTogglePublish: () => void;
   onDelete: () => void;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
 }
 
 const DIFF: Record<string, { bg: string; text: string; label: string }> = {

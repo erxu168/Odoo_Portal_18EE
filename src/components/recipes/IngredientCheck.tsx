@@ -16,7 +16,7 @@ interface Props {
   steps: StepData[];
   multiplier: number;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
   onStartCook: () => void;
 }
 

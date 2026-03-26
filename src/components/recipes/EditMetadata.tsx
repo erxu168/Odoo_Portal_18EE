@@ -17,7 +17,7 @@ interface Props {
   submitting?: boolean;
   onSave: (metadata: { name: string; difficulty: string; categoryId: number | null; productQty: number }) => void;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
 }
 
 const DIFFICULTIES = [

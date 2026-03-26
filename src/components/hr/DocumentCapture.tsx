@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import AppHeader from "@/components/ui/AppHeader";
 import PdfViewer from "@/components/ui/PdfViewer";
+import FilePicker from "@/components/ui/FilePicker";
 import type { DocumentType } from "@/types/hr";
 
 interface CapturedFile {
@@ -68,9 +69,6 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Hidden file inputs
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch("/api/hr/documents")
@@ -109,41 +107,11 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingDocs]);
 
-  // --- Capture handlers ---
+  // --- Capture handler ---
 
-  function handleCameraCapture() {
-    cameraInputRef.current?.click();
-  }
-
-  function handleFilePick() {
-    fileInputRef.current?.click();
-  }
-
-  function handleCameraFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    readFileToCapture(file);
-    e.target.value = "";
-  }
-
-  function handleDeviceFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    for (let i = 0; i < files.length; i++) {
-      readFileToCapture(files[i]);
-    }
-    e.target.value = "";
-  }
-
-  function readFileToCapture(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const isPdf =
-        file.type === "application/pdf" || dataUrl.includes("application/pdf");
-      setCaptures((prev) => [...prev, { id: nextId(), dataUrl, isPdf }]);
-    };
-    reader.readAsDataURL(file);
+  function onFilePicked(file: File, dataUrl: string) {
+    const isPdf = file.type === "application/pdf" || dataUrl.includes("application/pdf");
+    setCaptures((prev) => [...prev, { id: nextId(), dataUrl, isPdf }]);
   }
 
   function removeCapture(id: string) {
@@ -154,7 +122,6 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
   function retakeCapture(id: string) {
     removeCapture(id);
     setPreviewIndex(null);
-    setTimeout(() => handleCameraCapture(), 150);
   }
 
   // --- Save handler ---
@@ -511,23 +478,25 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
               ))}
 
               {/* Add more button in the grid */}
-              <button
-                onClick={handleCameraCapture}
+              <FilePicker
+                onFile={onFilePicked}
+                accept="image/*,.pdf"
                 className="aspect-square rounded-xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-1 bg-white active:bg-gray-50"
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
                 <span className="text-[10px] text-gray-400 font-semibold">Add</span>
-              </button>
+              </FilePicker>
             </div>
           </div>
         )}
 
         {/* Source buttons */}
         <div className="flex gap-3 mb-2">
-          <button
-            onClick={handleCameraCapture}
+          <FilePicker
+            onFile={onFilePicked}
+            accept="image/*,.pdf"
             className="flex-1 flex items-center justify-center gap-2.5 py-4 bg-white border-[1.5px] border-gray-200 rounded-2xl active:bg-gray-50 active:shadow-lg transition-all"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
@@ -535,16 +504,17 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
               <circle cx="12" cy="13" r="4" />
             </svg>
             <span className="text-[14px] font-semibold text-gray-900">Take Photo</span>
-          </button>
-          <button
-            onClick={handleFilePick}
+          </FilePicker>
+          <FilePicker
+            onFile={onFilePicked}
+            accept="image/*,.pdf"
             className="flex-1 flex items-center justify-center gap-2.5 py-4 bg-white border-[1.5px] border-gray-200 rounded-2xl active:bg-gray-50 active:shadow-lg transition-all"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
             </svg>
             <span className="text-[14px] font-semibold text-gray-900">Choose Files</span>
-          </button>
+          </FilePicker>
         </div>
 
         {captures.length === 0 && (
@@ -553,23 +523,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
           </p>
         )}
 
-        {/* Hidden file inputs */}
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleCameraFile}
-        />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,.pdf,application/pdf"
-          multiple
-          className="hidden"
-          onChange={handleDeviceFiles}
-        />
+
       </div>
 
       {/* Bottom bar */}

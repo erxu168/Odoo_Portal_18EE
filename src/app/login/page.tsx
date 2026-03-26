@@ -36,6 +36,20 @@ function LoginForm() {
         return;
       }
 
+      // Force password change for new candidates
+      if (data.user?.must_change_password) {
+        router.push('/change-password?forced=1');
+        router.refresh();
+        return;
+      }
+
+      // Candidates go straight to HR (application status)
+      if (data.user?.is_candidate) {
+        router.push('/hr');
+        router.refresh();
+        return;
+      }
+
       const next = searchParams.get('next') || '/';
       router.push(next);
       router.refresh();

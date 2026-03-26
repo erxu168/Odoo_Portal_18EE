@@ -5,6 +5,7 @@ import AppTopBar from '@/components/ui/AppTopBar';
 import MainWrapper from '@/components/ui/MainWrapper';
 import { CompanyProvider } from '@/lib/company-context';
 import DebugOverlay from '@/components/ui/DebugOverlay';
+import { TopBarProvider } from '@/components/ui/TopBarContext';
 
 export const metadata: Metadata = {
   title: 'Krawings Portal',
@@ -27,12 +28,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white min-h-screen">
+        <TopBarProvider>
         <CompanyProvider>
           <AppTopBar />
           <MainWrapper>{children}</MainWrapper>
           <AppTabBar />
           <DebugOverlay />
         </CompanyProvider>
+        </TopBarProvider>
       </body>
     </html>
   );

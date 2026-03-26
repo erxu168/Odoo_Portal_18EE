@@ -8,6 +8,7 @@ import MyProfile from '@/components/hr/MyProfile';
 import MyDocuments from '@/components/hr/MyDocuments';
 import EmployeeOverview from '@/components/hr/EmployeeOverview';
 import EmployeeDetail from '@/components/hr/EmployeeDetail';
+import CandidateStatus from '@/components/hr/CandidateStatus';
 
 type Screen =
   | { type: 'dashboard' }
@@ -15,12 +16,28 @@ type Screen =
   | { type: 'profile' }
   | { type: 'documents' }
   | { type: 'employees' }
-  | { type: 'employee-detail'; employeeId: number };
+  | { type: 'employee-detail'; employeeId: number }
+  | { type: 'candidate-status' };
 
 export default function HrPage() {
   const router = useRouter();
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
   const [history, setHistory] = useState<Screen[]>([]);
+  const [isCandidate, setIsCandidate] = useState(false);
+  const [candidateChecked, setCandidateChecked] = useState(false);
+
+  // Check if this user is a candidate (has applicant_id, no employee_id)
+  React.useEffect(() => {
+    fetch('/api/hr/applicant/status')
+      .then((r) => {
+        if (r.ok) {
+          setIsCandidate(true);
+          setScreen({ type: 'candidate-status' });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCandidateChecked(true));
+  }, []);
 
   function navigate(s: Screen) {
     setHistory((h) => [...h, screen]);
@@ -91,6 +108,13 @@ export default function HrPage() {
           employeeId={screen.employeeId}
           onBack={goBack}
           onHome={goHome}
+        />
+      );
+    case 'candidate-status':
+      return (
+        <CandidateStatus
+          onHome={goHome}
+          onStartOnboarding={() => navigate({ type: 'onboarding', step: 1 })}
         />
       );
     default:

@@ -56,7 +56,7 @@ interface Props {
   onIngredientsChange: (ingredients: RecordedIngredient[]) => void;
   onFinish: (steps: RecordedStep[]) => void;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
 }
 
 export default function ActiveRecording({ recipeName, mode, initialSteps, ingredients, onIngredientsChange, onFinish, onBack, onHome }: Props) {

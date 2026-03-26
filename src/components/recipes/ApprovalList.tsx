@@ -21,7 +21,7 @@ interface Props {
   userRole: string;
   onReview: (version: Version) => void;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
 }
 
 export default function ApprovalList({ userRole, onReview, onBack, onHome }: Props) {

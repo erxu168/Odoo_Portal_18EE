@@ -34,7 +34,7 @@ interface Props {
   onReorder: (steps: RecordedStep[]) => void;
   onSubmit: () => void;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
   submitting: boolean;
   toastMessage?: string;
   toastType?: 'success' | 'error' | 'info';

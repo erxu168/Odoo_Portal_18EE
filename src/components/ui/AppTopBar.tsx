@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import CompanySelector from './CompanySelector';
 import AppDrawer from './AppDrawer';
+import { useTopBar } from './TopBarContext';
 
 /**
  * Thin persistent top bar with hamburger menu and company selector.
@@ -15,8 +16,9 @@ const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-passwo
 export default function AppTopBar() {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { hidden } = useTopBar();
 
-  if (HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
+  if (hidden || HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
     return null;
   }
 

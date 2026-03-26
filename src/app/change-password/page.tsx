@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function ChangePasswordPage() {
+function ChangePasswordForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isForced = searchParams.get('forced') === '1';
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
@@ -67,9 +69,9 @@ export default function ChangePasswordPage() {
           </div>
           <div className="text-[18px] font-bold text-gray-900 mb-2">All set!</div>
           <div className="text-[14px] text-gray-500 text-center mb-6">Your password has been updated.</div>
-          <button onClick={() => router.push('/')}
+          <button onClick={() => router.push(isForced ? '/hr' : '/')}
             className="w-full max-w-[320px] py-4 rounded-xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700">
-            Back to Home
+            {isForced ? 'Continue to Portal' : 'Back to Home'}
           </button>
         </div>
       </div>
@@ -80,15 +82,24 @@ export default function ChangePasswordPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden rounded-b-[28px]">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()}
-            className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 19l-7-7 7-7"/></svg>
-          </button>
+          {!isForced && (
+            <button onClick={() => router.back()}
+              className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 19l-7-7 7-7"/></svg>
+            </button>
+          )}
           <h1 className="text-[20px] font-bold text-white">Change Password</h1>
         </div>
       </div>
 
       <div className="flex-1 px-6 pt-6 pb-20">
+        {isForced && (
+          <div className="mb-4 px-4 py-4 bg-amber-50 border border-amber-200 rounded-xl">
+            <div className="text-[13px] font-semibold text-amber-800">Password change required</div>
+            <div className="text-[12px] text-amber-700 mt-1">You are using a temporary password. Please set a new password to continue.</div>
+          </div>
+        )}
+
         {error && (
           <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[13px]">
             {error}
@@ -134,5 +145,17 @@ export default function ChangePasswordPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ChangePasswordPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
+      </div>
+    }>
+      <ChangePasswordForm />
+    </Suspense>
   );
 }

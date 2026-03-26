@@ -15,7 +15,7 @@ interface Props {
   ingredients?: RecordedIngredient[];
   onSave: (updated: RecordedStep) => void;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
 }
 
 function formatTimerDisplay(sec: number): string {

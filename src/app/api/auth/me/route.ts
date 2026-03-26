@@ -17,6 +17,9 @@ export async function GET() {
       email: user.email,
       role: user.role,
       employee_id: user.employee_id,
+      applicant_id: user.applicant_id,
+      must_change_password: !!user.must_change_password,
+      is_candidate: !!user.applicant_id && !user.employee_id,
     },
   });
 }

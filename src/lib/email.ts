@@ -66,3 +66,60 @@ export async function sendPasswordResetEmail(toEmail: string, toName: string, re
     `,
   });
 }
+
+
+/**
+ * Send portal access credentials to a new candidate.
+ */
+export async function sendCandidateWelcomeEmail(
+  toEmail: string,
+  toName: string,
+  tempPassword: string,
+  jobName: string,
+) {
+  const loginUrl = `${PORTAL_URL}/login`;
+
+  await transporter.sendMail({
+    from: `"Krawings Portal" <${FROM}>`,
+    to: toEmail,
+    subject: 'Your Krawings Portal access is ready',
+    text: [
+      `Hi ${toName},`,
+      '',
+      `Welcome! You have been granted access to the Krawings Staff Portal as part of your application for ${jobName}.`,
+      '',
+      'Here are your login details:',
+      `  Email: ${toEmail}`,
+      `  Temporary password: ${tempPassword}`,
+      '',
+      'Please log in and change your password immediately:',
+      loginUrl,
+      '',
+      'You can use the portal to track your application status and, once approved, complete your onboarding paperwork.',
+      '',
+      '\u2014 Krawings SSAM Korean BBQ',
+    ].join('\n'),
+    html: `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+          <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">SSAM KOREAN BBQ</div>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Welcome! You have been granted access to the Krawings Staff Portal as part of your application for <strong>${jobName}</strong>.</p>
+        <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; padding: 20px; margin: 20px 0;">
+          <div style="font-size: 13px; color: #6B7280; margin-bottom: 8px;">Your login details:</div>
+          <div style="font-size: 14px; color: #111827;"><strong>Email:</strong> ${toEmail}</div>
+          <div style="font-size: 14px; color: #111827; margin-top: 6px;"><strong>Temporary password:</strong> <code style="background: #FEF3C7; padding: 2px 8px; border-radius: 4px; font-size: 15px; font-weight: 700;">${tempPassword}</code></div>
+        </div>
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${loginUrl}" style="display: inline-block; padding: 14px 32px; background-color: #16A34A; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px;">Log in to Portal</a>
+        </div>
+        <p style="color: #6B7280; font-size: 13px; line-height: 1.5;">You will be asked to change your password on first login.</p>
+        <p style="color: #6B7280; font-size: 13px; line-height: 1.5;">Use the portal to track your application status. Once approved, you can complete your onboarding paperwork directly in the portal.</p>
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings SSAM Korean BBQ &middot; Staff Portal</p>
+      </div>
+    `,
+  });
+}

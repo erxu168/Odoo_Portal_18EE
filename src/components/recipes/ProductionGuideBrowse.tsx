@@ -25,7 +25,7 @@ interface Props {
   userRole: string;
   onSelectRecipe: (recipe: ProductionRecipe) => void;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
 }
 
 const DIFFICULTY_STYLES: Record<string, { bg: string; text: string; label: string }> = {

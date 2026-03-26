@@ -15,7 +15,7 @@ interface Props {
   onSelectRecipe: (recipe: Recipe, mode: 'cooking' | 'production') => void;
   onCreateNew: (mode: 'cooking' | 'production') => void;
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
 }
 
 export default function RecordSelect({ onSelectRecipe, onCreateNew, onBack, onHome }: Props) {

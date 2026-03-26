@@ -15,7 +15,7 @@ interface Props {
   baseBatch: number;
   bomIngredients?: BomIngredient[];
   onBack: () => void;
-  onHome: () => void;
+  onHome?: () => void;
   onConfirm: (batch: number, multiplier: number) => void;
 }
 
