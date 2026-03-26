@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import FilePicker from "@/components/ui/FilePicker";
 
 interface ReceiptLine {
   id: number;
@@ -230,7 +231,7 @@ export default function ReceiveReview({
             <div className="mt-2 text-center">
               <label className="text-[12px] font-semibold text-green-700 cursor-pointer active:opacity-70">
                 Retake photo
-                <input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" />
+                
               </label>
             </div>
             <div className="flex items-center gap-2 mt-2 px-1">
@@ -248,7 +249,7 @@ export default function ReceiveReview({
               <div className="text-[12px] font-semibold text-gray-900">Take photo of delivery note</div>
               <div className="text-[10px] text-gray-400 mt-0.5">Saved to Odoo as proof of delivery</div>
             </div>
-            <input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" />
+            
           </label>
         )}
       </div>

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState } from './ui';
 import NumpadModal from './NumpadModal';
+import FilePicker from "@/components/ui/FilePicker";
 
 interface CountingSessionProps {
   sessionId: number;
@@ -28,8 +29,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [showConfirm, setShowConfirm] = useState(false);
   const [proofPhoto, setProofPhoto] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
-
+  
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -251,21 +251,22 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           {canSubmit && (
             <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
               <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mb-2">Proof photo</p>
-              <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoCapture} />
+              
               {proofPhoto ? (
                 <div className="relative">
                   <img src={proofPhoto} alt="Proof" className="w-full rounded-xl border border-gray-200" />
-                  <button onClick={() => { setProofPhoto(null); if (cameraRef.current) cameraRef.current.value = ''; }}
+                  <button onClick={() => setProofPhoto('')}
                     className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center active:bg-black/70">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
                   </button>
                 </div>
               ) : (
-                <button onClick={() => cameraRef.current?.click()}
-                  className="w-full py-4 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-gray-50">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                  Take a photo of the shelf
-                </button>
+                <FilePicker
+                  onFile={(file, dataUrl) => handlePhotoCapture({ target: { files: [file] } } as any)}
+                  accept="image/*"
+                  label="Take a photo of the shelf"
+                  className="w-full py-4 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-gray-50"
+                />
               )}
               <p className="text-[11px] text-gray-400 mt-2">Photo proof is required for submission.</p>
             </div>

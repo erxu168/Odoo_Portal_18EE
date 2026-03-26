@@ -4,6 +4,7 @@ import React, { useState, useRef } from 'react';
 import type { RecordedStep, RecordedIngredient } from './ActiveRecording';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Toast from '@/components/ui/Toast';
+import FilePicker from "@/components/ui/FilePicker";
 
 const MAX_PHOTO_MB = 5;
 const MAX_PHOTO_BYTES = MAX_PHOTO_MB * 1024 * 1024;
@@ -35,8 +36,7 @@ export default function EditStep({ step, stepIndex, ingredients = [], onSave, on
   const [selectedIngIds, setSelectedIngIds] = useState<string[]>([...(step.ingredientIds || [])]);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-
+  
   // P8: Photo size validation
   function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -161,11 +161,11 @@ export default function EditStep({ step, stepIndex, ingredients = [], onSave, on
                 </button>
               </div>
             ))}
-            <button onClick={() => fileRef.current?.click()}
-              className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 active:bg-gray-50">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-            </button>
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFileChange} className="hidden" />
+            <FilePicker onFile={(file, dataUrl) => onFileChange({ target: { files: [file] } } as any)} accept="image/*" size="sm" label="Add photo">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400"><path d="M12 5v14M5 12h14"/></svg>
+              <span className="text-[11px] text-gray-400 font-semibold mt-1">Add photo</span>
+            </FilePicker>
+            
           </div>
         </div>
 

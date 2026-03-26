@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Toast from '@/components/ui/Toast';
+import FilePicker from "@/components/ui/FilePicker";
 
 export interface RecordedIngredient {
   id: string;            // local ID for UI tracking
@@ -82,8 +83,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
   const [recording, setRecording] = useState(true);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stepsRef = useRef(steps);
   stepsRef.current = steps;
 
@@ -387,14 +387,13 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
         <div className="text-[11px] text-zinc-400 font-semibold">{recipeName} {'\u00b7'} {mode === 'cooking' ? 'Cooking' : 'Production'}</div>
       </div>
       <div className="px-5 mb-3">
-        <button onClick={() => fileRef.current?.click()}
-          className="w-full h-32 rounded-2xl bg-zinc-800 border border-zinc-700 border-dashed flex flex-col items-center justify-center active:bg-zinc-700">
+        <FilePicker onFile={(file, dataUrl) => onFileChange({ target: { files: [file] } } as any)} accept="image/*" variant="button" label="Add photo" icon="">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
             <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/>
           </svg>
           <span className="text-[12px] text-zinc-400 mt-2">Tap to take photo</span>
-        </button>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onFileChange} className="hidden" />
+        </FilePicker>
+        
       </div>
       {photos.length > 0 && (
         <div className="px-5 mb-3 flex gap-2 overflow-x-auto no-scrollbar">

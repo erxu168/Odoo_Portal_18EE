@@ -6,6 +6,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Numpad from '@/components/ui/Numpad';
 import LocationDropdown from '@/components/ui/LocationDropdown';
 import OrdersDashboard from '@/components/purchase/OrdersDashboard';
+import FilePicker from "@/components/ui/FilePicker";
 
 // Types
 interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; min_order_value: number; approval_required: number; send_method: string; }
@@ -418,8 +419,8 @@ export default function PurchasePage() {
       <div className="text-[15px] font-bold text-gray-900 mb-1">{issueLine?.product_name}</div>
       <div className="text-[12px] text-gray-500 mb-4">Ordered: {issueLine?.ordered_qty} {issueLine?.product_uom}</div>
       <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Photo evidence</label>
-      {localPhoto ? (<div className="mb-4 relative"><img src={localPhoto} alt="Issue photo" className="w-full h-48 object-cover rounded-xl border border-gray-200" /><button onClick={() => { setLocalPhoto(''); setIssuePhoto(''); }} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white text-[14px]">&times;</button><div className="mt-2 text-center"><label className="text-[12px] font-semibold text-green-700 cursor-pointer active:opacity-70">Retake photo<input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" /></label></div></div>
-      ) : (<label className="block mb-4 cursor-pointer"><div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center active:bg-gray-50"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" className="mx-auto mb-2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg><div className="text-[13px] font-semibold text-gray-900">Tap to take photo</div><div className="text-[11px] text-gray-400 mt-1">Camera or gallery</div></div><input type="file" accept="image/*" capture="environment" onChange={handleCameraCapture} className="hidden" /></label>)}
+      {localPhoto ? (<div className="mb-4 relative"><img src={localPhoto} alt="Issue photo" className="w-full h-48 object-cover rounded-xl border border-gray-200" /><button onClick={() => { setLocalPhoto(''); setIssuePhoto(''); }} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white text-[14px]">&times;</button><div className="mt-2 text-center"><FilePicker onFile={(file, dataUrl) => handleCameraCapture({ target: { files: [file] } } as any)} accept="image/*" variant="button" label="Retake photo" icon="" className="text-[12px] font-semibold text-green-700 active:opacity-70" /></div></div>
+      ) : (<FilePicker onFile={(file, dataUrl) => handleCameraCapture({ target: { files: [file] } } as any)} accept="image/*" label="Tap to take photo" className="w-full mb-4 border-2 border-dashed border-gray-300 rounded-xl p-6 text-center active:bg-gray-50 bg-white" />)}
       <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Issue type</label>
       <div className="flex gap-1.5 flex-wrap mb-4">{types.map(t => (<button key={t} onClick={() => setIssueType(t)} className={`px-3 py-1.5 rounded-full text-[11px] font-semibold ${issueType === t ? 'bg-red-500 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{t}</button>))}</div>
       <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Notes</label>
