@@ -67,9 +67,9 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
         {/* User header */}
         <div className="bg-[#2563EB] px-5 pt-14 pb-5 rounded-b-[28px]">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+            <button onClick={() => { onClose(); router.push('/hr'); }} className="w-11 h-11 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0 cursor-pointer active:opacity-80 transition-opacity">
               <span className="text-white text-[14px] font-bold">{initials}</span>
-            </div>
+            </button>
             <div className="min-w-0">
               <div className="text-[15px] font-bold text-white truncate">{user?.name || 'Loading...'}</div>
               <div className="text-[12px] text-white/50 truncate">{user?.email || ''}</div>

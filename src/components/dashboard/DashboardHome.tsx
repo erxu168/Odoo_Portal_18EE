@@ -141,14 +141,14 @@ export default function DashboardHome() {
             </h1>
             <p className="text-[13px] text-white/50 mt-0.5">{dateStr}</p>
           </div>
-          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-white/30">
+          <button onClick={() => router.push('/hr')} className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 overflow-hidden border-2 border-white/30 cursor-pointer active:opacity-80 transition-opacity">
             {photoLoaded ? (
               <img src="/api/hr/employee/photo" alt="" className="w-full h-full object-cover" />
             ) : (
               <span className="text-white text-[14px] font-bold">{firstName ? firstName[0].toUpperCase() : ''}</span>
             )}
             <img src="/api/hr/employee/photo" alt="" className="hidden" onLoad={() => setPhotoLoaded(true)} onError={() => setPhotoLoaded(false)} />
-          </div>
+          </button>
         </div>
         {shift && (
           <div className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-xl relative ${shift.onShift ? 'bg-green-600/10 border border-green-600/20' : 'bg-white/5 border border-white/10'}`}>
