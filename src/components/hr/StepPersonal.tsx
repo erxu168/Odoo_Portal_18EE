@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import InfoButton from '@/components/hr/InfoButton';
 import type { EmployeeData } from '@/types/hr';
+import PhoneInput from '@/components/ui/PhoneInput';
 import { FIELD_EXPLAINERS } from '@/types/hr';
 
 interface Props {
@@ -235,7 +236,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
           <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" />
         </Field>
         <Field label="Phone" labelDe="Telefon">
-          <input className="form-input font-mono" type="tel" value={phone} onChange={e => handlePhoneChange(e.target.value, setPhone)} placeholder="+49 176 1234-5678" />
+          <PhoneInput value={phone} onChange={setPhone} />
         </Field>
 
         {/* Emergency contact */}
@@ -251,7 +252,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
           </select>
         </Field>
         <Field label="Contact phone">
-          <input className="form-input font-mono" type="tel" value={emergPhone} onChange={e => handlePhoneChange(e.target.value, setEmergPhone)} placeholder="+49 176 1234-5678" />
+          <PhoneInput value={emergPhone} onChange={setEmergPhone} />
         </Field>
       </div>
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent">
