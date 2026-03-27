@@ -132,8 +132,8 @@ export default function RecipesPage() {
     const reset = sessionStorage.getItem('kw_recipes_reset');
     if (reset) {
       sessionStorage.removeItem('kw_recipes_reset');
-      const hasActive = sessions.some(s => s.status === 'active');
-      setScreen(hasActive ? { type: 'active-sessions' } : { type: 'dashboard' });
+
+      setScreen({ type: 'dashboard' });
     }
   });
 
