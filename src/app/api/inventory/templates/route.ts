@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 /**
  * /api/inventory/templates
  *
@@ -8,7 +9,6 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { initInventoryTables, createTemplate, listTemplates, updateTemplate, getTemplate, generateSessionForTemplate } from '@/lib/inventory-db';
 
-initInventoryTables();
 
 export async function GET(request: Request) {
   const user = requireAuth();

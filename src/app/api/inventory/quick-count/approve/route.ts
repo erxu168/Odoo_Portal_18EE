@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 /**
  * POST /api/inventory/quick-count/approve
  *
@@ -12,7 +13,6 @@ import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, approveQuickCount } from '@/lib/inventory-db';
 import { getDb } from '@/lib/db';
 
-initInventoryTables();
 
 export async function POST(request: Request) {
   const user = requireAuth();

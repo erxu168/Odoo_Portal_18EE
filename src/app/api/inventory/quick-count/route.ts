@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 /**
  * /api/inventory/quick-count
  *
@@ -9,7 +10,6 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { initInventoryTables, createQuickCount, listQuickCounts, approveQuickCount } from '@/lib/inventory-db';
 
-initInventoryTables();
 
 export async function GET(request: Request) {
   const user = requireAuth();

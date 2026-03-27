@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 /**
  * POST /api/inventory/approve
  *
@@ -17,7 +18,6 @@ import {
   updateSessionStatus,
 } from '@/lib/inventory-db';
 
-initInventoryTables();
 
 export async function POST(request: Request) {
   const user = requireAuth();

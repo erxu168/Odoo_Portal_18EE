@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 /**
  * GET /api/cron/generate-sessions
  *
@@ -17,9 +18,9 @@ import { NextResponse } from 'next/server';
 import { initInventoryTables, generateTodaySessions } from '@/lib/inventory-db';
 import { logAudit } from '@/lib/db';
 
-initInventoryTables();
-
 export async function GET(request: Request) {
+  initInventoryTables();
+
   // Auth: check token
   const { searchParams } = new URL(request.url);
   const token = searchParams.get('token');

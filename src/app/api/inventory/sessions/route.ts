@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 /**
  * /api/inventory/sessions
  *
@@ -11,7 +12,6 @@ import { requireAuth, hasRole } from '@/lib/auth';
 import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate } from '@/lib/inventory-db';
 import { logAudit } from '@/lib/db';
 
-initInventoryTables();
 
 export async function GET(request: Request) {
   const user = requireAuth();

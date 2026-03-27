@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 /**
  * /api/inventory/counts
  *
@@ -10,7 +11,6 @@ import { requireAuth } from '@/lib/auth';
 import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession } from '@/lib/inventory-db';
 import { getOdoo } from '@/lib/odoo';
 
-initInventoryTables();
 
 export async function GET(request: Request) {
   const user = requireAuth();
