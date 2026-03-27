@@ -67,6 +67,9 @@ interface TileConfig {
   icon: React.ReactNode;
   badgeCount: number;
   badgeColor: string;
+  color: string;
+  iconBg: string;
+  iconColor: string;
 }
 
 export default function OrdersDashboard({
@@ -85,6 +88,7 @@ export default function OrdersDashboard({
       icon: <PlaceOrderIcon />,
       badgeCount: 0,
       badgeColor: '',
+      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
     },
     {
       id: 'cart',
@@ -93,6 +97,7 @@ export default function OrdersDashboard({
       icon: <CartIcon />,
       badgeCount: cartItemCount,
       badgeColor: 'bg-green-600',
+      color: 'bg-green-50 border-green-200', iconBg: 'bg-green-100', iconColor: 'text-green-600',
     },
     {
       id: 'receive',
@@ -101,6 +106,7 @@ export default function OrdersDashboard({
       icon: <ReceiveIcon />,
       badgeCount: pendingDeliveryCount,
       badgeColor: 'bg-blue-500',
+      color: 'bg-amber-50 border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
     },
     {
       id: 'history',
@@ -109,6 +115,7 @@ export default function OrdersDashboard({
       icon: <HistoryIcon />,
       badgeCount: 0,
       badgeColor: '',
+      color: 'bg-purple-50 border-purple-200', iconBg: 'bg-purple-100', iconColor: 'text-purple-600',
     },
   ];
 
@@ -127,27 +134,18 @@ export default function OrdersDashboard({
           <button
             key={tile.id}
             onClick={() => onNavigate(tile.id)}
-            className="relative flex flex-col items-center justify-center gap-2 py-7 px-3 bg-white border border-gray-200 rounded-2xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] active:scale-[0.96] transition-transform"
+            className={`relative rounded-2xl border ${tile.color} shadow-sm p-4 text-left active:scale-[0.97] transition-transform`}
           >
-            {/* Badge */}
             {tile.badgeCount > 0 && (
-              <span
-                className={`absolute top-2.5 right-2.5 min-w-[22px] h-[22px] px-1.5 rounded-full text-white text-[12px] font-bold font-mono leading-[22px] text-center ${tile.badgeColor}`}
-              >
+              <span className="absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold font-mono leading-5 text-center">
                 {tile.badgeCount}
               </span>
             )}
-
-            {/* Icon container */}
-            <div className="w-14 h-14 rounded-[16px] bg-gray-100 flex items-center justify-center text-blue-600">
+            <div className={`w-11 h-11 rounded-xl ${tile.iconBg} ${tile.iconColor} flex items-center justify-center mb-3`}>
               {tile.icon}
             </div>
-
-            {/* Label */}
-            <div className="text-center">
-              <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
-              <div className="text-[11px] text-gray-400 mt-0.5">{tile.sublabel}</div>
-            </div>
+            <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
+            <div className="text-[11px] text-gray-500 mt-0.5">{tile.sublabel}</div>
           </button>
         ))}
       </div>

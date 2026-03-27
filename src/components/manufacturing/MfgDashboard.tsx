@@ -39,18 +39,19 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
       key: 'orders',
       label: 'Current Manufacturing',
       sublabel: 'Active orders',
+      color: 'bg-orange-50 border-orange-200', iconBg: 'bg-orange-100', iconColor: 'text-orange-600',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/>
         </svg>
       ),
       badge: stats.active > 0 ? stats.active : null,
-      badgeColor: 'bg-green-600',
     },
     {
       key: 'create',
-      label: 'Start manufacturing',
+      label: 'Start Manufacturing',
       sublabel: 'New batch',
+      color: 'bg-green-50 border-green-200', iconBg: 'bg-green-100', iconColor: 'text-green-600',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10"/>
@@ -59,12 +60,12 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
         </svg>
       ),
       badge: null,
-      badgeColor: '',
     },
     {
       key: 'pick-list',
-      label: 'Pick list',
+      label: 'Pick List',
       sublabel: 'Collect ingredients',
+      color: 'bg-amber-50 border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
@@ -73,12 +74,12 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
         </svg>
       ),
       badge: stats.pickListCount > 0 ? stats.pickListCount : null,
-      badgeColor: 'bg-blue-500',
     },
     {
       key: 'recipes',
       label: 'Recipes',
       sublabel: 'Bills of materials',
+      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
@@ -88,12 +89,12 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
         </svg>
       ),
       badge: stats.bomCount > 0 ? stats.bomCount : null,
-      badgeColor: 'bg-blue-500',
     },
     {
       key: 'completed',
       label: 'Completed',
       sublabel: 'Finished orders',
+      color: 'bg-green-50 border-green-200', iconBg: 'bg-green-100', iconColor: 'text-green-600',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
@@ -101,7 +102,6 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
         </svg>
       ),
       badge: stats.done > 0 ? stats.done : null,
-      badgeColor: 'bg-green-500',
     },
   ];
 
@@ -117,15 +117,15 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
             <button
               key={tile.key}
               onClick={() => onNavigate(tile.key)}
-              className="relative bg-white rounded-2xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 text-left active:scale-[0.97] transition-transform"
+              className={`relative rounded-2xl border ${tile.color} shadow-sm p-4 text-left active:scale-[0.97] transition-transform`}
             >
-              <div className="w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center text-blue-600 mb-3">
+              <div className={`w-11 h-11 rounded-xl ${tile.iconBg} ${tile.iconColor} flex items-center justify-center mb-3`}>
                 {tile.icon}
               </div>
               <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
               <div className="text-[11px] text-gray-500 mt-0.5">{tile.sublabel}</div>
               {tile.badge !== null && (
-                <span className={`absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full ${tile.badgeColor} text-white text-[11px] font-bold flex items-center justify-center`}>
+                <span className="absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center">
                   {tile.badge}
                 </span>
               )}

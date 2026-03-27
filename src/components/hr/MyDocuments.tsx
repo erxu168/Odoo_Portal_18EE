@@ -217,7 +217,7 @@ export default function MyDocuments({ onBack }: Props) {
   const optional = DOCUMENT_TYPES.filter((dt) => !dt.required);
 
   return (
-    <div className="min-h-screen bg-[#f8faf9] pb-20">
+    <div className="min-h-screen bg-gray-50 pb-20">
       <AppHeader title="My Documents" showBack onBack={onBack} />
 
       <div className="p-5">

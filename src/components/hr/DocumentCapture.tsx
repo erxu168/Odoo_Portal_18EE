@@ -350,7 +350,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
     "Take clear photos or choose files from your device.";
 
   return (
-    <div className="min-h-screen bg-[#f8faf9] pb-40">
+    <div className="min-h-screen bg-gray-50 pb-40">
       <AppHeader
         title={docType.label}
         subtitle={docType.labelDe}

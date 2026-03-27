@@ -50,7 +50,7 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f8faf9]">
+      <div className="min-h-screen bg-gray-50">
         <AppHeader title="Employee" showBack onBack={onBack} />
         <div className="flex items-center justify-center h-40">
           <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
@@ -61,7 +61,7 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
 
   if (!emp) {
     return (
-      <div className="min-h-screen bg-[#f8faf9]">
+      <div className="min-h-screen bg-gray-50">
         <AppHeader title="Employee" showBack onBack={onBack} />
         <div className="p-5 text-center text-red-500 mt-10">Employee not found.</div>
       </div>
@@ -77,7 +77,7 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8faf9] pb-40">
+    <div className="min-h-screen bg-gray-50 pb-40">
       <AppHeader title={emp.name} showBack onBack={onBack} />
 
       <div className="bg-white px-5 py-4 flex items-center gap-3.5 border-b border-gray-200">

@@ -92,7 +92,7 @@ export default function OnboardingWizard({ initialStep, onBack, onDone }: Props)
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f8faf9]">
+      <div className="min-h-screen bg-gray-50">
         <AppHeader title="Onboarding" showBack onBack={onBack} />
         <div className="flex items-center justify-center h-40">
           <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
@@ -103,7 +103,7 @@ export default function OnboardingWizard({ initialStep, onBack, onDone }: Props)
 
   if (!employee) {
     return (
-      <div className="min-h-screen bg-[#f8faf9]">
+      <div className="min-h-screen bg-gray-50">
         <AppHeader title="Onboarding" showBack onBack={onBack} />
         <div className="p-5 text-center text-red-500 mt-10">
           Could not load your employee data.
@@ -113,7 +113,7 @@ export default function OnboardingWizard({ initialStep, onBack, onDone }: Props)
   }
 
   return (
-    <div className="min-h-screen bg-[#f8faf9]">
+    <div className="min-h-screen bg-gray-50">
       <AppHeader
         title={STEP_TITLES[step]}
         showBack

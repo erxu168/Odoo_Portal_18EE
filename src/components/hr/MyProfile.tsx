@@ -26,7 +26,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f8faf9]">
+      <div className="min-h-screen bg-gray-50">
         <AppHeader title="My Profile" showBack onBack={onBack} />
         <div className="flex items-center justify-center h-40">
           <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
@@ -37,7 +37,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
 
   if (!emp) {
     return (
-      <div className="min-h-screen bg-[#f8faf9]">
+      <div className="min-h-screen bg-gray-50">
         <AppHeader title="My Profile" showBack onBack={onBack} />
         <div className="p-5 text-center text-red-500 mt-10">Could not load profile.</div>
       </div>
@@ -50,7 +50,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
   const isComplete = emp.kw_onboarding_status === "complete";
 
   return (
-    <div className="min-h-screen bg-[#f8faf9] pb-40">
+    <div className="min-h-screen bg-gray-50 pb-40">
       <AppHeader title="My Profile" showBack onBack={onBack} />
 
       <div className="bg-white px-5 py-6 text-center border-b border-gray-200">

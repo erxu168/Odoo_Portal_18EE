@@ -41,7 +41,7 @@ export default function CandidateStatus({ onHome, onStartOnboarding }: Props) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f8faf9]">
+      <div className="min-h-screen bg-gray-50">
         <AppHeader title="Application Status" />
         <div className="flex items-center justify-center h-40">
           <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
@@ -52,7 +52,7 @@ export default function CandidateStatus({ onHome, onStartOnboarding }: Props) {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-[#f8faf9]">
+      <div className="min-h-screen bg-gray-50">
         <AppHeader title="Application Status" />
         <div className="p-5">
           <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-[13px] text-red-700">
@@ -73,7 +73,7 @@ export default function CandidateStatus({ onHome, onStartOnboarding }: Props) {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8faf9]">
+    <div className="min-h-screen bg-gray-50">
       <AppHeader title="Application Status" />
 
       <div className="p-5">

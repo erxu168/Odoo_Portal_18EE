@@ -52,7 +52,7 @@ export default function EmployeeOverview({ onBack, onSelect }: Props) {
   }).length;
 
   return (
-    <div className="min-h-screen bg-[#f8faf9]">
+    <div className="min-h-screen bg-gray-50">
       <AppHeader title="Employees" subtitle={employees.length + " active"} showBack onBack={onBack} />
 
       <div className="px-5 pt-4 pb-3">
