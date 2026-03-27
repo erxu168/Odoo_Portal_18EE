@@ -19,10 +19,18 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || '';
     const filter = searchParams.get('filter') || 'all';
+    const companyId = searchParams.get('company_id');
+    const departmentId = searchParams.get('department_id');
 
     const domain: unknown[][] = [['active', '=', true]];
     if (search) {
       domain.push(['name', 'ilike', search]);
+    }
+    if (companyId) {
+      domain.push(['company_id', '=', parseInt(companyId)]);
+    }
+    if (departmentId) {
+      domain.push(['department_id', '=', parseInt(departmentId)]);
     }
     if (filter === 'incomplete') {
       domain.push(['kw_onboarding_status', '!=', 'complete']);
@@ -34,9 +42,11 @@ export async function GET(req: NextRequest) {
       domain.push(['visa_expire', '!=', false]);
     }
 
-    const employees = await odoo.searchRead(
-      'hr.employee', domain, EMPLOYEE_READ_FIELDS,
-    );
+    // Add company_id to read fields if not already there
+    const fields = [...EMPLOYEE_READ_FIELDS];
+    if (!fields.includes('company_id')) fields.push('company_id');
+
+    const employees = await odoo.searchRead('hr.employee', domain, fields);
 
     return NextResponse.json({ employees: employees || [] });
   } catch (err: unknown) {
