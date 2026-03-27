@@ -127,13 +127,15 @@ export default function DashboardHome() {
       <div className="bg-[#2563EB] px-6 pt-14 pb-6 rounded-b-[28px] relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.06)_0%,transparent_70%)]" />
         <div className="relative flex items-center gap-3">
-          {avatar ? (
-            <img src={`data:image/png;base64,${avatar}`} alt="" className="w-12 h-12 rounded-full object-cover flex-shrink-0 border-2 border-white/20" />
-          ) : firstName ? (
-            <div className="w-12 h-12 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0 border-2 border-white/20">
-              <span className="text-white text-[16px] font-bold">{firstName[0]}</span>
-            </div>
-          ) : null}
+          <button onClick={() => router.push('/hr')} className="flex-shrink-0 active:scale-95 transition-transform">
+            {avatar ? (
+              <img src={`data:image/png;base64,${avatar}`} alt="" className="w-12 h-12 rounded-full object-cover border-2 border-white/20" />
+            ) : firstName ? (
+              <div className="w-12 h-12 rounded-full bg-green-600 flex items-center justify-center border-2 border-white/20">
+                <span className="text-white text-[16px] font-bold">{firstName[0]}</span>
+              </div>
+            ) : null}
+          </button>
           <div>
             <h1 className="text-[22px] font-bold text-white">
               {greeting}{firstName ? `, ${firstName}` : ''}
