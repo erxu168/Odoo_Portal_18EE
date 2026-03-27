@@ -77,7 +77,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
     {
       id: 'my-lists',
       label: 'My Lists',
-      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-100',
+      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
       sublabel: stats.pending > 0 ? `${stats.pending} pending` : 'Assigned counts',
       badge: stats.pending,
       icon: (
@@ -90,7 +90,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
     {
       id: 'quick-count',
       label: 'Quick Count',
-      color: 'bg-teal-50 border-teal-200', iconBg: 'bg-teal-100',
+      color: 'bg-teal-50 border-teal-200', iconBg: 'bg-teal-100', iconColor: 'text-teal-600',
       sublabel: 'Search + count any item',
       badge: 0,
       icon: (
@@ -104,7 +104,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
     ...(canManage ? [{
       id: 'manage',
       label: 'Manage Lists',
-      color: 'bg-purple-50 border-purple-200', iconBg: 'bg-purple-100',
+      color: 'bg-purple-50 border-purple-200', iconBg: 'bg-purple-100', iconColor: 'text-purple-600',
       sublabel: stats.templates > 0 ? `${stats.templates} templates` : 'Create templates',
       badge: 0,
       icon: (
@@ -117,7 +117,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
     ...(canManage ? [{
       id: 'review',
       label: 'Review',
-      color: 'bg-amber-50 border-amber-200', iconBg: 'bg-amber-100',
+      color: 'bg-amber-50 border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
       sublabel: (stats.submitted + stats.quickPending) > 0 ? `${stats.submitted + stats.quickPending} to review` : 'Approve counts',
       badge: stats.submitted + stats.quickPending,
       icon: (
@@ -156,7 +156,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
                   {tile.badge}
                 </span>
               )}
-              <div className={`w-11 h-11 rounded-xl ${(tile as any).iconBg || 'bg-gray-100'} flex items-center justify-center mb-3`}>
+              <div className={`w-11 h-11 rounded-xl ${(tile as any).iconBg || 'bg-gray-100'} ${(tile as any).iconColor || ''} flex items-center justify-center mb-3`}>
                 {tile.icon}
               </div>
               <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
