@@ -107,7 +107,7 @@ export default function PhoneInput({ value, onChange }: Props) {
       onChange('');
       return;
     }
-    onChange('+' + c.dial + cleanArea + cleanNum);
+    onChange('+' + c.dial + ' ' + cleanArea + ' ' + cleanNum.slice(0, 4) + (cleanNum.length > 4 ? '-' + cleanNum.slice(4) : ''));
   }
 
   function handleAreaChange(val: string) {
