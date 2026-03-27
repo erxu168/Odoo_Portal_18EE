@@ -87,11 +87,12 @@ export default function DashboardHome() {
   const [shift, setShift] = useState<any>(null);
   const [tasks, setTasks] = useState<any>(null);
   const [now, setNow] = useState(new Date());
+  const [isCandidate, setIsCandidate] = useState(false);
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user) { setUserName(d.user.name); setUserRole(d.user.role); if (d.user.avatar) setAvatar(d.user.avatar); } }).catch(() => {});
+    fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user) { setUserName(d.user.name); setUserRole(d.user.role); if (d.user.avatar) setAvatar(d.user.avatar); if (d.user.is_candidate) setIsCandidate(true); } }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -114,7 +115,9 @@ export default function DashboardHome() {
   const dateStr = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
 
   const myLevel = ROLE_LEVEL[userRole] || 1;
-  const visibleTiles = TILES.filter(t => myLevel >= (ROLE_LEVEL[t.minRole] || 1));
+  const visibleTiles = isCandidate
+    ? TILES.filter(t => t.id === 'hr')
+    : TILES.filter(t => myLevel >= (ROLE_LEVEL[t.minRole] || 1));
 
   const tasksDone = tasks?.done || 0;
   const tasksTotal = tasks?.total || 0;

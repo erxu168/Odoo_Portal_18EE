@@ -38,6 +38,7 @@ export default function OnboardingWizard({ initialStep, onBack, onDone }: Props)
   const [employee, setEmployee] = useState<EmployeeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [contractSigned, setContractSigned] = useState(false);
 
   const loadEmployee = useCallback(async () => {
     try {
@@ -53,9 +54,25 @@ export default function OnboardingWizard({ initialStep, onBack, onDone }: Props)
     }
   }, []);
 
+  const loadContractStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/hr/contract-status');
+      if (res.ok) {
+        const data = await res.json();
+        // Contract is considered signed if state is 'open' (running) or 'close' (expired but was signed)
+        if (data.contract && (data.contract.state === 'open' || data.contract.state === 'close')) {
+          setContractSigned(true);
+        }
+      }
+    } catch (_e: unknown) {
+      console.error('Failed to load contract status');
+    }
+  }, []);
+
   useEffect(() => {
     loadEmployee();
-  }, [loadEmployee]);
+    loadContractStatus();
+  }, [loadEmployee, loadContractStatus]);
 
   async function saveFields(fields: Record<string, unknown>) {
     setSaving(true);
@@ -132,7 +149,29 @@ export default function OnboardingWizard({ initialStep, onBack, onDone }: Props)
       {step === 4 && <StepDocuments employee={employee} onNext={() => setStep(5)} onPrev={handlePrev} onRefresh={loadEmployee} />}
       {step === 5 && <StepConcurrentEmployment onNext={() => setStep(6)} onPrev={handlePrev} />}
       {step === 6 && <StepReview employee={employee} onPrev={handlePrev} onSubmit={() => setStep(7)} saving={saving} onSave={saveFields} />}
-      {step === 7 && <StepConsents employee={employee} onNext={onDone} onPrev={handlePrev} />}
+      {step === 7 && (
+        contractSigned ? (
+          <StepConsents employee={employee} onNext={onDone} onPrev={handlePrev} />
+        ) : (
+          <div className="p-6 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50">
+              <svg className="h-8 w-8 text-amber-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Step locked</h3>
+            <p className="text-sm text-gray-500 mb-6">
+              Complete after contract signing. This step will become available once your employment contract has been signed and processed.
+            </p>
+            <button
+              onClick={handlePrev}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-full hover:bg-gray-50"
+            >
+              Back to review
+            </button>
+          </div>
+        )
+      )}
     </div>
   );
 }
