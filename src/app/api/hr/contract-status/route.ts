@@ -21,6 +21,7 @@ export async function GET() {
 
     let stage: string = 'unknown';
     let contract: { state: string; name: string; date_start: string | false; date_end: string | false } | null = null;
+    let sign_url: string | null = null;
 
     // 1) If user has employee_id, look up hr.contract
     if (user.employee_id) {
@@ -47,6 +48,30 @@ export async function GET() {
             cancel: 'Cancelled',
           };
           stage = stateMap[c.state] || c.state || 'unknown';
+
+          // Look up sign.request linked to this contract or employee
+          if (c.state === 'draft' || c.state === 'open') {
+            try {
+              const signRequests = await odoo.searchRead(
+                'sign.request',
+                [
+                  '|',
+                  ['reference', 'ilike', c.name || ''],
+                  ['reference', 'ilike', user.name || ''],
+                ],
+                ['id', 'state', 'reference', 'access_token'],
+                { limit: 1, order: 'create_date desc' },
+              );
+              if (signRequests && signRequests.length > 0) {
+                const sr = signRequests[0];
+                const odooUrl = process.env.ODOO_URL || 'http://89.167.124.0:15069';
+                sign_url = `${odooUrl}/my/signature/${sr.id}`;
+              }
+            } catch (signErr: unknown) {
+              console.warn('[contract-status] Failed to query sign.request:', signErr instanceof Error ? signErr.message : signErr);
+              // sign_url stays null - non-critical
+            }
+          }
         } else {
           stage = 'No contract';
         }
@@ -76,7 +101,7 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ stage, contract });
+    return NextResponse.json({ stage, contract, sign_url });
   } catch (err: unknown) {
     console.error('GET /api/hr/contract-status error:', err);
     return NextResponse.json(

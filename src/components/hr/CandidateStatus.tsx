@@ -18,6 +18,12 @@ interface StatusData {
   applied_date: string | null;
 }
 
+interface ContractStatusData {
+  stage: string;
+  contract: { state: string; name: string; date_start: string | false; date_end: string | false } | null;
+  sign_url: string | null;
+}
+
 interface Props {
   onHome: () => void;
   onStartOnboarding: () => void;
@@ -27,6 +33,7 @@ export default function CandidateStatus({ onHome, onStartOnboarding }: Props) {
   const [data, setData] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [contractStatus, setContractStatus] = useState<ContractStatusData | null>(null);
 
   useEffect(() => {
     fetch('/api/hr/applicant/status')
@@ -37,6 +44,16 @@ export default function CandidateStatus({ onHome, onStartOnboarding }: Props) {
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/hr/contract-status')
+      .then((r) => {
+        if (!r.ok) return null;
+        return r.json();
+      })
+      .then((d) => { if (d) setContractStatus(d); })
+      .catch(() => { /* non-critical */ });
   }, []);
 
   if (loading) {
@@ -155,6 +172,71 @@ export default function CandidateStatus({ onHome, onStartOnboarding }: Props) {
             })}
           </div>
         </div>
+
+        {/* Contract signing card */}
+        {contractStatus?.contract && (contractStatus.contract.state === 'draft' || contractStatus.contract.state === 'open') && (
+          contractStatus.contract.state === 'open' ? (
+            /* Signed contract - success card */
+            <div className="bg-green-50 rounded-2xl border border-green-200 p-5 mb-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <div className="text-[15px] font-bold text-green-900 mb-1">
+                    Contract signed
+                  </div>
+                  <p className="text-[13px] text-green-700 leading-relaxed">
+                    You can now complete your final onboarding steps.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Draft/sent contract - action card */
+            <div className="bg-green-50 rounded-2xl border-[1.5px] border-green-600 p-5 mb-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <div className="text-[15px] font-bold text-green-900 mb-1">
+                    Your contract is ready
+                  </div>
+                  <p className="text-[13px] text-green-800 leading-relaxed mb-3">
+                    Please review and sign your employment contract.
+                  </p>
+                  {contractStatus.sign_url ? (
+                    <a
+                      href={contractStatus.sign_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3.5 bg-green-600 text-white font-semibold rounded-xl text-[14px] active:opacity-85 flex items-center justify-center gap-2 no-underline"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                      Review &amp; Sign Contract
+                    </a>
+                  ) : (
+                    <p className="text-[12px] text-green-600 italic">
+                      The signing link will appear here once your contract is sent for signature.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        )}
 
         {/* Onboarding CTA — only when gate allows */}
         {data.gates.can_onboard && (
