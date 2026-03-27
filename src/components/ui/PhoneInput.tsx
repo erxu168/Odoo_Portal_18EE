@@ -138,7 +138,7 @@ export default function PhoneInput({ value, onChange }: Props) {
         <button
           type="button"
           onClick={() => setDropdownOpen(!dropdownOpen)}
-          className="h-full px-2.5 bg-gray-50 border border-gray-200 rounded-lg flex items-center gap-1 text-[14px] active:bg-gray-100 transition-colors min-w-[80px]"
+          className="h-full px-2.5 bg-gray-50 border border-gray-200 rounded-lg flex items-center gap-1 text-[14px] active:bg-gray-100 transition-colors min-w-[80px] flex-shrink-0"
         >
           <span className="text-[18px] leading-none">{country.flag}</span>
           <span className="text-[13px] font-mono font-semibold text-gray-700">+{country.dial}</span>
@@ -169,7 +169,7 @@ export default function PhoneInput({ value, onChange }: Props) {
         value={area}
         onChange={e => handleAreaChange(e.target.value)}
         placeholder="176"
-        className="form-input font-mono w-[70px] text-center text-[14px]"
+        className="form-input font-mono w-[60px] min-w-[60px] max-w-[60px] text-center text-[14px] flex-shrink-0"
         maxLength={5}
       />
 
@@ -179,7 +179,7 @@ export default function PhoneInput({ value, onChange }: Props) {
         value={formatNumber(number)}
         onChange={e => handleNumberChange(e.target.value)}
         placeholder="1035-6597"
-        className="form-input font-mono flex-1 text-[14px]"
+        className="form-input font-mono flex-1 min-w-0 text-[14px]"
         maxLength={9}
       />
     </div>
