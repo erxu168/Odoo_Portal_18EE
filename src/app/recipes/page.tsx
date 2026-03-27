@@ -10,6 +10,7 @@ import TimerAlert, { type TimerAlertItem } from '@/components/ui/TimerAlert';
 import SettingsPage from '@/components/recipes/Settings';
 import RecipeDashboard from '@/components/recipes/RecipeDashboard';
 import CookingGuideBrowse from '@/components/recipes/CookingGuideBrowse';
+import { trackRecipeOpen } from '@/components/recipes/CookingGuideBrowse';
 import ProductionGuideBrowse from '@/components/recipes/ProductionGuideBrowse';
 import RecipeOverview from '@/components/recipes/RecipeOverview';
 import BatchSize from '@/components/recipes/BatchSize';
@@ -231,7 +232,7 @@ export default function RecipesPage() {
     onNewDish={() => setScreen({ type: browseMode === 'cooking' ? 'cooking-guide' : 'production-guide' })} onBack={goDashboard} onEndSession={removeSession} /></>);
 
   if (screen.type === 'cooking-guide') return (<>{alertEl}<CookingGuideBrowse userRole={userRole}
-    onSelectRecipe={(r) => { const c = r.x_recipe_category_id; setCtx({ mode: 'cooking', recipeId: r.id, recipeName: r.name, difficulty: r.x_recipe_difficulty || undefined, categoryName: c ? c[1] : undefined, steps: [], batch: 1, multiplier: 1 }); setScreen({ type: 'overview' }); }}
+    onSelectRecipe={(r) => { trackRecipeOpen(r.id); const c = r.x_recipe_category_id; setCtx({ mode: 'cooking', recipeId: r.id, recipeName: r.name, difficulty: r.x_recipe_difficulty || undefined, categoryName: c ? c[1] : undefined, steps: [], batch: 1, multiplier: 1 }); setScreen({ type: 'overview' }); }}
     onBack={() => activeSessions.length > 0 ? goCookingBoard() : goDashboard()} onHome={goHome} /></>);
 
   if (screen.type === 'production-guide') return (<>{alertEl}<ProductionGuideBrowse userRole={userRole}

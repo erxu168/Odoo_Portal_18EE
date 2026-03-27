@@ -58,6 +58,20 @@ const CAT_FALLBACK_ICONS: Record<string, string> = {
   noodle: '\uD83C\uDF5C',
 };
 
+const FREQ_KEY = 'kw_recipe_freq';
+
+function getFrequencyMap(): Record<number, number> {
+  try {
+    return JSON.parse(localStorage.getItem(FREQ_KEY) || '{}');
+  } catch { return {}; }
+}
+
+export function trackRecipeOpen(recipeId: number) {
+  const freq = getFrequencyMap();
+  freq[recipeId] = (freq[recipeId] || 0) + 1;
+  try { localStorage.setItem(FREQ_KEY, JSON.stringify(freq)); } catch { /* */ }
+}
+
 function getCatIcon(cat: Category): string {
   if (cat.icon) return cat.icon;
   const lower = cat.name.toLowerCase();
@@ -107,7 +121,13 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
 
   // Top 10 quick picks (most steps = most complex = most cooked dishes tend to be standardized)
   // For now just take alphabetically first 10; frequency tracking can enhance this later
-  const quickPicks = recipes.slice(0, 10);
+  const quickPicks = (() => {
+    const freq = getFrequencyMap();
+    const withFreq = recipes.map(r => ({ ...r, _freq: freq[r.id] || 0 }));
+    withFreq.sort((a, b) => b._freq - a._freq);
+    const frequent = withFreq.filter(r => r._freq > 0).slice(0, 10);
+    return frequent.length > 0 ? frequent : recipes.slice(0, 10);
+  })();
 
   // Category view: show recipe list for selected category
   if (activeCategory !== null) {
