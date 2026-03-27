@@ -11,7 +11,7 @@ import { useTopBar } from './TopBarContext';
  * Hidden on auth pages and full-screen module pages (recipes, etc.)
  */
 
-const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password'];
+const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/hr'];
 
 export default function AppTopBar() {
   const pathname = usePathname();

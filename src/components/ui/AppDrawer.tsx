@@ -31,6 +31,7 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
 
   function navigate(href: string) {
     onClose();
+    if (href === '/recipes') sessionStorage.setItem('kw_recipes_reset', '1');
     router.push(href);
   }
 
@@ -65,11 +66,11 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
         className={`fixed top-0 left-0 bottom-0 z-[61] w-[280px] max-w-[85vw] bg-white flex flex-col transition-transform duration-300 ease-out ${open ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {/* User header */}
-        <div className="bg-[#2563EB] px-5 pt-14 pb-5 rounded-b-[28px]">
+        <div className="bg-[#2563EB] px-5 pt-14 pb-5">
           <div className="flex items-center gap-3">
-            <button onClick={() => { onClose(); router.push('/hr'); }} className="w-11 h-11 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0 cursor-pointer active:opacity-80 transition-opacity">
+            <div className="w-11 h-11 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
               <span className="text-white text-[14px] font-bold">{initials}</span>
-            </button>
+            </div>
             <div className="min-w-0">
               <div className="text-[15px] font-bold text-white truncate">{user?.name || 'Loading...'}</div>
               <div className="text-[12px] text-white/50 truncate">{user?.email || ''}</div>
@@ -95,8 +96,10 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
               icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>} />
             <NavItem label="Inventory" href="/inventory" current={pathname} onClick={navigate}
               icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>} />
-            <NavItem label="HR & Onboarding" href="/hr" current={pathname} onClick={navigate}
-              icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>} />
+            <NavItem label="Chef Guide" href="/recipes" current={pathname} onClick={navigate}
+              icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>} />
+            <NavItem label="HR" href="/hr" current={pathname} onClick={navigate}
+              icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>} />
           </div>
 
           {/* Admin section */}

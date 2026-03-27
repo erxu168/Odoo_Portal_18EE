@@ -126,6 +126,16 @@ export default function RecipesPage() {
 
   useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.role) setUserRole(d.user.role); }).catch(() => {}); }, []);
 
+  // Reset to dashboard when entering from another module
+  useEffect(() => {
+    const reset = sessionStorage.getItem('kw_recipes_reset');
+    if (reset) {
+      sessionStorage.removeItem('kw_recipes_reset');
+      const hasActive = sessions.some(s => s.status === 'active');
+      setScreen(hasActive ? { type: 'active-sessions' } : { type: 'dashboard' });
+    }
+  });
+
   // Unlock Web Audio on first user interaction (required by iOS/Android)
   useEffect(() => {
     const handler = () => { unlockAudio(); document.removeEventListener('touchstart', handler); document.removeEventListener('click', handler); };

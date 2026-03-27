@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
  * Recipes, etc. have their own headers/footers and need the full viewport.
  */
 
-const FULL_SCREEN_ROUTES = ['/recipes'];
+const FULL_SCREEN_ROUTES = ['/recipes', '/hr'];
 
 export default function MainWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
