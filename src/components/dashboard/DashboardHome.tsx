@@ -82,6 +82,7 @@ export default function DashboardHome() {
   const router = useRouter();
   const [userName, setUserName] = useState<string>('');
   const [userRole, setUserRole] = useState<string>('staff');
+  const [avatar, setAvatar] = useState<string | null>(null);
   const [badges, setBadges] = useState<Record<string, number>>({});
   const [shift, setShift] = useState<any>(null);
   const [tasks, setTasks] = useState<any>(null);
@@ -90,7 +91,7 @@ export default function DashboardHome() {
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user) { setUserName(d.user.name); setUserRole(d.user.role); } }).catch(() => {});
+    fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user) { setUserName(d.user.name); setUserRole(d.user.role); if (d.user.avatar) setAvatar(d.user.avatar); } }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -125,11 +126,20 @@ export default function DashboardHome() {
       {/* Header */}
       <div className="bg-[#2563EB] px-6 pt-14 pb-6 rounded-b-[28px] relative overflow-hidden">
         <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.06)_0%,transparent_70%)]" />
-        <div className="relative">
-          <h1 className="text-[22px] font-bold text-white">
-            {greeting}{firstName ? `, ${firstName}` : ''}
-          </h1>
-          <p className="text-[13px] text-white/60 mt-0.5">{dateStr}</p>
+        <div className="relative flex items-center gap-3">
+          {avatar ? (
+            <img src={`data:image/png;base64,${avatar}`} alt="" className="w-12 h-12 rounded-full object-cover flex-shrink-0 border-2 border-white/20" />
+          ) : firstName ? (
+            <div className="w-12 h-12 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0 border-2 border-white/20">
+              <span className="text-white text-[16px] font-bold">{firstName[0]}</span>
+            </div>
+          ) : null}
+          <div>
+            <h1 className="text-[22px] font-bold text-white">
+              {greeting}{firstName ? `, ${firstName}` : ''}
+            </h1>
+            <p className="text-[13px] text-white/60 mt-0.5">{dateStr}</p>
+          </div>
         </div>
         {shift && (
           <div className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-xl relative ${shift.onShift ? 'bg-white/10 border border-white/20' : 'bg-white/5 border border-white/10'}`}>

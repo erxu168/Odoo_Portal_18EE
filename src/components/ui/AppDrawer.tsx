@@ -17,7 +17,7 @@ const ROLE_LABELS: Record<string, string> = {
 export default function AppDrawer({ open, onClose }: AppDrawerProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<{ name: string; email: string; role: string } | null>(null);
+  const [user, setUser] = useState<{ name: string; email: string; role: string; avatar?: string | null } | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
@@ -68,9 +68,13 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
         {/* User header */}
         <div className="bg-[#2563EB] px-5 pt-14 pb-5">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-[14px] font-bold">{initials}</span>
-            </div>
+            {user?.avatar ? (
+              <img src={`data:image/png;base64,${user.avatar}`} alt="" className="w-11 h-11 rounded-full object-cover flex-shrink-0 border-2 border-white/20" />
+            ) : (
+              <div className="w-11 h-11 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-[14px] font-bold">{initials}</span>
+              </div>
+            )}
             <div className="min-w-0">
               <div className="text-[15px] font-bold text-white truncate">{user?.name || 'Loading...'}</div>
               <div className="text-[12px] text-white/50 truncate">{user?.email || ''}</div>
