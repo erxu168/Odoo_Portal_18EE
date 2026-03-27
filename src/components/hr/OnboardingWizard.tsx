@@ -132,7 +132,7 @@ export default function OnboardingWizard({ initialStep, onBack, onDone }: Props)
       {step === 4 && <StepDocuments employee={employee} onNext={() => setStep(5)} onPrev={handlePrev} onRefresh={loadEmployee} />}
       {step === 5 && <StepConcurrentEmployment onNext={() => setStep(6)} onPrev={handlePrev} />}
       {step === 6 && <StepReview employee={employee} onPrev={handlePrev} onSubmit={() => setStep(7)} saving={saving} onSave={saveFields} />}
-      {step === 7 && <StepConsents onNext={onDone} onPrev={handlePrev} />}
+      {step === 7 && <StepConsents employee={employee} onNext={onDone} onPrev={handlePrev} />}
     </div>
   );
 }
