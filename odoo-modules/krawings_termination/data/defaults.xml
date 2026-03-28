@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Default email subject template -->
+    <record id="default_email_subject" model="ir.config_parameter">
+        <field name="key">krawings_termination.email_subject_template</field>
+        <field name="value">K&#252;ndigung: {employee_name} - {company}</field>
+    </record>
+</odoo>

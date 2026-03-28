@@ -6,22 +6,22 @@
         <field name="inherit_id" ref="base.res_config_settings_view_form"/>
         <field name="arch" type="xml">
             <xpath expr="//form" position="inside">
-                <app data-string="Termination" string="Termination" groups="hr.group_hr_manager">
-                    <block title="Accountant Settings" name="termination_accountant">
-                        <setting string="Accountant Email"
-                            help="Termination letters will be sent to this email as PDF attachment. One accountant for all companies.">
+                <app data-string="Termination" string="Termination" groups="hr.group_hr_manager" logo_filename="krawings_termination">
+                    <block title="Steuerberater" name="termination_accountant">
+                        <setting id="setting_kw_accountant_email" string="Steuerberater E-Mail"
+                            help="K&#252;ndigungsschreiben werden als PDF-Anhang an diese E-Mail-Adresse gesendet.">
                             <div class="content-group">
                                 <div class="row mt16">
-                                    <label for="kw_accountant_email" class="col-lg-3 o_light_label"/>
-                                    <field name="kw_accountant_email" class="col-lg-4"/>
+                                    <label for="kw_accountant_email" class="col-lg-4 o_light_label"/>
+                                    <field name="kw_accountant_email" class="col-lg-5" placeholder="steuerberater@example.de"/>
                                 </div>
                             </div>
                         </setting>
-                        <setting string="Email Subject Template"
-                            help="Template for the email subject when sending to accountant. Variables: {employee_name}, {company}, {type}, {last_day}">
+                        <setting id="setting_kw_email_subject" string="E-Mail Betreff Vorlage"
+                            help="Variablen: {employee_name}, {company}, {type}, {last_day}">
                             <div class="content-group">
                                 <div class="row mt16">
-                                    <label for="kw_email_subject_template" class="col-lg-3 o_light_label"/>
+                                    <label for="kw_email_subject_template" class="col-lg-4 o_light_label"/>
                                     <field name="kw_email_subject_template" class="col-lg-6"/>
                                 </div>
                             </div>
