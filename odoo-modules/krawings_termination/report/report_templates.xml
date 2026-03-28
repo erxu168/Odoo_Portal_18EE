@@ -1,86 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Shared letterhead layout with logo top-right -->
-    <template id="kw_termination_letterhead">
-        <div class="page" style="font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.6; color: #333;">
-            <!-- Header: company info left, logo right -->
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
-                <div style="font-size: 8pt; color: #666; border-bottom: 1px solid #ccc; padding-bottom: 4px;">
-                    <t t-esc="doc.company_id.name"/>
-                    | <t t-esc="doc.company_id.street"/>
-                    | <t t-esc="doc.company_id.zip"/> <t t-esc="doc.company_id.city"/>
-                    | Germany
-                </div>
-                <img t-if="doc.company_id.logo"
-                    t-att-src="image_data_uri(doc.company_id.logo)"
-                    style="max-height: 60px; max-width: 150px;"
-                    alt="Company Logo"/>
-            </div>
+    <!--
+        Krawings Termination Letter Templates
+        ======================================
+        These templates use Odoo's built-in DIN 5008 external layout for the letterhead.
+        The DIN 5008 layout provides: company logo, sender address line, address window,
+        footer with company details/VAT/registry/bank info.
 
-            <!-- Sender address block -->
-            <div style="margin-bottom: 8px; margin-top: 30px;">
-                <div style="font-size: 9pt; color: #666;">
-                    <t t-esc="doc.company_id.name"/><br/>
-                    <t t-esc="doc.company_id.street"/><br/>
-                    <t t-esc="doc.company_id.zip"/> <t t-esc="doc.company_id.city"/>
-                </div>
-            </div>
+        Our templates only set:
+        - address: employee address for the DIN 5008 address window
+        - din5008_document_title: letter title (Kuendigung, Aufhebungsvertrag, etc.)
+        - din5008_document_information: date and reference info (right column)
+        - Body content: the actual letter text
+    -->
 
-            <!-- Recipient address block -->
-            <div style="margin-bottom: 30px; min-height: 70px;">
-                <t t-esc="doc.employee_id.legal_name or doc.employee_name"/><br/>
-                <t t-if="doc.employee_street">
-                    <t t-esc="doc.employee_street"/><br/>
-                    <t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/>
-                </t>
-                <t t-else="">
-                    <span style="color: #c00;">[Adresse fehlt]</span>
-                </t>
-            </div>
-
-            <!-- Date right-aligned -->
-            <div style="text-align: right; margin-bottom: 30px; font-size: 10pt; color: #666;">
-                <t t-esc="doc.company_id.city or 'Berlin'"/>, den <t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/>
-            </div>
-
-            <!-- Letter body (injected by each template) -->
-            <t t-raw="0"/>
-
-            <!-- Signature block -->
-            <div style="margin-top: 40px;">
-                Mit freundlichen Gr&#252;&#223;en<br/><br/><br/><br/>
-                <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">
-                    Gesch&#228;ftsf&#252;hrung
-                </div>
-            </div>
-        </div>
-    </template>
-
-    <!-- Empfangsbestaetigung footer (reusable) -->
-    <template id="kw_empfangsbestaetigung_footer">
-        <div style="margin-top: 40px; padding-top: 15px; border-top: 1px dashed #999; font-size: 10pt; color: #666;">
-            <strong>Empfangsbest&#228;tigung:</strong><br/><br/>
-            Ich best&#228;tige den Erhalt der K&#252;ndigung am ___________<br/><br/><br/><br/>
-            <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px;">
-                Unterschrift Arbeitnehmer
-            </div>
-        </div>
-    </template>
-
-    <!-- 1. Ordentliche Kuendigung -->
+    <!-- ============================================================ -->
+    <!-- 1. Ordentliche Kuendigung                                    -->
+    <!-- ============================================================ -->
     <template id="report_ordentliche_kuendigung">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
                 <t t-call="web.external_layout">
-                    <t t-call="krawings_termination.kw_termination_letterhead">
-                        <div style="font-weight: bold; font-size: 12pt; margin-bottom: 15px;">
-                            K&#252;ndigung Ihres Arbeitsverh&#228;ltnisses
+                    <!-- Set employee address for DIN 5008 address window -->
+                    <t t-set="address">
+                        <div>
+                            <t t-esc="doc.employee_id.legal_name or doc.employee_name"/><br/>
+                            <t t-if="doc.employee_street">
+                                <t t-esc="doc.employee_street"/><br/>
+                                <t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/>
+                            </t>
                         </div>
+                    </t>
+
+                    <!-- Document title for DIN 5008 heading -->
+                    <t t-set="din5008_document_title">
+                        K&#252;ndigung Ihres Arbeitsverh&#228;ltnisses
+                    </t>
+
+                    <!-- Date and reference info (right column) -->
+                    <t t-set="din5008_document_information">
+                        <div style="font-size: 9pt;">
+                            <strong>Datum:</strong> <t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/><br/>
+                            <strong>K&#252;ndigungsfrist:</strong> <t t-esc="doc.notice_period_text"/><br/>
+                            <strong>Letzter Arbeitstag:</strong> <t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '---'"/>
+                        </div>
+                    </t>
+
+                    <!-- Letter body -->
+                    <div class="page" style="font-size: 11pt; line-height: 1.6;">
                         <p>
-                            Sehr geehrte/r
-                            <t t-if="doc.employee_id.gender == 'male'">Herr</t>
-                            <t t-elif="doc.employee_id.gender == 'female'">Frau</t>
-                            <t t-else="">Herr/Frau</t>
+                            Sehr geehrte<t t-if="doc.employee_id.gender == 'male'">r Herr</t><t t-elif="doc.employee_id.gender == 'female'"> Frau</t><t t-else="">r Herr/Frau</t>
                             <t t-esc="(doc.employee_id.legal_name or doc.employee_name or '').split()[-1]"/>,
                         </p>
                         <p>
@@ -102,27 +71,60 @@
                         <p>
                             Bitte best&#228;tigen Sie den Erhalt dieses Schreibens auf der beigef&#252;gten Kopie.
                         </p>
-                        <t t-call="krawings_termination.kw_empfangsbestaetigung_footer"/>
-                    </t>
+
+                        <!-- Signature -->
+                        <div style="margin-top: 40px;">
+                            Mit freundlichen Gr&#252;&#223;en<br/><br/><br/><br/>
+                            <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">
+                                Gesch&#228;ftsf&#252;hrung
+                            </div>
+                        </div>
+
+                        <!-- Empfangsbestaetigung -->
+                        <div style="margin-top: 40px; padding-top: 15px; border-top: 1px dashed #999; font-size: 10pt; color: #666;">
+                            <strong>Empfangsbest&#228;tigung:</strong><br/><br/>
+                            Ich best&#228;tige den Erhalt der K&#252;ndigung am ___________<br/><br/><br/><br/>
+                            <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px;">
+                                Unterschrift Arbeitnehmer
+                            </div>
+                        </div>
+                    </div>
                 </t>
             </t>
         </t>
     </template>
 
-    <!-- 2. Fristlose Kuendigung -->
+    <!-- ============================================================ -->
+    <!-- 2. Fristlose Kuendigung                                      -->
+    <!-- ============================================================ -->
     <template id="report_fristlose_kuendigung">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
                 <t t-call="web.external_layout">
-                    <t t-call="krawings_termination.kw_termination_letterhead">
-                        <div style="font-weight: bold; font-size: 12pt; margin-bottom: 15px;">
-                            Au&#223;erordentliche fristlose K&#252;ndigung Ihres Arbeitsverh&#228;ltnisses
+                    <t t-set="address">
+                        <div>
+                            <t t-esc="doc.employee_id.legal_name or doc.employee_name"/><br/>
+                            <t t-if="doc.employee_street">
+                                <t t-esc="doc.employee_street"/><br/>
+                                <t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/>
+                            </t>
                         </div>
+                    </t>
+
+                    <t t-set="din5008_document_title">
+                        Au&#223;erordentliche fristlose K&#252;ndigung
+                    </t>
+
+                    <t t-set="din5008_document_information">
+                        <div style="font-size: 9pt;">
+                            <strong>Datum:</strong> <t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/><br/>
+                            <strong>Wirkung:</strong> Sofort
+                        </div>
+                    </t>
+
+                    <div class="page" style="font-size: 11pt; line-height: 1.6;">
                         <p>
-                            Sehr geehrte/r
-                            <t t-if="doc.employee_id.gender == 'male'">Herr</t>
-                            <t t-elif="doc.employee_id.gender == 'female'">Frau</t>
-                            <t t-else="">Herr/Frau</t>
+                            Sehr geehrte<t t-if="doc.employee_id.gender == 'male'">r Herr</t><t t-elif="doc.employee_id.gender == 'female'"> Frau</t><t t-else="">r Herr/Frau</t>
                             <t t-esc="(doc.employee_id.legal_name or doc.employee_name or '').split()[-1]"/>,
                         </p>
                         <p>
@@ -139,29 +141,60 @@
                         <p>
                             Bitte best&#228;tigen Sie den Erhalt dieses Schreibens auf der beigef&#252;gten Kopie.
                         </p>
-                        <t t-call="krawings_termination.kw_empfangsbestaetigung_footer"/>
-                    </t>
+
+                        <div style="margin-top: 40px;">
+                            Mit freundlichen Gr&#252;&#223;en<br/><br/><br/><br/>
+                            <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">
+                                Gesch&#228;ftsf&#252;hrung
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 40px; padding-top: 15px; border-top: 1px dashed #999; font-size: 10pt; color: #666;">
+                            <strong>Empfangsbest&#228;tigung:</strong><br/><br/>
+                            Ich best&#228;tige den Erhalt der K&#252;ndigung am ___________<br/><br/><br/><br/>
+                            <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px;">
+                                Unterschrift Arbeitnehmer
+                            </div>
+                        </div>
+                    </div>
                 </t>
             </t>
         </t>
     </template>
 
-    <!-- 3. Aufhebungsvertrag -->
+    <!-- ============================================================ -->
+    <!-- 3. Aufhebungsvertrag                                         -->
+    <!-- ============================================================ -->
     <template id="report_aufhebungsvertrag">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
                 <t t-call="web.external_layout">
-                    <t t-call="krawings_termination.kw_termination_letterhead">
-                        <div style="font-weight: bold; font-size: 12pt; margin-bottom: 15px;">
-                            Aufhebungsvertrag
+                    <t t-set="address">
+                        <div>
+                            <t t-esc="doc.employee_id.legal_name or doc.employee_name"/><br/>
+                            <t t-if="doc.employee_street">
+                                <t t-esc="doc.employee_street"/><br/>
+                                <t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/>
+                            </t>
                         </div>
+                    </t>
 
+                    <t t-set="din5008_document_title">Aufhebungsvertrag</t>
+
+                    <t t-set="din5008_document_information">
+                        <div style="font-size: 9pt;">
+                            <strong>Datum:</strong> <t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/><br/>
+                            <strong>Beendigung:</strong> <t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '---'"/>
+                        </div>
+                    </t>
+
+                    <div class="page" style="font-size: 11pt; line-height: 1.6;">
                         <p>zwischen</p>
                         <p style="margin-left: 20px;">
                             <t t-esc="doc.company_id.name"/>,
                             <t t-esc="doc.company_id.street"/>,
                             <t t-esc="doc.company_id.zip"/> <t t-esc="doc.company_id.city"/><br/>
-                            - nachfolgend "Arbeitgeber" -
+                            - nachfolgend &#8222;Arbeitgeber&#8220; -
                         </p>
                         <p>und</p>
                         <p style="margin-left: 20px;">
@@ -170,7 +203,7 @@
                                 <t t-esc="doc.employee_street"/>,
                                 <t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/>
                             </t><br/>
-                            - nachfolgend "Arbeitnehmer" -
+                            - nachfolgend &#8222;Arbeitnehmer&#8220; -
                         </p>
 
                         <p style="font-weight: bold;">&#167; 1 Beendigung des Arbeitsverh&#228;ltnisses</p>
@@ -229,41 +262,61 @@
                             oder unbekannt, abgegolten und erledigt.
                         </p>
 
-                        <!-- Two signature blocks for Aufhebungsvertrag -->
+                        <!-- Two signature blocks -->
                         <div style="margin-top: 50px; display: flex; justify-content: space-between;">
                             <div>
                                 <div style="margin-bottom: 5px; font-size: 10pt; color: #666;">Ort, Datum</div>
+                                <br/><br/><br/>
                                 <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">
                                     Unterschrift Arbeitgeber
                                 </div>
                             </div>
                             <div>
                                 <div style="margin-bottom: 5px; font-size: 10pt; color: #666;">Ort, Datum</div>
+                                <br/><br/><br/>
                                 <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">
                                     Unterschrift Arbeitnehmer
                                 </div>
                             </div>
                         </div>
-                    </t>
+                    </div>
                 </t>
             </t>
         </t>
     </template>
 
-    <!-- 4. Kuendigungsbestaetigung -->
+    <!-- ============================================================ -->
+    <!-- 4. Kuendigungsbestaetigung                                   -->
+    <!-- ============================================================ -->
     <template id="report_kuendigungsbestaetigung">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
                 <t t-call="web.external_layout">
-                    <t t-call="krawings_termination.kw_termination_letterhead">
-                        <div style="font-weight: bold; font-size: 12pt; margin-bottom: 15px;">
-                            Best&#228;tigung Ihrer K&#252;ndigung
+                    <t t-set="address">
+                        <div>
+                            <t t-esc="doc.employee_id.legal_name or doc.employee_name"/><br/>
+                            <t t-if="doc.employee_street">
+                                <t t-esc="doc.employee_street"/><br/>
+                                <t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/>
+                            </t>
                         </div>
+                    </t>
+
+                    <t t-set="din5008_document_title">
+                        Best&#228;tigung Ihrer K&#252;ndigung
+                    </t>
+
+                    <t t-set="din5008_document_information">
+                        <div style="font-size: 9pt;">
+                            <strong>Datum:</strong> <t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/><br/>
+                            <strong>K&#252;ndigung erhalten:</strong> <t t-esc="doc.resignation_received_date.strftime('%d.%m.%Y') if doc.resignation_received_date else '---'"/><br/>
+                            <strong>Letzter Arbeitstag:</strong> <t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '---'"/>
+                        </div>
+                    </t>
+
+                    <div class="page" style="font-size: 11pt; line-height: 1.6;">
                         <p>
-                            Sehr geehrte/r
-                            <t t-if="doc.employee_id.gender == 'male'">Herr</t>
-                            <t t-elif="doc.employee_id.gender == 'female'">Frau</t>
-                            <t t-else="">Herr/Frau</t>
+                            Sehr geehrte<t t-if="doc.employee_id.gender == 'male'">r Herr</t><t t-elif="doc.employee_id.gender == 'female'"> Frau</t><t t-else="">r Herr/Frau</t>
                             <t t-esc="(doc.employee_id.legal_name or doc.employee_name or '').split()[-1]"/>,
                         </p>
                         <p>
@@ -295,7 +348,14 @@
                             F&#252;r die Zusammenarbeit bedanken wir uns und w&#252;nschen Ihnen f&#252;r Ihren
                             weiteren beruflichen und privaten Lebensweg alles Gute.
                         </p>
-                    </t>
+
+                        <div style="margin-top: 40px;">
+                            Mit freundlichen Gr&#252;&#223;en<br/><br/><br/><br/>
+                            <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">
+                                Gesch&#228;ftsf&#252;hrung
+                            </div>
+                        </div>
+                    </div>
                 </t>
             </t>
         </t>
