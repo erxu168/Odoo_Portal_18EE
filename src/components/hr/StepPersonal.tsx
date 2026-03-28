@@ -90,7 +90,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
   // Emergency contact
   const [emergName, setEmergName] = useState(employee.emergency_contact || '');
   const [emergPhone, setEmergPhone] = useState(employee.emergency_phone || '');
-  const [emergRelation, setEmergRelation] = useState((employee as any).kw_emergency_relation || '');
+  const [emergRelation, setEmergRelation] = useState(employee.kw_emergency_relation || '');
 
   function handleSubmit() {
     onNext({
@@ -108,6 +108,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
       private_email: email || false,
       emergency_contact: emergName || false,
       emergency_phone: emergPhone || false,
+      kw_emergency_relation: emergRelation || false,
       country_id: nationalityId || false,
     });
   }

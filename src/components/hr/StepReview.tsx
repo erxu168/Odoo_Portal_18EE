@@ -40,6 +40,7 @@ export default function StepReview({ employee, onPrev, onSubmit, saving, onSave 
           <Row label="Phone" value={employee.private_phone || ''} mono />
           <Row label="Emergency" value={employee.emergency_contact || ''} />
           <Row label="Emergency phone" value={employee.emergency_phone || ''} mono />
+          <Row label="Relationship" value={formatRelation(employee.kw_emergency_relation)} />
         </Section>
 
         <Section title={'\u{1F3E6} Bank'}>
