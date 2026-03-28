@@ -9,19 +9,7 @@ _logger = logging.getLogger(__name__)
 # -------------------------------------------------------------------
 # Section 622 BGB - Statutory notice periods (employer -> employee)
 # -------------------------------------------------------------------
-# During probation (max 6 months): 2 weeks from any day
-# < 2 years:  4 weeks to 15th or end of calendar month
-# 2+ years:   1 month to end of calendar month
-# 5+ years:   2 months to end of calendar month
-# 8+ years:   3 months to end of calendar month
-# 10+ years:  4 months to end of calendar month
-# 12+ years:  5 months to end of calendar month
-# 15+ years:  6 months to end of calendar month
-# 20+ years:  7 months to end of calendar month
-# -------------------------------------------------------------------
-
 BGB_622_PERIODS = [
-    # (min_years, months, description_de, description_en)
     (20, 7, '7 Monate zum Monatsende', '7 months to end of month'),
     (15, 6, '6 Monate zum Monatsende', '6 months to end of month'),
     (12, 5, '5 Monate zum Monatsende', '5 months to end of month'),
@@ -60,19 +48,16 @@ class KwTermination(models.Model):
     _order = 'letter_date desc, id desc'
     _rec_name = 'display_name'
 
-    # ----- Core fields -----
     employee_id = fields.Many2one(
         'hr.employee', string='Employee', required=True,
         tracking=True, ondelete='restrict',
     )
     company_id = fields.Many2one(
         'res.company', string='Company', required=True,
-        default=lambda self: self.env.company,
-        tracking=True,
+        default=lambda self: self.env.company, tracking=True,
     )
     termination_type = fields.Selection(
-        TERMINATION_TYPES, string='Type', required=True,
-        tracking=True,
+        TERMINATION_TYPES, string='Type', required=True, tracking=True,
     )
     calc_method = fields.Selection(
         CALC_METHODS, string='Berechnungsmethode',
@@ -83,14 +68,13 @@ class KwTermination(models.Model):
         default='draft', required=True, tracking=True,
     )
 
-    # ----- Date fields -----
     letter_date = fields.Date(
         string='Datum des Schreibens', default=fields.Date.today,
         required=True, tracking=True,
     )
     receipt_date = fields.Date(
         string='Zugangsdatum',
-        help='Datum, an dem der Arbeitnehmer das Schreiben erhalten hat (f\u00fcr Berechnung ab Zugang)',
+        help='Datum, an dem der Arbeitnehmer das Schreiben erhalten hat',
     )
     notice_period_text = fields.Char(
         string='K\u00fcndigungsfrist', compute='_compute_dates', store=True,
@@ -104,7 +88,6 @@ class KwTermination(models.Model):
         store=True, readonly=True,
     )
 
-    # ----- Employee snapshot -----
     employee_name = fields.Char(
         related='employee_id.name', store=True, string='Mitarbeitername',
     )
@@ -124,62 +107,40 @@ class KwTermination(models.Model):
         string='Probezeit bis', compute='_compute_employee_info', store=True,
     )
 
-    # ----- Fristlose specific -----
-    incident_date = fields.Date(
-        string='Datum des Vorfalls',
-        help='Datum, an dem der Arbeitgeber vom Vorfall erfahren hat (nur fristlose K\u00fcndigung)',
-    )
-    incident_description = fields.Text(
-        string='Beschreibung des Vorfalls (intern)',
-        help='Wird nicht im K\u00fcndigungsschreiben aufgef\u00fchrt',
-    )
+    incident_date = fields.Date(string='Datum des Vorfalls')
+    incident_description = fields.Text(string='Beschreibung des Vorfalls (intern)')
     incident_overdue = fields.Boolean(
         string='14-Tage-Frist \u00fcberschritten',
         compute='_compute_incident_overdue', store=True,
     )
 
-    # ----- Aufhebungsvertrag specific -----
     include_severance = fields.Boolean(string='Abfindung einschlie\u00dfen')
     severance_amount = fields.Float(string='Abfindungsbetrag')
     garden_leave = fields.Boolean(string='Freistellung')
     zeugnis_grade = fields.Selection([
-        ('1', 'Sehr gut'),
-        ('2', 'Gut'),
-        ('3', 'Befriedigend'),
-        ('4', 'Ausreichend'),
+        ('1', 'Sehr gut'), ('2', 'Gut'),
+        ('3', 'Befriedigend'), ('4', 'Ausreichend'),
     ], string='Zeugnisnote', default='2')
 
-    # ----- Best\u00e4tigung specific -----
-    resignation_received_date = fields.Date(
-        string='K\u00fcndigung erhalten am',
-    )
+    resignation_received_date = fields.Date(string='K\u00fcndigung erhalten am')
     resignation_method = fields.Selection([
-        ('letter', 'Brief'),
-        ('email', 'E-Mail'),
-        ('verbal', 'M\u00fcndlich'),
+        ('letter', 'Brief'), ('email', 'E-Mail'), ('verbal', 'M\u00fcndlich'),
     ], string='Empfangsweg')
     written_resignation_received = fields.Boolean(
         string='Schriftliche K\u00fcndigung mit Unterschrift erhalten',
     )
 
-    # ----- PDF / Sign -----
-    pdf_attachment_id = fields.Many2one(
-        'ir.attachment', string='Generiertes PDF',
-    )
-    sign_request_id = fields.Many2one(
-        'sign.request', string='Signaturanfrage',
-    )
+    pdf_attachment_id = fields.Many2one('ir.attachment', string='Generiertes PDF')
+    sign_request_id = fields.Many2one('sign.request', string='Signaturanfrage')
     sign_state = fields.Selection([
         ('not_started', 'Nicht gestartet'),
         ('employer_signed', 'Arbeitgeber unterschrieben'),
         ('fully_signed', 'Vollst\u00e4ndig unterschrieben'),
     ], string='Signaturstatus', default='not_started', tracking=True)
 
-    # ----- Accountant -----
     sent_to_accountant = fields.Boolean(string='An Steuerberater gesendet')
     sent_to_accountant_date = fields.Datetime(string='Gesendet am')
 
-    # ----- Display -----
     display_name = fields.Char(compute='_compute_display_name', store=True)
 
     @api.depends('employee_name', 'termination_type', 'letter_date')
@@ -193,9 +154,6 @@ class KwTermination(models.Model):
                 parts.append(str(rec.letter_date))
             rec.display_name = ' - '.join(parts)
 
-    # -----------------------------------------------------------------
-    # Compute: employee info from contract
-    # -----------------------------------------------------------------
     @api.depends('employee_id', 'letter_date')
     def _compute_employee_info(self):
         for rec in self:
@@ -207,7 +165,6 @@ class KwTermination(models.Model):
                 rec.probation_end = False
                 continue
 
-            # Get start date from contract or kw_beschaeftigungsbeginn
             contract = self.env['hr.contract'].search([
                 ('employee_id', '=', emp.id),
                 ('state', '=', 'open'),
@@ -217,7 +174,6 @@ class KwTermination(models.Model):
                 start = emp.kw_beschaeftigungsbeginn
             rec.employee_start_date = start
 
-            # Tenure
             ref_date = rec.letter_date or date.today()
             if start:
                 delta = relativedelta(ref_date, start)
@@ -225,7 +181,6 @@ class KwTermination(models.Model):
             else:
                 rec.tenure_years = 0
 
-            # Probation
             prob_end = False
             if hasattr(emp, 'kw_probezeit_bis') and emp.kw_probezeit_bis:
                 prob_end = emp.kw_probezeit_bis
@@ -234,9 +189,6 @@ class KwTermination(models.Model):
             rec.probation_end = prob_end
             rec.in_probation = bool(prob_end and ref_date <= prob_end)
 
-    # -----------------------------------------------------------------
-    # Compute: notice period and last working day
-    # -----------------------------------------------------------------
     @api.depends(
         'termination_type', 'calc_method', 'letter_date', 'receipt_date',
         'employee_start_date', 'tenure_years', 'in_probation',
@@ -255,11 +207,8 @@ class KwTermination(models.Model):
 
             elif rec.termination_type == 'aufhebung':
                 rec.notice_period_text = 'Einvernehmlich vereinbart'
-                # last_working_day is set manually for Aufhebungsvertrag
 
             elif rec.termination_type == 'bestaetigung':
-                # Employee quit - calculate from their side
-                # Employee always has 4 weeks to 15th or month-end
                 ref = rec.resignation_received_date or rec.letter_date
                 period_text, lwd = self._calc_employee_notice(ref)
                 rec.notice_period_text = period_text
@@ -274,7 +223,6 @@ class KwTermination(models.Model):
                         self._calc_standard_notice(rec)
 
     def _calc_probation_notice(self, rec):
-        """2 weeks from any day (probation)."""
         if rec.calc_method == 'receipt' and rec.receipt_date:
             base = rec.receipt_date
         else:
@@ -283,14 +231,11 @@ class KwTermination(models.Model):
         return ('2 Wochen (Probezeit)', lwd)
 
     def _calc_standard_notice(self, rec):
-        """\u00a7 622 BGB scaled by tenure."""
         tenure = rec.tenure_years or 0
-
-        # Find the applicable period
         months = 0
         desc_en = '4 weeks to 15th or end of month'
         desc_de = '4 Wochen zum 15. oder Monatsende'
-        is_base = True  # < 2 years uses the 4-week base rule
+        is_base = True
 
         for min_years, period_months, de, en in BGB_622_PERIODS:
             if tenure >= min_years:
@@ -301,38 +246,30 @@ class KwTermination(models.Model):
                 break
 
         if rec.calc_method == 'receipt' and rec.receipt_date:
-            # From receipt: just add the duration
             base = rec.receipt_date
             if is_base:
-                # < 2 years: 4 weeks = 28 days
                 lwd = base + timedelta(days=28)
             else:
-                # 2+ years: calendar months
                 lwd = base + relativedelta(months=months)
             return (desc_en, lwd)
         else:
-            # \u00a7 622 BGB statutory: snap to 15th or month-end
             base = rec.letter_date
             if is_base:
-                # 4 weeks to 15th or end of month
                 earliest = base + timedelta(days=28)
                 lwd = self._snap_to_15th_or_end(earliest)
             else:
-                # N months to end of month
                 earliest = base + relativedelta(months=months)
                 lwd = self._snap_to_month_end(earliest)
             return (desc_de, lwd)
 
     @staticmethod
     def _calc_employee_notice(ref_date):
-        """Employee resignation: always 4 weeks to 15th or month-end."""
         earliest = ref_date + timedelta(days=28)
         lwd = KwTermination._snap_to_15th_or_end(earliest)
         return ('4 Wochen zum 15. oder Monatsende', lwd)
 
     @staticmethod
     def _snap_to_15th_or_end(d):
-        """Snap a date to the next 15th or end of calendar month."""
         import calendar
         fifteenth = d.replace(day=15)
         if fifteenth >= d:
@@ -346,7 +283,6 @@ class KwTermination(models.Model):
 
     @staticmethod
     def _snap_to_month_end(d):
-        """Snap to the last day of the calendar month on or after d."""
         import calendar
         last_day = calendar.monthrange(d.year, d.month)[1]
         end_of_month = d.replace(day=last_day)
@@ -356,21 +292,14 @@ class KwTermination(models.Model):
         last_day = calendar.monthrange(next_month.year, next_month.month)[1]
         return next_month.replace(day=last_day)
 
-    # -----------------------------------------------------------------
-    # Compute: incident overdue (fristlose)
-    # -----------------------------------------------------------------
     @api.depends('incident_date', 'letter_date')
     def _compute_incident_overdue(self):
         for rec in self:
             if rec.incident_date and rec.letter_date:
-                delta = (rec.letter_date - rec.incident_date).days
-                rec.incident_overdue = delta > 14
+                rec.incident_overdue = (rec.letter_date - rec.incident_date).days > 14
             else:
                 rec.incident_overdue = False
 
-    # -----------------------------------------------------------------
-    # Onchange: auto-fill employee address
-    # -----------------------------------------------------------------
     @api.onchange('employee_id')
     def _onchange_employee_id(self):
         if self.employee_id:
@@ -380,11 +309,7 @@ class KwTermination(models.Model):
             self.employee_zip = emp.private_zip or ''
             self.company_id = emp.company_id
 
-    # -----------------------------------------------------------------
-    # Actions
-    # -----------------------------------------------------------------
     def action_confirm(self):
-        """Confirm termination, set departure on employee, generate PDF."""
         self.ensure_one()
         if not self.last_working_day:
             raise UserError(_('Letzter Arbeitstag muss vor der Best\u00e4tigung gesetzt werden.'))
@@ -404,7 +329,6 @@ class KwTermination(models.Model):
             })
 
         self._generate_pdf()
-
         self.write({'state': 'confirmed'})
         self.message_post(
             body=_('K\u00fcndigung best\u00e4tigt. Austrittsdatum: %s') % self.last_working_day,
@@ -419,14 +343,12 @@ class KwTermination(models.Model):
         self.write({'state': 'cancelled'})
 
     def action_archive_employee(self):
-        """Archive the employee (set active=False)."""
         self.ensure_one()
         self.employee_id.write({'active': False})
         self.write({'state': 'archived'})
         self.message_post(body=_('Mitarbeiter archiviert.'))
 
     def _get_departure_reason(self):
-        """Map termination type to hr.departure.reason."""
         reason_map = {
             'ordentlich': 'Fired',
             'ordentlich_probezeit': 'Fired',
@@ -439,11 +361,7 @@ class KwTermination(models.Model):
             [('name', '=', name)], limit=1,
         )
 
-    # -----------------------------------------------------------------
-    # PDF Generation
-    # -----------------------------------------------------------------
     def _generate_pdf(self):
-        """Generate the termination letter PDF using QWeb report."""
         self.ensure_one()
         report_map = {
             'ordentlich': 'krawings_termination.report_ordentliche_kuendigung',
@@ -460,7 +378,7 @@ class KwTermination(models.Model):
             report_name, self.ids,
         )
 
-        filename = 'K\u00fcndigung_%s_%s.pdf' % (
+        filename = 'Kuendigung_%s_%s.pdf' % (
             self.employee_name.replace(' ', '_'),
             self.letter_date.strftime('%Y-%m-%d'),
         )
@@ -476,11 +394,7 @@ class KwTermination(models.Model):
         })
         self.pdf_attachment_id = attachment
 
-    # -----------------------------------------------------------------
-    # Send to Accountant
-    # -----------------------------------------------------------------
     def action_send_to_accountant(self):
-        """Email the PDF to the configured accountant."""
         self.ensure_one()
         if not self.pdf_attachment_id:
             raise UserError(_('Noch kein PDF erstellt. Bitte zuerst die K\u00fcndigung best\u00e4tigen.'))
@@ -489,10 +403,7 @@ class KwTermination(models.Model):
             'krawings_termination.accountant_email', ''
         )
         if not accountant_email:
-            raise UserError(_(
-                'Steuerberater-E-Mail nicht konfiguriert. '
-                'Gehen Sie zu Einstellungen > K\u00fcndigung.'
-            ))
+            raise UserError(_('Steuerberater-E-Mail nicht konfiguriert. Gehen Sie zu Einstellungen > K\u00fcndigung.'))
 
         subject_template = self.env['ir.config_parameter'].sudo().get_param(
             'krawings_termination.email_subject_template',
@@ -506,15 +417,12 @@ class KwTermination(models.Model):
             last_day=self.last_working_day.strftime('%d.%m.%Y') if self.last_working_day else '',
         )
 
-        mail_values = {
+        mail = self.env['mail.mail'].sudo().create({
             'subject': subject,
             'email_to': accountant_email,
-            'body_html': '<p>Im Anhang finden Sie das K\u00fcndigungsschreiben f\u00fcr %s.</p>' % (
-                self.employee_name,
-            ),
+            'body_html': '<p>Im Anhang finden Sie das K\u00fcndigungsschreiben f\u00fcr %s.</p>' % self.employee_name,
             'attachment_ids': [(4, self.pdf_attachment_id.id)],
-        }
-        mail = self.env['mail.mail'].sudo().create(mail_values)
+        })
         mail.send()
 
         self.write({
@@ -534,11 +442,13 @@ class KwTermination(models.Model):
         if not self.pdf_attachment_id:
             raise UserError(_('Noch kein PDF erstellt. Bitte zuerst die K\u00fcndigung best\u00e4tigen.'))
 
+        # Create sign template from the attachment
         sign_template = self.env['sign.template'].create({
             'attachment_id': self.pdf_attachment_id.id,
             'name': self.pdf_attachment_id.name,
         })
 
+        # Get employee partner
         emp_partner = self.employee_id.work_contact_id or \
             self.employee_id.address_home_id
         if not emp_partner:
@@ -547,6 +457,7 @@ class KwTermination(models.Model):
                 'Bitte einen Arbeitskontakt oder eine Heimadresse auf dem Mitarbeiterdatensatz setzen.'
             ))
 
+        # Get sign roles
         hr_role = self.env['sign.item.role'].search(
             [('name', '=', 'HR Responsible')], limit=1,
         )
@@ -556,8 +467,16 @@ class KwTermination(models.Model):
         if not hr_role or not emp_role:
             raise UserError(_('Signatur-Rollen "HR Responsible" und "Employee" m\u00fcssen existieren.'))
 
+        # Build the filename from the attachment
+        sign_filename = self.pdf_attachment_id.name or 'Kuendigung_%s.pdf' % (
+            self.employee_name.replace(' ', '_'),
+        )
+
+        # Create the sign request via wizard
+        # The filename field is mandatory in sign.send.request
         send_wizard = self.env['sign.send.request'].create({
             'template_id': sign_template.id,
+            'filename': sign_filename,
             'signer_ids': [
                 (0, 0, {
                     'role_id': hr_role.id,
@@ -573,6 +492,7 @@ class KwTermination(models.Model):
         })
         send_wizard.send_request()
 
+        # Link the sign request back to this termination
         sign_request = self.env['sign.request'].search([
             ('template_id', '=', sign_template.id),
         ], limit=1, order='id desc')
@@ -585,6 +505,7 @@ class KwTermination(models.Model):
             body=_('Signaturanfrage gesendet. Warte auf Unterschrift des Mitarbeiters.'),
         )
 
+        # Open Odoo Sign for the current user to sign first
         if sign_request:
             return {
                 'type': 'ir.actions.act_url',
