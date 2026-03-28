@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Top-level menu -->
+    <menuitem id="menu_krawings_contract_root"
+              name="Contracts"
+              web_icon="krawings_contract,static/description/icon.png"
+              sequence="45"/>
+
+    <!-- Sub-menus -->
+    <menuitem id="menu_krawings_contract_main"
+              name="Contracts"
+              parent="menu_krawings_contract_root"
+              sequence="10"/>
+
+    <menuitem id="menu_krawings_contract_all"
+              name="All Contracts"
+              parent="menu_krawings_contract_main"
+              action="action_krawings_contract"
+              sequence="10"/>
+
+    <menuitem id="menu_krawings_contract_locations"
+              name="Locations"
+              parent="menu_krawings_contract_main"
+              action="action_krawings_contract_location"
+              sequence="20"/>
+
+    <!-- Configuration -->
+    <menuitem id="menu_krawings_contract_config"
+              name="Configuration"
+              parent="menu_krawings_contract_root"
+              sequence="90"/>
+
+    <menuitem id="menu_krawings_contract_config_locations"
+              name="Locations"
+              parent="menu_krawings_contract_config"
+              action="action_krawings_contract_location"
+              sequence="10"/>
+
+</odoo>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ══════════════════════════════════ -->
+    <!-- Location: List View               -->
+    <!-- ══════════════════════════════════ -->
+    <record id="view_krawings_contract_location_list" model="ir.ui.view">
+        <field name="name">krawings.contract.location.list</field>
+        <field name="model">krawings.contract.location</field>
+        <field name="arch" type="xml">
+            <list string="Locations">
+                <field name="name"/>
+                <field name="code"/>
+                <field name="address"/>
+                <field name="contract_count"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ══════════════════════════════════ -->
+    <!-- Location: Form View               -->
+    <!-- ══════════════════════════════════ -->
+    <record id="view_krawings_contract_location_form" model="ir.ui.view">
+        <field name="name">krawings.contract.location.form</field>
+        <field name="model">krawings.contract.location</field>
+        <field name="arch" type="xml">
+            <form string="Location">
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="%(action_krawings_contract)d" type="action"
+                                class="oe_stat_button" icon="fa-file-text-o"
+                                context="{'search_default_location_id': active_id}">
+                            <field name="contract_count" widget="statinfo"
+                                   string="Contracts"/>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Location Name"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="code"/>
+                            <field name="address"/>
+                        </group>
+                        <group>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <!-- ══════════════════════════════════ -->
+    <!-- Location: Action                  -->
+    <!-- ══════════════════════════════════ -->
+    <record id="action_krawings_contract_location" model="ir.actions.act_window">
+        <field name="name">Locations</field>
+        <field name="res_model">krawings.contract.location</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+</odoo>
