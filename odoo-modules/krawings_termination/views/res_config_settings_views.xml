@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_inherit_termination" model="ir.ui.view">
+        <field name="name">res.config.settings.termination</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app data-string="Termination" string="Termination" groups="hr.group_hr_manager">
+                    <block title="Accountant Settings" name="termination_accountant">
+                        <setting string="Accountant Email"
+                            help="Termination letters will be sent to this email as PDF attachment. One accountant for all companies.">
+                            <div class="content-group">
+                                <div class="row mt16">
+                                    <label for="kw_accountant_email" class="col-lg-3 o_light_label"/>
+                                    <field name="kw_accountant_email" class="col-lg-4"/>
+                                </div>
+                            </div>
+                        </setting>
+                        <setting string="Email Subject Template"
+                            help="Template for the email subject when sending to accountant. Variables: {employee_name}, {company}, {type}, {last_day}">
+                            <div class="content-group">
+                                <div class="row mt16">
+                                    <label for="kw_email_subject_template" class="col-lg-3 o_light_label"/>
+                                    <field name="kw_email_subject_template" class="col-lg-6"/>
+                                </div>
+                            </div>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>

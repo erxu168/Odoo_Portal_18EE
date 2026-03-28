@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Ordentliche Kuendigung report -->
+    <record id="report_ordentliche_kuendigung_action" model="ir.actions.report">
+        <field name="name">Ordentliche Kuendigung</field>
+        <field name="model">kw.termination</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">krawings_termination.report_ordentliche_kuendigung</field>
+        <field name="report_file">krawings_termination.report_ordentliche_kuendigung</field>
+        <field name="binding_model_id" ref="model_kw_termination"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- Fristlose Kuendigung report -->
+    <record id="report_fristlose_kuendigung_action" model="ir.actions.report">
+        <field name="name">Fristlose Kuendigung</field>
+        <field name="model">kw.termination</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">krawings_termination.report_fristlose_kuendigung</field>
+        <field name="report_file">krawings_termination.report_fristlose_kuendigung</field>
+        <field name="binding_model_id" ref="model_kw_termination"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- Aufhebungsvertrag report -->
+    <record id="report_aufhebungsvertrag_action" model="ir.actions.report">
+        <field name="name">Aufhebungsvertrag</field>
+        <field name="model">kw.termination</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">krawings_termination.report_aufhebungsvertrag</field>
+        <field name="report_file">krawings_termination.report_aufhebungsvertrag</field>
+        <field name="binding_model_id" ref="model_kw_termination"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- Kuendigungsbestaetigung report -->
+    <record id="report_kuendigungsbestaetigung_action" model="ir.actions.report">
+        <field name="name">Kuendigungsbestaetigung</field>
+        <field name="model">kw.termination</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">krawings_termination.report_kuendigungsbestaetigung</field>
+        <field name="report_file">krawings_termination.report_kuendigungsbestaetigung</field>
+        <field name="binding_model_id" ref="model_kw_termination"/>
+        <field name="binding_type">report</field>
+    </record>
+</odoo>

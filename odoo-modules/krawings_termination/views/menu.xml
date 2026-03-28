@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Sub-menu under Employees app -->
+    <menuitem id="menu_kw_termination_root"
+        name="Termination"
+        parent="hr.menu_hr_root"
+        sequence="50"
+        groups="hr.group_hr_manager"/>
+
+    <menuitem id="menu_kw_termination_list"
+        name="Terminations"
+        parent="menu_kw_termination_root"
+        action="action_kw_termination"
+        sequence="10"/>
+</odoo>

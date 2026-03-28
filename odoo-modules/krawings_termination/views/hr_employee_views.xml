@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Add Termination button to hr.employee form -->
+    <record id="hr_employee_view_form_inherit_termination" model="ir.ui.view">
+        <field name="name">hr.employee.form.termination</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="%(krawings_termination.action_kw_termination_wizard)d"
+                    string="Termination"
+                    type="action"
+                    class="btn-danger"
+                    groups="hr.group_hr_manager"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>
