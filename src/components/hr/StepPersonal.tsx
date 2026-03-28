@@ -71,6 +71,9 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
   const [street, setStreet] = useState(employee.private_street || '');
   const [zip, setZip] = useState(employee.private_zip || '');
   const [city, setCity] = useState(employee.private_city || '');
+  const [addressCountry, setAddressCountry] = useState(employee.private_country_id ? (employee.private_country_id as [number, string])[1] : '');
+  const [addressCountryId, setAddressCountryId] = useState(employee.private_country_id ? (employee.private_country_id as [number, string])[0] : 0);
+  const [addressCountrySuggestions, setAddressCountrySuggestions] = useState<{ id: number; name: string }[]>([]);
   const [addressQuery, setAddressQuery] = useState('');
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const addressDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -95,6 +98,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
       private_street: street || false,
       private_zip: zip || false,
       private_city: city || false,
+      private_country_id: addressCountryId || false,
       private_phone: phone || false,
       private_email: email || false,
       emergency_contact: emergName || false,
@@ -137,6 +141,26 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
         }
       } catch { setAddressSuggestions([]); }
     }, 350);
+  }
+
+  // --- Address country search (reuses same Odoo endpoint) ---
+  async function searchAddressCountry(query: string) {
+    setAddressCountry(query);
+    setAddressCountryId(0);
+    if (query.length < 2) { setAddressCountrySuggestions([]); return; }
+    try {
+      const res = await fetch('/api/hr/employee?search_countries=' + encodeURIComponent(query));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.countries) setAddressCountrySuggestions(data.countries);
+      }
+    } catch { setAddressCountrySuggestions([]); }
+  }
+
+  function selectAddressCountry(id: number, name: string) {
+    setAddressCountry(name);
+    setAddressCountryId(id);
+    setAddressCountrySuggestions([]);
   }
 
   function selectAddress(addr: AddressSuggestion) {
@@ -230,6 +254,21 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
             <input className="form-input" value={city} onChange={e => setCity(e.target.value)} placeholder="Berlin" />
           </Field>
         </div>
+        <Field label="Country" labelDe="Land">
+          <div className="relative">
+            <input className="form-input" value={addressCountry} onChange={e => searchAddressCountry(e.target.value)} placeholder="Start typing..." />
+            {addressCountrySuggestions.length > 0 && (
+              <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                {addressCountrySuggestions.map(c => (
+                  <button key={c.id} onClick={() => selectAddressCountry(c.id, c.name)}
+                    className="w-full text-left px-3 py-2.5 text-[13px] text-gray-900 active:bg-green-50 border-b border-gray-100 last:border-0">
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </Field>
 
         {/* Contact */}
         <Field label="Email">
