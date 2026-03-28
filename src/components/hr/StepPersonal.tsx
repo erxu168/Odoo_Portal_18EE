@@ -67,6 +67,11 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
   const [countryOfBirthId, setCountryOfBirthId] = useState(employee.country_of_birth ? (employee.country_of_birth as [number, string])[0] : 0);
   const [countrySuggestions, setCountrySuggestions] = useState<{ id: number; name: string }[]>([]);
 
+  // Nationality (country_id)
+  const [nationality, setNationality] = useState(employee.country_id ? (employee.country_id as [number, string])[1] : '');
+  const [nationalityId, setNationalityId] = useState(employee.country_id ? (employee.country_id as [number, string])[0] : 0);
+  const [nationalitySuggestions, setNationalitySuggestions] = useState<{ id: number; name: string }[]>([]);
+
   // Address
   const [street, setStreet] = useState(employee.private_street || '');
   const [zip, setZip] = useState(employee.private_zip || '');
@@ -103,6 +108,8 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
       private_email: email || false,
       emergency_contact: emergName || false,
       emergency_phone: emergPhone || false,
+      kw_emergency_relation: emergRelation || false,
+      country_id: nationalityId || false,
     });
   }
 
@@ -124,6 +131,26 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
     setCountryOfBirth(name);
     setCountryOfBirthId(id);
     setCountrySuggestions([]);
+  }
+
+  // --- Nationality search ---
+  async function searchNationality(query: string) {
+    setNationality(query);
+    setNationalityId(0);
+    if (query.length < 2) { setNationalitySuggestions([]); return; }
+    try {
+      const res = await fetch('/api/hr/employee?search_countries=' + encodeURIComponent(query));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.countries) setNationalitySuggestions(data.countries);
+      }
+    } catch { setNationalitySuggestions([]); }
+  }
+
+  function selectNationality(id: number, name: string) {
+    setNationality(name);
+    setNationalityId(id);
+    setNationalitySuggestions([]);
   }
 
   // --- Address autocomplete ---
@@ -226,6 +253,22 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
             <option value="widower">Widowed</option>
             <option value="cohabitant">Registered partner</option>
           </select>
+        </Field>
+
+        <Field label="Nationality" labelDe="Staatsangehörigkeit">
+          <div className="relative">
+            <input className="form-input" value={nationality} onChange={e => searchNationality(e.target.value)} placeholder="Start typing..." />
+            {nationalitySuggestions.length > 0 && (
+              <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                {nationalitySuggestions.map(c => (
+                  <button key={c.id} onClick={() => selectNationality(c.id, c.name)}
+                    className="w-full text-left px-3 py-2.5 text-[13px] text-gray-900 active:bg-green-50 border-b border-gray-100 last:border-0">
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </Field>
 
         {/* Address with autocomplete */}

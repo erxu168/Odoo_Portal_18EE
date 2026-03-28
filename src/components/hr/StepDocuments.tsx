@@ -198,20 +198,12 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
             </div>
             {hasPhoto && <span className="text-green-600 text-xl flex-shrink-0">{"\u2713"}</span>}
           </div>
-          <div className="flex gap-2.5">
-            <FilePicker onFile={(file, dataUrl) => { handlePhotoFile({ target: { files: [file] } } as any); }} accept="image/*" className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl active:bg-gray-50 active:shadow-lg transition-all disabled:opacity-40">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
-                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
-              </svg>
-              <span className="text-[13px] font-semibold text-gray-900">Take Selfie</span>
-            </FilePicker>
-            <FilePicker onFile={(file, dataUrl) => { handlePhotoFile({ target: { files: [file] } } as any); }} accept="image/*" className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl active:bg-gray-50 active:shadow-lg transition-all disabled:opacity-40">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
-                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-              </svg>
-              <span className="text-[13px] font-semibold text-gray-900">Choose Photo</span>
-            </FilePicker>
-          </div>
+          <FilePicker onFile={(file, dataUrl) => { handlePhotoFile({ target: { files: [file] } } as any); }} accept="image/*" className="w-full flex items-center justify-center gap-2 py-3.5 bg-white border border-gray-200 rounded-xl active:bg-gray-50 active:shadow-lg transition-all disabled:opacity-40">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
+              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
+            </svg>
+            <span className="text-[13px] font-semibold text-gray-900">{hasPhoto ? 'Change Photo' : 'Add Photo'}</span>
+          </FilePicker>
         </div>
         
         

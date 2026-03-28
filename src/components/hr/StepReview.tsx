@@ -35,9 +35,12 @@ export default function StepReview({ employee, onPrev, onSubmit, saving, onSave 
           <Row label="Birthday" value={employee.birthday || ''} mono />
           <Row label="Gender" value={employee.gender || ''} />
           <Row label="Marital" value={employee.marital || ''} />
+          <Row label="Nationality" value={m2oName(employee.country_id)} />
           <Row label="Address" value={formatAddr(employee)} />
           <Row label="Phone" value={employee.private_phone || ''} mono />
           <Row label="Emergency" value={employee.emergency_contact || ''} />
+          <Row label="Emergency phone" value={employee.emergency_phone || ''} mono />
+          <Row label="Relationship" value={formatRelation((employee as any).kw_emergency_relation)} />
         </Section>
 
         <Section title={'\u{1F3E6} Bank'}>
@@ -84,6 +87,24 @@ export default function StepReview({ employee, onPrev, onSubmit, saving, onSave 
 function formatAddr(e: EmployeeData): string {
   const parts = [e.private_street, e.private_zip, e.private_city].filter(Boolean);
   return parts.join(', ') || '';
+}
+
+function m2oName(field: [number, string] | false): string {
+  return field ? field[1] : '';
+}
+
+const RELATION_LABELS: Record<string, string> = {
+  spouse: 'Spouse / Partner',
+  parent: 'Parent',
+  sibling: 'Sibling',
+  child: 'Child',
+  friend: 'Friend',
+  other: 'Other',
+};
+
+function formatRelation(value: string | false): string {
+  if (!value) return '';
+  return RELATION_LABELS[value] || value;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

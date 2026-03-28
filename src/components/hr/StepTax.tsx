@@ -85,7 +85,19 @@ export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
             <span className="text-[12px] text-gray-400">(Kinderfreibetrag)</span>
             <InfoButton title={ex.kw_kinderfreibetrag.title} text={ex.kw_kinderfreibetrag.text} />
           </div>
-          <input className="form-input font-mono" value={kinder} onChange={e => setKinder(e.target.value)} placeholder="0" type="text" />
+          <select className="form-input" value={kinder} onChange={e => setKinder(e.target.value)}>
+            <option value="0">0 — No children</option>
+            <option value="0.5">0.5 — 1 child (shared custody)</option>
+            <option value="1">1.0 — 1 child (full allowance)</option>
+            <option value="1.5">1.5 — 2 children (1 full + 1 shared)</option>
+            <option value="2">2.0 — 2 children (full allowance)</option>
+            <option value="2.5">2.5 — 3 children (2 full + 1 shared)</option>
+            <option value="3">3.0 — 3 children (full allowance)</option>
+            <option value="3.5">3.5 — 4 children (3 full + 1 shared)</option>
+            <option value="4">4.0 — 4 children (full allowance)</option>
+            <option value="4.5">4.5 — 5 children (4 full + 1 shared)</option>
+            <option value="5">5.0 — 5 children (full allowance)</option>
+          </select>
         </div>
       </div>
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
