@@ -108,7 +108,6 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
       private_email: email || false,
       emergency_contact: emergName || false,
       emergency_phone: emergPhone || false,
-      kw_emergency_relation: emergRelation || false,
       country_id: nationalityId || false,
     });
   }

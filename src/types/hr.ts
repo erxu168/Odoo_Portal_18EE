@@ -93,7 +93,7 @@ export const EMPLOYEE_READ_FIELDS: string[] = [
   'country_of_birth', 'children', 'disabled', 'kw_geburtsname',
   'private_street', 'private_street2', 'private_zip', 'private_city',
   'private_country_id', 'private_email', 'private_phone',
-  'emergency_contact', 'emergency_phone', 'kw_emergency_relation',
+  'emergency_contact', 'emergency_phone',
   'bank_account_id', 'identification_id',
   'kw_steuer_id', 'kw_steuerklasse', 'kw_konfession', 'kw_kinderfreibetrag',
   'ssnid', 'kw_krankenkasse_name', 'kw_kv_typ',
@@ -116,7 +116,7 @@ export const STEP_FIELDS: Record<string, string[]> = {
     'country_of_birth', 'children', 'disabled', 'kw_geburtsname',
     'private_street', 'private_street2', 'private_zip', 'private_city',
     'private_country_id', 'private_email', 'private_phone',
-    'emergency_contact', 'emergency_phone', 'kw_emergency_relation',
+    'emergency_contact', 'emergency_phone',
   ],
   bank: [],
   tax: [
