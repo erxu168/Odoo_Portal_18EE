@@ -39,33 +39,33 @@
 
             <!-- Signature block -->
             <div style="margin-top: 50px;">
-                Mit freundlichen Gruessen<br/><br/><br/><br/>
+                Mit freundlichen Gr\u00fc\u00dfen<br/><br/><br/><br/>
                 <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">
-                    Geschaeftsfuehrung
+                    Gesch\u00e4ftsf\u00fchrung
                 </div>
             </div>
         </div>
     </template>
 
-    <!-- Empfangsbestaetigung footer (reusable) -->
+    <!-- Empfangsbest\u00e4tigung footer (reusable) -->
     <template id="kw_empfangsbestaetigung_footer">
         <div style="margin-top: 50px; padding-top: 15px; border-top: 1px dashed #999; font-size: 10pt; color: #666;">
-            <strong>Empfangsbestaetigung:</strong><br/><br/>
-            Ich bestaetige den Erhalt der Kuendigung am ___________<br/><br/><br/><br/>
+            <strong>Empfangsbest\u00e4tigung:</strong><br/><br/>
+            Ich best\u00e4tige den Erhalt der K\u00fcndigung am ___________<br/><br/><br/><br/>
             <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px;">
                 Unterschrift Arbeitnehmer
             </div>
         </div>
     </template>
 
-    <!-- 1. Ordentliche Kuendigung -->
+    <!-- 1. Ordentliche K\u00fcndigung -->
     <template id="report_ordentliche_kuendigung">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
                 <t t-call="web.external_layout">
                     <t t-call="krawings_termination.kw_termination_letterhead">
                         <div style="font-weight: bold; font-size: 12pt; margin-bottom: 15px;">
-                            Kuendigung Ihres Arbeitsverhaeltnisses
+                            K\u00fcndigung Ihres Arbeitsverh\u00e4ltnisses
                         </div>
                         <p>
                             Sehr geehrte/r
@@ -75,23 +75,23 @@
                             <t t-esc="doc.employee_name.split()[-1] if doc.employee_name else ''"/>,
                         </p>
                         <p>
-                            hiermit kuendigen wir das mit Ihnen bestehende Arbeitsverhaeltnis
-                            ordentlich unter Beachtung der fuer Sie geltenden Kuendigungsfrist,
+                            hiermit k\u00fcndigen wir das mit Ihnen bestehende Arbeitsverh\u00e4ltnis
+                            ordentlich unter Beachtung der f\u00fcr Sie geltenden K\u00fcndigungsfrist,
                             demzufolge nach unseren Berechnungen zum
                             <strong><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '___'"/></strong>,
-                            hilfsweise zum naechstmoeglichen Zeitpunkt.
+                            hilfsweise zum n\u00e4chstm\u00f6glichen Zeitpunkt.
                         </p>
                         <p>
-                            Nach Par. 38 SGB III sind Sie verpflichtet, sich innerhalb von drei Tagen
-                            nach Erhalt dieser Kuendigung bei der zustaendigen Agentur fuer Arbeit
-                            arbeitssuchend zu melden. Sofern das Arbeitsverhaeltnis noch laenger als
+                            Nach \u00a7 38 SGB III sind Sie verpflichtet, sich innerhalb von drei Tagen
+                            nach Erhalt dieser K\u00fcndigung bei der zust\u00e4ndigen Agentur f\u00fcr Arbeit
+                            arbeitssuchend zu melden. Sofern das Arbeitsverh\u00e4ltnis noch l\u00e4nger als
                             drei Monate besteht, ist eine Meldung drei Monate vor der Beendigung
-                            ausreichend. Sie sind auch verpflichtet, aktiv nach einer Beschaeftigung
-                            zu suchen. Sollten Sie diesen Verpflichtungen nicht nachkommen, muessen Sie
+                            ausreichend. Sie sind auch verpflichtet, aktiv nach einer Besch\u00e4ftigung
+                            zu suchen. Sollten Sie diesen Verpflichtungen nicht nachkommen, m\u00fcssen Sie
                             mit Nachteilen beim Bezug von Arbeitslosengeld rechnen.
                         </p>
                         <p>
-                            Bitte bestaetigen Sie den Erhalt dieses Schreibens auf der beigefuegten Kopie.
+                            Bitte best\u00e4tigen Sie den Erhalt dieses Schreibens auf der beigef\u00fcgten Kopie.
                         </p>
                         <t t-call="krawings_termination.kw_empfangsbestaetigung_footer"/>
                     </t>
@@ -100,14 +100,14 @@
         </t>
     </template>
 
-    <!-- 2. Fristlose Kuendigung -->
+    <!-- 2. Fristlose K\u00fcndigung -->
     <template id="report_fristlose_kuendigung">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
                 <t t-call="web.external_layout">
                     <t t-call="krawings_termination.kw_termination_letterhead">
                         <div style="font-weight: bold; font-size: 12pt; margin-bottom: 15px;">
-                            Ausserordentliche fristlose Kuendigung Ihres Arbeitsverhaeltnisses
+                            Au\u00dferordentliche fristlose K\u00fcndigung Ihres Arbeitsverh\u00e4ltnisses
                         </div>
                         <p>
                             Sehr geehrte/r
@@ -117,18 +117,18 @@
                             <t t-esc="doc.employee_name.split()[-1] if doc.employee_name else ''"/>,
                         </p>
                         <p>
-                            hiermit kuendigen wir das mit Ihnen bestehende Arbeitsverhaeltnis
-                            ausserordentlich und fristlos mit sofortiger Wirkung, d.h. mit Zugang
+                            hiermit k\u00fcndigen wir das mit Ihnen bestehende Arbeitsverh\u00e4ltnis
+                            au\u00dferordentlich und fristlos mit sofortiger Wirkung, d.h. mit Zugang
                             dieses Schreibens.
                         </p>
                         <p>
-                            Nach Par. 38 SGB III sind Sie verpflichtet, sich innerhalb von drei Tagen
-                            nach Erhalt dieser Kuendigung bei der zustaendigen Agentur fuer Arbeit
+                            Nach \u00a7 38 SGB III sind Sie verpflichtet, sich innerhalb von drei Tagen
+                            nach Erhalt dieser K\u00fcndigung bei der zust\u00e4ndigen Agentur f\u00fcr Arbeit
                             arbeitssuchend zu melden. Weiterhin sind Sie verpflichtet, aktiv nach
-                            einer Beschaeftigung zu suchen.
+                            einer Besch\u00e4ftigung zu suchen.
                         </p>
                         <p>
-                            Bitte bestaetigen Sie den Erhalt dieses Schreibens auf der beigefuegten Kopie.
+                            Bitte best\u00e4tigen Sie den Erhalt dieses Schreibens auf der beigef\u00fcgten Kopie.
                         </p>
                         <t t-call="krawings_termination.kw_empfangsbestaetigung_footer"/>
                     </t>
@@ -164,58 +164,58 @@
                             - nachfolgend "Arbeitnehmer" -
                         </p>
 
-                        <p style="font-weight: bold;">Par. 1 Beendigung des Arbeitsverhaeltnisses</p>
+                        <p style="font-weight: bold;">\u00a7 1 Beendigung des Arbeitsverh\u00e4ltnisses</p>
                         <p>
-                            Die Parteien sind sich darueber einig, dass das am
+                            Die Parteien sind sich dar\u00fcber einig, dass das am
                             <t t-esc="doc.employee_start_date.strftime('%d.%m.%Y') if doc.employee_start_date else '___'"/>
-                            begruendete Arbeitsverhaeltnis auf Veranlassung des Arbeitgebers
+                            begr\u00fcndete Arbeitsverh\u00e4ltnis auf Veranlassung des Arbeitgebers
                             im gegenseitigen Einvernehmen mit Ablauf des
                             <strong><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '___'"/></strong>
                             enden wird.
                         </p>
 
                         <t t-if="doc.garden_leave">
-                            <p style="font-weight: bold;">Par. 2 Freistellung</p>
+                            <p style="font-weight: bold;">\u00a7 2 Freistellung</p>
                             <p>
                                 Der Arbeitnehmer wird ab Unterzeichnung dieses Vertrages
                                 unwiderruflich von der Verpflichtung zur Erbringung der Arbeitsleistung
-                                unter Fortzahlung der Verguetung und Anrechnung von Urlaubsanspruechen
+                                unter Fortzahlung der Verg\u00fctung und Anrechnung von Urlaubsanspr\u00fcchen
                                 freigestellt.
                             </p>
                         </t>
 
                         <t t-if="doc.include_severance">
                             <p style="font-weight: bold;">
-                                Par. <t t-if="doc.garden_leave">3</t><t t-else="">2</t> Abfindung
+                                \u00a7 <t t-if="doc.garden_leave">3</t><t t-else="">2</t> Abfindung
                             </p>
                             <p>
-                                Der Arbeitgeber zahlt dem Arbeitnehmer fuer den Verlust des Arbeitsplatzes
-                                eine Abfindung in Hoehe von
+                                Der Arbeitgeber zahlt dem Arbeitnehmer f\u00fcr den Verlust des Arbeitsplatzes
+                                eine Abfindung in H\u00f6he von
                                 <strong><t t-esc="'%.2f' % doc.severance_amount"/> EUR</strong>
-                                (brutto). Die Abfindung ist mit der letzten Gehaltsabrechnung faellig.
+                                (brutto). Die Abfindung ist mit der letzten Gehaltsabrechnung f\u00e4llig.
                             </p>
                         </t>
 
-                        <p style="font-weight: bold;">Par. <t t-esc="3 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Arbeitszeugnis</p>
+                        <p style="font-weight: bold;">\u00a7 <t t-esc="3 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Arbeitszeugnis</p>
                         <p>
                             Der Arbeitgeber erteilt dem Arbeitnehmer unter dem Beendigungsdatum
                             ein wohlwollendes, qualifiziertes Arbeitszeugnis mit einer Dankes-
                             und Bedauernsformel.
                         </p>
 
-                        <p style="font-weight: bold;">Par. <t t-esc="4 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Hinweis nach Par. 38 SGB III</p>
+                        <p style="font-weight: bold;">\u00a7 <t t-esc="4 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Hinweis nach \u00a7 38 SGB III</p>
                         <p>
-                            Zur Aufrechterhaltung ungekuerzter Ansprueche auf Arbeitslosengeld ist
-                            der Arbeitnehmer verpflichtet, sich unverzueglich nach Abschluss dieses
-                            Aufhebungsvertrages persoenlich bei der Agentur fuer Arbeit arbeitssuchend
-                            zu melden. Weiterhin ist er verpflichtet, aktiv nach einer Beschaeftigung
+                            Zur Aufrechterhaltung ungek\u00fcrzter Anspr\u00fcche auf Arbeitslosengeld ist
+                            der Arbeitnehmer verpflichtet, sich unverz\u00fcglich nach Abschluss dieses
+                            Aufhebungsvertrages pers\u00f6nlich bei der Agentur f\u00fcr Arbeit arbeitssuchend
+                            zu melden. Weiterhin ist er verpflichtet, aktiv nach einer Besch\u00e4ftigung
                             zu suchen.
                         </p>
 
-                        <p style="font-weight: bold;">Par. <t t-esc="5 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Ausgleichsklausel</p>
+                        <p style="font-weight: bold;">\u00a7 <t t-esc="5 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Ausgleichsklausel</p>
                         <p>
-                            Mit Erfuellung dieser Vereinbarung sind saemtliche wechselseitigen
-                            finanziellen Ansprueche der Parteien aus dem Arbeitsverhaeltnis und
+                            Mit Erf\u00fcllung dieser Vereinbarung sind s\u00e4mtliche wechselseitigen
+                            finanziellen Anspr\u00fcche der Parteien aus dem Arbeitsverh\u00e4ltnis und
                             seiner Beendigung, gleich aus welchem Rechtsgrund, gleich ob bekannt
                             oder unbekannt, abgegolten und erledigt.
                         </p>
@@ -241,14 +241,14 @@
         </t>
     </template>
 
-    <!-- 4. Kuendigungsbestaetigung -->
+    <!-- 4. K\u00fcndigungsbest\u00e4tigung -->
     <template id="report_kuendigungsbestaetigung">
         <t t-call="web.html_container">
             <t t-foreach="docs" t-as="doc">
                 <t t-call="web.external_layout">
                     <t t-call="krawings_termination.kw_termination_letterhead">
                         <div style="font-weight: bold; font-size: 12pt; margin-bottom: 15px;">
-                            Bestaetigung Ihrer Kuendigung
+                            Best\u00e4tigung Ihrer K\u00fcndigung
                         </div>
                         <p>
                             Sehr geehrte/r
@@ -258,32 +258,32 @@
                             <t t-esc="doc.employee_name.split()[-1] if doc.employee_name else ''"/>,
                         </p>
                         <p>
-                            hiermit bestaetigen wir den Erhalt Ihrer Kuendigung vom
+                            hiermit best\u00e4tigen wir den Erhalt Ihrer K\u00fcndigung vom
                             <t t-esc="doc.resignation_received_date.strftime('%d.%m.%Y') if doc.resignation_received_date else '___'"/>.
                         </p>
                         <p>
-                            Unter Beruecksichtigung der fuer Sie geltenden Kuendigungsfrist
-                            endet Ihr Arbeitsverhaeltnis mit uns zum
+                            Unter Ber\u00fccksichtigung der f\u00fcr Sie geltenden K\u00fcndigungsfrist
+                            endet Ihr Arbeitsverh\u00e4ltnis mit uns zum
                             <strong><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '___'"/></strong>.
                         </p>
                         <p>
-                            Wir bitten Sie, alle firmeneigenen Gegenstaende, Schluessel, Geraete
-                            und sonstiges Firmeneigentum bis spaetestens zu Ihrem letzten Arbeitstag
-                            zurueckzugeben.
+                            Wir bitten Sie, alle firmeneigenen Gegenst\u00e4nde, Schl\u00fcssel, Ger\u00e4te
+                            und sonstiges Firmeneigentum bis sp\u00e4testens zu Ihrem letzten Arbeitstag
+                            zur\u00fcckzugeben.
                         </p>
                         <p>
-                            Sie haben Anspruch auf ein wohlwollendes und wahrheitsgemaesses
+                            Sie haben Anspruch auf ein wohlwollendes und wahrheitsgem\u00e4\u00dfes
                             Arbeitszeugnis. Bitte teilen Sie uns mit, ob Sie ein einfaches oder
-                            qualifiziertes Arbeitszeugnis wuenschen.
+                            qualifiziertes Arbeitszeugnis w\u00fcnschen.
                         </p>
                         <p>
-                            Wir moechten Sie darauf hinweisen, dass Sie sich gemaess Par. 38 SGB III
-                            innerhalb von drei Tagen nach Erhalt dieser Bestaetigung bei der zustaendigen
-                            Agentur fuer Arbeit arbeitssuchend melden muessen, sofern Sie dies nicht
+                            Wir m\u00f6chten Sie darauf hinweisen, dass Sie sich gem\u00e4\u00df \u00a7 38 SGB III
+                            innerhalb von drei Tagen nach Erhalt dieser Best\u00e4tigung bei der zust\u00e4ndigen
+                            Agentur f\u00fcr Arbeit arbeitssuchend melden m\u00fcssen, sofern Sie dies nicht
                             bereits getan haben.
                         </p>
                         <p>
-                            Fuer die Zusammenarbeit bedanken wir uns und wuenschen Ihnen fuer Ihren
+                            F\u00fcr die Zusammenarbeit bedanken wir uns und w\u00fcnschen Ihnen f\u00fcr Ihren
                             weiteren beruflichen und privaten Lebensweg alles Gute.
                         </p>
                     </t>

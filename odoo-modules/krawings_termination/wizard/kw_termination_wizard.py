@@ -4,85 +4,85 @@ from odoo.exceptions import UserError
 
 class KwTerminationWizard(models.TransientModel):
     _name = 'kw.termination.wizard'
-    _description = 'Termination Wizard'
+    _description = 'K\u00fcndigungsassistent'
 
     employee_id = fields.Many2one(
-        'hr.employee', string='Employee', required=True,
+        'hr.employee', string='Mitarbeiter', required=True,
     )
     company_id = fields.Many2one(
-        'res.company', string='Company',
+        'res.company', string='Unternehmen',
         related='employee_id.company_id', readonly=True,
     )
     termination_type = fields.Selection(
         related=False,
         selection=[
-            ('ordentlich', 'Ordentliche Kuendigung'),
-            ('ordentlich_probezeit', 'Ordentliche Kuendigung (Probezeit)'),
-            ('fristlos', 'Fristlose Kuendigung'),
+            ('ordentlich', 'Ordentliche K\u00fcndigung'),
+            ('ordentlich_probezeit', 'Ordentliche K\u00fcndigung (Probezeit)'),
+            ('fristlos', 'Fristlose K\u00fcndigung'),
             ('aufhebung', 'Aufhebungsvertrag'),
-            ('bestaetigung', 'Kuendigungsbestaetigung'),
+            ('bestaetigung', 'K\u00fcndigungsbest\u00e4tigung'),
         ],
-        string='Type', required=True, default='ordentlich',
+        string='Art', required=True, default='ordentlich',
     )
     calc_method = fields.Selection([
-        ('bgb', 'Par. 622 BGB statutory (to 15th / month-end)'),
-        ('receipt', 'From receipt date (tenure-scaled from delivery)'),
-    ], string='Calculation Method', default='bgb', required=True)
+        ('bgb', '\u00a7 622 BGB gesetzlich (zum 15. / Monatsende)'),
+        ('receipt', 'Ab Zugang (laufzeitabh\u00e4ngig ab Zustellung)'),
+    ], string='Berechnungsmethode', default='bgb', required=True)
 
     letter_date = fields.Date(
-        string='Letter Date', default=fields.Date.today, required=True,
+        string='Datum des Schreibens', default=fields.Date.today, required=True,
     )
-    receipt_date = fields.Date(string='Receipt Date')
+    receipt_date = fields.Date(string='Zugangsdatum')
 
     # Employee info (computed display)
     employee_start_date = fields.Date(
-        string='Employment Start', compute='_compute_info',
+        string='Besch\u00e4ftigungsbeginn', compute='_compute_info',
     )
     tenure_display = fields.Char(
-        string='Tenure', compute='_compute_info',
+        string='Betriebszugeh\u00f6rigkeit', compute='_compute_info',
     )
     in_probation = fields.Boolean(
-        string='In Probation', compute='_compute_info',
+        string='In Probezeit', compute='_compute_info',
     )
     probation_end = fields.Date(
-        string='Probation End', compute='_compute_info',
+        string='Probezeit bis', compute='_compute_info',
     )
     notice_period_text = fields.Char(
-        string='Notice Period', compute='_compute_info',
+        string='K\u00fcndigungsfrist', compute='_compute_info',
     )
     last_working_day = fields.Date(
-        string='Last Working Day', compute='_compute_info',
+        string='Letzter Arbeitstag', compute='_compute_info',
         readonly=False,
     )
 
     # Address
-    employee_street = fields.Char(string='Street')
-    employee_city = fields.Char(string='City')
-    employee_zip = fields.Char(string='ZIP')
+    employee_street = fields.Char(string='Stra\u00dfe')
+    employee_city = fields.Char(string='Stadt')
+    employee_zip = fields.Char(string='PLZ')
     address_missing = fields.Boolean(
-        string='Address Missing', compute='_compute_address_missing',
+        string='Adresse fehlt', compute='_compute_address_missing',
     )
 
     # Fristlose
-    incident_date = fields.Date(string='Incident Date')
-    incident_description = fields.Text(string='Description (internal)')
+    incident_date = fields.Date(string='Datum des Vorfalls')
+    incident_description = fields.Text(string='Beschreibung (intern)')
 
     # Aufhebung
-    agreed_end_date = fields.Date(string='Agreed End Date')
-    include_severance = fields.Boolean(string='Include Abfindung')
-    severance_amount = fields.Float(string='Abfindung Amount')
+    agreed_end_date = fields.Date(string='Vereinbartes Enddatum')
+    include_severance = fields.Boolean(string='Abfindung einschlie\u00dfen')
+    severance_amount = fields.Float(string='Abfindungsbetrag')
     garden_leave = fields.Boolean(string='Freistellung')
     zeugnis_grade = fields.Selection([
         ('1', 'Sehr gut'), ('2', 'Gut'),
         ('3', 'Befriedigend'), ('4', 'Ausreichend'),
-    ], string='Zeugnis Grade', default='2')
+    ], string='Zeugnisnote', default='2')
 
-    # Bestaetigung
-    resignation_received_date = fields.Date(string='Resignation Received')
+    # Best\u00e4tigung
+    resignation_received_date = fields.Date(string='K\u00fcndigung erhalten am')
     resignation_method = fields.Selection([
-        ('letter', 'Letter'), ('email', 'Email'), ('verbal', 'Verbal'),
-    ], string='Received via')
-    written_resignation_received = fields.Boolean(string='Written Resignation Received')
+        ('letter', 'Brief'), ('email', 'E-Mail'), ('verbal', 'M\u00fcndlich'),
+    ], string='Empfangsweg')
+    written_resignation_received = fields.Boolean(string='Schriftliche K\u00fcndigung mit Unterschrift erhalten')
 
     @api.depends('employee_id', 'letter_date', 'termination_type',
                  'calc_method', 'receipt_date', 'resignation_received_date')
@@ -98,7 +98,6 @@ class KwTerminationWizard(models.TransientModel):
                 wiz.last_working_day = False
                 continue
 
-            # Create a temporary record to reuse the calculation logic
             temp = Termination.new({
                 'employee_id': wiz.employee_id.id,
                 'letter_date': wiz.letter_date,
@@ -117,10 +116,9 @@ class KwTerminationWizard(models.TransientModel):
             wiz.notice_period_text = temp.notice_period_text
             wiz.last_working_day = temp.last_working_day
 
-            # Tenure display
             years = int(temp.tenure_years)
             months = int((temp.tenure_years - years) * 12)
-            wiz.tenure_display = '%d years, %d months' % (years, months)
+            wiz.tenure_display = '%d Jahre, %d Monate' % (years, months)
 
     @api.depends('employee_street')
     def _compute_address_missing(self):
