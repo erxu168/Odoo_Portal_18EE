@@ -1,6 +1,6 @@
 /**
- * Krawings Portal — Termination Types
- * Maps to kw.termination model on Odoo 18 EE.
+ * Termination module types.
+ * Mirrors kw.termination Odoo model fields.
  */
 
 export type TerminationType =
@@ -14,109 +14,128 @@ export type TerminationState =
   | 'draft'
   | 'confirmed'
   | 'signed'
+  | 'delivered'
   | 'archived'
   | 'cancelled';
 
 export type CalcMethod = 'bgb' | 'receipt';
 
-export type ResignationMethod = 'letter' | 'email' | 'verbal';
+export type DeliveryMethod =
+  | 'einschreiben_rueckschein'
+  | 'einwurf_einschreiben'
+  | 'personal'
+  | 'bote';
 
-export type ZeugnisGrade = '1' | '2' | '3' | '4';
+export interface TerminationRecord {
+  id: number;
+  employee_id: [number, string];
+  company_id: [number, string];
+  termination_type: TerminationType;
+  state: TerminationState;
+  letter_date: string; // YYYY-MM-DD
+  receipt_date: string | false;
+  calc_method: CalcMethod;
+  notice_period_text: string;
+  last_working_day: string | false;
+  employee_name: string;
+  employee_street: string;
+  employee_city: string;
+  employee_zip: string;
+  employee_start_date: string | false;
+  tenure_years: number;
+  in_probation: boolean;
+  probation_end: string | false;
+  // Fristlos
+  incident_date: string | false;
+  incident_description: string | false;
+  // Aufhebung
+  include_severance: boolean;
+  severance_amount: number;
+  garden_leave: boolean;
+  // Bestaetigung
+  resignation_received_date: string | false;
+  // PDF
+  pdf_attachment_id: [number, string] | false;
+  signed_pdf_attachment_id: [number, string] | false;
+  // Delivery
+  delivery_method: DeliveryMethod | false;
+  delivery_date: string | false;
+  delivery_tracking_number: string | false;
+  delivery_witness: string | false;
+  delivery_confirmed: boolean;
+  delivery_confirmed_date: string | false;
+  delivery_proof_attachment_id: [number, string] | false;
+  delivery_notes: string | false;
+  // Accountant
+  sent_to_accountant: boolean;
+  sent_to_accountant_date: string | false;
+  display_name: string;
+}
+
+export interface TerminationCreateValues {
+  employee_id: number;
+  company_id: number;
+  termination_type: TerminationType;
+  calc_method?: CalcMethod;
+  letter_date?: string;
+  receipt_date?: string;
+  employee_street?: string;
+  employee_city?: string;
+  employee_zip?: string;
+  // Fristlos
+  incident_date?: string;
+  incident_description?: string;
+  // Aufhebung
+  last_working_day?: string;
+  include_severance?: boolean;
+  severance_amount?: number;
+  garden_leave?: boolean;
+  // Bestaetigung
+  resignation_received_date?: string;
+}
 
 export const TERMINATION_TYPE_LABELS: Record<TerminationType, string> = {
-  ordentlich: 'Ordentliche Kuendigung',
-  ordentlich_probezeit: 'Ordentliche Kuendigung (Probezeit)',
-  fristlos: 'Fristlose Kuendigung',
+  ordentlich: 'Ordentliche K\u00fcndigung',
+  ordentlich_probezeit: 'Ordentliche K\u00fcndigung (Probezeit)',
+  fristlos: 'Fristlose K\u00fcndigung',
   aufhebung: 'Aufhebungsvertrag',
-  bestaetigung: 'Kuendigungsbestaetigung',
+  bestaetigung: 'K\u00fcndigungsbest\u00e4tigung',
 };
 
-export const TERMINATION_STATE_LABELS: Record<TerminationState, string> = {
+export const STATE_LABELS: Record<TerminationState, string> = {
   draft: 'Entwurf',
-  confirmed: 'Bestaetigt',
+  confirmed: 'Best\u00e4tigt',
   signed: 'Unterschrieben',
+  delivered: 'Zugestellt',
   archived: 'Archiviert',
   cancelled: 'Storniert',
 };
 
-export const TERMINATION_STATE_BADGE: Record<TerminationState, string> = {
-  draft: 'draft',
-  confirmed: 'confirmed',
-  signed: 'done',
-  archived: 'neutral',
-  cancelled: 'cancel',
+export const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
+  einschreiben_rueckschein: 'Einschreiben mit R\u00fcckschein',
+  einwurf_einschreiben: 'Einwurf-Einschreiben',
+  personal: 'Pers\u00f6nliche \u00dcbergabe',
+  bote: 'Bote (mit Zeuge)',
 };
 
-export interface Termination {
-  id: number;
-  employee_id: [number, string];
-  employee_name: string;
-  company_id: [number, string];
-  termination_type: TerminationType;
-  state: TerminationState;
-  letter_date: string;           // YYYY-MM-DD
-  last_working_day: string | false;
-  notice_period_text: string | false;
-  calc_method: CalcMethod;
-  receipt_date: string | false;
-  resignation_method: ResignationMethod | false;
-  resignation_received_date: string | false;
-  in_probation: boolean;
-  probation_end: string | false;
-  employee_start_date: string | false;
-  tenure_years: number;
-  employee_street: string | false;
-  employee_zip: string | false;
-  employee_city: string | false;
-  garden_leave: boolean;
-  include_severance: boolean;
-  severance_amount: number;
-  incident_date: string | false;
-  incident_description: string | false;
-  incident_overdue: boolean;
-  sent_to_accountant: boolean;
-  sent_to_accountant_date: string | false;
-  sign_state: 'not_started' | 'employer_signed' | 'fully_signed';
-  zeugnis_grade: ZeugnisGrade | false;
-  departure_date: string | false;
-  written_resignation_received: boolean;
-}
-
-export interface TerminationCreatePayload {
-  employee_id: number;
-  company_id: number;
-  termination_type: TerminationType;
-  letter_date: string;
-  calc_method: CalcMethod;
-  receipt_date?: string;
-  resignation_method?: ResignationMethod;
-  resignation_received_date?: string;
-  garden_leave?: boolean;
-  include_severance?: boolean;
-  severance_amount?: number;
-  incident_date?: string;
-  incident_description?: string;
-}
-
-/** Fields to read from Odoo for list view */
+/** All fields to fetch from Odoo for list views */
 export const TERMINATION_LIST_FIELDS = [
-  'id', 'employee_id', 'employee_name', 'company_id',
-  'termination_type', 'state', 'letter_date',
-  'last_working_day', 'notice_period_text',
-  'sent_to_accountant', 'in_probation',
-] as const;
+  'id', 'employee_name', 'company_id', 'termination_type', 'state',
+  'letter_date', 'last_working_day', 'notice_period_text',
+  'delivery_method', 'delivery_confirmed', 'sent_to_accountant',
+  'pdf_attachment_id', 'signed_pdf_attachment_id',
+];
 
-/** Fields to read from Odoo for detail view */
+/** All fields to fetch from Odoo for detail views */
 export const TERMINATION_DETAIL_FIELDS = [
-  'id', 'employee_id', 'employee_name', 'company_id',
-  'termination_type', 'state', 'letter_date',
-  'last_working_day', 'notice_period_text', 'calc_method',
-  'receipt_date', 'resignation_method', 'resignation_received_date',
-  'in_probation', 'probation_end', 'employee_start_date', 'tenure_years',
-  'employee_street', 'employee_zip', 'employee_city',
-  'garden_leave', 'include_severance', 'severance_amount',
-  'incident_date', 'incident_description', 'incident_overdue',
-  'sent_to_accountant', 'sent_to_accountant_date',
-  'sign_state', 'zeugnis_grade', 'departure_date',
-  'written_resignation_received',
-] as const;
+  ...TERMINATION_LIST_FIELDS,
+  'employee_id', 'calc_method', 'receipt_date',
+  'employee_street', 'employee_city', 'employee_zip',
+  'employee_start_date', 'tenure_years', 'in_probation', 'probation_end',
+  'incident_date', 'incident_description',
+  'include_severance', 'severance_amount', 'garden_leave',
+  'resignation_received_date',
+  'delivery_date', 'delivery_tracking_number', 'delivery_witness',
+  'delivery_confirmed_date', 'delivery_proof_attachment_id', 'delivery_notes',
+  'sent_to_accountant_date', 'display_name',
+];
