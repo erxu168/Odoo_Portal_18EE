@@ -2,22 +2,24 @@
 <odoo>
     <!-- Ordentliche Kuendigung report -->
     <record id="report_ordentliche_kuendigung_action" model="ir.actions.report">
-        <field name="name">Ordentliche Kuendigung</field>
+        <field name="name">Ordentliche K&#252;ndigung</field>
         <field name="model">kw.termination</field>
         <field name="report_type">qweb-pdf</field>
         <field name="report_name">krawings_termination.report_ordentliche_kuendigung</field>
         <field name="report_file">krawings_termination.report_ordentliche_kuendigung</field>
+        <field name="paperformat_id" ref="l10n_din5008.paperformat_euro_din"/>
         <field name="binding_model_id" ref="model_kw_termination"/>
         <field name="binding_type">report</field>
     </record>
 
     <!-- Fristlose Kuendigung report -->
     <record id="report_fristlose_kuendigung_action" model="ir.actions.report">
-        <field name="name">Fristlose Kuendigung</field>
+        <field name="name">Fristlose K&#252;ndigung</field>
         <field name="model">kw.termination</field>
         <field name="report_type">qweb-pdf</field>
         <field name="report_name">krawings_termination.report_fristlose_kuendigung</field>
         <field name="report_file">krawings_termination.report_fristlose_kuendigung</field>
+        <field name="paperformat_id" ref="l10n_din5008.paperformat_euro_din"/>
         <field name="binding_model_id" ref="model_kw_termination"/>
         <field name="binding_type">report</field>
     </record>
@@ -29,17 +31,19 @@
         <field name="report_type">qweb-pdf</field>
         <field name="report_name">krawings_termination.report_aufhebungsvertrag</field>
         <field name="report_file">krawings_termination.report_aufhebungsvertrag</field>
+        <field name="paperformat_id" ref="l10n_din5008.paperformat_euro_din"/>
         <field name="binding_model_id" ref="model_kw_termination"/>
         <field name="binding_type">report</field>
     </record>
 
     <!-- Kuendigungsbestaetigung report -->
     <record id="report_kuendigungsbestaetigung_action" model="ir.actions.report">
-        <field name="name">Kuendigungsbestaetigung</field>
+        <field name="name">K&#252;ndigungsbest&#228;tigung</field>
         <field name="model">kw.termination</field>
         <field name="report_type">qweb-pdf</field>
         <field name="report_name">krawings_termination.report_kuendigungsbestaetigung</field>
         <field name="report_file">krawings_termination.report_kuendigungsbestaetigung</field>
+        <field name="paperformat_id" ref="l10n_din5008.paperformat_euro_din"/>
         <field name="binding_model_id" ref="model_kw_termination"/>
         <field name="binding_type">report</field>
     </record>
