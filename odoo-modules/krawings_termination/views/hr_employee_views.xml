@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Add Termination button to hr.employee form -->
     <record id="hr_employee_view_form_inherit_termination" model="ir.ui.view">
         <field name="name">hr.employee.form.termination</field>
         <field name="model">hr.employee</field>
@@ -12,6 +11,14 @@
                     type="action"
                     class="btn-danger"
                     groups="hr.group_hr_manager"/>
+            </xpath>
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_terminations" type="object"
+                    class="oe_stat_button" icon="fa-ban"
+                    groups="hr.group_hr_manager">
+                    <field name="termination_count" widget="statinfo"
+                        string="Terminations"/>
+                </button>
             </xpath>
         </field>
     </record>
