@@ -38,6 +38,9 @@
                     <button name="action_sign_and_send" string="Sign and Send"
                         type="object" class="btn-primary"
                         invisible="state not in ('confirmed', 'signed')"/>
+                    <button name="action_check_sign_status" string="Check Sign Status"
+                        type="object"
+                        invisible="sign_state != 'employer_signed'"/>
                     <button name="action_send_to_accountant" string="Send to Accountant"
                         type="object"
                         invisible="state not in ('confirmed', 'signed')"/>
@@ -124,12 +127,14 @@
                         <group>
                             <field name="sign_state"/>
                             <field name="sign_request_id"/>
+                            <field name="pdf_attachment_id"/>
+                            <field name="signed_pdf_attachment_id"
+                                invisible="not signed_pdf_attachment_id"/>
                         </group>
                         <group>
                             <field name="sent_to_accountant"/>
                             <field name="sent_to_accountant_date"
                                 invisible="not sent_to_accountant"/>
-                            <field name="pdf_attachment_id"/>
                         </group>
                     </group>
                 </sheet>
@@ -151,13 +156,15 @@
                     domain="[('state', '=', 'draft')]"/>
                 <filter name="filter_confirmed" string="Confirmed"
                     domain="[('state', '=', 'confirmed')]"/>
+                <filter name="filter_signed" string="Signed"
+                    domain="[('state', '=', 'signed')]"/>
                 <filter name="filter_archived" string="Archived"
                     domain="[('state', '=', 'archived')]"/>
                 <separator/>
                 <filter name="filter_not_sent" string="Not Sent to Accountant"
                     domain="[('sent_to_accountant', '=', False)]"/>
-                <filter name="filter_unsigned" string="Unsigned"
-                    domain="[('sign_state', '=', 'not_started')]"/>
+                <filter name="filter_awaiting_signature" string="Awaiting Employee Signature"
+                    domain="[('sign_state', '=', 'employer_signed')]"/>
                 <group expand="0" string="Group By">
                     <filter name="groupby_type" string="Type"
                         context="{'group_by': 'termination_type'}"/>
