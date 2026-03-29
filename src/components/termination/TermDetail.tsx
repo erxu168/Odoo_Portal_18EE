@@ -45,9 +45,9 @@ export default function TermDetail({ termId, onBack }: TermDetailProps) {
       a.download = `Kuendigung_KW-${termId}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-      showToast('PDF heruntergeladen');
+      doToast('PDF heruntergeladen');
     } catch (_e) {
-      showToast('Fehler beim PDF-Download');
+      doToast('Fehler beim PDF-Download');
     } finally {
       setPdfLoading(false);
     }
@@ -57,12 +57,11 @@ export default function TermDetail({ termId, onBack }: TermDetailProps) {
     try {
       const res = await fetch(`/api/hr/termination/${termId}/send-accountant`, { method: 'POST' });
       if (!res.ok) throw new Error('Send failed');
-      showToast('An Steuerberater gesendet');
-      // Refresh
+      doToast('An Steuerberater gesendet');
       const data = await fetch(`/api/hr/termination/${termId}`).then(r => r.json());
       setRec(data.record);
     } catch (_e) {
-      showToast('Fehler beim Senden');
+      doToast('Fehler beim Senden');
     }
     setShowSendDialog(false);
   }
@@ -74,16 +73,16 @@ export default function TermDetail({ termId, onBack }: TermDetailProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ state: 'cancelled' }),
       });
-      showToast('Kuendigung storniert');
+      doToast('Kuendigung storniert');
       const data = await fetch(`/api/hr/termination/${termId}`).then(r => r.json());
       setRec(data.record);
     } catch (_e) {
-      showToast('Fehler');
+      doToast('Fehler');
     }
     setShowCancelDialog(false);
   }
 
-  function showToast(msg: string) {
+  function doToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(''), 2500);
   }
@@ -117,7 +116,7 @@ export default function TermDetail({ termId, onBack }: TermDetailProps) {
       <>
         <AppHeader title="Kuendigung" showBack onBack={onBack} />
         <div className={ds.emptyState}>
-          <div className={ds.emptyIcon}>❌</div>
+          <div className={ds.emptyIcon}>&#x274c;</div>
           <div className={ds.emptyTitle}>Nicht gefunden</div>
         </div>
       </>
@@ -208,28 +207,30 @@ export default function TermDetail({ termId, onBack }: TermDetailProps) {
         </div>
       </div>
 
-      {/* Confirm dialogs */}
-      <ConfirmDialog
-        open={showSendDialog}
-        title="An Steuerberater senden?"
-        message={`KW-${rec.id} (${rec.employee_name}) wird per E-Mail an den Steuerberater gesendet.`}
-        confirmLabel="Senden"
-        onConfirm={sendToAccountant}
-        onCancel={() => setShowSendDialog(false)}
-      />
-      <ConfirmDialog
-        open={showCancelDialog}
-        title="Kuendigung stornieren?"
-        message={`KW-${rec.id} (${rec.employee_name}) wird unwiderruflich storniert.`}
-        confirmLabel="Stornieren"
-        variant="danger"
-        onConfirm={cancelTermination}
-        onCancel={() => setShowCancelDialog(false)}
-      />
+      {/* Confirm dialogs — conditionally rendered (no open prop) */}
+      {showSendDialog && (
+        <ConfirmDialog
+          title="An Steuerberater senden?"
+          message={`KW-${rec.id} (${rec.employee_name}) wird per E-Mail an den Steuerberater gesendet.`}
+          confirmLabel="Senden"
+          onConfirm={sendToAccountant}
+          onCancel={() => setShowSendDialog(false)}
+        />
+      )}
+      {showCancelDialog && (
+        <ConfirmDialog
+          title="Kuendigung stornieren?"
+          message={`KW-${rec.id} (${rec.employee_name}) wird unwiderruflich storniert.`}
+          confirmLabel="Stornieren"
+          variant="danger"
+          onConfirm={cancelTermination}
+          onCancel={() => setShowCancelDialog(false)}
+        />
+      )}
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-5 py-3 rounded-xl text-[14px] font-medium shadow-lg z-[100] animate-[slideUp_0.3s_ease]">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-5 py-3 rounded-xl text-[14px] font-medium shadow-lg z-[100]">
           {toast}
         </div>
       )}
