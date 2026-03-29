@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- Register "Krawings" layout in Settings > Document Layout picker -->
+        <record id="report_layout_krawings" model="report.layout">
+            <field name="name">Krawings</field>
+            <field name="sequence">9</field>
+            <field name="view_id" ref="krawings_document_layout.external_layout_krawings"/>
+            <field name="image">/krawings_document_layout/static/description/icon.png</field>
+        </record>
+
+    </data>
+</odoo>

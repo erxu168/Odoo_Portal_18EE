@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!--
+            Krawings external layout
+            ========================
+            Clean, minimal letterhead.  Every footer/header field is
+            wrapped in t-if so nothing renders when the data is missing.
+            Works for GmbH, Einzelunternehmen, GbR, or any entity.
+
+            Field mapping (res.company):
+              company.name                  -> company name
+              company.report_header         -> tagline HTML (Settings > Document Layout)
+              company.logo                  -> logo binary
+              company.street / street2      -> address
+              company.zip / city            -> address
+              company.country_id            -> country (hidden for DE)
+              company.phone / mobile        -> phone
+              company.email                 -> email
+              company.website               -> website
+              company.vat                   -> USt-IdNr
+              company.company_registry      -> HRB / Handelsregister
+              company.company_details       -> free-text company details (Settings)
+              company.report_footer         -> free-text footer (Settings)
+              company.partner_id.bank_ids   -> bank accounts
+        -->
+
+        <template id="external_layout_krawings" name="Krawings">
+            <div>
+                <!-- Resolve paper format flag -->
+                <t t-set="is_din_paperformat" t-value="company.paperformat_id in [
+                    env.ref('l10n_din5008.paperformat_euro_din_a', raise_if_not_found=False),
+                    env.ref('l10n_din5008.paperformat_euro_din', raise_if_not_found=False),
+                    env.ref('krawings_document_layout.paperformat_a4_krawings', raise_if_not_found=False)
+                ]"/>
+
+                <!-- ═══ HEADER ═══ -->
+                <div t-attf-class="header kw_page o_company_#{company.id}_layout #{'kw_page_pdf' if report_type == 'pdf' and is_din_paperformat else ''}">
+                    <div class="kw_header">
+                        <div class="kw_header_left">
+                            <div class="kw_company_name" t-field="company.name">Company</div>
+                            <div t-if="company.report_header" class="kw_tagline">
+                                <t t-out="company.report_header"/>
+                            </div>
+                        </div>
+                        <div t-if="company.logo" class="kw_header_right">
+                            <img t-att-src="image_data_uri(company.logo)"
+                                 class="kw_logo"
+                                 alt="Logo"/>
+                        </div>
+                    </div>
+                    <div class="kw_header_rule"/>
+                </div>
+
+                <!-- ═══ BODY (article) ═══ -->
+                <div t-attf-class="kw_page article o_company_#{company.id}_layout #{'kw_page_pdf' if report_type == 'pdf' and is_din_paperformat else ''}"
+                     t-att-data-oe-model="o and o._name"
+                     t-att-data-oe-id="o and o.id"
+                     t-att-data-oe-lang="o and o.env.context.get('lang')">
+
+                    <!-- Sender return-address line -->
+                    <div class="kw_sender_line">
+                        <t t-if="company.name"><t t-out="company.name"/></t>
+                        <t t-if="company.street"> &#183; <t t-out="company.street"/></t>
+                        <t t-if="company.zip or company.city">
+                            <span> &#183; </span>
+                            <t t-if="company.zip"><t t-out="company.zip"/></t>
+                            <t t-if="company.zip and company.city"><span> </span></t>
+                            <t t-if="company.city"><t t-out="company.city"/></t>
+                        </t>
+                    </div>
+
+                    <!-- Two-column: address left, info right -->
+                    <div class="kw_address_info">
+                        <div class="kw_address_col">
+                            <div class="kw_address_block">
+                                <t t-if="address">
+                                    <t t-out="address"/>
+                                </t>
+                                <t t-elif="fallback_address">
+                                    <t t-out="fallback_address"/>
+                                </t>
+                            </div>
+                        </div>
+                        <div class="kw_info_col">
+                            <t t-if="din5008_document_information">
+                                <t t-out="din5008_document_information"/>
+                            </t>
+                        </div>
+                    </div>
+
+                    <!-- Document title -->
+                    <h2 class="kw_doc_title">
+                        <span t-if="not o and not docs">Document</span>
+                        <span t-else="">
+                            <t t-set="o" t-value="docs[0]" t-if="not o"/>
+                            <t t-if="din5008_document_title">
+                                <t t-out="din5008_document_title"/>
+                            </t>
+                            <span t-elif="'name' in o" t-field="o.name"/>
+                        </span>
+                    </h2>
+
+                    <!-- Report content slot -->
+                    <t t-out="0"/>
+
+                </div>
+
+                <!-- ═══ FOOTER ═══ -->
+                <div t-attf-class="footer kw_page o_company_#{company.id}_layout #{'kw_page_pdf' if report_type == 'pdf' and is_din_paperformat else ''}">
+                    <div class="kw_footer_rule"/>
+
+                    <div class="kw_footer_columns">
+
+                        <!-- Column: Contact / Address (always shown) -->
+                        <div class="kw_footer_col">
+                            <div class="kw_footer_col_title">Kontakt</div>
+                            <div class="kw_footer_col_body">
+                                <span t-field="company.name"/><br/>
+                                <t t-if="company.street">
+                                    <span t-field="company.street"/><br/>
+                                </t>
+                                <t t-if="company.street2">
+                                    <span t-field="company.street2"/><br/>
+                                </t>
+                                <t t-if="company.zip or company.city">
+                                    <t t-if="company.zip"><span t-field="company.zip"/> </t>
+                                    <t t-if="company.city"><span t-field="company.city"/></t>
+                                    <br/>
+                                </t>
+                                <t t-if="company.phone">
+                                    Tel: <span t-field="company.phone"/><br/>
+                                </t>
+                                <t t-if="company.mobile and not company.phone">
+                                    Tel: <span t-field="company.mobile"/><br/>
+                                </t>
+                                <t t-if="company.email">
+                                    <span t-field="company.email"/>
+                                </t>
+                            </div>
+                        </div>
+
+                        <!-- Column: Handelsregister (only for registered entities) -->
+                        <t t-if="company.company_registry or company.company_details">
+                            <div class="kw_footer_col">
+                                <div class="kw_footer_col_title">Handelsregister</div>
+                                <div class="kw_footer_col_body">
+                                    <t t-if="company.company_details">
+                                        <span t-field="company.company_details"/><br/>
+                                    </t>
+                                    <t t-if="company.company_registry">
+                                        <span t-field="company.company_registry"/><br/>
+                                    </t>
+                                    <t t-if="company.report_footer">
+                                        <span t-field="company.report_footer"/>
+                                    </t>
+                                </div>
+                            </div>
+                        </t>
+
+                        <!-- Column: Bank details (only if bank accounts exist) -->
+                        <t t-if="company.partner_id.bank_ids">
+                            <div class="kw_footer_col">
+                                <div class="kw_footer_col_title">Bankverbindung</div>
+                                <div class="kw_footer_col_body">
+                                    <t t-set="bank" t-value="company.partner_id.bank_ids[0]"/>
+                                    <t t-if="bank.bank_id.name">
+                                        <span t-out="bank.bank_id.name"/><br/>
+                                    </t>
+                                    <t t-if="bank.bank_name and not bank.bank_id.name">
+                                        <span t-out="bank.bank_name"/><br/>
+                                    </t>
+                                    <t t-if="bank.acc_number">
+                                        IBAN: <span t-out="bank.acc_number"/><br/>
+                                    </t>
+                                    <t t-if="bank.bank_id.bic">
+                                        BIC: <span t-out="bank.bank_id.bic"/>
+                                    </t>
+                                    <t t-if="bank.bank_bic and not bank.bank_id.bic">
+                                        BIC: <span t-out="bank.bank_bic"/>
+                                    </t>
+                                </div>
+                            </div>
+                        </t>
+
+                        <!-- Column: Tax IDs (only if at least one exists) -->
+                        <t t-if="company.vat or company.company_registry">
+                            <div class="kw_footer_col">
+                                <div class="kw_footer_col_title">Steuerdaten</div>
+                                <div class="kw_footer_col_body">
+                                    <t t-if="company.vat">
+                                        <t t-out="company.account_fiscal_country_id.vat_label or 'USt-IdNr.'"/>:
+                                        <span t-if="forced_vat" t-out="forced_vat"/>
+                                        <span t-else="" t-field="company.vat"/><br/>
+                                    </t>
+                                    <t t-if="company.company_registry">
+                                        HRB: <span t-field="company.company_registry"/>
+                                    </t>
+                                </div>
+                            </div>
+                        </t>
+
+                    </div>
+
+                    <!-- Page number -->
+                    <div class="kw_page_number">
+                        Seite <span class="page"/> von <span class="topage"/>
+                    </div>
+                </div>
+
+            </div>
+        </template>
+
+    </data>
+</odoo>
