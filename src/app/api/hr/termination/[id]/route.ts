@@ -3,7 +3,7 @@
  * PATCH /api/hr/termination/[id]  — update
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { odooRpc } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
 export async function GET(
@@ -15,9 +15,8 @@ export async function GET(
     const recordId = Number(id);
     if (!recordId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
 
-    const records = await odooRpc('kw.termination', 'read', [[recordId]], {
-      fields: [...TERMINATION_DETAIL_FIELDS],
-    });
+    const odoo = getOdoo();
+    const records = await odoo.read('kw.termination', [recordId], [...TERMINATION_DETAIL_FIELDS]);
 
     if (!records || records.length === 0) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -42,7 +41,6 @@ export async function PATCH(
     const body = await req.json();
     const vals: Record<string, unknown> = {};
 
-    // Only allow updating specific fields
     const allowedFields = [
       'termination_type', 'letter_date', 'calc_method', 'receipt_date',
       'resignation_method', 'resignation_received_date',
@@ -59,7 +57,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    await odooRpc('kw.termination', 'write', [[recordId], vals]);
+    const odoo = getOdoo();
+    await odoo.call('kw.termination', 'write', [[recordId], vals]);
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

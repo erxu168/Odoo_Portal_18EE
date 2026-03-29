@@ -1,10 +1,8 @@
 /**
  * POST /api/hr/termination/[id]/send-accountant
- *
- * Triggers the action_send_to_accountant button on the Odoo model.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { odooRpc } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 
 export async function POST(
   _req: NextRequest,
@@ -15,10 +13,8 @@ export async function POST(
     const recordId = Number(id);
     if (!recordId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
 
-    // Check if already sent
-    const records = await odooRpc('kw.termination', 'read', [[recordId]], {
-      fields: ['sent_to_accountant'],
-    });
+    const odoo = getOdoo();
+    const records = await odoo.read('kw.termination', [recordId], ['sent_to_accountant']);
 
     if (!records || records.length === 0) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -28,8 +24,7 @@ export async function POST(
       return NextResponse.json({ error: 'Already sent to accountant' }, { status: 400 });
     }
 
-    // Call the Odoo button action
-    await odooRpc('kw.termination', 'action_send_to_accountant', [[recordId]]);
+    await odoo.call('kw.termination', 'action_send_to_accountant', [[recordId]]);
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

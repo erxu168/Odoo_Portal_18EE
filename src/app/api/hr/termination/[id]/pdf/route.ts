@@ -1,11 +1,8 @@
 /**
  * GET /api/hr/termination/[id]/pdf — download termination PDF
- *
- * Fetches the PDF report from Odoo and streams it to the client.
- * Uses the correct report name based on termination_type.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { odooRpc } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 
 const REPORT_MAP: Record<string, string> = {
   ordentlich: 'krawings_termination.report_ordentliche_kuendigung',
@@ -24,10 +21,8 @@ export async function GET(
     const recordId = Number(id);
     if (!recordId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
 
-    // Get the termination type to determine which report to use
-    const records = await odooRpc('kw.termination', 'read', [[recordId]], {
-      fields: ['termination_type', 'employee_name', 'letter_date'],
-    });
+    const odoo = getOdoo();
+    const records = await odoo.read('kw.termination', [recordId], ['termination_type', 'employee_name', 'letter_date']);
 
     if (!records || records.length === 0) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -57,7 +52,6 @@ export async function GET(
       return NextResponse.json({ error: 'Odoo auth failed' }, { status: 500 });
     }
 
-    // Fetch the PDF
     const pdfUrl = `${odooUrl}/report/pdf/${reportName}/${recordId}`;
     const pdfRes = await fetch(pdfUrl, {
       headers: { Cookie: `session_id=${sessionMatch[1]}` },

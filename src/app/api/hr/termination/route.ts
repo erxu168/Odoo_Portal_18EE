@@ -1,11 +1,9 @@
 /**
  * GET  /api/hr/termination  — list terminations
  * POST /api/hr/termination  — create new termination
- *
- * Admin only. Reads/writes kw.termination via Odoo JSON-RPC.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { odooRpc } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 import { TERMINATION_LIST_FIELDS } from '@/types/termination';
 
 export async function GET(req: NextRequest) {
@@ -22,14 +20,15 @@ export async function GET(req: NextRequest) {
     if (state) domain.push(['state', '=', state]);
     if (search) domain.push(['employee_name', 'ilike', search]);
 
-    const records = await odooRpc('kw.termination', 'search_read', [domain], {
-      fields: [...TERMINATION_LIST_FIELDS],
-      limit,
-      offset,
-      order: 'letter_date desc, id desc',
-    });
+    const odoo = getOdoo();
+    const records = await odoo.searchRead(
+      'kw.termination',
+      domain,
+      [...TERMINATION_LIST_FIELDS],
+      { limit, offset, order: 'letter_date desc, id desc' },
+    );
 
-    const total = await odooRpc('kw.termination', 'search_count', [domain]);
+    const total = await odoo.call('kw.termination', 'search_count', [domain]);
 
     return NextResponse.json({ records, total });
   } catch (err: unknown) {
@@ -57,7 +56,6 @@ export async function POST(req: NextRequest) {
       calc_method: body.calc_method,
     };
 
-    // Optional fields
     if (body.receipt_date) vals.receipt_date = body.receipt_date;
     if (body.resignation_method) vals.resignation_method = body.resignation_method;
     if (body.resignation_received_date) vals.resignation_received_date = body.resignation_received_date;
@@ -67,7 +65,8 @@ export async function POST(req: NextRequest) {
     if (body.incident_date) vals.incident_date = body.incident_date;
     if (body.incident_description) vals.incident_description = body.incident_description;
 
-    const id = await odooRpc('kw.termination', 'create', [vals]);
+    const odoo = getOdoo();
+    const id = await odoo.create('kw.termination', vals);
 
     return NextResponse.json({ id, success: true });
   } catch (err: unknown) {
