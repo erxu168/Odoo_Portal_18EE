@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import TermDashboard from '@/components/termination/TermDashboard';
 import TermList from '@/components/termination/TermList';
 import TermWizard from '@/components/termination/TermWizard';
+import TermDetail from '@/components/termination/TermDetail';
 import type { TerminationState } from '@/types/termination';
 
 type Screen =
@@ -110,18 +111,11 @@ export default function TerminationPage() {
 
       case 'detail':
         return (
-          <div className="px-5 pt-12">
-            <div className="flex items-center gap-3 mb-6">
-              <button onClick={goBack} className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
-              </button>
-              <h1 className="text-[20px] font-bold text-gray-900">K{'\u00fc'}ndigung #{screen.id}</h1>
-              <button onClick={goDashboard} className="ml-auto w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              </button>
-            </div>
-            <p className="text-gray-500 text-sm">Detail view coming next...</p>
-          </div>
+          <TermDetail
+            id={screen.id}
+            onBack={goBack}
+            onHome={goDashboard}
+          />
         );
     }
   }
