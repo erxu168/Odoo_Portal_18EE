@@ -31,6 +31,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
   const [accountantLoading, setAccountantLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
 
@@ -189,10 +190,27 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     }
   }
 
+  async function handleCancel() {
+    if (!confirm('Cancel this termination? This will reset the employee\u2019s departure date.')) return;
+    if (!confirm('Are you sure? This action cannot be undone.')) return;
+    setCancelLoading(true);
+    try {
+      const res = await fetch(`/api/termination/${id}/cancel`, { method: 'POST' });
+      const json = await res.json();
+      if (json.ok) setRec(json.data);
+      else alert(json.error);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setCancelLoading(false);
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full" /></div>;
   if (error || !rec) return <div className="px-5 pt-12"><p className="text-red-600">{error || 'Not found'}</p></div>;
 
   const stepIdx = STEPS.indexOf(rec.state);
+  const canCancel = ['draft', 'confirmed', 'signed'].includes(rec.state);
   const fmt = (d: string | false) => {
     if (!d) return '\u2013';
     const [y, m, day] = d.split('-');
@@ -218,24 +236,33 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       </div>
 
       <div className="flex-1 px-4 pb-8 -mt-3">
+        {/* Cancelled banner */}
+        {rec.state === 'cancelled' && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-3 text-center">
+            <span className="text-red-700 font-semibold text-[14px]">This termination has been cancelled</span>
+          </div>
+        )}
+
         {/* Progress bar */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
-          <div className="flex items-center gap-1">
-            {STEPS.map((s, i) => (
-              <React.Fragment key={s}>
-                <div className={`flex-1 h-1.5 rounded-full ${i <= stepIdx ? 'bg-red-500' : 'bg-gray-200'}`} />
-                {i < STEPS.length - 1 && <div className="w-0.5" />}
-              </React.Fragment>
-            ))}
+        {rec.state !== 'cancelled' && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
+            <div className="flex items-center gap-1">
+              {STEPS.map((s, i) => (
+                <React.Fragment key={s}>
+                  <div className={`flex-1 h-1.5 rounded-full ${i <= stepIdx ? 'bg-red-500' : 'bg-gray-200'}`} />
+                  {i < STEPS.length - 1 && <div className="w-0.5" />}
+                </React.Fragment>
+              ))}
+            </div>
+            <div className="flex justify-between mt-2">
+              {STEPS.map((s, i) => (
+                <span key={s} className={`text-[9px] ${i <= stepIdx ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+                  {STATE_LABELS[s as keyof typeof STATE_LABELS]}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="flex justify-between mt-2">
-            {STEPS.map((s, i) => (
-              <span key={s} className={`text-[9px] ${i <= stepIdx ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-                {STATE_LABELS[s as keyof typeof STATE_LABELS]}
-              </span>
-            ))}
-          </div>
-        </div>
+        )}
 
         {/* Info card */}
         <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
@@ -293,7 +320,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </button>
           )}
 
-          {/* View + Print row */}
           {rec.pdf_attachment_id && (
             <div className="flex gap-2">
               <button onClick={handleViewPdf}
@@ -333,6 +359,16 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           {rec.sent_to_accountant && (
             <div className="text-center text-[12px] text-green-600 font-medium py-2">
               {'\u2713'} Sent to accountant
+            </div>
+          )}
+
+          {/* Cancel button — separated with space, requires double confirmation */}
+          {canCancel && (
+            <div className="pt-4 mt-4 border-t border-gray-200">
+              <button onClick={handleCancel} disabled={cancelLoading}
+                className="w-full py-3 rounded-2xl bg-white border border-red-200 text-red-600 font-medium text-[13px] active:bg-red-50 disabled:opacity-50">
+                {cancelLoading ? 'Cancelling...' : 'Cancel termination'}
+              </button>
             </div>
           )}
         </div>
