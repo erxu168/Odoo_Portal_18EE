@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TERMINATION_TYPE_LABELS, type TerminationType, type TerminationRecord } from '@/types/termination';
+import { TERMINATION_TYPE_LABELS, type TerminationType } from '@/types/termination';
+import PdfViewer from '@/components/ui/PdfViewer';
 
 interface Employee {
   id: number;
@@ -20,10 +21,9 @@ interface TermWizardProps {
   onHome: () => void;
 }
 
-type Step = 'employee' | 'type' | 'details' | 'review';
+type Step = 'employee' | 'type' | 'details' | 'preview';
 
 export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProps) {
-  // State
   const [step, setStep] = useState<Step>('employee');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState('');
@@ -31,7 +31,7 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Form values
+  // Form
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [termType, setTermType] = useState<TerminationType | ''>('');
   const [letterDate, setLetterDate] = useState(new Date().toISOString().split('T')[0]);
@@ -47,8 +47,14 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
   const [gardenLeave, setGardenLeave] = useState(false);
   // Bestaetigung
   const [resignationDate, setResignationDate] = useState('');
-  // Preview (from server after create)
-  const [preview, setPreview] = useState<TerminationRecord | null>(null);
+
+  // Preview
+  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
+  const [showPdfViewer, setShowPdfViewer] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  // Server-computed fields from preview creation
+  const [computedNoticePeriod, setComputedNoticePeriod] = useState('');
+  const [computedLastDay, setComputedLastDay] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -66,91 +72,137 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
   );
 
   const termTypes: { value: TerminationType; label: string; desc: string }[] = [
-    { value: 'ordentlich', label: 'Ordentliche K\u00fcndigung', desc: 'Mit gesetzlicher Frist (\u00a7622 BGB)' },
-    { value: 'ordentlich_probezeit', label: 'K\u00fcndigung (Probezeit)', desc: '2 Wochen Frist' },
-    { value: 'fristlos', label: 'Fristlose K\u00fcndigung', desc: 'Sofortige Wirkung (\u00a7626 BGB)' },
-    { value: 'aufhebung', label: 'Aufhebungsvertrag', desc: 'Einvernehmliche Beendigung' },
-    { value: 'bestaetigung', label: 'K\u00fcndigungsbest\u00e4tigung', desc: 'Mitarbeiter hat gek\u00fcndigt' },
+    { value: 'ordentlich', label: 'Standard Termination', desc: 'Statutory notice period (\u00a7622 BGB)' },
+    { value: 'ordentlich_probezeit', label: 'Probation Termination', desc: '2 weeks notice' },
+    { value: 'fristlos', label: 'Immediate Termination', desc: 'Effective immediately (\u00a7626 BGB)' },
+    { value: 'aufhebung', label: 'Mutual Agreement', desc: 'Aufhebungsvertrag' },
+    { value: 'bestaetigung', label: 'Resignation Acknowledgment', desc: 'Employee resigned' },
   ];
 
-  async function handleSubmit() {
-    if (!selectedEmployee || !termType) return;
-    setSubmitting(true);
+  function buildFormBody(): Record<string, unknown> {
+    if (!selectedEmployee || !termType) return {};
+    const body: Record<string, unknown> = {
+      employee_id: selectedEmployee.id,
+      company_id: selectedEmployee.company_id[0],
+      termination_type: termType,
+      calc_method: calcMethod,
+      letter_date: letterDate,
+      employee_name: selectedEmployee.name,
+      employee_street: selectedEmployee.private_street || '',
+      employee_city: selectedEmployee.private_city || '',
+      employee_zip: selectedEmployee.private_zip || '',
+    };
+    if (receiptDate) body.receipt_date = receiptDate;
+    if (termType === 'fristlos') {
+      if (incidentDate) body.incident_date = incidentDate;
+      if (incidentDescription) body.incident_description = incidentDescription;
+    }
+    if (termType === 'aufhebung') {
+      if (lastWorkingDayManual) body.last_working_day = lastWorkingDayManual;
+      body.include_severance = includeSeverance;
+      if (includeSeverance && severanceAmount) body.severance_amount = parseFloat(severanceAmount);
+      body.garden_leave = gardenLeave;
+    }
+    if (termType === 'bestaetigung' && resignationDate) {
+      body.resignation_received_date = resignationDate;
+    }
+    return body;
+  }
+
+  async function handleGeneratePreview() {
+    setPreviewLoading(true);
     setError('');
-
     try {
-      const body: Record<string, unknown> = {
-        employee_id: selectedEmployee.id,
-        company_id: selectedEmployee.company_id[0],
-        termination_type: termType,
-        calc_method: calcMethod,
-        letter_date: letterDate,
-        employee_street: selectedEmployee.private_street || '',
-        employee_city: selectedEmployee.private_city || '',
-        employee_zip: selectedEmployee.private_zip || '',
-      };
-      if (receiptDate) body.receipt_date = receiptDate;
-      if (termType === 'fristlos') {
-        if (incidentDate) body.incident_date = incidentDate;
-        if (incidentDescription) body.incident_description = incidentDescription;
-      }
-      if (termType === 'aufhebung') {
-        if (lastWorkingDayManual) body.last_working_day = lastWorkingDayManual;
-        body.include_severance = includeSeverance;
-        if (includeSeverance && severanceAmount) body.severance_amount = parseFloat(severanceAmount);
-        body.garden_leave = gardenLeave;
-      }
-      if (termType === 'bestaetigung' && resignationDate) {
-        body.resignation_received_date = resignationDate;
-      }
-
-      const res = await fetch('/api/termination', {
+      // First create a temporary record to get computed dates
+      const body = buildFormBody();
+      const createRes = await fetch('/api/termination', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || 'Fehler beim Erstellen');
+      const createJson = await createRes.json();
+      if (!createJson.ok) throw new Error(createJson.error || 'Failed to create draft');
 
-      setPreview(json.data);
-      setStep('review');
+      const rec = createJson.data;
+      setComputedNoticePeriod(rec.notice_period_text || '');
+      setComputedLastDay(rec.last_working_day || '');
+
+      // Now generate preview PDF with the server-computed data
+      const previewBody = {
+        ...body,
+        notice_period_text: rec.notice_period_text,
+        last_working_day: rec.last_working_day,
+        employee_start_date: rec.employee_start_date,
+        tenure_years: rec.tenure_years,
+      };
+
+      const pdfRes = await fetch('/api/termination/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(previewBody),
+      });
+      const pdfJson = await pdfRes.json();
+      if (!pdfJson.ok) throw new Error(pdfJson.error || 'PDF preview failed');
+
+      setPdfBase64(pdfJson.pdfBase64);
+      // Store the created record ID for later confirmation
+      setCreatedRecordId(rec.id);
+      setStep('preview');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setSubmitting(false);
+      setPreviewLoading(false);
     }
   }
 
-  async function handleConfirmAndGeneratePdf() {
-    if (!preview) return;
+  const [createdRecordId, setCreatedRecordId] = useState<number | null>(null);
+
+  async function handleConfirm() {
+    if (!createdRecordId) return;
     setSubmitting(true);
     setError('');
-
     try {
       // Confirm the record
-      const confirmRes = await fetch(`/api/termination/${preview.id}/confirm`, { method: 'POST' });
+      const confirmRes = await fetch(`/api/termination/${createdRecordId}/confirm`, { method: 'POST' });
       const confirmJson = await confirmRes.json();
-      if (!confirmJson.ok) throw new Error(confirmJson.error || 'Fehler beim Best\u00e4tigen');
+      if (!confirmJson.ok) throw new Error(confirmJson.error || 'Confirmation failed');
 
-      // Generate PDF
-      const pdfRes = await fetch(`/api/termination/${preview.id}/pdf`, { method: 'POST' });
+      // Store the PDF on the record
+      const pdfRes = await fetch(`/api/termination/${createdRecordId}/pdf`, { method: 'POST' });
       if (!pdfRes.ok) {
         const pdfJson = await pdfRes.json();
-        throw new Error(pdfJson.error || 'PDF-Erstellung fehlgeschlagen');
+        throw new Error(pdfJson.error || 'PDF generation failed');
       }
 
-      // Open PDF in new tab
-      const pdfBlob = await pdfRes.blob();
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
-
-      onCreated(preview.id);
+      onCreated(createdRecordId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
     }
   }
+
+  async function handleDiscard() {
+    // Delete the draft record if user goes back
+    if (createdRecordId) {
+      try {
+        await fetch(`/api/termination/${createdRecordId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: 'cancelled' }),
+        });
+      } catch { /* best effort */ }
+      setCreatedRecordId(null);
+    }
+    setPdfBase64(null);
+    setStep('details');
+  }
+
+  const formatDate = (d: string | false) => {
+    if (!d) return '\u2013';
+    const [y, m, day] = d.split('-');
+    return `${day}.${m}.${y}`;
+  };
 
   // --- Step renderers ---
 
@@ -159,7 +211,7 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
       <>
         <div className="mb-4">
           <input
-            type="text" placeholder="Mitarbeiter suchen..."
+            type="text" placeholder="Search employee..."
             value={search} onChange={e => setSearch(e.target.value)}
             className="w-full px-4 py-3 rounded-xl border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30"
             autoFocus
@@ -189,6 +241,9 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
                 </div>
               </button>
             ))}
+            {filteredEmployees.length === 0 && (
+              <p className="text-center text-gray-400 text-[13px] py-8">No employees found</p>
+            )}
           </div>
         )}
       </>
@@ -198,6 +253,10 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
   function renderStepType() {
     return (
       <div className="space-y-2">
+        <div className="bg-white rounded-xl border border-gray-200 p-3 mb-4">
+          <span className="text-[12px] text-gray-500">Employee</span>
+          <div className="text-[14px] font-semibold">{selectedEmployee?.name}</div>
+        </div>
         {termTypes.map(t => (
           <button
             key={t.value}
@@ -220,36 +279,34 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
     const showCalcMethod = termType === 'ordentlich' || termType === 'ordentlich_probezeit';
     return (
       <div className="space-y-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="text-[12px] text-gray-500 mb-1">Mitarbeiter</div>
-          <div className="text-[14px] font-semibold">{selectedEmployee?.name}</div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <div className="text-[12px] text-gray-500 mb-1">Art</div>
-          <div className="text-[14px] font-semibold">{termType ? TERMINATION_TYPE_LABELS[termType] : ''}</div>
+        <div className="bg-white rounded-xl border border-gray-200 p-3">
+          <div className="flex justify-between">
+            <div><span className="text-[12px] text-gray-500">Employee</span><div className="text-[14px] font-semibold">{selectedEmployee?.name}</div></div>
+            <div className="text-right"><span className="text-[12px] text-gray-500">Type</span><div className="text-[13px] font-medium">{termType ? TERMINATION_TYPE_LABELS[termType] : ''}</div></div>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
           <label className="block">
-            <span className="text-[12px] text-gray-500">Datum des Schreibens</span>
+            <span className="text-[12px] text-gray-500">Letter date</span>
             <input type="date" value={letterDate} onChange={e => setLetterDate(e.target.value)}
               className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" />
           </label>
 
           {showCalcMethod && (
             <label className="block">
-              <span className="text-[12px] text-gray-500">Berechnungsmethode</span>
+              <span className="text-[12px] text-gray-500">Calculation method</span>
               <select value={calcMethod} onChange={e => setCalcMethod(e.target.value as 'bgb' | 'receipt')}
                 className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none">
-                <option value="bgb">\u00a7 622 BGB gesetzlich</option>
-                <option value="receipt">Ab Zugang</option>
+                <option value="bgb">{'\u00a7'} 622 BGB statutory</option>
+                <option value="receipt">From date of receipt</option>
               </select>
             </label>
           )}
 
           {showCalcMethod && calcMethod === 'receipt' && (
             <label className="block">
-              <span className="text-[12px] text-gray-500">Zugangsdatum</span>
+              <span className="text-[12px] text-gray-500">Date of receipt</span>
               <input type="date" value={receiptDate} onChange={e => setReceiptDate(e.target.value)}
                 className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" />
             </label>
@@ -258,14 +315,14 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
           {termType === 'fristlos' && (
             <>
               <label className="block">
-                <span className="text-[12px] text-gray-500">Datum des Vorfalls</span>
+                <span className="text-[12px] text-gray-500">Incident date</span>
                 <input type="date" value={incidentDate} onChange={e => setIncidentDate(e.target.value)}
                   className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" />
               </label>
               <label className="block">
-                <span className="text-[12px] text-gray-500">Beschreibung (intern)</span>
+                <span className="text-[12px] text-gray-500">Description (internal only)</span>
                 <textarea value={incidentDescription} onChange={e => setIncidentDescription(e.target.value)}
-                  rows={3} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" />
+                  rows={3} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30 resize-none" />
               </label>
             </>
           )}
@@ -273,21 +330,21 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
           {termType === 'aufhebung' && (
             <>
               <label className="block">
-                <span className="text-[12px] text-gray-500">Letzter Arbeitstag</span>
+                <span className="text-[12px] text-gray-500">Last working day</span>
                 <input type="date" value={lastWorkingDayManual} onChange={e => setLastWorkingDayManual(e.target.value)}
                   className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" />
               </label>
               <label className="flex items-center gap-3">
                 <input type="checkbox" checked={gardenLeave} onChange={e => setGardenLeave(e.target.checked)} className="w-5 h-5 rounded" />
-                <span className="text-[14px]">Freistellung</span>
+                <span className="text-[14px]">Garden leave (Freistellung)</span>
               </label>
               <label className="flex items-center gap-3">
                 <input type="checkbox" checked={includeSeverance} onChange={e => setIncludeSeverance(e.target.checked)} className="w-5 h-5 rounded" />
-                <span className="text-[14px]">Abfindung</span>
+                <span className="text-[14px]">Severance payment (Abfindung)</span>
               </label>
               {includeSeverance && (
                 <label className="block">
-                  <span className="text-[12px] text-gray-500">Abfindungsbetrag (EUR)</span>
+                  <span className="text-[12px] text-gray-500">Severance amount (EUR)</span>
                   <input type="number" step="0.01" value={severanceAmount} onChange={e => setSeveranceAmount(e.target.value)}
                     className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" />
                 </label>
@@ -297,7 +354,7 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
 
           {termType === 'bestaetigung' && (
             <label className="block">
-              <span className="text-[12px] text-gray-500">K\u00fcndigung erhalten am</span>
+              <span className="text-[12px] text-gray-500">Resignation received on</span>
               <input type="date" value={resignationDate} onChange={e => setResignationDate(e.target.value)}
                 className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" />
             </label>
@@ -307,65 +364,76 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
         {error && <div className="bg-red-50 text-red-700 text-[13px] px-4 py-3 rounded-xl">{error}</div>}
 
         <button
-          onClick={handleSubmit}
-          disabled={submitting}
-          className="w-full py-3 rounded-xl bg-red-600 text-white font-semibold text-[15px] active:bg-red-700 disabled:opacity-50"
+          onClick={handleGeneratePreview}
+          disabled={previewLoading}
+          className="w-full py-3.5 rounded-xl bg-red-600 text-white font-semibold text-[15px] active:bg-red-700 disabled:opacity-50"
         >
-          {submitting ? 'Erstelle...' : 'K\u00fcndigung erstellen'}
+          {previewLoading ? 'Generating preview...' : 'Preview letter'}
         </button>
       </div>
     );
   }
 
-  function renderStepReview() {
-    if (!preview) return null;
-    const formatDate = (d: string | false) => {
-      if (!d) return '---';
-      const [y, m, day] = d.split('-');
-      return `${day}.${m}.${y}`;
-    };
+  function renderStepPreview() {
     return (
       <div className="space-y-4">
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-          <div className="text-green-700 font-semibold text-[15px]">K\u00fcndigung erstellt</div>
-          <div className="text-green-600 text-[12px] mt-1">KW-{preview.id}</div>
+        {/* Summary card */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Employee</span><span className="text-[14px] font-medium">{selectedEmployee?.name}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Type</span><span className="text-[13px] font-medium">{termType ? TERMINATION_TYPE_LABELS[termType] : ''}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Notice period</span><span className="text-[14px] font-medium">{computedNoticePeriod}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Last working day</span><span className="text-[14px] font-bold text-red-600">{formatDate(computedLastDay)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Letter date</span><span className="text-[14px]">{formatDate(letterDate)}</span></div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
-          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Mitarbeiter</span><span className="text-[14px] font-medium">{preview.employee_name}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Art</span><span className="text-[14px] font-medium">{TERMINATION_TYPE_LABELS[preview.termination_type]}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">K\u00fcndigungsfrist</span><span className="text-[14px] font-medium">{preview.notice_period_text}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Letzter Arbeitstag</span><span className="text-[14px] font-bold text-red-600">{formatDate(preview.last_working_day)}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Datum</span><span className="text-[14px]">{formatDate(preview.letter_date)}</span></div>
-        </div>
+        {/* Preview PDF button */}
+        {pdfBase64 && (
+          <button
+            onClick={() => setShowPdfViewer(true)}
+            className="w-full py-3.5 rounded-xl bg-white border-2 border-red-200 text-red-700 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-red-50"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            View draft letter
+          </button>
+        )}
 
         {error && <div className="bg-red-50 text-red-700 text-[13px] px-4 py-3 rounded-xl">{error}</div>}
 
+        {/* Confirm */}
         <button
-          onClick={handleConfirmAndGeneratePdf}
+          onClick={handleConfirm}
           disabled={submitting}
-          className="w-full py-3 rounded-xl bg-red-600 text-white font-semibold text-[15px] active:bg-red-700 disabled:opacity-50"
+          className="w-full py-3.5 rounded-xl bg-red-600 text-white font-semibold text-[15px] active:bg-red-700 disabled:opacity-50"
         >
-          {submitting ? 'Erstelle PDF...' : 'Best\u00e4tigen & PDF erstellen'}
+          {submitting ? 'Creating...' : 'Confirm & create termination'}
         </button>
 
+        {/* Go back / discard */}
         <button
-          onClick={onBack}
-          className="w-full py-3 rounded-xl bg-gray-100 text-gray-700 font-medium text-[14px] active:bg-gray-200"
+          onClick={handleDiscard}
+          className="w-full py-3 rounded-xl bg-gray-100 text-gray-600 font-medium text-[14px] active:bg-gray-200"
         >
-          Zur\u00fcck zum Dashboard
+          Edit details
         </button>
+
+        {/* PDF Viewer modal */}
+        {showPdfViewer && pdfBase64 && (
+          <PdfViewer
+            fileData={pdfBase64}
+            fileName="Termination_Draft.pdf"
+            onClose={() => setShowPdfViewer(false)}
+          />
+        )}
       </div>
     );
   }
 
   // --- Layout ---
-
   const stepLabels: Record<Step, string> = {
-    employee: '1. Mitarbeiter',
-    type: '2. Art',
+    employee: '1. Select employee',
+    type: '2. Termination type',
     details: '3. Details',
-    review: '4. \u00dcberpr\u00fcfung',
+    preview: '4. Review & confirm',
   };
 
   return (
@@ -375,23 +443,22 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
           <button onClick={step === 'employee' ? onBack : () => {
             if (step === 'type') setStep('employee');
             else if (step === 'details') setStep('type');
-            else if (step === 'review') setStep('details');
+            else if (step === 'preview') handleDiscard();
           }} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div className="flex-1">
-            <h1 className="text-[20px] font-bold text-white">Neue K\u00fcndigung</h1>
+            <h1 className="text-[20px] font-bold text-white">New Termination</h1>
             <p className="text-[12px] text-white/60 mt-0.5">{stepLabels[step]}</p>
           </div>
           <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           </button>
         </div>
-        {/* Step indicator */}
         <div className="flex gap-1 mt-3">
-          {(['employee', 'type', 'details', 'review'] as Step[]).map((s, i) => (
+          {(['employee', 'type', 'details', 'preview'] as Step[]).map((s, i) => (
             <div key={s} className={`flex-1 h-1 rounded-full ${
-              i <= ['employee', 'type', 'details', 'review'].indexOf(step)
+              i <= ['employee', 'type', 'details', 'preview'].indexOf(step)
                 ? 'bg-white'
                 : 'bg-white/20'
             }`} />
@@ -403,7 +470,7 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
         {step === 'employee' && renderStepEmployee()}
         {step === 'type' && renderStepType()}
         {step === 'details' && renderStepDetails()}
-        {step === 'review' && renderStepReview()}
+        {step === 'preview' && renderStepPreview()}
       </div>
     </div>
   );
