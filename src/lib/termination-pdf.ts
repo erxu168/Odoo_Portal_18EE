@@ -1,17 +1,13 @@
 /**
- * Termination letter PDF generator — DIN 5008 compliant layout.
+ * Termination letter PDF generator.
  * Builds HTML → calls wkhtmltopdf on the server → returns PDF buffer.
- * Native UTF-8 support — no encoding issues.
  *
- * DIN 5008 Form B key measurements:
- * - Page: A4 (210mm x 297mm)
- * - Left margin: 25mm
- * - Right margin: 20mm
- * - Address zone: 45mm from top, 80mm wide, sender return line + recipient
- * - Info block (date/ref): right column, aligned with address zone top
- * - Subject: ~3.4mm below address zone (approx 98mm from top)
- * - Body: starts below subject
- * - Folding marks: 87mm and 192mm from top
+ * Layout: Table-based (reliable in wkhtmltopdf), DIN 5008 inspired.
+ * - Top margin 20mm in CSS, address block pushed down 25mm from content top
+ *   so it sits at ~45mm from paper edge (envelope window zone)
+ * - Info block: right column, table-based
+ * - Body text: 10pt, heading 11pt bold
+ * - Margins: 25mm left, 20mm right
  */
 import { exec } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync } from 'fs';
@@ -54,59 +50,47 @@ function salutation(gender: string, name: string): string {
   return `Sehr geehrte/r Herr/Frau ${last},`;
 }
 
-/**
- * Build the full HTML page wrapper with DIN 5008 Form B positioning.
- * The header area is absolutely positioned so it lines up with envelope windows.
- */
-function wrapPage(d: LetterData, infoRows: string, bodyContent: string): string {
+function letterHead(d: LetterData, extraInfoRows: string): string {
   const logo = d.companyLogoBase64
-    ? `<img src="${d.companyLogoBase64}" style="max-height:15mm;max-width:45mm;display:block;margin-bottom:2mm" alt="Logo"/>`
+    ? `<img src="${d.companyLogoBase64}" style="max-height:15mm;max-width:45mm;margin-bottom:2mm" alt="Logo"/>`
     : '';
 
   return `
-    <!-- Folding marks -->
-    <div style="position:fixed;left:5mm;top:87mm;width:4mm;border-top:0.5px solid #ccc"></div>
-    <div style="position:fixed;left:5mm;top:192mm;width:4mm;border-top:0.5px solid #ccc"></div>
-    <!-- Punch mark -->
-    <div style="position:fixed;left:5mm;top:148.5mm;width:3mm;border-top:0.5px solid #ccc"></div>
+    <!-- Spacer: pushes address to ~45mm from paper top (20mm margin + 25mm spacer) -->
+    <div style="height:25mm"></div>
 
-    <!-- === HEADER AREA (absolute positioned) === -->
-    <div style="position:relative;width:165mm;min-height:75mm">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:4mm">
+      <tr>
+        <!-- LEFT: Sender return line + Recipient address -->
+        <td style="vertical-align:top;width:55%">
+          <div style="font-size:6.5pt;color:#999;border-bottom:0.5pt solid #bbb;padding-bottom:1px;margin-bottom:2mm;width:80mm;line-height:1.2">
+            ${d.companyName} \u00b7 ${d.companyStreet} \u00b7 ${d.companyZip} ${d.companyCity}
+          </div>
+          <div style="font-size:10pt;line-height:1.4;min-height:22mm">
+            ${d.employeeName}<br/>
+            ${d.employeeStreet ? `${d.employeeStreet}<br/>` : ''}${d.employeeZip ? `${d.employeeZip} ${d.employeeCity}` : ''}
+          </div>
+        </td>
+        <!-- RIGHT: Logo + Company info + Date/Reference -->
+        <td style="vertical-align:top;width:45%;text-align:right">
+          ${logo}
+          <div style="font-size:7.5pt;color:#555;line-height:1.45;text-align:left;margin-top:2mm">
+            ${d.companyName}<br/>
+            ${d.companyStreet}<br/>
+            ${d.companyZip} ${d.companyCity}<br/>
+            ${d.companyPhone ? `Tel. ${d.companyPhone}<br/>` : ''}${d.companyEmail ? `${d.companyEmail}<br/>` : ''}${d.companyVat ? `USt-IdNr. ${d.companyVat}` : ''}
+          </div>
+          <table style="border-collapse:collapse;font-size:8pt;margin-top:4mm;width:100%">
+            <tr><td style="padding:1px 6px 1px 0;color:#666">Datum</td><td style="font-weight:600">${d.letterDate}</td></tr>
+            <tr><td style="padding:1px 6px 1px 0;color:#666">Zeichen</td><td style="font-weight:600">KW-${d.recordId}</td></tr>
+            ${extraInfoRows}
+          </table>
+        </td>
+      </tr>
+    </table>
 
-      <!-- Address zone: left column (80mm wide) -->
-      <div style="position:absolute;top:0;left:0;width:80mm">
-        <!-- Sender return line (Ruecksendeangabe) -->
-        <div style="font-size:6.5pt;color:#999;border-bottom:0.5pt solid #bbb;padding-bottom:1px;margin-bottom:3mm;line-height:1.2">
-          ${d.companyName} \u00b7 ${d.companyStreet} \u00b7 ${d.companyZip} ${d.companyCity}
-        </div>
-        <!-- Recipient address -->
-        <div style="font-size:10pt;line-height:1.45">
-          ${d.employeeName}<br/>
-          ${d.employeeStreet ? `${d.employeeStreet}<br/>` : ''}${d.employeeZip ? `${d.employeeZip} ${d.employeeCity}` : ''}
-        </div>
-      </div>
-
-      <!-- Info block: right column -->
-      <div style="position:absolute;top:0;right:0;width:75mm">
-        ${logo}
-        <div style="font-size:7.5pt;color:#444;line-height:1.5;margin-bottom:4mm">
-          ${d.companyName}<br/>
-          ${d.companyStreet}<br/>
-          ${d.companyZip} ${d.companyCity}<br/>
-          ${d.companyPhone ? `Tel. ${d.companyPhone}<br/>` : ''}${d.companyEmail ? `${d.companyEmail}<br/>` : ''}${d.companyVat ? `USt-IdNr. ${d.companyVat}` : ''}
-        </div>
-        <table style="font-size:8pt;border-collapse:collapse;width:100%">
-          <tr><td style="padding:1px 6px 1px 0;color:#666;width:40%">Datum</td><td style="font-weight:600">${d.letterDate}</td></tr>
-          <tr><td style="padding:1px 6px 1px 0;color:#666">Zeichen</td><td style="font-weight:600">KW-${d.recordId}</td></tr>
-          ${infoRows}
-        </table>
-      </div>
-    </div>
-
-    <!-- === BODY (flows below header) === -->
-    <div style="margin-top:8mm">
-      ${bodyContent}
-    </div>`;
+    <!-- Spacer before subject line -->
+    <div style="height:6mm"></div>`;
 }
 
 function signatureBlock(companyName: string): string {
@@ -135,7 +119,8 @@ function buildOrdentliche(d: LetterData): string {
   const infoRows = `
     <tr><td style="padding:1px 6px 1px 0;color:#666">Frist</td><td style="font-weight:600">${d.noticePeriodText}</td></tr>
     <tr><td style="padding:1px 6px 1px 0;color:#666">Letzter Tag</td><td style="font-weight:600">${d.lastWorkingDay}</td></tr>`;
-  const body = `
+  return `
+    ${letterHead(d, infoRows)}
     <p style="font-size:11pt;font-weight:bold;margin:0 0 5mm 0">K\u00fcndigung des Arbeitsverh\u00e4ltnisses</p>
     <p>${salutation(d.employeeGender, d.employeeName)}</p>
     <p>hiermit k\u00fcndigen wir das mit Ihnen bestehende Arbeitsverh\u00e4ltnis ordentlich unter Beachtung der f\u00fcr Sie geltenden K\u00fcndigungsfrist, demzufolge nach unseren Berechnungen zum <strong>${d.lastWorkingDay}</strong>, hilfsweise zum n\u00e4chstm\u00f6glichen Zeitpunkt.</p>
@@ -143,12 +128,12 @@ function buildOrdentliche(d: LetterData): string {
     <p>Bitte best\u00e4tigen Sie den Erhalt dieses Schreibens auf der beigef\u00fcgten Kopie.</p>
     ${signatureBlock(d.companyName)}
     ${empfangsbestaetigung()}`;
-  return wrapPage(d, infoRows, body);
 }
 
 function buildFristlose(d: LetterData): string {
   const infoRows = `<tr><td style="padding:1px 6px 1px 0;color:#666">Wirkung</td><td style="font-weight:600">Sofort</td></tr>`;
-  const body = `
+  return `
+    ${letterHead(d, infoRows)}
     <p style="font-size:11pt;font-weight:bold;margin:0 0 5mm 0">Au\u00dferordentliche fristlose K\u00fcndigung</p>
     <p>${salutation(d.employeeGender, d.employeeName)}</p>
     <p>hiermit k\u00fcndigen wir das mit Ihnen bestehende Arbeitsverh\u00e4ltnis au\u00dferordentlich und fristlos mit sofortiger Wirkung, d.h. mit Zugang dieses Schreibens.</p>
@@ -156,13 +141,13 @@ function buildFristlose(d: LetterData): string {
     <p>Bitte best\u00e4tigen Sie den Erhalt dieses Schreibens auf der beigef\u00fcgten Kopie.</p>
     ${signatureBlock(d.companyName)}
     ${empfangsbestaetigung()}`;
-  return wrapPage(d, infoRows, body);
 }
 
 function buildAufhebung(d: LetterData): string {
   const infoRows = `<tr><td style="padding:1px 6px 1px 0;color:#666">Beendigung</td><td style="font-weight:600">${d.lastWorkingDay}</td></tr>`;
   let secNum = 1;
   let body = `
+    ${letterHead(d, infoRows)}
     <p style="font-size:11pt;font-weight:bold;margin:0 0 5mm 0">Aufhebungsvertrag</p>
     <p style="margin-bottom:1mm">zwischen</p>
     <p style="margin-left:5mm;margin-bottom:1mm">${d.companyName}, ${d.companyStreet}, ${d.companyZip} ${d.companyCity}<br/>\u2013 nachfolgend \u201eArbeitgeber\u201c \u2013</p>
@@ -188,14 +173,15 @@ function buildAufhebung(d: LetterData): string {
       <td style="width:50%;padding-top:12mm;vertical-align:bottom"><div style="border-top:0.5pt solid #333;width:55mm;padding-top:1mm;font-size:8.5pt;color:#333">Ort, Datum / Arbeitgeber</div></td>
       <td style="width:50%;padding-top:12mm;vertical-align:bottom"><div style="border-top:0.5pt solid #333;width:55mm;padding-top:1mm;font-size:8.5pt;color:#333">Ort, Datum / Arbeitnehmer/in</div></td>
     </tr></table></div>`;
-  return wrapPage(d, infoRows, body);
+  return body;
 }
 
 function buildBestaetigung(d: LetterData): string {
   const infoRows = `
     <tr><td style="padding:1px 6px 1px 0;color:#666">Erhalten</td><td style="font-weight:600">${d.resignationReceivedDate || '---'}</td></tr>
     <tr><td style="padding:1px 6px 1px 0;color:#666">Letzter Tag</td><td style="font-weight:600">${d.lastWorkingDay}</td></tr>`;
-  const body = `
+  return `
+    ${letterHead(d, infoRows)}
     <p style="font-size:11pt;font-weight:bold;margin:0 0 5mm 0">Best\u00e4tigung Ihrer K\u00fcndigung</p>
     <p>${salutation(d.employeeGender, d.employeeName)}</p>
     <p>hiermit best\u00e4tigen wir den Erhalt Ihrer K\u00fcndigung vom ${d.resignationReceivedDate || '___'}.</p>
@@ -205,7 +191,6 @@ function buildBestaetigung(d: LetterData): string {
     <p>Gem\u00e4\u00df \u00a7 38 SGB III m\u00fcssen Sie sich innerhalb von drei Tagen bei der Agentur f\u00fcr Arbeit melden.</p>
     <p>F\u00fcr die Zusammenarbeit bedanken wir uns und w\u00fcnschen Ihnen alles Gute.</p>
     ${signatureBlock(d.companyName)}`;
-  return wrapPage(d, infoRows, body);
 }
 
 export function buildLetterHtml(d: LetterData): string {
@@ -227,9 +212,7 @@ export function buildLetterHtml(d: LetterData): string {
     color: #000;
     margin: 0;
   }
-  p {
-    margin: 0 0 2.5mm 0;
-  }
+  p { margin: 0 0 2.5mm 0; }
   table { border-collapse: collapse; }
   strong { font-weight: 700; }
 </style></head>
