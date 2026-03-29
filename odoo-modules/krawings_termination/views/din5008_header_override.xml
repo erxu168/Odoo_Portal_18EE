@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Override the DIN 5008 header for kw.termination reports.
+        Adds company logo inline in the body content, right-aligned above
+        the sender address line, since wkhtmltopdf header rendering is unreliable.
+    -->
+    <template id="kw_termination_din5008_header" inherit_id="l10n_din5008.external_layout_din5008" primary="True">
+        <xpath expr="//table[@class='company_header table-borderless']" position="replace">
+            <table class="company_header table-borderless" t-att-style="'height: %dmm;' % (din_header_spacing or 27)">
+                <tr>
+                    <td><div class="h3 mt0" t-field="company.report_header"/></td>
+                    <td style="text-align: right;">
+                        <img t-if="company.logo"
+                            t-att-src="image_data_uri(company.logo)"
+                            t-att-style="'max-height: %dmm;' % (din_header_spacing or 27)"
+                            alt="Logo"/>
+                    </td>
+                </tr>
+            </table>
+        </xpath>
+    </template>
+</odoo>
