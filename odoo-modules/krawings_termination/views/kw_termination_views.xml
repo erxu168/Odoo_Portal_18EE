@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- kw.termination list view -->
     <record id="kw_termination_view_list" model="ir.ui.view">
         <field name="name">kw.termination.list</field>
         <field name="model">kw.termination</field>
@@ -11,21 +10,18 @@
                 <field name="termination_type"/>
                 <field name="letter_date"/>
                 <field name="last_working_day"/>
+                <field name="delivery_method"/>
+                <field name="delivery_confirmed" widget="boolean"/>
                 <field name="state" widget="badge"
-                    decoration-success="state == 'confirmed'"
+                    decoration-success="state in ('signed', 'delivered')"
                     decoration-warning="state == 'draft'"
-                    decoration-info="state == 'signed'"
+                    decoration-info="state == 'confirmed'"
                     decoration-muted="state in ('archived', 'cancelled')"/>
-                <field name="sign_state" widget="badge"
-                    decoration-success="sign_state == 'fully_signed'"
-                    decoration-warning="sign_state == 'employer_signed'"
-                    decoration-muted="sign_state == 'not_started'"/>
                 <field name="sent_to_accountant" widget="boolean"/>
             </list>
         </field>
     </record>
 
-    <!-- kw.termination form view -->
     <record id="kw_termination_view_form" model="ir.ui.view">
         <field name="name">kw.termination.form</field>
         <field name="model">kw.termination</field>
@@ -35,24 +31,30 @@
                     <button name="action_confirm" string="Confirm and Generate PDF"
                         type="object" class="oe_highlight"
                         invisible="state != 'draft'"/>
-                    <button name="action_sign_and_send" string="Sign and Send"
+                    <button name="action_sign" string="Sign (Employer)"
                         type="object" class="btn-primary"
-                        invisible="state not in ('confirmed', 'signed')"/>
+                        invisible="state != 'confirmed'"/>
                     <button name="action_check_sign_status" string="Check Sign Status"
                         type="object"
-                        invisible="sign_state != 'employer_signed'"/>
+                        invisible="state != 'confirmed' or not sign_request_id"/>
+                    <button name="action_mark_delivered" string="Mark as Delivered"
+                        type="object" class="btn-primary"
+                        invisible="state != 'signed'"/>
+                    <button name="action_confirm_delivery_received" string="Delivery Confirmed"
+                        type="object"
+                        invisible="state != 'delivered' or delivery_confirmed"/>
                     <button name="action_send_to_accountant" string="Send to Accountant"
                         type="object"
-                        invisible="state not in ('confirmed', 'signed')"/>
+                        invisible="state not in ('signed', 'delivered')"/>
                     <button name="action_archive_employee" string="Archive Employee"
                         type="object" class="btn-warning"
-                        invisible="state != 'confirmed'"
+                        invisible="state != 'delivered'"
                         confirm="This will deactivate the employee. Are you sure?"/>
                     <button name="action_cancel" string="Cancel"
                         type="object"
                         invisible="state not in ('draft', 'confirmed')"/>
                     <field name="state" widget="statusbar"
-                        statusbar_visible="draft,confirmed,signed,archived"/>
+                        statusbar_visible="draft,confirmed,signed,delivered,archived"/>
                 </header>
                 <sheet>
                     <group>
@@ -76,7 +78,6 @@
                         </group>
                     </group>
 
-                    <!-- Fristlose fields -->
                     <group string="Incident Details"
                         invisible="termination_type != 'fristlos'">
                         <group>
@@ -88,7 +89,6 @@
                         </group>
                     </group>
 
-                    <!-- Aufhebung fields -->
                     <group string="Agreement Details"
                         invisible="termination_type != 'aufhebung'">
                         <group>
@@ -102,7 +102,6 @@
                         </group>
                     </group>
 
-                    <!-- Bestaetigung fields -->
                     <group string="Resignation Details"
                         invisible="termination_type != 'bestaetigung'">
                         <group>
@@ -112,7 +111,6 @@
                         </group>
                     </group>
 
-                    <!-- Employee Address -->
                     <group string="Employee Address">
                         <group>
                             <field name="employee_street"/>
@@ -121,15 +119,46 @@
                         </group>
                     </group>
 
-                    <!-- Sign / Send status -->
-                    <group string="Delivery Status"
+                    <!-- Delivery tracking - visible after signing -->
+                    <group string="Zustellung (Delivery)"
+                        invisible="state in ('draft', 'confirmed')">
+                        <group>
+                            <field name="delivery_method"/>
+                            <field name="delivery_date"/>
+                            <field name="delivery_tracking_number"
+                                invisible="delivery_method not in ('einschreiben_rueckschein', 'einwurf_einschreiben')"/>
+                            <field name="delivery_witness"
+                                invisible="delivery_method not in ('personal', 'bote')"/>
+                        </group>
+                        <group>
+                            <field name="delivery_confirmed"/>
+                            <field name="delivery_confirmed_date"
+                                invisible="not delivery_confirmed"/>
+                            <field name="delivery_proof_attachment_id"/>
+                            <field name="delivery_notes"/>
+                        </group>
+                    </group>
+
+                    <!-- Optional: Employee receipt confirmation -->
+                    <group string="Empfangsbest&#228;tigung (optional)"
+                        invisible="state in ('draft', 'confirmed')">
+                        <group>
+                            <field name="empfang_received"/>
+                            <field name="empfang_date"
+                                invisible="not empfang_received"/>
+                            <field name="empfang_attachment_id"
+                                invisible="not empfang_received"/>
+                        </group>
+                    </group>
+
+                    <!-- Documents + Accountant -->
+                    <group string="Documents"
                         invisible="state == 'draft'">
                         <group>
-                            <field name="sign_state"/>
-                            <field name="sign_request_id"/>
                             <field name="pdf_attachment_id"/>
                             <field name="signed_pdf_attachment_id"
                                 invisible="not signed_pdf_attachment_id"/>
+                            <field name="sign_request_id"/>
                         </group>
                         <group>
                             <field name="sent_to_accountant"/>
@@ -143,7 +172,6 @@
         </field>
     </record>
 
-    <!-- kw.termination search view -->
     <record id="kw_termination_view_search" model="ir.ui.view">
         <field name="name">kw.termination.search</field>
         <field name="model">kw.termination</field>
@@ -158,13 +186,15 @@
                     domain="[('state', '=', 'confirmed')]"/>
                 <filter name="filter_signed" string="Signed"
                     domain="[('state', '=', 'signed')]"/>
-                <filter name="filter_archived" string="Archived"
-                    domain="[('state', '=', 'archived')]"/>
+                <filter name="filter_delivered" string="Delivered"
+                    domain="[('state', '=', 'delivered')]"/>
+                <filter name="filter_not_delivered" string="Not Yet Delivered"
+                    domain="[('state', '=', 'signed'), ('delivery_method', '=', False)]"/>
                 <separator/>
                 <filter name="filter_not_sent" string="Not Sent to Accountant"
-                    domain="[('sent_to_accountant', '=', False)]"/>
-                <filter name="filter_awaiting_signature" string="Awaiting Employee Signature"
-                    domain="[('sign_state', '=', 'employer_signed')]"/>
+                    domain="[('sent_to_accountant', '=', False), ('state', 'not in', ('draft', 'cancelled'))]"/>
+                <filter name="filter_delivery_unconfirmed" string="Delivery Unconfirmed"
+                    domain="[('state', '=', 'delivered'), ('delivery_confirmed', '=', False)]"/>
                 <group expand="0" string="Group By">
                     <filter name="groupby_type" string="Type"
                         context="{'group_by': 'termination_type'}"/>
@@ -172,12 +202,13 @@
                         context="{'group_by': 'company_id'}"/>
                     <filter name="groupby_state" string="Status"
                         context="{'group_by': 'state'}"/>
+                    <filter name="groupby_delivery" string="Delivery Method"
+                        context="{'group_by': 'delivery_method'}"/>
                 </group>
             </search>
         </field>
     </record>
 
-    <!-- Action -->
     <record id="action_kw_termination" model="ir.actions.act_window">
         <field name="name">Terminations</field>
         <field name="res_model">kw.termination</field>
@@ -188,7 +219,7 @@
                 No terminations yet
             </p>
             <p>
-                Use the Termination button on employee forms or the portal wizard to create termination records.
+                Use the Termination button on employee forms or create a new record.
             </p>
         </field>
     </record>
