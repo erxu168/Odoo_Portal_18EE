@@ -76,7 +76,7 @@ export default function TermList({ initialFilter, onSelect, onHome }: TermListPr
           <div className="flex justify-center py-16"><div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" /></div>
         ) : records.length === 0 ? (
           <div className={ds.emptyState}>
-            <div className={ds.emptyIcon}>\u{1F4CB}</div>
+            <div className={ds.emptyIcon}>{'\uD83D\uDCCB'}</div>
             <div className={ds.emptyTitle}>No terminations</div>
             <div className={ds.emptyBody}>No records found.</div>
           </div>
