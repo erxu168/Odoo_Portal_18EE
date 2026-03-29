@@ -3,13 +3,10 @@
     <data>
 
         <!--
-            Krawings letterhead v4 - inline styles, no SCSS dependency.
+            Krawings letterhead v5 - table-based layout for wkhtmltopdf.
 
-            Inherits l10n_din5008.external_layout_din5008 via xpath.
-            Replaces the header table and footer company_details
-            with the clean Krawings design using ONLY inline styles.
-            All styles are embedded in the template so no SCSS
-            asset pipeline is needed.
+            wkhtmltopdf uses an ancient WebKit engine that does NOT
+            support CSS flexbox. All layouts use HTML tables instead.
         -->
 
         <!-- ============================================== -->
@@ -20,22 +17,24 @@
                   name="Krawings Header">
 
             <xpath expr="//table[hasclass('company_header')]" position="replace">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 8mm;">
-                    <div style="flex: 1;">
-                        <div t-field="company.name"
-                             style="font-size: 22pt; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; color: #1a1a1a;"/>
-                        <div t-if="company.report_header"
-                             style="font-size: 7.5pt; font-weight: 400; color: #999; letter-spacing: 0.12em; text-transform: uppercase; margin-top: 2px;">
-                            <t t-out="company.report_header"/>
-                        </div>
-                    </div>
-                    <div t-if="company.logo" style="text-align: right; flex-shrink: 0;">
-                        <img t-att-src="image_data_uri(company.logo)"
-                             style="max-height: 22mm; max-width: 50mm; object-fit: contain;"
-                             alt="Logo"/>
-                    </div>
-                </div>
-                <div style="width: 100%; height: 0; border: none; border-top: 0.5pt solid #1a1a1a; margin: 0;"/>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 3mm;">
+                    <tr>
+                        <td style="vertical-align: top;">
+                            <div t-field="company.name"
+                                 style="font-size: 20pt; font-weight: bold; letter-spacing: -0.02em; line-height: 1.15; color: #1a1a1a;"/>
+                            <div t-if="company.report_header"
+                                 style="font-size: 7pt; color: #999; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 2px;">
+                                <t t-out="company.report_header"/>
+                            </div>
+                        </td>
+                        <td t-if="company.logo" style="vertical-align: top; text-align: right; width: 50mm;">
+                            <img t-att-src="image_data_uri(company.logo)"
+                                 style="max-height: 20mm; max-width: 48mm;"
+                                 alt="Logo"/>
+                        </td>
+                    </tr>
+                </table>
+                <div style="border-top: 1px solid #1a1a1a; margin-bottom: 2mm;"/>
             </xpath>
 
         </template>
@@ -49,73 +48,66 @@
                   name="Krawings Footer">
 
             <xpath expr="//div[hasclass('company_details')]" position="replace">
-                <div style="display: flex; gap: 0; font-family: Helvetica, Arial, sans-serif;">
+                <div style="border-top: 1px solid #1a1a1a; padding-top: 2mm;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 6pt; line-height: 1.6; color: #1a1a1a;">
+                        <tr style="vertical-align: top;">
 
-                    <!-- Column: Contact / Address (always shown) -->
-                    <div style="flex: 1; border-right: 0.25pt solid #e0e0e0; padding-right: 3mm; margin-right: 3mm;">
-                        <div style="font-size: 5pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #999; margin-bottom: 1mm;">KONTAKT</div>
-                        <div style="font-size: 6pt; line-height: 1.65; color: #1a1a1a;">
-                            <span t-field="company.name"/><br/>
-                            <t t-if="company.street"><span t-field="company.street"/><br/></t>
-                            <t t-if="company.street2"><span t-field="company.street2"/><br/></t>
-                            <t t-if="company.zip or company.city">
-                                <t t-if="company.zip"><span t-field="company.zip"/> </t>
-                                <t t-if="company.city"><span t-field="company.city"/></t>
-                                <br/>
-                            </t>
-                            <t t-if="company.phone">Tel: <span t-field="company.phone"/><br/></t>
-                            <t t-if="company.mobile and not company.phone">Tel: <span t-field="company.mobile"/><br/></t>
-                            <t t-if="company.email"><span t-field="company.email"/></t>
-                        </div>
-                    </div>
-
-                    <!-- Column: Handelsregister (only for registered entities) -->
-                    <t t-if="company.company_registry or company.company_details">
-                        <div style="flex: 1; border-right: 0.25pt solid #e0e0e0; padding-right: 3mm; margin-right: 3mm;">
-                            <div style="font-size: 5pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #999; margin-bottom: 1mm;">HANDELSREGISTER</div>
-                            <div style="font-size: 6pt; line-height: 1.65; color: #1a1a1a;">
-                                <t t-if="company.company_details"><span t-field="company.company_details"/></t>
-                                <t t-if="company.company_registry">
-                                    <br t-if="company.company_details"/>
-                                    <span t-field="company.company_registry"/>
+                            <!-- Column: Kontakt (always) -->
+                            <td style="padding-right: 3mm; border-right: 1px solid #e0e0e0;">
+                                <div style="font-size: 5pt; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase; color: #999; margin-bottom: 1mm;">KONTAKT</div>
+                                <span t-field="company.name"/><br/>
+                                <t t-if="company.street"><span t-field="company.street"/><br/></t>
+                                <t t-if="company.street2"><span t-field="company.street2"/><br/></t>
+                                <t t-if="company.zip or company.city">
+                                    <t t-if="company.zip"><span t-field="company.zip"/> </t>
+                                    <t t-if="company.city"><span t-field="company.city"/></t>
+                                    <br/>
                                 </t>
-                            </div>
-                        </div>
-                    </t>
+                                <t t-if="company.phone">Tel: <span t-field="company.phone"/><br/></t>
+                                <t t-if="company.mobile and not company.phone">Tel: <span t-field="company.mobile"/><br/></t>
+                                <t t-if="company.email"><span t-field="company.email"/></t>
+                            </td>
 
-                    <!-- Column: Bank details (only if bank accounts exist) -->
-                    <t t-if="company.partner_id.bank_ids">
-                        <div style="flex: 1; border-right: 0.25pt solid #e0e0e0; padding-right: 3mm; margin-right: 3mm;">
-                            <div style="font-size: 5pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #999; margin-bottom: 1mm;">BANKVERBINDUNG</div>
-                            <div style="font-size: 6pt; line-height: 1.65; color: #1a1a1a;">
-                                <t t-set="bank" t-value="company.partner_id.bank_ids[0]"/>
-                                <t t-if="bank.bank_id.name"><span t-out="bank.bank_id.name"/><br/></t>
-                                <t t-if="bank.bank_name and not bank.bank_id.name"><span t-out="bank.bank_name"/><br/></t>
-                                <t t-if="bank.acc_number">IBAN: <span t-out="bank.acc_number"/><br/></t>
-                                <t t-if="bank.bank_id.bic">BIC: <span t-out="bank.bank_id.bic"/></t>
-                                <t t-if="bank.bank_bic and not bank.bank_id.bic">BIC: <span t-out="bank.bank_bic"/></t>
-                            </div>
-                        </div>
-                    </t>
+                            <!-- Column: Handelsregister (only if data exists) -->
+                            <t t-if="company.company_registry or company.company_details">
+                                <td style="padding-left: 3mm; padding-right: 3mm; border-right: 1px solid #e0e0e0;">
+                                    <div style="font-size: 5pt; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase; color: #999; margin-bottom: 1mm;">HANDELSREGISTER</div>
+                                    <t t-if="company.company_details"><span t-field="company.company_details"/><br/></t>
+                                    <t t-if="company.company_registry"><span t-field="company.company_registry"/></t>
+                                </td>
+                            </t>
 
-                    <!-- Column: Tax IDs (only if VAT exists) -->
-                    <t t-if="company.vat">
-                        <div style="flex: 1;">
-                            <div style="font-size: 5pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #999; margin-bottom: 1mm;">STEUERDATEN</div>
-                            <div style="font-size: 6pt; line-height: 1.65; color: #1a1a1a;">
-                                <t t-out="company.account_fiscal_country_id.vat_label or 'USt-IdNr.'"/>:
-                                <span t-if="forced_vat" t-out="forced_vat"/>
-                                <span t-else="" t-field="company.vat"/>
-                            </div>
-                        </div>
-                    </t>
+                            <!-- Column: Bank (only if bank accounts exist) -->
+                            <t t-if="company.partner_id.bank_ids">
+                                <td style="padding-left: 3mm; padding-right: 3mm; border-right: 1px solid #e0e0e0;">
+                                    <div style="font-size: 5pt; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase; color: #999; margin-bottom: 1mm;">BANKVERBINDUNG</div>
+                                    <t t-set="bank" t-value="company.partner_id.bank_ids[0]"/>
+                                    <t t-if="bank.bank_id.name"><span t-out="bank.bank_id.name"/><br/></t>
+                                    <t t-if="bank.bank_name and not bank.bank_id.name"><span t-out="bank.bank_name"/><br/></t>
+                                    <t t-if="bank.acc_number">IBAN: <span t-out="bank.acc_number"/><br/></t>
+                                    <t t-if="bank.bank_id.bic">BIC: <span t-out="bank.bank_id.bic"/></t>
+                                    <t t-if="bank.bank_bic and not bank.bank_id.bic">BIC: <span t-out="bank.bank_bic"/></t>
+                                </td>
+                            </t>
 
+                            <!-- Column: Tax (only if VAT exists) -->
+                            <t t-if="company.vat">
+                                <td style="padding-left: 3mm;">
+                                    <div style="font-size: 5pt; font-weight: bold; letter-spacing: 0.1em; text-transform: uppercase; color: #999; margin-bottom: 1mm;">STEUERDATEN</div>
+                                    <t t-out="company.account_fiscal_country_id.vat_label or 'USt-IdNr.'"/>:
+                                    <span t-if="forced_vat" t-out="forced_vat"/>
+                                    <span t-else="" t-field="company.vat"/>
+                                </td>
+                            </t>
+
+                        </tr>
+                    </table>
                 </div>
             </xpath>
 
             <!-- Replace page number -->
             <xpath expr="//div[hasclass('page_number')]" position="replace">
-                <div style="text-align: right; font-size: 6pt; color: #999; margin-top: 1.5mm;">
+                <div style="text-align: right; font-size: 6pt; color: #999; margin-top: 1mm;">
                     Seite <span class="page"/> von <span class="topage"/>
                 </div>
             </xpath>
