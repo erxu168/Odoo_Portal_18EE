@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!--
+        DIN 5008 best practices applied:
+        - Font: 12pt body (DIN 5008 standard), 9pt for info column
+        - Line spacing: 1.5 (DIN 5008: 1.0-1.5)
+        - Margins: handled by DIN 5008 Type B paper format (left 20mm, right 10mm)
+        - Date: right-aligned in body, DD.MM.YYYY format
+        - Subject (Betreff): bold, no "Betreff:" prefix (DIN 5008)
+        - Salutation: "Sehr geehrte/r Herr/Frau [Nachname],"
+        - Closing: "Mit freundlichen Gruessen" (no comma after)
+        - Signature: company function below signature line
+        - Logo: inline in din5008_document_information (reliable rendering)
+        - Reference info: Datum, Kuendigungsfrist, Letzter Arbeitstag
+        - Empfangsbestaetigung: Ort/Datum line + signature
+    -->
+
     <!-- ============================================================ -->
     <!-- 1. Ordentliche Kuendigung                                    -->
     <!-- ============================================================ -->
@@ -9,54 +24,77 @@
                 <t t-call="web.external_layout">
                     <t t-set="address">
                         <div>
-                            <t t-esc="doc.employee_id.legal_name or doc.employee_name"/><br/>
+                            <t t-if="doc.employee_id.legal_name"><t t-esc="doc.employee_id.legal_name"/></t>
+                            <t t-else=""><t t-esc="doc.employee_name"/></t><br/>
                             <t t-if="doc.employee_street">
                                 <t t-esc="doc.employee_street"/><br/>
                                 <t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/>
                             </t>
                         </div>
                     </t>
-                    <t t-set="din5008_document_title">K&#252;ndigung Ihres Arbeitsverh&#228;ltnisses</t>
+                    <t t-set="din5008_document_title">K&#252;ndigung des Arbeitsverh&#228;ltnisses</t>
                     <t t-set="din5008_document_information">
                         <div>
-                            <img t-if="doc.company_id.logo" t-att-src="image_data_uri(doc.company_id.logo)" style="max-height: 60px; margin-bottom: 8px; display: block;" alt="Logo"/>
-                            <div style="font-size: 9pt;">
-                                <strong>Datum:</strong> <t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/><br/>
-                                <strong>K&#252;ndigungsfrist:</strong> <t t-esc="doc.notice_period_text"/><br/>
-                                <strong>Letzter Arbeitstag:</strong> <t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '---'"/>
-                            </div>
+                            <img t-if="doc.company_id.logo" t-att-src="image_data_uri(doc.company_id.logo)" style="max-height: 55px; margin-bottom: 10px; display: block;" alt="Logo"/>
+                            <table style="font-size: 9pt; border-collapse: collapse;">
+                                <tr><td style="padding: 1px 8px 1px 0; white-space: nowrap;"><strong>Datum</strong></td><td style="padding: 1px 0;"><t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/></td></tr>
+                                <tr><td style="padding: 1px 8px 1px 0; white-space: nowrap;"><strong>Unser Zeichen</strong></td><td style="padding: 1px 0;">KW-<t t-esc="doc.id"/></td></tr>
+                                <tr><td style="padding: 1px 8px 1px 0; white-space: nowrap;"><strong>K&#252;ndigungsfrist</strong></td><td style="padding: 1px 0;"><t t-esc="doc.notice_period_text"/></td></tr>
+                                <tr><td style="padding: 1px 8px 1px 0; white-space: nowrap;"><strong>Letzter Arbeitstag</strong></td><td style="padding: 1px 0;"><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '---'"/></td></tr>
+                            </table>
                         </div>
                     </t>
-                    <div class="page" style="font-size: 11pt; line-height: 1.6;">
-                        <p>
+
+                    <div class="page" style="font-family: Arial, Helvetica, sans-serif; font-size: 12pt; line-height: 1.5;">
+                        <p style="margin-bottom: 12pt;">
                             Sehr geehrte<t t-if="doc.employee_id.gender == 'male'">r Herr</t><t t-elif="doc.employee_id.gender == 'female'"> Frau</t><t t-else="">r Herr/Frau</t>
                             <t t-esc="(doc.employee_id.legal_name or doc.employee_name or '').split()[-1]"/>,
                         </p>
-                        <p>
-                            hiermit k&#252;ndigen wir das mit Ihnen bestehende Arbeitsverh&#228;ltnis
-                            ordentlich unter Beachtung der f&#252;r Sie geltenden K&#252;ndigungsfrist,
-                            demzufolge nach unseren Berechnungen zum
+                        <p style="margin-bottom: 12pt;">
+                            hiermit k&#252;ndigen wir das mit Ihnen bestehende Arbeitsverh&#228;ltnis ordentlich
+                            unter Beachtung der f&#252;r Sie geltenden K&#252;ndigungsfrist, demzufolge nach
+                            unseren Berechnungen zum
                             <strong><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '___'"/></strong>,
                             hilfsweise zum n&#228;chstm&#246;glichen Zeitpunkt.
                         </p>
-                        <p>
+                        <p style="margin-bottom: 12pt;">
                             Nach &#167; 38 SGB III sind Sie verpflichtet, sich innerhalb von drei Tagen
                             nach Erhalt dieser K&#252;ndigung bei der zust&#228;ndigen Agentur f&#252;r Arbeit
                             arbeitssuchend zu melden. Sofern das Arbeitsverh&#228;ltnis noch l&#228;nger als
                             drei Monate besteht, ist eine Meldung drei Monate vor der Beendigung
                             ausreichend. Sie sind auch verpflichtet, aktiv nach einer Besch&#228;ftigung
-                            zu suchen. Sollten Sie diesen Verpflichtungen nicht nachkommen, m&#252;ssen Sie
-                            mit Nachteilen beim Bezug von Arbeitslosengeld rechnen.
+                            zu suchen. Sollten Sie diesen Verpflichtungen nicht nachkommen, m&#252;ssen
+                            Sie mit Nachteilen beim Bezug von Arbeitslosengeld rechnen.
                         </p>
-                        <p>Bitte best&#228;tigen Sie den Erhalt dieses Schreibens auf der beigef&#252;gten Kopie.</p>
-                        <div style="margin-top: 40px;">
-                            Mit freundlichen Gr&#252;&#223;en<br/><br/><br/><br/>
-                            <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">Gesch&#228;ftsf&#252;hrung</div>
+                        <p style="margin-bottom: 12pt;">
+                            Bitte best&#228;tigen Sie den Erhalt dieses Schreibens auf der beigef&#252;gten Kopie.
+                        </p>
+
+                        <div style="margin-top: 30pt;">
+                            Mit freundlichen Gr&#252;&#223;en
+                            <br/><br/><br/><br/>
+                            <div style="border-top: 1px solid #333; width: 220px; padding-top: 4pt; font-size: 10pt;">
+                                <t t-esc="doc.company_id.name"/><br/>
+                                Gesch&#228;ftsf&#252;hrung
+                            </div>
                         </div>
-                        <div style="margin-top: 40px; padding-top: 15px; border-top: 1px dashed #999; font-size: 10pt; color: #666;">
-                            <strong>Empfangsbest&#228;tigung:</strong><br/><br/>
-                            Ich best&#228;tige den Erhalt der K&#252;ndigung am ___________<br/><br/><br/><br/>
-                            <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px;">Unterschrift Arbeitnehmer</div>
+
+                        <!-- Empfangsbestaetigung -->
+                        <div style="margin-top: 36pt; padding-top: 12pt; border-top: 1px dashed #666;">
+                            <div style="font-size: 10pt; color: #444;">
+                                <strong>Empfangsbest&#228;tigung</strong><br/><br/>
+                                Ich best&#228;tige hiermit den Erhalt der K&#252;ndigung.<br/><br/>
+                                <table style="border-collapse: collapse; width: 100%;">
+                                    <tr>
+                                        <td style="width: 50%; padding-top: 30pt; vertical-align: bottom;">
+                                            <div style="border-top: 1px solid #333; width: 200px; padding-top: 4pt;">Ort, Datum</div>
+                                        </td>
+                                        <td style="width: 50%; padding-top: 30pt; vertical-align: bottom;">
+                                            <div style="border-top: 1px solid #333; width: 200px; padding-top: 4pt;">Unterschrift Arbeitnehmer/in</div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </t>
@@ -73,29 +111,37 @@
                 <t t-call="web.external_layout">
                     <t t-set="address">
                         <div>
-                            <t t-esc="doc.employee_id.legal_name or doc.employee_name"/><br/>
+                            <t t-if="doc.employee_id.legal_name"><t t-esc="doc.employee_id.legal_name"/></t>
+                            <t t-else=""><t t-esc="doc.employee_name"/></t><br/>
                             <t t-if="doc.employee_street"><t t-esc="doc.employee_street"/><br/><t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/></t>
                         </div>
                     </t>
                     <t t-set="din5008_document_title">Au&#223;erordentliche fristlose K&#252;ndigung</t>
                     <t t-set="din5008_document_information">
                         <div>
-                            <img t-if="doc.company_id.logo" t-att-src="image_data_uri(doc.company_id.logo)" style="max-height: 60px; margin-bottom: 8px; display: block;" alt="Logo"/>
-                            <div style="font-size: 9pt;">
-                                <strong>Datum:</strong> <t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/><br/>
-                                <strong>Wirkung:</strong> Sofort
-                            </div>
+                            <img t-if="doc.company_id.logo" t-att-src="image_data_uri(doc.company_id.logo)" style="max-height: 55px; margin-bottom: 10px; display: block;" alt="Logo"/>
+                            <table style="font-size: 9pt; border-collapse: collapse;">
+                                <tr><td style="padding: 1px 8px 1px 0;"><strong>Datum</strong></td><td style="padding: 1px 0;"><t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/></td></tr>
+                                <tr><td style="padding: 1px 8px 1px 0;"><strong>Unser Zeichen</strong></td><td style="padding: 1px 0;">KW-<t t-esc="doc.id"/></td></tr>
+                                <tr><td style="padding: 1px 8px 1px 0;"><strong>Wirkung</strong></td><td style="padding: 1px 0;">Sofort mit Zugang</td></tr>
+                            </table>
                         </div>
                     </t>
-                    <div class="page" style="font-size: 11pt; line-height: 1.6;">
-                        <p>Sehr geehrte<t t-if="doc.employee_id.gender == 'male'">r Herr</t><t t-elif="doc.employee_id.gender == 'female'"> Frau</t><t t-else="">r Herr/Frau</t> <t t-esc="(doc.employee_id.legal_name or doc.employee_name or '').split()[-1]"/>,</p>
-                        <p>hiermit k&#252;ndigen wir das mit Ihnen bestehende Arbeitsverh&#228;ltnis au&#223;erordentlich und fristlos mit sofortiger Wirkung, d.h. mit Zugang dieses Schreibens.</p>
-                        <p>Nach &#167; 38 SGB III sind Sie verpflichtet, sich innerhalb von drei Tagen nach Erhalt dieser K&#252;ndigung bei der zust&#228;ndigen Agentur f&#252;r Arbeit arbeitssuchend zu melden. Weiterhin sind Sie verpflichtet, aktiv nach einer Besch&#228;ftigung zu suchen.</p>
-                        <p>Bitte best&#228;tigen Sie den Erhalt dieses Schreibens auf der beigef&#252;gten Kopie.</p>
-                        <div style="margin-top: 40px;">Mit freundlichen Gr&#252;&#223;en<br/><br/><br/><br/><div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">Gesch&#228;ftsf&#252;hrung</div></div>
-                        <div style="margin-top: 40px; padding-top: 15px; border-top: 1px dashed #999; font-size: 10pt; color: #666;">
-                            <strong>Empfangsbest&#228;tigung:</strong><br/><br/>Ich best&#228;tige den Erhalt der K&#252;ndigung am ___________<br/><br/><br/><br/>
-                            <div style="border-top: 1px solid #999; width: 200px; padding-top: 5px;">Unterschrift Arbeitnehmer</div>
+                    <div class="page" style="font-family: Arial, Helvetica, sans-serif; font-size: 12pt; line-height: 1.5;">
+                        <p style="margin-bottom: 12pt;">Sehr geehrte<t t-if="doc.employee_id.gender == 'male'">r Herr</t><t t-elif="doc.employee_id.gender == 'female'"> Frau</t><t t-else="">r Herr/Frau</t> <t t-esc="(doc.employee_id.legal_name or doc.employee_name or '').split()[-1]"/>,</p>
+                        <p style="margin-bottom: 12pt;">hiermit k&#252;ndigen wir das mit Ihnen bestehende Arbeitsverh&#228;ltnis au&#223;erordentlich und fristlos mit sofortiger Wirkung, d.h. mit Zugang dieses Schreibens.</p>
+                        <p style="margin-bottom: 12pt;">Nach &#167; 38 SGB III sind Sie verpflichtet, sich innerhalb von drei Tagen nach Erhalt dieser K&#252;ndigung bei der zust&#228;ndigen Agentur f&#252;r Arbeit arbeitssuchend zu melden. Weiterhin sind Sie verpflichtet, aktiv nach einer Besch&#228;ftigung zu suchen.</p>
+                        <p style="margin-bottom: 12pt;">Bitte best&#228;tigen Sie den Erhalt dieses Schreibens auf der beigef&#252;gten Kopie.</p>
+                        <div style="margin-top: 30pt;">Mit freundlichen Gr&#252;&#223;en<br/><br/><br/><br/><div style="border-top: 1px solid #333; width: 220px; padding-top: 4pt; font-size: 10pt;"><t t-esc="doc.company_id.name"/><br/>Gesch&#228;ftsf&#252;hrung</div></div>
+                        <div style="margin-top: 36pt; padding-top: 12pt; border-top: 1px dashed #666;">
+                            <div style="font-size: 10pt; color: #444;">
+                                <strong>Empfangsbest&#228;tigung</strong><br/><br/>
+                                Ich best&#228;tige hiermit den Erhalt der K&#252;ndigung.<br/><br/>
+                                <table style="border-collapse: collapse; width: 100%;"><tr>
+                                    <td style="width: 50%; padding-top: 30pt; vertical-align: bottom;"><div style="border-top: 1px solid #333; width: 200px; padding-top: 4pt;">Ort, Datum</div></td>
+                                    <td style="width: 50%; padding-top: 30pt; vertical-align: bottom;"><div style="border-top: 1px solid #333; width: 200px; padding-top: 4pt;">Unterschrift Arbeitnehmer/in</div></td>
+                                </tr></table>
+                            </div>
                         </div>
                     </div>
                 </t>
@@ -112,44 +158,55 @@
                 <t t-call="web.external_layout">
                     <t t-set="address">
                         <div>
-                            <t t-esc="doc.employee_id.legal_name or doc.employee_name"/><br/>
+                            <t t-if="doc.employee_id.legal_name"><t t-esc="doc.employee_id.legal_name"/></t>
+                            <t t-else=""><t t-esc="doc.employee_name"/></t><br/>
                             <t t-if="doc.employee_street"><t t-esc="doc.employee_street"/><br/><t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/></t>
                         </div>
                     </t>
                     <t t-set="din5008_document_title">Aufhebungsvertrag</t>
                     <t t-set="din5008_document_information">
                         <div>
-                            <img t-if="doc.company_id.logo" t-att-src="image_data_uri(doc.company_id.logo)" style="max-height: 60px; margin-bottom: 8px; display: block;" alt="Logo"/>
-                            <div style="font-size: 9pt;">
-                                <strong>Datum:</strong> <t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/><br/>
-                                <strong>Beendigung:</strong> <t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '---'"/>
-                            </div>
+                            <img t-if="doc.company_id.logo" t-att-src="image_data_uri(doc.company_id.logo)" style="max-height: 55px; margin-bottom: 10px; display: block;" alt="Logo"/>
+                            <table style="font-size: 9pt; border-collapse: collapse;">
+                                <tr><td style="padding: 1px 8px 1px 0;"><strong>Datum</strong></td><td style="padding: 1px 0;"><t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/></td></tr>
+                                <tr><td style="padding: 1px 8px 1px 0;"><strong>Unser Zeichen</strong></td><td style="padding: 1px 0;">KW-<t t-esc="doc.id"/></td></tr>
+                                <tr><td style="padding: 1px 8px 1px 0;"><strong>Beendigung zum</strong></td><td style="padding: 1px 0;"><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '---'"/></td></tr>
+                            </table>
                         </div>
                     </t>
-                    <div class="page" style="font-size: 11pt; line-height: 1.6;">
-                        <p>zwischen</p>
-                        <p style="margin-left: 20px;"><t t-esc="doc.company_id.name"/>, <t t-esc="doc.company_id.street"/>, <t t-esc="doc.company_id.zip"/> <t t-esc="doc.company_id.city"/><br/>- nachfolgend &#8222;Arbeitgeber&#8220; -</p>
-                        <p>und</p>
-                        <p style="margin-left: 20px;"><t t-esc="doc.employee_id.legal_name or doc.employee_name"/>, <t t-if="doc.employee_street"><t t-esc="doc.employee_street"/>, <t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/></t><br/>- nachfolgend &#8222;Arbeitnehmer&#8220; -</p>
-                        <p style="font-weight: bold;">&#167; 1 Beendigung des Arbeitsverh&#228;ltnisses</p>
-                        <p>Die Parteien sind sich dar&#252;ber einig, dass das am <t t-esc="doc.employee_start_date.strftime('%d.%m.%Y') if doc.employee_start_date else '___'"/> begr&#252;ndete Arbeitsverh&#228;ltnis auf Veranlassung des Arbeitgebers im gegenseitigen Einvernehmen mit Ablauf des <strong><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '___'"/></strong> enden wird.</p>
+                    <div class="page" style="font-family: Arial, Helvetica, sans-serif; font-size: 12pt; line-height: 1.5;">
+                        <p style="margin-bottom: 6pt;">zwischen</p>
+                        <p style="margin-left: 20px; margin-bottom: 6pt;"><t t-esc="doc.company_id.name"/>, <t t-esc="doc.company_id.street"/>, <t t-esc="doc.company_id.zip"/> <t t-esc="doc.company_id.city"/><br/>&#8211; nachfolgend &#8222;Arbeitgeber&#8220; genannt &#8211;</p>
+                        <p style="margin-bottom: 6pt;">und</p>
+                        <p style="margin-left: 20px; margin-bottom: 12pt;"><t t-if="doc.employee_id.legal_name"><t t-esc="doc.employee_id.legal_name"/></t><t t-else=""><t t-esc="doc.employee_name"/></t>, <t t-if="doc.employee_street"><t t-esc="doc.employee_street"/>, <t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/></t><br/>&#8211; nachfolgend &#8222;Arbeitnehmer/in&#8220; genannt &#8211;</p>
+
+                        <p style="font-weight: bold; margin-bottom: 6pt;">&#167; 1 Beendigung des Arbeitsverh&#228;ltnisses</p>
+                        <p style="margin-bottom: 12pt;">Die Parteien sind sich dar&#252;ber einig, dass das am <t t-esc="doc.employee_start_date.strftime('%d.%m.%Y') if doc.employee_start_date else '___'"/> begr&#252;ndete Arbeitsverh&#228;ltnis auf Veranlassung des Arbeitgebers im gegenseitigen Einvernehmen mit Ablauf des <strong><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '___'"/></strong> endet.</p>
+
                         <t t-if="doc.garden_leave">
-                            <p style="font-weight: bold;">&#167; 2 Freistellung</p>
-                            <p>Der Arbeitnehmer wird ab Unterzeichnung dieses Vertrages unwiderruflich von der Verpflichtung zur Erbringung der Arbeitsleistung unter Fortzahlung der Verg&#252;tung und Anrechnung von Urlaubsanspr&#252;chen freigestellt.</p>
+                            <p style="font-weight: bold; margin-bottom: 6pt;">&#167; 2 Freistellung</p>
+                            <p style="margin-bottom: 12pt;">Der/die Arbeitnehmer/in wird ab Unterzeichnung dieses Vertrages unwiderruflich von der Verpflichtung zur Erbringung der Arbeitsleistung unter Fortzahlung der Verg&#252;tung und unter Anrechnung noch bestehender Urlaubsanspr&#252;che freigestellt.</p>
                         </t>
+
                         <t t-if="doc.include_severance">
-                            <p style="font-weight: bold;">&#167; <t t-if="doc.garden_leave">3</t><t t-else="">2</t> Abfindung</p>
-                            <p>Der Arbeitgeber zahlt dem Arbeitnehmer f&#252;r den Verlust des Arbeitsplatzes eine Abfindung in H&#246;he von <strong><t t-esc="'%.2f' % doc.severance_amount"/> EUR</strong> (brutto). Die Abfindung ist mit der letzten Gehaltsabrechnung f&#228;llig.</p>
+                            <p style="font-weight: bold; margin-bottom: 6pt;">&#167; <t t-if="doc.garden_leave">3</t><t t-else="">2</t> Abfindung</p>
+                            <p style="margin-bottom: 12pt;">Der Arbeitgeber zahlt dem/der Arbeitnehmer/in f&#252;r den Verlust des Arbeitsplatzes eine Abfindung in H&#246;he von <strong><t t-esc="'%.2f' % doc.severance_amount"/> EUR</strong> (brutto). Die Abfindung ist mit der letzten Gehaltsabrechnung f&#228;llig.</p>
                         </t>
-                        <p style="font-weight: bold;">&#167; <t t-esc="3 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Arbeitszeugnis</p>
-                        <p>Der Arbeitgeber erteilt dem Arbeitnehmer unter dem Beendigungsdatum ein wohlwollendes, qualifiziertes Arbeitszeugnis mit einer Dankes- und Bedauernsformel.</p>
-                        <p style="font-weight: bold;">&#167; <t t-esc="4 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Hinweis nach &#167; 38 SGB III</p>
-                        <p>Zur Aufrechterhaltung ungek&#252;rzter Anspr&#252;che auf Arbeitslosengeld ist der Arbeitnehmer verpflichtet, sich unverz&#252;glich nach Abschluss dieses Aufhebungsvertrages pers&#246;nlich bei der Agentur f&#252;r Arbeit arbeitssuchend zu melden. Weiterhin ist er verpflichtet, aktiv nach einer Besch&#228;ftigung zu suchen.</p>
-                        <p style="font-weight: bold;">&#167; <t t-esc="5 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Ausgleichsklausel</p>
-                        <p>Mit Erf&#252;llung dieser Vereinbarung sind s&#228;mtliche wechselseitigen finanziellen Anspr&#252;che der Parteien aus dem Arbeitsverh&#228;ltnis und seiner Beendigung, gleich aus welchem Rechtsgrund, gleich ob bekannt oder unbekannt, abgegolten und erledigt.</p>
-                        <div style="margin-top: 50px; display: flex; justify-content: space-between;">
-                            <div><div style="margin-bottom: 5px; font-size: 10pt; color: #666;">Ort, Datum</div><br/><br/><br/><div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">Unterschrift Arbeitgeber</div></div>
-                            <div><div style="margin-bottom: 5px; font-size: 10pt; color: #666;">Ort, Datum</div><br/><br/><br/><div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">Unterschrift Arbeitnehmer</div></div>
+
+                        <p style="font-weight: bold; margin-bottom: 6pt;">&#167; <t t-esc="3 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Arbeitszeugnis</p>
+                        <p style="margin-bottom: 12pt;">Der Arbeitgeber erteilt dem/der Arbeitnehmer/in unter dem Beendigungsdatum ein wohlwollendes, qualifiziertes Arbeitszeugnis mit einer Dankes- und Bedauernsformel.</p>
+
+                        <p style="font-weight: bold; margin-bottom: 6pt;">&#167; <t t-esc="4 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Hinweis nach &#167; 38 SGB III</p>
+                        <p style="margin-bottom: 12pt;">Zur Aufrechterhaltung ungek&#252;rzter Anspr&#252;che auf Arbeitslosengeld ist der/die Arbeitnehmer/in verpflichtet, sich unverz&#252;glich nach Abschluss dieses Aufhebungsvertrages pers&#246;nlich bei der Agentur f&#252;r Arbeit arbeitssuchend zu melden.</p>
+
+                        <p style="font-weight: bold; margin-bottom: 6pt;">&#167; <t t-esc="5 + int(bool(doc.garden_leave)) + int(bool(doc.include_severance))"/> Ausgleichsklausel</p>
+                        <p style="margin-bottom: 12pt;">Mit Erf&#252;llung dieser Vereinbarung sind s&#228;mtliche wechselseitigen finanziellen Anspr&#252;che der Parteien aus dem Arbeitsverh&#228;ltnis und seiner Beendigung, gleich aus welchem Rechtsgrund, gleich ob bekannt oder unbekannt, abgegolten und erledigt.</p>
+
+                        <div style="margin-top: 40pt;">
+                            <table style="border-collapse: collapse; width: 100%;"><tr>
+                                <td style="width: 50%; padding-top: 40pt; vertical-align: bottom;"><div style="border-top: 1px solid #333; width: 200px; padding-top: 4pt; font-size: 10pt;">Ort, Datum / Unterschrift Arbeitgeber</div></td>
+                                <td style="width: 50%; padding-top: 40pt; vertical-align: bottom;"><div style="border-top: 1px solid #333; width: 200px; padding-top: 4pt; font-size: 10pt;">Ort, Datum / Unterschrift Arbeitnehmer/in</div></td>
+                            </tr></table>
                         </div>
                     </div>
                 </t>
@@ -166,30 +223,35 @@
                 <t t-call="web.external_layout">
                     <t t-set="address">
                         <div>
-                            <t t-esc="doc.employee_id.legal_name or doc.employee_name"/><br/>
+                            <t t-if="doc.employee_id.legal_name"><t t-esc="doc.employee_id.legal_name"/></t>
+                            <t t-else=""><t t-esc="doc.employee_name"/></t><br/>
                             <t t-if="doc.employee_street"><t t-esc="doc.employee_street"/><br/><t t-esc="doc.employee_zip"/> <t t-esc="doc.employee_city"/></t>
                         </div>
                     </t>
                     <t t-set="din5008_document_title">Best&#228;tigung Ihrer K&#252;ndigung</t>
                     <t t-set="din5008_document_information">
                         <div>
-                            <img t-if="doc.company_id.logo" t-att-src="image_data_uri(doc.company_id.logo)" style="max-height: 60px; margin-bottom: 8px; display: block;" alt="Logo"/>
-                            <div style="font-size: 9pt;">
-                                <strong>Datum:</strong> <t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/><br/>
-                                <strong>K&#252;ndigung erhalten:</strong> <t t-esc="doc.resignation_received_date.strftime('%d.%m.%Y') if doc.resignation_received_date else '---'"/><br/>
-                                <strong>Letzter Arbeitstag:</strong> <t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '---'"/>
-                            </div>
+                            <img t-if="doc.company_id.logo" t-att-src="image_data_uri(doc.company_id.logo)" style="max-height: 55px; margin-bottom: 10px; display: block;" alt="Logo"/>
+                            <table style="font-size: 9pt; border-collapse: collapse;">
+                                <tr><td style="padding: 1px 8px 1px 0;"><strong>Datum</strong></td><td style="padding: 1px 0;"><t t-esc="doc.letter_date.strftime('%d.%m.%Y')"/></td></tr>
+                                <tr><td style="padding: 1px 8px 1px 0;"><strong>Unser Zeichen</strong></td><td style="padding: 1px 0;">KW-<t t-esc="doc.id"/></td></tr>
+                                <tr><td style="padding: 1px 8px 1px 0;"><strong>K&#252;ndigung erhalten</strong></td><td style="padding: 1px 0;"><t t-esc="doc.resignation_received_date.strftime('%d.%m.%Y') if doc.resignation_received_date else '---'"/></td></tr>
+                                <tr><td style="padding: 1px 8px 1px 0;"><strong>Letzter Arbeitstag</strong></td><td style="padding: 1px 0;"><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '---'"/></td></tr>
+                            </table>
                         </div>
                     </t>
-                    <div class="page" style="font-size: 11pt; line-height: 1.6;">
-                        <p>Sehr geehrte<t t-if="doc.employee_id.gender == 'male'">r Herr</t><t t-elif="doc.employee_id.gender == 'female'"> Frau</t><t t-else="">r Herr/Frau</t> <t t-esc="(doc.employee_id.legal_name or doc.employee_name or '').split()[-1]"/>,</p>
-                        <p>hiermit best&#228;tigen wir den Erhalt Ihrer K&#252;ndigung vom <t t-esc="doc.resignation_received_date.strftime('%d.%m.%Y') if doc.resignation_received_date else '___'"/>.</p>
-                        <p>Unter Ber&#252;cksichtigung der f&#252;r Sie geltenden K&#252;ndigungsfrist endet Ihr Arbeitsverh&#228;ltnis mit uns zum <strong><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '___'"/></strong>.</p>
-                        <p>Wir bitten Sie, alle firmeneigenen Gegenst&#228;nde, Schl&#252;ssel, Ger&#228;te und sonstiges Firmeneigentum bis sp&#228;testens zu Ihrem letzten Arbeitstag zur&#252;ckzugeben.</p>
-                        <p>Sie haben Anspruch auf ein wohlwollendes und wahrheitsgem&#228;&#223;es Arbeitszeugnis. Bitte teilen Sie uns mit, ob Sie ein einfaches oder qualifiziertes Arbeitszeugnis w&#252;nschen.</p>
-                        <p>Wir m&#246;chten Sie darauf hinweisen, dass Sie sich gem&#228;&#223; &#167; 38 SGB III innerhalb von drei Tagen nach Erhalt dieser Best&#228;tigung bei der zust&#228;ndigen Agentur f&#252;r Arbeit arbeitssuchend melden m&#252;ssen, sofern Sie dies nicht bereits getan haben.</p>
-                        <p>F&#252;r die Zusammenarbeit bedanken wir uns und w&#252;nschen Ihnen f&#252;r Ihren weiteren beruflichen und privaten Lebensweg alles Gute.</p>
-                        <div style="margin-top: 40px;">Mit freundlichen Gr&#252;&#223;en<br/><br/><br/><br/><div style="border-top: 1px solid #999; width: 200px; padding-top: 5px; font-size: 10pt;">Gesch&#228;ftsf&#252;hrung</div></div>
+                    <div class="page" style="font-family: Arial, Helvetica, sans-serif; font-size: 12pt; line-height: 1.5;">
+                        <p style="margin-bottom: 12pt;">Sehr geehrte<t t-if="doc.employee_id.gender == 'male'">r Herr</t><t t-elif="doc.employee_id.gender == 'female'"> Frau</t><t t-else="">r Herr/Frau</t> <t t-esc="(doc.employee_id.legal_name or doc.employee_name or '').split()[-1]"/>,</p>
+                        <p style="margin-bottom: 12pt;">hiermit best&#228;tigen wir den Erhalt Ihrer K&#252;ndigung vom <t t-esc="doc.resignation_received_date.strftime('%d.%m.%Y') if doc.resignation_received_date else '___'"/>.</p>
+                        <p style="margin-bottom: 12pt;">Unter Ber&#252;cksichtigung der f&#252;r Sie geltenden K&#252;ndigungsfrist endet Ihr Arbeitsverh&#228;ltnis mit uns zum <strong><t t-esc="doc.last_working_day.strftime('%d.%m.%Y') if doc.last_working_day else '___'"/></strong>.</p>
+                        <p style="margin-bottom: 12pt;">Wir bitten Sie, alle firmeneigenen Gegenst&#228;nde, Schl&#252;ssel, Ger&#228;te und sonstiges Firmeneigentum bis sp&#228;testens zu Ihrem letzten Arbeitstag zur&#252;ckzugeben.</p>
+                        <p style="margin-bottom: 12pt;">Sie haben Anspruch auf ein wohlwollendes und wahrheitsgem&#228;&#223;es Arbeitszeugnis. Bitte teilen Sie uns mit, ob Sie ein einfaches oder qualifiziertes Arbeitszeugnis w&#252;nschen.</p>
+                        <p style="margin-bottom: 12pt;">Wir m&#246;chten Sie darauf hinweisen, dass Sie sich gem&#228;&#223; &#167; 38 SGB III innerhalb von drei Tagen nach Erhalt dieser Best&#228;tigung bei der zust&#228;ndigen Agentur f&#252;r Arbeit arbeitssuchend melden m&#252;ssen, sofern Sie dies nicht bereits getan haben.</p>
+                        <p style="margin-bottom: 12pt;">F&#252;r die Zusammenarbeit bedanken wir uns und w&#252;nschen Ihnen f&#252;r Ihren weiteren beruflichen und privaten Lebensweg alles Gute.</p>
+                        <div style="margin-top: 30pt;">
+                            Mit freundlichen Gr&#252;&#223;en<br/><br/><br/><br/>
+                            <div style="border-top: 1px solid #333; width: 220px; padding-top: 4pt; font-size: 10pt;"><t t-esc="doc.company_id.name"/><br/>Gesch&#228;ftsf&#252;hrung</div>
+                        </div>
                     </div>
                 </t>
             </t>
