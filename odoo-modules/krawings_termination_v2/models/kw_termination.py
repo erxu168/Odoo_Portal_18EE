@@ -96,7 +96,7 @@ class KwTermination(models.Model):
         string='Probezeit bis', compute='_compute_employee_info', store=True,
     )
 
-    # --- Fristlose K\u00fcndigung ---
+    # --- Fristlose ---
     incident_date = fields.Date(string='Datum des Vorfalls')
     incident_description = fields.Text(string='Beschreibung (intern)')
 
@@ -105,7 +105,7 @@ class KwTermination(models.Model):
     severance_amount = fields.Float(string='Abfindungsbetrag (EUR)')
     garden_leave = fields.Boolean(string='Freistellung')
 
-    # --- K\u00fcndigungsbest\u00e4tigung ---
+    # --- Bestaetigung ---
     resignation_received_date = fields.Date(string='K\u00fcndigung erhalten am')
 
     # --- PDF + Signature (managed by portal, stored here) ---
@@ -259,8 +259,19 @@ class KwTermination(models.Model):
         return nxt.replace(day=last)
 
     # =================================================================
-    # Onchange
+    # Actions (minimal - state changes only, no PDF/Sign)
     # =================================================================
+    def action_open_pdf(self):
+        """Open the PDF attachment in a new tab."""
+        self.ensure_one()
+        if not self.pdf_attachment_id:
+            raise UserError(_('Kein PDF vorhanden.'))
+        return {
+            'type': 'ir.actions.act_url',
+            'url': '/web/content/%s?download=true' % self.pdf_attachment_id.id,
+            'target': 'new',
+        }
+
     @api.onchange('employee_id')
     def _onchange_employee_id(self):
         if self.employee_id:
