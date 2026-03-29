@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { TERMINATION_TYPE_LABELS, type TerminationType } from '@/types/termination';
 import { useCompany } from '@/lib/company-context';
 import PdfViewer from '@/components/ui/PdfViewer';
@@ -32,6 +32,9 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Employee filters
+  const [deptFilter, setDeptFilter] = useState<number | null>(null); // null = All
 
   // Form
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -69,9 +72,28 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
     })();
   }, [companyId]);
 
-  const filteredEmployees = employees.filter(e =>
-    !search || e.name.toLowerCase().includes(search.toLowerCase()),
-  );
+  // Extract unique departments for filter chips
+  const departments = useMemo(() => {
+    const deptMap = new Map<number, string>();
+    for (const emp of employees) {
+      if (emp.department_id) {
+        deptMap.set(emp.department_id[0], emp.department_id[1]);
+      }
+    }
+    return Array.from(deptMap.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [employees]);
+
+  const filteredEmployees = useMemo(() => {
+    return employees.filter(e => {
+      if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (deptFilter !== null) {
+        if (!e.department_id || e.department_id[0] !== deptFilter) return false;
+      }
+      return true;
+    });
+  }, [employees, search, deptFilter]);
 
   const termTypes: { value: TerminationType; label: string; desc: string }[] = [
     { value: 'ordentlich', label: 'Standard Termination', desc: 'Statutory notice period (\u00a7622 BGB)' },
@@ -201,7 +223,8 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
   function renderStepEmployee() {
     return (
       <>
-        <div className="mb-4">
+        {/* Search */}
+        <div className="mb-3">
           <input
             type="text" placeholder="Search employee..."
             value={search} onChange={e => setSearch(e.target.value)}
@@ -209,34 +232,72 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
             autoFocus
           />
         </div>
+
+        {/* Department filter chips */}
+        {departments.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-3 mb-1 -mx-1 px-1 scrollbar-hide">
+            <button
+              onClick={() => setDeptFilter(null)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${
+                deptFilter === null
+                  ? 'bg-red-600 border-red-600 text-white'
+                  : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'
+              }`}
+            >
+              All ({employees.length})
+            </button>
+            {departments.map(dept => {
+              const count = employees.filter(e => e.department_id && e.department_id[0] === dept.id).length;
+              return (
+                <button
+                  key={dept.id}
+                  onClick={() => setDeptFilter(deptFilter === dept.id ? null : dept.id)}
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${
+                    deptFilter === dept.id
+                      ? 'bg-red-600 border-red-600 text-white'
+                      : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'
+                  }`}
+                >
+                  {dept.name} ({count})
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Employee list */}
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-7 h-7 border-2 border-gray-300 border-t-red-600 rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
-            {filteredEmployees.map(emp => (
-              <button
-                key={emp.id}
-                onClick={() => { setSelectedEmployee(emp); setStep('type'); }}
-                className={`w-full rounded-xl border p-4 text-left transition-colors ${
-                  selectedEmployee?.id === emp.id
-                    ? 'border-red-400 bg-red-50'
-                    : 'border-gray-200 bg-white active:bg-gray-50'
-                }`}
-              >
-                <div className="text-[14px] font-semibold text-gray-900">{emp.name}</div>
-                <div className="text-[12px] text-gray-500 mt-0.5">
-                  {emp.department_id ? emp.department_id[1] : ''}
-                  {emp.job_title ? ` \u2022 ${emp.job_title}` : ''}
-                  {emp.company_id ? ` \u2022 ${emp.company_id[1]}` : ''}
-                </div>
-              </button>
-            ))}
-            {filteredEmployees.length === 0 && (
-              <p className="text-center text-gray-400 text-[13px] py-8">No employees found</p>
-            )}
-          </div>
+          <>
+            <div className="text-[11px] text-gray-400 mb-2 px-1">
+              {filteredEmployees.length} employee{filteredEmployees.length !== 1 ? 's' : ''}
+            </div>
+            <div className="space-y-2 max-h-[55vh] overflow-y-auto">
+              {filteredEmployees.map(emp => (
+                <button
+                  key={emp.id}
+                  onClick={() => { setSelectedEmployee(emp); setStep('type'); }}
+                  className={`w-full rounded-xl border p-4 text-left transition-colors ${
+                    selectedEmployee?.id === emp.id
+                      ? 'border-red-400 bg-red-50'
+                      : 'border-gray-200 bg-white active:bg-gray-50'
+                  }`}
+                >
+                  <div className="text-[14px] font-semibold text-gray-900">{emp.name}</div>
+                  <div className="text-[12px] text-gray-500 mt-0.5">
+                    {emp.department_id ? emp.department_id[1] : 'No department'}
+                    {emp.job_title ? ` \u2022 ${emp.job_title}` : ''}
+                  </div>
+                </button>
+              ))}
+              {filteredEmployees.length === 0 && (
+                <p className="text-center text-gray-400 text-[13px] py-8">No employees found</p>
+              )}
+            </div>
+          </>
         )}
       </>
     );
