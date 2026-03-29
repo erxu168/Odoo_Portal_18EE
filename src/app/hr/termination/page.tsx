@@ -5,16 +5,11 @@ import { useRouter } from 'next/navigation';
 import TermDashboard from '@/components/termination/TermDashboard';
 import TermList from '@/components/termination/TermList';
 import TermDetail from '@/components/termination/TermDetail';
+import NewTermWizard from '@/components/termination/NewTermWizard';
 
 /**
  * Termination module — Admin only.
  * Screen state machine, same pattern as manufacturing/page.tsx.
- *
- * Screens:
- *   dashboard  — 2x2 tile grid + recent list
- *   list       — all terminations with filter/search
- *   detail     — single termination with PDF download & actions
- *   new        — wizard (TODO: will be added as NewTermWizard component)
  */
 type Screen =
   | { type: 'dashboard' }
@@ -55,9 +50,7 @@ export default function TerminationPage() {
 
   function handleDashboardNav(tile: string) {
     if (tile === 'new') {
-      // TODO: navigate to NewTermWizard once built
-      // For now, show list as placeholder
-      navigate({ type: 'list' });
+      navigate({ type: 'new' });
     } else if (tile === 'drafts') {
       navigate({ type: 'list', filter: 'draft' });
     } else if (tile === 'confirmed') {
@@ -118,19 +111,14 @@ export default function TerminationPage() {
           />
         );
       case 'new':
-        // TODO: NewTermWizard component
         return (
-          <>
-            <Header title="Neue Kuendigung" subtitle="Schritt 1 von 4" />
-            <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-              <div className="text-4xl mb-3">🛠️</div>
-              <div className="text-[15px] font-semibold text-gray-900 mb-1">In Entwicklung</div>
-              <div className="text-[13px] text-gray-500">Der Assistent wird in der naechsten Version hinzugefuegt.</div>
-              <button className="mt-6 text-green-700 font-semibold text-[14px]" onClick={goDashboard}>
-                Zurueck zum Dashboard
-              </button>
-            </div>
-          </>
+          <NewTermWizard
+            onBack={goDashboard}
+            onCreated={(id) => {
+              setHistory([{ type: 'dashboard' }]);
+              setScreen({ type: 'detail', id });
+            }}
+          />
         );
     }
   }
