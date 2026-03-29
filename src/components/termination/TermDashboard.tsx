@@ -31,8 +31,8 @@ export default function TermDashboard({ onNavigate }: TermDashboardProps) {
   const tiles = [
     {
       key: 'new',
-      label: 'Neue K\u00fcndigung',
-      sublabel: 'Mitarbeiter ausw\u00e4hlen',
+      label: 'New Termination',
+      sublabel: 'Select employee',
       color: 'bg-red-50 border-red-200',
       iconBg: 'bg-red-100',
       iconColor: 'text-red-600',
@@ -45,8 +45,8 @@ export default function TermDashboard({ onNavigate }: TermDashboardProps) {
     },
     {
       key: 'active',
-      label: 'In Bearbeitung',
-      sublabel: 'Entwurf & Best\u00e4tigt',
+      label: 'In Progress',
+      sublabel: 'Draft & confirmed',
       color: 'bg-orange-50 border-orange-200',
       iconBg: 'bg-orange-100',
       iconColor: 'text-orange-600',
@@ -59,8 +59,8 @@ export default function TermDashboard({ onNavigate }: TermDashboardProps) {
     },
     {
       key: 'signed',
-      label: 'Unterschrieben',
-      sublabel: 'Bereit zum Versand',
+      label: 'Signed',
+      sublabel: 'Ready to send',
       color: 'bg-blue-50 border-blue-200',
       iconBg: 'bg-blue-100',
       iconColor: 'text-blue-600',
@@ -73,8 +73,8 @@ export default function TermDashboard({ onNavigate }: TermDashboardProps) {
     },
     {
       key: 'history',
-      label: 'Verlauf',
-      sublabel: 'Alle K\u00fcndigungen',
+      label: 'History',
+      sublabel: 'All terminations',
       color: 'bg-gray-50 border-gray-200',
       iconBg: 'bg-gray-100',
       iconColor: 'text-gray-600',

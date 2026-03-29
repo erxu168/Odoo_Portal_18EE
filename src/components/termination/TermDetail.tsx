@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import type { TerminationRecord, DeliveryMethod } from '@/types/termination';
 import { TERMINATION_TYPE_LABELS, STATE_LABELS, DELIVERY_METHOD_LABELS } from '@/types/termination';
 import DeliveryForm from './DeliveryForm';
+import PdfViewer from '@/components/ui/PdfViewer';
 
 interface Props {
   id: number;
@@ -30,6 +31,8 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
   const [accountantLoading, setAccountantLoading] = useState(false);
+  const [showPdf, setShowPdf] = useState(false);
+  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
 
   const fetchRecord = useCallback(async () => {
     try {
@@ -38,7 +41,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       if (json.ok) setRec(json.data);
       else setError(json.error);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Fehler');
+      setError(err instanceof Error ? err.message : 'Error');
     } finally {
       setLoading(false);
     }
@@ -47,7 +50,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   useEffect(() => { fetchRecord(); }, [fetchRecord]);
 
   async function handleConfirm() {
-    if (!confirm('K\u00fcndigung best\u00e4tigen? Austrittsdatum wird gesetzt.')) return;
+    if (!confirm('Confirm this termination? Employee departure date will be set.')) return;
     setConfirmLoading(true);
     try {
       const res = await fetch(`/api/termination/${id}/confirm`, { method: 'POST' });
@@ -55,7 +58,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       if (json.ok) setRec(json.data);
       else alert(json.error);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Fehler');
+      alert(err instanceof Error ? err.message : 'Error');
     } finally {
       setConfirmLoading(false);
     }
@@ -67,37 +70,47 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       const res = await fetch(`/api/termination/${id}/pdf`, { method: 'POST' });
       if (res.ok) {
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          setPdfBase64(base64);
+          setShowPdf(true);
+        };
+        reader.readAsDataURL(blob);
         await fetchRecord();
       } else {
         const json = await res.json();
-        alert(json.error || 'PDF-Erstellung fehlgeschlagen');
+        alert(json.error || 'PDF generation failed');
       }
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Fehler');
+      alert(err instanceof Error ? err.message : 'Error');
     } finally {
       setPdfLoading(false);
     }
   }
 
-  async function handleDownloadPdf() {
+  async function handleViewPdf() {
     try {
       const res = await fetch(`/api/termination/${id}/pdf`);
       if (res.ok) {
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          setPdfBase64(base64);
+          setShowPdf(true);
+        };
+        reader.readAsDataURL(blob);
       } else {
-        alert('Kein PDF vorhanden');
+        alert('No PDF available');
       }
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Fehler');
+      alert(err instanceof Error ? err.message : 'Error');
     }
   }
 
   async function handleMarkSigned() {
-    if (!confirm('Als unterschrieben markieren?')) return;
+    if (!confirm('Mark as signed?')) return;
     try {
       const res = await fetch(`/api/termination/${id}`, {
         method: 'PATCH',
@@ -108,7 +121,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       if (json.ok) setRec(json.data);
       else alert(json.error);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Fehler');
+      alert(err instanceof Error ? err.message : 'Error');
     }
   }
 
@@ -133,12 +146,12 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         alert(json.error);
       }
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Fehler');
+      alert(err instanceof Error ? err.message : 'Error');
     }
   }
 
   async function handleSendToAccountant() {
-    if (!confirm('An Steuerberater senden?')) return;
+    if (!confirm('Send to accountant?')) return;
     setAccountantLoading(true);
     try {
       const res = await fetch(`/api/termination/${id}`, {
@@ -150,14 +163,14 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       if (json.ok) setRec(json.data);
       else alert(json.error);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Fehler');
+      alert(err instanceof Error ? err.message : 'Error');
     } finally {
       setAccountantLoading(false);
     }
   }
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full" /></div>;
-  if (error || !rec) return <div className="px-5 pt-12"><p className="text-red-600">{error || 'Nicht gefunden'}</p></div>;
+  if (error || !rec) return <div className="px-5 pt-12"><p className="text-red-600">{error || 'Not found'}</p></div>;
 
   const stepIdx = STEPS.indexOf(rec.state);
   const fmt = (d: string | false) => {
@@ -213,25 +226,25 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </span>
           </div>
           <div className="space-y-2 text-[13px]">
-            <div className="flex justify-between"><span className="text-gray-500">Unternehmen</span><span className="text-gray-900 font-medium">{rec.company_id[1]}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Datum</span><span className="text-gray-900">{fmt(rec.letter_date)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">K{"\u00fc"}ndigungsfrist</span><span className="text-gray-900">{rec.notice_period_text}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Letzter Arbeitstag</span><span className="text-gray-900 font-bold">{fmt(rec.last_working_day)}</span></div>
-            {rec.tenure_years > 0 && <div className="flex justify-between"><span className="text-gray-500">Betriebszugeh{"\u00f6"}rigkeit</span><span className="text-gray-900">{rec.tenure_years} Jahre</span></div>}
-            {rec.include_severance && <div className="flex justify-between"><span className="text-gray-500">Abfindung</span><span className="text-gray-900 font-bold">{rec.severance_amount.toFixed(2)} EUR</span></div>}
+            <div className="flex justify-between"><span className="text-gray-500">Company</span><span className="text-gray-900 font-medium">{rec.company_id[1]}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Letter date</span><span className="text-gray-900">{fmt(rec.letter_date)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Notice period</span><span className="text-gray-900">{rec.notice_period_text}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Last working day</span><span className="text-gray-900 font-bold">{fmt(rec.last_working_day)}</span></div>
+            {rec.tenure_years > 0 && <div className="flex justify-between"><span className="text-gray-500">Tenure</span><span className="text-gray-900">{rec.tenure_years} years</span></div>}
+            {rec.include_severance && <div className="flex justify-between"><span className="text-gray-500">Severance</span><span className="text-gray-900 font-bold">{rec.severance_amount.toFixed(2)} EUR</span></div>}
           </div>
         </div>
 
         {/* Delivery card */}
         {rec.state === 'delivered' && rec.delivery_method && (
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
-            <span className="text-[13px] font-semibold text-gray-900 block mb-3">Zustellung</span>
+            <span className="text-[13px] font-semibold text-gray-900 block mb-3">Delivery</span>
             <div className="space-y-2 text-[13px]">
-              <div className="flex justify-between"><span className="text-gray-500">Methode</span><span className="text-gray-900">{DELIVERY_METHOD_LABELS[rec.delivery_method]}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Datum</span><span className="text-gray-900">{fmt(rec.delivery_date)}</span></div>
-              {rec.delivery_tracking_number && <div className="flex justify-between"><span className="text-gray-500">Sendungsnr.</span><span className="text-gray-900">{rec.delivery_tracking_number}</span></div>}
-              {rec.delivery_witness && <div className="flex justify-between"><span className="text-gray-500">Zeuge</span><span className="text-gray-900">{rec.delivery_witness}</span></div>}
-              <div className="flex justify-between"><span className="text-gray-500">Best{"\u00e4"}tigt</span><span className={rec.delivery_confirmed ? 'text-green-600 font-medium' : 'text-yellow-600'}>{rec.delivery_confirmed ? 'Ja' : 'Ausstehend'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Method</span><span className="text-gray-900">{DELIVERY_METHOD_LABELS[rec.delivery_method]}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Date</span><span className="text-gray-900">{fmt(rec.delivery_date)}</span></div>
+              {rec.delivery_tracking_number && <div className="flex justify-between"><span className="text-gray-500">Tracking #</span><span className="text-gray-900">{rec.delivery_tracking_number}</span></div>}
+              {rec.delivery_witness && <div className="flex justify-between"><span className="text-gray-500">Witness</span><span className="text-gray-900">{rec.delivery_witness}</span></div>}
+              <div className="flex justify-between"><span className="text-gray-500">Confirmed</span><span className={rec.delivery_confirmed ? 'text-green-600 font-medium' : 'text-yellow-600'}>{rec.delivery_confirmed ? 'Yes' : 'Pending'}</span></div>
             </div>
           </div>
         )}
@@ -246,77 +259,65 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
 
         {/* Actions */}
         <div className="space-y-2.5 mt-4">
-          {/* Draft: Confirm */}
           {rec.state === 'draft' && (
-            <button
-              onClick={handleConfirm}
-              disabled={confirmLoading}
-              className="w-full py-3.5 rounded-2xl bg-blue-600 text-white font-semibold text-[14px] active:bg-blue-700 disabled:opacity-50"
-            >
-              {confirmLoading ? 'Best\u00e4tige...' : 'K\u00fcndigung best\u00e4tigen'}
+            <button onClick={handleConfirm} disabled={confirmLoading}
+              className="w-full py-3.5 rounded-2xl bg-blue-600 text-white font-semibold text-[14px] active:bg-blue-700 disabled:opacity-50">
+              {confirmLoading ? 'Confirming...' : 'Confirm termination'}
             </button>
           )}
 
-          {/* Confirmed: Generate PDF */}
           {rec.state === 'confirmed' && !rec.pdf_attachment_id && (
-            <button
-              onClick={handleGeneratePdf}
-              disabled={pdfLoading}
-              className="w-full py-3.5 rounded-2xl bg-red-600 text-white font-semibold text-[14px] active:bg-red-700 disabled:opacity-50"
-            >
-              {pdfLoading ? 'Erstelle PDF...' : 'PDF erstellen'}
+            <button onClick={handleGeneratePdf} disabled={pdfLoading}
+              className="w-full py-3.5 rounded-2xl bg-red-600 text-white font-semibold text-[14px] active:bg-red-700 disabled:opacity-50">
+              {pdfLoading ? 'Generating PDF...' : 'Generate PDF'}
             </button>
           )}
 
-          {/* Has PDF: Download + Mark signed */}
           {rec.pdf_attachment_id && (
-            <button
-              onClick={handleDownloadPdf}
-              className="w-full py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50"
-            >
+            <button onClick={handleViewPdf}
+              className="w-full py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              PDF anzeigen
+              View PDF
             </button>
           )}
 
-          {/* Confirmed + has PDF: Mark as signed */}
           {rec.state === 'confirmed' && rec.pdf_attachment_id && (
-            <button
-              onClick={handleMarkSigned}
-              className="w-full py-3.5 rounded-2xl bg-green-600 text-white font-semibold text-[14px] active:bg-green-700"
-            >
-              Als unterschrieben markieren
+            <button onClick={handleMarkSigned}
+              className="w-full py-3.5 rounded-2xl bg-green-600 text-white font-semibold text-[14px] active:bg-green-700">
+              Mark as signed
             </button>
           )}
 
-          {/* Signed: Delivery */}
           {rec.state === 'signed' && !showDelivery && (
-            <button
-              onClick={() => setShowDelivery(true)}
-              className="w-full py-3.5 rounded-2xl bg-red-600 text-white font-semibold text-[14px] active:bg-red-700"
-            >
-              Zustellung erfassen
+            <button onClick={() => setShowDelivery(true)}
+              className="w-full py-3.5 rounded-2xl bg-red-600 text-white font-semibold text-[14px] active:bg-red-700">
+              Record delivery
             </button>
           )}
 
-          {/* Signed or Delivered: Send to accountant */}
           {['signed', 'delivered'].includes(rec.state) && !rec.sent_to_accountant && (
-            <button
-              onClick={handleSendToAccountant}
-              disabled={accountantLoading}
-              className="w-full py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50 disabled:opacity-50"
-            >
-              {accountantLoading ? 'Sende...' : 'An Steuerberater senden'}
+            <button onClick={handleSendToAccountant} disabled={accountantLoading}
+              className="w-full py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50 disabled:opacity-50">
+              {accountantLoading ? 'Sending...' : 'Send to accountant'}
             </button>
           )}
 
           {rec.sent_to_accountant && (
             <div className="text-center text-[12px] text-green-600 font-medium py-2">
-              \u2713 An Steuerberater gesendet
+              \u2713 Sent to accountant
             </div>
           )}
         </div>
       </div>
+
+      {/* PDF Viewer modal */}
+      {showPdf && pdfBase64 && (
+        <PdfViewer
+          fileData={pdfBase64}
+          fileName={`Termination_${rec.employee_name.replace(/\s+/g, '_')}.pdf`}
+          onClose={() => setShowPdf(false)}
+        />
+      )}
     </div>
   );
 }

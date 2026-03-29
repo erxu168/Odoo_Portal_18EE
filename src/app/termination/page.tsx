@@ -79,8 +79,8 @@ export default function TerminationPage() {
                   <HomeIcon />
                 </button>
                 <div className="flex-1">
-                  <h1 className="text-[20px] font-bold text-white">K{'\u00fc'}ndigungen</h1>
-                  <p className="text-[12px] text-white/45 mt-0.5">Termination Management</p>
+                  <h1 className="text-[20px] font-bold text-white">Terminations</h1>
+                  <p className="text-[12px] text-white/45 mt-0.5">Employee termination management</p>
                 </div>
               </div>
             </div>
