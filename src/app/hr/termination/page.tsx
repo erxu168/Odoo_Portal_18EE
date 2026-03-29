@@ -7,10 +7,6 @@ import TermList from '@/components/termination/TermList';
 import TermDetail from '@/components/termination/TermDetail';
 import NewTermWizard from '@/components/termination/NewTermWizard';
 
-/**
- * Termination module — Admin only.
- * Screen state machine, same pattern as manufacturing/page.tsx.
- */
 type Screen =
   | { type: 'dashboard' }
   | { type: 'list'; filter?: string }
@@ -91,7 +87,7 @@ export default function TerminationPage() {
       case 'dashboard':
         return (
           <>
-            <Header title="Kuendigungen" subtitle="Personalverwaltung" />
+            <Header title="Termination" subtitle="HR Management" />
             <TermDashboard onNavigate={handleDashboardNav} />
           </>
         );
