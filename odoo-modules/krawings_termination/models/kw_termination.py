@@ -6,9 +6,6 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
-# -------------------------------------------------------------------
-# Section 622 BGB - Statutory notice periods (employer -> employee)
-# -------------------------------------------------------------------
 BGB_622_PERIODS = [
     (20, 7, '7 Monate zum Monatsende', '7 months to end of month'),
     (15, 6, '6 Monate zum Monatsende', '6 months to end of month'),
@@ -204,16 +201,13 @@ class KwTermination(models.Model):
             if rec.termination_type == 'fristlos':
                 rec.notice_period_text = 'Sofort (fristlos)'
                 rec.last_working_day = rec.letter_date
-
             elif rec.termination_type == 'aufhebung':
                 rec.notice_period_text = 'Einvernehmlich vereinbart'
-
             elif rec.termination_type == 'bestaetigung':
                 ref = rec.resignation_received_date or rec.letter_date
                 period_text, lwd = self._calc_employee_notice(ref)
                 rec.notice_period_text = period_text
                 rec.last_working_day = lwd
-
             elif rec.termination_type in ('ordentlich', 'ordentlich_probezeit'):
                 if rec.in_probation or rec.termination_type == 'ordentlich_probezeit':
                     rec.notice_period_text, rec.last_working_day = \
@@ -403,7 +397,7 @@ class KwTermination(models.Model):
             'krawings_termination.accountant_email', ''
         )
         if not accountant_email:
-            raise UserError(_('Steuerberater-E-Mail nicht konfiguriert. Gehen Sie zu Einstellungen > K\u00fcndigung.'))
+            raise UserError(_('Steuerberater-E-Mail nicht konfiguriert.'))
 
         subject_template = self.env['ir.config_parameter'].sudo().get_param(
             'krawings_termination.email_subject_template',
@@ -434,10 +428,53 @@ class KwTermination(models.Model):
         )
 
     # -----------------------------------------------------------------
-    # Odoo Sign Integration
+    # Odoo Sign Integration with positioned signature + date fields
     # -----------------------------------------------------------------
+    def _get_sign_item_positions(self):
+        """Return sign item positions based on termination type.
+
+        Each item is a dict with:
+            role: 'hr' or 'employee'
+            type: 'signature' or 'date'
+            page, posX, posY, width, height
+        
+        Positions are percentages of the page (0.0 to 1.0).
+        These are calibrated for the self-contained letter layout
+        with custom A4 paper format (margin-top 10mm).
+        """
+        if self.termination_type == 'aufhebung':
+            # Aufhebungsvertrag: two signature blocks side by side at bottom
+            return [
+                # Employer signature (left)
+                {'role': 'hr', 'type': 'signature',
+                 'page': 1, 'posX': 0.05, 'posY': 0.82, 'width': 0.22, 'height': 0.05},
+                # Employer date (left, below sig)
+                {'role': 'hr', 'type': 'date',
+                 'page': 1, 'posX': 0.05, 'posY': 0.88, 'width': 0.15, 'height': 0.02},
+                # Employee signature (right)
+                {'role': 'employee', 'type': 'signature',
+                 'page': 1, 'posX': 0.52, 'posY': 0.82, 'width': 0.22, 'height': 0.05},
+                # Employee date (right, below sig)
+                {'role': 'employee', 'type': 'date',
+                 'page': 1, 'posX': 0.52, 'posY': 0.88, 'width': 0.15, 'height': 0.02},
+            ]
+        else:
+            # Ordentliche/Fristlose/Bestaetigung: employer sig in body,
+            # employee sig in Empfangsbestaetigung section
+            return [
+                # Employer signature (above "Geschaeftsfuehrung")
+                {'role': 'hr', 'type': 'signature',
+                 'page': 1, 'posX': 0.05, 'posY': 0.62, 'width': 0.22, 'height': 0.05},
+                # Employee date ("Ort, Datum" - left in Empfangsbestaetigung)
+                {'role': 'employee', 'type': 'date',
+                 'page': 1, 'posX': 0.05, 'posY': 0.85, 'width': 0.18, 'height': 0.02},
+                # Employee signature ("Unterschrift" - right in Empfangsbestaetigung)
+                {'role': 'employee', 'type': 'signature',
+                 'page': 1, 'posX': 0.50, 'posY': 0.82, 'width': 0.22, 'height': 0.05},
+            ]
+
     def action_sign_and_send(self):
-        """Create a sign.template from the PDF and send for signing."""
+        """Create a sign.template with positioned fields and send for signing."""
         self.ensure_one()
         if not self.pdf_attachment_id:
             raise UserError(_('Noch kein PDF erstellt. Bitte zuerst die K\u00fcndigung best\u00e4tigen.'))
@@ -467,13 +504,50 @@ class KwTermination(models.Model):
         if not hr_role or not emp_role:
             raise UserError(_('Signatur-Rollen "HR Responsible" und "Employee" m\u00fcssen existieren.'))
 
-        # Build the filename from the attachment
+        # Get sign item type IDs
+        sig_type = self.env['sign.item.type'].search([('item_type', '=', 'signature')], limit=1)
+        date_type = self.env['sign.item.type'].search([('name', '=', 'Date')], limit=1)
+        if not sig_type:
+            raise UserError(_('Sign-Typ "Signature" nicht gefunden.'))
+        if not date_type:
+            # Fallback: use text type
+            date_type = self.env['sign.item.type'].search([('name', '=', 'Text')], limit=1)
+
+        # Add sign items (signature + date fields) to the template
+        role_map = {
+            'hr': hr_role.id,
+            'employee': emp_role.id,
+        }
+        type_map = {
+            'signature': sig_type.id,
+            'date': date_type.id,
+        }
+
+        positions = self._get_sign_item_positions()
+        for pos in positions:
+            self.env['sign.item'].create({
+                'template_id': sign_template.id,
+                'type_id': type_map[pos['type']],
+                'responsible_id': role_map[pos['role']],
+                'required': True,
+                'page': pos['page'],
+                'posX': pos['posX'],
+                'posY': pos['posY'],
+                'width': pos['width'],
+                'height': pos['height'],
+            })
+
+        _logger.info(
+            'Created %d sign items on template %s for termination %s',
+            len(positions), sign_template.id, self.id,
+        )
+
+        # Build the filename
         sign_filename = self.pdf_attachment_id.name or 'Kuendigung_%s.pdf' % (
             self.employee_name.replace(' ', '_'),
         )
 
         # Create the sign request via wizard
-        # The filename field is mandatory in sign.send.request
         send_wizard = self.env['sign.send.request'].create({
             'template_id': sign_template.id,
             'filename': sign_filename,
