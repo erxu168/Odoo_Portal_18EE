@@ -109,6 +109,26 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     }
   }
 
+  async function handlePrintPdf() {
+    try {
+      const res = await fetch(`/api/termination/${id}/pdf`);
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const printWindow = window.open(url, '_blank');
+        if (printWindow) {
+          printWindow.addEventListener('load', () => {
+            setTimeout(() => printWindow.print(), 500);
+          });
+        }
+      } else {
+        alert('No PDF available');
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Error');
+    }
+  }
+
   async function handleMarkSigned() {
     if (!confirm('Mark as signed?')) return;
     try {
@@ -273,12 +293,20 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </button>
           )}
 
+          {/* View + Print row */}
           {rec.pdf_attachment_id && (
-            <button onClick={handleViewPdf}
-              className="w-full py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-              View PDF
-            </button>
+            <div className="flex gap-2">
+              <button onClick={handleViewPdf}
+                className="flex-1 py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                View
+              </button>
+              <button onClick={handlePrintPdf}
+                className="flex-1 py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Print
+              </button>
+            </div>
           )}
 
           {rec.state === 'confirmed' && rec.pdf_attachment_id && (
@@ -304,7 +332,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
 
           {rec.sent_to_accountant && (
             <div className="text-center text-[12px] text-green-600 font-medium py-2">
-              \u2713 Sent to accountant
+              {'\u2713'} Sent to accountant
             </div>
           )}
         </div>
