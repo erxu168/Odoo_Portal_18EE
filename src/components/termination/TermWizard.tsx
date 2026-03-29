@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { TERMINATION_TYPE_LABELS, type TerminationType } from '@/types/termination';
+import { useCompany } from '@/lib/company-context';
 import PdfViewer from '@/components/ui/PdfViewer';
 
 interface Employee {
@@ -24,6 +25,7 @@ interface TermWizardProps {
 type Step = 'employee' | 'type' | 'details' | 'preview';
 
 export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProps) {
+  const { companyId } = useCompany();
   const [step, setStep] = useState<Step>('employee');
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState('');
@@ -37,35 +39,35 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
   const [letterDate, setLetterDate] = useState(new Date().toISOString().split('T')[0]);
   const [calcMethod, setCalcMethod] = useState<'bgb' | 'receipt'>('bgb');
   const [receiptDate, setReceiptDate] = useState('');
-  // Fristlose
   const [incidentDate, setIncidentDate] = useState('');
   const [incidentDescription, setIncidentDescription] = useState('');
-  // Aufhebung
   const [lastWorkingDayManual, setLastWorkingDayManual] = useState('');
   const [includeSeverance, setIncludeSeverance] = useState(false);
   const [severanceAmount, setSeveranceAmount] = useState('');
   const [gardenLeave, setGardenLeave] = useState(false);
-  // Bestaetigung
   const [resignationDate, setResignationDate] = useState('');
 
   // Preview
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
   const [showPdfViewer, setShowPdfViewer] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
-  // Server-computed fields from preview creation
   const [computedNoticePeriod, setComputedNoticePeriod] = useState('');
   const [computedLastDay, setComputedLastDay] = useState('');
+  const [createdRecordId, setCreatedRecordId] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/termination/employees');
+        const url = companyId
+          ? `/api/termination/employees?company_id=${companyId}`
+          : '/api/termination/employees';
+        const res = await fetch(url);
         const json = await res.json();
         setEmployees(json.data || []);
       } catch { /* ignore */ }
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [companyId]);
 
   const filteredEmployees = employees.filter(e =>
     !search || e.name.toLowerCase().includes(search.toLowerCase()),
@@ -113,7 +115,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
     setPreviewLoading(true);
     setError('');
     try {
-      // First create a temporary record to get computed dates
       const body = buildFormBody();
       const createRes = await fetch('/api/termination', {
         method: 'POST',
@@ -127,7 +128,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
       setComputedNoticePeriod(rec.notice_period_text || '');
       setComputedLastDay(rec.last_working_day || '');
 
-      // Now generate preview PDF with the server-computed data
       const previewBody = {
         ...body,
         notice_period_text: rec.notice_period_text,
@@ -145,7 +145,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
       if (!pdfJson.ok) throw new Error(pdfJson.error || 'PDF preview failed');
 
       setPdfBase64(pdfJson.pdfBase64);
-      // Store the created record ID for later confirmation
       setCreatedRecordId(rec.id);
       setStep('preview');
     } catch (err: unknown) {
@@ -155,19 +154,15 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
     }
   }
 
-  const [createdRecordId, setCreatedRecordId] = useState<number | null>(null);
-
   async function handleConfirm() {
     if (!createdRecordId) return;
     setSubmitting(true);
     setError('');
     try {
-      // Confirm the record
       const confirmRes = await fetch(`/api/termination/${createdRecordId}/confirm`, { method: 'POST' });
       const confirmJson = await confirmRes.json();
       if (!confirmJson.ok) throw new Error(confirmJson.error || 'Confirmation failed');
 
-      // Store the PDF on the record
       const pdfRes = await fetch(`/api/termination/${createdRecordId}/pdf`, { method: 'POST' });
       if (!pdfRes.ok) {
         const pdfJson = await pdfRes.json();
@@ -183,7 +178,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
   }
 
   async function handleDiscard() {
-    // Delete the draft record if user goes back
     if (createdRecordId) {
       try {
         await fetch(`/api/termination/${createdRecordId}`, {
@@ -203,8 +197,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
     const [y, m, day] = d.split('-');
     return `${day}.${m}.${y}`;
   };
-
-  // --- Step renderers ---
 
   function renderStepEmployee() {
     return (
@@ -377,7 +369,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
   function renderStepPreview() {
     return (
       <div className="space-y-4">
-        {/* Summary card */}
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
           <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Employee</span><span className="text-[14px] font-medium">{selectedEmployee?.name}</span></div>
           <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Type</span><span className="text-[13px] font-medium">{termType ? TERMINATION_TYPE_LABELS[termType] : ''}</span></div>
@@ -386,7 +377,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
           <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Letter date</span><span className="text-[14px]">{formatDate(letterDate)}</span></div>
         </div>
 
-        {/* Preview PDF button */}
         {pdfBase64 && (
           <button
             onClick={() => setShowPdfViewer(true)}
@@ -399,7 +389,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
 
         {error && <div className="bg-red-50 text-red-700 text-[13px] px-4 py-3 rounded-xl">{error}</div>}
 
-        {/* Confirm */}
         <button
           onClick={handleConfirm}
           disabled={submitting}
@@ -408,7 +397,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
           {submitting ? 'Creating...' : 'Confirm & create termination'}
         </button>
 
-        {/* Go back / discard */}
         <button
           onClick={handleDiscard}
           className="w-full py-3 rounded-xl bg-gray-100 text-gray-600 font-medium text-[14px] active:bg-gray-200"
@@ -416,7 +404,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
           Edit details
         </button>
 
-        {/* PDF Viewer modal */}
         {showPdfViewer && pdfBase64 && (
           <PdfViewer
             fileData={pdfBase64}
@@ -428,7 +415,6 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
     );
   }
 
-  // --- Layout ---
   const stepLabels: Record<Step, string> = {
     employee: '1. Select employee',
     type: '2. Termination type',

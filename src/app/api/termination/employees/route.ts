@@ -1,17 +1,24 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 
 /**
- * GET /api/termination/employees
- * List active employees for the termination wizard dropdown.
- * Returns: id, name, company_id, department, job_title, private address
+ * GET /api/termination/employees?company_id=5
+ * List active employees, optionally filtered by company.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const odoo = getOdoo();
+    const { searchParams } = new URL(req.url);
+
+    const domain: unknown[][] = [['active', '=', true]];
+    const companyId = searchParams.get('company_id');
+    if (companyId) {
+      domain.push(['company_id', '=', Number(companyId)]);
+    }
+
     const employees = await odoo.searchRead(
       'hr.employee',
-      [['active', '=', true]],
+      domain,
       [
         'id', 'name', 'company_id', 'department_id', 'job_title',
         'private_street', 'private_city', 'private_zip',

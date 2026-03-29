@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { TERMINATION_TYPE_LABELS, STATE_LABELS, type TerminationState } from '@/types/termination';
+import { useCompany } from '@/lib/company-context';
 
 interface Props {
   filter?: TerminationState[];
@@ -19,6 +20,7 @@ const STATE_COLORS: Record<string, string> = {
 };
 
 export default function TermList({ filter, onSelect, onHome }: Props) {
+  const { companyId } = useCompany();
   const [records, setRecords] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -26,13 +28,16 @@ export default function TermList({ filter, onSelect, onHome }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/termination?limit=500');
+        const url = companyId
+          ? `/api/termination?company_id=${companyId}&limit=500`
+          : '/api/termination?limit=500';
+        const res = await fetch(url);
         const json = await res.json();
         setRecords(json.data || []);
       } catch { /* ignore */ }
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [companyId]);
 
   const filtered = records.filter(r => {
     if (filter && !filter.includes(r.state)) return false;

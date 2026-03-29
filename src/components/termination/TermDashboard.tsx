@@ -1,19 +1,24 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useCompany } from '@/lib/company-context';
 
 interface TermDashboardProps {
   onNavigate: (screen: string) => void;
 }
 
 export default function TermDashboard({ onNavigate }: TermDashboardProps) {
+  const { companyId } = useCompany();
   const [stats, setStats] = useState({ draft: 0, confirmed: 0, signed: 0, delivered: 0, total: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/termination?limit=500');
+        const url = companyId
+          ? `/api/termination?company_id=${companyId}&limit=500`
+          : '/api/termination?limit=500';
+        const res = await fetch(url);
         const json = await res.json();
         const records = json.data || [];
         setStats({
@@ -26,7 +31,7 @@ export default function TermDashboard({ onNavigate }: TermDashboardProps) {
       } catch { /* ignore */ }
       finally { setLoading(false); }
     })();
-  }, []);
+  }, [companyId]);
 
   const tiles = [
     {
