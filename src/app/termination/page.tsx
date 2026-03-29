@@ -1,0 +1,125 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import TermDashboard from '@/components/termination/TermDashboard';
+import TermList from '@/components/termination/TermList';
+import type { TerminationState } from '@/types/termination';
+
+type Screen =
+  | { type: 'dashboard' }
+  | { type: 'list'; filter?: TerminationState[] }
+  | { type: 'wizard' }
+  | { type: 'detail'; id: number };
+
+export default function TerminationPage() {
+  const router = useRouter();
+  const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  const [history, setHistory] = useState<Screen[]>([]);
+
+  function navigate(s: Screen) {
+    setHistory(h => [...h, screen]);
+    setScreen(s);
+  }
+
+  function goBack() {
+    setHistory(h => {
+      const prev = h[h.length - 1];
+      if (prev) {
+        setScreen(prev);
+        return h.slice(0, -1);
+      }
+      setScreen({ type: 'dashboard' });
+      return [];
+    });
+  }
+
+  function goHome() {
+    router.push('/');
+  }
+
+  function goDashboard() {
+    setHistory([]);
+    setScreen({ type: 'dashboard' });
+  }
+
+  function handleDashboardNav(tile: string) {
+    switch (tile) {
+      case 'new':
+        navigate({ type: 'wizard' });
+        break;
+      case 'active':
+        navigate({ type: 'list', filter: ['draft', 'confirmed'] });
+        break;
+      case 'signed':
+        navigate({ type: 'list', filter: ['signed'] });
+        break;
+      case 'history':
+        navigate({ type: 'list' });
+        break;
+    }
+  }
+
+  const HomeIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
+
+  function renderScreen() {
+    switch (screen.type) {
+      case 'dashboard':
+        return (
+          <>
+            <div className="bg-[#DC2626] px-5 pt-12 pb-3 rounded-b-[28px]">
+              <div className="flex items-center gap-3">
+                <button onClick={goHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20"><HomeIcon /></button>
+                <div className="flex-1"><h1 className="text-[20px] font-bold text-white">K\u00fcndigungen</h1><p className="text-[12px] text-white/45 mt-0.5">Termination Management</p></div>
+              </div>
+            </div>
+            <TermDashboard onNavigate={handleDashboardNav} />
+          </>
+        );
+
+      case 'list':
+        return (
+          <TermList
+            filter={screen.filter}
+            onSelect={id => navigate({ type: 'detail', id })}
+            onHome={goDashboard}
+          />
+        );
+
+      case 'wizard':
+        return (
+          <div className="px-5 pt-12">
+            <div className="flex items-center gap-3 mb-6">
+              <button onClick={goBack} className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <h1 className="text-[20px] font-bold text-gray-900">Neue K\u00fcndigung</h1>
+            </div>
+            <p className="text-gray-500 text-sm">Wizard component coming next...</p>
+          </div>
+        );
+
+      case 'detail':
+        return (
+          <div className="px-5 pt-12">
+            <div className="flex items-center gap-3 mb-6">
+              <button onClick={goBack} className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <h1 className="text-[20px] font-bold text-gray-900">K\u00fcndigung #{screen.id}</h1>
+              <button onClick={goDashboard} className="ml-auto w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              </button>
+            </div>
+            <p className="text-gray-500 text-sm">Detail component coming next...</p>
+          </div>
+        );
+    }
+  }
+
+  return (
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      {renderScreen()}
+    </div>
+  );
+}

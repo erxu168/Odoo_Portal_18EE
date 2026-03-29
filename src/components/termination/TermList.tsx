@@ -1,106 +1,105 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useCompany } from '@/lib/company-context';
-import { ds, getBadgeStyle } from '@/lib/design-system';
-import AppHeader from '@/components/ui/AppHeader';
+import {
+  TERMINATION_TYPE_LABELS,
+  STATE_LABELS,
+  type TerminationRecord,
+  type TerminationState,
+} from '@/types/termination';
 
 interface TermListProps {
-  initialFilter?: string;
+  filter?: TerminationState[];
   onSelect: (id: number) => void;
   onHome: () => void;
 }
 
-export default function TermList({ initialFilter, onSelect, onHome }: TermListProps) {
-  const { companyId } = useCompany();
-  const [records, setRecords] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState(initialFilter || 'all');
-  const [search, setSearch] = useState('');
+const STATE_COLORS: Record<TerminationState, string> = {
+  draft: 'bg-gray-100 text-gray-700',
+  confirmed: 'bg-blue-100 text-blue-700',
+  signed: 'bg-green-100 text-green-700',
+  delivered: 'bg-emerald-100 text-emerald-700',
+  archived: 'bg-gray-200 text-gray-500',
+  cancelled: 'bg-red-100 text-red-600',
+};
 
-  const filters = [
-    { key: 'all', label: 'All' },
-    { key: 'draft', label: 'Draft' },
-    { key: 'confirmed', label: 'Confirmed' },
-    { key: 'signed', label: 'Signed' },
-    { key: 'archived', label: 'Archived' },
-    { key: 'cancelled', label: 'Cancelled' },
-  ];
+export default function TermList({ filter, onSelect, onHome }: TermListProps) {
+  const [records, setRecords] = useState<TerminationRecord[]>([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!companyId) return;
-    setLoading(true);
-    const params = new URLSearchParams();
-    params.set('company_id', String(companyId));
-    params.set('limit', '100');
-    if (filter !== 'all') params.set('state', filter);
-    if (search) params.set('search', search);
-    fetch(`/api/hr/termination?${params}`)
-      .then(r => r.json())
-      .then(data => setRecords(data.records || []))
-      .catch(() => setRecords([]))
-      .finally(() => setLoading(false));
-  }, [companyId, filter, search]);
+    (async () => {
+      try {
+        const res = await fetch('/api/termination?limit=500');
+        const json = await res.json();
+        let data = json.data || [];
+        if (filter && filter.length > 0) {
+          data = data.filter((r: TerminationRecord) => filter.includes(r.state));
+        }
+        setRecords(data);
+      } catch { /* ignore */ }
+      finally { setLoading(false); }
+    })();
+  }, [filter]);
 
-  function formatDate(d: string | false): string {
-    if (!d) return '---';
-    const parts = d.split('-');
-    return `${parts[2]}.${parts[1]}.${parts[0]}`;
-  }
-
-  const typeLabels: Record<string, string> = {
-    ordentlich: 'Standard', ordentlich_probezeit: 'Probation',
-    fristlos: 'Immediate', aufhebung: 'Mutual Agreement', bestaetigung: 'Confirmation',
-  };
-  const stateLabels: Record<string, string> = {
-    draft: 'Draft', confirmed: 'Confirmed', signed: 'Signed',
-    archived: 'Archived', cancelled: 'Cancelled',
-  };
-  const stateBadgeMap: Record<string, string> = {
-    draft: 'draft', confirmed: 'confirmed', signed: 'done', archived: 'neutral', cancelled: 'cancel',
-  };
+  const filtered = records.filter(r =>
+    !search || r.employee_name?.toLowerCase().includes(search.toLowerCase()),
+  );
 
   return (
-    <>
-      <AppHeader title="Terminations" subtitle="All records" showBack onBack={onHome} />
-      <div className="px-4 pt-3 pb-1">
-        <input className={ds.input} type="text" placeholder="Search employee..." value={search} onChange={e => setSearch(e.target.value)} />
+    <div>
+      <div className="bg-[#DC2626] px-5 pt-12 pb-3 rounded-b-[28px]">
+        <div className="flex items-center gap-3">
+          <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          </button>
+          <h1 className="text-[20px] font-bold text-white">K\u00fcndigungen</h1>
+        </div>
+        <div className="mt-3">
+          <input
+            type="text"
+            placeholder="Mitarbeiter suchen..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full px-4 py-2.5 rounded-xl bg-white/15 text-white placeholder-white/50 text-[14px] border border-white/10 focus:outline-none focus:ring-2 focus:ring-white/30"
+          />
+        </div>
       </div>
-      <div className={ds.filterBar}>
-        {filters.map(f => (
-          <button key={f.key} onClick={() => setFilter(f.key)} className={filter === f.key ? ds.filterTabActive : ds.filterTabInactive}>{f.label}</button>
-        ))}
-      </div>
-      <div className="px-4 pb-20">
+      <div className="px-4 py-3">
         {loading ? (
-          <div className="flex justify-center py-16"><div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" /></div>
-        ) : records.length === 0 ? (
-          <div className={ds.emptyState}>
-            <div className={ds.emptyIcon}>{'\uD83D\uDCCB'}</div>
-            <div className={ds.emptyTitle}>No terminations</div>
-            <div className={ds.emptyBody}>No records found.</div>
+          <div className="flex justify-center py-16">
+            <div className="w-7 h-7 border-2 border-gray-300 border-t-red-600 rounded-full animate-spin" />
           </div>
+        ) : filtered.length === 0 ? (
+          <p className="text-center text-gray-400 py-12">Keine K\u00fcndigungen gefunden</p>
         ) : (
-          <div className="space-y-2 mt-2">
-            {records.map((r: any) => (
-              <button key={r.id} onClick={() => onSelect(r.id)} className={`${ds.cardHover} w-full text-left p-3.5`}>
+          <div className="space-y-2">
+            {filtered.map(r => (
+              <button
+                key={r.id}
+                onClick={() => onSelect(r.id)}
+                className="w-full bg-white rounded-xl border border-gray-200 p-4 text-left active:bg-gray-50 transition-colors"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-[14px] font-semibold text-gray-900 truncate">{r.employee_name}</span>
-                  <span className="text-[11px] text-gray-400 font-medium">KW-{r.id}</span>
-                </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold" style={getBadgeStyle(stateBadgeMap[r.state] || 'neutral')}>{stateLabels[r.state] || r.state}</span>
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold" style={getBadgeStyle('neutral')}>{typeLabels[r.termination_type] || r.termination_type}</span>
-                </div>
-                <div className="text-[11px] text-gray-500 mt-1.5">
-                  {formatDate(r.letter_date)}
-                  {r.last_working_day && <> &middot; Last day: {formatDate(r.last_working_day)}</>}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[14px] font-semibold text-gray-900 truncate">{r.employee_name}</div>
+                    <div className="text-[12px] text-gray-500 mt-0.5">
+                      {TERMINATION_TYPE_LABELS[r.termination_type]} \u2022 {r.letter_date}
+                    </div>
+                    {r.last_working_day && (
+                      <div className="text-[11px] text-gray-400 mt-0.5">Letzter Tag: {r.last_working_day}</div>
+                    )}
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${STATE_COLORS[r.state]}`}>
+                    {STATE_LABELS[r.state]}
+                  </span>
                 </div>
               </button>
             ))}
           </div>
         )}
       </div>
-    </>
+    </div>
   );
 }
