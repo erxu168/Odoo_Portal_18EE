@@ -24,32 +24,27 @@ export async function POST(
     const odoo = getOdoo();
     const numId = Number(id);
 
-    // Read termination record
     const records = await odoo.read(MODEL, [numId], TERMINATION_DETAIL_FIELDS);
     if (!records || records.length === 0) {
       return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
     }
     const rec = records[0];
 
-    // Read company data + logo
     const companyId = rec.company_id[0];
     const companies = await odoo.read('res.company', [companyId], [
       'name', 'street', 'zip', 'city', 'phone', 'email', 'vat', 'logo',
     ]);
     const company = companies[0];
 
-    // Read employee gender
     const empId = rec.employee_id[0];
     const employees = await odoo.read('hr.employee', [empId], ['gender']);
     const empGender = employees[0]?.gender || 'other';
 
-    // Build logo data URI
     let logoBase64: string | null = null;
     if (company.logo) {
       logoBase64 = `data:image/png;base64,${company.logo}`;
     }
 
-    // Build letter HTML
     const html = buildLetterHtml({
       companyName: company.name || '',
       companyStreet: company.street || '',
@@ -76,10 +71,8 @@ export async function POST(
       resignationReceivedDate: formatDate(rec.resignation_received_date),
     });
 
-    // Generate PDF via wkhtmltopdf
     const pdfBuffer = await generatePdf(html);
 
-    // Store in Odoo as attachment
     const filename = `Kuendigung_${(rec.employee_name || 'X').replace(/\s+/g, '_')}_${rec.letter_date}.pdf`;
     const attachmentId = await odoo.create('ir.attachment', {
       name: filename,
@@ -90,18 +83,15 @@ export async function POST(
       mimetype: 'application/pdf',
     });
 
-    // Link to termination record
     await odoo.write(MODEL, [numId], { pdf_attachment_id: attachmentId });
 
-    // Post to chatter
     await odoo.call(MODEL, 'message_post', [numId], {
       body: 'PDF erstellt.',
       message_type: 'comment',
       attachment_ids: [attachmentId],
     });
 
-    // Return the PDF
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
@@ -144,7 +134,7 @@ export async function GET(
     }
 
     const pdfBuffer = Buffer.from(attachments[0].datas, 'base64');
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
