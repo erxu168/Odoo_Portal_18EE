@@ -1,15 +1,14 @@
 {
     "name": "Krawings Document Layout",
-    "summary": "Clean, minimal letterhead for all Krawings companies. "
-               "Adaptive footer shows only fields that have data.",
+    "summary": "Clean, minimal letterhead. Inherits DIN 5008 and overrides "
+               "header + footer styling. Adaptive footer shows only "
+               "fields that have data.",
     "author": "Krawings GmbH",
     "category": "Base",
-    "version": "18.0.1.0.1",
-    "depends": ["base", "web", "l10n_din5008"],
+    "version": "18.0.2.0.0",
+    "depends": ["l10n_din5008"],
     "data": [
-        "data/paper_format.xml",
         "views/report_templates.xml",
-        "data/report_layout.xml",
     ],
     "assets": {
         "web.report_assets_common": [
