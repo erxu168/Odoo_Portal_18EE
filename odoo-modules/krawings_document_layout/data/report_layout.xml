@@ -7,7 +7,6 @@
             <field name="name">Krawings</field>
             <field name="sequence">9</field>
             <field name="view_id" ref="krawings_document_layout.external_layout_krawings"/>
-            <field name="image">/krawings_document_layout/static/description/icon.png</field>
         </record>
 
     </data>

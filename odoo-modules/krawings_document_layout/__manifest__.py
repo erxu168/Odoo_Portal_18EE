@@ -4,12 +4,12 @@
                "Adaptive footer shows only fields that have data.",
     "author": "Krawings GmbH",
     "category": "Base",
-    "version": "18.0.1.0.0",
+    "version": "18.0.1.0.1",
     "depends": ["base", "web", "l10n_din5008"],
     "data": [
         "data/paper_format.xml",
-        "data/report_layout.xml",
         "views/report_templates.xml",
+        "data/report_layout.xml",
     ],
     "assets": {
         "web.report_assets_common": [
