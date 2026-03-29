@@ -33,8 +33,16 @@ TERMINATION_STATES = [
     ('draft', 'Entwurf'),
     ('confirmed', 'Best\u00e4tigt'),
     ('signed', 'Unterschrieben'),
+    ('delivered', 'Zugestellt'),
     ('archived', 'Archiviert'),
     ('cancelled', 'Storniert'),
+]
+
+DELIVERY_METHODS = [
+    ('einschreiben_rueckschein', 'Einschreiben mit R\u00fcckschein'),
+    ('einwurf_einschreiben', 'Einwurf-Einschreiben'),
+    ('personal', 'Pers\u00f6nliche \u00dcbergabe'),
+    ('bote', 'Bote (mit Zeuge)'),
 ]
 
 
@@ -45,6 +53,7 @@ class KwTermination(models.Model):
     _order = 'letter_date desc, id desc'
     _rec_name = 'display_name'
 
+    # --- Core fields ---
     employee_id = fields.Many2one(
         'hr.employee', string='Employee', required=True,
         tracking=True, ondelete='restrict',
@@ -65,6 +74,7 @@ class KwTermination(models.Model):
         default='draft', required=True, tracking=True,
     )
 
+    # --- Dates ---
     letter_date = fields.Date(
         string='Datum des Schreibens', default=fields.Date.today,
         required=True, tracking=True,
@@ -85,6 +95,7 @@ class KwTermination(models.Model):
         store=True, readonly=True,
     )
 
+    # --- Employee info ---
     employee_name = fields.Char(
         related='employee_id.name', store=True, string='Mitarbeitername',
     )
@@ -104,6 +115,7 @@ class KwTermination(models.Model):
         string='Probezeit bis', compute='_compute_employee_info', store=True,
     )
 
+    # --- Fristlose fields ---
     incident_date = fields.Date(string='Datum des Vorfalls')
     incident_description = fields.Text(string='Beschreibung des Vorfalls (intern)')
     incident_overdue = fields.Boolean(
@@ -111,6 +123,7 @@ class KwTermination(models.Model):
         compute='_compute_incident_overdue', store=True,
     )
 
+    # --- Aufhebung fields ---
     include_severance = fields.Boolean(string='Abfindung einschlie\u00dfen')
     severance_amount = fields.Float(string='Abfindungsbetrag')
     garden_leave = fields.Boolean(string='Freistellung')
@@ -119,6 +132,7 @@ class KwTermination(models.Model):
         ('3', 'Befriedigend'), ('4', 'Ausreichend'),
     ], string='Zeugnisnote', default='2')
 
+    # --- Bestaetigung fields ---
     resignation_received_date = fields.Date(string='K\u00fcndigung erhalten am')
     resignation_method = fields.Selection([
         ('letter', 'Brief'), ('email', 'E-Mail'), ('verbal', 'M\u00fcndlich'),
@@ -127,20 +141,61 @@ class KwTermination(models.Model):
         string='Schriftliche K\u00fcndigung mit Unterschrift erhalten',
     )
 
+    # --- PDF + Signature ---
     pdf_attachment_id = fields.Many2one('ir.attachment', string='Generiertes PDF')
     signed_pdf_attachment_id = fields.Many2one('ir.attachment', string='Unterschriebenes PDF')
     sign_request_id = fields.Many2one('sign.request', string='Signaturanfrage')
-    sign_state = fields.Selection([
-        ('not_started', 'Nicht gestartet'),
-        ('employer_signed', 'Arbeitgeber unterschrieben'),
-        ('fully_signed', 'Vollst\u00e4ndig unterschrieben'),
-    ], string='Signaturstatus', default='not_started', tracking=True)
 
+    # --- Delivery tracking (Zustellung) ---
+    delivery_method = fields.Selection(
+        DELIVERY_METHODS, string='Zustellungsart', tracking=True,
+    )
+    delivery_date = fields.Date(
+        string='Versanddatum / Zustelldatum', tracking=True,
+        help='Datum, an dem der Brief versandt oder pers\u00f6nlich \u00fcbergeben wurde',
+    )
+    delivery_tracking_number = fields.Char(
+        string='Sendungsnummer',
+        help='Sendungsverfolgungsnummer (Einschreiben)',
+    )
+    delivery_witness = fields.Char(
+        string='Zeuge',
+        help='Name des Zeugen bei pers\u00f6nlicher \u00dcbergabe oder Bote',
+    )
+    delivery_confirmed = fields.Boolean(
+        string='Zustellung best\u00e4tigt', tracking=True,
+        help='R\u00fcckschein erhalten oder Zustellung anderweitig best\u00e4tigt',
+    )
+    delivery_confirmed_date = fields.Date(
+        string='Zustellung best\u00e4tigt am', tracking=True,
+    )
+    delivery_notes = fields.Text(
+        string='Anmerkungen zur Zustellung',
+    )
+    delivery_proof_attachment_id = fields.Many2one(
+        'ir.attachment', string='Zustellnachweis',
+        help='R\u00fcckschein, Foto, Scan des Empfangsscheins o.\u00e4.',
+    )
+
+    # --- Employee Empfangsbestaetigung (optional) ---
+    empfang_received = fields.Boolean(
+        string='Empfangsbest\u00e4tigung erhalten', tracking=True,
+        help='Arbeitnehmer hat den Erhalt der K\u00fcndigung best\u00e4tigt (optional)',
+    )
+    empfang_date = fields.Date(string='Empfangsbest\u00e4tigung am')
+    empfang_attachment_id = fields.Many2one(
+        'ir.attachment', string='Unterschriebene Empfangsbest\u00e4tigung',
+    )
+
+    # --- Accountant ---
     sent_to_accountant = fields.Boolean(string='An Steuerberater gesendet')
     sent_to_accountant_date = fields.Datetime(string='Gesendet am')
 
     display_name = fields.Char(compute='_compute_display_name', store=True)
 
+    # =================================================================
+    # Computed fields
+    # =================================================================
     @api.depends('employee_name', 'termination_type', 'letter_date')
     def _compute_display_name(self):
         type_labels = dict(TERMINATION_TYPES)
@@ -228,7 +283,6 @@ class KwTermination(models.Model):
     def _calc_standard_notice(self, rec):
         tenure = rec.tenure_years or 0
         months = 0
-        desc_en = '4 weeks to 15th or end of month'
         desc_de = '4 Wochen zum 15. oder Monatsende'
         is_base = True
 
@@ -236,7 +290,6 @@ class KwTermination(models.Model):
             if tenure >= min_years:
                 months = period_months
                 desc_de = de
-                desc_en = en
                 is_base = False
                 break
 
@@ -246,7 +299,7 @@ class KwTermination(models.Model):
                 lwd = base + timedelta(days=28)
             else:
                 lwd = base + relativedelta(months=months)
-            return (desc_en, lwd)
+            return (desc_de, lwd)
         else:
             base = rec.letter_date
             if is_base:
@@ -304,6 +357,9 @@ class KwTermination(models.Model):
             self.employee_zip = emp.private_zip or ''
             self.company_id = emp.company_id
 
+    # =================================================================
+    # Actions
+    # =================================================================
     def action_confirm(self):
         self.ensure_one()
         if not self.last_working_day:
@@ -337,6 +393,41 @@ class KwTermination(models.Model):
         })
         self.write({'state': 'cancelled'})
 
+    def action_mark_delivered(self):
+        """Mark the termination letter as delivered to the employee."""
+        self.ensure_one()
+        if not self.delivery_method:
+            raise UserError(_('Bitte w\u00e4hlen Sie die Zustellungsart aus.'))
+        if not self.delivery_date:
+            raise UserError(_('Bitte geben Sie das Zustelldatum ein.'))
+
+        # For personal handover or Bote, require a witness
+        if self.delivery_method in ('personal', 'bote') and not self.delivery_witness:
+            raise UserError(_('Bei pers\u00f6nlicher \u00dcbergabe oder Bote ist ein Zeuge erforderlich.'))
+
+        self.write({'state': 'delivered'})
+        method_labels = dict(DELIVERY_METHODS)
+        msg = _('K\u00fcndigung zugestellt am %s per %s.') % (
+            self.delivery_date.strftime('%d.%m.%Y'),
+            method_labels.get(self.delivery_method, ''),
+        )
+        if self.delivery_tracking_number:
+            msg += _(' Sendungsnr.: %s') % self.delivery_tracking_number
+        if self.delivery_witness:
+            msg += _(' Zeuge: %s') % self.delivery_witness
+        self.message_post(body=msg)
+
+    def action_confirm_delivery_received(self):
+        """Mark that delivery confirmation was received (Rueckschein etc.)."""
+        self.ensure_one()
+        self.write({
+            'delivery_confirmed': True,
+            'delivery_confirmed_date': fields.Date.today(),
+        })
+        self.message_post(
+            body=_('Zustellungsbest\u00e4tigung erhalten am %s.') % fields.Date.today().strftime('%d.%m.%Y'),
+        )
+
     def action_archive_employee(self):
         self.ensure_one()
         self.employee_id.write({'active': False})
@@ -356,6 +447,9 @@ class KwTermination(models.Model):
             [('name', '=', name)], limit=1,
         )
 
+    # =================================================================
+    # PDF generation
+    # =================================================================
     def _generate_pdf(self):
         self.ensure_one()
         report_map = {
@@ -389,6 +483,9 @@ class KwTermination(models.Model):
         })
         self.pdf_attachment_id = attachment
 
+    # =================================================================
+    # Send to accountant
+    # =================================================================
     def action_send_to_accountant(self):
         self.ensure_one()
         if not self.pdf_attachment_id:
@@ -428,38 +525,31 @@ class KwTermination(models.Model):
             body=_('K\u00fcndigungsschreiben an Steuerberater gesendet: %s') % accountant_email,
         )
 
-    # -----------------------------------------------------------------
-    # Odoo Sign Integration with positioned signature + date fields
-    # -----------------------------------------------------------------
+    # =================================================================
+    # Odoo Sign - employer signature only
+    # =================================================================
     def _get_sign_item_positions(self):
-        """Return sign item positions based on termination type.
-        Positions are percentages of the page (0.0 to 1.0).
-        Calibrated for self-contained letter layout with custom A4 paper.
+        """Return sign item positions for EMPLOYER ONLY.
+        Employee does not sign digitally - letter is delivered physically.
         """
         if self.termination_type == 'aufhebung':
+            # Aufhebungsvertrag: employer signature left
             return [
-                {'role': 'hr', 'type': 'signature',
+                {'type': 'signature',
                  'page': 1, 'posX': 0.05, 'posY': 0.82, 'width': 0.22, 'height': 0.05},
-                {'role': 'hr', 'type': 'date',
+                {'type': 'date',
                  'page': 1, 'posX': 0.05, 'posY': 0.88, 'width': 0.15, 'height': 0.02},
-                {'role': 'employee', 'type': 'signature',
-                 'page': 1, 'posX': 0.52, 'posY': 0.82, 'width': 0.22, 'height': 0.05},
-                {'role': 'employee', 'type': 'date',
-                 'page': 1, 'posX': 0.52, 'posY': 0.88, 'width': 0.15, 'height': 0.02},
             ]
         else:
+            # Ordentliche/Fristlose/Bestaetigung: employer signature above Geschaeftsfuehrung
             return [
-                {'role': 'hr', 'type': 'signature',
+                {'type': 'signature',
                  'page': 1, 'posX': 0.05, 'posY': 0.62, 'width': 0.22, 'height': 0.05},
-                {'role': 'employee', 'type': 'date',
-                 'page': 1, 'posX': 0.05, 'posY': 0.85, 'width': 0.18, 'height': 0.02},
-                {'role': 'employee', 'type': 'signature',
-                 'page': 1, 'posX': 0.50, 'posY': 0.82, 'width': 0.22, 'height': 0.05},
             ]
 
-    def action_sign_and_send(self):
-        """Create a sign.template with positioned fields and send for signing.
-        Employer signs first (mail_sent_order=1), then employee (mail_sent_order=2).
+    def action_sign(self):
+        """Create a sign.template for EMPLOYER ONLY and open Odoo Sign.
+        After employer signs -> state becomes 'signed', signed PDF stored.
         """
         self.ensure_one()
         if not self.pdf_attachment_id:
@@ -470,22 +560,12 @@ class KwTermination(models.Model):
             'name': self.pdf_attachment_id.name,
         })
 
-        emp_partner = self.employee_id.work_contact_id or \
-            self.employee_id.address_home_id
-        if not emp_partner:
-            raise UserError(_(
-                'Mitarbeiter hat keinen Kontaktpartner. '
-                'Bitte einen Arbeitskontakt oder eine Heimadresse auf dem Mitarbeiterdatensatz setzen.'
-            ))
-
+        # Get HR role for employer
         hr_role = self.env['sign.item.role'].search(
             [('name', '=', 'HR Responsible')], limit=1,
         )
-        emp_role = self.env['sign.item.role'].search(
-            [('name', '=', 'Employee')], limit=1,
-        )
-        if not hr_role or not emp_role:
-            raise UserError(_('Signatur-Rollen "HR Responsible" und "Employee" m\u00fcssen existieren.'))
+        if not hr_role:
+            hr_role = self.env['sign.item.role'].search([], limit=1)
 
         sig_type = self.env['sign.item.type'].search([('item_type', '=', 'signature')], limit=1)
         date_type = self.env['sign.item.type'].search([('name', '=', 'Date')], limit=1)
@@ -494,7 +574,6 @@ class KwTermination(models.Model):
         if not date_type:
             date_type = self.env['sign.item.type'].search([('name', '=', 'Text')], limit=1)
 
-        role_map = {'hr': hr_role.id, 'employee': emp_role.id}
         type_map = {'signature': sig_type.id, 'date': date_type.id}
 
         positions = self._get_sign_item_positions()
@@ -502,7 +581,7 @@ class KwTermination(models.Model):
             self.env['sign.item'].create({
                 'template_id': sign_template.id,
                 'type_id': type_map[pos['type']],
-                'responsible_id': role_map[pos['role']],
+                'responsible_id': hr_role.id,
                 'required': True,
                 'page': pos['page'],
                 'posX': pos['posX'],
@@ -511,33 +590,23 @@ class KwTermination(models.Model):
                 'height': pos['height'],
             })
 
-        _logger.info(
-            'Created %d sign items on template %s for termination %s',
-            len(positions), sign_template.id, self.id,
-        )
-
         sign_filename = self.pdf_attachment_id.name or 'Kuendigung_%s.pdf' % (
             self.employee_name.replace(' ', '_'),
         )
 
-        # mail_sent_order: 1 = employer signs first, 2 = employee signs second
+        # Single signer: employer only
         send_wizard = self.env['sign.send.request'].create({
             'template_id': sign_template.id,
             'filename': sign_filename,
+            'signer_id': self.env.user.partner_id.id,
             'signer_ids': [
                 (0, 0, {
                     'role_id': hr_role.id,
                     'partner_id': self.env.user.partner_id.id,
                     'mail_sent_order': 1,
                 }),
-                (0, 0, {
-                    'role_id': emp_role.id,
-                    'partner_id': emp_partner.id,
-                    'mail_sent_order': 2,
-                }),
             ],
             'subject': 'K\u00fcndigung - %s' % self.employee_name,
-            'set_sign_order': True,
         })
         send_wizard.send_request()
 
@@ -547,10 +616,9 @@ class KwTermination(models.Model):
 
         self.write({
             'sign_request_id': sign_request.id if sign_request else False,
-            'sign_state': 'employer_signed',
         })
         self.message_post(
-            body=_('Signaturanfrage gesendet. Warte auf Unterschrift des Mitarbeiters.'),
+            body=_('Signaturanfrage erstellt. Bitte unterschreiben.'),
         )
 
         if sign_request:
@@ -560,11 +628,8 @@ class KwTermination(models.Model):
                 'target': 'self',
             }
 
-    # -----------------------------------------------------------------
-    # Sign completion: check status + process signed document
-    # -----------------------------------------------------------------
     def action_check_sign_status(self):
-        """Manual button to check sign request status and process completion."""
+        """Check if employer has signed and process the signed document."""
         self.ensure_one()
         if not self.sign_request_id:
             raise UserError(_('Keine Signaturanfrage vorhanden.'))
@@ -576,51 +641,46 @@ class KwTermination(models.Model):
                 'tag': 'display_notification',
                 'params': {
                     'title': _('Unterschrift abgeschlossen'),
-                    'message': _('Das unterschriebene Dokument wurde gespeichert.'),
+                    'message': _('Das unterschriebene Dokument wurde gespeichert. Sie k\u00f6nnen es jetzt ausdrucken und versenden.'),
                     'type': 'success',
                     'sticky': False,
                 },
             }
         else:
-            state_label = dict(self.sign_request_id._fields['state'].selection).get(
-                self.sign_request_id.state, self.sign_request_id.state
-            )
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
                     'title': _('Signaturstatus'),
-                    'message': _('Status: %s') % state_label,
+                    'message': _('Unterschrift steht noch aus.'),
                     'type': 'warning',
                     'sticky': False,
                 },
             }
 
     def _process_signed_document(self):
-        """Process a fully signed document:
-        1. Copy signed PDF to kw.termination record (as signed_pdf_attachment_id)
-        2. Replace the original pdf_attachment_id with the signed version
-        3. Store in Odoo Documents app with tags
-        4. Post signed PDF to the chatter
+        """Process employer-signed document:
+        1. Copy signed PDF to kw.termination
+        2. Store in Odoo Documents app
+        3. Post to chatter
+        4. Set state to 'signed'
         """
         self.ensure_one()
         sign_req = self.sign_request_id
         if not sign_req or sign_req.state != 'signed':
             return
 
-        if self.sign_state == 'fully_signed':
-            _logger.info('Termination %s already processed as fully signed', self.id)
+        if self.state == 'signed':
+            _logger.info('Termination %s already in signed state', self.id)
             return
 
-        # Get the signed document attachment from the sign request
         signed_attachments = sign_req.completed_document_attachment_ids
         if not signed_attachments:
-            _logger.warning('No completed document found for sign request %s', sign_req.id)
+            _logger.warning('No completed document for sign request %s', sign_req.id)
             return
 
-        signed_att = signed_attachments[0]  # Take the first completed document
+        signed_att = signed_attachments[0]
 
-        # 1. Create a copy of the signed attachment linked to our record
         signed_filename = 'Kuendigung_%s_%s_UNTERSCHRIEBEN.pdf' % (
             self.employee_name.replace(' ', '_'),
             self.letter_date.strftime('%Y-%m-%d'),
@@ -631,21 +691,17 @@ class KwTermination(models.Model):
             'res_id': self.id,
         })
 
-        # 2. Store as signed PDF and replace original
-        old_pdf = self.pdf_attachment_id
         self.write({
             'signed_pdf_attachment_id': new_attachment.id,
             'pdf_attachment_id': new_attachment.id,
-            'sign_state': 'fully_signed',
             'state': 'signed',
         })
 
-        # 3. Store in Odoo Documents app (if module is available)
+        # Store in Odoo Documents app
         try:
             if self.env['ir.module.module'].sudo().search([
                 ('name', '=', 'documents'), ('state', '=', 'installed')
             ]):
-                # Find or create a folder for terminations
                 folder = self.env['documents.folder'].sudo().search(
                     [('name', '=', 'Terminations')], limit=1
                 )
@@ -653,7 +709,6 @@ class KwTermination(models.Model):
                     folder = self.env['documents.folder'].sudo().create({
                         'name': 'Terminations',
                     })
-                # Find or create a tag
                 facet = self.env['documents.facet'].sudo().search(
                     [('name', '=', 'Document Type')], limit=1
                 )
@@ -665,7 +720,6 @@ class KwTermination(models.Model):
                         'name': 'Signed Termination',
                         'facet_id': facet.id,
                     })
-
                 doc_vals = {
                     'name': signed_filename,
                     'folder_id': folder.id,
@@ -677,28 +731,25 @@ class KwTermination(models.Model):
                 if tag:
                     doc_vals['tag_ids'] = [(4, tag.id)]
                 self.env['documents.document'].sudo().create(doc_vals)
-                _logger.info('Stored signed PDF in Documents app for termination %s', self.id)
         except Exception as e:
             _logger.warning('Could not store in Documents app: %s', e)
 
-        # 4. Post the signed PDF to the chatter
+        # Post to chatter
         self.message_post(
-            body=_('Unterschriebenes K\u00fcndigungsschreiben erhalten. Alle Parteien haben unterschrieben.'),
+            body=_('K\u00fcndigung unterschrieben. Bitte ausdrucken und per Post versenden.'),
             attachment_ids=[new_attachment.id],
         )
-        _logger.info('Processed signed document for termination %s', self.id)
 
     @api.model
     def _cron_check_sign_completion(self):
-        """Cron job: check all pending sign requests and process completed ones."""
+        """Cron: check pending sign requests and process completed ones."""
         pending = self.search([
-            ('sign_state', '=', 'employer_signed'),
+            ('state', '=', 'confirmed'),
             ('sign_request_id', '!=', False),
         ])
         for rec in pending:
             try:
                 if rec.sign_request_id.state == 'signed':
                     rec._process_signed_document()
-                    _logger.info('Cron: processed signed termination %s', rec.id)
             except Exception as e:
                 _logger.error('Cron: error processing termination %s: %s', rec.id, e)
