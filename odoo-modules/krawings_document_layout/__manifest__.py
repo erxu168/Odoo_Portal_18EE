@@ -1,11 +1,10 @@
 {
     "name": "Krawings Document Layout",
-    "summary": "Clean, minimal letterhead. Inherits DIN 5008 and overrides "
-               "header + footer styling. Adaptive footer shows only "
-               "fields that have data.",
+    "summary": "Letterhead via background image. Hides DIN 5008 header/footer "
+               "since the letterhead background already contains them.",
     "author": "Krawings GmbH",
     "category": "Base",
-    "version": "18.0.2.0.0",
+    "version": "18.0.3.0.0",
     "depends": ["l10n_din5008"],
     "data": [
         "views/report_templates.xml",

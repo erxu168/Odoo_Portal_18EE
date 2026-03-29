@@ -3,149 +3,40 @@
     <data>
 
         <!--
-            Krawings letterhead - inherits DIN 5008 layout.
+            Krawings letterhead via background image.
 
-            Instead of creating a new layout, we override the DIN 5008
-            header and footer via xpath. This keeps all l10n_din5008_*
-            sub-modules (sale, purchase, stock, account.move) working
-            and just restyles the visual appearance.
+            Each company has a custom PNG letterhead uploaded as
+            layout_background_image with layout_background = "Custom".
+            The background contains the header (company name, accent bar)
+            and footer (Kontakt, Handelsregister, Bank, Steuerdaten).
 
-            The footer is fully adaptive: columns only render when the
-            underlying company data exists.
+            This module hides the DIN 5008 header and footer content
+            so they don't render on top of the background image.
+            The address block and document info in the body remain
+            since those are dynamic per-document.
         -->
 
-        <!-- ============================================== -->
-        <!-- Override DIN 5008 HEADER                        -->
-        <!-- ============================================== -->
-        <template id="kw_din5008_header"
+        <!-- Hide DIN 5008 header content (background has it) -->
+        <template id="kw_hide_header"
                   inherit_id="l10n_din5008.external_layout_din5008"
-                  name="Krawings Header">
-
-            <!-- Replace the header table with our clean header -->
+                  name="Krawings: hide header content">
             <xpath expr="//table[hasclass('company_header')]" position="replace">
-                <div class="kw_header">
-                    <div class="kw_header_left">
-                        <div class="kw_company_name" t-field="company.name">Company</div>
-                        <div t-if="company.report_header" class="kw_tagline">
-                            <t t-out="company.report_header"/>
-                        </div>
-                    </div>
-                    <div t-if="company.logo" class="kw_header_right">
-                        <img t-att-src="image_data_uri(company.logo)"
-                             class="kw_logo"
-                             alt="Logo"/>
-                    </div>
-                </div>
-                <div class="kw_header_rule"/>
+                <!-- Empty: letterhead background has the header -->
+                <div style="height: 15mm;"/>
             </xpath>
-
         </template>
 
-
-        <!-- ============================================== -->
-        <!-- Override DIN 5008 FOOTER                        -->
-        <!-- ============================================== -->
-        <template id="kw_din5008_footer"
+        <!-- Hide DIN 5008 footer content (background has it) -->
+        <template id="kw_hide_footer"
                   inherit_id="l10n_din5008.external_layout_din5008"
-                  name="Krawings Footer">
-
-            <!-- Replace footer content with adaptive columns -->
+                  name="Krawings: hide footer content">
             <xpath expr="//div[hasclass('company_details')]" position="replace">
-                <div class="kw_footer_columns">
-
-                    <!-- Column: Contact / Address (always shown) -->
-                    <div class="kw_footer_col">
-                        <div class="kw_footer_col_title">Kontakt</div>
-                        <div class="kw_footer_col_body">
-                            <span t-field="company.name"/><br/>
-                            <t t-if="company.street">
-                                <span t-field="company.street"/><br/>
-                            </t>
-                            <t t-if="company.street2">
-                                <span t-field="company.street2"/><br/>
-                            </t>
-                            <t t-if="company.zip or company.city">
-                                <t t-if="company.zip"><span t-field="company.zip"/> </t>
-                                <t t-if="company.city"><span t-field="company.city"/></t>
-                                <br/>
-                            </t>
-                            <t t-if="company.phone">
-                                Tel: <span t-field="company.phone"/><br/>
-                            </t>
-                            <t t-if="company.mobile and not company.phone">
-                                Tel: <span t-field="company.mobile"/><br/>
-                            </t>
-                            <t t-if="company.email">
-                                <span t-field="company.email"/>
-                            </t>
-                        </div>
-                    </div>
-
-                    <!-- Column: Handelsregister (only for registered entities) -->
-                    <t t-if="company.company_registry or company.company_details">
-                        <div class="kw_footer_col">
-                            <div class="kw_footer_col_title">Handelsregister</div>
-                            <div class="kw_footer_col_body">
-                                <t t-if="company.company_details">
-                                    <span t-field="company.company_details"/>
-                                </t>
-                                <t t-if="company.company_registry">
-                                    <br t-if="company.company_details"/>
-                                    <span t-field="company.company_registry"/>
-                                </t>
-                            </div>
-                        </div>
-                    </t>
-
-                    <!-- Column: Bank details (only if bank accounts exist) -->
-                    <t t-if="company.partner_id.bank_ids">
-                        <div class="kw_footer_col">
-                            <div class="kw_footer_col_title">Bankverbindung</div>
-                            <div class="kw_footer_col_body">
-                                <t t-set="bank" t-value="company.partner_id.bank_ids[0]"/>
-                                <t t-if="bank.bank_id.name">
-                                    <span t-out="bank.bank_id.name"/><br/>
-                                </t>
-                                <t t-if="bank.bank_name and not bank.bank_id.name">
-                                    <span t-out="bank.bank_name"/><br/>
-                                </t>
-                                <t t-if="bank.acc_number">
-                                    IBAN: <span t-out="bank.acc_number"/><br/>
-                                </t>
-                                <t t-if="bank.bank_id.bic">
-                                    BIC: <span t-out="bank.bank_id.bic"/>
-                                </t>
-                                <t t-if="bank.bank_bic and not bank.bank_id.bic">
-                                    BIC: <span t-out="bank.bank_bic"/>
-                                </t>
-                            </div>
-                        </div>
-                    </t>
-
-                    <!-- Column: Tax IDs (only if at least one exists) -->
-                    <t t-if="company.vat">
-                        <div class="kw_footer_col">
-                            <div class="kw_footer_col_title">Steuerdaten</div>
-                            <div class="kw_footer_col_body">
-                                <t t-if="company.vat">
-                                    <t t-out="company.account_fiscal_country_id.vat_label or 'USt-IdNr.'"/>:
-                                    <span t-if="forced_vat" t-out="forced_vat"/>
-                                    <span t-else="" t-field="company.vat"/>
-                                </t>
-                            </div>
-                        </div>
-                    </t>
-
-                </div>
+                <!-- Empty: letterhead background has the footer -->
+                <div/>
             </xpath>
-
-            <!-- Replace page number styling -->
             <xpath expr="//div[hasclass('page_number')]" position="replace">
-                <div class="kw_page_number">
-                    Seite <span class="page"/> von <span class="topage"/>
-                </div>
+                <div/>
             </xpath>
-
         </template>
 
     </data>
