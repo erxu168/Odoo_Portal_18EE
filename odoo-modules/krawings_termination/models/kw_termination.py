@@ -128,6 +128,7 @@ class KwTermination(models.Model):
     )
 
     pdf_attachment_id = fields.Many2one('ir.attachment', string='Generiertes PDF')
+    signed_pdf_attachment_id = fields.Many2one('ir.attachment', string='Unterschriebenes PDF')
     sign_request_id = fields.Many2one('sign.request', string='Signaturanfrage')
     sign_state = fields.Selection([
         ('not_started', 'Nicht gestartet'),
@@ -432,60 +433,43 @@ class KwTermination(models.Model):
     # -----------------------------------------------------------------
     def _get_sign_item_positions(self):
         """Return sign item positions based on termination type.
-
-        Each item is a dict with:
-            role: 'hr' or 'employee'
-            type: 'signature' or 'date'
-            page, posX, posY, width, height
-        
         Positions are percentages of the page (0.0 to 1.0).
-        These are calibrated for the self-contained letter layout
-        with custom A4 paper format (margin-top 10mm).
+        Calibrated for self-contained letter layout with custom A4 paper.
         """
         if self.termination_type == 'aufhebung':
-            # Aufhebungsvertrag: two signature blocks side by side at bottom
             return [
-                # Employer signature (left)
                 {'role': 'hr', 'type': 'signature',
                  'page': 1, 'posX': 0.05, 'posY': 0.82, 'width': 0.22, 'height': 0.05},
-                # Employer date (left, below sig)
                 {'role': 'hr', 'type': 'date',
                  'page': 1, 'posX': 0.05, 'posY': 0.88, 'width': 0.15, 'height': 0.02},
-                # Employee signature (right)
                 {'role': 'employee', 'type': 'signature',
                  'page': 1, 'posX': 0.52, 'posY': 0.82, 'width': 0.22, 'height': 0.05},
-                # Employee date (right, below sig)
                 {'role': 'employee', 'type': 'date',
                  'page': 1, 'posX': 0.52, 'posY': 0.88, 'width': 0.15, 'height': 0.02},
             ]
         else:
-            # Ordentliche/Fristlose/Bestaetigung: employer sig in body,
-            # employee sig in Empfangsbestaetigung section
             return [
-                # Employer signature (above "Geschaeftsfuehrung")
                 {'role': 'hr', 'type': 'signature',
                  'page': 1, 'posX': 0.05, 'posY': 0.62, 'width': 0.22, 'height': 0.05},
-                # Employee date ("Ort, Datum" - left in Empfangsbestaetigung)
                 {'role': 'employee', 'type': 'date',
                  'page': 1, 'posX': 0.05, 'posY': 0.85, 'width': 0.18, 'height': 0.02},
-                # Employee signature ("Unterschrift" - right in Empfangsbestaetigung)
                 {'role': 'employee', 'type': 'signature',
                  'page': 1, 'posX': 0.50, 'posY': 0.82, 'width': 0.22, 'height': 0.05},
             ]
 
     def action_sign_and_send(self):
-        """Create a sign.template with positioned fields and send for signing."""
+        """Create a sign.template with positioned fields and send for signing.
+        Employer signs first (mail_sent_order=1), then employee (mail_sent_order=2).
+        """
         self.ensure_one()
         if not self.pdf_attachment_id:
             raise UserError(_('Noch kein PDF erstellt. Bitte zuerst die K\u00fcndigung best\u00e4tigen.'))
 
-        # Create sign template from the attachment
         sign_template = self.env['sign.template'].create({
             'attachment_id': self.pdf_attachment_id.id,
             'name': self.pdf_attachment_id.name,
         })
 
-        # Get employee partner
         emp_partner = self.employee_id.work_contact_id or \
             self.employee_id.address_home_id
         if not emp_partner:
@@ -494,7 +478,6 @@ class KwTermination(models.Model):
                 'Bitte einen Arbeitskontakt oder eine Heimadresse auf dem Mitarbeiterdatensatz setzen.'
             ))
 
-        # Get sign roles
         hr_role = self.env['sign.item.role'].search(
             [('name', '=', 'HR Responsible')], limit=1,
         )
@@ -504,24 +487,15 @@ class KwTermination(models.Model):
         if not hr_role or not emp_role:
             raise UserError(_('Signatur-Rollen "HR Responsible" und "Employee" m\u00fcssen existieren.'))
 
-        # Get sign item type IDs
         sig_type = self.env['sign.item.type'].search([('item_type', '=', 'signature')], limit=1)
         date_type = self.env['sign.item.type'].search([('name', '=', 'Date')], limit=1)
         if not sig_type:
             raise UserError(_('Sign-Typ "Signature" nicht gefunden.'))
         if not date_type:
-            # Fallback: use text type
             date_type = self.env['sign.item.type'].search([('name', '=', 'Text')], limit=1)
 
-        # Add sign items (signature + date fields) to the template
-        role_map = {
-            'hr': hr_role.id,
-            'employee': emp_role.id,
-        }
-        type_map = {
-            'signature': sig_type.id,
-            'date': date_type.id,
-        }
+        role_map = {'hr': hr_role.id, 'employee': emp_role.id}
+        type_map = {'signature': sig_type.id, 'date': date_type.id}
 
         positions = self._get_sign_item_positions()
         for pos in positions:
@@ -542,12 +516,11 @@ class KwTermination(models.Model):
             len(positions), sign_template.id, self.id,
         )
 
-        # Build the filename
         sign_filename = self.pdf_attachment_id.name or 'Kuendigung_%s.pdf' % (
             self.employee_name.replace(' ', '_'),
         )
 
-        # Create the sign request via wizard
+        # mail_sent_order: 1 = employer signs first, 2 = employee signs second
         send_wizard = self.env['sign.send.request'].create({
             'template_id': sign_template.id,
             'filename': sign_filename,
@@ -555,10 +528,12 @@ class KwTermination(models.Model):
                 (0, 0, {
                     'role_id': hr_role.id,
                     'partner_id': self.env.user.partner_id.id,
+                    'mail_sent_order': 1,
                 }),
                 (0, 0, {
                     'role_id': emp_role.id,
                     'partner_id': emp_partner.id,
+                    'mail_sent_order': 2,
                 }),
             ],
             'subject': 'K\u00fcndigung - %s' % self.employee_name,
@@ -566,7 +541,6 @@ class KwTermination(models.Model):
         })
         send_wizard.send_request()
 
-        # Link the sign request back to this termination
         sign_request = self.env['sign.request'].search([
             ('template_id', '=', sign_template.id),
         ], limit=1, order='id desc')
@@ -579,10 +553,152 @@ class KwTermination(models.Model):
             body=_('Signaturanfrage gesendet. Warte auf Unterschrift des Mitarbeiters.'),
         )
 
-        # Open Odoo Sign for the current user to sign first
         if sign_request:
             return {
                 'type': 'ir.actions.act_url',
                 'url': '/odoo/sign/%s' % sign_request.id,
                 'target': 'self',
             }
+
+    # -----------------------------------------------------------------
+    # Sign completion: check status + process signed document
+    # -----------------------------------------------------------------
+    def action_check_sign_status(self):
+        """Manual button to check sign request status and process completion."""
+        self.ensure_one()
+        if not self.sign_request_id:
+            raise UserError(_('Keine Signaturanfrage vorhanden.'))
+
+        if self.sign_request_id.state == 'signed':
+            self._process_signed_document()
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Unterschrift abgeschlossen'),
+                    'message': _('Das unterschriebene Dokument wurde gespeichert.'),
+                    'type': 'success',
+                    'sticky': False,
+                },
+            }
+        else:
+            state_label = dict(self.sign_request_id._fields['state'].selection).get(
+                self.sign_request_id.state, self.sign_request_id.state
+            )
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Signaturstatus'),
+                    'message': _('Status: %s') % state_label,
+                    'type': 'warning',
+                    'sticky': False,
+                },
+            }
+
+    def _process_signed_document(self):
+        """Process a fully signed document:
+        1. Copy signed PDF to kw.termination record (as signed_pdf_attachment_id)
+        2. Replace the original pdf_attachment_id with the signed version
+        3. Store in Odoo Documents app with tags
+        4. Post signed PDF to the chatter
+        """
+        self.ensure_one()
+        sign_req = self.sign_request_id
+        if not sign_req or sign_req.state != 'signed':
+            return
+
+        if self.sign_state == 'fully_signed':
+            _logger.info('Termination %s already processed as fully signed', self.id)
+            return
+
+        # Get the signed document attachment from the sign request
+        signed_attachments = sign_req.completed_document_attachment_ids
+        if not signed_attachments:
+            _logger.warning('No completed document found for sign request %s', sign_req.id)
+            return
+
+        signed_att = signed_attachments[0]  # Take the first completed document
+
+        # 1. Create a copy of the signed attachment linked to our record
+        signed_filename = 'Kuendigung_%s_%s_UNTERSCHRIEBEN.pdf' % (
+            self.employee_name.replace(' ', '_'),
+            self.letter_date.strftime('%Y-%m-%d'),
+        )
+        new_attachment = signed_att.copy({
+            'name': signed_filename,
+            'res_model': self._name,
+            'res_id': self.id,
+        })
+
+        # 2. Store as signed PDF and replace original
+        old_pdf = self.pdf_attachment_id
+        self.write({
+            'signed_pdf_attachment_id': new_attachment.id,
+            'pdf_attachment_id': new_attachment.id,
+            'sign_state': 'fully_signed',
+            'state': 'signed',
+        })
+
+        # 3. Store in Odoo Documents app (if module is available)
+        try:
+            if self.env['ir.module.module'].sudo().search([
+                ('name', '=', 'documents'), ('state', '=', 'installed')
+            ]):
+                # Find or create a folder for terminations
+                folder = self.env['documents.folder'].sudo().search(
+                    [('name', '=', 'Terminations')], limit=1
+                )
+                if not folder:
+                    folder = self.env['documents.folder'].sudo().create({
+                        'name': 'Terminations',
+                    })
+                # Find or create a tag
+                facet = self.env['documents.facet'].sudo().search(
+                    [('name', '=', 'Document Type')], limit=1
+                )
+                tag = self.env['documents.tag'].sudo().search(
+                    [('name', '=', 'Signed Termination')], limit=1
+                )
+                if not tag and facet:
+                    tag = self.env['documents.tag'].sudo().create({
+                        'name': 'Signed Termination',
+                        'facet_id': facet.id,
+                    })
+
+                doc_vals = {
+                    'name': signed_filename,
+                    'folder_id': folder.id,
+                    'attachment_id': new_attachment.id,
+                    'partner_id': self.employee_id.work_contact_id.id if self.employee_id.work_contact_id else False,
+                    'res_model': self._name,
+                    'res_id': self.id,
+                }
+                if tag:
+                    doc_vals['tag_ids'] = [(4, tag.id)]
+                self.env['documents.document'].sudo().create(doc_vals)
+                _logger.info('Stored signed PDF in Documents app for termination %s', self.id)
+        except Exception as e:
+            _logger.warning('Could not store in Documents app: %s', e)
+
+        # 4. Post the signed PDF to the chatter
+        self.message_post(
+            body=_('Unterschriebenes K\u00fcndigungsschreiben erhalten. Alle Parteien haben unterschrieben.'),
+            attachment_ids=[new_attachment.id],
+        )
+        _logger.info('Processed signed document for termination %s', self.id)
+
+    @api.model
+    def _cron_check_sign_completion(self):
+        """Cron job: check all pending sign requests and process completed ones."""
+        pending = self.search([
+            ('sign_state', '=', 'employer_signed'),
+            ('sign_request_id', '!=', False),
+        ])
+        for rec in pending:
+            try:
+                if rec.sign_request_id.state == 'signed':
+                    rec._process_signed_document()
+                    _logger.info('Cron: processed signed termination %s', rec.id)
+            except Exception as e:
+                _logger.error('Cron: error processing termination %s: %s', rec.id, e)
