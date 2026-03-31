@@ -192,7 +192,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex-1">
-            <h1 className="text-[var(--fs-lg)] font-bold text-gray-900">{mo.product_id[1]}</h1>
+            <h1 className="text-[var(--fs-xxl)] font-bold text-gray-900">{mo.product_id[1]}</h1>
             <p className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{mo.name} {'\u00b7'} {mo.bom_id?.[1] || ''}</p>
           </div>
           <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-semibold ${stateColors[mo.state] || 'bg-gray-100 text-gray-600'}`}>
