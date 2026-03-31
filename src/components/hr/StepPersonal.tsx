@@ -208,7 +208,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
   const ex = FIELD_EXPLAINERS.kw_geburtsname;
 
   return (
-    <div className="pb-40">
+    <div className="pb-8">
       <div className="p-5 space-y-4">
         <Field label="Full name">
           <input className="form-input" value={employee.name} disabled />
@@ -342,7 +342,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
           <PhoneInput value={emergPhone} onChange={setEmergPhone} />
         </Field>
       </div>
-      <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent">
+      <div className="px-5 pt-4 pb-8">
         <button onClick={handleSubmit} disabled={saving} className="w-full py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
           {saving ? 'Saving...' : 'Continue'}
         </button>

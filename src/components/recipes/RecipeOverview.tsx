@@ -94,7 +94,7 @@ export default function RecipeOverview({
         </div>
       </div>
 
-      <div className="px-5 pt-5 pb-28 flex-1">
+      <div className="px-5 pt-5 pb-8 flex-1">
         <div className="w-full h-40 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-6xl mb-4">{emoji}</div>
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${modeBg}`}>{modeLabel}</span>
@@ -155,7 +155,7 @@ export default function RecipeOverview({
           </div>
         )}
       </div>
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-4 max-w-lg mx-auto">
+      <div className="px-5 py-4">
         <button
           onClick={() => onStartCooking(steps)}
           disabled={steps.length === 0}

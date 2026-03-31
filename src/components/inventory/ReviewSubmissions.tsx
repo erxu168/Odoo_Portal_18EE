@@ -231,7 +231,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         </div>
 
         {isPending && (
-          <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
+          <div className="px-4 py-3">
             <div className="flex gap-3">
               <button onClick={() => setQcConfirm('reject')}
                 className="py-3.5 px-6 rounded-xl border border-red-200 text-red-600 text-[14px] font-bold active:bg-red-50">
@@ -379,7 +379,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
             </div>
 
             {isSubmitted && (
-              <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
+              <div className="px-4 py-3">
                 <div className="flex gap-3">
                   <button onClick={() => setShowConfirm('reject')} className="py-3.5 px-6 rounded-xl border border-red-200 text-red-600 text-[14px] font-bold active:bg-red-50">Reject</button>
                   <button onClick={() => setShowConfirm('approve')} className="flex-1 py-3.5 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700">Approve</button>

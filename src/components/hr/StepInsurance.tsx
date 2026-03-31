@@ -29,7 +29,7 @@ export default function StepInsurance({ employee, onNext, onPrev, saving }: Prop
   }
 
   return (
-    <div className="pb-40">
+    <div className="pb-8">
       <div className="p-5 space-y-4">
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
@@ -75,7 +75,7 @@ export default function StepInsurance({ employee, onNext, onPrev, saving }: Prop
           <span className="text-[var(--fs-sm)] text-gray-700">I confirm that I have read and understood the health insurance requirements above and will provide proof of valid health insurance to my employer.</span>
         </label>
       </div>
-      <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
+      <div className="px-5 pt-4 pb-8 flex gap-3">
         <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
         <button onClick={handleSubmit} disabled={saving || !acknowledged} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
           {saving ? "Saving..." : "Continue"}

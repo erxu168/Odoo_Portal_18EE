@@ -145,7 +145,7 @@ export default function ApprovalReview({ recipeName, productTmplId, bomId, chang
           </div>
         )}
       </div>
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-4 max-w-lg mx-auto">
+      <div className="px-5 py-4">
         {!showReject ? (
           <div className="flex gap-3">
             <button onClick={() => setShowReject(true)}

@@ -90,7 +90,7 @@ export default function EditMetadata({
         </div>
       </div>
 
-      <div className="px-5 pt-5 pb-28 flex-1">
+      <div className="px-5 pt-5 pb-8 flex-1">
         {/* Name */}
         <div className="mb-6">
           <label className="text-[13px] font-bold text-gray-900 mb-2 block">Recipe name</label>
@@ -178,7 +178,7 @@ export default function EditMetadata({
       </div>
 
       {/* Fixed bottom button */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-4 max-w-lg mx-auto">
+      <div className="px-5 py-4">
         <button
           onClick={() => onSave({ name: name.trim(), difficulty: diff, categoryId: catId, productQty: qty })}
           disabled={!canSave}

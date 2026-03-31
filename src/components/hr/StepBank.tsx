@@ -96,7 +96,7 @@ export default function StepBank({ employee, onNext, onPrev, saving }: Props) {
   const isSaving = saving || localSaving;
 
   return (
-    <div className="pb-40">
+    <div className="pb-8">
       <div className="p-5 space-y-4">
         {loading ? (
           <div className="flex items-center gap-2 py-3">
@@ -137,7 +137,7 @@ export default function StepBank({ employee, onNext, onPrev, saving }: Props) {
           <strong>Note:</strong> Bank account changes are reviewed by your manager.
         </div>
       </div>
-      <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent flex gap-3">
+      <div className="px-5 pt-4 pb-8 flex gap-3">
         <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
         <button onClick={handleContinue} disabled={isSaving} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
           {isSaving ? 'Saving...' : 'Continue'}

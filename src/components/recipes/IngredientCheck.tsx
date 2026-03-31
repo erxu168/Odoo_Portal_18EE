@@ -101,7 +101,7 @@ export default function IngredientCheck({ mode, recipeName, steps, onBack, onHom
         )}
       </div>
       {ingredients.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-4 max-w-lg mx-auto">
+        <div className="px-5 py-4">
           <button onClick={onStartCook} disabled={!allChecked}
             className={`w-full py-4 rounded-2xl text-[16px] font-bold text-white transition-all ${
               allChecked ? `${accentBg} ${accentActive} shadow-lg` : 'bg-gray-300 cursor-not-allowed'

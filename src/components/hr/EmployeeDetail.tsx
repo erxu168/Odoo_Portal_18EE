@@ -77,7 +77,7 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-40">
+    <div className="min-h-screen bg-gray-50 pb-8">
       <AppHeader title={emp.name} showBack onBack={onBack} />
 
       <div className="bg-white px-5 py-4 flex items-center gap-3.5 border-b border-gray-200">
@@ -156,7 +156,7 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
         })}
       </div>
 
-      <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
+      <div className="px-5 pt-4 pb-8 flex gap-3">
         <button className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
           Export DATEV
         </button>

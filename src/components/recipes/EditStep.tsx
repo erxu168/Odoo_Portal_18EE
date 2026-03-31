@@ -101,7 +101,7 @@ export default function EditStep({ step, stepIndex, ingredients = [], onSave, on
           </button>
         </div>
       </div>
-      <div className="px-5 pt-5 pb-28 flex-1">
+      <div className="px-5 pt-5 pb-8 flex-1">
         <div className="mb-4">
           <label className="text-[13px] font-bold text-gray-900 mb-2 block">Step type</label>
           <div className="flex gap-2">
@@ -195,7 +195,7 @@ export default function EditStep({ step, stepIndex, ingredients = [], onSave, on
           </div>
         )}
       </div>
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-4 max-w-lg mx-auto">
+      <div className="px-5 py-4">
         <button onClick={handleSave}
           className="w-full py-4 rounded-2xl text-[16px] font-bold text-white bg-green-600 active:bg-green-700 shadow-lg">
           Save changes

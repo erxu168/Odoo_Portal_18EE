@@ -87,7 +87,7 @@ export default function BatchSize({ mode, recipeName, baseBatch, bomIngredients,
           </button>
         </div>
       </div>
-      <div className="px-5 pt-6 pb-28 flex-1">
+      <div className="px-5 pt-6 pb-8 flex-1">
         <div className="text-center mb-6">
           <h2 className="text-[18px] font-bold text-gray-900">{mode === 'cooking' ? 'How many servings?' : 'Batch quantity'}</h2>
           <p className="text-[13px] text-gray-500 mt-1">
@@ -152,7 +152,7 @@ export default function BatchSize({ mode, recipeName, baseBatch, bomIngredients,
           </div>
         )}
       </div>
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-4 max-w-lg mx-auto">
+      <div className="px-5 py-4">
         <button onClick={() => onConfirm(batch, multiplier)}
           className={`w-full py-4 rounded-2xl text-[16px] font-bold text-white ${accentBg} ${accentActive} shadow-lg`}>
           Confirm {'\u2192'} Ingredients

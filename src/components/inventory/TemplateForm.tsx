@@ -225,7 +225,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto px-4 pb-28">
+        <div className="flex-1 overflow-y-auto px-4 pb-8">
           {loadingProducts ? <Spinner /> : filteredProducts.length === 0 ? (
             <div className="text-center py-12 text-[var(--fs-base)] text-gray-400">No products match filters</div>
           ) : (
@@ -259,7 +259,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
           )}
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 z-[61] px-4 pb-4 pt-2 bg-white border-t border-gray-200">
+        <div className="px-4 pb-4 pt-2">
           <button onClick={() => setStep('config')}
             className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-xl)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">
             Done &mdash; {selectedCount} product{selectedCount !== 1 ? 's' : ''} selected
@@ -444,7 +444,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
       </div>
 
       {/* Save button - fixed at bottom, high z-index */}
-      <div className="fixed bottom-0 left-0 right-0 z-[61] px-4 pb-4 pt-2 bg-white border-t border-gray-200">
+      <div className="px-4 pb-4 pt-2">
         <button onClick={handleSubmit} disabled={saving || !canSave}
           className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-xl)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
           {saving

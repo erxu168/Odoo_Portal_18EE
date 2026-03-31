@@ -244,7 +244,7 @@ export default function RecordingSummary({
       </div>
 
       {/* Bottom action — role-based label */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-4 max-w-lg mx-auto">
+      <div className="px-5 py-4">
         <button onClick={onSubmit} disabled={steps.length === 0 || submitting}
           className={`w-full py-4 rounded-2xl text-[16px] font-bold text-white transition-all ${
             steps.length > 0 && !submitting ? 'bg-green-600 shadow-lg active:bg-green-700' : 'bg-gray-300 cursor-not-allowed'

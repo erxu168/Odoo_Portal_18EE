@@ -119,7 +119,7 @@ export default function CreateDish({ mode, onBack, onHome, onCreated }: Props) {
           </div>
         )}
       </div>
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-5 py-4 max-w-lg mx-auto space-y-2">
+      <div className="px-5 py-4 space-y-2">
         <button onClick={handleCreate} disabled={!canSave || saving}
           className={`w-full py-4 rounded-2xl text-[16px] font-bold text-white transition-all ${
             canSave ? `${accentBg} shadow-lg` : 'bg-gray-300 cursor-not-allowed'

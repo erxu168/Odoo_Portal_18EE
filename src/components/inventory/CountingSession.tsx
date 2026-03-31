@@ -319,7 +319,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         </div>
 
         {canSubmit && (
-          <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
+          <div className="px-4 py-3">
             <button onClick={() => setShowConfirm(true)} disabled={submitting || countedCount === 0}
               className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
               Submit for approval
@@ -416,7 +416,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       </div>
 
       {canSubmit && countedCount > 0 && (
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
+        <div className="px-4 py-3">
           <button onClick={() => setView('review')}
             className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">
             Review count ({countedCount}/{totalCount})
@@ -425,7 +425,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       )}
 
       {isReadOnly && (
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-gray-100 border-t border-gray-200 z-40">
+        <div className="px-4 py-3 bg-gray-100 rounded-xl">
           <p className="text-center text-[var(--fs-base)] text-gray-500 font-semibold">
             {session?.status === 'submitted' ? 'Submitted \u2014 awaiting review' : session?.status === 'approved' ? 'Approved' : 'Rejected'}
           </p>

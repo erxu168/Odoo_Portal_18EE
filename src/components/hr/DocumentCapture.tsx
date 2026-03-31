@@ -350,7 +350,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
     "Take clear photos or choose files from your device.";
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-40">
+    <div className="min-h-screen bg-gray-50 pb-8">
       <AppHeader
         title={docType.label}
         subtitle={docType.labelDe}
@@ -527,7 +527,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
       </div>
 
       {/* Bottom bar */}
-      <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
+      <div className="px-5 pt-4 pb-8 flex gap-3">
         <button
           onClick={onBack}
           className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85"

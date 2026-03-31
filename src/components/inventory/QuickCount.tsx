@@ -173,7 +173,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
 
       {/* Submit bar */}
       {countedN > 0 && (
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
+        <div className="px-4 py-3">
           <button onClick={handleSubmit} disabled={submitting}
             className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
             {submitting ? 'Submitting...' : `Submit ${countedN} quick count${countedN !== 1 ? 's' : ''}`}

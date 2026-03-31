@@ -255,7 +255,7 @@ export default function ReceiveReview({
       </div>
 
       {/* Fixed bottom: manager confirmation */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
+      <div className="px-4 py-3">
         {!allChecked ? (
           <div className="text-center">
             <div className="w-full py-3 rounded-xl bg-gray-100 text-gray-400 text-[var(--fs-md)] font-bold cursor-not-allowed">
