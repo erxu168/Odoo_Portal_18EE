@@ -226,3 +226,91 @@ dot-success:     w-2 h-2 rounded-full bg-green-500
 card:            bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)]
 page-bg:         bg-[#F6F7F9]
 ```
+
+---
+
+## 12. Responsive Typography System (MANDATORY)
+
+> **This is the binding standard for ALL portal modules.**
+> The manufacturing module is the reference implementation.
+> Every new or modified component MUST use these tokens.
+
+### CSS Custom Properties (defined in globals.css)
+
+All font sizes use `clamp()` — they scale smoothly from iPhone SE (375px) to tablet.
+
+| Token | Range | Purpose |
+|-------|-------|---------|
+| `--fs-xxl` | 18–22px | Stat values, product names in lists, large numbers |
+| `--fs-xl` | 16–20px | Page titles, profile names, record headings |
+| `--fs-lg` | 15–18px | Section headers, modal titles, recipe/BOM names |
+| `--fs-md` | 14–17px | Tile labels, document names, form input text, step names |
+| `--fs-base` | 13–16px | Search inputs, default body text |
+| `--fs-sm` | 12–14px | Detail text, field labels, field values, button text, UOM |
+| `--fs-xs` | 11–13px | Section overlines, badges, meta text, timestamps |
+
+### Usage in Tailwind
+
+Always use CSS var syntax in Tailwind arbitrary values:
+
+```tsx
+// ✅ CORRECT — responsive, scales with viewport
+<div className="text-[var(--fs-md)] font-bold">Tile Label</div>
+<span className="text-[var(--fs-xs)] text-gray-400">Section header</span>
+
+// ❌ WRONG — hardcoded, does NOT scale
+<div className="text-[14px] font-semibold">Tile Label</div>
+<span className="text-[11px] text-gray-400">Section header</span>
+```
+
+### Font Weight Hierarchy
+
+| Weight | Usage |
+|--------|-------|
+| `font-extrabold` (800) | Stat values in dashboard cards only |
+| `font-bold` (700) | Tile labels, card titles, section headers, primary buttons, employee names |
+| `font-semibold` (600) | Secondary buttons, form labels, filter pills, meta labels |
+| `font-medium` (500) | Field values, body text |
+| `font-normal` (400) | Long-form text, descriptions, legal text |
+
+### Component Sizing Standards
+
+| Element | Size | Token |
+|---------|------|-------|
+| Dashboard tile label | `text-[var(--fs-md)] font-bold` | fs-md |
+| Dashboard tile subtitle | `text-[var(--fs-xs)] text-gray-500` | fs-xs |
+| List card primary text | `text-[var(--fs-xxl)] font-bold` | fs-xxl |
+| List card meta | `text-[var(--fs-sm)] text-gray-500` | fs-sm |
+| Section overline | `text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400` | fs-xs |
+| Filter pill (active) | `px-4 py-3 rounded-full text-[var(--fs-sm)] font-bold bg-green-600 text-white` | fs-sm |
+| Filter pill (inactive) | `px-4 py-3 rounded-full text-[var(--fs-sm)] font-bold border bg-white text-gray-500` | fs-sm |
+| Primary button | `py-3.5 text-[var(--fs-sm)] font-bold rounded-xl` | fs-sm |
+| Secondary button | `py-3.5 text-[var(--fs-sm)] font-bold rounded-xl border` | fs-sm |
+| Form input text | `text-[var(--fs-md)]` via `.form-input` class | fs-md |
+| Search input text | `text-[var(--fs-base)]` | fs-base |
+| Field label (profile) | `text-[var(--fs-sm)] text-gray-500` | fs-sm |
+| Field value (profile) | `text-[var(--fs-sm)] font-medium` | fs-sm |
+| Card border-radius | `rounded-2xl` (list cards, tiles) or `rounded-xl` (compact cards) | — |
+| Card padding | `p-4` (standard) or `p-3` (compact stat boxes) | — |
+
+### Exceptions (allowed hardcoded sizes)
+
+These specific cases MAY use hardcoded pixel sizes:
+
+- **8–10px**: Thumbnail overlay labels (filename, "PDF" badge, photo counter)
+- **9px**: Compact stat box sub-labels in dense review screens
+- **10px**: Legal reference codes, tiny inline status badges
+- **Emoji/icon wrappers**: Fixed size matching SVG dimensions (e.g. `text-[24px]` for emoji icons)
+
+Everything else MUST use `var(--fs-*)` tokens.
+
+### Compliance Checklist
+
+Before committing any component change:
+
+- [ ] All font sizes use `var(--fs-*)` tokens (no hardcoded `text-[Npx]` except allowed exceptions)
+- [ ] Font weights follow the hierarchy (800/700/600/500/400)
+- [ ] Buttons use `py-3.5` minimum and `font-bold`
+- [ ] Filter pills use `px-4 py-3` (44px+ touch target)
+- [ ] List cards use `rounded-2xl p-4`
+- [ ] Section headers use `text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400`
