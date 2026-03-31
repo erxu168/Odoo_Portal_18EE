@@ -506,30 +506,16 @@ export default function CreateMo({ onBack, onCreated, onNavigateToCreate }: Crea
                     </div>
                     <span className="text-[var(--fs-sm)] font-bold text-gray-700 min-w-[80px] text-right">{fmt(c.scaled_qty)} {c.uom} need</span>
                   </div>
-                  {c.is_sub_bom && c.is_short && !createdSubMos[c.product_id] && (
+                  {c.is_sub_bom && c.is_short && onNavigateToCreate && (
                     <div className="flex justify-end mt-1.5">
                       <button
-                        onClick={(e) => { e.stopPropagation(); handleCreateSubMo(c); }}
-                        disabled={creatingSubMo === c.product_id}
-                        className="px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-[var(--fs-xs)] font-bold flex items-center gap-1.5 active:bg-blue-100 disabled:opacity-50"
+                        onClick={(e) => { e.stopPropagation(); onNavigateToCreate(); }}
+                        className="px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-[var(--fs-xs)] font-bold flex items-center gap-1.5 active:bg-blue-100"
                       >
-                        {creatingSubMo === c.product_id ? (
-                          <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                        )}
-                        {creatingSubMo === c.product_id ? '...' : 'Produce'}
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                        Produce
                       </button>
                     </div>
-                  )}
-                  {c.is_sub_bom && createdSubMos[c.product_id] && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onCreated(createdSubMos[c.product_id]); }}
-                      className="mt-2 w-full py-2.5 rounded-lg bg-green-50 border border-green-200 text-green-700 text-[var(--fs-sm)] font-bold flex items-center justify-center gap-2 active:bg-green-100"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
-                      Draft MO created — Open to review
-                    </button>
                   )}
                 </div>
               );

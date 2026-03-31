@@ -12,16 +12,16 @@ export default function AppTopBar() {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { hidden } = useTopBar();
-
-  if (hidden || HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
-    return null;
-  }
-
   const [now, setNow] = React.useState(new Date());
+
   React.useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(t);
   }, []);
+
+  if (hidden || HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
+    return null;
+  }
 
   const dayName = now.toLocaleDateString('en-US', { weekday: 'short' });
   const dateStr = now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
