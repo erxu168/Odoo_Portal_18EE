@@ -51,13 +51,9 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState(mode === 'completed' ? 'done' : 'confirmed');
-  const [datePreset, setDatePreset] = useState('today');
-  const [dateRange, setDateRange] = useState<DateRange | null>(() => {
-    const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    return { from: today, to: today };
-  });
+  const [statusFilter, setStatusFilter] = useState(mode === 'completed' ? 'done' : 'all');
+  const [datePreset, setDatePreset] = useState('all');
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
 
   useEffect(() => { if (companyId) fetchOrders(); }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
