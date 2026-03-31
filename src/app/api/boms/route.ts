@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 
 export const dynamic = 'force-dynamic';
@@ -154,5 +154,57 @@ export async function GET(request: Request) {
       { error: error.message || 'Failed to fetch BOMs' },
       { status: 500 },
     );
+  }
+}
+
+
+/**
+ * POST /api/boms
+ * Create a new BOM.
+ *
+ * Body: {
+ *   product_tmpl_id: number,
+ *   product_qty: number,
+ *   product_uom_id: number,
+ *   company_id?: number,
+ *   lines?: Array<{ product_id: number, product_qty: number, product_uom_id: number }>,
+ * }
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const odoo = getOdoo();
+    const body = await req.json();
+
+    if (!body.product_tmpl_id || !body.product_qty) {
+      return NextResponse.json({ ok: false, error: 'product_tmpl_id and product_qty are required' }, { status: 400 });
+    }
+
+    const bomVals: Record<string, unknown> = {
+      product_tmpl_id: body.product_tmpl_id,
+      product_qty: body.product_qty,
+      product_uom_id: body.product_uom_id,
+      type: 'normal',
+    };
+    if (body.company_id) bomVals.company_id = body.company_id;
+
+    const bomId = await odoo.create('mrp.bom', bomVals);
+
+    // Add lines if provided
+    if (body.lines?.length) {
+      for (const line of body.lines) {
+        await odoo.create('mrp.bom.line', {
+          bom_id: bomId,
+          product_id: line.product_id,
+          product_qty: line.product_qty,
+          product_uom_id: line.product_uom_id,
+        });
+      }
+    }
+
+    return NextResponse.json({ ok: true, id: bomId });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('POST /api/boms error:', message);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

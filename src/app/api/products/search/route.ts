@@ -1,44 +1,41 @@
-/**
- * GET /api/products/search?q=butter&limit=10
- * Search product.product in Odoo for ingredient autocomplete.
- */
-import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 
-export async function GET(request: Request) {
-  const user = requireAuth();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
+/**
+ * GET /api/products/search?q=...&limit=20
+ * Search products for adding as BOM ingredients.
+ * Returns id, name, uom_id, uom_name.
+ */
+export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const q = (searchParams.get('q') || '').trim();
-    const limit = Math.min(parseInt(searchParams.get('limit') || '15', 10), 50);
+    const q = req.nextUrl.searchParams.get('q') || '';
+    const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20');
+    const odoo = getOdoo();
 
-    if (q.length < 1) {
-      return NextResponse.json({ products: [] });
+    const domain: any[] = [['type', '!=', 'service']];
+    if (q.length >= 2) {
+      domain.push(['name', 'ilike', q]);
     }
 
-    const odoo = getOdoo();
-    const domain: unknown[] = [['name', 'ilike', q]];
-
     const products = await odoo.searchRead(
-      'product.product', domain,
-      ['id', 'name', 'uom_id'],
-      { limit, order: 'name' },
+      'product.product',
+      domain,
+      ['id', 'name', 'uom_id', 'categ_id'],
+      { limit, order: 'name asc' },
     );
 
     return NextResponse.json({
-      products: products.map((p: Record<string, unknown>) => ({
+      ok: true,
+      products: products.map((p: any) => ({
         id: p.id,
         name: p.name,
-        uom_id: Array.isArray(p.uom_id) ? p.uom_id[0] : null,
-        uom_name: Array.isArray(p.uom_id) ? p.uom_id[1] : '',
+        uom_id: p.uom_id[0],
+        uom_name: p.uom_id[1],
+        category: p.categ_id?.[1]?.split(' / ').pop() || 'Other',
       })),
     });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Product search error:', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import type { ComponentAvailability } from '@/types/manufacturing';
 
@@ -214,5 +214,67 @@ export async function GET(
       { error: error.message || 'Failed to fetch BOM detail' },
       { status: 500 },
     );
+  }
+}
+
+
+/**
+ * PATCH /api/boms/:id
+ * Edit a BOM: update line quantities, add lines, remove lines, update output qty.
+ *
+ * Body: {
+ *   product_qty?: number,
+ *   update_lines?: Array<{ line_id: number, product_qty: number }>,
+ *   add_lines?: Array<{ product_id: number, product_qty: number, product_uom_id: number }>,
+ *   remove_lines?: number[],
+ * }
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
+  try {
+    const bomId = parseInt(params.id);
+    const odoo = getOdoo();
+    const body = await req.json();
+
+    // Update BOM output qty
+    if (body.product_qty !== undefined) {
+      await odoo.write('mrp.bom', [bomId], { product_qty: body.product_qty });
+    }
+
+    // Update existing line quantities
+    if (body.update_lines?.length) {
+      for (const line of body.update_lines) {
+        await odoo.write('mrp.bom.line', [line.line_id], {
+          product_qty: line.product_qty,
+        });
+      }
+    }
+
+    // Add new lines
+    if (body.add_lines?.length) {
+      for (const line of body.add_lines) {
+        await odoo.create('mrp.bom.line', {
+          bom_id: bomId,
+          product_id: line.product_id,
+          product_qty: line.product_qty,
+          product_uom_id: line.product_uom_id,
+        });
+      }
+    }
+
+    // Remove lines
+    if (body.remove_lines?.length) {
+      for (const lineId of body.remove_lines) {
+        await odoo.call('mrp.bom.line', 'unlink', [[lineId]]);
+      }
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`PATCH /api/boms/${params.id} error:`, message);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
