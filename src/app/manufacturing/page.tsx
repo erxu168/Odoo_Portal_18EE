@@ -10,6 +10,7 @@ import MfgDashboard from '@/components/manufacturing/MfgDashboard';
 import PickList from '@/components/manufacturing/PickList';
 import BomList from '@/components/manufacturing/BomList';
 import BomDetail from '@/components/manufacturing/BomDetail';
+import CreateBom from '@/components/manufacturing/CreateBom';
 
 type Screen =
   | { type: 'dashboard' }
@@ -19,6 +20,7 @@ type Screen =
   | { type: 'create' }
   | { type: 'pick-list' }
   | { type: 'bom-list' }
+  | { type: 'create-bom' }
   | { type: 'bom-detail'; bomId: number };
 
 export default function ManufacturingPage() {
@@ -130,6 +132,17 @@ export default function ManufacturingPage() {
           <BomList
             onSelect={(bom) => navigate({ type: 'bom-detail', bomId: bom.id })}
             onBack={goDashboard}
+            onCreate={() => navigate({ type: 'create-bom' })}
+          />
+        );
+      case 'create-bom':
+        return (
+          <CreateBom
+            onBack={goBack}
+            onCreated={(bomId) => {
+              setHistory([{ type: 'dashboard' }, { type: 'bom-list' }]);
+              setScreen({ type: 'bom-detail', bomId });
+            }}
           />
         );
       case 'bom-detail':

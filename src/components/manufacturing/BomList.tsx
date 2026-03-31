@@ -7,9 +7,10 @@ import { useCompany } from '@/lib/company-context';
 interface BomListProps {
   onSelect: (bom: Bom) => void;
   onBack?: () => void;
+  onCreate?: () => void;
 }
 
-export default function BomList({ onSelect, onBack }: BomListProps) {
+export default function BomList({ onSelect, onBack, onCreate }: BomListProps) {
   const { companyId } = useCompany();
   const [boms, setBoms] = useState<Bom[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +84,11 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
             <h1 className="text-[var(--fs-xl)] font-bold text-white">Recipes</h1>
             <p className="text-[var(--fs-xs)] text-white/45 mt-0.5">{filtered.length} active recipes</p>
           </div>
+          {onCreate && (
+            <button onClick={onCreate} className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-green-600 flex items-center justify-center active:bg-green-700 shadow-lg shadow-green-600/30">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          )}
         </div>
       </div>
 

@@ -6,7 +6,7 @@ import CompanySelector from './CompanySelector';
 import AppDrawer from './AppDrawer';
 import { useTopBar } from './TopBarContext';
 
-const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/hr'];
+const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password'];
 
 export default function AppTopBar() {
   const pathname = usePathname();
@@ -16,6 +16,16 @@ export default function AppTopBar() {
   if (hidden || HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
     return null;
   }
+
+  const [now, setNow] = React.useState(new Date());
+  React.useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  const dayName = now.toLocaleDateString('en-US', { weekday: 'short' });
+  const dateStr = now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
   return (
     <>
@@ -32,6 +42,10 @@ export default function AppTopBar() {
               <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
+          <div className="text-center">
+            <div className="text-[var(--fs-xs)] font-semibold text-white">{dayName} {dateStr}</div>
+            <div className="text-[var(--fs-xs)] text-white/50 font-mono">{timeStr}</div>
+          </div>
           <CompanySelector />
         </div>
       </div>
