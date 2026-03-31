@@ -293,7 +293,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
           </span>
           <button
             onClick={() => setPreviewIndex(null)}
-            className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20"
+            className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-full bg-white/10 flex items-center justify-center active:bg-white/20"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
               <path d="M18 6L6 18M6 6l12 12" />
