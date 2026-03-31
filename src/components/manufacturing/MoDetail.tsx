@@ -136,7 +136,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
     }
   }
 
-  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 10 }).format(n);
+  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4 }).format(n);
 
   const stateColors: Record<string, string> = {
     draft: 'bg-gray-100 text-gray-600', confirmed: 'bg-green-50 text-green-800',

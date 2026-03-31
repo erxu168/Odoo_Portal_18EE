@@ -99,13 +99,13 @@ export default function CreateMo({ onBack, onCreated, onNavigateToCreate }: Crea
     return components.map((c: any) => {
       // For the driving ingredient, use the exact entered qty (no rounding error)
       const isDriving = sqcEnabled && drivingCompId === c.product_id && drivingQtyNum > 0;
-      const scaled = isDriving ? drivingQtyNum : Math.round(c.required_qty * ratio * 1000000) / 1000000;
+      const scaled = isDriving ? drivingQtyNum : Math.round(c.required_qty * ratio * 10000) / 10000;
       const short = scaled - c.on_hand_qty;
       return {
         ...c,
         scaled_qty: scaled,
         is_short: short > 0,
-        short_amount: Math.max(0, Math.round(short * 1000000) / 1000000),
+        short_amount: Math.max(0, Math.round(short * 10000) / 10000),
       };
     });
   }, [components, ratio, sqcEnabled, drivingCompId, drivingQtyNum]);
