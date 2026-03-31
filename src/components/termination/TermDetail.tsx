@@ -5,6 +5,7 @@ import type { TerminationRecord, DeliveryMethod } from '@/types/termination';
 import { TERMINATION_TYPE_LABELS, STATE_LABELS, DELIVERY_METHOD_LABELS } from '@/types/termination';
 import DeliveryForm from './DeliveryForm';
 import PdfViewer from '@/components/ui/PdfViewer';
+import DocumentUploadWidget from '@/components/ui/DocumentUploadWidget';
 import FilePicker from '@/components/ui/FilePicker';
 
 
@@ -59,10 +60,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [editingTracking, setEditingTracking] = useState(false);
   const [trackingDraft, setTrackingDraft] = useState('');
   const [savingTracking, setSavingTracking] = useState(false);
-  const [proofUploading, setProofUploading] = useState(false);
-  const [proofData, setProofData] = useState<{ base64: string; mimetype: string; name: string } | null>(null);
-  const [showProof, setShowProof] = useState(false);
-  const [proofLoading, setProofLoading] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -291,48 +288,37 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
 
 
   async function handleProofUpload(file: File) {
-    setProofUploading(true);
-    try {
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const res = await fetch(`/api/termination/${id}/upload-proof`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file_base64: base64, filename: file.name, mimetype: file.type }),
-      });
-      if (res.ok) {
-        // Reload record to get updated proof field
-        const recRes = await fetch(`/api/termination/${id}`);
-        if (recRes.ok) {
-          const data = await recRes.json();
-          if (data.data) setRec(data.data);
-        }
-      }
-    } catch (_e) {
-      console.error('Failed to upload proof');
-    } finally {
-      setProofUploading(false);
+    const reader = new FileReader();
+    const base64 = await new Promise<string>((resolve, reject) => {
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const res = await fetch(`/api/termination/${id}/upload-proof`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_base64: base64, filename: file.name, mimetype: file.type }),
+    });
+    if (res.ok) {
+      const recRes = await fetch(`/api/termination/${id}`);
+      if (recRes.ok) { const data = await recRes.json(); if (data.data) setRec(data.data); }
     }
   }
 
-  async function handleViewProof() {
-    setProofLoading(true);
-    try {
-      const res = await fetch(`/api/termination/${id}/upload-proof`);
-      if (res.ok) {
-        const data = await res.json();
-        setProofData({ base64: data.data_base64, mimetype: data.mimetype, name: data.name });
-        setShowProof(true);
-      }
-    } catch (_e) {
-      console.error('Failed to load proof');
-    } finally {
-      setProofLoading(false);
-    }
+  async function handleViewProof(): Promise<{ base64: string; mimetype: string; name: string }> {
+    const res = await fetch(`/api/termination/${id}/upload-proof`);
+    const data = await res.json();
+    return { base64: data.data_base64, mimetype: data.mimetype, name: data.name };
+  }
+
+  async function handleDeleteProof() {
+    await fetch(`/api/termination/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ delivery_proof_attachment_id: false }),
+    });
+    const recRes = await fetch(`/api/termination/${id}`);
+    if (recRes.ok) { const data = await recRes.json(); if (data.data) setRec(data.data); }
   }
 
   async function handleTrackingSave() {
@@ -518,47 +504,14 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
 
             {/* Delivery proof upload */}
             <div className="mt-3 pt-3 border-t border-gray-100">
-              {rec.delivery_proof_attachment_id ? (
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
-                    </div>
-                    <div>
-                      <div className="text-[var(--fs-sm)] font-semibold text-gray-900">Courier confirmation</div>
-                      <div className="text-[var(--fs-xs)] text-green-600">Uploaded</div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleViewProof}
-                    disabled={proofLoading}
-                    className="px-3 py-1.5 bg-gray-100 text-[var(--fs-xs)] font-bold text-gray-700 rounded-lg active:bg-gray-200 disabled:opacity-50"
-                  >
-                    {proofLoading ? '...' : 'View'}
-                  </button>
-                </div>
-              ) : (
-                <label className="flex items-center justify-center gap-2 w-full py-3 rounded-xl border-[1.5px] border-dashed border-gray-300 text-[var(--fs-sm)] font-semibold text-gray-500 active:bg-gray-50 cursor-pointer">
-                  {proofUploading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-gray-400 border-t-green-600 rounded-full animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                      Upload courier confirmation
-                    </>
-                  )}
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    className="hidden"
-                    onChange={e => { if (e.target.files?.[0]) handleProofUpload(e.target.files[0]); }}
-                    disabled={proofUploading}
-                  />
-                </label>
-              )}
+              <DocumentUploadWidget
+                label="Courier confirmation"
+                hasDocument={!!rec.delivery_proof_attachment_id}
+                documentName={Array.isArray(rec.delivery_proof_attachment_id) ? rec.delivery_proof_attachment_id[1] : undefined}
+                onUpload={handleProofUpload}
+                onView={handleViewProof}
+                onDelete={handleDeleteProof}
+              />
             </div>
           </div>
         )}
@@ -708,28 +661,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         />
       )}
 
-      {/* Delivery proof viewer */}
-      {showProof && proofData && (
-        proofData.mimetype === 'application/pdf' ? (
-          <PdfViewer
-            fileData={proofData.base64}
-            fileName={proofData.name}
-            onClose={() => setShowProof(false)}
-          />
-        ) : (
-          <div className="fixed inset-0 z-[200] bg-black/95 flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 bg-black/80">
-              <span className="text-white/80 text-[var(--fs-sm)] font-semibold">{proofData.name}</span>
-              <button onClick={() => setShowProof(false)} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto flex items-center justify-center p-4">
-              <img src={`data:${proofData.mimetype};base64,${proofData.base64}`} alt="Delivery proof" className="max-w-full max-h-full object-contain" />
-            </div>
-          </div>
-        )
-      )}
 
     </div>
   );
