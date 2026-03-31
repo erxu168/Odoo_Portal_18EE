@@ -28,14 +28,14 @@ interface AppHeaderProps {
 }
 
 const HomeIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
     <polyline points="9 22 9 12 15 12 15 22"/>
   </svg>
 );
 
 const BackIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
     <path d="M15 19l-7-7 7-7"/>
   </svg>
 );
@@ -53,7 +53,7 @@ export default function AppHeader({ supertitle, title, subtitle, showBack, onBac
       <div className="flex items-center gap-3 relative pb-3">
         <button
           onClick={showBack ? onBack : goHome}
-          className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
+          className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
         >
           {showBack ? <BackIcon /> : <HomeIcon />}
         </button>
@@ -72,7 +72,7 @@ export default function AppHeader({ supertitle, title, subtitle, showBack, onBac
         {showBack && (
           <button
             onClick={goHome}
-            className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
+            className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
             title="Dashboard"
           >
             <HomeIcon />
