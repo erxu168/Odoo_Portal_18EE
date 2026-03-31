@@ -106,7 +106,7 @@ export default function RegisterPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden rounded-b-[28px]">
-          <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
+          <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
           <h1 className="text-[22px] font-bold text-white relative">Register</h1>
           <p className="text-[13px] text-white/50 mt-1 relative">Use the email or phone you gave when you were hired</p>
         </div>
@@ -119,7 +119,7 @@ export default function RegisterPage() {
             <p className="text-[12px] text-gray-400 mt-1.5">This will be matched against our employee records</p>
           </div>
           <button onClick={handleLookup} disabled={loading || !identifier.trim()}
-            className="w-full py-4 rounded-2xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
+            className="w-full py-4 rounded-xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
             {loading ? 'Searching...' : 'Find my account'}
           </button>
           <div className="text-center mt-5">
@@ -181,7 +181,7 @@ export default function RegisterPage() {
         </div>
         <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto px-4 py-4 bg-white border-t border-gray-200 z-50">
           <button onClick={handleRegister} disabled={loading || !password || !confirmPw}
-            className="w-full py-4 rounded-2xl bg-green-600 text-white text-[16px] font-bold shadow-xl shadow-green-600/40 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40">
+            className="w-full py-4 rounded-xl bg-green-600 text-white text-[16px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40">
             {loading ? 'Creating account...' : 'Create my account'}
           </button>
         </div>
@@ -194,7 +194,7 @@ export default function RegisterPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden rounded-b-[28px]">
-          <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
+          <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
           <h1 className="text-[22px] font-bold text-white relative">Almost there!</h1>
           <p className="text-[13px] text-white/50 mt-1 relative">Your account is being reviewed</p>
         </div>
@@ -290,7 +290,7 @@ export default function RegisterPage() {
               )}
             </div>
             <button onClick={() => router.push('/login')}
-              className="w-full max-w-[320px] py-4 rounded-2xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 mb-3">
+              className="w-full max-w-[320px] py-4 rounded-xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 mb-3">
               Go to login
             </button>
             <button onClick={() => router.push('/forgot-password')} className="text-[13px] font-semibold text-green-700">

@@ -79,7 +79,7 @@ export default function TermDashboard({ onNavigate }: TermDashboardProps) {
     <div className="px-4 py-5">
       {loading ? (
         <div className="flex justify-center py-16">
-          <div className="w-7 h-7 border-2 border-gray-300 border-t-red-600 rounded-full animate-spin" />
+          <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
         </div>
       ) : (
         <div className="space-y-3">

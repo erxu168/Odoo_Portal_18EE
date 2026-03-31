@@ -118,7 +118,7 @@ function LoginForm() {
         <button
           onClick={handleSubmit}
           disabled={loading || !email || !password}
-          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none mt-2 flex items-center justify-center gap-2"
+          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[14px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none mt-2 flex items-center justify-center gap-2"
         >
           {loading ? (
             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -154,7 +154,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-[#2563EB] px-6 pt-20 pb-10 text-center relative overflow-hidden rounded-b-[28px]">
-        <div className="absolute -top-10 right-1/4 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.2)_0%,transparent_70%)]" />
+        <div className="absolute -top-10 right-1/4 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.2)_0%,transparent_70%)]" />
         <div className="relative">
           <div className="text-[28px] font-bold text-white tracking-tight">KRAWINGS</div>
           <div className="text-[13px] text-white/40 mt-1 tracking-wider">SSAM KOREAN BBQ</div>

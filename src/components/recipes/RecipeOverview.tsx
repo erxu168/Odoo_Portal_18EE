@@ -70,11 +70,11 @@ export default function RecipeOverview({
   const spinnerBorder = mode === 'cooking' ? 'border-green-600' : 'border-purple-600';
   const emoji = mode === 'cooking' ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>;
   const modeLabel = mode === 'cooking' ? 'COOKING GUIDE' : 'PRODUCTION GUIDE';
-  const modeBg = mode === 'cooking' ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800';
+  const modeBg = mode === 'cooking' ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-blue-800';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="bg-[#2563EB] px-5 pt-14 pb-5 relative overflow-hidden rounded-b-[28px]">
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
         <div className="flex items-center gap-3 relative">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
@@ -99,7 +99,7 @@ export default function RecipeOverview({
         <div className="flex items-center gap-2 mb-2 flex-wrap">
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${modeBg}`}>{modeLabel}</span>
           {diff && <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${diff.bg} ${diff.text}`}>{diff.label}</span>}
-          {mode === 'production' && productQty && <span className="text-[11px] font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{productQty} kg base</span>}
+          {mode === 'production' && productQty && <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{productQty} kg base</span>}
         </div>
         <h2 className="text-[20px] font-bold text-gray-900 mb-1">{recipeName}</h2>
         <div className="flex items-center gap-6 py-4 border-b border-gray-100 mb-4">
@@ -130,7 +130,7 @@ export default function RecipeOverview({
                 const summary = step.instruction ? firstSentence(step.instruction) : `Step ${i + 1}`;
                 return (
                   <div key={step.id} className="flex items-start gap-3 py-3 px-3.5 bg-white rounded-xl border border-gray-100">
-                    <div className={`w-8 h-8 rounded-lg ${mode === 'cooking' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'} flex items-center justify-center text-[13px] font-bold font-mono flex-shrink-0`}>{i + 1}</div>
+                    <div className={`w-8 h-8 rounded-lg ${mode === 'cooking' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-blue-700'} flex items-center justify-center text-[13px] font-bold font-mono flex-shrink-0`}>{i + 1}</div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <span className="text-[12px]">{stepEmoji}</span>
@@ -161,7 +161,7 @@ export default function RecipeOverview({
           disabled={steps.length === 0}
           className={`w-full py-4 rounded-2xl text-[16px] font-bold text-white transition-all ${
             steps.length > 0
-              ? `${mode === 'cooking' ? 'bg-green-600 active:bg-green-700' : 'bg-purple-600 active:bg-purple-700'} shadow-lg`
+              ? `${mode === 'cooking' ? 'bg-green-600 active:bg-green-700' : 'bg-blue-600 active:bg-blue-700'} shadow-lg`
               : 'bg-gray-300 cursor-not-allowed'
           }`}
         >

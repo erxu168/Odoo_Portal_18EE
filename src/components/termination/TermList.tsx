@@ -70,7 +70,7 @@ export default function TermList({ mode, onSelect, onHome }: Props) {
 
   return (
     <div>
-      <div className="bg-[#DC2626] px-5 pt-12 pb-3 rounded-b-[28px]">
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
         <div className="flex items-center gap-3">
           <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
@@ -94,7 +94,7 @@ export default function TermList({ mode, onSelect, onHome }: Props) {
                   onClick={() => setActiveFilter(f.id)}
                   className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${
                     activeFilter === f.id
-                      ? 'bg-red-600 border-red-600 text-white'
+                      ? 'bg-green-600 border-green-600 text-white'
                       : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'
                   }`}
                 >
@@ -108,12 +108,12 @@ export default function TermList({ mode, onSelect, onHome }: Props) {
         <input
           type="text" placeholder="Search by name..."
           value={search} onChange={e => setSearch(e.target.value)}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30 mb-3"
+          className="w-full px-4 py-3 rounded-xl border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30 mb-3"
         />
 
         {loading ? (
           <div className="flex justify-center py-12">
-            <div className="w-7 h-7 border-2 border-gray-300 border-t-red-600 rounded-full animate-spin" />
+            <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
           </div>
         ) : filtered.length === 0 ? (
           <p className="text-center text-gray-400 text-[13px] py-8">No terminations found</p>

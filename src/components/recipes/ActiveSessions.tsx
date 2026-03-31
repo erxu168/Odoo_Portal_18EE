@@ -58,7 +58,7 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
             <div className="text-5xl mb-4">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>}</div>
             <div className="text-[16px] font-bold text-zinc-200 mb-2">Kitchen is quiet</div>
             <div className="text-[13px] text-zinc-400 mb-6">Start cooking to see dishes here</div>
-            <button onClick={onNewDish} className="px-6 py-3 rounded-2xl bg-green-600 text-white font-bold text-[15px] active:bg-green-700">{'\u002b'} Start cooking</button>
+            <button onClick={onNewDish} className="px-6 py-3 rounded-xl bg-green-600 text-white font-bold text-[15px] active:bg-green-700">{'\u002b'} Start cooking</button>
           </div>
         )}
 

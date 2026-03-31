@@ -178,19 +178,19 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
       <>
         <div className="mb-3">
           <input type="text" placeholder="Search employee..." value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" autoFocus />
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" autoFocus />
         </div>
         {departments.length > 1 && (
           <div className="flex gap-2 overflow-x-auto pb-3 mb-1 -mx-1 px-1 scrollbar-hide">
             <button onClick={() => setDeptFilter(null)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${deptFilter === null ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'}`}>
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${deptFilter === null ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'}`}>
               All ({employees.length})
             </button>
             {departments.map(dept => {
               const count = employees.filter(e => e.department_id && e.department_id[0] === dept.id).length;
               return (
                 <button key={dept.id} onClick={() => setDeptFilter(deptFilter === dept.id ? null : dept.id)}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${deptFilter === dept.id ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'}`}>
+                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium border transition-colors ${deptFilter === dept.id ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'}`}>
                   {dept.name} ({count})
                 </button>
               );
@@ -198,7 +198,7 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
           </div>
         )}
         {loading ? (
-          <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-gray-300 border-t-red-600 rounded-full animate-spin" /></div>
+          <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" /></div>
         ) : (
           <>
             <div className="text-[11px] text-gray-400 mb-2 px-1">{filteredEmployees.length} employee{filteredEmployees.length !== 1 ? 's' : ''}</div>
@@ -251,26 +251,26 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
           <label className="block"><span className="text-[12px] text-gray-500">Letter date</span>
-            <input type="date" value={letterDate} onChange={e => setLetterDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" /></label>
+            <input type="date" value={letterDate} onChange={e => setLetterDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>
           {showCalcMethod && (<label className="block"><span className="text-[12px] text-gray-500">Calculation method</span>
             <select value={calcMethod} onChange={e => setCalcMethod(e.target.value as 'bgb' | 'receipt')} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none">
               <option value="bgb">{'\u00a7'} 622 BGB statutory</option><option value="receipt">From date of receipt</option></select></label>)}
           {showCalcMethod && calcMethod === 'receipt' && (<label className="block"><span className="text-[12px] text-gray-500">Date of receipt</span>
-            <input type="date" value={receiptDate} onChange={e => setReceiptDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" /></label>)}
+            <input type="date" value={receiptDate} onChange={e => setReceiptDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>)}
           {termType === 'fristlos' && (<>
             <label className="block"><span className="text-[12px] text-gray-500">Incident date</span>
-              <input type="date" value={incidentDate} onChange={e => setIncidentDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" /></label>
+              <input type="date" value={incidentDate} onChange={e => setIncidentDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>
             <label className="block"><span className="text-[12px] text-gray-500">Description (internal only)</span>
-              <textarea value={incidentDescription} onChange={e => setIncidentDescription(e.target.value)} rows={3} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30 resize-none" /></label></>)}
+              <textarea value={incidentDescription} onChange={e => setIncidentDescription(e.target.value)} rows={3} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30 resize-none" /></label></>)}
           {termType === 'aufhebung' && (<>
             <label className="block"><span className="text-[12px] text-gray-500">Last working day</span>
-              <input type="date" value={lastWorkingDayManual} onChange={e => setLastWorkingDayManual(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" /></label>
+              <input type="date" value={lastWorkingDayManual} onChange={e => setLastWorkingDayManual(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>
             <label className="flex items-center gap-3"><input type="checkbox" checked={gardenLeave} onChange={e => setGardenLeave(e.target.checked)} className="w-5 h-5 rounded" /><span className="text-[14px]">Garden leave (Freistellung)</span></label>
             <label className="flex items-center gap-3"><input type="checkbox" checked={includeSeverance} onChange={e => setIncludeSeverance(e.target.checked)} className="w-5 h-5 rounded" /><span className="text-[14px]">Severance payment (Abfindung)</span></label>
             {includeSeverance && (<label className="block"><span className="text-[12px] text-gray-500">Severance amount (EUR)</span>
-              <input type="number" step="0.01" value={severanceAmount} onChange={e => setSeveranceAmount(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" /></label>)}</>)}
+              <input type="number" step="0.01" value={severanceAmount} onChange={e => setSeveranceAmount(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>)}</>)}
           {termType === 'bestaetigung' && (<label className="block"><span className="text-[12px] text-gray-500">Resignation received on</span>
-            <input type="date" value={resignationDate} onChange={e => setResignationDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-red-500/30" /></label>)}
+            <input type="date" value={resignationDate} onChange={e => setResignationDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>)}
         </div>
         {error && <div className="bg-red-50 text-red-700 text-[13px] px-4 py-3 rounded-xl">{error}</div>}
         <button onClick={handleGeneratePreview} disabled={previewLoading}
@@ -328,7 +328,7 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
 
   return (
     <div>
-      <div className="bg-[#DC2626] px-5 pt-12 pb-3 rounded-b-[28px]">
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
         <div className="flex items-center gap-3">
           <button onClick={step === 'employee' ? onBack : () => {
             if (step === 'type') setStep('employee');

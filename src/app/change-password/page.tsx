@@ -60,8 +60,8 @@ function ChangePasswordForm() {
   if (success) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden rounded-b-[28px]">
-          <h1 className="text-[22px] font-bold text-white">Password Changed</h1>
+        <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
+          <h1 className="text-[20px] font-bold text-white">Password Changed</h1>
         </div>
         <div className="flex-1 px-6 pt-8 flex flex-col items-center">
           <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center mb-4">
@@ -80,7 +80,7 @@ function ChangePasswordForm() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="bg-[#2563EB] px-6 pt-14 pb-6 relative overflow-hidden rounded-b-[28px]">
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
         <div className="flex items-center gap-3">
           {!isForced && (
             <button onClick={() => router.back()}
@@ -131,7 +131,7 @@ function ChangePasswordForm() {
           </div>
 
           <button onClick={handleSubmit} disabled={loading || !currentPw || !newPw || !confirmPw}
-            className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none mt-2 flex items-center justify-center gap-2">
+            className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[14px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none mt-2 flex items-center justify-center gap-2">
             {loading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : (

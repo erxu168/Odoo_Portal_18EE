@@ -46,7 +46,7 @@ const DIFFICULTY_STYLES: Record<string, { bg: string; text: string; label: strin
 
 const TAB_STYLES = {
   cooking: { filterActive: 'bg-green-600 text-white border-green-600', spinner: 'border-green-600' },
-  production: { filterActive: 'bg-purple-600 text-white border-purple-600', spinner: 'border-purple-600' },
+  production: { filterActive: 'bg-blue-600 text-white border-purple-600', spinner: 'border-purple-600' },
 };
 
 export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Props) {
@@ -110,8 +110,8 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-[#2563EB] px-5 pt-14 pb-5 relative overflow-hidden rounded-b-[28px]">
-        <div className={`absolute -top-10 -right-5 w-44 h-44 rounded-full ${tab === 'cooking' ? 'bg-[radial-gradient(circle,rgba(22,163,74,0.08)_0%,transparent_70%)]' : 'bg-[radial-gradient(circle,rgba(139,92,246,0.08)_0%,transparent_70%)]'}`} />
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
+        <div className={`absolute -top-10 -right-5 w-40 h-40 rounded-full ${tab === 'cooking' ? 'bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]' : 'bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]'}`} />
         <div className="flex items-center gap-3 relative">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
@@ -138,7 +138,7 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
           <button
             onClick={() => switchTab('production')}
             className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold transition-colors ${
-              tab === 'production' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500'
+              tab === 'production' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'
             }`}
           >Production Guide</button>
         </div>
@@ -281,13 +281,13 @@ export default function EditRecipeBrowse({ onSelectRecipe, onBack, onHome }: Pro
                 className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] active:scale-[0.98] transition-transform"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-14 h-14 rounded-xl bg-purple-50 flex items-center justify-center text-2xl flex-shrink-0">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>}</div>
+                  <div className="w-14 h-14 rounded-xl bg-blue-50 flex items-center justify-center text-2xl flex-shrink-0">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[15px] font-bold text-gray-900 truncate">{name}</div>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       {catName && <span className="text-[11px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{catName}</span>}
                       {diff && <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${diff.bg} ${diff.text}`}>{diff.label}</span>}
-                      <span className="text-[11px] font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{recipe.product_qty} kg</span>
+                      <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{recipe.product_qty} kg</span>
                       {!recipe.x_recipe_published && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-gray-200 text-gray-600">Unpublished</span>
                       )}

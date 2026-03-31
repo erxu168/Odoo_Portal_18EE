@@ -80,8 +80,8 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-[#2563EB] px-5 pt-14 pb-5 relative overflow-hidden rounded-b-[28px]">
-        <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(139,92,246,0.08)_0%,transparent_70%)]" />
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
+        <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
@@ -126,7 +126,7 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
               onClick={() => setActiveCategory(null)}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-[12px] font-semibold border transition-colors ${
                 activeCategory === null
-                  ? 'bg-purple-600 text-white border-purple-600'
+                  ? 'bg-blue-600 text-white border-purple-600'
                   : 'bg-white text-gray-600 border-gray-200 active:bg-gray-50'
               }`}
             >All</button>
@@ -136,7 +136,7 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
                 onClick={() => setActiveCategory(activeCategory === cat.id ? null : cat.id)}
                 className={`flex-shrink-0 px-4 py-2 rounded-full text-[12px] font-semibold border transition-colors ${
                   activeCategory === cat.id
-                    ? 'bg-purple-600 text-white border-purple-600'
+                    ? 'bg-blue-600 text-white border-purple-600'
                     : 'bg-white text-gray-600 border-gray-200 active:bg-gray-50'
                 }`}
               >{cat.name}</button>
@@ -183,7 +183,7 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
                 className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] active:scale-[0.98] transition-transform"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-14 h-14 rounded-xl bg-purple-50 flex items-center justify-center text-2xl flex-shrink-0">
+                  <div className="w-14 h-14 rounded-xl bg-blue-50 flex items-center justify-center text-2xl flex-shrink-0">
                     \ud83c\udfed
                   </div>
                   <div className="flex-1 min-w-0">
@@ -195,7 +195,7 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
                       {diff && (
                         <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${diff.bg} ${diff.text}`}>{diff.label}</span>
                       )}
-                      <span className="text-[11px] font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{recipe.product_qty} kg</span>
+                      <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{recipe.product_qty} kg</span>
                     </div>
                     <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-400 font-mono">
                       <span>{ingredientCount} ingredients</span>

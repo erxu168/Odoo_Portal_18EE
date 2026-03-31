@@ -56,7 +56,7 @@ export default function RecordSelect({ onSelectRecipe, onCreateNew, onBack, onHo
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="bg-[#2563EB] px-5 pt-14 pb-5 relative overflow-hidden rounded-b-[28px]">
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
         <div className="flex items-center gap-3 relative">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
@@ -78,7 +78,7 @@ export default function RecordSelect({ onSelectRecipe, onCreateNew, onBack, onHo
             Cooking Guide
           </button>
           <button onClick={() => setMode('production')}
-            className={`flex-1 py-2.5 rounded-lg text-[13px] font-bold transition-colors ${mode === 'production' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500'}`}>
+            className={`flex-1 py-2.5 rounded-lg text-[13px] font-bold transition-colors ${mode === 'production' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500'}`}>
             Production Guide
           </button>
         </div>
@@ -122,7 +122,7 @@ export default function RecordSelect({ onSelectRecipe, onCreateNew, onBack, onHo
             return (
               <button key={recipe.id} onClick={() => onSelectRecipe(recipe, mode)}
                 className="w-full flex items-center gap-3 px-4 py-3.5 bg-white border border-gray-200 rounded-xl text-left active:scale-[0.98] transition-transform">
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${mode === 'cooking' ? 'bg-orange-50' : 'bg-purple-50'}`}>
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${mode === 'cooking' ? 'bg-orange-50' : 'bg-blue-50'}`}>
                   {mode === 'cooking' ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>}
                 </div>
                 <div className="flex-1 min-w-0">

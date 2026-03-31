@@ -69,7 +69,7 @@ export default function TerminationPage() {
       case 'dashboard':
         return (
           <>
-            <div className="bg-[#DC2626] px-5 pt-12 pb-3 rounded-b-[28px]">
+            <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
               <div className="flex items-center gap-3">
                 <button onClick={goHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
                   <HomeIcon />

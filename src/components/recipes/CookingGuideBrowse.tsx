@@ -31,7 +31,7 @@ const CAT_COLORS = [
   { bg: 'bg-amber-500', ring: 'ring-amber-200' },
   { bg: 'bg-green-600', ring: 'ring-green-200' },
   { bg: 'bg-blue-500', ring: 'ring-blue-200' },
-  { bg: 'bg-purple-500', ring: 'ring-purple-200' },
+  { bg: 'bg-blue-500', ring: 'ring-purple-200' },
   { bg: 'bg-pink-500', ring: 'ring-pink-200' },
   { bg: 'bg-teal-500', ring: 'ring-teal-200' },
   { bg: 'bg-orange-500', ring: 'ring-orange-200' },
@@ -134,7 +134,7 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
     const cat = categories.find(c => c.id === activeCategory);
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 rounded-b-[28px]">
+        <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
           <div className="flex items-center gap-3">
             <button onClick={() => setActiveCategory(null)} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
@@ -185,7 +185,7 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-[#1A1F2E] px-5 pt-14 pb-5 rounded-b-[28px]">
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>

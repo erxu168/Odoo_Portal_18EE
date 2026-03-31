@@ -241,8 +241,8 @@ export default function AdminUsersPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-[#2563EB] px-5 pt-14 pb-5 relative overflow-hidden rounded-b-[28px]">
-        <div className="absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.15)_0%,transparent_70%)]" />
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
+        <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
           <button onClick={() => router.push('/')}
             className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
@@ -531,7 +531,7 @@ export default function AdminUsersPage() {
               </select>
               <button onClick={handleCreate}
                 disabled={creating || !newName || !newEmail || !newPassword}
-                className="h-14 rounded-xl bg-green-600 text-white font-bold text-[15px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 mt-1 flex items-center justify-center gap-2">
+                className="h-14 rounded-xl bg-green-600 text-white font-bold text-[14px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 mt-1 flex items-center justify-center gap-2">
                 {creating ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (

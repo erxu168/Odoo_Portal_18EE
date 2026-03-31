@@ -367,7 +367,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
               {cancelLoading ? '...' : 'Cancel'}
             </button>
             <button onClick={handleConfirm} disabled={confirmLoading}
-              className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-[15px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+              className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-[14px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
               {confirmLoading ? 'Confirming...' : 'Confirm order'}
             </button>
           </div>
@@ -394,7 +394,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
               </button>
             )}
             <button onClick={handleProduce} disabled={producing}
-              className="flex-1 py-4 rounded-xl bg-green-500 text-white font-bold text-[15px] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+              className="flex-1 py-4 rounded-xl bg-green-500 text-white font-bold text-[14px] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
               {producing ? 'Finishing...' : 'Produce & close'}
             </button>
           </div>

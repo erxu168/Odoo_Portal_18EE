@@ -63,7 +63,7 @@ export default function AppHeader({ supertitle, title, subtitle, showBack, onBac
               {supertitle}
             </div>
           )}
-          <h1 className="text-[18px] font-bold text-white leading-tight truncate">{title}</h1>
+          <h1 className="text-[20px] font-bold text-white leading-tight truncate">{title}</h1>
           {subtitle && (
             <p className="text-[12px] text-white/45 mt-0.5 truncate">{subtitle}</p>
           )}

@@ -23,19 +23,19 @@ export default function CookComplete({ mode, recipeName, stepCount, elapsedSecon
       <div className="w-24 h-24 rounded-full bg-green-600 flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(22,163,74,0.3)]">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
       </div>
-      <h1 className="text-[24px] font-bold text-white mb-2">Dish Complete!</h1>
+      <h1 className="text-[20px] font-bold text-white mb-2">Dish Complete!</h1>
       <p className="text-[14px] text-zinc-400 mb-8">{recipeName} ready to serve</p>
       <div className="flex items-center gap-8 mb-10">
         <div className="text-center">
-          <div className="text-[22px] font-bold text-white font-mono">{stepCount}</div>
+          <div className="text-[20px] font-bold text-white font-mono">{stepCount}</div>
           <div className="text-[11px] text-zinc-400 font-semibold uppercase">Steps</div>
         </div>
         <div className="text-center">
-          <div className="text-[22px] font-bold text-white font-mono">{timeStr}</div>
+          <div className="text-[20px] font-bold text-white font-mono">{timeStr}</div>
           <div className="text-[11px] text-zinc-400 font-semibold uppercase">Time</div>
         </div>
         <div className="text-center">
-          <div className="text-[22px] font-bold text-white font-mono">{batch}{unit === 'srv' ? '\u00d7' : ''}</div>
+          <div className="text-[20px] font-bold text-white font-mono">{batch}{unit === 'srv' ? '\u00d7' : ''}</div>
           <div className="text-[11px] text-zinc-400 font-semibold uppercase">Batch</div>
         </div>
       </div>

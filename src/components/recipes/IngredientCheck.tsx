@@ -44,12 +44,12 @@ export default function IngredientCheck({ mode, recipeName, steps, onBack, onHom
     setShowSkipConfirm(true);
   }
 
-  const accentBg = mode === 'cooking' ? 'bg-green-600' : 'bg-purple-600';
-  const accentActive = mode === 'cooking' ? 'active:bg-green-700' : 'active:bg-purple-700';
+  const accentBg = mode === 'cooking' ? 'bg-green-600' : 'bg-blue-600';
+  const accentActive = mode === 'cooking' ? 'active:bg-green-700' : 'active:bg-blue-700';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="bg-[#2563EB] px-5 pt-14 pb-5 relative overflow-hidden rounded-b-[28px]">
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
         <div className="flex items-center gap-3 relative">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>

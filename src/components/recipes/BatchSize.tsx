@@ -29,8 +29,8 @@ export default function BatchSize({ mode, recipeName, baseBatch, bomIngredients,
   const [sqcIngIdx, setSqcIngIdx] = useState(0);
   const [sqcQty, setSqcQty] = useState('');
 
-  const accentBg = mode === 'cooking' ? 'bg-green-600' : 'bg-purple-600';
-  const accentActive = mode === 'cooking' ? 'active:bg-green-700' : 'active:bg-purple-700';
+  const accentBg = mode === 'cooking' ? 'bg-green-600' : 'bg-blue-600';
+  const accentActive = mode === 'cooking' ? 'active:bg-green-700' : 'active:bg-blue-700';
 
   function handleNumpadKey(key: string) {
     if (key === 'C') { setNumpadVal(''); return; }
@@ -73,7 +73,7 @@ export default function BatchSize({ mode, recipeName, baseBatch, bomIngredients,
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="bg-[#2563EB] px-5 pt-14 pb-5 relative overflow-hidden rounded-b-[28px]">
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
         <div className="flex items-center gap-3 relative">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
@@ -101,7 +101,7 @@ export default function BatchSize({ mode, recipeName, baseBatch, bomIngredients,
                 <div className="text-[13px] font-semibold text-gray-900">Set by ingredient</div>
                 <div className="text-[11px] text-gray-500">Calculate batch from what you have</div>
               </div>
-              <div className={`w-11 h-6 rounded-full transition-colors relative ${sqcOn ? 'bg-purple-600' : 'bg-gray-300'}`}>
+              <div className={`w-11 h-6 rounded-full transition-colors relative ${sqcOn ? 'bg-blue-600' : 'bg-gray-300'}`}>
                 <div className={`w-5 h-5 rounded-full bg-white shadow absolute top-0.5 transition-transform ${sqcOn ? 'translate-x-5' : 'translate-x-0.5'}`} />
               </div>
             </button>
@@ -121,7 +121,7 @@ export default function BatchSize({ mode, recipeName, baseBatch, bomIngredients,
                     className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-[14px] font-mono" />
                   <div className="text-[13px] text-gray-500 font-mono">{bomIngredients[sqcIngIdx]?.uom || 'kg'}</div>
                 </div>
-                <div className="mt-3 text-[13px] text-gray-600 bg-purple-50 rounded-xl px-3 py-2.5">
+                <div className="mt-3 text-[13px] text-gray-600 bg-blue-50 rounded-xl px-3 py-2.5">
                   {sqcResult
                     ? <span><b>{sqcResult.inputQty} {bomIngredients[sqcIngIdx]?.uom}</b> {sqcResult.ingName} {'\u2192'} <b>{sqcResult.outputKg} kg</b> output ({sqcResult.ratio}x batch)</span>
                     : 'Enter a quantity to calculate batch size'}

@@ -40,7 +40,7 @@ export default function PurchaseNumpad({ open, value, label, sublabel, onKey, on
           <button onClick={() => onKey('0')} className="col-span-2 h-14 rounded-xl border border-gray-200 bg-white text-[20px] font-semibold text-gray-900 flex items-center justify-center active:bg-gray-100 font-mono">0</button>
           <button onClick={() => onKey('.')} className="h-14 rounded-xl border border-gray-200 bg-white text-[20px] font-semibold text-gray-900 flex items-center justify-center active:bg-gray-100 font-mono">.</button>
         </div>
-        <button onClick={onConfirm} className="w-full py-4 rounded-2xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">Confirm</button>
+        <button onClick={onConfirm} className="w-full py-4 rounded-xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">Confirm</button>
       </div>
     </div>
   );

@@ -115,7 +115,7 @@ export default function OrdersDashboard({
       icon: <HistoryIcon />,
       badgeCount: 0,
       badgeColor: '',
-      color: 'bg-purple-50 border-purple-200', iconBg: 'bg-purple-100', iconColor: 'text-purple-600',
+      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-purple-100', iconColor: 'text-blue-600',
     },
   ];
 

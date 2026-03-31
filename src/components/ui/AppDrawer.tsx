@@ -67,7 +67,7 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
         className={`fixed top-0 left-0 bottom-0 z-[61] w-[280px] max-w-[85vw] bg-white flex flex-col transition-transform duration-300 ease-out ${open ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {/* User header */}
-        <div className="bg-[#2563EB] px-5 pt-14 pb-5">
+        <div className="bg-[#2563EB] px-5 pt-12 pb-3">
           <div className="flex items-center gap-3">
             <button onClick={() => { onClose(); router.push('/hr'); }} className="flex-shrink-0 active:scale-95 transition-transform">
               {user?.avatar ? (

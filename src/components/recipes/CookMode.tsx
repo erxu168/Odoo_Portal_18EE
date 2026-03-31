@@ -174,7 +174,7 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
           <div className="flex-1">
-            <div className="text-[18px] font-bold text-white">Plating</div>
+            <div className="text-[20px] font-bold text-white">Plating</div>
             <div className="text-[11px] text-zinc-400 truncate">{session.recipeName}</div>
           </div>
           {/* Dashboard button — top right */}
@@ -190,7 +190,7 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
         <div className="flex-1 flex items-center justify-center px-8">
           <div className="text-center">
             <div className="text-7xl mb-6">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>}</div>
-            <div className="text-[22px] font-bold text-white mb-4">{session.recipeName}</div>
+            <div className="text-[20px] font-bold text-white mb-4">{session.recipeName}</div>
             <p className="text-[15px] text-zinc-300 leading-relaxed">
               {session.mode === 'cooking' ? 'Plate the dish according to SSAM standards.' : 'Portion into containers. Label with date, batch #, and use-by.'}
             </p>

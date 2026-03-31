@@ -261,7 +261,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
 
         <div className="fixed bottom-0 left-0 right-0 z-[61] px-4 pb-4 pt-2 bg-white border-t border-gray-200">
           <button onClick={() => setStep('config')}
-            className="w-full py-4 rounded-2xl bg-green-600 text-white text-[16px] font-bold shadow-xl shadow-green-600/40 active:bg-green-700 active:scale-[0.975] transition-all">
+            className="w-full py-4 rounded-xl bg-green-600 text-white text-[16px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">
             Done &mdash; {selectedCount} product{selectedCount !== 1 ? 's' : ''} selected
           </button>
         </div>
@@ -446,7 +446,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
       {/* Save button - fixed at bottom, high z-index */}
       <div className="fixed bottom-0 left-0 right-0 z-[61] px-4 pb-4 pt-2 bg-white border-t border-gray-200">
         <button onClick={handleSubmit} disabled={saving || !canSave}
-          className="w-full py-4 rounded-2xl bg-green-600 text-white text-[16px] font-bold shadow-xl shadow-green-600/40 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
+          className="w-full py-4 rounded-xl bg-green-600 text-white text-[16px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
           {saving
             ? 'Saving...'
             : selectedCount === 0

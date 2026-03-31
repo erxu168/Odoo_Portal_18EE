@@ -52,8 +52,8 @@ export default function RecipeDetail({
   const baseBatch = defaultBatch || (mode === 'cooking' ? 1 : 10);
   const presets = mode === 'cooking' ? PRESETS_COOKING : PRESETS_PRODUCTION;
   const accent = mode === 'cooking' ? 'green' : 'purple';
-  const accentBg = mode === 'cooking' ? 'bg-green-600' : 'bg-purple-600';
-  const accentActive = mode === 'cooking' ? 'active:bg-green-700' : 'active:bg-purple-700';
+  const accentBg = mode === 'cooking' ? 'bg-green-600' : 'bg-blue-600';
+  const accentActive = mode === 'cooking' ? 'active:bg-green-700' : 'active:bg-blue-700';
   const emoji = mode === 'cooking' ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>;
 
   useEffect(() => {
@@ -109,8 +109,8 @@ export default function RecipeDetail({
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-[#2563EB] px-5 pt-14 pb-5 relative overflow-hidden rounded-b-[28px]">
-        <div className={`absolute -top-10 -right-5 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(${mode === 'cooking' ? '22,163,74' : '139,92,246'},0.08)_0%,transparent_70%)]`} />
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
+        <div className={`absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(${mode === 'cooking' ? '22,163,74' : '139,92,246'},0.08)_0%,transparent_70%)]`} />
         <div className="flex items-center gap-3 relative">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
@@ -129,7 +129,7 @@ export default function RecipeDetail({
         {/* Hero card */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 mb-4">
           <div className="flex items-center gap-4">
-            <div className={`w-16 h-16 rounded-xl ${mode === 'cooking' ? 'bg-orange-50' : 'bg-purple-50'} flex items-center justify-center text-3xl flex-shrink-0`}>
+            <div className={`w-16 h-16 rounded-xl ${mode === 'cooking' ? 'bg-orange-50' : 'bg-blue-50'} flex items-center justify-center text-3xl flex-shrink-0`}>
               {emoji}
             </div>
             <div className="flex-1 min-w-0">
@@ -138,7 +138,7 @@ export default function RecipeDetail({
                 {categoryName && <span className="text-[11px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{categoryName}</span>}
                 {diff && <span className={`text-[11px] font-bold px-2 py-0.5 rounded ${diff.bg} ${diff.text}`}>{diff.label}</span>}
                 {mode === 'production' && productQty && (
-                  <span className="text-[11px] font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded">{productQty} kg base</span>
+                  <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">{productQty} kg base</span>
                 )}
               </div>
             </div>

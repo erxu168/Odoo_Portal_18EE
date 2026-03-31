@@ -44,7 +44,7 @@ function ResetForm() {
         <h2 className="text-[20px] font-bold text-gray-900 mb-2">Invalid link</h2>
         <p className="text-[14px] text-gray-500 mb-6">This reset link is invalid or has expired.</p>
         <button onClick={() => router.push('/forgot-password')}
-          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all">
+          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[14px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all">
           Request a new link
         </button>
       </div>
@@ -62,7 +62,7 @@ function ResetForm() {
         <h2 className="text-[20px] font-bold text-gray-900 mb-2">Password reset</h2>
         <p className="text-[14px] text-gray-500 mb-6">Your password has been changed. You can now sign in.</p>
         <button onClick={() => router.push('/login')}
-          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all">
+          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[14px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all">
           Sign in
         </button>
       </div>
@@ -92,7 +92,7 @@ function ResetForm() {
             className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all" />
         </div>
         <button onClick={handleSubmit} disabled={loading || !password || !confirmPassword}
-          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[16px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2">
+          className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[14px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2">
           {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Set new password'}
         </button>
       </div>
@@ -104,7 +104,7 @@ export default function ResetPasswordPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <div className="bg-[#2563EB] px-6 pt-20 pb-10 text-center relative overflow-hidden rounded-b-[28px]">
-        <div className="absolute -top-10 right-1/4 w-44 h-44 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.2)_0%,transparent_70%)]" />
+        <div className="absolute -top-10 right-1/4 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.2)_0%,transparent_70%)]" />
         <div className="relative">
           <div className="text-[28px] font-bold text-white tracking-tight">KRAWINGS</div>
           <div className="text-[13px] text-white/40 mt-1 tracking-wider">SSAM KOREAN BBQ</div>

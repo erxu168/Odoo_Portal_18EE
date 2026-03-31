@@ -259,7 +259,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full" /></div>;
+  if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full" /></div>;
   if (error || !rec) return <div className="px-5 pt-12"><p className="text-red-600">{error || 'Not found'}</p></div>;
 
   const stepIdx = STEPS.indexOf(rec.state);
@@ -273,13 +273,13 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-[#DC2626] px-5 pt-12 pb-3 rounded-b-[28px]">
+      <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[18px] font-bold text-white truncate">{rec.employee_name}</h1>
+            <h1 className="text-[20px] font-bold text-white truncate">{rec.employee_name}</h1>
             <p className="text-[12px] text-white/50">{TERMINATION_TYPE_LABELS[rec.termination_type]}</p>
           </div>
           <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
@@ -301,13 +301,13 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
             {stageLoading && (
               <div className="flex justify-center mb-2">
-                <div className="w-4 h-4 border-2 border-gray-300 border-t-red-500 rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-green-500 rounded-full animate-spin" />
               </div>
             )}
             <div className="flex items-center gap-1">
               {STEPS.map((s, i) => (
                 <React.Fragment key={s}>
-                  <div className={`flex-1 h-1.5 rounded-full ${i <= stepIdx ? 'bg-red-500' : 'bg-gray-200'}`} />
+                  <div className={`flex-1 h-1.5 rounded-full ${i <= stepIdx ? 'bg-green-500' : 'bg-gray-200'}`} />
                   {i < STEPS.length - 1 && <div className="w-0.5" />}
                 </React.Fragment>
               ))}
@@ -323,9 +323,9 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
                     disabled={stageLoading || s === 'draft'}
                     className={`text-[9px] px-1 py-0.5 rounded transition-colors ${
                       isCurrent
-                        ? 'text-red-700 font-bold bg-red-50'
+                        ? 'text-green-700 font-bold bg-green-50'
                         : isActive
-                          ? 'text-red-600 font-medium active:bg-red-50'
+                          ? 'text-green-600 font-medium active:bg-green-50'
                           : 'text-gray-400 active:bg-gray-100'
                     } ${s === 'draft' ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
@@ -381,14 +381,14 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         <div className="space-y-2.5 mt-4">
           {rec.state === 'draft' && (
             <button onClick={handleConfirm} disabled={confirmLoading}
-              className="w-full py-3.5 rounded-2xl bg-blue-600 text-white font-semibold text-[14px] active:bg-blue-700 disabled:opacity-50">
+              className="w-full py-3.5 rounded-xl bg-blue-600 text-white font-semibold text-[14px] active:bg-blue-700 disabled:opacity-50">
               {confirmLoading ? 'Confirming...' : 'Confirm termination'}
             </button>
           )}
 
           {rec.state === 'confirmed' && !rec.pdf_attachment_id && (
             <button onClick={handleGeneratePdf} disabled={pdfLoading}
-              className="w-full py-3.5 rounded-2xl bg-red-600 text-white font-semibold text-[14px] active:bg-red-700 disabled:opacity-50">
+              className="w-full py-3.5 rounded-xl bg-red-600 text-white font-semibold text-[14px] active:bg-red-700 disabled:opacity-50">
               {pdfLoading ? 'Generating PDF...' : 'Generate PDF'}
             </button>
           )}
@@ -397,12 +397,12 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           {rec.pdf_attachment_id && (
             <div className="flex gap-2">
               <button onClick={handleViewPdf}
-                className="flex-1 py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
+                className="flex-1 py-3.5 rounded-xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 View PDF
               </button>
               <button onClick={handlePrintPdf}
-                className="flex-1 py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
+                className="flex-1 py-3.5 rounded-xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                 Print
               </button>
@@ -451,7 +451,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           {/* Mark as signed */}
           {rec.state === 'confirmed' && rec.pdf_attachment_id && (
             <button onClick={() => handleSetState('signed')}
-              className="w-full py-3.5 rounded-2xl bg-green-600 text-white font-semibold text-[14px] active:bg-green-700">
+              className="w-full py-3.5 rounded-xl bg-green-600 text-white font-semibold text-[14px] active:bg-green-700">
               Mark as signed
             </button>
           )}
@@ -459,7 +459,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           {/* Record delivery info (does NOT change stage) */}
           {['signed', 'delivered'].includes(rec.state) && !showDelivery && !rec.delivery_method && (
             <button onClick={() => setShowDelivery(true)}
-              className="w-full py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50">
+              className="w-full py-3.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50">
               Record delivery info
             </button>
           )}
@@ -467,14 +467,14 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           {/* Mark as delivered — separate explicit action */}
           {rec.state === 'signed' && (
             <button onClick={() => handleSetState('delivered')}
-              className="w-full py-3.5 rounded-2xl bg-emerald-600 text-white font-semibold text-[14px] active:bg-emerald-700">
+              className="w-full py-3.5 rounded-xl bg-emerald-600 text-white font-semibold text-[14px] active:bg-emerald-700">
               Mark as delivered
             </button>
           )}
 
           {['signed', 'delivered'].includes(rec.state) && !rec.sent_to_accountant && (
             <button onClick={handleSendToAccountant} disabled={accountantLoading}
-              className="w-full py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50 disabled:opacity-50">
+              className="w-full py-3.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50 disabled:opacity-50">
               {accountantLoading ? 'Sending...' : 'Send to accountant'}
             </button>
           )}
@@ -489,7 +489,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           {rec.state === 'draft' && (
             <div className="pt-4 mt-4 border-t border-gray-200 space-y-2">
               <button onClick={handleDelete} disabled={deleteLoading}
-                className="w-full py-3 rounded-2xl bg-red-600 text-white font-semibold text-[13px] active:bg-red-700 disabled:opacity-50">
+                className="w-full py-3 rounded-xl bg-red-600 text-white font-semibold text-[13px] active:bg-red-700 disabled:opacity-50">
                 {deleteLoading ? 'Deleting...' : 'Delete draft'}
               </button>
             </div>
@@ -497,7 +497,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           {canCancel && rec.state !== 'draft' && (
             <div className="pt-4 mt-4 border-t border-gray-200">
               <button onClick={handleCancel} disabled={cancelLoading}
-                className="w-full py-3 rounded-2xl bg-white border border-red-200 text-red-600 font-medium text-[13px] active:bg-red-50 disabled:opacity-50">
+                className="w-full py-3 rounded-xl bg-white border border-red-200 text-green-600 font-medium text-[13px] active:bg-red-50 disabled:opacity-50">
                 {cancelLoading ? 'Cancelling...' : 'Cancel termination'}
               </button>
             </div>
