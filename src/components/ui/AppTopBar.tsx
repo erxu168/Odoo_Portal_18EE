@@ -23,8 +23,7 @@ export default function AppTopBar() {
     return null;
   }
 
-  const dayName = now.toLocaleDateString('en-US', { weekday: 'short' });
-  const dateStr = now.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const dateStr = `${now.getDate()}.${now.toLocaleDateString('en-US', { month: 'short' })}. ${now.getFullYear()}`;
   const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
   return (
@@ -42,9 +41,9 @@ export default function AppTopBar() {
               <line x1="3" y1="18" x2="21" y2="18" />
             </svg>
           </button>
-          <div className="text-center">
-            <div className="text-[var(--fs-xs)] font-semibold text-white">{dayName} {dateStr}</div>
-            <div className="text-[var(--fs-xs)] text-white/50 font-mono">{timeStr}</div>
+          <div className="flex items-center gap-3">
+            <span className="text-[var(--fs-xs)] font-semibold text-white">{dateStr}</span>
+            <span className="text-[var(--fs-xs)] text-white/60 font-mono">{timeStr}</span>
           </div>
           <CompanySelector />
         </div>
