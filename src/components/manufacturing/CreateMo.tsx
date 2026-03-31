@@ -94,18 +94,21 @@ export default function CreateMo({ onBack, onCreated, onNavigateToCreate }: Crea
   const uom = selectedBom?.product_uom_id?.[1] || 'kg';
 
   // Scaled components with availability
+  const drivingQtyNum = parseFloat(drivingCompQty) || 0;
   const scaledComps = useMemo(() => {
     return components.map((c: any) => {
-      const scaled = Math.round(c.required_qty * ratio * 1000) / 1000;
+      // For the driving ingredient, use the exact entered qty (no rounding error)
+      const isDriving = sqcEnabled && drivingCompId === c.product_id && drivingQtyNum > 0;
+      const scaled = isDriving ? drivingQtyNum : Math.round(c.required_qty * ratio * 1000000) / 1000000;
       const short = scaled - c.on_hand_qty;
       return {
         ...c,
         scaled_qty: scaled,
         is_short: short > 0,
-        short_amount: Math.max(0, Math.round(short * 1000) / 1000),
+        short_amount: Math.max(0, Math.round(short * 1000000) / 1000000),
       };
     });
-  }, [components, ratio]);
+  }, [components, ratio, sqcEnabled, drivingCompId, drivingQtyNum]);
 
   // Max producible based on stock
   const maxProducible = useMemo(() => {
@@ -138,7 +141,7 @@ export default function CreateMo({ onBack, onCreated, onNavigateToCreate }: Crea
     if (sqcEnabled && drivingComp) {
       const manualQty = parseFloat(drivingCompQty);
       if (!isNaN(manualQty) && manualQty > 0 && drivingComp.required_qty > 0) {
-        setQty(String(Math.round((manualQty / drivingComp.required_qty) * baseQty * 100) / 100));
+        setQty(String(Math.round((manualQty / drivingComp.required_qty) * baseQty * 1000000) / 1000000));
       }
     }
   }, [sqcEnabled, drivingComp, drivingCompQty, baseQty]); // eslint-disable-line react-hooks/exhaustive-deps
