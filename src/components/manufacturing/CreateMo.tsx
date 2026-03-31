@@ -5,9 +5,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 interface CreateMoProps {
   onBack: () => void;
   onCreated: (moId: number) => void;
+  onNavigateToCreate?: () => void;
 }
 
-export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
+export default function CreateMo({ onBack, onCreated, onNavigateToCreate }: CreateMoProps) {
   // Step: 'select' (pick product) | 'configure' (qty + options) | 'review'
   const [step, setStep] = useState<'select' | 'configure' | 'review'>('select');
 
@@ -272,65 +273,10 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
   }
 
 
-  async function handleCreateSubMo(comp: any) {
-    if (!comp.sub_bom_id) return;
-    const needed = comp.short_amount;
-    if (!confirm(`Create draft MO for ${comp.product_name}?\n\nQuantity: ${fmt(needed)} ${comp.uom}\n\nYour current order will also be saved as draft.`)) return;
-    setCreatingSubMo(comp.product_id);
-    try {
-      // Step 1: Save the PARENT MO as draft first (so it's not lost)
-      if (!parentMoId) {
-        const parentBody: any = {
-          product_id: getProductId(),
-          bom_id: selectedBom.id,
-          product_qty: numQty,
-          product_uom_id: selectedBom.product_uom_id[0],
-          date_deadline: scheduledDate,
-        };
-        const companyId = getCompanyId();
-        if (companyId) parentBody.company_id = companyId;
-
-        const parentRes = await fetch('/api/manufacturing-orders', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(parentBody),
-        });
-        const parentData = await parentRes.json();
-        if (parentData.error) throw new Error(parentData.error);
-        setParentMoId(parentData.id);
-      }
-
-      // Step 2: Fetch sub-BOM to get product_id and uom
-      const bomRes = await fetch(`/api/boms/${comp.sub_bom_id}`);
-      const bomData = await bomRes.json();
-      if (!bomData.bom) throw new Error('Sub-BOM not found');
-
-      const subBom = bomData.bom;
-      const productId = subBom.resolved_product_id || subBom.product_id?.[0] || subBom.product_tmpl_id[0];
-
-      // Step 3: Create the sub-MO as DRAFT (not auto-confirmed)
-      const body: any = {
-        product_id: productId,
-        bom_id: comp.sub_bom_id,
-        product_qty: needed,
-        product_uom_id: subBom.product_uom_id[0],
-      };
-      if (subBom.company_id?.[0]) body.company_id = subBom.company_id[0];
-
-      const res = await fetch('/api/manufacturing-orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-
-      // Store the created sub-MO ID
-      setCreatedSubMos(prev => ({ ...prev, [comp.product_id]: data.id }));
-    } catch (err: any) {
-      alert(err.message || 'Failed to create sub-MO');
-    } finally {
-      setCreatingSubMo(null);
+  function handleCreateSubMo(_comp: any) {
+    // Navigate to a fresh MO creation screen — let the user pick recipe and qty
+    if (onNavigateToCreate) {
+      onNavigateToCreate();
     }
   }
 
@@ -440,7 +386,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
           <div className="flex-1 h-1 rounded-full bg-gray-200" />
         </div>
 
-        <div className="px-4 pt-2 pb-28">
+        <div className="px-4 pt-2 pb-4">
           {/* Driving component toggle */}
           <div className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 mb-3">
             <div>
@@ -560,18 +506,20 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
                     <span className="text-[var(--fs-sm)] font-bold text-gray-700 min-w-[80px] text-right">{fmt(c.scaled_qty)} {c.uom} need</span>
                   </div>
                   {c.is_sub_bom && c.is_short && !createdSubMos[c.product_id] && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleCreateSubMo(c); }}
-                      disabled={creatingSubMo === c.product_id}
-                      className="mt-2 w-full py-2.5 rounded-lg bg-blue-600 text-white text-[var(--fs-sm)] font-bold flex items-center justify-center gap-2 active:bg-blue-700 disabled:opacity-50"
-                    >
-                      {creatingSubMo === c.product_id ? (
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                      )}
-                      {creatingSubMo === c.product_id ? 'Creating...' : `Produce ${fmt(c.short_amount)} ${c.uom}`}
-                    </button>
+                    <div className="flex justify-end mt-1.5">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCreateSubMo(c); }}
+                        disabled={creatingSubMo === c.product_id}
+                        className="px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-[var(--fs-xs)] font-bold flex items-center gap-1.5 active:bg-blue-100 disabled:opacity-50"
+                      >
+                        {creatingSubMo === c.product_id ? (
+                          <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                        )}
+                        {creatingSubMo === c.product_id ? '...' : 'Produce'}
+                      </button>
+                    </div>
                   )}
                   {c.is_sub_bom && createdSubMos[c.product_id] && (
                     <button
@@ -593,18 +541,18 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
         </div>
 
         {/* Bottom CTA */}
-        {submitError && (
-          <div className="fixed bottom-24 left-0 right-0 max-w-lg mx-auto px-4">
-            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-red-700 text-[var(--fs-xs)]">{submitError}</div>
-          </div>
-        )}
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-8 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="px-4 pb-8">
+          {submitError && (
+            <div className="mb-3">
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2 text-red-700 text-[var(--fs-xs)]">{submitError}</div>
+            </div>
+          )}
           <button onClick={handleConfirm} disabled={submitting || numQty <= 0}
-            className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-md)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50 mb-2">
+            className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50 mb-2">
             {submitting ? 'Creating...' : `Confirm order (${fmt(numQty)} ${uom})`}
           </button>
           <button onClick={handleSaveDraft} disabled={submitting || numQty <= 0}
-            className="w-full py-3 rounded-xl border border-green-300 text-green-700 font-bold text-[var(--fs-base)] active:scale-[0.975] transition-transform disabled:opacity-50">
+            className="w-full py-3 rounded-xl border border-green-300 text-green-700 font-bold text-[var(--fs-sm)] active:scale-[0.975] transition-transform disabled:opacity-50">
             Save as draft
           </button>
         </div>
