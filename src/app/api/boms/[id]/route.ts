@@ -114,7 +114,7 @@ export async function GET(
     // Fetch operations (work order steps)
     const operations = bom.operation_ids?.length
       ? await odoo.read('mrp.routing.workcenter', bom.operation_ids, [
-          'id', 'name', 'workcenter_id', 'sequence', 'time_cycle_manual', 'note',
+          'id', 'name', 'workcenter_id', 'sequence', 'time_cycle_manual', 'note', 'worksheet_type',
         ])
       : [];
 
@@ -290,6 +290,7 @@ export async function PATCH(
         if (op.time_cycle_manual !== undefined) vals.time_cycle_manual = op.time_cycle_manual;
         if (op.sequence !== undefined) vals.sequence = op.sequence;
         if (op.note !== undefined) vals.note = op.note;
+        if (op.worksheet !== undefined) { vals.worksheet = op.worksheet; vals.worksheet_type = 'pdf'; }
         if (Object.keys(vals).length) {
           await odoo.write('mrp.routing.workcenter', [op.operation_id], vals);
         }
@@ -306,6 +307,8 @@ export async function PATCH(
           time_cycle_manual: op.time_cycle_manual || 0,
           sequence: op.sequence || 10,
           note: op.note || false,
+          worksheet: op.worksheet || false,
+          worksheet_type: op.worksheet ? 'pdf' : false,
         });
       }
     }

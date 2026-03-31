@@ -37,12 +37,13 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
   const ingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Operations (work order steps)
-  const [operations, setOperations] = useState<{id: number; name: string; workcenter_id: number; workcenter_name: string; time_cycle_manual: number; sequence: number}[]>([]);
+  const [operations, setOperations] = useState<{id: number; name: string; workcenter_id: number; workcenter_name: string; time_cycle_manual: number; sequence: number; note: string}[]>([]);
   const [workcenters, setWorkcenters] = useState<{id: number; name: string}[]>([]);
   const [showAddOp, setShowAddOp] = useState(false);
   const [newOpName, setNewOpName] = useState('');
   const [newOpWc, setNewOpWc] = useState(0);
   const [newOpDuration, setNewOpDuration] = useState('');
+  const [newOpNote, setNewOpNote] = useState('');
 
   // Fetch workcenters on mount
   React.useEffect(() => {
@@ -134,6 +135,7 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
             workcenter_id: op.workcenter_id,
             time_cycle_manual: op.time_cycle_manual,
             sequence: (i + 1) * 10,
+            note: op.note || false,
           })),
         }),
       });
@@ -281,6 +283,7 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{op.name}</div>
                     <div className="text-[var(--fs-xs)] text-gray-400">{op.workcenter_name}{op.time_cycle_manual > 0 ? ` \u00b7 ${op.time_cycle_manual} min` : ''}</div>
+                    {op.note && <div className="text-[var(--fs-xs)] text-gray-400 mt-1 line-clamp-2">{op.note}</div>}
                   </div>
                   <button onClick={() => setOperations(prev => prev.filter(o => o.id !== op.id))}
                     className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center active:bg-red-100 flex-shrink-0">
@@ -312,8 +315,13 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
                   <input type="number" inputMode="decimal" value={newOpDuration} onChange={e => setNewOpDuration(e.target.value)} placeholder="e.g. 30"
                     className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600" />
                 </div>
+                <div className="mb-3">
+                  <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Instructions (optional)</label>
+                  <textarea value={newOpNote} onChange={e => setNewOpNote(e.target.value)} placeholder="Step-by-step instructions..."
+                    rows={3} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600 resize-none" />
+                </div>
                 <div className="flex gap-2">
-                  <button onClick={() => { setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration(''); }}
+                  <button onClick={() => { setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration(''); setNewOpNote(''); }}
                     className="flex-1 py-2.5 rounded-lg bg-gray-100 text-gray-600 text-[var(--fs-sm)] font-bold active:bg-gray-200">Cancel</button>
                   <button onClick={() => {
                     if (!newOpName || !newOpWc) return;
@@ -325,8 +333,9 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
                       workcenter_name: wc?.name || '',
                       time_cycle_manual: parseFloat(newOpDuration) || 0,
                       sequence: (prev.length + 1) * 10,
+                      note: newOpNote,
                     }]);
-                    setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration('');
+                    setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration(''); setNewOpNote('');
                   }} disabled={!newOpName || !newOpWc}
                     className="flex-1 py-2.5 rounded-lg bg-green-600 text-white text-[var(--fs-sm)] font-bold active:bg-green-700 disabled:opacity-50">Add step</button>
                 </div>

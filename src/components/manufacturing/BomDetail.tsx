@@ -47,6 +47,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   const [newOpName, setNewOpName] = useState('');
   const [newOpWc, setNewOpWc] = useState(0);
   const [newOpDuration, setNewOpDuration] = useState('');
+  const [newOpNote, setNewOpNote] = useState('');
 
   // Add ingredient
   const [showAddSearch, setShowAddSearch] = useState(false);
@@ -444,14 +445,19 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                 <input type="number" inputMode="decimal" value={newOpDuration} onChange={e => setNewOpDuration(e.target.value)} placeholder="e.g. 30"
                   className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600" />
               </div>
+              <div className="mb-3">
+                <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Instructions (optional)</label>
+                <textarea value={newOpNote} onChange={e => setNewOpNote(e.target.value)} placeholder="Step-by-step instructions..."
+                  rows={3} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600 resize-none" />
+              </div>
               <div className="flex gap-2">
-                <button onClick={() => { setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration(''); }}
+                <button onClick={() => { setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration(''); setNewOpNote(''); setNewOpNote(''); }}
                   className="flex-1 py-2.5 rounded-lg bg-gray-100 text-gray-600 text-[var(--fs-sm)] font-bold active:bg-gray-200">Cancel</button>
                 <button onClick={() => {
                   if (!newOpName || !newOpWc) return;
                   const wc = workcenters.find(w => w.id === newOpWc);
-                  setEditOps(prev => [...prev, { id: -(Date.now()), name: newOpName, workcenter_id: newOpWc, workcenter_name: wc?.name, time_cycle_manual: parseFloat(newOpDuration) || 0, sequence: (prev.length + 1) * 10 }]);
-                  setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration('');
+                  setEditOps(prev => [...prev, { id: -(Date.now()), name: newOpName, workcenter_id: newOpWc, workcenter_name: wc?.name, time_cycle_manual: parseFloat(newOpDuration) || 0, sequence: (prev.length + 1) * 10, note: newOpNote }]);
+                  setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration(''); setNewOpNote('');
                 }} disabled={!newOpName || !newOpWc}
                   className="flex-1 py-2.5 rounded-lg bg-green-600 text-white text-[var(--fs-sm)] font-bold active:bg-green-700 disabled:opacity-50">Add step</button>
               </div>
@@ -565,6 +571,23 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                     <div className="flex-1 min-w-0">
                       <div className="text-[var(--fs-sm)] font-bold text-gray-900">{op.name}</div>
                       <div className="text-[var(--fs-xs)] text-gray-400">{op.workcenter_id?.[1] || ''}{op.time_cycle_manual > 0 ? ` \u00b7 ${op.time_cycle_manual} min` : ''}</div>
+                      {op.note && <div className="text-[var(--fs-xs)] text-gray-500 mt-1" dangerouslySetInnerHTML={{ __html: op.note }} />}
+                      {op.worksheet_type === 'pdf' && (
+                        <button
+                          onClick={async () => {
+                            const res = await fetch(`/api/boms/operations?id=${op.id}`);
+                            const data = await res.json();
+                            if (data.ok) {
+                              const blob = new Blob([Uint8Array.from(atob(data.data_base64), c => c.charCodeAt(0))], { type: 'application/pdf' });
+                              window.open(URL.createObjectURL(blob), '_blank');
+                            }
+                          }}
+                          className="mt-1.5 flex items-center gap-1.5 text-[var(--fs-xs)] font-semibold text-blue-600 active:text-blue-800"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          View worksheet PDF
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

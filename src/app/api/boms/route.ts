@@ -211,6 +211,8 @@ export async function POST(req: NextRequest) {
           time_cycle_manual: op.time_cycle_manual || 0,
           sequence: op.sequence || 10,
           note: op.note || false,
+          worksheet: op.worksheet || false,
+          worksheet_type: op.worksheet ? 'pdf' : false,
         });
       }
     }
