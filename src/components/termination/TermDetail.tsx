@@ -56,6 +56,9 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [showDelivery, setShowDelivery] = useState(false);
   const [accountantLoading, setAccountantLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [editingTracking, setEditingTracking] = useState(false);
+  const [trackingDraft, setTrackingDraft] = useState('');
+  const [savingTracking, setSavingTracking] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -282,6 +285,28 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     }
   }
 
+  async function handleTrackingSave() {
+    if (!rec) return;
+    setSavingTracking(true);
+    try {
+      const res = await fetch("/api/termination/" + id, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delivery_tracking_number: trackingDraft || false }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data) setRec(data.data);
+      }
+    } catch (_e) {
+      console.error("Failed to save tracking number");
+    } finally {
+      setSavingTracking(false);
+      setEditingTracking(false);
+    }
+  }
+
+
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full" /></div>;
   if (error || !rec) return <div className="px-5 pt-12"><p className="text-red-600">{error || 'Not found'}</p></div>;
 
@@ -385,18 +410,56 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             <div className="space-y-2 text-[13px]">
               <div className="flex justify-between"><span className="text-gray-500">Method</span><span className="text-gray-900">{DELIVERY_METHOD_LABELS[rec.delivery_method]}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Date</span><span className="text-gray-900">{fmt(rec.delivery_date)}</span></div>
-              {rec.delivery_tracking_number && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Tracking #</span>
-                  <a
-                    href={getTrackingUrl(rec.delivery_tracking_number)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 font-medium underline underline-offset-2 active:text-blue-800"
-                  >
-                    {rec.delivery_tracking_number}
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline ml-1 -mt-0.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                  </a>
+              {/* Tracking number — editable */}
+              {(rec.delivery_tracking_number || editingTracking) && (
+                <div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">Tracking #</span>
+                    {editingTracking ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={trackingDraft}
+                          onChange={e => setTrackingDraft(e.target.value)}
+                          placeholder="RR 1234 5678 9 DE"
+                          className="w-40 px-2.5 py-1.5 border border-gray-200 rounded-lg text-[var(--fs-sm)] text-gray-900 outline-none focus:border-green-600"
+                          autoFocus
+                        />
+                        <button
+                          onClick={handleTrackingSave}
+                          disabled={savingTracking}
+                          className="px-3 py-1.5 bg-green-600 text-white text-[var(--fs-xs)] font-bold rounded-lg active:bg-green-700 disabled:opacity-50"
+                        >
+                          {savingTracking ? '...' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => setEditingTracking(false)}
+                          className="px-2 py-1.5 text-gray-400 text-[var(--fs-xs)] font-semibold active:text-gray-600"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={getTrackingUrl(String(rec.delivery_tracking_number))}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 font-medium underline underline-offset-2 active:text-blue-800"
+                        >
+                          {rec.delivery_tracking_number}
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline ml-1 -mt-0.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        </a>
+                        <button
+                          onClick={() => { setTrackingDraft(rec.delivery_tracking_number || ''); setEditingTracking(true); }}
+                          className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200"
+                          title="Edit tracking number"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               {rec.delivery_witness && <div className="flex justify-between"><span className="text-gray-500">Witness</span><span className="text-gray-900">{rec.delivery_witness}</span></div>}
