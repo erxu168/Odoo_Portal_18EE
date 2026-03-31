@@ -2,6 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Adaptive font scale (manufacturing module) ──
+   Scales smoothly from iPhone SE (375px) to tablet.
+   Uses clamp(min, preferred, max).
+   min  = readable floor on smallest phone
+   pref = viewport-proportional target
+   max  = cap on wider screens                         */
+:root {
+  --fs-xxl:  clamp(18px, 4.8vw, 22px);   /* qty numbers        */
+  --fs-xl:   clamp(16px, 4.4vw, 20px);   /* ingredient names   */
+  --fs-lg:   clamp(15px, 3.9vw, 18px);   /* recipe/BOM names   */
+  --fs-md:   clamp(14px, 3.6vw, 17px);   /* step names, tiles  */
+  --fs-base: clamp(13px, 3.3vw, 16px);   /* search, inputs     */
+  --fs-sm:   clamp(12px, 3vw, 14px);     /* detail text, UOM   */
+  --fs-xs:   clamp(11px, 2.7vw, 13px);   /* labels, badges     */
+}
+
+
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

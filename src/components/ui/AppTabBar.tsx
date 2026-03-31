@@ -85,7 +85,7 @@ export default function AppTabBar() {
               }`}
             >
               {tab.icon(active)}
-              <span className={`text-[10px] font-semibold ${active ? 'text-green-700' : 'text-gray-400'}`}>
+              <span className={`text-[12px] font-bold ${active ? 'text-green-700' : 'text-gray-400'}`}>
                 {tab.label}
               </span>
             </button>

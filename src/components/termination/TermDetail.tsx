@@ -5,6 +5,7 @@ import type { TerminationRecord, DeliveryMethod } from '@/types/termination';
 import { TERMINATION_TYPE_LABELS, STATE_LABELS, DELIVERY_METHOD_LABELS } from '@/types/termination';
 import DeliveryForm from './DeliveryForm';
 import PdfViewer from '@/components/ui/PdfViewer';
+import FilePicker from '@/components/ui/FilePicker';
 
 interface Props {
   id: number;
@@ -34,6 +35,9 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [cancelLoading, setCancelLoading] = useState(false);
   const [showPdf, setShowPdf] = useState(false);
   const [pdfBase64, setPdfBase64] = useState<string | null>(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [stageLoading, setStageLoading] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const fetchRecord = useCallback(async () => {
     try {
@@ -49,6 +53,28 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   }, [id]);
 
   useEffect(() => { fetchRecord(); }, [fetchRecord]);
+
+  async function handleSetState(newState: string) {
+    if (!rec) return;
+    if (newState === rec.state) return;
+    const label = STATE_LABELS[newState as keyof typeof STATE_LABELS] || newState;
+    if (!confirm(`Change stage to "${label}"?`)) return;
+    setStageLoading(true);
+    try {
+      const res = await fetch(`/api/termination/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: newState }),
+      });
+      const json = await res.json();
+      if (json.ok) setRec(json.data);
+      else alert(json.error);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setStageLoading(false);
+    }
+  }
 
   async function handleConfirm() {
     if (!confirm('Confirm this termination? Employee departure date will be set.')) return;
@@ -90,6 +116,30 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     }
   }
 
+  async function handleUploadSigned(_file: File, dataUrl: string) {
+    setUploadLoading(true);
+    try {
+      const res = await fetch(`/api/termination/${id}/upload-signed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_base64: dataUrl,
+          filename: `Kuendigung_unterschrieben_${rec?.employee_name?.replace(/\s+/g, '_') || id}.pdf`,
+        }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        await fetchRecord();
+      } else {
+        alert(json.error || 'Upload failed');
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploadLoading(false);
+    }
+  }
+
   async function handleViewPdf() {
     try {
       const res = await fetch(`/api/termination/${id}/pdf`);
@@ -125,22 +175,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       } else {
         alert('No PDF available');
       }
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Error');
-    }
-  }
-
-  async function handleMarkSigned() {
-    if (!confirm('Mark as signed?')) return;
-    try {
-      const res = await fetch(`/api/termination/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: 'signed' }),
-      });
-      const json = await res.json();
-      if (json.ok) setRec(json.data);
-      else alert(json.error);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Error');
     }
@@ -206,6 +240,25 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     }
   }
 
+
+  async function handleDelete() {
+    if (!confirm('Delete this draft termination? This cannot be undone.')) return;
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/termination/${id}/delete`, { method: 'POST' });
+      const json = await res.json();
+      if (json.ok) {
+        onBack();
+      } else {
+        alert(json.error || 'Delete failed');
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full" /></div>;
   if (error || !rec) return <div className="px-5 pt-12"><p className="text-red-600">{error || 'Not found'}</p></div>;
 
@@ -243,9 +296,14 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           </div>
         )}
 
-        {/* Progress bar */}
+        {/* Progress bar — tappable stages */}
         {rec.state !== 'cancelled' && (
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
+            {stageLoading && (
+              <div className="flex justify-center mb-2">
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-red-500 rounded-full animate-spin" />
+              </div>
+            )}
             <div className="flex items-center gap-1">
               {STEPS.map((s, i) => (
                 <React.Fragment key={s}>
@@ -255,11 +313,26 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
               ))}
             </div>
             <div className="flex justify-between mt-2">
-              {STEPS.map((s, i) => (
-                <span key={s} className={`text-[9px] ${i <= stepIdx ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-                  {STATE_LABELS[s as keyof typeof STATE_LABELS]}
-                </span>
-              ))}
+              {STEPS.map((s, i) => {
+                const isActive = i <= stepIdx;
+                const isCurrent = s === rec.state;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => handleSetState(s)}
+                    disabled={stageLoading || s === 'draft'}
+                    className={`text-[9px] px-1 py-0.5 rounded transition-colors ${
+                      isCurrent
+                        ? 'text-red-700 font-bold bg-red-50'
+                        : isActive
+                          ? 'text-red-600 font-medium active:bg-red-50'
+                          : 'text-gray-400 active:bg-gray-100'
+                    } ${s === 'draft' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {STATE_LABELS[s as keyof typeof STATE_LABELS]}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -283,7 +356,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         </div>
 
         {/* Delivery card */}
-        {rec.state === 'delivered' && rec.delivery_method && (
+        {rec.delivery_method && (
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
             <span className="text-[13px] font-semibold text-gray-900 block mb-3">Delivery</span>
             <div className="space-y-2 text-[13px]">
@@ -297,7 +370,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         )}
 
         {/* Delivery form */}
-        {showDelivery && rec.state === 'signed' && (
+        {showDelivery && (
           <DeliveryForm
             onSubmit={handleDeliverySubmit}
             onCancel={() => setShowDelivery(false)}
@@ -320,12 +393,13 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </button>
           )}
 
+          {/* View + Print PDF row */}
           {rec.pdf_attachment_id && (
             <div className="flex gap-2">
               <button onClick={handleViewPdf}
                 className="flex-1 py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                View
+                View PDF
               </button>
               <button onClick={handlePrintPdf}
                 className="flex-1 py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
@@ -335,17 +409,66 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </div>
           )}
 
+          {/* Signed document upload — compact row when uploaded, slot when empty */}
+          {rec.pdf_attachment_id && !['draft', 'cancelled'].includes(rec.state) && (
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              {rec.signed_pdf_attachment_id ? (
+                <div className="flex items-center gap-3">
+                  <button onClick={handleViewPdf} className="flex-shrink-0 w-12 h-12 rounded-xl bg-green-50 border border-green-200 flex items-center justify-center active:bg-green-100">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
+                  </button>
+                  <div className="flex-1 min-w-0" onClick={handleViewPdf}>
+                    <div className="text-[13px] font-semibold text-gray-900">Signed document</div>
+                    <div className="text-[11px] text-green-600 truncate">{rec.signed_pdf_attachment_id[1]}</div>
+                  </div>
+                  <FilePicker
+                    onFile={handleUploadSigned}
+                    accept="image/*,.pdf"
+                    label="Replace"
+                    icon=""
+                    loading={uploadLoading}
+                    variant="button"
+                    className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-[11px] font-semibold active:bg-gray-200"
+                  />
+                </div>
+              ) : (
+                <>
+                  <span className="text-[13px] font-semibold text-gray-900 block mb-2">Upload signed document</span>
+                  <FilePicker
+                    onFile={handleUploadSigned}
+                    accept="image/*,.pdf"
+                    label="Take photo or upload signed letter"
+                    icon={"\uD83D\uDCF7"}
+                    loading={uploadLoading}
+                    variant="slot"
+                    size="sm"
+                  />
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Mark as signed */}
           {rec.state === 'confirmed' && rec.pdf_attachment_id && (
-            <button onClick={handleMarkSigned}
+            <button onClick={() => handleSetState('signed')}
               className="w-full py-3.5 rounded-2xl bg-green-600 text-white font-semibold text-[14px] active:bg-green-700">
               Mark as signed
             </button>
           )}
 
-          {rec.state === 'signed' && !showDelivery && (
+          {/* Record delivery info (does NOT change stage) */}
+          {['signed', 'delivered'].includes(rec.state) && !showDelivery && !rec.delivery_method && (
             <button onClick={() => setShowDelivery(true)}
-              className="w-full py-3.5 rounded-2xl bg-red-600 text-white font-semibold text-[14px] active:bg-red-700">
-              Record delivery
+              className="w-full py-3.5 rounded-2xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50">
+              Record delivery info
+            </button>
+          )}
+
+          {/* Mark as delivered — separate explicit action */}
+          {rec.state === 'signed' && (
+            <button onClick={() => handleSetState('delivered')}
+              className="w-full py-3.5 rounded-2xl bg-emerald-600 text-white font-semibold text-[14px] active:bg-emerald-700">
+              Mark as delivered
             </button>
           )}
 
@@ -362,8 +485,16 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </div>
           )}
 
-          {/* Cancel button — separated with space, requires double confirmation */}
-          {canCancel && (
+          {/* Delete draft / Cancel */}
+          {rec.state === 'draft' && (
+            <div className="pt-4 mt-4 border-t border-gray-200 space-y-2">
+              <button onClick={handleDelete} disabled={deleteLoading}
+                className="w-full py-3 rounded-2xl bg-red-600 text-white font-semibold text-[13px] active:bg-red-700 disabled:opacity-50">
+                {deleteLoading ? 'Deleting...' : 'Delete draft'}
+              </button>
+            </div>
+          )}
+          {canCancel && rec.state !== 'draft' && (
             <div className="pt-4 mt-4 border-t border-gray-200">
               <button onClick={handleCancel} disabled={cancelLoading}
                 className="w-full py-3 rounded-2xl bg-white border border-red-200 text-red-600 font-medium text-[13px] active:bg-red-50 disabled:opacity-50">

@@ -45,16 +45,16 @@ export default function CompanySelector() {
     <div ref={ref} className="relative">
       <button
         onClick={() => hasMultiple && setOpen(!open)}
-        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-[14px] font-bold transition-colors ${
           hasMultiple ? 'bg-white/10 text-white/80 active:bg-white/20' : 'text-white/60'
         }`}
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round">
           <path d="M3 21h18M3 7v14M21 7v14M7 7V3h10v4M9 21v-4h6v4" />
         </svg>
         <span>{shortName}</span>
         {hasMultiple && (
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`transition-transform ${open ? 'rotate-180' : ''}`}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`transition-transform ${open ? 'rotate-180' : ''}`}>
             <path d="M6 9l6 6 6-6" />
           </svg>
         )}

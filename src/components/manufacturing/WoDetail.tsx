@@ -157,7 +157,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       .replace(/<style[^>]*>.*?<\/style>/gi, '');
   }
 
-  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(n);
+  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(n);
   const mm = String(Math.floor(timerSec / 60)).padStart(2, '0');
   const ss = String(timerSec % 60).padStart(2, '0');
 
@@ -183,12 +183,12 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
-        <button onClick={onBack} className="flex items-center gap-1 mb-2 text-green-700 text-[13px] font-semibold active:opacity-70">
+        <button onClick={onBack} className="flex items-center gap-1 mb-2 text-green-700 text-[var(--fs-xs)] font-semibold active:opacity-70">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
           {productName}
         </button>
-        <h1 className="text-[18px] font-bold text-gray-900">{wo.name}</h1>
-        <p className="text-[13px] text-gray-500 mt-0.5">{wo.workcenter_id[1]} {'\u00b7'} {displayComps.length} ingredients</p>
+        <h1 className="text-[var(--fs-lg)] font-bold text-gray-900">{wo.name}</h1>
+        <p className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{wo.workcenter_id[1]} {'\u00b7'} {displayComps.length} ingredients</p>
       </div>
 
       <div className="flex gap-1 px-4 py-2.5">
@@ -205,11 +205,11 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
           <div className="text-xs text-gray-400 mt-2">Expected: {wo.duration_expected ? `${Math.round(wo.duration_expected)} min` : 'N/A'}</div>
           <div className="flex gap-3 justify-center mt-5">
             {wo.state === 'done' ? (
-              <span className="text-green-600 font-semibold text-sm">Completed</span>
+              <span className="text-green-600 font-semibold text-[var(--fs-sm)]">Completed</span>
             ) : (
               <>
                 <button onClick={handleToggle} disabled={!!actionLoading}
-                  className={`px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 active:scale-95 transition-transform disabled:opacity-50 ${
+                  className={`px-6 py-3 rounded-xl font-bold text-[var(--fs-sm)] flex items-center gap-2 active:scale-95 transition-transform disabled:opacity-50 ${
                     running ? 'bg-amber-50 text-amber-600 border border-amber-200' : 'bg-green-600 text-white shadow-lg shadow-green-600/30'
                   }`}>
                   {actionLoading === 'start' || actionLoading === 'pause' ? (
@@ -221,7 +221,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                   )}
                 </button>
                 <button onClick={handleDoneRequest} disabled={!!actionLoading}
-                  className="px-6 py-3 rounded-xl bg-green-500 text-white font-bold text-sm flex items-center gap-2 active:scale-95 transition-transform disabled:opacity-50">
+                  className="px-6 py-3 rounded-xl bg-green-500 text-white font-bold text-[var(--fs-sm)] flex items-center gap-2 active:scale-95 transition-transform disabled:opacity-50">
                   {actionLoading === 'done' ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
@@ -241,14 +241,14 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         </div>
       )}
 
-      <div className="flex items-center gap-1.5 px-5 py-1 text-[13px] text-gray-500">Step {woIdx + 1} of {allWos.length}</div>
+      <div className="flex items-center gap-1.5 px-5 py-1 text-[15px] text-gray-500 font-semibold">Step {woIdx + 1} of {allWos.length}</div>
 
       <div className="px-4 mb-3">
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
-          <button onClick={() => setTab('components')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'components' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
+          <button onClick={() => setTab('components')} className={`flex-1 py-2.5 rounded-md text-sm font-semibold transition-all ${tab === 'components' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
             Ingredients ({pickedCount}/{totalComps})
           </button>
-          <button onClick={() => setTab('instructions')} className={`flex-1 py-2 rounded-md text-xs font-semibold transition-all ${tab === 'instructions' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
+          <button onClick={() => setTab('instructions')} className={`flex-1 py-2.5 rounded-md text-sm font-semibold transition-all ${tab === 'instructions' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
             Instructions{hasInstructions ? ' *' : ''}
           </button>
         </div>
@@ -259,14 +259,14 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
           <div className="flex flex-col gap-1.5">
             {totalComps > 0 && (
               <div className="flex items-center justify-between mb-1 px-1">
-                <p className="text-[11px] text-gray-400">Tap to weigh each ingredient</p>
+                <p className="text-[var(--fs-xs)] text-gray-400">Tap to weigh each ingredient</p>
                 {pickedCount === totalComps && totalComps > 0 && (
-                  <span className="text-[11px] font-semibold text-green-600">All collected</span>
+                  <span className="text-[var(--fs-xs)] font-semibold text-green-600">All collected</span>
                 )}
               </div>
             )}
             {totalComps > 0 && (
-              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2">
+              <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden mb-2">
                 <div className="h-full bg-green-500 rounded-full transition-all duration-500"
                   style={{ width: `${totalComps > 0 ? (pickedCount / totalComps) * 100 : 0}%` }} />
               </div>
@@ -279,28 +279,28 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
               const compUom = c.product_uom?.[1] || 'kg';
               return (
                 <button key={c.id} onClick={() => setNumpadComp(c)}
-                  className={`bg-white border rounded-xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
-                    isPicked ? 'border-green-200 bg-green-50/30' : 'border-gray-200'
+                  className={`bg-white border rounded-2xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
+                    isPicked ? 'border-green-300 bg-green-50/40' : 'border-gray-200'
                   }`}>
-                  <div className={`w-1 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-200'}`} />
-                  <div className="flex-1 flex items-center gap-3 px-4 py-3">
-                    <div className={`w-7 h-7 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                  <div className={`w-1.5 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-300'}`} />
+                  <div className="flex-1 flex items-center gap-3 px-4 py-4">
+                    <div className={`w-11 h-11 rounded-xl border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
                       isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
                     }`}>
-                      {isPicked && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                      {isPicked && <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className={`text-[14px] font-semibold ${isPicked ? 'text-green-700 line-through decoration-green-400' : 'text-gray-900'}`}>
+                      <div className={`text-[var(--fs-xl)] font-bold ${isPicked ? 'text-green-700 line-through decoration-green-400/60' : 'text-gray-900'}`}>
                         {c.product_id[1]}
                       </div>
-                      <div className="text-[11px] text-gray-400 mt-0.5">
+                      <div className={`text-[var(--fs-sm)] mt-0.5 ${isPicked ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
                         {isPicked
                           ? `${fmt(consumed)} / ${fmt(required)} ${compUom}`
                           : `Need ${fmt(required)} ${compUom}`
                         }
                       </div>
                       {isPicked && consumed !== required && Math.abs(consumed - required) > 0.001 && (
-                        <div className={`text-[10px] mt-0.5 font-semibold ${
+                        <div className={`text-[var(--fs-xs)] mt-0.5 font-bold ${
                           Math.abs(consumed - required) / required * 100 > tolerancePct
                             ? 'text-red-600'
                             : 'text-amber-600'
@@ -309,11 +309,11 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                         </div>
                       )}
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className={`text-[15px] font-bold tabular-nums font-mono ${isPicked ? 'text-green-600' : 'text-gray-400'}`}>
+                    <div className="text-right flex-shrink-0 pl-2">
+                      <div className={`text-[var(--fs-xxl)] font-extrabold tabular-nums font-mono leading-tight ${isPicked ? 'text-green-600' : 'text-gray-900'}`}>
                         {isPicked ? fmt(consumed) : fmt(required)}
                       </div>
-                      <div className="text-[11px] text-gray-400">
+                      <div className={`text-[var(--fs-sm)] font-semibold ${isPicked ? 'text-green-500' : 'text-gray-400'}`}>
                         {isPicked ? `/ ${fmt(required)} ${compUom}` : compUom}
                       </div>
                     </div>
@@ -321,7 +321,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                 </button>
               );
             })}
-            {displayComps.length === 0 && <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-gray-400 text-sm">No ingredients assigned to this step</div>}
+            {displayComps.length === 0 && <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-gray-400 text-[var(--fs-sm)]">No ingredients assigned to this step</div>}
           </div>
         )}
 
@@ -336,8 +336,8 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                   </svg>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[14px] font-bold text-gray-900">PDF Worksheet</div>
-                  <div className="text-[12px] text-gray-500 mt-0.5">Tap to view fullscreen</div>
+                  <div className="text-[var(--fs-sm)] font-bold text-gray-900">PDF Worksheet</div>
+                  <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">Tap to view fullscreen</div>
                 </div>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>
               </button>
@@ -348,7 +348,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                 <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-                    <span className="text-[13px] font-semibold text-gray-700">Google Slides</span>
+                    <span className="text-[var(--fs-xs)] font-semibold text-gray-700">Google Slides</span>
                   </div>
                   <a href={worksheetGoogleSlide} target="_blank" rel="noopener noreferrer" className="text-[12px] text-green-700 font-semibold">Open in new tab</a>
                 </div>
@@ -361,11 +361,11 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                 {(hasPdf || hasGoogleSlide) && (
                   <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>
-                    <span className="text-[13px] font-semibold text-gray-700">Description</span>
+                    <span className="text-[var(--fs-xs)] font-semibold text-gray-700">Description</span>
                   </div>
                 )}
                 <div
-                  className="p-5 text-[14px] text-gray-800 leading-relaxed
+                  className="p-5 text-[var(--fs-sm)] text-gray-800 leading-relaxed
                     [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2
                     [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2
                     [&_li]:my-1 [&_p]:my-2 [&_strong]:font-bold
@@ -382,9 +382,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                 <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                 </svg>
-                <p className="text-gray-400 text-sm">No instructions yet</p>
-                <p className="text-gray-300 text-xs mt-1">Add in Odoo 18 EE: BOM {arrow} Operations {arrow} Work Sheet</p>
-                <p className="text-gray-300 text-xs mt-0.5">Supports: Text, PDF, or Google Slides</p>
+                <p className="text-gray-400 text-[var(--fs-sm)]">No instructions yet</p>
+                <p className="text-gray-300 text-[var(--fs-xs)] mt-1">Add in Odoo 18 EE: BOM {arrow} Operations {arrow} Work Sheet</p>
+                <p className="text-gray-300 text-[var(--fs-xs)] mt-0.5">Supports: Text, PDF, or Google Slides</p>
               </div>
             )}
           </div>
@@ -394,7 +394,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       {wo.state !== 'done' && (
         <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
           <button onClick={handleDoneRequest} disabled={!!actionLoading}
-            className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[15px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+            className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-md)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
             {actionLoading === 'done' ? 'Finishing...' : nextWo && nextWo.state !== 'done' ? `Done ${arrow} ${nextWo.name}` : 'Mark step done'}
           </button>
         </div>
@@ -426,9 +426,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
               </p>
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setShowConfirm(false)} className="flex-1 py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-sm active:bg-gray-50">Not yet</button>
+              <button onClick={() => setShowConfirm(false)} className="flex-1 py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-[var(--fs-sm)] active:bg-gray-50">Not yet</button>
               <button onClick={handleDoneConfirmed} disabled={!!actionLoading}
-                className="flex-1 py-3.5 rounded-xl bg-green-500 text-white font-bold text-sm shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50 flex items-center justify-center gap-2">
+                className="flex-1 py-3.5 rounded-xl bg-green-500 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50 flex items-center justify-center gap-2">
                 {actionLoading === 'done' ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Yes, done'}
               </button>
             </div>

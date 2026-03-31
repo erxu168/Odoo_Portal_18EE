@@ -79,10 +79,10 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
               )}
             </button>
             <div className="min-w-0">
-              <div className="text-[15px] font-bold text-white truncate">{user?.name || 'Loading...'}</div>
-              <div className="text-[12px] text-white/50 truncate">{user?.email || ''}</div>
+              <div className="text-[var(--fs-md)] font-bold text-white truncate">{user?.name || 'Loading...'}</div>
+              <div className="text-[var(--fs-xs)] text-white/50 truncate">{user?.email || ''}</div>
               {user?.role && (
-                <span className="inline-block mt-1 text-[10px] font-semibold text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">
+                <span className="inline-block mt-1 text-[12px] font-semibold text-green-400 bg-green-400/10 px-2.5 py-0.5 rounded-full">
                   {ROLE_LABELS[user.role] || user.role}
                 </span>
               )}
@@ -94,7 +94,7 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
         <nav className="flex-1 overflow-y-auto py-2">
           {/* Main nav */}
           <div className="px-3 py-1">
-            <p className="px-3 py-2 text-[10px] font-bold text-gray-400 tracking-widest uppercase">Navigate</p>
+            <p className="px-3 py-2 text-[12px] font-bold text-gray-400 tracking-widest uppercase">Navigate</p>
             <NavItem label="Home" href="/" current={pathname} onClick={navigate}
               icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} />
             {!isCandidate && (
@@ -117,7 +117,7 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
           {isManager && !isCandidate && (
             <div className="px-3 py-1">
               <div className="mx-3 border-t border-gray-100 my-1" />
-              <p className="px-3 py-2 text-[10px] font-bold text-gray-400 tracking-widest uppercase">Admin</p>
+              <p className="px-3 py-2 text-[12px] font-bold text-gray-400 tracking-widest uppercase">Admin</p>
               {isAdmin && (
                 <>
                   <NavItem label="Manage Staff" href="/admin/users" current={pathname} onClick={navigate}
@@ -134,7 +134,7 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
           {/* Account section */}
           <div className="px-3 py-1">
             <div className="mx-3 border-t border-gray-100 my-1" />
-            <p className="px-3 py-2 text-[10px] font-bold text-gray-400 tracking-widest uppercase">Account</p>
+            <p className="px-3 py-2 text-[12px] font-bold text-gray-400 tracking-widest uppercase">Account</p>
             <NavItem label="Change Password" href="/change-password" current={pathname} onClick={navigate}
               icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>} />
             <button onClick={handleLogout} disabled={loggingOut}
@@ -146,7 +146,7 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
                   <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
                 </svg>
               )}
-              <span className="text-[14px] font-semibold">Log Out</span>
+              <span className="text-[var(--fs-sm)] font-bold">Log Out</span>
             </button>
           </div>
         </nav>
@@ -178,7 +178,7 @@ function NavItem({ label, href, icon, current, onClick }: {
           : 'text-gray-700 active:bg-gray-50'
       }`}>
       <span className={active ? 'text-green-600' : 'text-gray-400'}>{icon}</span>
-      <span className={`text-[14px] font-semibold ${active ? 'text-green-700' : ''}`}>{label}</span>
+      <span className={`text-[var(--fs-sm)] font-bold ${active ? 'text-green-700' : ''}`}>{label}</span>
     </button>
   );
 }

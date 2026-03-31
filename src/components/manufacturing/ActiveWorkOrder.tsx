@@ -268,7 +268,7 @@ export default function ActiveWorkOrder({
               }`}
             />
           ))}
-          <span className="text-[13px] text-gray-500 ml-1.5">
+          <span className="text-[var(--fs-xs)] text-gray-500 ml-1.5">
             Step {currentWoIdx + 1} of {totalSteps}
           </span>
         </div>
@@ -326,10 +326,10 @@ export default function ActiveWorkOrder({
               />
 
               <div className="flex-1 min-w-0">
-                <div className={`text-sm text-gray-900 ${isPicked ? 'line-through' : ''}`}>
+                <div className={`text-[var(--fs-xl)] font-bold text-gray-900 ${isPicked ? 'line-through' : ''}`}>
                   {c.product_id[1]}
                 </div>
-                <div className={`text-[11px] mt-0.5 ${availColor}`}>
+                <div className={`text-[var(--fs-sm)] mt-0.5 ${availColor}`}>
                   {isWeighMode
                     ? `Target: ${new Intl.NumberFormat('de-DE').format(targetQty)}${uom}`
                     : `${new Intl.NumberFormat('de-DE').format(onHand)} ${uom} on hand`}
@@ -351,7 +351,7 @@ export default function ActiveWorkOrder({
                       }
                     }}
                     placeholder="0"
-                    className={`w-16 px-2 py-2 text-right text-[15px] font-medium rounded-lg border ${
+                    className={`w-16 px-2 py-2 text-right text-[var(--fs-xl)] font-bold rounded-lg border ${
                       isFilled
                         ? 'border-green-400 text-green-600'
                         : 'border-gray-200 text-gray-900'

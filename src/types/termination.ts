@@ -103,12 +103,12 @@ export const TERMINATION_TYPE_LABELS: Record<TerminationType, string> = {
 };
 
 export const STATE_LABELS: Record<TerminationState, string> = {
-  draft: 'Entwurf',
-  confirmed: 'Best\u00e4tigt',
-  signed: 'Unterschrieben',
-  delivered: 'Zugestellt',
-  archived: 'Archiviert',
-  cancelled: 'Storniert',
+  draft: 'Draft',
+  confirmed: 'Confirmed',
+  signed: 'In Transit',
+  delivered: 'Delivered',
+  archived: 'Archived',
+  cancelled: 'Cancelled',
 };
 
 export const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
@@ -120,7 +120,7 @@ export const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
 
 /** All fields to fetch from Odoo for list views */
 export const TERMINATION_LIST_FIELDS = [
-  'id', 'employee_name', 'company_id', 'termination_type', 'state',
+  'id', 'employee_id', 'employee_name', 'company_id', 'termination_type', 'state',
   'letter_date', 'last_working_day', 'notice_period_text',
   'delivery_method', 'delivery_confirmed', 'sent_to_accountant',
   'pdf_attachment_id', 'signed_pdf_attachment_id',

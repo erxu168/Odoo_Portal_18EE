@@ -27,7 +27,7 @@ export function PickCircle({
   onToggle?: () => void;
   size?: 'sm' | 'md';
 }) {
-  const dims = size === 'sm' ? 'w-7 h-7' : 'w-8 h-8';
+  const dims = size === 'sm' ? 'w-8 h-8' : 'w-10 h-10';
   return (
     <button
       type="button"
@@ -92,7 +92,7 @@ export function Badge({ variant, children }: { variant: 'done' | 'progress' | 'r
     warning: 'bg-amber-50 text-amber-700',
   };
   return (
-    <span className={`text-[11px] px-2.5 py-0.5 rounded-md whitespace-nowrap font-semibold ${styles[variant]}`}>{children}</span>
+    <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md whitespace-nowrap font-semibold ${styles[variant]}`}>{children}</span>
   );
 }
 
@@ -100,19 +100,19 @@ export function Badge({ variant, children }: { variant: 'done' | 'progress' | 'r
 export function BackHeader({ backLabel, onBack, title, subtitle }: { backLabel: string; onBack: () => void; title: string; subtitle?: string }) {
   return (
     <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
-      <button type="button" onClick={onBack} className="flex items-center gap-1 mb-2 text-green-700 text-[13px] font-semibold active:opacity-70">
+      <button type="button" onClick={onBack} className="flex items-center gap-1 mb-2 text-green-700 text-[var(--fs-xs)] font-semibold active:opacity-70">
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7" /></svg>
         {backLabel}
       </button>
-      <h1 className="text-[18px] font-bold text-gray-900">{title}</h1>
-      {subtitle && <p className="text-[13px] text-gray-500 mt-0.5">{subtitle}</p>}
+      <h1 className="text-[var(--fs-lg)] font-bold text-gray-900">{title}</h1>
+      {subtitle && <p className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{subtitle}</p>}
     </div>
   );
 }
 
 // --- Section Title ---
 export function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase px-5 pt-4 pb-2">{children}</h2>;
+  return <h2 className="text-[var(--fs-xs)] font-semibold text-gray-400 tracking-widest uppercase px-5 pt-4 pb-2">{children}</h2>;
 }
 
 // --- Action Button ---
@@ -126,7 +126,7 @@ export function ActionButton({ variant = 'primary', children, onClick, disabled 
   };
   return (
     <button type="button" onClick={onClick} disabled={disabled}
-      className={`w-full py-4 rounded-xl text-[15px] font-bold text-center transition-all active:scale-[0.975] ${styles[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      className={`w-full py-4 rounded-xl text-[var(--fs-md)] font-bold text-center transition-all active:scale-[0.975] ${styles[variant]} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
     >{children}</button>
   );
 }

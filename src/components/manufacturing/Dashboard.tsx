@@ -71,7 +71,7 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
       {/* Greeting */}
       <div className="px-5 pt-5 pb-2">
         <div className="text-xl font-bold text-gray-900">{greeting} \uD83D\uDC4B</div>
-        <div className="text-[13px] text-gray-500 mt-1">
+        <div className="text-[var(--fs-xs)] text-gray-500 mt-1">
           {new Date().toLocaleDateString('en-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </div>
       </div>
@@ -80,15 +80,15 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
       <div className="px-4 py-3">
         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex-1 text-center py-3 border-r border-gray-100">
-            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">ACTIVE</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">ACTIVE</div>
             <div className="text-xl font-bold text-blue-500 mt-1">{stats.active}</div>
           </div>
           <div className="flex-1 text-center py-3 border-r border-gray-100">
-            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">IN PROGRESS</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">IN PROGRESS</div>
             <div className="text-xl font-bold text-amber-500 mt-1">{stats.inProgress}</div>
           </div>
           <div className="flex-1 text-center py-3">
-            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">COMPLETED</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">COMPLETED</div>
             <div className="text-xl font-bold text-green-500 mt-1">{stats.done}</div>
           </div>
         </div>
@@ -96,7 +96,7 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
 
       {/* Module tiles */}
       <div className="px-4">
-        <div className="text-[11px] font-bold text-gray-400 tracking-widest mb-2">MODULES</div>
+        <div className="text-[var(--fs-xs)] font-bold text-gray-400 tracking-widest mb-2">MODULES</div>
         <div className="grid grid-cols-2 gap-3 mb-4">
           {/* Production */}
           <button onClick={() => onSelectTab('production')} className="bg-white border border-gray-200 rounded-xl p-4 text-left active:bg-gray-50 transition-colors">
@@ -104,10 +104,10 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
               <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4F6AF5" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>
               </div>
-              <span className="text-sm font-bold text-gray-900">Production</span>
+              <span className="text-base font-bold text-gray-900">Production</span>
             </div>
             <div className="text-2xl font-bold text-blue-500">{stats.active}</div>
-            <div className="text-[11px] text-gray-400 mt-0.5">active orders</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">active orders</div>
           </button>
 
           {/* Recipes */}
@@ -116,10 +116,10 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
               <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>
               </div>
-              <span className="text-sm font-bold text-gray-900">Recipes</span>
+              <span className="text-base font-bold text-gray-900">Recipes</span>
             </div>
             <div className="text-2xl font-bold text-green-500">{stats.bomCount}</div>
-            <div className="text-[11px] text-gray-400 mt-0.5">BOMs</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">BOMs</div>
           </button>
 
           {/* My Tasks */}
@@ -128,9 +128,9 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
               <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
               </div>
-              <span className="text-sm font-bold text-gray-900">My Tasks</span>
+              <span className="text-base font-bold text-gray-900">My Tasks</span>
             </div>
-            <div className="text-[11px] text-gray-400 mt-0.5">Work orders assigned</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">Work orders assigned</div>
           </button>
 
           {/* Inventory */}
@@ -139,16 +139,16 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
               <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
                 <span className="text-base">\uD83D\uDCE6</span>
               </div>
-              <span className="text-sm font-bold text-gray-900">Inventory</span>
+              <span className="text-base font-bold text-gray-900">Inventory</span>
             </div>
-            <div className="text-[11px] text-gray-400 mt-0.5">Component needs</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">Component needs</div>
           </button>
         </div>
       </div>
 
       {/* Recent Activity */}
       <div className="px-4 pb-8">
-        <div className="text-[11px] font-bold text-gray-400 tracking-widest mb-2">RECENT ACTIVITY</div>
+        <div className="text-[var(--fs-xs)] font-bold text-gray-400 tracking-widest mb-2">RECENT ACTIVITY</div>
         <div className="flex flex-col gap-1.5">
           {recentMOs.map((mo: any) => (
             <button
@@ -158,16 +158,16 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
             >
               <div className={`w-2 h-2 rounded-full ${stateDots[mo.state] || 'bg-gray-300'} flex-shrink-0`} />
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-semibold text-gray-900 truncate">{mo.product_id[1]}</div>
-                <div className="text-[11px] text-gray-400">{mo.name}</div>
+                <div className="text-[var(--fs-md)] font-bold text-gray-900 truncate">{mo.product_id[1]}</div>
+                <div className="text-[var(--fs-xs)] text-gray-400">{mo.name}</div>
               </div>
-              <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${stateColors[mo.state] || 'bg-gray-100 text-gray-600'}`}>
+              <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-semibold ${stateColors[mo.state] || 'bg-gray-100 text-gray-600'}`}>
                 {stateLabels[mo.state] || mo.state}
               </span>
             </button>
           ))}
           {recentMOs.length === 0 && (
-            <div className="text-center py-8 text-gray-400 text-sm">No manufacturing orders yet</div>
+            <div className="text-center py-8 text-gray-400 text-[var(--fs-sm)]">No manufacturing orders yet</div>
           )}
         </div>
       </div>

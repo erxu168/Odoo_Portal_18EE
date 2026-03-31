@@ -3,8 +3,8 @@
  * Builds HTML → calls wkhtmltopdf on the server → returns PDF buffer.
  *
  * Layout: Table-based (reliable in wkhtmltopdf), DIN 5008 inspired.
- * - Top margin 20mm in CSS, address block pushed down 25mm from content top
- *   so it sits at ~45mm from paper edge (envelope window zone)
+ * - DIN 5008 Type B address field: 20mm from left, 27mm from top of page
+ *   Positioned for DIN lang envelope window (90x45mm, centered)
  * - Info block: right column, table-based
  * - Body text: 10pt, heading 11pt bold
  * - Margins: 25mm left, 20mm right
@@ -55,42 +55,49 @@ function letterHead(d: LetterData, extraInfoRows: string): string {
     ? `<img src="${d.companyLogoBase64}" style="max-height:15mm;max-width:45mm;margin-bottom:2mm" alt="Logo"/>`
     : '';
 
+  // DIN 5008 Type B layout:
+  // Page margin is 20mm left (matching DIN spec exactly).
+  // Address field: 0mm from content left = 20mm from paper edge.
+  // Address top: 25mm from content top = 45mm from paper edge (DIN 5008 Form B for DIN lang).
+  // Width: 85mm. Height: 45mm (5mm Absenderzeile + 40mm recipient).
+  // Body text has padding-left:5mm for the traditional 25mm look.
+  // The .din-addr-zone class removes that padding for the address area.
   return `
-    <!-- Spacer: pushes address to ~45mm from paper top (20mm margin + 25mm spacer) -->
-    <div style="height:25mm"></div>
+    <div class="din-addr-zone" style="position:relative;height:77mm">
+      <!-- Address field: 20mm from left, 45mm from top (DIN 5008 Form B / DIN lang) -->
+      <div style="position:absolute;left:0;top:30mm;width:85mm;height:45mm">
+        <!-- Absenderzeile (return address): DIN 5008 small underlined line -->
+        <div style="font-size:6pt;color:#999;text-decoration:underline;line-height:1.2;margin-bottom:2mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">
+          ${d.companyName} \u00b7 ${d.companyStreet} \u00b7 ${d.companyZip} ${d.companyCity}
+        </div>
+        <!-- Recipient address block -->
+        <div style="font-size:10pt;line-height:1.5">
+          ${d.employeeName}<br/>
+          ${d.employeeStreet ? `${d.employeeStreet}<br/>` : ''}${d.employeeZip ? `${d.employeeZip} ${d.employeeCity}` : ''}
+        </div>
+      </div>
 
-    <table style="width:100%;border-collapse:collapse;margin-bottom:4mm">
-      <tr>
-        <!-- LEFT: Sender return line + Recipient address -->
-        <td style="vertical-align:top;width:55%">
-          <div style="font-size:6.5pt;color:#999;border-bottom:0.5pt solid #bbb;padding-bottom:1px;margin-bottom:2mm;width:80mm;line-height:1.2">
-            ${d.companyName} \u00b7 ${d.companyStreet} \u00b7 ${d.companyZip} ${d.companyCity}
-          </div>
-          <div style="font-size:10pt;line-height:1.4;min-height:22mm">
-            ${d.employeeName}<br/>
-            ${d.employeeStreet ? `${d.employeeStreet}<br/>` : ''}${d.employeeZip ? `${d.employeeZip} ${d.employeeCity}` : ''}
-          </div>
-        </td>
-        <!-- RIGHT: Logo + Company info + Date/Reference -->
-        <td style="vertical-align:top;width:45%;text-align:right">
-          ${logo}
-          <div style="font-size:7.5pt;color:#555;line-height:1.45;text-align:left;margin-top:2mm">
-            ${d.companyName}<br/>
-            ${d.companyStreet}<br/>
-            ${d.companyZip} ${d.companyCity}<br/>
-            ${d.companyPhone ? `Tel. ${d.companyPhone}<br/>` : ''}${d.companyEmail ? `${d.companyEmail}<br/>` : ''}${d.companyVat ? `USt-IdNr. ${d.companyVat}` : ''}
-          </div>
-          <table style="border-collapse:collapse;font-size:8pt;margin-top:4mm;width:100%">
-            <tr><td style="padding:1px 6px 1px 0;color:#666">Datum</td><td style="font-weight:600">${d.letterDate}</td></tr>
-            <tr><td style="padding:1px 6px 1px 0;color:#666">Zeichen</td><td style="font-weight:600">KW-${d.recordId}</td></tr>
-            ${extraInfoRows}
-          </table>
-        </td>
-      </tr>
+      <!-- Right info block: logo + company details -->
+      <div style="position:absolute;right:0;top:0;width:75mm;text-align:right">
+        ${logo}
+        <div style="font-size:7.5pt;color:#555;line-height:1.45;text-align:left;margin-top:2mm">
+          ${d.companyName}<br/>
+          ${d.companyStreet}<br/>
+          ${d.companyZip} ${d.companyCity}<br/>
+          ${d.companyPhone ? `Tel. ${d.companyPhone}<br/>` : ''}${d.companyEmail ? `${d.companyEmail}<br/>` : ''}${d.companyVat ? `USt-IdNr. ${d.companyVat}` : ''}
+        </div>
+      </div>
+    </div>
+
+    <!-- Date/Reference block: right-aligned, below address zone -->
+    <table style="border-collapse:collapse;font-size:8pt;margin-left:auto;margin-bottom:4mm">
+      <tr><td style="padding:1px 6px 1px 0;color:#666">Datum</td><td style="font-weight:600">${d.letterDate}</td></tr>
+      <tr><td style="padding:1px 6px 1px 0;color:#666">Zeichen</td><td style="font-weight:600">KW-${d.recordId}</td></tr>
+      ${extraInfoRows}
     </table>
 
     <!-- Spacer before subject line -->
-    <div style="height:6mm"></div>`;
+    <div style="height:4mm"></div>`;
 }
 
 function signatureBlock(companyName: string): string {
@@ -204,19 +211,32 @@ export function buildLetterHtml(d: LetterData): string {
   return `<!DOCTYPE html>
 <html lang="de">
 <head><meta charset="utf-8"/><style>
-  @page { size: A4; margin: 20mm 20mm 25mm 25mm; }
+  @page { size: A4; margin: 20mm 20mm 25mm 2mm; }
   body {
     font-family: Arial, Helvetica, sans-serif;
     font-size: 10pt;
     line-height: 1.5;
     color: #000;
     margin: 0;
+    padding-left: 23mm;
   }
-  p { margin: 0 0 2.5mm 0; }
+  .din-addr-zone {
+    margin-left: 0;
+    width: 100%;
+  }
+  /* DIN 824 fold marks + punch mark */
+  .din-fold-mark {
+    position: fixed;
+    left: 0;
+    height: 0;
+    border-top: 0.75pt solid #999;
+  }
+  .din-fold-upper { top: 85mm; width: 5mm; }
+  .din-punch { top: 128.5mm; width: 3mm; }
   table { border-collapse: collapse; }
   strong { font-weight: 700; }
 </style></head>
-<body>${content}</body></html>`;
+<body><div class="din-fold-mark din-fold-upper"></div><div class="din-fold-mark din-punch"></div>${content}</body></html>`;
 }
 
 export async function generatePdf(html: string): Promise<Buffer> {
@@ -227,7 +247,7 @@ export async function generatePdf(html: string): Promise<Buffer> {
   writeFileSync(htmlPath, html, 'utf-8');
 
   return new Promise((resolve, reject) => {
-    const cmd = `${WKHTMLTOPDF} --encoding utf-8 --page-size A4 --margin-top 20mm --margin-bottom 25mm --margin-left 25mm --margin-right 20mm --dpi 96 --quiet "${htmlPath}" "${pdfPath}"`;
+    const cmd = `${WKHTMLTOPDF} --encoding utf-8 --page-size A4 --margin-top 20mm --margin-bottom 25mm --margin-left 2mm --margin-right 20mm --dpi 96 --quiet "${htmlPath}" "${pdfPath}"`;
     exec(cmd, { timeout: 30000 }, (err) => {
       try {
         const pdf = readFileSync(pdfPath);

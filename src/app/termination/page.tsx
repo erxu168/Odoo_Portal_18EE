@@ -6,11 +6,10 @@ import TermDashboard from '@/components/termination/TermDashboard';
 import TermList from '@/components/termination/TermList';
 import TermWizard from '@/components/termination/TermWizard';
 import TermDetail from '@/components/termination/TermDetail';
-import type { TerminationState } from '@/types/termination';
 
 type Screen =
   | { type: 'dashboard' }
-  | { type: 'list'; filter?: TerminationState[] }
+  | { type: 'list'; mode: 'in_progress' | 'completed' }
   | { type: 'wizard' }
   | { type: 'detail'; id: number };
 
@@ -50,14 +49,11 @@ export default function TerminationPage() {
       case 'new':
         navigate({ type: 'wizard' });
         break;
-      case 'active':
-        navigate({ type: 'list', filter: ['draft', 'confirmed'] });
+      case 'in_progress':
+        navigate({ type: 'list', mode: 'in_progress' });
         break;
-      case 'signed':
-        navigate({ type: 'list', filter: ['signed'] });
-        break;
-      case 'history':
-        navigate({ type: 'list' });
+      case 'completed':
+        navigate({ type: 'list', mode: 'completed' });
         break;
     }
   }
@@ -91,7 +87,7 @@ export default function TerminationPage() {
       case 'list':
         return (
           <TermList
-            filter={screen.filter}
+            mode={screen.mode}
             onSelect={id => navigate({ type: 'detail', id })}
             onHome={goDashboard}
           />

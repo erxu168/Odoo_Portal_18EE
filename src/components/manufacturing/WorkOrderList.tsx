@@ -130,7 +130,7 @@ export default function WorkOrderList({
             >
               <div className="flex justify-between items-start">
                 <div>
-                  <div className="text-[15px] font-medium text-gray-900">
+                  <div className="text-[var(--fs-xl)] font-bold text-gray-900">
                     {idx + 1}. {wo.name}
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5">
@@ -190,12 +190,12 @@ export default function WorkOrderList({
 
               {displayNames.length > 0 && (
                 <div className="mt-2.5 pt-2.5 border-t border-gray-100">
-                  <div className="text-[11px] text-gray-400 mb-1.5">Assigned components</div>
+                  <div className="text-[var(--fs-xs)] text-gray-400 mb-1.5">Assigned components</div>
                   <div className="flex flex-wrap gap-1">
                     {displayNames.map((name: string, i: number) => (
                       <span
                         key={i}
-                        className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"
+                        className="text-[var(--fs-xs)] px-2.5 py-1 rounded-full bg-gray-100 text-gray-600"
                       >
                         {name}
                       </span>
@@ -207,7 +207,7 @@ export default function WorkOrderList({
               {(isActive || isDone || isReady) && (
                 <button
                   onClick={() => onSelectWo(wo.id)}
-                  className="mt-2.5 w-full text-center text-xs text-green-600 py-1"
+                  className="mt-2.5 w-full text-center text-sm text-green-600 font-semibold py-1"
                 >
                   {isActive
                     ? 'Open work order \u2192'

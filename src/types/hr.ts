@@ -27,6 +27,7 @@ export type AufenthaltstitelTyp =
 export interface EmployeeData {
   id: number;
   name: string;
+  nick_name: string | false;
   department_id: [number, string] | false;
   job_title: string | false;
   work_email: string | false;
@@ -88,7 +89,7 @@ export interface EmployeeData {
 }
 
 export const EMPLOYEE_READ_FIELDS: string[] = [
-  'name', 'department_id', 'job_title', 'work_email',
+  'name', 'nick_name', 'department_id', 'job_title', 'work_email',
   'birthday', 'gender', 'marital', 'country_id', 'place_of_birth',
   'country_of_birth', 'children', 'disabled', 'kw_geburtsname',
   'private_street', 'private_street2', 'private_zip', 'private_city',

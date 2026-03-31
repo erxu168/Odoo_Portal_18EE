@@ -30,8 +30,23 @@ export async function GET(
            'picked', 'operation_id'])
       : [];
 
+    // Fetch product categories for grouping
+    const productIds = components.map((c: any) => c.product_id[0]);
+    const products = productIds.length
+      ? await odoo.read('product.product', productIds, ['categ_id'])
+      : [];
+    const categMap: Record<number, string> = {};
+    for (const p of products) {
+      const fullName = p.categ_id?.[1] || 'Other';
+      // Extract last segment: 'All / RAW MATERIALS / Dry Goods' -> 'Dry Goods'
+      const parts = fullName.split(' / ');
+      categMap[p.id] = parts[parts.length - 1];
+    }
+
     const enrichedComponents = components.map((c: any) => ({
-      ...c, consumed_qty: c.quantity || 0,
+      ...c,
+      consumed_qty: c.quantity || 0,
+      category: categMap[c.product_id[0]] || 'Other',
     }));
 
     const workOrders = mo.workorder_ids?.length
@@ -122,7 +137,7 @@ export async function PATCH(
       for (const update of body.component_updates) {
         await odoo.write('stock.move', [update.move_id], {
           quantity: update.consumed_qty,
-          picked: true,
+          picked: update.consumed_qty > 0,
         });
       }
     }

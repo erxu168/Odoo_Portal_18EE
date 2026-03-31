@@ -30,7 +30,25 @@ export async function GET(req: NextRequest) {
       limit: Number(searchParams.get('limit') || 100),
     });
 
-    return NextResponse.json({ ok: true, data: records });
+    // Enrich with employee job_title and department
+    const empIds = Array.from(new Set(records.map((r: any) => r.employee_id?.[0]).filter(Boolean)));
+    const empMap: Record<number, { job_title: string; department: string }> = {};
+    if (empIds.length > 0) {
+      const employees = await odoo.searchRead('hr.employee', [['id', 'in', empIds]], ['id', 'job_title', 'department_id']);
+      for (const emp of employees || []) {
+        empMap[emp.id] = {
+          job_title: emp.job_title || '',
+          department: emp.department_id ? emp.department_id[1] : '',
+        };
+      }
+    }
+    const enriched = records.map((r: any) => ({
+      ...r,
+      job_title: empMap[r.employee_id?.[0]]?.job_title || '',
+      department: empMap[r.employee_id?.[0]]?.department || '',
+    }));
+
+    return NextResponse.json({ ok: true, data: enriched });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

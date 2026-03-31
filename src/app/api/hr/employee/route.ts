@@ -56,7 +56,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const WRITABLE = new Set([
-      'birthday', 'gender', 'marital', 'country_id', 'place_of_birth',
+      'nick_name', 'birthday', 'gender', 'marital', 'country_id', 'place_of_birth',
       'country_of_birth', 'children', 'disabled', 'kw_geburtsname',
       'private_street', 'private_street2', 'private_zip', 'private_city',
       'private_country_id', 'private_email', 'private_phone',

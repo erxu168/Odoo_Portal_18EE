@@ -60,10 +60,10 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6">
         <div className="text-center">
-          <p className="text-[15px] text-gray-900 font-bold mb-1">Connection error</p>
-          <p className="text-[13px] text-gray-500 mb-5">{error}</p>
+          <p className="text-[var(--fs-lg)] text-gray-900 font-bold mb-1">Connection error</p>
+          <p className="text-[var(--fs-xs)] text-gray-500 mb-5">{error}</p>
           <button onClick={fetchBoms} className="px-6 py-3 bg-green-600 text-white text-sm font-bold rounded-xl">Retry</button>
-          {onBack && <button onClick={onBack} className="block mx-auto mt-3 text-[13px] text-gray-500">Go back</button>}
+          {onBack && <button onClick={onBack} className="block mx-auto mt-3 text-[var(--fs-xs)] text-gray-500">Go back</button>}
         </div>
       </div>
     );
@@ -75,13 +75,13 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
         <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
           {onBack && (
-            <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors">
+            <button onClick={onBack} className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
             </button>
           )}
           <div className="flex-1">
-            <h1 className="text-[20px] font-bold text-white">Recipes</h1>
-            <p className="text-[12px] text-white/45 mt-0.5">{filtered.length} active recipes</p>
+            <h1 className="text-[var(--fs-xl)] font-bold text-white">Recipes</h1>
+            <p className="text-[var(--fs-xs)] text-white/45 mt-0.5">{filtered.length} active recipes</p>
           </div>
         </div>
       </div>
@@ -94,7 +94,7 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
           <input
             type="text" placeholder="Search recipes..." value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
+            className="w-full pl-10 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-[var(--fs-base)] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
           />
         </div>
       </div>
@@ -102,7 +102,7 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
       <div className="flex gap-1.5 px-4 py-3 overflow-x-auto no-scrollbar">
         {categories.map((cat) => (
           <button key={cat} onClick={() => setActiveCategory(cat)}
-            className={`px-4 py-2 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
+            className={`px-4 py-3 rounded-full text-[var(--fs-sm)] font-bold whitespace-nowrap transition-all ${
               activeCategory === cat ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
             }`}>{cat}</button>
         ))}
@@ -113,8 +113,8 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
           <button key={bom.id} onClick={() => onSelect(bom)}
             className="bg-white border border-gray-200 rounded-xl px-4 py-3.5 flex justify-between items-center text-left w-full active:scale-[0.98] transition-transform">
             <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-semibold text-gray-900 truncate">{bom.product_tmpl_id[1]}</div>
-              <div className="text-[12px] text-gray-500 mt-0.5">
+              <div className="text-[var(--fs-lg)] font-bold text-gray-900 truncate">{bom.product_tmpl_id[1]}</div>
+              <div className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
                 {bom.category !== 'All' ? bom.category : ''}
                 {bom.category !== 'All' && bom.component_count ? ' \u00b7 ' : ''}
                 {bom.component_count} ingredient{bom.component_count !== 1 ? 's' : ''}
@@ -122,17 +122,17 @@ export default function BomList({ onSelect, onBack }: BomListProps) {
             </div>
             <div className="flex items-center gap-2 ml-3 flex-shrink-0">
               <div className="text-right">
-                <div className="text-[14px] font-bold text-green-600 tabular-nums font-mono">
+                <div className="text-[var(--fs-md)] font-bold text-green-600 tabular-nums font-mono">
                   {new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(bom.product_qty)}
                   <span className="text-gray-400 font-normal text-[12px] ml-0.5">{bom.product_uom_id[1]}</span>
                 </div>
-                <div className="text-[11px] text-gray-400">per batch</div>
+                <div className="text-[var(--fs-xs)] text-gray-400">per batch</div>
               </div>
               <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M9 5l7 7-7 7" /></svg>
             </div>
           </button>
         ))}
-        {filtered.length === 0 && <div className="text-center py-12 text-gray-400 text-sm">No recipes found</div>}
+        {filtered.length === 0 && <div className="text-center py-12 text-gray-400 text-[var(--fs-sm)]">No recipes found</div>}
       </div>
     </div>
   );

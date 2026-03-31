@@ -391,6 +391,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
       <SectionTitle text="Personal" />
       <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200">
         <EditableRow label="Birthday" fieldKey="birthday" value={emp.birthday || ''} type="date" mono />
+        <EditableRow label="Nickname" fieldKey="nick_name" value={(emp as any).nick_name || ''} />
         <EditableRow label="Birth name" fieldKey="kw_geburtsname" value={(emp as any).kw_geburtsname || ''} />
         <EditableRow label="Gender" fieldKey="gender" value={emp.gender || ''} type="select" options={GENDER_OPTIONS} />
         <EditableRow label="Place of birth" fieldKey="place_of_birth" value={emp.place_of_birth || ''} />

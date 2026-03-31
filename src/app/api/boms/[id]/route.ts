@@ -157,8 +157,24 @@ export async function GET(
       stockMap[pid] = (stockMap[pid] || 0) + (q.quantity - q.reserved_quantity);
     }
 
+    // Fetch product categories for grouping
+    const catProducts = allProductIds.size
+      ? await odoo.read('product.product', Array.from(allProductIds), ['categ_id'])
+      : [];
+    const categMap: Record<number, string> = {};
+    for (const p of catProducts) {
+      const fullName = p.categ_id?.[1] || 'Other';
+      const parts = fullName.split(' / ');
+      categMap[p.id] = parts[parts.length - 1];
+    }
+
     // Resolve all components with sub-BOMs
     const components = await resolveBomLines(odoo, bom.bom_line_ids, stockMap);
+
+    // Enrich with category
+    for (const comp of components) {
+      (comp as any).category = categMap[comp.product_id] || 'Other';
+    }
 
     // Calculate max producible quantity
     let canMakeQty = Infinity;

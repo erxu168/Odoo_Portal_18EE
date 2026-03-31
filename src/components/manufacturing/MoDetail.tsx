@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Numpad from '@/components/ui/Numpad';
 
 interface MoDetailProps {
   moId: number;
@@ -14,12 +13,11 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [components, setComponents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'workorders' | 'components'>('workorders');
+  const [tab, setTab] = useState<'workorders' | 'components'>('components');
   const [producing, setProducing] = useState(false);
   const [produceError, setProduceError] = useState<string | null>(null);
 
-  const [numpadComp, setNumpadComp] = useState<any>(null);
-  const [numpadSaving, setNumpadSaving] = useState(false);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
 
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -104,29 +102,31 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
     }
   }
 
-  async function handleNumpadConfirm(value: number) {
-    if (!numpadComp) return;
-    setNumpadSaving(true);
+  async function toggleIngredient(comp: any) {
+    const isPicked = comp.picked === true;
+    setTogglingId(comp.id);
     try {
       const res = await fetch(`/api/manufacturing-orders/${moId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          component_updates: [{ move_id: numpadComp.id, consumed_qty: value }],
+          component_updates: [{
+            move_id: comp.id,
+            consumed_qty: isPicked ? 0 : comp.product_uom_qty,
+          }],
         }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setNumpadComp(null);
       await fetchDetail();
     } catch (err: any) {
-      setActionError(err.message || 'Failed to update quantity');
+      setActionError(err.message || 'Failed to update ingredient');
     } finally {
-      setNumpadSaving(false);
+      setTogglingId(null);
     }
   }
 
-  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(n);
+  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 10 }).format(n);
 
   const stateColors: Record<string, string> = {
     draft: 'bg-gray-100 text-gray-600', confirmed: 'bg-green-50 text-green-800',
@@ -175,26 +175,18 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
         <div className="flex items-center justify-between mb-2">
-          <button onClick={onBack} className="flex items-center gap-1 text-green-700 text-[13px] font-semibold active:opacity-70">
+          <button onClick={onBack} className="flex items-center gap-1 text-green-700 text-[var(--fs-xs)] font-semibold active:opacity-70">
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
             Manufacturing
           </button>
-          {canCancel && (
-            <button
-              onClick={() => setShowCancelConfirm(true)}
-              disabled={cancelLoading}
-              className="text-[12px] text-red-500 font-semibold px-3 py-1 rounded-lg border border-red-200 active:bg-red-50 disabled:opacity-50"
-            >
-              {cancelLoading ? 'Cancelling...' : 'Cancel order'}
-            </button>
-          )}
+
         </div>
         <div className="flex items-center gap-3">
           <div className="flex-1">
-            <h1 className="text-[18px] font-bold text-gray-900">{mo.product_id[1]}</h1>
-            <p className="text-[13px] text-gray-500 mt-0.5">{mo.name} {'\u00b7'} {mo.bom_id?.[1] || ''}</p>
+            <h1 className="text-[var(--fs-lg)] font-bold text-gray-900">{mo.product_id[1]}</h1>
+            <p className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{mo.name} {'\u00b7'} {mo.bom_id?.[1] || ''}</p>
           </div>
-          <span className={`text-[11px] px-2.5 py-0.5 rounded-md font-semibold ${stateColors[mo.state] || 'bg-gray-100 text-gray-600'}`}>
+          <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-semibold ${stateColors[mo.state] || 'bg-gray-100 text-gray-600'}`}>
             {stateLabels[mo.state] || mo.state}
           </span>
         </div>
@@ -202,22 +194,22 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
 
       {actionError && (
         <div className="px-4 pt-3">
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-[13px]">{actionError}</div>
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-[var(--fs-xs)]">{actionError}</div>
         </div>
       )}
 
       <div className="px-4 py-3">
         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex-1 text-center py-3 border-r border-gray-100">
-            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">QUANTITY</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">QUANTITY</div>
             <div className="text-lg font-bold text-green-600 mt-0.5 font-mono">{mo.qty_producing} / {mo.product_qty}</div>
           </div>
           <div className="flex-1 text-center py-3 border-r border-gray-100">
-            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">STEPS</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">STEPS</div>
             <div className="text-lg font-bold text-amber-500 mt-0.5 font-mono">{doneWos} / {workOrders.length}</div>
           </div>
           <div className="flex-1 text-center py-3">
-            <div className="text-[11px] text-gray-400 font-semibold tracking-wider">PICKED</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">PICKED</div>
             <div className="text-lg font-bold text-green-500 mt-0.5 font-mono">{pickedCount} / {totalComps}</div>
           </div>
         </div>
@@ -225,13 +217,13 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
 
       <div className="px-4 mb-3">
         <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
-          <button onClick={() => setTab('workorders')}
-            className={`flex-1 py-2 rounded-md text-xs font-semibold tracking-wide transition-all ${tab === 'workorders' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
-            Steps ({workOrders.length})
-          </button>
           <button onClick={() => setTab('components')}
-            className={`flex-1 py-2 rounded-md text-xs font-semibold tracking-wide transition-all ${tab === 'components' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
+            className={`flex-1 py-2.5 rounded-md text-sm font-semibold tracking-wide transition-all ${tab === 'components' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
             Ingredients ({pickedCount}/{totalComps})
+          </button>
+          <button onClick={() => setTab('workorders')}
+            className={`flex-1 py-3 rounded-md text-[var(--fs-sm)] font-semibold tracking-wide transition-all ${tab === 'workorders' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
+            Steps ({workOrders.length})
           </button>
         </div>
       </div>
@@ -239,32 +231,51 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       <div className="px-4 pb-44">
         {tab === 'workorders' && (
           <div className="flex flex-col gap-2">
-            {workOrders.map((wo, idx) => (
-              <button key={wo.id} onClick={() => onOpenWo(wo.id)}
-                className={`bg-white border rounded-xl p-4 text-left active:scale-[0.98] transition-all ${wo.state === 'progress' ? 'border-green-200 shadow-sm' : 'border-gray-200'}`}>
-                <div className="flex items-start gap-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-extrabold flex-shrink-0 ${woStepColors[wo.state] || 'bg-gray-100 text-gray-400'}`}>
-                    {idx + 1}
+            {(() => {
+              const wcNames = Array.from(new Set(workOrders.map((wo: any) => wo.workcenter_id[1])));
+              return wcNames.map(wc => {
+                const wcWos = workOrders.filter((wo: any) => wo.workcenter_id[1] === wc);
+                const wcDone = wcWos.filter((wo: any) => wo.state === 'done').length;
+                return (
+                  <div key={wc} className="mb-4">
+                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-2 flex justify-between">
+                      <span>{wc}</span>
+                      <span className="font-mono text-gray-300">{wcDone}/{wcWos.length}</span>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {wcWos.map((wo: any) => {
+                        const globalIdx = workOrders.indexOf(wo);
+                        return (
+                          <button key={wo.id} onClick={() => onOpenWo(wo.id)}
+                            className={`bg-white border rounded-xl p-4 text-left active:scale-[0.98] transition-all ${wo.state === 'progress' ? 'border-green-200 shadow-sm' : 'border-gray-200'}`}>
+                            <div className="flex items-start gap-3">
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-[var(--fs-sm)] font-extrabold flex-shrink-0 ${woStepColors[wo.state] || 'bg-gray-100 text-gray-400'}`}>
+                                {globalIdx + 1}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-[var(--fs-md)] font-bold text-gray-900">{wo.name}</div>
+                              </div>
+                              <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-semibold flex-shrink-0 ${woStateColors[wo.state] || 'bg-gray-100 text-gray-500'}`}>
+                                {woStateLabels[wo.state] || wo.state}
+                              </span>
+                            </div>
+                            {(wo.duration > 0 || wo.duration_expected > 0) && (
+                              <div className="flex items-center gap-2 mt-2 pl-11 text-[var(--fs-xs)] text-gray-400">
+                                {wo.duration > 0 && (
+                                  <span className={`font-semibold ${wo.state === 'done' ? 'text-green-600' : 'text-green-700'}`}>{Math.floor(wo.duration)}m</span>
+                                )}
+                                {wo.duration_expected > 0 && <span>/ {Math.round(wo.duration_expected)}m expected</span>}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-semibold text-gray-900">{wo.name}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">{wo.workcenter_id[1]}</div>
-                  </div>
-                  <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold flex-shrink-0 ${woStateColors[wo.state] || 'bg-gray-100 text-gray-500'}`}>
-                    {woStateLabels[wo.state] || wo.state}
-                  </span>
-                </div>
-                {(wo.duration > 0 || wo.duration_expected > 0) && (
-                  <div className="flex items-center gap-2 mt-2 pl-11 text-[11px] text-gray-400">
-                    {wo.duration > 0 && (
-                      <span className={`font-semibold ${wo.state === 'done' ? 'text-green-600' : 'text-green-700'}`}>{Math.floor(wo.duration)}m</span>
-                    )}
-                    {wo.duration_expected > 0 && <span>/ {Math.round(wo.duration_expected)}m expected</span>}
-                  </div>
-                )}
-              </button>
-            ))}
-            {workOrders.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">No steps for this order</div>}
+                );
+              });
+            })()}
+            {workOrders.length === 0 && <div className="text-center py-8 text-gray-400 text-[var(--fs-sm)]">No steps for this order</div>}
           </div>
         )}
 
@@ -272,54 +283,72 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
           <div className="flex flex-col gap-1.5">
             {totalComps > 0 && (
               <div className="flex items-center justify-between mb-1 px-1">
-                <p className="text-[11px] text-gray-400">Tap to weigh and pick each ingredient</p>
+                <p className="text-[var(--fs-xs)] text-gray-400">Tap to check off each ingredient</p>
                 {pickedCount === totalComps && totalComps > 0 && (
-                  <span className="text-[11px] font-semibold text-green-600">All picked</span>
+                  <span className="text-[var(--fs-xs)] font-semibold text-green-600">All picked</span>
                 )}
               </div>
             )}
             {totalComps > 0 && (
-              <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2">
+              <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden mb-2">
                 <div className="h-full bg-green-500 rounded-full transition-all duration-500"
                   style={{ width: `${totalComps > 0 ? (pickedCount / totalComps) * 100 : 0}%` }} />
               </div>
             )}
-            {components.map((c: any) => {
-              const consumed = c.consumed_qty || 0;
-              const required = c.product_uom_qty || 0;
-              const isPicked = c.picked === true;
-              const compUom = c.product_uom?.[1] || 'kg';
-              return (
-                <button key={c.id} onClick={() => setNumpadComp(c)}
-                  className={`bg-white border rounded-xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
-                    isPicked ? 'border-green-200 bg-green-50/30' : 'border-gray-200'
-                  }`}>
-                  <div className={`w-1 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-200'}`} />
-                  <div className="flex-1 flex items-center gap-3 px-4 py-3">
-                    <div className={`w-7 h-7 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                      isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
-                    }`}>
-                      {isPicked && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+            {(() => {
+              const cats = Array.from(new Set(components.map((c: any) => c.category || 'Other')));
+              return cats.map(cat => {
+                const catComps = components.filter((c: any) => (c.category || 'Other') === cat);
+                return (
+                  <div key={cat} className="mb-4">
+                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-2 flex justify-between">
+                      <span>{cat}</span>
+                      <span className="font-mono text-gray-300">{catComps.filter((c: any) => c.picked).length}/{catComps.length}</span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className={`text-[14px] font-semibold ${isPicked ? 'text-green-700 line-through decoration-green-400' : 'text-gray-900'}`}>
-                        {c.product_id[1]}
-                      </div>
-                      <div className="text-[11px] text-gray-400 mt-0.5">
-                        {isPicked ? `Picked ${fmt(consumed)} ${compUom}` : `Need ${fmt(required)} ${compUom}`}
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className={`text-[15px] font-bold tabular-nums font-mono ${isPicked ? 'text-green-600' : 'text-gray-400'}`}>
-                        {isPicked ? fmt(consumed) : fmt(required)}
-                      </div>
-                      <div className="text-[11px] text-gray-400">{compUom}</div>
+                    <div className="flex flex-col gap-1.5">
+                      {catComps.map((c: any) => {
+                        const required = c.product_uom_qty || 0;
+                        const isPicked = c.picked === true;
+                        const isToggling = togglingId === c.id;
+                        const compUom = c.product_uom?.[1] || 'kg';
+                        return (
+                          <button key={c.id} onClick={() => !isToggling && toggleIngredient(c)}
+                            disabled={isToggling}
+                            className={`bg-white border rounded-2xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
+                              isPicked ? 'border-green-300 bg-green-50/40' : 'border-gray-200'
+                            } ${isToggling ? 'opacity-60' : ''}`}>
+                            <div className={`w-1.5 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-300'}`} />
+                            <div className="flex-1 flex items-center gap-3 px-4 py-4">
+                              <div className={`w-11 h-11 rounded-xl border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                                isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
+                              }`}>
+                                {isToggling ? (
+                                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : isPicked ? (
+                                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                                ) : null}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className={`text-[var(--fs-xl)] font-bold ${isPicked ? 'text-green-700 line-through decoration-green-400/60' : 'text-gray-900'}`}>
+                                  {c.product_id[1]}
+                                </div>
+                              </div>
+                              <div className="text-right flex-shrink-0 pl-2">
+                                <div className={`text-[var(--fs-xxl)] font-extrabold tabular-nums font-mono leading-tight ${isPicked ? 'text-green-600' : 'text-gray-900'}`}>
+                                  {fmt(required)}
+                                </div>
+                                <div className={`text-[var(--fs-sm)] font-semibold ${isPicked ? 'text-green-500' : 'text-gray-400'}`}>{compUom}</div>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                </button>
-              );
-            })}
-            {components.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">No ingredients</div>}
+                );
+              });
+            })()}
+            {components.length === 0 && <div className="text-center py-8 text-gray-400 text-[var(--fs-sm)]">No ingredients</div>}
           </div>
         )}
       </div>
@@ -332,19 +361,43 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
 
       {isDraft && (
         <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
-          <button onClick={handleConfirm} disabled={confirmLoading}
-            className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[15px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
-            {confirmLoading ? 'Confirming...' : 'Confirm order'}
+          <div className="flex gap-2">
+            <button onClick={() => setShowCancelConfirm(true)} disabled={cancelLoading}
+              className="py-4 px-6 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[14px] active:bg-red-50 disabled:opacity-50">
+              {cancelLoading ? '...' : 'Cancel'}
+            </button>
+            <button onClick={handleConfirm} disabled={confirmLoading}
+              className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-[15px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+              {confirmLoading ? 'Confirming...' : 'Confirm order'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmed but not ready to produce — show cancel button */}
+      {!isDraft && !isDone && !isCancelled && !showProduce && (
+        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
+          <button onClick={() => setShowCancelConfirm(true)} disabled={cancelLoading}
+            className="w-full py-4 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[14px] active:bg-red-50 disabled:opacity-50">
+            {cancelLoading ? 'Cancelling...' : 'Cancel'}
           </button>
         </div>
       )}
 
       {showProduce && (
         <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
-          <button onClick={handleProduce} disabled={producing}
-            className="w-full py-4 rounded-xl bg-green-500 text-white font-bold text-[15px] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
-            {producing ? 'Finishing...' : 'Produce & close'}
-          </button>
+          <div className="flex gap-2">
+            {canCancel && (
+              <button onClick={() => setShowCancelConfirm(true)} disabled={cancelLoading}
+                className="py-4 px-6 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[14px] active:bg-red-50 disabled:opacity-50">
+                {cancelLoading ? '...' : 'Cancel'}
+              </button>
+            )}
+            <button onClick={handleProduce} disabled={producing}
+              className="flex-1 py-4 rounded-xl bg-green-500 text-white font-bold text-[15px] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+              {producing ? 'Finishing...' : 'Produce & close'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -360,18 +413,6 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         </div>
       )}
 
-      {numpadComp && (
-        <Numpad
-          label={numpadComp.product_id[1]}
-          value={numpadComp.picked ? String(numpadComp.consumed_qty || 0) : '0'}
-          unit={numpadComp.product_uom?.[1] || 'kg'}
-          demandQty={numpadComp.product_uom_qty}
-          loading={numpadSaving}
-          onConfirm={handleNumpadConfirm}
-          onClose={() => setNumpadComp(null)}
-        />
-      )}
-
       {showCancelConfirm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowCancelConfirm(false)}>
           <div className="absolute inset-0 bg-black/40" />
@@ -385,8 +426,8 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
               </p>
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setShowCancelConfirm(false)} className="flex-1 py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-sm active:bg-gray-50">Keep order</button>
-              <button onClick={handleCancel} className="flex-1 py-3.5 rounded-xl bg-red-500 text-white font-bold text-sm shadow-lg shadow-red-500/30 active:scale-[0.975] transition-transform">Yes, cancel it</button>
+              <button onClick={() => setShowCancelConfirm(false)} className="flex-1 py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-[var(--fs-sm)] active:bg-gray-50">Keep order</button>
+              <button onClick={handleCancel} className="flex-1 py-3.5 rounded-xl bg-red-500 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-red-500/30 active:scale-[0.975] transition-transform">Yes, cancel it</button>
             </div>
           </div>
         </div>

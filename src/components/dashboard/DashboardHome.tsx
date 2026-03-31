@@ -145,20 +145,20 @@ export default function DashboardHome() {
             ) : null}
           </button>
           <div>
-            <h1 className="text-[22px] font-bold text-white">
+            <h1 className="text-[var(--fs-xxl)] font-bold text-white">
               {greeting}{firstName ? `, ${firstName}` : ''}
             </h1>
-            <p className="text-[13px] text-white/60 mt-0.5">{dateStr}</p>
+            <p className="text-[var(--fs-xs)] text-white/60 mt-0.5">{dateStr}</p>
           </div>
         </div>
         {shift && (
           <div className={`mt-3 flex items-center gap-3 px-4 py-3 rounded-xl relative ${shift.onShift ? 'bg-white/10 border border-white/20' : 'bg-white/5 border border-white/10'}`}>
             <div className={`w-2.5 h-2.5 rounded-full ${shift.onShift ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)] animate-pulse' : 'bg-gray-400'}`} />
             <div>
-              <div className={`text-[13px] font-semibold ${shift.onShift ? 'text-white' : 'text-white/50'}`}>
+              <div className={`text-[var(--fs-xs)] font-semibold ${shift.onShift ? 'text-white' : 'text-white/50'}`}>
                 {shift.onShift ? `${shift.name} \u00b7 ${shift.station}` : 'No shift right now'}
               </div>
-              <div className="text-[12px] text-white/50 font-mono">
+              <div className="text-[var(--fs-xs)] text-white/50 font-mono">
                 {shift.onShift ? `${shift.start} \u2013 ${shift.end}` : 'Check your schedule'}
               </div>
             </div>
@@ -170,8 +170,8 @@ export default function DashboardHome() {
       {tasks && tasks.items && tasks.items.length > 0 && (
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between mb-2.5">
-            <h2 className="text-[15px] font-bold text-gray-900">Your current shift tasks</h2>
-            <span className="text-[12px] font-semibold text-gray-400">See all &rarr;</span>
+            <h2 className="text-[var(--fs-md)] font-bold text-gray-900">Your current shift tasks</h2>
+            <span className="text-[var(--fs-xs)] font-semibold text-gray-400">See all &rarr;</span>
           </div>
           <div className="flex items-center gap-2.5 mb-3">
             <div className="flex-1 h-1 bg-gray-200 rounded-full overflow-hidden">
@@ -193,10 +193,10 @@ export default function DashboardHome() {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[13px] font-semibold ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.name}</div>
-                    <div className="text-[11px] text-gray-500 mt-0.5">{task.category}{task.photoRequired ? ' \u00b7 Photo required' : ''}</div>
+                    <div className={`text-[var(--fs-sm)] font-bold ${isDone ? 'line-through text-gray-400' : 'text-gray-900'}`}>{task.name}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{task.category}{task.photoRequired ? ' \u00b7 Photo required' : ''}</div>
                   </div>
-                  <div className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold font-mono ${s.pill} ${s.pillText}`}>{task.dueLabel}</div>
+                  <div className={`flex-shrink-0 px-2 py-0.5 rounded-md text-[12px] font-bold font-mono ${s.pill} ${s.pillText}`}>{task.dueLabel}</div>
                 </div>
               );
             })}
@@ -206,7 +206,7 @@ export default function DashboardHome() {
 
       {/* App tiles */}
       <div className="px-5 pt-3">
-        <p className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase mb-3">Apps</p>
+        <p className="text-[var(--fs-xs)] font-bold text-gray-400 tracking-widest uppercase mb-3">Apps</p>
         <div className="grid grid-cols-2 gap-3">
           {visibleTiles.map(tile => {
             const count = badges[tile.id] || 0;
@@ -219,23 +219,23 @@ export default function DashboardHome() {
                   if (tile.href === '/recipes') sessionStorage.setItem('kw_recipes_reset', '1');
                   router.push(tile.href);
                 }}
-                className={`relative rounded-2xl border p-4 flex items-start gap-3 shadow-sm active:scale-[0.97] transition-transform ${
+                className={`relative rounded-2xl border p-4 flex flex-col items-center justify-center text-center aspect-square shadow-sm active:scale-[0.97] transition-transform ${
                   disabled
                     ? 'bg-gray-50 border-gray-200 opacity-50'
                     : `${tile.bg} ${tile.border}`
                 }`}
               >
                 {count > 0 && (
-                  <span className="absolute top-2 right-2 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold font-mono leading-5 text-center">{count}</span>
+                  <span className="absolute top-2 right-2 min-w-[22px] h-6 px-2 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-6 text-center">{count}</span>
                 )}
-                <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 mb-2 ${
                   disabled ? 'bg-gray-100 text-gray-400' : `${tile.iconBg} ${tile.iconColor}`
                 }`}>
                   {tile.icon}
                 </div>
-                <div className="min-w-0 text-left">
-                  <div className="text-[14px] font-semibold text-gray-900 leading-tight">{tile.label}</div>
-                  <div className="text-[11px] text-gray-500 mt-0.5 leading-tight">{tile.subtitle}</div>
+                <div className="min-w-0">
+                  <div className="text-[var(--fs-md)] font-bold text-gray-900 leading-tight">{tile.label}</div>
+                  <div className="text-[var(--fs-xs)] text-gray-500 mt-1 leading-tight">{tile.subtitle}</div>
                 </div>
               </button>
             );

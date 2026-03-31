@@ -60,6 +60,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
   const [gender, setGender] = useState(employee.gender || '');
   const [marital, setMarital] = useState(employee.marital || 'single');
   const [geburtsname, setGeburtsname] = useState(employee.kw_geburtsname || '');
+  const [nickName, setNickName] = useState(employee.nick_name || '');
   const [placeOfBirth, setPlaceOfBirth] = useState(employee.place_of_birth || '');
 
   // Country of birth (autocomplete against Odoo res.country)
@@ -98,6 +99,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
       gender: gender || false,
       marital,
       kw_geburtsname: geburtsname || false,
+      nick_name: nickName || false,
       place_of_birth: placeOfBirth || false,
       country_of_birth: countryOfBirthId || false,
       private_street: street || false,
@@ -210,6 +212,9 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
       <div className="p-5 space-y-4">
         <Field label="Full name">
           <input className="form-input" value={employee.name} disabled />
+        </Field>
+        <Field label="Nickname" labelDe="Spitzname">
+          <input className="form-input" value={nickName} onChange={e => setNickName(e.target.value)} placeholder="What do you like to be called?" />
         </Field>
         <Field label="Birth name" labelDe="Geburtsname" info={ex}>
           <input className="form-input" value={geburtsname} onChange={e => setGeburtsname(e.target.value)} placeholder="Only if different from current name" />
