@@ -175,7 +175,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
   const isCancelled = mo.state === 'cancel';
   const isToClose = mo.state === 'to_close';
   const canCancel = !isDone && !isCancelled;
-  const showProduce = !isDraft && !isDone && !isCancelled && (allWosDone || isToClose || workOrders.length === 0);
+  const showProduce = !isDraft && !isDone && !isCancelled && (allWosDone || workOrders.length === 0);
 
   const pickedCount = components.filter((c: any) => c.picked === true).length;
   const totalComps = components.length;
