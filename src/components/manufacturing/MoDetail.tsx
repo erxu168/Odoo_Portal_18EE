@@ -104,7 +104,13 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
 
   async function toggleIngredient(comp: any) {
     const isPicked = comp.picked === true;
-    setTogglingId(comp.id);
+    const newPicked = !isPicked;
+
+    // Optimistic update — instant UI response, no freeze
+    setComponents(prev => prev.map(c =>
+      c.id === comp.id ? { ...c, picked: newPicked } : c
+    ));
+
     try {
       const res = await fetch(`/api/manufacturing-orders/${moId}`, {
         method: 'PATCH',
@@ -112,17 +118,20 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         body: JSON.stringify({
           component_updates: [{
             move_id: comp.id,
-            consumed_qty: isPicked ? 0 : comp.product_uom_qty,
+            consumed_qty: newPicked ? comp.product_uom_qty : 0,
           }],
         }),
       });
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      await fetchDetail();
+      if (data.error) {
+        // Revert on error
+        setComponents(prev => prev.map(c =>
+          c.id === comp.id ? { ...c, picked: isPicked } : c
+        ));
+        throw new Error(data.error);
+      }
     } catch (err: any) {
       setActionError(err.message || 'Failed to update ingredient');
-    } finally {
-      setTogglingId(null);
     }
   }
 
@@ -228,7 +237,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
         </div>
       </div>
 
-      <div className="px-4 pb-44">
+      <div className="px-4 pb-8">
         {tab === 'workorders' && (
           <div className="flex flex-col gap-2">
             {(() => {
@@ -354,20 +363,20 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       </div>
 
       {produceError && (
-        <div className="fixed bottom-40 left-0 right-0 max-w-lg mx-auto px-4">
-          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-red-700 text-sm">{produceError}</div>
+        <div className="px-4 pb-3">
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2 text-red-700 text-[var(--fs-sm)]">{produceError}</div>
         </div>
       )}
 
       {isDraft && (
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="px-4 pb-6">
           <div className="flex gap-2">
             <button onClick={() => setShowCancelConfirm(true)} disabled={cancelLoading}
-              className="py-4 px-6 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[14px] active:bg-red-50 disabled:opacity-50">
+              className="py-4 px-6 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[var(--fs-sm)] active:bg-red-50 disabled:opacity-50">
               {cancelLoading ? '...' : 'Cancel'}
             </button>
             <button onClick={handleConfirm} disabled={confirmLoading}
-              className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-[14px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+              className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
               {confirmLoading ? 'Confirming...' : 'Confirm order'}
             </button>
           </div>
@@ -376,25 +385,25 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
 
       {/* Confirmed but not ready to produce — show cancel button */}
       {!isDraft && !isDone && !isCancelled && !showProduce && (
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="px-4 pb-6">
           <button onClick={() => setShowCancelConfirm(true)} disabled={cancelLoading}
-            className="w-full py-4 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[14px] active:bg-red-50 disabled:opacity-50">
+            className="w-full py-4 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[var(--fs-sm)] active:bg-red-50 disabled:opacity-50">
             {cancelLoading ? 'Cancelling...' : 'Cancel'}
           </button>
         </div>
       )}
 
       {showProduce && (
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
+        <div className="px-4 pb-6">
           <div className="flex gap-2">
             {canCancel && (
               <button onClick={() => setShowCancelConfirm(true)} disabled={cancelLoading}
-                className="py-4 px-6 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[14px] active:bg-red-50 disabled:opacity-50">
+                className="py-4 px-6 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[var(--fs-sm)] active:bg-red-50 disabled:opacity-50">
                 {cancelLoading ? '...' : 'Cancel'}
               </button>
             )}
             <button onClick={handleProduce} disabled={producing}
-              className="flex-1 py-4 rounded-xl bg-green-500 text-white font-bold text-[14px] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+              className="flex-1 py-4 rounded-xl bg-green-500 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
               {producing ? 'Finishing...' : 'Produce & close'}
             </button>
           </div>
@@ -402,14 +411,14 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       )}
 
       {isDone && (
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
-          <div className="w-full py-4 rounded-xl bg-green-50 border border-green-200 text-green-700 font-bold text-[15px] text-center">Order completed</div>
+        <div className="px-4 pb-6">
+          <div className="w-full py-4 rounded-xl bg-green-50 border border-green-200 text-green-700 font-bold text-[var(--fs-md)] text-center">Order completed</div>
         </div>
       )}
 
       {isCancelled && (
-        <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 pb-4 pt-2 bg-gradient-to-t from-gray-50">
-          <div className="w-full py-4 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-[15px] text-center">Order cancelled</div>
+        <div className="px-4 pb-6">
+          <div className="w-full py-4 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-[var(--fs-md)] text-center">Order cancelled</div>
         </div>
       )}
 
