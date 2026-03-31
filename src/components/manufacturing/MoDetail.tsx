@@ -77,7 +77,7 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      await fetchDetail();
+      onBack();
     } catch (err: any) {
       setActionError(err.message || 'Failed to cancel order');
     } finally {

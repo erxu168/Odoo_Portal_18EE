@@ -51,11 +51,24 @@ export async function GET(request: Request) {
       'create_date',
     ], { limit, order: 'id desc' });
 
+    // Fetch work order states for all MOs in one batch
+    const allWoIds = orders.flatMap((mo: any) => mo.workorder_ids || []);
+    const woStates: Record<number, string> = {};
+    if (allWoIds.length > 0) {
+      const wos = await odoo.read('mrp.workorder', allWoIds, ['id', 'state']);
+      for (const wo of wos) {
+        woStates[wo.id] = wo.state;
+      }
+    }
+
     const enriched = orders.map((mo: any) => {
-      const woCount = mo.workorder_ids?.length || 0;
+      const woIds = mo.workorder_ids || [];
+      const woCount = woIds.length;
+      const woDone = woIds.filter((id: number) => woStates[id] === 'done').length;
       return {
         ...mo,
         work_order_count: woCount,
+        work_order_done: woDone,
       };
     });
 

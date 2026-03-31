@@ -162,7 +162,9 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
             ) : (
               <div className="flex flex-col gap-3">
                 {filtered.map((mo: any) => {
-                  const pct = mo.product_qty > 0 ? Math.round((mo.qty_producing / mo.product_qty) * 100) : 0;
+                  const woDone = mo.work_order_done || 0;
+                  const woTotal = mo.work_order_count || 0;
+                  const pct = woTotal > 0 ? Math.round((woDone / woTotal) * 100) : (mo.product_qty > 0 ? Math.round((mo.qty_producing / mo.product_qty) * 100) : 0);
                   const deadlineStr = mo.date_deadline
                     ? new Date(mo.date_deadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
                     : null;

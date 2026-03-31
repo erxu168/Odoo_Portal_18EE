@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
 
 interface CreateMoProps {
   onBack: () => void;
@@ -369,15 +370,12 @@ export default function CreateMo({ onBack, onCreated, onNavigateToCreate }: Crea
   if (step === 'configure' && selectedBom) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
-          <button onClick={() => { setStep('select'); setSelectedBom(null); setComponents([]); }}
-            className="flex items-center gap-1 mb-2 text-green-700 text-[var(--fs-xs)] font-semibold active:opacity-70">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
-            Change recipe
-          </button>
-          <h1 className="text-[var(--fs-lg)] font-bold text-gray-900">{selectedBom.product_tmpl_id[1]}</h1>
-          <p className="text-[var(--fs-xs)] text-gray-500 mt-0.5">Step 2 &mdash; Set quantity</p>
-        </div>
+        <AppHeader
+          title={selectedBom.product_tmpl_id[1]}
+          subtitle="Set quantity"
+          showBack
+          onBack={() => { setStep('select'); setSelectedBom(null); setComponents([]); }}
+        />
 
         {/* Progress */}
         <div className="flex gap-1 px-4 py-2.5">
