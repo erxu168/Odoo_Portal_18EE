@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
 
 interface MoDetailProps {
   moId: number;
@@ -182,24 +183,17 @@ export default function MoDetail({ moId, onBack, onOpenWo }: MoDetailProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
-        <div className="flex items-center justify-between mb-2">
-          <button onClick={onBack} className="flex items-center gap-1 text-green-700 text-[var(--fs-xs)] font-semibold active:opacity-70">
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
-            Manufacturing
-          </button>
-
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex-1">
-            <h1 className="text-[var(--fs-xxl)] font-bold text-gray-900">{mo.product_id[1]}</h1>
-            <p className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{mo.name} {'\u00b7'} {mo.bom_id?.[1] || ''}</p>
-          </div>
+      <AppHeader
+        title={mo.product_id[1]}
+        subtitle={mo.name}
+        showBack
+        onBack={onBack}
+        action={
           <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-semibold ${stateColors[mo.state] || 'bg-gray-100 text-gray-600'}`}>
             {stateLabels[mo.state] || mo.state}
           </span>
-        </div>
-      </div>
+        }
+      />
 
       {actionError && (
         <div className="px-4 pt-3">
