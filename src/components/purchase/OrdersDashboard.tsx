@@ -123,7 +123,7 @@ export default function OrdersDashboard({
     <div className="px-4 py-4">
       {/* Location context pill */}
       <div className="flex items-center justify-center mb-4">
-        <span className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase">
+        <span className="text-[var(--fs-xs)] font-semibold text-gray-400 tracking-wider uppercase">
           Ordering for {locationName}
         </span>
       </div>
@@ -137,15 +137,15 @@ export default function OrdersDashboard({
             className={`relative rounded-2xl border ${tile.color} shadow-sm p-4 text-left active:scale-[0.97] transition-transform`}
           >
             {tile.badgeCount > 0 && (
-              <span className="absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold font-mono leading-5 text-center">
+              <span className="absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-5 text-center">
                 {tile.badgeCount}
               </span>
             )}
             <div className={`w-11 h-11 rounded-xl ${tile.iconBg} ${tile.iconColor} flex items-center justify-center mb-3`}>
               {tile.icon}
             </div>
-            <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
-            <div className="text-[11px] text-gray-500 mt-0.5">{tile.sublabel}</div>
+            <div className="text-[var(--fs-md)] font-bold text-gray-900">{tile.label}</div>
+            <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{tile.sublabel}</div>
           </button>
         ))}
       </div>
@@ -155,7 +155,7 @@ export default function OrdersDashboard({
         <div className="text-center mt-5">
           <button
             onClick={onManage}
-            className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-green-700 px-4 py-2.5 rounded-xl bg-green-50 border border-green-100 active:bg-green-100 transition-colors"
+            className="inline-flex items-center gap-1.5 text-[var(--fs-xs)] font-semibold text-green-700 px-4 py-2.5 rounded-xl bg-green-50 border border-green-100 active:bg-green-100 transition-colors"
           >
             <SettingsIcon />
             Manage guides &amp; settings

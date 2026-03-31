@@ -74,8 +74,8 @@ export default function ReceiveReview({
       {/* Progress bar */}
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-[13px] font-bold text-gray-900">Inspection progress</span>
-          <span className="text-[12px] font-mono font-bold text-gray-900">{checkedCount}/{totalLines}</span>
+          <span className="text-[var(--fs-sm)] font-bold text-gray-900">Inspection progress</span>
+          <span className="text-[var(--fs-xs)] font-mono font-bold text-gray-900">{checkedCount}/{totalLines}</span>
         </div>
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
@@ -84,7 +84,7 @@ export default function ReceiveReview({
           />
         </div>
         {!allChecked && (
-          <p className="text-[11px] text-amber-600 mt-2">
+          <p className="text-[var(--fs-xs)] text-amber-600 mt-2">
             Check each item to confirm it has been inspected.
           </p>
         )}
@@ -93,11 +93,11 @@ export default function ReceiveReview({
       {/* Summary stats */}
       <div className="grid grid-cols-2 gap-2 mb-3">
         <div className="bg-white border border-gray-200 rounded-xl p-3 text-center">
-          <div className="text-[18px] font-extrabold font-mono text-gray-900">{linesWithQty.length}</div>
+          <div className="text-[var(--fs-xxl)] font-extrabold font-mono text-gray-900">{linesWithQty.length}</div>
           <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Received</div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-3 text-center">
-          <div className="text-[18px] font-extrabold font-mono text-red-600">{linesNotReceived.length}</div>
+          <div className="text-[var(--fs-xxl)] font-extrabold font-mono text-red-600">{linesNotReceived.length}</div>
           <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Not delivered</div>
         </div>
       </div>
@@ -105,19 +105,19 @@ export default function ReceiveReview({
         <div className="grid grid-cols-3 gap-2 mb-3">
           {linesWithIssues.length > 0 && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-2.5 text-center">
-              <div className="text-[16px] font-bold font-mono text-red-700">{linesWithIssues.length}</div>
+              <div className="text-[var(--fs-lg)] font-bold font-mono text-red-700">{linesWithIssues.length}</div>
               <div className="text-[9px] font-semibold text-red-500 uppercase tracking-wide">Issues</div>
             </div>
           )}
           {linesShort.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 text-center">
-              <div className="text-[16px] font-bold font-mono text-amber-700">{linesShort.length}</div>
+              <div className="text-[var(--fs-lg)] font-bold font-mono text-amber-700">{linesShort.length}</div>
               <div className="text-[9px] font-semibold text-amber-500 uppercase tracking-wide">Short</div>
             </div>
           )}
           {linesOver.length > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 text-center">
-              <div className="text-[16px] font-bold font-mono text-blue-700">{linesOver.length}</div>
+              <div className="text-[var(--fs-lg)] font-bold font-mono text-blue-700">{linesOver.length}</div>
               <div className="text-[9px] font-semibold text-blue-500 uppercase tracking-wide">Over</div>
             </div>
           )}
@@ -127,16 +127,16 @@ export default function ReceiveReview({
       {/* Cost comparison */}
       {orderedTotal > 0 && (
         <div className="bg-gray-50 rounded-xl px-3.5 py-2.5 mb-3 border border-gray-100">
-          <div className="flex justify-between text-[12px] text-gray-500">
+          <div className="flex justify-between text-[var(--fs-xs)] text-gray-500">
             <span>Ordered value</span>
             <span className="font-mono">&euro;{orderedTotal.toFixed(2)}</span>
           </div>
-          <div className="flex justify-between text-[12px] text-gray-500">
+          <div className="flex justify-between text-[var(--fs-xs)] text-gray-500">
             <span>Received value</span>
             <span className="font-mono">&euro;{receivedTotal.toFixed(2)}</span>
           </div>
           {orderedTotal !== receivedTotal && (
-            <div className={`flex justify-between text-[12px] font-bold pt-1 border-t border-gray-200 mt-1 ${receivedTotal < orderedTotal ? 'text-red-600' : 'text-blue-600'}`}>
+            <div className={`flex justify-between text-[var(--fs-xs)] font-bold pt-1 border-t border-gray-200 mt-1 ${receivedTotal < orderedTotal ? 'text-red-600' : 'text-blue-600'}`}>
               <span>Difference</span>
               <span className="font-mono">{receivedTotal > orderedTotal ? '+' : ''}&euro;{(receivedTotal - orderedTotal).toFixed(2)}</span>
             </div>
@@ -145,7 +145,7 @@ export default function ReceiveReview({
       )}
 
       {/* Line items with checkmarks */}
-      <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Items ({totalLines})</div>
+      <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-2">Items ({totalLines})</div>
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
         {receiptLines.map(line => {
           const checked = checkedLines[line.id] || false;
@@ -170,9 +170,9 @@ export default function ReceiveReview({
                   </svg>
                 </button>
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-gray-900">{line.product_name}</div>
+                  <div className="text-[var(--fs-sm)] font-semibold text-gray-900">{line.product_name}</div>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[11px] text-gray-500 font-mono">
+                    <span className="text-[var(--fs-xs)] text-gray-500 font-mono">
                       {qty !== null ? qty : '\u2014'} / {line.ordered_qty} {line.product_uom}
                     </span>
                     {isShort && !line.has_issue && (
@@ -203,7 +203,7 @@ export default function ReceiveReview({
                   )}
                 </div>
                 {line.price && line.price > 0 && qty !== null && qty > 0 && (
-                  <div className="text-[12px] font-bold font-mono text-gray-900 flex-shrink-0">
+                  <div className="text-[var(--fs-xs)] font-bold font-mono text-gray-900 flex-shrink-0">
                     &euro;{(qty * line.price).toFixed(2)}
                   </div>
                 )}
@@ -215,7 +215,7 @@ export default function ReceiveReview({
 
       {/* Delivery note photo */}
       <div className="mt-4">
-        <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
+        <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-2">
           Delivery note photo
           {deliveryNotePhoto ? <span className="text-green-600 ml-2">Attached</span> : <span className="ml-1 font-normal normal-case">(recommended)</span>}
         </div>
@@ -224,19 +224,19 @@ export default function ReceiveReview({
             <img src={deliveryNotePhoto} alt="Delivery note" className="w-full h-40 object-cover rounded-xl border border-gray-200" />
             <button
               onClick={() => setDeliveryNotePhoto('')}
-              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white text-[14px]"
+              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white text-[var(--fs-sm)]"
             >
               &times;
             </button>
             <div className="mt-2 text-center">
-              <label className="text-[12px] font-semibold text-green-700 cursor-pointer active:opacity-70">
+              <label className="text-[var(--fs-xs)] font-semibold text-green-700 cursor-pointer active:opacity-70">
                 Retake photo
                 
               </label>
             </div>
             <div className="flex items-center gap-2 mt-2 px-1">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-              <span className="text-[11px] text-green-700">Photo will be uploaded to Odoo as a log note on this order</span>
+              <span className="text-[var(--fs-xs)] text-green-700">Photo will be uploaded to Odoo as a log note on this order</span>
             </div>
           </div>
         ) : (
@@ -246,7 +246,7 @@ export default function ReceiveReview({
                 <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
                 <circle cx="12" cy="13" r="4" />
               </svg>
-              <div className="text-[12px] font-semibold text-gray-900">Take photo of delivery note</div>
+              <div className="text-[var(--fs-xs)] font-semibold text-gray-900">Take photo of delivery note</div>
               <div className="text-[10px] text-gray-400 mt-0.5">Saved to Odoo as proof of delivery</div>
             </div>
             
@@ -258,10 +258,10 @@ export default function ReceiveReview({
       <div className="fixed bottom-0 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
         {!allChecked ? (
           <div className="text-center">
-            <div className="w-full py-3 rounded-xl bg-gray-100 text-gray-400 text-[14px] font-bold cursor-not-allowed">
+            <div className="w-full py-3 rounded-xl bg-gray-100 text-gray-400 text-[var(--fs-md)] font-bold cursor-not-allowed">
               Check all items to continue
             </div>
-            <p className="text-[11px] text-gray-400 mt-1.5">{totalLines - checkedCount} item{totalLines - checkedCount !== 1 ? 's' : ''} remaining</p>
+            <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">{totalLines - checkedCount} item{totalLines - checkedCount !== 1 ? 's' : ''} remaining</p>
           </div>
         ) : isManager ? (
           <>
@@ -278,7 +278,7 @@ export default function ReceiveReview({
                   </svg>
                 )}
               </div>
-              <span className="text-[12px] text-gray-900 leading-relaxed">
+              <span className="text-[var(--fs-xs)] text-gray-900 leading-relaxed">
                 I confirm all quantities are correct and have been physically verified.
               </span>
             </label>
@@ -297,7 +297,7 @@ export default function ReceiveReview({
                   })
                 }
                 disabled={!canConfirm}
-                className="flex-1 py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                className="flex-1 py-3 rounded-xl bg-green-600 text-white text-[var(--fs-sm)] font-bold active:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
               >
                 Confirm &amp; close
               </button>
@@ -315,17 +315,17 @@ export default function ReceiveReview({
                   })
                 }
                 disabled={!canConfirm}
-                className="flex-1 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold active:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                className="flex-1 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[var(--fs-sm)] font-semibold active:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
               >
                 Keep as backorder
               </button>
             </div>
-            <p className="text-[11px] text-gray-400 text-center mt-1.5">
+            <p className="text-[var(--fs-xs)] text-gray-400 text-center mt-1.5">
               {deliveryNotePhoto ? 'Photo + receipt will be logged in Odoo.' : 'Confirming will update stock in Odoo.'}
             </p>
           </>
         ) : (
-          <p className="text-[12px] text-gray-500 text-center py-2">A manager must confirm receipt to update stock.</p>
+          <p className="text-[var(--fs-xs)] text-gray-500 text-center py-2">A manager must confirm receipt to update stock.</p>
         )}
       </div>
     </div>
