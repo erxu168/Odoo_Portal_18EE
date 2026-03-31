@@ -90,7 +90,9 @@ export async function GET(request: Request) {
 
     const categByTmplId: Record<number, string> = {};
     for (const t of templates) {
-      categByTmplId[t.id] = t.categ_id?.[1] || 'Uncategorized';
+      const fullCat = t.categ_id?.[1] || 'Uncategorized';
+      const parts = fullCat.split(' / ');
+      categByTmplId[t.id] = parts[parts.length - 1];
     }
 
     const enriched = boms.map((bom: any) => {
