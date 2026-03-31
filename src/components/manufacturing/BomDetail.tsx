@@ -28,6 +28,9 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   const [error, setError] = useState<string | null>(null);
   const [expandedSubBoms, setExpandedSubBoms] = useState<Set<number>>(new Set());
 
+  // Operations
+  const [operations, setOperations] = useState<any[]>([]);
+
   // Edit mode
   const [editing, setEditing] = useState(false);
   const [editLines, setEditLines] = useState<EditLine[]>([]);
@@ -35,6 +38,15 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   const [removedLineIds, setRemovedLineIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Workcenters for edit mode
+  const [workcenters, setWorkcenters] = useState<{id: number; name: string}[]>([]);
+  const [editOps, setEditOps] = useState<any[]>([]);
+  const [removedOpIds, setRemovedOpIds] = useState<number[]>([]);
+  const [showAddOp, setShowAddOp] = useState(false);
+  const [newOpName, setNewOpName] = useState('');
+  const [newOpWc, setNewOpWc] = useState(0);
+  const [newOpDuration, setNewOpDuration] = useState('');
 
   // Add ingredient
   const [showAddSearch, setShowAddSearch] = useState(false);
@@ -59,6 +71,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
       setBom(data.bom);
       setComponents(data.components || []);
       setCanMakeQty(data.can_make_qty || 0);
+      setOperations(data.operations || []);
       setRawLines(data.bom?.bom_line_ids || []);
     } catch (err: any) {
       setError(err.message || 'Failed to load recipe details');
@@ -68,9 +81,10 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   }
 
   function startEditing() {
-    // Build edit lines from components + raw line IDs
-    // We need to fetch the actual line IDs — they're in bom.bom_line_ids
     fetchEditLines();
+    if (workcenters.length === 0) {
+      fetch('/api/workcenters').then(r => r.json()).then(d => setWorkcenters(d.workcenters || [])).catch(() => {});
+    }
   }
 
   async function fetchEditLines() {
@@ -105,6 +119,8 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
       setEditLines(lines);
       setEditBomQty(String(data.bom.product_qty));
       setRemovedLineIds([]);
+      setEditOps(operations.map(op => ({ ...op })));
+      setRemovedOpIds([]);
       setEditing(true);
     } catch (_e) {
       console.error('Failed to load edit lines');
@@ -115,8 +131,11 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     setEditing(false);
     setEditLines([]);
     setRemovedLineIds([]);
+    setEditOps([]);
+    setRemovedOpIds([]);
     setSaveError(null);
     setShowAddSearch(false);
+    setShowAddOp(false);
   }
 
   function updateLineQty(lineId: number, newQty: string) {
@@ -193,6 +212,21 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
 
       // Remove lines
       if (removedLineIds.length) body.remove_lines = removedLineIds;
+
+      // Update existing operations
+      const opUpdates = editOps.filter(op => op.id > 0).map(op => ({
+        operation_id: op.id, name: op.name, workcenter_id: op.workcenter_id[0] || op.workcenter_id, time_cycle_manual: op.time_cycle_manual,
+      }));
+      if (opUpdates.length) body.update_operations = opUpdates;
+
+      // Add new operations
+      const newOps = editOps.filter(op => op.id < 0).map((op, i) => ({
+        name: op.name, workcenter_id: op.workcenter_id, time_cycle_manual: op.time_cycle_manual, sequence: (i + 1) * 10,
+      }));
+      if (newOps.length) body.add_operations = newOps;
+
+      // Remove operations
+      if (removedOpIds.length) body.remove_operations = removedOpIds;
 
       const res = await fetch(`/api/boms/${bomId}`, {
         method: 'PATCH',
@@ -371,6 +405,65 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
             </button>
           )}
 
+          {/* Work order steps */}
+          <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2 mt-4">
+            Work order steps ({editOps.length})
+          </div>
+          <div className="flex flex-col gap-2 mb-4">
+            {editOps.map((op, i) => (
+              <div key={op.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700 flex-shrink-0">{i + 1}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{op.name}</div>
+                  <div className="text-[var(--fs-xs)] text-gray-400">{Array.isArray(op.workcenter_id) ? op.workcenter_id[1] : workcenters.find(w => w.id === op.workcenter_id)?.name || ''}{op.time_cycle_manual > 0 ? ` \u00b7 ${op.time_cycle_manual} min` : ''}</div>
+                </div>
+                <button onClick={() => { if (op.id > 0) setRemovedOpIds(prev => [...prev, op.id]); setEditOps(prev => prev.filter(o => o.id !== op.id)); }}
+                  className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center active:bg-red-100 flex-shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-red-500"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          {showAddOp ? (
+            <div className="bg-white border border-amber-200 rounded-xl p-4 mb-4">
+              <div className="mb-3">
+                <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Step name</label>
+                <input type="text" value={newOpName} onChange={e => setNewOpName(e.target.value)} placeholder="e.g. Mix ingredients"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600" autoFocus />
+              </div>
+              <div className="mb-3">
+                <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Workcenter</label>
+                <select value={newOpWc} onChange={e => setNewOpWc(parseInt(e.target.value))}
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600 appearance-none bg-white">
+                  <option value={0}>Select workcenter...</option>
+                  {workcenters.map(wc => <option key={wc.id} value={wc.id}>{wc.name}</option>)}
+                </select>
+              </div>
+              <div className="mb-3">
+                <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Duration (minutes)</label>
+                <input type="number" inputMode="decimal" value={newOpDuration} onChange={e => setNewOpDuration(e.target.value)} placeholder="e.g. 30"
+                  className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600" />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration(''); }}
+                  className="flex-1 py-2.5 rounded-lg bg-gray-100 text-gray-600 text-[var(--fs-sm)] font-bold active:bg-gray-200">Cancel</button>
+                <button onClick={() => {
+                  if (!newOpName || !newOpWc) return;
+                  const wc = workcenters.find(w => w.id === newOpWc);
+                  setEditOps(prev => [...prev, { id: -(Date.now()), name: newOpName, workcenter_id: newOpWc, workcenter_name: wc?.name, time_cycle_manual: parseFloat(newOpDuration) || 0, sequence: (prev.length + 1) * 10 }]);
+                  setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration('');
+                }} disabled={!newOpName || !newOpWc}
+                  className="flex-1 py-2.5 rounded-lg bg-green-600 text-white text-[var(--fs-sm)] font-bold active:bg-green-700 disabled:opacity-50">Add step</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setShowAddOp(true)}
+              className="w-full py-3 rounded-xl border-[1.5px] border-dashed border-amber-300 text-[var(--fs-sm)] font-semibold text-amber-600 flex items-center justify-center gap-2 active:bg-amber-50 mb-4">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              Add work order step
+            </button>
+          )}
+
           {saveError && (
             <div className="mb-3 px-3 py-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[var(--fs-xs)]">{saveError}</div>
           )}
@@ -458,6 +551,26 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
               });
             })()}
           </div>
+
+          {/* Work order steps (read-only) */}
+          {operations.length > 0 && (
+            <div className="px-4 pb-4">
+              <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
+                Work order steps ({operations.length})
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {operations.map((op, i) => (
+                  <div key={op.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700 flex-shrink-0">{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[var(--fs-sm)] font-bold text-gray-900">{op.name}</div>
+                      <div className="text-[var(--fs-xs)] text-gray-400">{op.workcenter_id?.[1] || ''}{op.time_cycle_manual > 0 ? ` \u00b7 ${op.time_cycle_manual} min` : ''}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Bottom actions */}
           <div className="px-4 pb-8">

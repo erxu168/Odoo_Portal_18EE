@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 
 interface CreateBomProps {
@@ -35,6 +35,19 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
   const [ingResults, setIngResults] = useState<any[]>([]);
   const [ingSearching, setIngSearching] = useState(false);
   const ingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Operations (work order steps)
+  const [operations, setOperations] = useState<{id: number; name: string; workcenter_id: number; workcenter_name: string; time_cycle_manual: number; sequence: number}[]>([]);
+  const [workcenters, setWorkcenters] = useState<{id: number; name: string}[]>([]);
+  const [showAddOp, setShowAddOp] = useState(false);
+  const [newOpName, setNewOpName] = useState('');
+  const [newOpWc, setNewOpWc] = useState(0);
+  const [newOpDuration, setNewOpDuration] = useState('');
+
+  // Fetch workcenters on mount
+  React.useEffect(() => {
+    fetch('/api/workcenters').then(r => r.json()).then(d => setWorkcenters(d.workcenters || [])).catch(() => {});
+  }, []);
 
   // Submit
   const [saving, setSaving] = useState(false);
@@ -115,6 +128,12 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
             product_id: l.product_id,
             product_qty: l.product_qty,
             product_uom_id: l.uom_id,
+          })),
+          operations: operations.map((op, i) => ({
+            name: op.name,
+            workcenter_id: op.workcenter_id,
+            time_cycle_manual: op.time_cycle_manual,
+            sequence: (i + 1) * 10,
           })),
         }),
       });
@@ -245,6 +264,78 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
                 className="w-full py-3 rounded-xl border-[1.5px] border-dashed border-gray-300 text-[var(--fs-sm)] font-semibold text-gray-500 flex items-center justify-center gap-2 active:bg-gray-50 mb-4">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
                 Add ingredient
+              </button>
+            )}
+
+            {/* Work order steps */}
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
+              Work order steps ({operations.length})
+            </div>
+
+            <div className="flex flex-col gap-2 mb-4">
+              {operations.map((op, i) => (
+                <div key={op.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700 flex-shrink-0">
+                    {i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{op.name}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-400">{op.workcenter_name}{op.time_cycle_manual > 0 ? ` \u00b7 ${op.time_cycle_manual} min` : ''}</div>
+                  </div>
+                  <button onClick={() => setOperations(prev => prev.filter(o => o.id !== op.id))}
+                    className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center active:bg-red-100 flex-shrink-0">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-red-500">
+                      <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {showAddOp ? (
+              <div className="bg-white border border-amber-200 rounded-xl p-4 mb-4">
+                <div className="mb-3">
+                  <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Step name</label>
+                  <input type="text" value={newOpName} onChange={e => setNewOpName(e.target.value)} placeholder="e.g. Mix ingredients"
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600" autoFocus />
+                </div>
+                <div className="mb-3">
+                  <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Workcenter</label>
+                  <select value={newOpWc} onChange={e => setNewOpWc(parseInt(e.target.value))}
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600 appearance-none bg-white">
+                    <option value={0}>Select workcenter...</option>
+                    {workcenters.map(wc => <option key={wc.id} value={wc.id}>{wc.name}</option>)}
+                  </select>
+                </div>
+                <div className="mb-3">
+                  <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Duration (minutes)</label>
+                  <input type="number" inputMode="decimal" value={newOpDuration} onChange={e => setNewOpDuration(e.target.value)} placeholder="e.g. 30"
+                    className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600" />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => { setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration(''); }}
+                    className="flex-1 py-2.5 rounded-lg bg-gray-100 text-gray-600 text-[var(--fs-sm)] font-bold active:bg-gray-200">Cancel</button>
+                  <button onClick={() => {
+                    if (!newOpName || !newOpWc) return;
+                    const wc = workcenters.find(w => w.id === newOpWc);
+                    setOperations(prev => [...prev, {
+                      id: -(Date.now()),
+                      name: newOpName,
+                      workcenter_id: newOpWc,
+                      workcenter_name: wc?.name || '',
+                      time_cycle_manual: parseFloat(newOpDuration) || 0,
+                      sequence: (prev.length + 1) * 10,
+                    }]);
+                    setShowAddOp(false); setNewOpName(''); setNewOpWc(0); setNewOpDuration('');
+                  }} disabled={!newOpName || !newOpWc}
+                    className="flex-1 py-2.5 rounded-lg bg-green-600 text-white text-[var(--fs-sm)] font-bold active:bg-green-700 disabled:opacity-50">Add step</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowAddOp(true)}
+                className="w-full py-3 rounded-xl border-[1.5px] border-dashed border-amber-300 text-[var(--fs-sm)] font-semibold text-amber-600 flex items-center justify-center gap-2 active:bg-amber-50 mb-4">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                Add work order step
               </button>
             )}
 

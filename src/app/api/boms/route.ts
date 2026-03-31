@@ -201,6 +201,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Add operations if provided
+    if (body.operations?.length) {
+      for (const op of body.operations) {
+        await odoo.create('mrp.routing.workcenter', {
+          bom_id: bomId,
+          name: op.name,
+          workcenter_id: op.workcenter_id,
+          time_cycle_manual: op.time_cycle_manual || 0,
+          sequence: op.sequence || 10,
+          note: op.note || false,
+        });
+      }
+    }
+
     return NextResponse.json({ ok: true, id: bomId });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

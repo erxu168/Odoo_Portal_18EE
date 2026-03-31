@@ -86,6 +86,7 @@ export async function GET(
       'type',
       'code',
       'company_id',
+      'operation_ids',
     ]);
 
     if (!boms.length) {
@@ -108,6 +109,14 @@ export async function GET(
         resolvedProductId = variants[0].id;
       }
     }
+
+
+    // Fetch operations (work order steps)
+    const operations = bom.operation_ids?.length
+      ? await odoo.read('mrp.routing.workcenter', bom.operation_ids, [
+          'id', 'name', 'workcenter_id', 'sequence', 'time_cycle_manual', 'note',
+        ])
+      : [];
 
     // Fetch all BOM lines
     const lines = await odoo.read('mrp.bom.line', bom.bom_line_ids, [
@@ -207,6 +216,7 @@ export async function GET(
       },
       components,
       can_make_qty: Math.floor(canMakeQty * 100) / 100,
+      operations: operations.sort((a: any, b: any) => (a.sequence || 0) - (b.sequence || 0)),
     });
   } catch (error: any) {
     console.error(`GET /api/boms/${params.id} error:`, error);
@@ -268,6 +278,42 @@ export async function PATCH(
     if (body.remove_lines?.length) {
       for (const lineId of body.remove_lines) {
         await odoo.call('mrp.bom.line', 'unlink', [[lineId]]);
+      }
+    }
+
+    // Update existing operations
+    if (body.update_operations?.length) {
+      for (const op of body.update_operations) {
+        const vals: Record<string, unknown> = {};
+        if (op.name !== undefined) vals.name = op.name;
+        if (op.workcenter_id !== undefined) vals.workcenter_id = op.workcenter_id;
+        if (op.time_cycle_manual !== undefined) vals.time_cycle_manual = op.time_cycle_manual;
+        if (op.sequence !== undefined) vals.sequence = op.sequence;
+        if (op.note !== undefined) vals.note = op.note;
+        if (Object.keys(vals).length) {
+          await odoo.write('mrp.routing.workcenter', [op.operation_id], vals);
+        }
+      }
+    }
+
+    // Add new operations
+    if (body.add_operations?.length) {
+      for (const op of body.add_operations) {
+        await odoo.create('mrp.routing.workcenter', {
+          bom_id: bomId,
+          name: op.name,
+          workcenter_id: op.workcenter_id,
+          time_cycle_manual: op.time_cycle_manual || 0,
+          sequence: op.sequence || 10,
+          note: op.note || false,
+        });
+      }
+    }
+
+    // Remove operations
+    if (body.remove_operations?.length) {
+      for (const opId of body.remove_operations) {
+        await odoo.call('mrp.routing.workcenter', 'unlink', [[opId]]);
       }
     }
 
