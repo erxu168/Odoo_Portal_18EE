@@ -232,16 +232,16 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
     return (
       <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl p-6 max-w-[340px] w-full shadow-xl">
-          <div className="text-[16px] font-bold text-gray-900 mb-2">Delete document?</div>
-          <p className="text-[13px] text-gray-500 mb-1">
+          <div className="text-[var(--fs-lg)] font-bold text-gray-900 mb-2">Delete document?</div>
+          <p className="text-[var(--fs-sm)] text-gray-500 mb-1">
             <span className="font-semibold text-gray-700">{deleteTarget.name}</span>
           </p>
-          <p className="text-[13px] text-gray-500 mb-4">
+          <p className="text-[var(--fs-sm)] text-gray-500 mb-4">
             This will archive the file in Odoo. The change will be logged.
           </p>
           {deleteError && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl">
-              <p className="text-[12px] text-red-700 font-semibold">{deleteError}</p>
+              <p className="text-[var(--fs-xs)] text-red-700 font-semibold">{deleteError}</p>
             </div>
           )}
           <div className="flex gap-3">
@@ -288,7 +288,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
       <div className="fixed inset-0 z-[200] bg-black flex flex-col">
         {/* Top bar */}
         <div className="flex items-center justify-between px-4 py-3 bg-black/80 backdrop-blur-sm flex-shrink-0">
-          <span className="text-white/60 text-[13px] font-mono">
+          <span className="text-white/60 text-[var(--fs-sm)] font-mono">
             {previewIndex + 1} / {captures.length}
           </span>
           <button
@@ -306,7 +306,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
           {cap.isPdf ? (
             <div className="bg-white rounded-xl p-8 text-center">
               <div className="text-5xl mb-3">{"\u{1F4C4}"}</div>
-              <div className="text-[14px] font-semibold text-gray-900">PDF document</div>
+              <div className="text-[var(--fs-md)] font-bold text-gray-900">PDF document</div>
             </div>
           ) : (
             <img
@@ -362,7 +362,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
         {/* Existing uploaded docs with thumbnails */}
         {existingDocs.length > 0 && (
           <div className="mb-4">
-            <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
               Currently uploaded ({existingDocs.length})
             </div>
             <div className="grid grid-cols-3 gap-2.5 mb-2">
@@ -423,19 +423,19 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
                 );
               })}
             </div>
-            <p className="text-[12px] text-gray-400">
+            <p className="text-[var(--fs-xs)] text-gray-400">
               Tap to view &middot; New uploads will replace these files
             </p>
           </div>
         )}
 
         {/* Hint text */}
-        <p className="text-[13px] text-gray-500 mb-4">{hint}</p>
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-4">{hint}</p>
 
         {/* Capture gallery */}
         {captures.length > 0 && (
           <div className="mb-4">
-            <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
               New captures ({captures.length})
             </div>
             <div className="grid grid-cols-3 gap-2.5">
@@ -503,7 +503,7 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
               <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
-            <span className="text-[14px] font-semibold text-gray-900">Take Photo</span>
+            <span className="text-[var(--fs-md)] font-bold text-gray-900">Take Photo</span>
           </FilePicker>
           <FilePicker
             onFile={onFilePicked}
@@ -513,12 +513,12 @@ export default function DocumentCapture({ docType, onBack, onSaved }: Props) {
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
             </svg>
-            <span className="text-[14px] font-semibold text-gray-900">Choose Files</span>
+            <span className="text-[var(--fs-md)] font-bold text-gray-900">Choose Files</span>
           </FilePicker>
         </div>
 
         {captures.length === 0 && (
-          <p className="text-[12px] text-gray-400 text-center mt-2">
+          <p className="text-[var(--fs-xs)] text-gray-400 text-center mt-2">
             You can add multiple pages or files for this document.
           </p>
         )}
@@ -627,7 +627,7 @@ function ImageOverlay({
     <div className="fixed inset-0 z-[200] bg-black/95 flex flex-col">
       <div className="flex items-center justify-end px-4 py-3 bg-black/80 backdrop-blur-sm flex-shrink-0">
         {scale !== 1 && (
-          <button onClick={() => setScale(1)} className="mr-auto px-3 py-1 rounded-full bg-white/10 text-white/80 text-[11px] font-mono font-bold active:bg-white/20">
+          <button onClick={() => setScale(1)} className="mr-auto px-3 py-1 rounded-full bg-white/10 text-white/80 text-[var(--fs-xs)] font-mono font-bold active:bg-white/20">
             {Math.round(scale * 100)}% — tap to reset
           </button>
         )}

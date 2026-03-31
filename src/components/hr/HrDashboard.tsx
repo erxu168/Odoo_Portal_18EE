@@ -63,7 +63,7 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
           {employee && !isComplete && (
             <div className="mx-5 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2">
               <span className="text-amber-600 text-lg leading-none">!</span>
-              <div className="text-[13px] text-amber-800">
+              <div className="text-[var(--fs-sm)] text-amber-800">
                 Your onboarding is <strong>incomplete</strong> ({pct}%). Tap
                 &quot;Onboarding&quot; to continue.
               </div>
@@ -117,7 +117,7 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
           {isManager && (
             <>
               <div className="px-5 pt-2 pb-1">
-                <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400">
+                <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">
                   Manager Tools
                 </div>
               </div>
@@ -183,10 +183,10 @@ function DashTile({ icon, bg, border, iconBg, iconColor, label, sub, badge, disa
       >
         {icon}
       </div>
-      <div className="text-[14px] font-semibold text-gray-900">{label}</div>
-      <div className="text-[12px] text-gray-500">{sub}</div>
+      <div className="text-[var(--fs-md)] font-bold text-gray-900">{label}</div>
+      <div className="text-[var(--fs-xs)] text-gray-500">{sub}</div>
       {badge && (
-        <div className="absolute top-3 right-3 min-w-[22px] h-[22px] bg-red-500 text-white rounded-full text-[11px] font-bold flex items-center justify-center px-1.5 font-mono">
+        <div className="absolute top-3 right-3 min-w-[22px] h-[22px] bg-red-500 text-white rounded-full text-[var(--fs-xs)] font-bold flex items-center justify-center px-1.5 font-mono">
           {badge}
         </div>
       )}

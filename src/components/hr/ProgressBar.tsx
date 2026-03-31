@@ -25,7 +25,7 @@ export default function ProgressBar({ currentStep, totalSteps, label }: Props) {
           />
         ))}
       </div>
-      <div className="px-5 py-2 text-[12px] text-gray-400 font-medium">
+      <div className="px-5 py-2 text-[var(--fs-xs)] text-gray-400 font-medium">
         {label}
       </div>
     </div>

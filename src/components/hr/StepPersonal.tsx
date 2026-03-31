@@ -242,7 +242,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
               <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
                 {countrySuggestions.map(c => (
                   <button key={c.id} onClick={() => selectCountry(c.id, c.name)}
-                    className="w-full text-left px-3 py-2.5 text-[13px] text-gray-900 active:bg-green-50 border-b border-gray-100 last:border-0">
+                    className="w-full text-left px-3 py-2.5 text-[var(--fs-sm)] text-gray-900 active:bg-green-50 border-b border-gray-100 last:border-0">
                     {c.name}
                   </button>
                 ))}
@@ -267,7 +267,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
               <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
                 {nationalitySuggestions.map(c => (
                   <button key={c.id} onClick={() => selectNationality(c.id, c.name)}
-                    className="w-full text-left px-3 py-2.5 text-[13px] text-gray-900 active:bg-green-50 border-b border-gray-100 last:border-0">
+                    className="w-full text-left px-3 py-2.5 text-[var(--fs-sm)] text-gray-900 active:bg-green-50 border-b border-gray-100 last:border-0">
                     {c.name}
                   </button>
                 ))}
@@ -277,7 +277,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
         </Field>
 
         {/* Address with autocomplete */}
-        <div className="text-[12px] font-bold tracking-wider uppercase text-gray-400 pt-2">Address</div>
+        <div className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 pt-2">Address</div>
         <Field label="Street & number" labelDe="Straße">
           <div className="relative">
             <input className="form-input" value={street} onChange={e => handleAddressInput(e.target.value)} placeholder="Start typing your address..." />
@@ -285,9 +285,9 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
               <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                 {addressSuggestions.map((addr, i) => (
                   <button key={i} onClick={() => selectAddress(addr)}
-                    className="w-full text-left px-3 py-2.5 text-[13px] active:bg-green-50 border-b border-gray-100 last:border-0">
+                    className="w-full text-left px-3 py-2.5 text-[var(--fs-sm)] active:bg-green-50 border-b border-gray-100 last:border-0">
                     <div className="font-semibold text-gray-900">{addr.street}</div>
-                    <div className="text-[11px] text-gray-500">{addr.postcode} {addr.city}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-500">{addr.postcode} {addr.city}</div>
                   </button>
                 ))}
               </div>
@@ -309,7 +309,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
               <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
                 {addressCountrySuggestions.map(c => (
                   <button key={c.id} onClick={() => selectAddressCountry(c.id, c.name)}
-                    className="w-full text-left px-3 py-2.5 text-[13px] text-gray-900 active:bg-green-50 border-b border-gray-100 last:border-0">
+                    className="w-full text-left px-3 py-2.5 text-[var(--fs-sm)] text-gray-900 active:bg-green-50 border-b border-gray-100 last:border-0">
                     {c.name}
                   </button>
                 ))}
@@ -327,7 +327,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
         </Field>
 
         {/* Emergency contact */}
-        <div className="text-[12px] font-bold tracking-wider uppercase text-gray-400 pt-2">Emergency contact</div>
+        <div className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 pt-2">Emergency contact</div>
         <Field label="Contact name">
           <input className="form-input" value={emergName} onChange={e => setEmergName(e.target.value)} placeholder="e.g. Maria Schmidt" />
         </Field>
@@ -343,7 +343,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
         </Field>
       </div>
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent">
-        <button onClick={handleSubmit} disabled={saving} className="w-full py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40">
+        <button onClick={handleSubmit} disabled={saving} className="w-full py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
           {saving ? 'Saving...' : 'Continue'}
         </button>
       </div>
@@ -355,8 +355,8 @@ function Field({ label, labelDe, info, children }: { label: string; labelDe?: st
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <span className="text-[13px] font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
-        {labelDe && <span className="text-[12px] text-gray-400">({labelDe})</span>}
+        <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
+        {labelDe && <span className="text-[var(--fs-xs)] text-gray-400">({labelDe})</span>}
         {info && <InfoButton title={info.title} text={info.text} url={info.url} urlLabel={info.urlLabel} />}
       </div>
       {children}

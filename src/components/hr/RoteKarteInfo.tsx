@@ -31,13 +31,13 @@ export default function RoteKarteInfo({ onUpload, uploadedCount = 0 }: Props) {
           <span className="text-[20px]">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" fill="#EF4444" stroke="#DC2626"/></svg>}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[14px] font-bold text-gray-900">
+          <div className="text-[var(--fs-md)] font-bold text-gray-900">
             Rote Karte{" "}
             <span className="font-normal text-gray-500">
               — Food Hygiene Certificate
             </span>
           </div>
-          <div className="text-[12px] mt-0.5">
+          <div className="text-[var(--fs-xs)] mt-0.5">
             {hasUpload ? (
               <span className="text-green-600 font-semibold">
                 {uploadedCount} {uploadedCount === 1 ? "file" : "files"} uploaded &middot; Tap for info
@@ -76,10 +76,10 @@ export default function RoteKarteInfo({ onUpload, uploadedCount = 0 }: Props) {
           <div className="mt-3 space-y-3">
             {/* What is it */}
             <div>
-              <h4 className="text-[13px] font-bold text-gray-900 mb-1">
+              <h4 className="text-[var(--fs-sm)] font-bold text-gray-900 mb-1">
                 What is the Rote Karte?
               </h4>
-              <p className="text-[13px] text-gray-600 leading-relaxed">
+              <p className="text-[var(--fs-sm)] text-gray-600 leading-relaxed">
                 The <strong>Rote Karte</strong> (red card) is a food hygiene
                 certificate you receive after completing an official health
                 briefing (<em>Belehrung</em>) under §43 of the German Infection
@@ -90,10 +90,10 @@ export default function RoteKarteInfo({ onUpload, uploadedCount = 0 }: Props) {
 
             {/* How to get it */}
             <div>
-              <h4 className="text-[13px] font-bold text-gray-900 mb-1">
+              <h4 className="text-[var(--fs-sm)] font-bold text-gray-900 mb-1">
                 How do I get it?
               </h4>
-              <ul className="text-[13px] text-gray-600 leading-relaxed space-y-1">
+              <ul className="text-[var(--fs-sm)] text-gray-600 leading-relaxed space-y-1">
                 <li className="flex gap-2">
                   <span className="text-amber-600 flex-shrink-0">1.</span>
                   <span>
@@ -127,25 +127,25 @@ export default function RoteKarteInfo({ onUpload, uploadedCount = 0 }: Props) {
             {/* Cost and timing */}
             <div className="flex gap-4">
               <div className="flex-1 bg-white rounded-xl p-3 border border-amber-200">
-                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Cost</div>
-                <div className="text-[14px] font-bold text-gray-900 mt-0.5">~25 &euro;</div>
-                <div className="text-[11px] text-gray-500">Varies by city</div>
+                <div className="text-[var(--fs-xs)] font-bold text-gray-400 uppercase tracking-wider">Cost</div>
+                <div className="text-[var(--fs-md)] font-bold text-gray-900 mt-0.5">~25 &euro;</div>
+                <div className="text-[var(--fs-xs)] text-gray-500">Varies by city</div>
               </div>
               <div className="flex-1 bg-white rounded-xl p-3 border border-amber-200">
-                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Duration</div>
-                <div className="text-[14px] font-bold text-gray-900 mt-0.5">~30 min</div>
-                <div className="text-[11px] text-gray-500">Briefing session</div>
+                <div className="text-[var(--fs-xs)] font-bold text-gray-400 uppercase tracking-wider">Duration</div>
+                <div className="text-[var(--fs-md)] font-bold text-gray-900 mt-0.5">~30 min</div>
+                <div className="text-[var(--fs-xs)] text-gray-500">Briefing session</div>
               </div>
               <div className="flex-1 bg-white rounded-xl p-3 border border-amber-200">
-                <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Valid for</div>
-                <div className="text-[14px] font-bold text-gray-900 mt-0.5">Lifetime</div>
-                <div className="text-[11px] text-gray-500">No renewal needed</div>
+                <div className="text-[var(--fs-xs)] font-bold text-gray-400 uppercase tracking-wider">Valid for</div>
+                <div className="text-[var(--fs-md)] font-bold text-gray-900 mt-0.5">Lifetime</div>
+                <div className="text-[var(--fs-xs)] text-gray-500">No renewal needed</div>
               </div>
             </div>
 
             {/* Important note */}
             <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-              <p className="text-[12px] text-red-800 leading-relaxed">
+              <p className="text-[var(--fs-xs)] text-red-800 leading-relaxed">
                 <strong>Important:</strong> You must get the certificate{" "}
                 <strong>before</strong> your first day of work. Working with
                 food without it is illegal and can result in fines for both you
@@ -156,7 +156,7 @@ export default function RoteKarteInfo({ onUpload, uploadedCount = 0 }: Props) {
             {/* Upload section */}
             {onUpload && (
               <div>
-                <h4 className="text-[13px] font-bold text-gray-900 mb-2">
+                <h4 className="text-[var(--fs-sm)] font-bold text-gray-900 mb-2">
                   Upload your Rote Karte
                 </h4>
                 <button
@@ -184,15 +184,15 @@ export default function RoteKarteInfo({ onUpload, uploadedCount = 0 }: Props) {
                   <div className="flex-1">
                     {hasUpload ? (
                       <>
-                        <div className="text-[13px] font-semibold text-green-700">
+                        <div className="text-[var(--fs-sm)] font-semibold text-green-700">
                           {uploadedCount} {uploadedCount === 1 ? "file" : "files"} uploaded
                         </div>
-                        <div className="text-[11px] text-green-600 mt-0.5">Tap to view, replace, or add more</div>
+                        <div className="text-[var(--fs-xs)] text-green-600 mt-0.5">Tap to view, replace, or add more</div>
                       </>
                     ) : (
                       <>
-                        <div className="text-[13px] font-semibold text-gray-900">Tap to upload</div>
-                        <div className="text-[11px] text-gray-400 mt-0.5">Take a photo or choose a file</div>
+                        <div className="text-[var(--fs-sm)] font-semibold text-gray-900">Tap to upload</div>
+                        <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">Take a photo or choose a file</div>
                       </>
                     )}
                   </div>
@@ -205,7 +205,7 @@ export default function RoteKarteInfo({ onUpload, uploadedCount = 0 }: Props) {
 
             {/* Links */}
             <div>
-              <h4 className="text-[13px] font-bold text-gray-900 mb-2">
+              <h4 className="text-[var(--fs-sm)] font-bold text-gray-900 mb-2">
                 Helpful links
               </h4>
               <div className="space-y-2">
@@ -244,8 +244,8 @@ function InfoLink({ href, title, subtitle }: { href: string; title: string; subt
         </svg>
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold text-blue-700">{title}</div>
-        <div className="text-[11px] text-gray-400 truncate">{subtitle}</div>
+        <div className="text-[var(--fs-sm)] font-semibold text-blue-700">{title}</div>
+        <div className="text-[var(--fs-xs)] text-gray-400 truncate">{subtitle}</div>
       </div>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300 flex-shrink-0">
         <path d="M9 18l6-6-6-6" />

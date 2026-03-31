@@ -26,7 +26,7 @@ export default function StepReview({ employee, onPrev, onSubmit, saving, onSave 
   return (
     <div className="pb-40">
       <div className="p-5">
-        <p className="text-[13px] text-gray-500 mb-4">
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-4">
           Please review your information. After submitting, your manager will review and approve your data.
         </p>
 
@@ -67,7 +67,7 @@ export default function StepReview({ employee, onPrev, onSubmit, saving, onSave 
         </Section>
 
         {pct < 100 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4 text-[13px] text-amber-800 flex items-start gap-2">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4 text-[var(--fs-sm)] text-amber-800 flex items-start gap-2">
             <span className="text-lg leading-none">!</span>
             <div>Some fields are missing ({pct}% complete). You can still submit now and complete them later.</div>
           </div>
@@ -75,8 +75,8 @@ export default function StepReview({ employee, onPrev, onSubmit, saving, onSave 
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
-        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85">Back</button>
-        <button onClick={handleSubmit} disabled={saving || submitting} className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40">
+        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
+        <button onClick={handleSubmit} disabled={saving || submitting} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
           {submitting ? 'Saving...' : 'Continue'}
         </button>
       </div>
@@ -110,7 +110,7 @@ function formatRelation(value: string | false): string {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="bg-white rounded-2xl p-4 mb-3 border border-gray-200">
-      <div className="text-[13px] font-bold text-gray-400 uppercase tracking-wider mb-2.5">{title}</div>
+      <div className="text-[var(--fs-sm)] font-bold text-gray-400 uppercase tracking-wider mb-2.5">{title}</div>
       {children}
     </div>
   );
@@ -120,8 +120,8 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
   const missing = !value;
   return (
     <div className="flex justify-between py-1.5 border-b border-gray-50 last:border-b-0">
-      <span className="text-[13px] text-gray-500">{label}</span>
-      <span className={`text-[13px] font-medium text-right max-w-[55%] ${mono ? 'font-mono' : ''} ${missing ? 'text-red-500 italic' : ''}`}>
+      <span className="text-[var(--fs-sm)] text-gray-500">{label}</span>
+      <span className={`text-[var(--fs-sm)] font-medium text-right max-w-[55%] ${mono ? 'font-mono' : ''} ${missing ? 'text-red-500 italic' : ''}`}>
         {missing ? 'Not provided' : value}
       </span>
     </div>
@@ -131,8 +131,8 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 function DocRow({ label, ok }: { label: string; ok: boolean }) {
   return (
     <div className="flex justify-between py-1.5 border-b border-gray-50 last:border-b-0">
-      <span className="text-[13px] text-gray-500">{label}</span>
-      <span className={`text-[13px] font-semibold ${ok ? 'text-green-600' : 'text-red-500 italic'}`}>
+      <span className="text-[var(--fs-sm)] text-gray-500">{label}</span>
+      <span className={`text-[var(--fs-sm)] font-semibold ${ok ? 'text-green-600' : 'text-red-500 italic'}`}>
         {ok ? '\u2713 Uploaded' : 'Missing'}
       </span>
     </div>

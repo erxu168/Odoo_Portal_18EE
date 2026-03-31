@@ -81,15 +81,15 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
       <AppHeader title={emp.name} showBack onBack={onBack} />
 
       <div className="bg-white px-5 py-4 flex items-center gap-3.5 border-b border-gray-200">
-        <div className="w-14 h-14 rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold text-[20px] flex-shrink-0">
+        <div className="w-14 h-14 rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold text-[var(--fs-xl)] flex-shrink-0">
           {initials}
         </div>
         <div>
-          <div className="text-[18px] font-bold">{emp.name}</div>
-          <div className="text-[13px] text-gray-500">{dept}{emp.kw_beschaeftigungsbeginn ? " \u00B7 Started " + emp.kw_beschaeftigungsbeginn : ""}</div>
+          <div className="text-[var(--fs-xxl)] font-bold">{emp.name}</div>
+          <div className="text-[var(--fs-sm)] text-gray-500">{dept}{emp.kw_beschaeftigungsbeginn ? " \u00B7 Started " + emp.kw_beschaeftigungsbeginn : ""}</div>
           <div className="flex gap-1.5 mt-1.5">
-            <span className={"inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-semibold " + (pct === 100 ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700")}>{pct}% complete</span>
-            {docs.length < 5 && <span className="inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-red-50 text-red-600">Missing docs</span>}
+            <span className={"inline-flex px-2.5 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold " + (pct === 100 ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700")}>{pct}% complete</span>
+            {docs.length < 5 && <span className="inline-flex px-2.5 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-red-50 text-red-600">Missing docs</span>}
           </div>
         </div>
       </div>
@@ -135,21 +135,21 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
           const uploaded = hasDoc(dt.key);
           return (
             <div key={dt.key} className={"flex items-center gap-3 p-3 rounded-xl border " + (uploaded ? "border-green-600 bg-green-50" : "border-gray-200 bg-white")}>
-              <div className={"w-10 h-10 rounded-lg flex items-center justify-center text-[20px] " + (uploaded ? "bg-green-100" : "bg-gray-100")}>
+              <div className={"w-10 h-10 rounded-lg flex items-center justify-center text-[var(--fs-xl)] " + (uploaded ? "bg-green-100" : "bg-gray-100")}>
                 {dt.icon}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-semibold">{dt.label}</div>
+                <div className="text-[var(--fs-sm)] font-semibold">{dt.label}</div>
                 {uploaded ? (
-                  <div className="text-[11px] text-green-600 font-medium">Uploaded</div>
+                  <div className="text-[var(--fs-xs)] text-green-600 font-medium">Uploaded</div>
                 ) : (
-                  <div className="text-[11px] text-gray-400">{dt.required ? "Required - Missing" : "Optional"}</div>
+                  <div className="text-[var(--fs-xs)] text-gray-400">{dt.required ? "Required - Missing" : "Optional"}</div>
                 )}
               </div>
               {uploaded ? (
                 <span className="text-green-600 text-lg">{"\u2713"}</span>
               ) : dt.required ? (
-                <span className="text-red-500 text-[13px] font-semibold">!</span>
+                <span className="text-red-500 text-[var(--fs-sm)] font-semibold">!</span>
               ) : null}
             </div>
           );
@@ -157,10 +157,10 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
-        <button className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85">
+        <button className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
           Export DATEV
         </button>
-        <button className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85">
+        <button className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85">
           Approve Data
         </button>
       </div>
@@ -169,13 +169,13 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
 }
 
 function STitle({ text }: { text: string }) {
-  return <div className="px-5 pt-4 pb-1 text-[11px] font-bold tracking-widest uppercase text-gray-400">{text}</div>;
+  return <div className="px-5 pt-4 pb-1 text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">{text}</div>;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200 mb-3">
-      <div className="text-[13px] font-bold text-gray-400 uppercase tracking-wider mb-2">{title}</div>
+      <div className="text-[var(--fs-sm)] font-bold text-gray-400 uppercase tracking-wider mb-2">{title}</div>
       {children}
     </div>
   );
@@ -185,8 +185,8 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
   const missing = !value;
   return (
     <div className="flex justify-between py-1.5 border-b border-gray-50 last:border-b-0">
-      <span className="text-[13px] text-gray-500">{label}</span>
-      <span className={"text-[13px] font-medium text-right max-w-[55%] " + (mono ? "font-mono " : "") + (missing ? "text-red-500 italic" : "")}>
+      <span className="text-[var(--fs-sm)] text-gray-500">{label}</span>
+      <span className={"text-[var(--fs-sm)] font-medium text-right max-w-[55%] " + (mono ? "font-mono " : "") + (missing ? "text-red-500 italic" : "")}>
         {missing ? "Missing" : value}
       </span>
     </div>

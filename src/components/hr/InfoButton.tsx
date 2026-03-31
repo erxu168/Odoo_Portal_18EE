@@ -21,7 +21,7 @@ export default function InfoButton({ title, text, url, urlLabel }: Props) {
       <button
         type="button"
         onClick={toggle}
-        className="w-5 h-5 rounded-full bg-blue-50 text-blue-600 text-[11px] font-bold inline-flex items-center justify-center flex-shrink-0 active:bg-blue-600 active:text-white"
+        className="w-5 h-5 rounded-full bg-blue-50 text-blue-600 text-[var(--fs-xs)] font-bold inline-flex items-center justify-center flex-shrink-0 active:bg-blue-600 active:text-white"
       >
         i
       </button>
@@ -33,12 +33,12 @@ export default function InfoButton({ title, text, url, urlLabel }: Props) {
       <button
         type="button"
         onClick={toggle}
-        className="w-5 h-5 rounded-full bg-blue-600 text-white text-[11px] font-bold inline-flex items-center justify-center flex-shrink-0"
+        className="w-5 h-5 rounded-full bg-blue-600 text-white text-[var(--fs-xs)] font-bold inline-flex items-center justify-center flex-shrink-0"
       >
         i
       </button>
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-1.5 mb-3">
-        <p className="text-[13px] text-blue-800 leading-relaxed mb-2">
+        <p className="text-[var(--fs-sm)] text-blue-800 leading-relaxed mb-2">
           <strong>{title}:</strong> {text}
         </p>
         {url ? (
@@ -46,7 +46,7 @@ export default function InfoButton({ title, text, url, urlLabel }: Props) {
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-blue-600 font-semibold text-[13px] no-underline"
+            className="text-blue-600 font-semibold text-[var(--fs-sm)] no-underline"
           >
             {urlLabel || "Learn more"} &rarr;
           </a>

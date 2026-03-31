@@ -148,13 +148,13 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
   return (
     <div className="pb-40">
       <div className="p-5">
-        <p className="text-[13px] text-gray-500 mb-4">
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-4">
           Tap each card to take photos or upload files. You can add multiple
           pages per document.
         </p>
 
         {/* Profile photo section */}
-        <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
+        <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
           Profile photo
         </div>
         <div
@@ -184,16 +184,16 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[14px] font-semibold text-gray-900">Profile Photo</div>
+              <div className="text-[var(--fs-md)] font-bold text-gray-900">Profile Photo</div>
               {uploadingPhoto ? (
                 <div className="flex items-center gap-2 mt-0.5">
                   <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-[12px] text-green-600 font-semibold">Uploading...</span>
+                  <span className="text-[var(--fs-xs)] text-green-600 font-semibold">Uploading...</span>
                 </div>
               ) : hasPhoto ? (
-                <div className="text-[12px] text-green-600 font-semibold mt-0.5">Uploaded &middot; Use buttons below to replace</div>
+                <div className="text-[var(--fs-xs)] text-green-600 font-semibold mt-0.5">Uploaded &middot; Use buttons below to replace</div>
               ) : (
-                <div className="text-[12px] text-gray-400 mt-0.5">Take a selfie or choose a photo from your device</div>
+                <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">Take a selfie or choose a photo from your device</div>
               )}
             </div>
             {hasPhoto && <span className="text-green-600 text-xl flex-shrink-0">{"\u2713"}</span>}
@@ -202,14 +202,14 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
               <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
             </svg>
-            <span className="text-[13px] font-semibold text-gray-900">{hasPhoto ? 'Change Photo' : 'Add Photo'}</span>
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-900">{hasPhoto ? 'Change Photo' : 'Add Photo'}</span>
           </FilePicker>
         </div>
         
         
 
         {/* Required documents — all under one header */}
-        <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
+        <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
           Required documents
         </div>
 
@@ -234,7 +234,7 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
         })}
 
         {/* Additional documents */}
-        <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mt-4 mb-2">
+        <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mt-4 mb-2">
           Additional documents (if applicable)
         </div>
         {optional.map((dt) => {
@@ -254,11 +254,11 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
-        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85">
+        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
           Back
         </button>
         <button onClick={onNext}
-          className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40">
+          className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
           Continue
         </button>
       </div>
@@ -292,15 +292,15 @@ function DocCard({ docType, uploadedDocs, loading, onTap }: DocCardProps) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-[14px] font-semibold text-gray-900">{docType.label}</span>
-          <span className="text-[12px] text-gray-400">({docType.labelDe})</span>
+          <span className="text-[var(--fs-md)] font-bold text-gray-900">{docType.label}</span>
+          <span className="text-[var(--fs-xs)] text-gray-400">({docType.labelDe})</span>
         </div>
         {hasUploads ? (
-          <div className="text-[12px] text-green-600 font-semibold mt-0.5">
+          <div className="text-[var(--fs-xs)] text-green-600 font-semibold mt-0.5">
             {count} {count === 1 ? "file" : "files"} uploaded &middot; Tap to view or add more
           </div>
         ) : (
-          <div className="text-[12px] text-gray-400 mt-0.5">Tap to capture or upload</div>
+          <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">Tap to capture or upload</div>
         )}
       </div>
       {hasUploads ? (

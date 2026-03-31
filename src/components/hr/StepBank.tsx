@@ -101,22 +101,22 @@ export default function StepBank({ employee, onNext, onPrev, saving }: Props) {
         {loading ? (
           <div className="flex items-center gap-2 py-3">
             <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-            <span className="text-[13px] text-gray-500">Loading bank info...</span>
+            <span className="text-[var(--fs-sm)] text-gray-500">Loading bank info...</span>
           </div>
         ) : currentIban ? (
           <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-            <div className="text-[11px] font-bold text-green-700 uppercase tracking-wide mb-1">Current IBAN</div>
-            <div className="text-[15px] font-mono font-semibold text-gray-900">{maskIban(currentIban)}</div>
+            <div className="text-[var(--fs-xs)] font-bold text-green-700 uppercase tracking-wide mb-1">Current IBAN</div>
+            <div className="text-[var(--fs-md)] font-mono font-bold text-gray-900">{maskIban(currentIban)}</div>
           </div>
         ) : (
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <div className="text-[13px] text-gray-500">No bank account on file</div>
+            <div className="text-[var(--fs-sm)] text-gray-500">No bank account on file</div>
           </div>
         )}
 
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[13px] font-semibold text-gray-500 uppercase tracking-wide">{currentIban ? 'Update IBAN' : 'Enter IBAN'}</span>
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">{currentIban ? 'Update IBAN' : 'Enter IBAN'}</span>
             <InfoButton title={ex.title} text={ex.text} url={ex.url} urlLabel={ex.urlLabel} />
           </div>
           <input
@@ -128,18 +128,18 @@ export default function StepBank({ employee, onNext, onPrev, saving }: Props) {
         </div>
 
         {saveError && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-[13px] text-red-700">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-[var(--fs-sm)] text-red-700">
             {saveError}
           </div>
         )}
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[13px] text-amber-800">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[var(--fs-sm)] text-amber-800">
           <strong>Note:</strong> Bank account changes are reviewed by your manager.
         </div>
       </div>
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent flex gap-3">
-        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85">Back</button>
-        <button onClick={handleContinue} disabled={isSaving} className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40">
+        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
+        <button onClick={handleContinue} disabled={isSaving} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
           {isSaving ? 'Saving...' : 'Continue'}
         </button>
       </div>

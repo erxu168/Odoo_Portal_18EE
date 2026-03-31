@@ -63,8 +63,8 @@ export default function StepConcurrentEmployment({ onNext, onPrev }: Props) {
     return (
       <div className="pb-40">
         <div className="p-5 space-y-4">
-          <h3 className="text-[15px] font-bold text-gray-900">Secondary employment details</h3>
-          <p className="text-[12px] text-gray-500">
+          <h3 className="text-[var(--fs-md)] font-bold text-gray-900">Secondary employment details</h3>
+          <p className="text-[var(--fs-xs)] text-gray-500">
             Please provide details about your concurrent employment. This information is required by German working time law (ArbZG).
           </p>
 
@@ -118,20 +118,20 @@ export default function StepConcurrentEmployment({ onNext, onPrev }: Props) {
 
           {editing.type === "minijob" && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-              <p className="text-[12px] text-blue-800">
+              <p className="text-[var(--fs-xs)] text-blue-800">
                 <strong>Minijob note:</strong> The first Minijob alongside your main employment is exempt from social insurance contributions. Additional Minijobs are not.
               </p>
             </div>
           )}
 
           <div className="flex gap-3 pt-2">
-            <button onClick={() => setEditing(null)} className="flex-1 py-3.5 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85">
+            <button onClick={() => setEditing(null)} className="flex-1 py-3.5 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
               Cancel
             </button>
             <button
               onClick={() => saveJob(editing)}
               disabled={!editing.type || !editing.employerName || !editing.weeklyHours}
-              className="flex-1 py-3.5 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40"
+              className="flex-1 py-3.5 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40"
             >
               Save
             </button>
@@ -145,19 +145,19 @@ export default function StepConcurrentEmployment({ onNext, onPrev }: Props) {
   return (
     <div className="pb-40">
       <div className="p-5">
-        <p className="text-[13px] text-gray-500 mb-2">
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-2">
           German working time law (Arbeitszeitgesetz) requires employers to know about any secondary employment to ensure combined working hours do not exceed legal limits.
         </p>
 
         {/* Info card */}
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-4">
-          <p className="text-[12px] text-blue-800 leading-relaxed">
+          <p className="text-[var(--fs-xs)] text-blue-800 leading-relaxed">
             <strong>Why we ask:</strong> Under §3 ArbZG, total working hours across all employers may not exceed 48 hours/week on average. You must also have at least 11 hours of rest between working days (§5 ArbZG). This applies to all employment combined.
           </p>
         </div>
 
         {/* Yes/No question */}
-        <div className="text-[14px] font-semibold text-gray-900 mb-3">
+        <div className="text-[var(--fs-md)] font-bold text-gray-900 mb-3">
           Do you currently have any other employment or self-employment?
         </div>
         <div className="flex gap-3 mb-4">
@@ -180,7 +180,7 @@ export default function StepConcurrentEmployment({ onNext, onPrev }: Props) {
         {/* No secondary employment */}
         {hasSecondary === false && (
           <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4">
-            <p className="text-[12px] text-green-800">
+            <p className="text-[var(--fs-xs)] text-green-800">
               Thank you. If you take on any secondary employment in the future, you are obligated to notify your employer before starting.
             </p>
           </div>
@@ -195,15 +195,15 @@ export default function StepConcurrentEmployment({ onNext, onPrev }: Props) {
                   <div key={job.id} className="bg-white border border-gray-200 rounded-xl p-4">
                     <div className="flex items-start justify-between">
                       <div>
-                        <div className="text-[14px] font-semibold text-gray-900">{job.employerName}</div>
-                        <div className="text-[12px] text-gray-500 mt-0.5">
+                        <div className="text-[var(--fs-md)] font-bold text-gray-900">{job.employerName}</div>
+                        <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">
                           {job.type === "employed" ? "Employed" : job.type === "minijob" ? "Minijob" : job.type === "self_employed" ? "Self-employed" : job.type === "freelance" ? "Freelance" : "Volunteer"} &middot; {job.weeklyHours}h/week
                         </div>
-                        {job.schedule && <div className="text-[11px] text-gray-400 mt-0.5">{job.schedule}</div>}
+                        {job.schedule && <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{job.schedule}</div>}
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => setEditing(job)} className="text-[12px] text-blue-600 font-semibold active:opacity-70">Edit</button>
-                        <button onClick={() => removeJob(job.id)} className="text-[12px] text-red-500 font-semibold active:opacity-70">Remove</button>
+                        <button onClick={() => setEditing(job)} className="text-[var(--fs-xs)] text-blue-600 font-semibold active:opacity-70">Edit</button>
+                        <button onClick={() => removeJob(job.id)} className="text-[var(--fs-xs)] text-red-500 font-semibold active:opacity-70">Remove</button>
                       </div>
                     </div>
                   </div>
@@ -212,7 +212,7 @@ export default function StepConcurrentEmployment({ onNext, onPrev }: Props) {
             )}
 
             <button onClick={addJob}
-              className="w-full py-3.5 bg-white border-[1.5px] border-dashed border-gray-300 rounded-xl text-[13px] font-semibold text-gray-600 active:bg-gray-50 flex items-center justify-center gap-2 mb-4">
+              className="w-full py-3.5 bg-white border-[1.5px] border-dashed border-gray-300 rounded-xl text-[var(--fs-sm)] font-semibold text-gray-600 active:bg-gray-50 flex items-center justify-center gap-2 mb-4">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
                 <path d="M12 5v14M5 12h14" />
               </svg>
@@ -234,8 +234,8 @@ export default function StepConcurrentEmployment({ onNext, onPrev }: Props) {
                   )}
                 </div>
                 <div className="flex-1">
-                  <div className="text-[13px] font-semibold text-gray-900 leading-snug">I confirm the above is complete and accurate</div>
-                  <p className="text-[12px] text-gray-500 leading-relaxed mt-1">
+                  <div className="text-[var(--fs-sm)] font-semibold text-gray-900 leading-snug">I confirm the above is complete and accurate</div>
+                  <p className="text-[var(--fs-xs)] text-gray-500 leading-relaxed mt-1">
                     I confirm that my combined working hours across all employment do not exceed legal limits (48h/week average). I will notify my employer of any changes to my secondary employment.
                   </p>
                 </div>
@@ -246,11 +246,11 @@ export default function StepConcurrentEmployment({ onNext, onPrev }: Props) {
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
-        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85">
+        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
           Back
         </button>
         <button onClick={onNext} disabled={!canContinue}
-          className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40">
+          className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
           Continue
         </button>
       </div>
@@ -262,8 +262,8 @@ function FormField({ label, labelDe, children }: { label: string; labelDe?: stri
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1.5">
-        <span className="text-[13px] font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
-        {labelDe && <span className="text-[12px] text-gray-400">({labelDe})</span>}
+        <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
+        {labelDe && <span className="text-[var(--fs-xs)] text-gray-400">({labelDe})</span>}
       </div>
       {children}
     </div>

@@ -183,11 +183,11 @@ export default function MyDocuments({ onBack }: Props) {
     return (
       <div className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl p-6 max-w-[340px] w-full shadow-xl">
-          <div className="text-[16px] font-bold text-gray-900 mb-2">Delete document?</div>
-          <p className="text-[13px] text-gray-500 mb-1">
+          <div className="text-[var(--fs-lg)] font-bold text-gray-900 mb-2">Delete document?</div>
+          <p className="text-[var(--fs-sm)] text-gray-500 mb-1">
             <span className="font-semibold text-gray-700">{deleteTarget.name}</span>
           </p>
-          <p className="text-[13px] text-gray-500 mb-5">
+          <p className="text-[var(--fs-sm)] text-gray-500 mb-5">
             This will archive the file in Odoo. The change will be logged on your employee record.
           </p>
           <div className="flex gap-3">
@@ -221,7 +221,7 @@ export default function MyDocuments({ onBack }: Props) {
       <AppHeader title="My Documents" showBack onBack={onBack} />
 
       <div className="p-5">
-        <p className="text-[13px] text-gray-500 mb-4">
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-4">
           Review your uploaded documents. Tap a thumbnail to view, or use the
           buttons to replace or add files.
         </p>
@@ -233,7 +233,7 @@ export default function MyDocuments({ onBack }: Props) {
         ) : (
           <>
             <RoteKarteInfo />
-            <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-2">
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
               Required documents
             </div>
             {required.map((dt) => (
@@ -249,7 +249,7 @@ export default function MyDocuments({ onBack }: Props) {
               />
             ))}
 
-            <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mt-5 mb-2">
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mt-5 mb-2">
               Additional documents
             </div>
             {optional.map((dt) => (
@@ -273,8 +273,8 @@ export default function MyDocuments({ onBack }: Props) {
                   <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
                 </svg>
                 <div>
-                  <div className="text-[13px] font-semibold text-gray-900 leading-snug mb-1">Legal document requirements</div>
-                  <p className="text-[12px] text-gray-500 leading-relaxed">
+                  <div className="text-[var(--fs-sm)] font-semibold text-gray-900 leading-snug mb-1">Legal document requirements</div>
+                  <p className="text-[var(--fs-xs)] text-gray-500 leading-relaxed">
                     You are required by German law to carry valid identification
                     documents at all times while working. This includes your ID card
                     or passport, work permit (if applicable), and Rote Karte
@@ -328,7 +328,7 @@ function DocTypeCard({
       <div className="flex items-center gap-3 mb-2">
         <div
           className={
-            "w-10 h-10 rounded-xl flex items-center justify-center text-[20px] flex-shrink-0 " +
+            "w-10 h-10 rounded-xl flex items-center justify-center text-[var(--fs-xl)] flex-shrink-0 " +
             (hasUploads ? "bg-green-100" : "bg-gray-100")
           }
         >
@@ -336,12 +336,12 @@ function DocTypeCard({
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-[14px] font-semibold text-gray-900">
+            <span className="text-[var(--fs-md)] font-bold text-gray-900">
               {docType.label}
             </span>
-            <span className="text-[11px] text-gray-400">({docType.labelDe})</span>
+            <span className="text-[var(--fs-xs)] text-gray-400">({docType.labelDe})</span>
           </div>
-          <div className="text-[12px] text-gray-400 mt-0.5">
+          <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
             {hasUploads ? (
               <span className="text-green-600 font-semibold">
                 {docs.length} {docs.length === 1 ? "file" : "files"} uploaded
@@ -425,7 +425,7 @@ function DocTypeCard({
       <button
         onClick={onReplace}
         className={
-          "w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[13px] active:opacity-85 transition-colors " +
+          "w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-[var(--fs-sm)] active:opacity-85 transition-colors " +
           (hasUploads
             ? "bg-white border border-green-300 text-green-700 active:bg-green-100"
             : "bg-green-600 text-white active:bg-green-700")
@@ -521,7 +521,7 @@ function ImageOverlay({
     <div className="fixed inset-0 z-[200] bg-black/95 flex flex-col">
       <div className="flex items-center justify-end px-4 py-3 bg-black/80 backdrop-blur-sm flex-shrink-0">
         {scale !== 1 && (
-          <button onClick={() => setScale(1)} className="mr-auto px-3 py-1 rounded-full bg-white/10 text-white/80 text-[11px] font-mono font-bold active:bg-white/20">
+          <button onClick={() => setScale(1)} className="mr-auto px-3 py-1 rounded-full bg-white/10 text-white/80 text-[var(--fs-xs)] font-mono font-bold active:bg-white/20">
             {Math.round(scale * 100)}% — tap to reset
           </button>
         )}

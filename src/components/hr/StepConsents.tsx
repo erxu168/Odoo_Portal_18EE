@@ -91,10 +91,10 @@ export default function StepConsents({ employee, onNext, onPrev }: Props) {
   return (
     <div className="pb-40">
       <div className="p-5">
-        <p className="text-[13px] text-gray-500 mb-1">
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-1">
           Please read and acknowledge each item below before submitting your onboarding. All acknowledgments are required.
         </p>
-        <p className="text-[12px] text-gray-400 mb-4">
+        <p className="text-[var(--fs-xs)] text-gray-400 mb-4">
           {checkedCount} of {CONSENTS.length} acknowledged
         </p>
 
@@ -111,8 +111,8 @@ export default function StepConsents({ employee, onNext, onPrev }: Props) {
               )}
             </div>
             <div className="flex-1">
-              <div className="text-[13px] font-semibold text-gray-900 leading-snug">{consent.title}</div>
-              <p className="text-[12px] text-gray-500 leading-relaxed mt-1">{consent.text}</p>
+              <div className="text-[var(--fs-sm)] font-semibold text-gray-900 leading-snug">{consent.title}</div>
+              <p className="text-[var(--fs-xs)] text-gray-500 leading-relaxed mt-1">{consent.text}</p>
               {consent.legalRef && (
                 <p className="text-[10px] text-gray-400 mt-1 font-mono">{consent.legalRef}</p>
               )}
@@ -122,8 +122,8 @@ export default function StepConsents({ employee, onNext, onPrev }: Props) {
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent flex gap-3">
-        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85">Back</button>
-        <button onClick={onNext} disabled={!allChecked} className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40">
+        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
+        <button onClick={onNext} disabled={!allChecked} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
           Submit for Review
         </button>
       </div>

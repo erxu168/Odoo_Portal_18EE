@@ -252,8 +252,8 @@ export default function MyProfile({ onBack, onEdit }: Props) {
     if (type === 'readonly') {
       return (
         <div className="flex justify-between py-2.5 border-b border-gray-50 last:border-b-0">
-          <span className="text-[13px] text-gray-500">{label}</span>
-          <span className={'text-[13px] font-medium text-right max-w-[55%] ' + (mono ? 'font-mono ' : '') + (missing ? 'text-red-500 italic' : '')}>
+          <span className="text-[var(--fs-sm)] text-gray-500">{label}</span>
+          <span className={'text-[var(--fs-sm)] font-medium text-right max-w-[55%] ' + (mono ? 'font-mono ' : '') + (missing ? 'text-red-500 italic' : '')}>
             {missing ? 'Not provided' : value}
           </span>
         </div>
@@ -263,11 +263,11 @@ export default function MyProfile({ onBack, onEdit }: Props) {
     if (isEditing) {
       return (
         <div className="py-2.5 border-b border-gray-50 last:border-b-0">
-          <div className="text-[11px] font-semibold text-green-600 uppercase tracking-wide mb-1.5">{label}</div>
+          <div className="text-[var(--fs-xs)] font-semibold text-green-600 uppercase tracking-wide mb-1.5">{label}</div>
 
           {type === 'select' && options ? (
             <select
-              className="form-input text-[14px]"
+              className="form-input text-[var(--fs-md)]"
               value={editValue}
               onChange={e => setEditValue(e.target.value)}
               autoFocus
@@ -279,7 +279,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
           ) : type === 'country' ? (
             <div className="relative">
               <input
-                className="form-input text-[14px]"
+                className="form-input text-[var(--fs-md)]"
                 value={editValue}
                 onChange={e => searchCountries(e.target.value)}
                 placeholder="Start typing..."
@@ -289,7 +289,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
                 <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
                   {countrySuggestions.map(c => (
                     <button key={c.id} onClick={() => selectCountry(c.id, c.name)}
-                      className="w-full text-left px-3 py-2.5 text-[13px] text-gray-900 active:bg-green-50 border-b border-gray-100 last:border-0">
+                      className="w-full text-left px-3 py-2.5 text-[var(--fs-sm)] text-gray-900 active:bg-green-50 border-b border-gray-100 last:border-0">
                       {c.name}
                     </button>
                   ))}
@@ -298,7 +298,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
             </div>
           ) : type === 'date' ? (
             <input
-              className="form-input text-[14px] font-mono"
+              className="form-input text-[var(--fs-md)] font-mono"
               type="date"
               value={editValue}
               onChange={e => setEditValue(e.target.value)}
@@ -306,7 +306,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
             />
           ) : (
             <input
-              className={'form-input text-[14px]' + (mono ? ' font-mono' : '')}
+              className={'form-input text-[var(--fs-md)]' + (mono ? ' font-mono' : '')}
               value={editValue}
               onChange={e => setEditValue(e.target.value)}
               autoFocus
@@ -318,14 +318,14 @@ export default function MyProfile({ onBack, onEdit }: Props) {
             <button
               onClick={cancelEdit}
               disabled={saving}
-              className="flex-1 py-2.5 text-[13px] font-semibold text-gray-600 bg-gray-100 rounded-xl active:bg-gray-200"
+              className="flex-1 py-3.5 text-[var(--fs-sm)] font-bold text-gray-600 bg-gray-100 rounded-xl active:bg-gray-200"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 py-2.5 text-[13px] font-semibold text-white bg-green-600 rounded-xl active:bg-green-700 disabled:opacity-50"
+              className="flex-1 py-3.5 text-[var(--fs-sm)] font-bold text-white bg-green-600 rounded-xl active:bg-green-700 disabled:opacity-50"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
@@ -340,9 +340,9 @@ export default function MyProfile({ onBack, onEdit }: Props) {
         onClick={() => startEdit(fieldKey, type === 'country' ? (value || '') : getFieldValue(emp!, fieldKey), type === 'country' ? countryId : undefined)}
         className="w-full flex justify-between py-2.5 border-b border-gray-50 last:border-b-0 text-left active:bg-gray-50 transition-colors"
       >
-        <span className="text-[13px] text-gray-500">{label}</span>
+        <span className="text-[var(--fs-sm)] text-gray-500">{label}</span>
         <span className="flex items-center gap-1.5">
-          <span className={'text-[13px] font-medium text-right max-w-[55%] ' + (mono ? 'font-mono ' : '') + (missing ? 'text-red-500 italic' : '')}>
+          <span className={'text-[var(--fs-sm)] font-medium text-right max-w-[55%] ' + (mono ? 'font-mono ' : '') + (missing ? 'text-red-500 italic' : '')}>
             {missing ? 'Not provided' : value}
           </span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 flex-shrink-0">
@@ -369,22 +369,22 @@ export default function MyProfile({ onBack, onEdit }: Props) {
 
       {/* Header card */}
       <div className="bg-white px-5 py-6 text-center border-b border-gray-200">
-        <div className="w-[80px] h-[80px] rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold text-[26px] mx-auto mb-3 overflow-hidden border-3 border-green-100">
+        <div className="w-[80px] h-[80px] rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold text-[var(--fs-xxl)] mx-auto mb-3 overflow-hidden border-3 border-green-100">
           {photoLoaded ? (
             <img src="/api/hr/employee/photo" alt="" className="w-full h-full object-cover" />
           ) : initials}
           <img src="/api/hr/employee/photo" alt="" className="hidden" onLoad={() => setPhotoLoaded(true)} onError={() => setPhotoLoaded(false)} />
         </div>
-        <div className="text-[20px] font-bold">{emp.name}</div>
-        <div className="text-[14px] text-gray-500">{job ? `${job} \u00b7 ${dept}` : dept}</div>
+        <div className="text-[var(--fs-xl)] font-bold">{emp.name}</div>
+        <div className="text-[var(--fs-sm)] text-gray-500">{job ? `${job} \u00b7 ${dept}` : dept}</div>
         <div className="flex gap-2 justify-center mt-2.5">
           {isComplete ? (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 text-green-700">Onboarding complete</span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-green-50 text-green-700">Onboarding complete</span>
           ) : (
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700">{pct}% complete</span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-amber-50 text-amber-700">{pct}% complete</span>
           )}
         </div>
-        <div className="text-[11px] text-gray-400 mt-2">Tap any field to edit</div>
+        <div className="text-[var(--fs-xs)] text-gray-400 mt-2">Tap any field to edit</div>
       </div>
 
       {/* Personal */}
@@ -476,7 +476,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white text-[13px] font-semibold px-4 py-2.5 rounded-full shadow-lg animate-[fadeIn_200ms_ease]">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white text-[var(--fs-sm)] font-semibold px-4 py-2.5 rounded-full shadow-lg animate-[fadeIn_200ms_ease]">
           {toast}
         </div>
       )}
@@ -485,5 +485,5 @@ export default function MyProfile({ onBack, onEdit }: Props) {
 }
 
 function SectionTitle({ text }: { text: string }) {
-  return <div className="px-5 pt-4 pb-1 text-[11px] font-bold tracking-widest uppercase text-gray-400">{text}</div>;
+  return <div className="px-5 pt-4 pb-1 text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">{text}</div>;
 }

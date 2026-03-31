@@ -36,23 +36,23 @@ export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
       <div className="p-5 space-y-4">
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[13px] font-semibold text-gray-500 uppercase tracking-wide">Tax ID</span>
-            <span className="text-[12px] text-gray-400">(Steuer-ID)</span>
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">Tax ID</span>
+            <span className="text-[var(--fs-xs)] text-gray-400">(Steuer-ID)</span>
             <InfoButton title={ex.kw_steuer_id.title} text={ex.kw_steuer_id.text} url={ex.kw_steuer_id.url} urlLabel={ex.kw_steuer_id.urlLabel} />
           </div>
           <input className="form-input font-mono" value={steuerId} onChange={e => setSteuerId(e.target.value)} placeholder="e.g. 12 345 678 901" maxLength={14} />
         </div>
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[13px] font-semibold text-gray-500 uppercase tracking-wide">ID card number</span>
-            <span className="text-[12px] text-gray-400">(Personalausweis-Nr.)</span>
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">ID card number</span>
+            <span className="text-[var(--fs-xs)] text-gray-400">(Personalausweis-Nr.)</span>
           </div>
           <input className="form-input font-mono" value={idNr} onChange={e => setIdNr(e.target.value)} placeholder="e.g. T220001293" />
         </div>
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[13px] font-semibold text-gray-500 uppercase tracking-wide">Tax class</span>
-            <span className="text-[12px] text-gray-400">(Steuerklasse)</span>
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">Tax class</span>
+            <span className="text-[var(--fs-xs)] text-gray-400">(Steuerklasse)</span>
             <InfoButton title={ex.kw_steuerklasse.title} text={ex.kw_steuerklasse.text} url={ex.kw_steuerklasse.url} urlLabel={ex.kw_steuerklasse.urlLabel} />
           </div>
           <select className="form-input" value={steuerklasse} onChange={e => setSteuerklasse(e.target.value as any)}>
@@ -67,8 +67,8 @@ export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
         </div>
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[13px] font-semibold text-gray-500 uppercase tracking-wide">Church tax</span>
-            <span className="text-[12px] text-gray-400">(Konfession)</span>
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">Church tax</span>
+            <span className="text-[var(--fs-xs)] text-gray-400">(Konfession)</span>
             <InfoButton title={ex.kw_konfession.title} text={ex.kw_konfession.text} url={ex.kw_konfession.url} urlLabel={ex.kw_konfession.urlLabel} />
           </div>
           <select className="form-input" value={konfession} onChange={e => setKonfession(e.target.value as any)}>
@@ -81,8 +81,8 @@ export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
         </div>
         <div>
           <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[13px] font-semibold text-gray-500 uppercase tracking-wide">Child tax allowance</span>
-            <span className="text-[12px] text-gray-400">(Kinderfreibetrag)</span>
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">Child tax allowance</span>
+            <span className="text-[var(--fs-xs)] text-gray-400">(Kinderfreibetrag)</span>
             <InfoButton title={ex.kw_kinderfreibetrag.title} text={ex.kw_kinderfreibetrag.text} />
           </div>
           <select className="form-input" value={kinder} onChange={e => setKinder(e.target.value)}>
@@ -101,8 +101,8 @@ export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
         </div>
       </div>
       <div className="fixed bottom-16 left-0 right-0 max-w-[430px] mx-auto p-5 bg-gradient-to-t from-[#f8faf9] via-[#f8faf9] to-transparent flex gap-3">
-        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-semibold rounded-xl border border-gray-200 active:opacity-85">Back</button>
-        <button onClick={handleSubmit} disabled={saving} className="flex-1 py-4 bg-green-600 text-white font-semibold rounded-xl active:opacity-85 disabled:opacity-40">
+        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
+        <button onClick={handleSubmit} disabled={saving} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
           {saving ? 'Saving...' : 'Continue'}
         </button>
       </div>
