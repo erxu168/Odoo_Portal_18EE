@@ -7,6 +7,29 @@ import DeliveryForm from './DeliveryForm';
 import PdfViewer from '@/components/ui/PdfViewer';
 import FilePicker from '@/components/ui/FilePicker';
 
+
+/**
+ * Build a carrier tracking URL from a tracking number.
+ * German postal services (Einschreiben) use Deutsche Post / DHL tracking.
+ * Falls back to DHL for unrecognized formats.
+ */
+function getTrackingUrl(trackingNumber: string): string {
+  const clean = trackingNumber.replace(/\s+/g, "");
+  const dhl = (code: string) =>
+    `https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode=${encodeURIComponent(code)}`;
+  // UPS
+  if (/^1Z/i.test(clean))
+    return `https://www.ups.com/track?tracknum=${encodeURIComponent(clean)}`;
+  // Hermes
+  if (/^H\d{19}$/i.test(clean))
+    return `https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation?trackingId=${encodeURIComponent(clean)}`;
+  // DPD (14 digits)
+  if (/^\d{14}$/.test(clean))
+    return `https://tracking.dpd.de/status/de_DE/parcel/${encodeURIComponent(clean)}`;
+  // Default: Deutsche Post / DHL (Einschreiben RR/RA/RB etc, or any number)
+  return dhl(clean);
+}
+
 interface Props {
   id: number;
   onBack: () => void;
@@ -279,7 +302,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[20px] font-bold text-white truncate">{rec.employee_name}</h1>
+            <h1 className="text-[var(--fs-xl)] font-bold text-white truncate">{rec.employee_name}</h1>
             <p className="text-[12px] text-white/50">{TERMINATION_TYPE_LABELS[rec.termination_type]}</p>
           </div>
           <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
@@ -292,7 +315,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         {/* Cancelled banner */}
         {rec.state === 'cancelled' && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-3 text-center">
-            <span className="text-red-700 font-semibold text-[14px]">This termination has been cancelled</span>
+            <span className="text-red-700 font-semibold text-[var(--fs-sm)]">This termination has been cancelled</span>
           </div>
         )}
 
@@ -340,7 +363,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         {/* Info card */}
         <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[13px] font-semibold text-gray-900">Details</span>
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-900">Details</span>
             <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium ${STATE_COLORS[rec.state] || ''}`}>
               {STATE_LABELS[rec.state]}
             </span>
@@ -358,11 +381,24 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         {/* Delivery card */}
         {rec.delivery_method && (
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
-            <span className="text-[13px] font-semibold text-gray-900 block mb-3">Delivery</span>
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-900 block mb-3">Delivery</span>
             <div className="space-y-2 text-[13px]">
               <div className="flex justify-between"><span className="text-gray-500">Method</span><span className="text-gray-900">{DELIVERY_METHOD_LABELS[rec.delivery_method]}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Date</span><span className="text-gray-900">{fmt(rec.delivery_date)}</span></div>
-              {rec.delivery_tracking_number && <div className="flex justify-between"><span className="text-gray-500">Tracking #</span><span className="text-gray-900">{rec.delivery_tracking_number}</span></div>}
+              {rec.delivery_tracking_number && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Tracking #</span>
+                  <a
+                    href={getTrackingUrl(rec.delivery_tracking_number)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 font-medium underline underline-offset-2 active:text-blue-800"
+                  >
+                    {rec.delivery_tracking_number}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline ml-1 -mt-0.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </a>
+                </div>
+              )}
               {rec.delivery_witness && <div className="flex justify-between"><span className="text-gray-500">Witness</span><span className="text-gray-900">{rec.delivery_witness}</span></div>}
               <div className="flex justify-between"><span className="text-gray-500">Confirmed</span><span className={rec.delivery_confirmed ? 'text-green-600 font-medium' : 'text-yellow-600'}>{rec.delivery_confirmed ? 'Yes' : 'Pending'}</span></div>
             </div>
@@ -418,7 +454,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
                   </button>
                   <div className="flex-1 min-w-0" onClick={handleViewPdf}>
-                    <div className="text-[13px] font-semibold text-gray-900">Signed document</div>
+                    <div className="text-[var(--fs-sm)] font-semibold text-gray-900">Signed document</div>
                     <div className="text-[11px] text-green-600 truncate">{rec.signed_pdf_attachment_id[1]}</div>
                   </div>
                   <FilePicker
@@ -428,12 +464,12 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
                     icon=""
                     loading={uploadLoading}
                     variant="button"
-                    className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-[11px] font-semibold active:bg-gray-200"
+                    className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-[var(--fs-xs)] font-semibold active:bg-gray-200"
                   />
                 </div>
               ) : (
                 <>
-                  <span className="text-[13px] font-semibold text-gray-900 block mb-2">Upload signed document</span>
+                  <span className="text-[var(--fs-sm)] font-semibold text-gray-900 block mb-2">Upload signed document</span>
                   <FilePicker
                     onFile={handleUploadSigned}
                     accept="image/*,.pdf"
@@ -480,7 +516,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           )}
 
           {rec.sent_to_accountant && (
-            <div className="text-center text-[12px] text-green-600 font-medium py-2">
+            <div className="text-center text-[var(--fs-xs)] text-green-600 font-medium py-2">
               {'\u2713'} Sent to accountant
             </div>
           )}

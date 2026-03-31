@@ -93,8 +93,8 @@ export default function TermDashboard({ onNavigate }: TermDashboardProps) {
                 {tiles[0].icon}
               </div>
               <div>
-                <div className="text-[14px] font-bold text-gray-900">{tiles[0].label}</div>
-                <div className="text-[11px] text-gray-500 mt-0.5">{tiles[0].sublabel}</div>
+                <div className="text-[var(--fs-md)] font-bold text-gray-900">{tiles[0].label}</div>
+                <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{tiles[0].sublabel}</div>
               </div>
             </div>
           </button>
@@ -109,10 +109,10 @@ export default function TermDashboard({ onNavigate }: TermDashboardProps) {
                 <div className={`w-11 h-11 rounded-xl ${tile.iconBg} ${tile.iconColor} flex items-center justify-center mb-3`}>
                   {tile.icon}
                 </div>
-                <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
-                <div className="text-[11px] text-gray-500 mt-0.5">{tile.sublabel}</div>
+                <div className="text-[var(--fs-md)] font-bold text-gray-900">{tile.label}</div>
+                <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{tile.sublabel}</div>
                 {tile.badge !== null && (
-                  <span className="absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center">
+                  <span className="absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold flex items-center justify-center">
                     {tile.badge}
                   </span>
                 )}

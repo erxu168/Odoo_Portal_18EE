@@ -76,7 +76,7 @@ export default function TermList({ mode, onSelect, onHome }: Props) {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div className="flex-1">
-            <h1 className="text-[20px] font-bold text-white">{title}</h1>
+            <h1 className="text-[var(--fs-xl)] font-bold text-white">{title}</h1>
             <p className="text-[12px] text-white/45 mt-0.5">{subtitle}</p>
           </div>
         </div>
@@ -127,12 +127,12 @@ export default function TermList({ mode, onSelect, onHome }: Props) {
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <div className="text-[14px] font-semibold text-gray-900">{r.employee_name}</div>
-                    <div className="text-[12px] text-gray-500 mt-0.5">
+                    <div className="text-[var(--fs-md)] font-bold text-gray-900">{r.employee_name}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">
                       {TERMINATION_TYPE_LABELS[r.termination_type as keyof typeof TERMINATION_TYPE_LABELS] || r.termination_type}
                     </div>
                     {(r.job_title || r.department) && (
-                      <div className="text-[11px] text-gray-400 mt-0.5">
+                      <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
                         {[r.job_title, r.department].filter(Boolean).join(' · ')}
                       </div>
                     )}
@@ -141,7 +141,7 @@ export default function TermList({ mode, onSelect, onHome }: Props) {
                     {STATE_LABELS[r.state as keyof typeof STATE_LABELS] || r.state}
                   </span>
                 </div>
-                <div className="flex gap-4 mt-2 text-[11px] text-gray-400">
+                <div className="flex gap-4 mt-2 text-[var(--fs-xs)] text-gray-400">
                   <span>Letter: {fmt(r.letter_date)}</span>
                   <span>Last day: {fmt(r.last_working_day)}</span>
                 </div>

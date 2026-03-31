@@ -201,13 +201,13 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
           <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" /></div>
         ) : (
           <>
-            <div className="text-[11px] text-gray-400 mb-2 px-1">{filteredEmployees.length} employee{filteredEmployees.length !== 1 ? 's' : ''}</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 mb-2 px-1">{filteredEmployees.length} employee{filteredEmployees.length !== 1 ? 's' : ''}</div>
             <div className="space-y-2 max-h-[55vh] overflow-y-auto">
               {filteredEmployees.map(emp => (
                 <button key={emp.id} onClick={() => { setSelectedEmployee(emp); setStep('type'); }}
                   className={`w-full rounded-xl border p-4 text-left transition-colors ${selectedEmployee?.id === emp.id ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white active:bg-gray-50'}`}>
-                  <div className="text-[14px] font-semibold text-gray-900">{emp.name}</div>
-                  <div className="text-[12px] text-gray-500 mt-0.5">
+                  <div className="text-[var(--fs-md)] font-bold text-gray-900">{emp.name}</div>
+                  <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">
                     {emp.department_id ? emp.department_id[1] : 'No department'}
                     {emp.job_title ? ` \u2022 ${emp.job_title}` : ''}
                   </div>
@@ -225,14 +225,14 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
     return (
       <div className="space-y-2">
         <div className="bg-white rounded-xl border border-gray-200 p-3 mb-4">
-          <span className="text-[12px] text-gray-500">Employee</span>
-          <div className="text-[14px] font-semibold">{selectedEmployee?.name}</div>
+          <span className="text-[var(--fs-xs)] text-gray-500">Employee</span>
+          <div className="text-[var(--fs-md)] font-bold">{selectedEmployee?.name}</div>
         </div>
         {termTypes.map(t => (
           <button key={t.value} onClick={() => { setTermType(t.value); setStep('details'); }}
             className={`w-full rounded-xl border p-4 text-left transition-colors ${termType === t.value ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white active:bg-gray-50'}`}>
-            <div className="text-[14px] font-semibold text-gray-900">{t.label}</div>
-            <div className="text-[11px] text-gray-500 mt-0.5">{t.desc}</div>
+            <div className="text-[var(--fs-md)] font-bold text-gray-900">{t.label}</div>
+            <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{t.desc}</div>
           </button>
         ))}
       </div>
@@ -245,31 +245,31 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
       <div className="space-y-4">
         <div className="bg-white rounded-xl border border-gray-200 p-3">
           <div className="flex justify-between">
-            <div><span className="text-[12px] text-gray-500">Employee</span><div className="text-[14px] font-semibold">{selectedEmployee?.name}</div></div>
-            <div className="text-right"><span className="text-[12px] text-gray-500">Type</span><div className="text-[13px] font-medium">{termType ? TERMINATION_TYPE_LABELS[termType] : ''}</div></div>
+            <div><span className="text-[var(--fs-xs)] text-gray-500">Employee</span><div className="text-[var(--fs-md)] font-bold">{selectedEmployee?.name}</div></div>
+            <div className="text-right"><span className="text-[var(--fs-xs)] text-gray-500">Type</span><div className="text-[13px] font-medium">{termType ? TERMINATION_TYPE_LABELS[termType] : ''}</div></div>
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-          <label className="block"><span className="text-[12px] text-gray-500">Letter date</span>
+          <label className="block"><span className="text-[var(--fs-xs)] text-gray-500">Letter date</span>
             <input type="date" value={letterDate} onChange={e => setLetterDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>
-          {showCalcMethod && (<label className="block"><span className="text-[12px] text-gray-500">Calculation method</span>
+          {showCalcMethod && (<label className="block"><span className="text-[var(--fs-xs)] text-gray-500">Calculation method</span>
             <select value={calcMethod} onChange={e => setCalcMethod(e.target.value as 'bgb' | 'receipt')} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none">
               <option value="bgb">{'\u00a7'} 622 BGB statutory</option><option value="receipt">From date of receipt</option></select></label>)}
-          {showCalcMethod && calcMethod === 'receipt' && (<label className="block"><span className="text-[12px] text-gray-500">Date of receipt</span>
+          {showCalcMethod && calcMethod === 'receipt' && (<label className="block"><span className="text-[var(--fs-xs)] text-gray-500">Date of receipt</span>
             <input type="date" value={receiptDate} onChange={e => setReceiptDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>)}
           {termType === 'fristlos' && (<>
-            <label className="block"><span className="text-[12px] text-gray-500">Incident date</span>
+            <label className="block"><span className="text-[var(--fs-xs)] text-gray-500">Incident date</span>
               <input type="date" value={incidentDate} onChange={e => setIncidentDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>
-            <label className="block"><span className="text-[12px] text-gray-500">Description (internal only)</span>
+            <label className="block"><span className="text-[var(--fs-xs)] text-gray-500">Description (internal only)</span>
               <textarea value={incidentDescription} onChange={e => setIncidentDescription(e.target.value)} rows={3} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30 resize-none" /></label></>)}
           {termType === 'aufhebung' && (<>
-            <label className="block"><span className="text-[12px] text-gray-500">Last working day</span>
+            <label className="block"><span className="text-[var(--fs-xs)] text-gray-500">Last working day</span>
               <input type="date" value={lastWorkingDayManual} onChange={e => setLastWorkingDayManual(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>
-            <label className="flex items-center gap-3"><input type="checkbox" checked={gardenLeave} onChange={e => setGardenLeave(e.target.checked)} className="w-5 h-5 rounded" /><span className="text-[14px]">Garden leave (Freistellung)</span></label>
-            <label className="flex items-center gap-3"><input type="checkbox" checked={includeSeverance} onChange={e => setIncludeSeverance(e.target.checked)} className="w-5 h-5 rounded" /><span className="text-[14px]">Severance payment (Abfindung)</span></label>
-            {includeSeverance && (<label className="block"><span className="text-[12px] text-gray-500">Severance amount (EUR)</span>
+            <label className="flex items-center gap-3"><input type="checkbox" checked={gardenLeave} onChange={e => setGardenLeave(e.target.checked)} className="w-5 h-5 rounded" /><span className="text-[var(--fs-sm)]">Garden leave (Freistellung)</span></label>
+            <label className="flex items-center gap-3"><input type="checkbox" checked={includeSeverance} onChange={e => setIncludeSeverance(e.target.checked)} className="w-5 h-5 rounded" /><span className="text-[var(--fs-sm)]">Severance payment (Abfindung)</span></label>
+            {includeSeverance && (<label className="block"><span className="text-[var(--fs-xs)] text-gray-500">Severance amount (EUR)</span>
               <input type="number" step="0.01" value={severanceAmount} onChange={e => setSeveranceAmount(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>)}</>)}
-          {termType === 'bestaetigung' && (<label className="block"><span className="text-[12px] text-gray-500">Resignation received on</span>
+          {termType === 'bestaetigung' && (<label className="block"><span className="text-[var(--fs-xs)] text-gray-500">Resignation received on</span>
             <input type="date" value={resignationDate} onChange={e => setResignationDate(e.target.value)} className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-[14px] focus:outline-none focus:ring-2 focus:ring-green-500/30" /></label>)}
         </div>
         {error && <div className="bg-red-50 text-red-700 text-[13px] px-4 py-3 rounded-xl">{error}</div>}
@@ -287,8 +287,8 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
           <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Employee</span><span className="text-[14px] font-medium">{selectedEmployee?.name}</span></div>
           <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Type</span><span className="text-[13px] font-medium">{termType ? TERMINATION_TYPE_LABELS[termType] : ''}</span></div>
           <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Notice period</span><span className="text-[14px] font-medium">{computedNoticePeriod}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Last working day</span><span className="text-[14px] font-bold text-red-600">{formatDate(computedLastDay)}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Letter date</span><span className="text-[14px]">{formatDate(letterDate)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Last working day</span><span className="text-[var(--fs-md)] font-bold text-red-600">{formatDate(computedLastDay)}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500 text-[12px]">Letter date</span><span className="text-[var(--fs-sm)]">{formatDate(letterDate)}</span></div>
         </div>
 
         {/* View + Print row */}
@@ -338,7 +338,7 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div className="flex-1">
-            <h1 className="text-[20px] font-bold text-white">New Termination</h1>
+            <h1 className="text-[var(--fs-xl)] font-bold text-white">New Termination</h1>
             <p className="text-[12px] text-white/60 mt-0.5">{stepLabels[step]}</p>
           </div>
           <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">

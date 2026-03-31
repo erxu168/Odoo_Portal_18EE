@@ -60,7 +60,7 @@ export function cacheClear(): void {
 
 export function cacheStats(): { entries: number; keys: string[] } {
   const now = Date.now();
-  for (const [key, entry] of cache.entries()) {
+  for (const [key, entry] of Array.from(cache.entries())) {
     if (now > entry.expiresAt) cache.delete(key);
   }
   return {

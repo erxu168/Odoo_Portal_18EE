@@ -53,7 +53,7 @@ export default function DeliveryForm({ onSubmit, onCancel }: Props) {
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
-      <span className="text-[13px] font-semibold text-gray-900 block mb-3">Record delivery</span>
+      <span className="text-[var(--fs-sm)] font-semibold text-gray-900 block mb-3">Record delivery</span>
 
       <div className="grid grid-cols-2 gap-2 mb-4">
         {METHODS.map(m => (
@@ -72,14 +72,14 @@ export default function DeliveryForm({ onSubmit, onCancel }: Props) {
       </div>
 
       <label className="block mb-3">
-        <span className="text-[12px] text-gray-500 block mb-1">Delivery date</span>
+        <span className="text-[var(--fs-xs)] text-gray-500 block mb-1">Delivery date</span>
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
           className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-[14px] bg-gray-50" />
       </label>
 
       {needsTracking && (
         <label className="block mb-3">
-          <span className="text-[12px] text-gray-500 block mb-1">Tracking number</span>
+          <span className="text-[var(--fs-xs)] text-gray-500 block mb-1">Tracking number</span>
           <input type="text" value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)}
             placeholder="RR 1234 5678 9 DE"
             className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-[14px] bg-gray-50" />
@@ -88,7 +88,7 @@ export default function DeliveryForm({ onSubmit, onCancel }: Props) {
 
       {needsWitness && (
         <label className="block mb-3">
-          <span className="text-[12px] text-gray-500 block mb-1">Witness *</span>
+          <span className="text-[var(--fs-xs)] text-gray-500 block mb-1">Witness *</span>
           <input type="text" value={witness} onChange={e => setWitness(e.target.value)}
             placeholder="Name of witness"
             className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-[14px] bg-gray-50" />
@@ -96,7 +96,7 @@ export default function DeliveryForm({ onSubmit, onCancel }: Props) {
       )}
 
       <label className="block mb-4">
-        <span className="text-[12px] text-gray-500 block mb-1">Notes (optional)</span>
+        <span className="text-[var(--fs-xs)] text-gray-500 block mb-1">Notes (optional)</span>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
           className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-[14px] bg-gray-50 resize-none" />
       </label>
