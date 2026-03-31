@@ -134,12 +134,12 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
           <button onClick={onHome}
-            className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+            className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
           </button>
           <div className="flex-1">
             <h1 className="text-[20px] font-bold text-white">Inventory</h1>
-            <p className="text-[12px] text-white/50 mt-0.5">
+            <p className="text-[var(--fs-sm)] text-white/50 mt-0.5">
               {loading ? 'Loading...' : stats.pending > 0 ? `${stats.pending} lists waiting` : 'Stock counting'}
             </p>
           </div>
@@ -152,15 +152,15 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
             <button key={tile.id} onClick={() => onNavigate(tile.id)}
               className={`relative p-4 rounded-2xl border ${(tile as any).color || 'bg-white border-gray-200'} text-left active:scale-[0.97] transition-transform shadow-sm`}>
               {tile.badge > 0 && (
-                <span className="absolute top-3 right-3 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold font-mono leading-[22px] text-center">
+                <span className="absolute top-3 right-3 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-[22px] text-center">
                   {tile.badge}
                 </span>
               )}
               <div className={`w-11 h-11 rounded-xl ${(tile as any).iconBg || 'bg-gray-100'} ${(tile as any).iconColor || ''} flex items-center justify-center mb-3`}>
                 {tile.icon}
               </div>
-              <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
-              <div className="text-[11px] text-gray-500 mt-0.5">{tile.sublabel}</div>
+              <div className="text-[var(--fs-lg)] font-bold text-gray-900">{tile.label}</div>
+              <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{tile.sublabel}</div>
             </button>
           ))}
         </div>
@@ -168,12 +168,12 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         {canManage && (
           <div className="mt-4">
             {genMsg && (
-              <div className="mb-2 px-4 py-2.5 bg-green-50 border border-green-200 rounded-xl text-green-700 text-[12px] font-semibold">
+              <div className="mb-2 px-4 py-2.5 bg-green-50 border border-green-200 rounded-xl text-green-700 text-[var(--fs-sm)] font-semibold">
                 {genMsg}
               </div>
             )}
             <button onClick={handleGenerate} disabled={generating}
-              className="w-full py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2">
+              className="w-full py-3 rounded-xl bg-green-600 text-white text-[var(--fs-base)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2">
               {generating ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (

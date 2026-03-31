@@ -190,17 +190,17 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
           <div className="flex items-center justify-between mb-1">
             <button onClick={() => { setReviewQC(null); setQcProduct(null); setErrorMsg(null); }}
-              className="flex items-center gap-1 text-green-700 text-[13px] font-semibold active:opacity-70">
+              className="flex items-center gap-1 text-green-700 text-[var(--fs-base)] font-semibold active:opacity-70">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
               Back to list
             </button>
           </div>
           <h1 className="text-[18px] font-bold text-gray-900">Review quick count</h1>
-          <p className="text-[12px] text-gray-500 mt-0.5">Submitted {submittedDate} {'\u00B7'} by user #{reviewQC.counted_by}</p>
+          <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">Submitted {submittedDate} {'\u00B7'} by user #{reviewQC.counted_by}</p>
         </div>
 
         {errorMsg && (
-          <div className="mx-4 mt-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[12px] font-semibold">{errorMsg}</div>
+          <div className="mx-4 mt-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[var(--fs-sm)] font-semibold">{errorMsg}</div>
         )}
 
         <div className="px-4 pt-4 flex-1">
@@ -210,19 +210,19 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-[16px] font-bold text-gray-900 truncate">{productName}</div>
-                {catName && <div className="text-[11px] text-gray-400">{catName}</div>}
+                <div className="text-[var(--fs-xl)] font-bold text-gray-900 truncate">{productName}</div>
+                {catName && <div className="text-[var(--fs-xs)] text-gray-400">{catName}</div>}
               </div>
             </div>
 
             <div className="flex gap-3 mb-4">
               <div className="flex-1 bg-green-50 rounded-xl p-4 text-center">
                 <div className="text-[28px] font-bold text-green-700 font-mono">{reviewQC.counted_qty}</div>
-                <div className="text-[11px] text-green-600 font-semibold">{uom} counted</div>
+                <div className="text-[var(--fs-xs)] text-green-600 font-semibold">{uom} counted</div>
               </div>
             </div>
 
-            <div className="space-y-2 text-[12px] text-gray-500">
+            <div className="space-y-2 text-[var(--fs-sm)] text-gray-500">
               <div className="flex justify-between"><span>Location</span><span className="font-semibold text-gray-700">ID #{reviewQC.location_id}</span></div>
               <div className="flex justify-between"><span>Counted by</span><span className="font-semibold text-gray-700">User #{reviewQC.counted_by}</span></div>
               <div className="flex justify-between"><span>Submitted</span><span className="font-semibold text-gray-700">{submittedDate}</span></div>
@@ -251,7 +251,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               <h3 className="text-[17px] font-bold text-gray-900 mb-2">
                 {qcConfirm === 'approve' ? 'Approve this quick count?' : 'Reject this quick count?'}
               </h3>
-              <p className="text-[13px] text-gray-500 mb-5">
+              <p className="text-[var(--fs-base)] text-gray-500 mb-5">
                 {qcConfirm === 'approve'
                   ? `This will set ${productName} to ${reviewQC.counted_qty} ${uom} in Odoo.`
                   : 'This quick count will be discarded.'}
@@ -290,19 +290,19 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
           <div className="flex items-center justify-between mb-1">
             <button onClick={() => { setReviewSession(null); setReviewProducts([]); setReviewEntries([]); setErrorMsg(null); }}
-              className="flex items-center gap-1 text-green-700 text-[13px] font-semibold active:opacity-70">
+              className="flex items-center gap-1 text-green-700 text-[var(--fs-base)] font-semibold active:opacity-70">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
               Back to list
             </button>
           </div>
           <h1 className="text-[18px] font-bold text-gray-900">{reviewSession.template_name || `Session #${reviewSession.id}`}</h1>
-          <p className="text-[12px] text-gray-500 mt-0.5">
+          <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
             {reviewSession.scheduled_date} {'\u00B7'} {reviewSession.location_name || ''} {'\u00B7'} Counted by user #{reviewSession.assigned_user_id}
           </p>
         </div>
 
         {errorMsg && (
-          <div className="mx-4 mt-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[12px] font-semibold">{errorMsg}</div>
+          <div className="mx-4 mt-3 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-[var(--fs-sm)] font-semibold">{errorMsg}</div>
         )}
 
         {reviewLoading ? <Spinner /> : (
@@ -310,8 +310,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
             <div className="px-4 pt-4">
               <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[13px] font-bold text-gray-900">Count summary</span>
-                  <span className="text-[12px] font-mono text-gray-500">{countedProducts.length}/{reviewProducts.length}</span>
+                  <span className="text-[var(--fs-base)] font-bold text-gray-900">Count summary</span>
+                  <span className="text-[var(--fs-sm)] font-mono text-gray-500">{countedProducts.length}/{reviewProducts.length}</span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
                   <div className={`h-full rounded-full ${countedProducts.length === reviewProducts.length ? 'bg-green-500' : 'bg-amber-500'}`}
@@ -320,11 +320,11 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                 <div className="flex gap-3">
                   <div className="flex-1 bg-green-50 rounded-xl p-3 text-center">
                     <div className="text-[20px] font-bold text-green-700 font-mono">{countedProducts.length}</div>
-                    <div className="text-[11px] text-green-600 font-semibold">Counted</div>
+                    <div className="text-[var(--fs-xs)] text-green-600 font-semibold">Counted</div>
                   </div>
                   <div className="flex-1 bg-amber-50 rounded-xl p-3 text-center">
                     <div className="text-[20px] font-bold text-amber-700 font-mono">{uncountedProducts.length}</div>
-                    <div className="text-[11px] text-amber-600 font-semibold">Uncounted</div>
+                    <div className="text-[var(--fs-xs)] text-amber-600 font-semibold">Uncounted</div>
                   </div>
                 </div>
               </div>
@@ -332,7 +332,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
 
             <div className="flex-1 overflow-y-auto px-4 pb-36">
               {countedProducts.length > 0 && (<>
-                <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mt-2 mb-2">Counted items</p>
+                <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mt-2 mb-2">Counted items</p>
                 {countedProducts.map((p) => {
                   const val = entryMap[p.id]; const uom = p.uom_id?.[1] || 'Units';
                   const sysQty = reviewSystemQtys[p.id];
@@ -350,29 +350,29 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                         )}
                       </div>
                       <div className="min-w-0">
-                        <span className="text-[13px] text-gray-900 truncate block">{p.name}</span>
+                        <span className="text-[var(--fs-base)] text-gray-900 truncate block">{p.name}</span>
                         {hasSysQty && (
-                          <span className={`text-[11px] ${isVariance ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+                          <span className={`text-[var(--fs-xs)] ${isVariance ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
                             System: {sysQty} {uom} {diff !== null && `(${diff > 0 ? '+' : ''}${diff})`}
                           </span>
                         )}
                       </div>
                     </div>
-                    <span className="text-[14px] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3">{val} <span className="text-[11px] text-gray-400 font-normal">{uom}</span></span>
+                    <span className="text-[14px] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3">{val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></span>
                   </div>);
                 })}
               </>)}
 
               {uncountedProducts.length > 0 && (<>
-                <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mt-4 mb-2">Not counted</p>
+                <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mt-4 mb-2">Not counted</p>
                 {uncountedProducts.map((p) => {
                   const uom = p.uom_id?.[1] || 'Units';
                   return (<div key={p.id} className="flex items-center justify-between py-2.5 border-b border-gray-100 opacity-50">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0"><span className="text-gray-400 text-[10px] font-bold">--</span></div>
-                      <span className="text-[13px] text-gray-500 truncate">{p.name}</span>
+                      <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0"><span className="text-gray-400 text-[var(--fs-xs)] font-bold">--</span></div>
+                      <span className="text-[var(--fs-base)] text-gray-500 truncate">{p.name}</span>
                     </div>
-                    <span className="text-[12px] text-gray-400 flex-shrink-0 ml-3">-- {uom}</span>
+                    <span className="text-[var(--fs-sm)] text-gray-400 flex-shrink-0 ml-3">-- {uom}</span>
                   </div>);
                 })}
               </>)}
@@ -391,7 +391,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               <div className="fixed inset-0 z-[60] bg-black/50 flex items-end justify-center">
                 <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8">
                   <h3 className="text-[17px] font-bold text-gray-900 mb-2">{showConfirm === 'approve' ? 'Approve this count?' : 'Reject this count?'}</h3>
-                  <p className="text-[13px] text-gray-500 mb-5">
+                  <p className="text-[var(--fs-base)] text-gray-500 mb-5">
                     {showConfirm === 'approve' ? `This will accept ${countedProducts.length} counted items and update inventory in Odoo.` : 'The staff member will be notified and can recount.'}
                   </p>
                   <div className="flex gap-3">
@@ -416,12 +416,12 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       <div className="px-4 pt-3 pb-1">
         <div className="flex bg-gray-100 rounded-xl p-1">
           <button onClick={() => setTab('sessions')}
-            className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold text-center transition-all ${tab === 'sessions' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
-            Sessions {pendingSessions > 0 && <span className="ml-1 text-[11px] bg-red-500 text-white px-1.5 py-0.5 rounded-full">{pendingSessions}</span>}
+            className={`flex-1 py-2.5 rounded-lg text-[var(--fs-base)] font-semibold text-center transition-all ${tab === 'sessions' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+            Sessions {pendingSessions > 0 && <span className="ml-1 text-[var(--fs-xs)] bg-red-500 text-white px-1.5 py-0.5 rounded-full">{pendingSessions}</span>}
           </button>
           <button onClick={() => setTab('quick')}
-            className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold text-center transition-all ${tab === 'quick' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
-            Quick counts {pendingQC > 0 && <span className="ml-1 text-[11px] bg-red-500 text-white px-1.5 py-0.5 rounded-full">{pendingQC}</span>}
+            className={`flex-1 py-2.5 rounded-lg text-[var(--fs-base)] font-semibold text-center transition-all ${tab === 'quick' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+            Quick counts {pendingQC > 0 && <span className="ml-1 text-[var(--fs-xs)] bg-red-500 text-white px-1.5 py-0.5 rounded-full">{pendingQC}</span>}
           </button>
         </div>
       </div>
@@ -451,22 +451,22 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                 {sessions.map((sess: any) => (
                   <div key={sess.id} className="bg-white border border-gray-200 rounded-2xl p-4">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[15px] font-bold text-gray-900">{sess.template_name || `Session #${sess.id}`}</span>
+                      <span className="text-[var(--fs-lg)] font-bold text-gray-900">{sess.template_name || `Session #${sess.id}`}</span>
                       <StatusBadge status={sess.status} />
                     </div>
-                    <div className="text-[12px] text-gray-500 mb-3">{sess.scheduled_date} {sess.location_name && `\u00B7 ${sess.location_name}`}</div>
+                    <div className="text-[var(--fs-sm)] text-gray-500 mb-3">{sess.scheduled_date} {sess.location_name && `\u00B7 ${sess.location_name}`}</div>
                     {sess.status === 'submitted' ? (
-                      <button onClick={() => openReview(sess)} className="w-full py-2.5 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700 shadow-sm">Review</button>
+                      <button onClick={() => openReview(sess)} className="w-full py-2.5 rounded-xl bg-green-600 text-white text-[var(--fs-base)] font-bold active:bg-green-700 shadow-sm">Review</button>
                     ) : sess.status === 'rejected' ? (
                       <div className="flex gap-2">
-                        <button onClick={() => openReview(sess)} className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[13px] font-semibold active:bg-gray-200">View</button>
+                        <button onClick={() => openReview(sess)} className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[var(--fs-base)] font-semibold active:bg-gray-200">View</button>
                         <button onClick={() => handleRecount(sess.id)} disabled={actionLoading === sess.id}
-                          className="flex-1 py-2.5 rounded-xl border border-amber-300 text-amber-700 text-[13px] font-bold active:bg-amber-50 disabled:opacity-50">
+                          className="flex-1 py-2.5 rounded-xl border border-amber-300 text-amber-700 text-[var(--fs-base)] font-bold active:bg-amber-50 disabled:opacity-50">
                           {actionLoading === sess.id ? '...' : 'Recount'}
                         </button>
                       </div>
                     ) : (
-                      <button onClick={() => openReview(sess)} className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[13px] font-semibold active:bg-gray-200">View details</button>
+                      <button onClick={() => openReview(sess)} className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[var(--fs-base)] font-semibold active:bg-gray-200">View details</button>
                     )}
                   </div>
                 ))}
@@ -482,18 +482,18 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                 {quickCounts.map((qc: any) => (
                   <div key={qc.id} className="bg-white border border-gray-200 rounded-2xl p-4">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[14px] font-bold text-gray-900">Product #{qc.product_id}</span>
+                      <span className="text-[var(--fs-lg)] font-bold text-gray-900">Product #{qc.product_id}</span>
                       <StatusBadge status={qc.status} />
                     </div>
-                    <div className="flex items-center gap-3 text-[13px] text-gray-500 mb-3">
+                    <div className="flex items-center gap-3 text-[var(--fs-base)] text-gray-500 mb-3">
                       <span className="font-mono font-semibold text-gray-900">{qc.counted_qty} {qc.uom}</span>
                       <span>by user #{qc.counted_by}</span>
                       <span>{new Date(qc.submitted_at).toLocaleDateString('de-DE')}</span>
                     </div>
                     {qc.status === 'pending' ? (
-                      <button onClick={() => openQCReview(qc)} className="w-full py-2.5 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700 shadow-sm">Review</button>
+                      <button onClick={() => openQCReview(qc)} className="w-full py-2.5 rounded-xl bg-green-600 text-white text-[var(--fs-base)] font-bold active:bg-green-700 shadow-sm">Review</button>
                     ) : (
-                      <button onClick={() => openQCReview(qc)} className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[13px] font-semibold active:bg-gray-200">View details</button>
+                      <button onClick={() => openQCReview(qc)} className="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[var(--fs-base)] font-semibold active:bg-gray-200">View details</button>
                     )}
                   </div>
                 ))}

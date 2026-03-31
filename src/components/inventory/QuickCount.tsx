@@ -135,7 +135,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       {/* Counted badge */}
       {countedN > 0 && (
         <div className="px-4 pb-2">
-          <span className="text-[12px] font-semibold text-green-700">{countedN} product{countedN !== 1 ? 's' : ''} counted</span>
+          <span className="text-[var(--fs-sm)] font-semibold text-green-700">{countedN} product{countedN !== 1 ? 's' : ''} counted</span>
         </div>
       )}
 
@@ -143,7 +143,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       <div className="flex-1 overflow-y-auto px-4 pb-24">
         {submitted && (
           <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-center">
-            <span className="text-[13px] font-semibold text-green-700">Quick counts submitted for review</span>
+            <span className="text-[var(--fs-base)] font-semibold text-green-700">Quick counts submitted for review</span>
           </div>
         )}
         {filtered.length === 0 ? (
@@ -157,8 +157,8 @@ export default function QuickCount({ userRole }: QuickCountProps) {
               return (
                 <div key={p.id} className="flex items-center gap-3 py-3 border-b border-gray-100">
                   <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-semibold text-gray-900 truncate">{p.name}</div>
-                    <div className="text-[11px] text-gray-400 mt-0.5">{catName}</div>
+                    <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{catName}</div>
                   </div>
                   <Stepper value={val} uom={uom}
                     onMinus={() => stepQty(p.id, -1)}
@@ -175,7 +175,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       {countedN > 0 && (
         <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
           <button onClick={handleSubmit} disabled={submitting}
-            className="w-full py-4 rounded-xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
+            className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
             {submitting ? 'Submitting...' : `Submit ${countedN} quick count${countedN !== 1 ? 's' : ''}`}
           </button>
         </div>

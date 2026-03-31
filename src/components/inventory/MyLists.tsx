@@ -58,14 +58,14 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
       <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
         <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
         <div className="flex items-center gap-3 relative">
-          <button onClick={onHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
+          <button onClick={onHome} className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
           </button>
           <div className="flex-1">
             <h1 className="text-[20px] font-bold text-white">
               {userRole === 'admin' ? 'All Inventory' : 'My Counts'}
             </h1>
-            <p className="text-[12px] text-white/50 mt-0.5">
+            <p className="text-[var(--fs-sm)] text-white/50 mt-0.5">
               {userRole === 'admin' ? 'All counting sessions' : 'Your assigned counting lists'}
             </p>
           </div>
@@ -105,15 +105,15 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
               <button key={sess.id} onClick={() => onOpenSession(sess.id)}
                 className="bg-white border border-gray-200 rounded-2xl p-4 text-left active:scale-[0.98] transition-all">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] text-gray-400 font-mono">{sess.scheduled_date}</span>
+                  <span className="text-[var(--fs-xs)] text-gray-400 font-mono">{sess.scheduled_date}</span>
                   <StatusBadge status={sess.status} />
                 </div>
-                <div className="text-[15px] font-bold text-gray-900 leading-tight">
+                <div className="text-[var(--fs-lg)] font-bold text-gray-900 leading-tight">
                   {sess.template_name || `Session #${sess.id}`}
                 </div>
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
                   {sess.location_name && (
-                    <span className="text-[11px] px-2 py-0.5 rounded-md bg-green-50 text-green-700 font-semibold">
+                    <span className="text-[var(--fs-xs)] px-2 py-0.5 rounded-md bg-green-50 text-green-700 font-semibold">
                       {sess.location_name}
                     </span>
                   )}

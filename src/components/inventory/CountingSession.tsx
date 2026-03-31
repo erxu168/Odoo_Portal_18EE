@@ -194,20 +194,20 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
           <div className="flex items-center justify-between mb-1">
-            <button onClick={() => setView('counting')} className="flex items-center gap-1 text-green-700 text-[13px] font-semibold active:opacity-70">
+            <button onClick={() => setView('counting')} className="flex items-center gap-1 text-green-700 text-[var(--fs-base)] font-semibold active:opacity-70">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
               Edit counts
             </button>
           </div>
           <h1 className="text-[18px] font-bold text-gray-900">Review count</h1>
-          <p className="text-[12px] text-gray-500 mt-0.5">{session?.template_name} {'\u00B7'} {session?.scheduled_date}</p>
+          <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">{session?.template_name} {'\u00B7'} {session?.scheduled_date}</p>
         </div>
 
         <div className="px-4 pt-4">
           <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[13px] font-bold text-gray-900">Count summary</span>
-              <span className="text-[12px] font-mono text-gray-500">{countedCount}/{totalCount}</span>
+              <span className="text-[var(--fs-base)] font-bold text-gray-900">Count summary</span>
+              <span className="text-[var(--fs-sm)] font-mono text-gray-500">{countedCount}/{totalCount}</span>
             </div>
             <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
               <div className={`h-full rounded-full transition-all ${countedCount === totalCount ? 'bg-green-500' : 'bg-amber-500'}`}
@@ -216,11 +216,11 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             <div className="flex gap-3">
               <div className="flex-1 bg-green-50 rounded-xl p-3 text-center">
                 <div className="text-[20px] font-bold text-green-700 font-mono">{countedCount}</div>
-                <div className="text-[11px] text-green-600 font-semibold">Counted</div>
+                <div className="text-[var(--fs-xs)] text-green-600 font-semibold">Counted</div>
               </div>
               <div className="flex-1 bg-amber-50 rounded-xl p-3 text-center">
                 <div className="text-[20px] font-bold text-amber-700 font-mono">{uncountedProducts.length}</div>
-                <div className="text-[11px] text-amber-600 font-semibold">Uncounted</div>
+                <div className="text-[var(--fs-xs)] text-amber-600 font-semibold">Uncounted</div>
               </div>
             </div>
           </div>
@@ -230,10 +230,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               <div className="flex items-start gap-2.5">
                 <span className="text-amber-600 text-[16px] mt-0.5">{<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>}</span>
                 <div>
-                  <p className="text-[13px] font-semibold text-amber-800">
+                  <p className="text-[var(--fs-base)] font-semibold text-amber-800">
                     {uncountedProducts.length} item{uncountedProducts.length > 1 ? 's' : ''} not counted
                   </p>
-                  <p className="text-[11px] text-amber-700 mt-0.5">
+                  <p className="text-[var(--fs-xs)] text-amber-700 mt-0.5">
                     Uncounted items will be submitted as not counted. You can go back and count them.
                   </p>
                 </div>
@@ -243,14 +243,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
           {submitError && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3.5 mb-3">
-              <p className="text-[13px] font-semibold text-red-700">{submitError}</p>
+              <p className="text-[var(--fs-base)] font-semibold text-red-700">{submitError}</p>
             </div>
           )}
 
           {/* Proof photo capture */}
           {canSubmit && (
             <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
-              <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mb-2">Proof photo</p>
+              <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mb-2">Proof photo</p>
               
               {proofPhoto ? (
                 <div className="relative">
@@ -265,10 +265,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   onFile={(file, dataUrl) => handlePhotoCapture({ target: { files: [file] } } as any)}
                   accept="image/*"
                   label="Take a photo of the shelf"
-                  className="w-full py-4 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 text-[13px] font-semibold flex items-center justify-center gap-2 active:bg-gray-50"
+                  className="w-full py-4 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 text-[var(--fs-base)] font-semibold flex items-center justify-center gap-2 active:bg-gray-50"
                 />
               )}
-              <p className="text-[11px] text-gray-400 mt-2">Photo proof is required for submission.</p>
+              <p className="text-[var(--fs-xs)] text-gray-400 mt-2">Photo proof is required for submission.</p>
             </div>
           )}
         </div>
@@ -276,7 +276,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         <div className="flex-1 overflow-y-auto px-4 pb-36">
           {countedProducts.length > 0 && (
             <>
-              <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mt-2 mb-2">Counted items</p>
+              <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mt-2 mb-2">Counted items</p>
               {countedProducts.map((p) => {
                 const val = entries[p.id];
                 const uom = p.uom_id?.[1] || 'Units';
@@ -286,10 +286,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                       <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                       </div>
-                      <span className="text-[13px] text-gray-900 truncate">{p.name}</span>
+                      <span className="text-[var(--fs-base)] text-gray-900 truncate">{p.name}</span>
                     </div>
                     <span className="text-[14px] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3">
-                      {val} <span className="text-[11px] text-gray-400 font-normal">{uom}</span>
+                      {val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span>
                     </span>
                   </div>
                 );
@@ -299,18 +299,18 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
           {uncountedProducts.length > 0 && (
             <>
-              <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mt-4 mb-2">Not counted</p>
+              <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mt-4 mb-2">Not counted</p>
               {uncountedProducts.map((p) => {
                 const uom = p.uom_id?.[1] || 'Units';
                 return (
                   <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-gray-100 opacity-50">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-                        <span className="text-gray-400 text-[10px] font-bold">--</span>
+                        <span className="text-gray-400 text-[var(--fs-xs)] font-bold">--</span>
                       </div>
-                      <span className="text-[13px] text-gray-500 truncate">{p.name}</span>
+                      <span className="text-[var(--fs-base)] text-gray-500 truncate">{p.name}</span>
                     </div>
-                    <span className="text-[12px] text-gray-400 flex-shrink-0 ml-3">-- {uom}</span>
+                    <span className="text-[var(--fs-sm)] text-gray-400 flex-shrink-0 ml-3">-- {uom}</span>
                   </div>
                 );
               })}
@@ -321,7 +321,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         {canSubmit && (
           <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
             <button onClick={() => setShowConfirm(true)} disabled={submitting || countedCount === 0}
-              className="w-full py-4 rounded-xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
+              className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
               Submit for approval
             </button>
           </div>
@@ -331,11 +331,11 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           <div className="fixed inset-0 z-[60] bg-black/50 flex items-end justify-center">
             <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8">
               <h3 className="text-[17px] font-bold text-gray-900 mb-2">Submit this count?</h3>
-              <p className="text-[13px] text-gray-500 mb-1">
+              <p className="text-[var(--fs-base)] text-gray-500 mb-1">
                 {countedCount} of {totalCount} items counted.
                 {uncountedProducts.length > 0 && ` ${uncountedProducts.length} item${uncountedProducts.length > 1 ? 's' : ''} will be marked as not counted.`}
               </p>
-              <p className="text-[13px] text-gray-500 mb-5">
+              <p className="text-[var(--fs-base)] text-gray-500 mb-5">
                 You will not be able to edit after submitting. A manager will review your count.
               </p>
               <div className="flex gap-3">
@@ -395,8 +395,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               return (
                 <div key={p.id} className="flex items-center gap-3 py-3 border-b border-gray-100">
                   <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-semibold text-gray-900 truncate">{p.name}</div>
-                    <div className="text-[11px] text-gray-400 mt-0.5">{catName} {uom !== 'Units' ? `\u00B7 ${uom}` : ''}</div>
+                    <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{catName} {uom !== 'Units' ? `\u00B7 ${uom}` : ''}</div>
                   </div>
                   {!isReadOnly ? (
                     <Stepper value={val} uom={uom}
@@ -405,7 +405,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                       onTap={() => openNumpad(p)} />
                   ) : (
                     <div className="text-[15px] font-mono font-semibold text-gray-700">
-                      {val !== null ? val : '--'} <span className="text-[11px] text-gray-400">{uom}</span>
+                      {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
                     </div>
                   )}
                 </div>
@@ -418,7 +418,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       {canSubmit && countedCount > 0 && (
         <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-white border-t border-gray-200 z-40">
           <button onClick={() => setView('review')}
-            className="w-full py-4 rounded-xl bg-green-600 text-white text-[15px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">
+            className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">
             Review count ({countedCount}/{totalCount})
           </button>
         </div>
@@ -426,7 +426,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       {isReadOnly && (
         <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto px-4 py-3 bg-gray-100 border-t border-gray-200 z-40">
-          <p className="text-center text-[13px] text-gray-500 font-semibold">
+          <p className="text-center text-[var(--fs-base)] text-gray-500 font-semibold">
             {session?.status === 'submitted' ? 'Submitted \u2014 awaiting review' : session?.status === 'approved' ? 'Approved' : 'Rejected'}
           </p>
         </div>

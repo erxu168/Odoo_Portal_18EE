@@ -15,7 +15,7 @@ export function FilterBar({ children }: { children: React.ReactNode }) {
 export function FilterPill({ active, label, count, onClick }: { active: boolean; label: string; count?: number; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className={`px-3.5 py-2 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all ${
+      className={`px-3.5 py-2 rounded-full text-[var(--fs-sm)] font-semibold whitespace-nowrap transition-all ${
         active ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
       }`}>
       {label}{count !== undefined ? ` (${count})` : ''}
@@ -49,7 +49,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export function StatusBadge({ status, label }: { status: string; label?: string }) {
   return (
-    <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold whitespace-nowrap ${STATUS_STYLES[status] || 'bg-gray-100 text-gray-700'}`}>
+    <span className={`text-[var(--fs-xs)] px-2 py-0.5 rounded-md font-bold whitespace-nowrap ${STATUS_STYLES[status] || 'bg-gray-100 text-gray-700'}`}>
       {label || STATUS_LABELS[status] || status}
     </span>
   );
@@ -66,18 +66,18 @@ export function Stepper({
   return (
     <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden h-11 flex-shrink-0">
       <button onClick={(e) => { e.stopPropagation(); onMinus(); }}
-        className="w-11 h-11 flex items-center justify-center text-gray-600 text-lg active:bg-gray-100 border-r border-gray-200 select-none">
+        className="w-11 h-11 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-r border-gray-200 select-none">
         &minus;
       </button>
       <button onClick={(e) => { e.stopPropagation(); onTap(); }}
         className="min-w-[56px] h-11 flex flex-col items-center justify-center px-1 active:bg-gray-50">
-        <span className={`font-mono text-[15px] font-semibold leading-tight ${hasVal ? 'text-gray-900' : 'text-gray-300'}`}>
+        <span className={`font-mono text-[var(--fs-lg)] font-semibold leading-tight ${hasVal ? 'text-gray-900' : 'text-gray-300'}`}>
           {hasVal ? value : '--'}
         </span>
         <span className="text-[9px] text-gray-400 leading-tight">{uom}</span>
       </button>
       <button onClick={(e) => { e.stopPropagation(); onPlus(); }}
-        className="w-11 h-11 flex items-center justify-center text-gray-600 text-lg active:bg-gray-100 border-l border-gray-200 select-none font-semibold">
+        className="w-11 h-11 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-l border-gray-200 select-none font-semibold">
         +
       </button>
     </div>
@@ -92,7 +92,7 @@ export function CountProgress({ counted, total }: { counted: number; total: numb
       <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
         <div className="h-full bg-green-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[11px] font-mono text-gray-400">{counted}/{total}</span>
+      <span className="text-[var(--fs-xs)] font-mono text-gray-400">{counted}/{total}</span>
     </div>
   );
 }
@@ -108,7 +108,7 @@ export function SearchBar({ value, onChange, placeholder }: { value: string; onC
         </svg>
         <input type="text" value={value} onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || 'Search...'}
-          className="flex-1 bg-transparent outline-none text-[14px] text-gray-900 placeholder-gray-400" />
+          className="flex-1 bg-transparent outline-none text-[var(--fs-base)] text-gray-900 placeholder-gray-400" />
         {value && (
           <button onClick={() => onChange('')} className="text-gray-400 active:text-gray-600">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -126,14 +126,14 @@ export function BackHeader({ onBack, title, subtitle, right }: {
   return (
     <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
       <div className="flex items-center justify-between mb-1">
-        <button onClick={onBack} className="flex items-center gap-1 text-green-700 text-[13px] font-semibold active:opacity-70">
+        <button onClick={onBack} className="flex items-center gap-1 text-green-700 text-[var(--fs-base)] font-semibold active:opacity-70">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
           Back
         </button>
         {right}
       </div>
       <h1 className="text-[18px] font-bold text-gray-900">{title}</h1>
-      {subtitle && <p className="text-[12px] text-gray-500 mt-0.5">{subtitle}</p>}
+      {subtitle && <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">{subtitle}</p>}
     </div>
   );
 }
@@ -152,13 +152,13 @@ export function EmptyState({ icon, title, body }: { icon?: React.ReactNode; titl
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center px-6">
       {icon && <div className="text-4xl mb-3">{icon}</div>}
-      <p className="text-[15px] font-semibold text-gray-900 mb-1">{title}</p>
-      {body && <p className="text-[13px] text-gray-500 max-w-[220px] leading-relaxed">{body}</p>}
+      <p className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">{title}</p>
+      {body && <p className="text-[var(--fs-base)] text-gray-500 max-w-[220px] leading-relaxed">{body}</p>}
     </div>
   );
 }
 
 // --- Section Title ---
 export function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase px-5 pt-4 pb-2">{children}</h2>;
+  return <h2 className="text-[var(--fs-xs)] font-semibold text-gray-400 tracking-widest uppercase px-5 pt-4 pb-2">{children}</h2>;
 }

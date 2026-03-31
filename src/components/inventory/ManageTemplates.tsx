@@ -149,19 +149,19 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
                 <button key={tpl.id} onClick={() => setEditing(tpl)}
                   className="bg-white border border-gray-200 rounded-2xl p-4 text-left active:scale-[0.98] transition-all">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[15px] font-bold text-gray-900">{tpl.name}</span>
-                    <span className={`text-[11px] px-2 py-0.5 rounded-md font-semibold ${tpl.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className="text-[var(--fs-lg)] font-bold text-gray-900">{tpl.name}</span>
+                    <span className={`text-[var(--fs-xs)] px-2 py-0.5 rounded-md font-semibold ${tpl.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {tpl.active ? 'Active' : 'Inactive'}
                     </span>
                   </div>
-                  <div className="text-[12px] text-gray-500 mb-2">{locName(tpl.location_id)}</div>
+                  <div className="text-[var(--fs-sm)] text-gray-500 mb-2">{locName(tpl.location_id)}</div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <StatusBadge status={tpl.frequency} />
                     {tpl.assign_type && (
                       <StatusBadge status={tpl.assign_type} label={`${tpl.assign_type}: ${assignLabel(tpl)}`} />
                     )}
                     {catCount > 0 && (
-                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 font-semibold">
+                      <span className="text-[var(--fs-xs)] px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 font-semibold">
                         {catCount} categories
                       </span>
                     )}
