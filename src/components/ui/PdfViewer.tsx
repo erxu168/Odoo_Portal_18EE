@@ -54,11 +54,11 @@ export default function PdfViewer({
 
   // Zoom ref to avoid stale closures in pinch handlers
   const zoomRef = useRef(1.0);
-  function updateZoom(newZoom: number) {
+  const updateZoom = useCallback((newZoom: number) => {
     const clamped = Math.max(0.5, Math.min(5.0, newZoom));
     zoomRef.current = clamped;
     setZoom(clamped);
-  }
+  }, []);
 
   // Pinch state
   const pinchRef = useRef({ active: false, initialDist: 0, initialZoom: 1.0 });
@@ -258,7 +258,7 @@ export default function PdfViewer({
       </div>
 
       {/* Reset zoom button — only visible when zoomed */}
-      {zoom !== 1.0 && (
+      {Math.round(zoom * 100) !== 100 && (
         <div className="flex-shrink-0 flex justify-center py-1">
           <button onClick={() => updateZoom(1.0)}
             className="px-3 py-1 rounded-full bg-white/10 text-white/60 text-[11px] font-mono active:bg-white/20 transition-colors">
