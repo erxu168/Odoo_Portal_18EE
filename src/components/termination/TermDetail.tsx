@@ -278,7 +278,26 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     });
   }
 
-  async function handleArchive() {
+  async function handleScheduleArchive() {
+    setShowArchiveConfirm(false);
+    setArchiveLoading(true);
+    try {
+      const res = await fetch(`/api/termination/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ archive_scheduled: true }),
+      });
+      const json = await res.json();
+      if (json.ok) setRec(json.data);
+      else alert(json.error);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setArchiveLoading(false);
+    }
+  }
+
+  async function handleArchiveNow() {
     setShowArchiveConfirm(false);
     setArchiveLoading(true);
     try {
@@ -563,11 +582,23 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </div>
           )}
 
-          {/* Archive employee — only when delivered and last working day has passed */}
+          {/* Archive employee — delivered state */}
+          {rec.state === 'delivered' && !rec.archive_scheduled && !lastWorkingDayPassed && (
+            <button onClick={() => setShowArchiveConfirm(true)} disabled={archiveLoading}
+              className="w-full py-3.5 rounded-xl bg-gray-700 text-white font-semibold text-[14px] active:bg-gray-800 disabled:opacity-50">
+              {archiveLoading ? 'Scheduling...' : 'Archive employee'}
+            </button>
+          )}
+          {rec.state === 'delivered' && rec.archive_scheduled && !lastWorkingDayPassed && (
+            <div className="w-full py-3.5 rounded-xl bg-gray-100 border border-gray-200 text-center">
+              <span className="text-[13px] text-gray-500 font-medium">Archiving scheduled for </span>
+              <span className="text-[13px] text-gray-900 font-bold">{fmt(rec.last_working_day)}</span>
+            </div>
+          )}
           {rec.state === 'delivered' && lastWorkingDayPassed && (
             <button onClick={() => setShowArchiveConfirm(true)} disabled={archiveLoading}
               className="w-full py-3.5 rounded-xl bg-gray-700 text-white font-semibold text-[14px] active:bg-gray-800 disabled:opacity-50">
-              {archiveLoading ? 'Archiving...' : 'Archive employee'}
+              {archiveLoading ? 'Archiving...' : 'Archive employee now'}
             </button>
           )}
 
@@ -592,14 +623,25 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       </div>
 
       {/* Archive confirmation dialog */}
-      {showArchiveConfirm && (
+      {showArchiveConfirm && !lastWorkingDayPassed && (
+        <ConfirmDialog
+          title="Schedule archiving?"
+          message={`${rec.employee_name} will be archived after their last working day (${fmt(rec.last_working_day)}). The employee will be deactivated in the system on that date.`}
+          confirmLabel="Schedule archiving"
+          cancelLabel="Cancel"
+          variant="primary"
+          onConfirm={handleScheduleArchive}
+          onCancel={() => setShowArchiveConfirm(false)}
+        />
+      )}
+      {showArchiveConfirm && lastWorkingDayPassed && (
         <ConfirmDialog
           title="Archive employee?"
           message={`This will permanently deactivate ${rec.employee_name} in the system. The employee will no longer appear in active lists. This action cannot be undone from the portal.`}
           confirmLabel="Archive employee"
           cancelLabel="Cancel"
           variant="danger"
-          onConfirm={handleArchive}
+          onConfirm={handleArchiveNow}
           onCancel={() => setShowArchiveConfirm(false)}
         />
       )}
