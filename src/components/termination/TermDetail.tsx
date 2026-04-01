@@ -4,9 +4,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import type { TerminationRecord, DeliveryMethod } from '@/types/termination';
 import { TERMINATION_TYPE_LABELS, STATE_LABELS, DELIVERY_METHOD_LABELS } from '@/types/termination';
 import DeliveryForm from './DeliveryForm';
-import PdfViewer from '@/components/ui/PdfViewer';
 import DocumentUploadWidget from '@/components/ui/DocumentUploadWidget';
-import FilePicker from '@/components/ui/FilePicker';
+import KuendigungDocWidget from './KuendigungDocWidget';
 
 
 /**
@@ -60,11 +59,9 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [editingTracking, setEditingTracking] = useState(false);
   const [trackingDraft, setTrackingDraft] = useState('');
   const [savingTracking, setSavingTracking] = useState(false);
-  const [showPdf, setShowPdf] = useState(false);
-  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
-  const [uploadLoading, setUploadLoading] = useState(false);
   const [stageLoading, setStageLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [plzCopied, setPlzCopied] = useState(false);
 
   const fetchRecord = useCallback(async () => {
     try {
@@ -123,14 +120,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     try {
       const res = await fetch(`/api/termination/${id}/pdf`, { method: 'POST' });
       if (res.ok) {
-        const blob = await res.blob();
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          setPdfBase64(base64);
-          setShowPdf(true);
-        };
-        reader.readAsDataURL(blob);
         await fetchRecord();
       } else {
         const json = await res.json();
@@ -140,70 +129,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       alert(err instanceof Error ? err.message : 'Error');
     } finally {
       setPdfLoading(false);
-    }
-  }
-
-  async function handleUploadSigned(_file: File, dataUrl: string) {
-    setUploadLoading(true);
-    try {
-      const res = await fetch(`/api/termination/${id}/upload-signed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_base64: dataUrl,
-          filename: `Kuendigung_unterschrieben_${rec?.employee_name?.replace(/\s+/g, '_') || id}.pdf`,
-        }),
-      });
-      const json = await res.json();
-      if (json.ok) {
-        await fetchRecord();
-      } else {
-        alert(json.error || 'Upload failed');
-      }
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setUploadLoading(false);
-    }
-  }
-
-  async function handleViewPdf() {
-    try {
-      const res = await fetch(`/api/termination/${id}/pdf`);
-      if (res.ok) {
-        const blob = await res.blob();
-        const reader = new FileReader();
-        reader.onload = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          setPdfBase64(base64);
-          setShowPdf(true);
-        };
-        reader.readAsDataURL(blob);
-      } else {
-        alert('No PDF available');
-      }
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Error');
-    }
-  }
-
-  async function handlePrintPdf() {
-    try {
-      const res = await fetch(`/api/termination/${id}/pdf`);
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const printWindow = window.open(url, '_blank');
-        if (printWindow) {
-          printWindow.addEventListener('load', () => {
-            setTimeout(() => printWindow.print(), 500);
-          });
-        }
-      } else {
-        alert('No PDF available');
-      }
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Error');
     }
   }
 
@@ -342,12 +267,21 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     }
   }
 
+  function handleCopyPlz() {
+    if (!rec?.employee_zip) return;
+    navigator.clipboard.writeText(rec.employee_zip).then(() => {
+      setPlzCopied(true);
+      setTimeout(() => setPlzCopied(false), 1500);
+    });
+  }
+
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full" /></div>;
   if (error || !rec) return <div className="px-5 pt-12"><p className="text-red-600">{error || 'Not found'}</p></div>;
 
   const stepIdx = STEPS.indexOf(rec.state);
   const canCancel = ['draft', 'confirmed', 'signed'].includes(rec.state);
+
   const fmt = (d: string | false) => {
     if (!d) return '\u2013';
     const [y, m, day] = d.split('-');
@@ -513,6 +447,27 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
                 onDelete={handleDeleteProof}
               />
             </div>
+
+            {/* PLZ for courier website lookup */}
+            {rec.employee_zip && (
+              <div className="mt-2 pt-2 border-t border-gray-100">
+                <button
+                  onClick={handleCopyPlz}
+                  className="flex items-center gap-2 py-1.5 px-2 -mx-2 rounded-lg active:bg-gray-50 transition-colors"
+                >
+                  <span className="text-[12px] text-gray-400 font-medium">PLZ:</span>
+                  <span className="text-[13px] text-gray-900 font-bold font-mono tracking-wide">{rec.employee_zip}</span>
+                  {plzCopied ? (
+                    <span className="text-[11px] text-green-600 font-semibold">Copied!</span>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -540,59 +495,16 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </button>
           )}
 
-          {/* View + Print PDF row */}
-          {rec.pdf_attachment_id && (
-            <div className="flex gap-2">
-              <button onClick={handleViewPdf}
-                className="flex-1 py-3.5 rounded-xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                View PDF
-              </button>
-              <button onClick={handlePrintPdf}
-                className="flex-1 py-3.5 rounded-xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                Print
-              </button>
-            </div>
-          )}
-
-          {/* Signed document upload — compact row when uploaded, slot when empty */}
-          {rec.pdf_attachment_id && !['draft', 'cancelled'].includes(rec.state) && (
-            <div className="bg-white rounded-2xl p-4 shadow-sm">
-              {rec.signed_pdf_attachment_id ? (
-                <div className="flex items-center gap-3">
-                  <button onClick={handleViewPdf} className="flex-shrink-0 w-12 h-12 rounded-xl bg-green-50 border border-green-200 flex items-center justify-center active:bg-green-100">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
-                  </button>
-                  <div className="flex-1 min-w-0" onClick={handleViewPdf}>
-                    <div className="text-[var(--fs-sm)] font-semibold text-gray-900">Signed document</div>
-                    <div className="text-[11px] text-green-600 truncate">{rec.signed_pdf_attachment_id[1]}</div>
-                  </div>
-                  <FilePicker
-                    onFile={handleUploadSigned}
-                    accept="image/*,.pdf"
-                    label="Replace"
-                    icon=""
-                    loading={uploadLoading}
-                    variant="button"
-                    className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-[var(--fs-xs)] font-semibold active:bg-gray-200"
-                  />
-                </div>
-              ) : (
-                <>
-                  <span className="text-[var(--fs-sm)] font-semibold text-gray-900 block mb-2">Upload signed document</span>
-                  <FilePicker
-                    onFile={handleUploadSigned}
-                    accept="image/*,.pdf"
-                    label="Take photo or upload signed letter"
-                    icon={"\uD83D\uDCF7"}
-                    loading={uploadLoading}
-                    variant="slot"
-                    size="sm"
-                  />
-                </>
-              )}
-            </div>
+          {/* Kündigung document — unified View/Print/Upload-or-Replace */}
+          {(rec.pdf_attachment_id || rec.signed_pdf_attachment_id) && !['draft', 'cancelled'].includes(rec.state) && (
+            <KuendigungDocWidget
+              terminationId={id}
+              employeeName={rec.employee_name}
+              hasPdf={!!rec.pdf_attachment_id}
+              hasSignedPdf={!!rec.signed_pdf_attachment_id}
+              signedPdfName={Array.isArray(rec.signed_pdf_attachment_id) ? rec.signed_pdf_attachment_id[1] : undefined}
+              onRecordUpdate={(data) => setRec(data)}
+            />
           )}
 
           {/* Mark as signed */}
@@ -651,15 +563,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           )}
         </div>
       </div>
-
-      {/* PDF Viewer modal */}
-      {showPdf && pdfBase64 && (
-        <PdfViewer
-          fileData={pdfBase64}
-          fileName={`Termination_${rec.employee_name.replace(/\s+/g, '_')}.pdf`}
-          onClose={() => setShowPdf(false)}
-        />
-      )}
 
 
     </div>
