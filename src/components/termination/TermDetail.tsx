@@ -6,6 +6,7 @@ import { TERMINATION_TYPE_LABELS, STATE_LABELS, DELIVERY_METHOD_LABELS } from '@
 import DeliveryForm from './DeliveryForm';
 import DocumentUploadWidget from '@/components/ui/DocumentUploadWidget';
 import KuendigungDocWidget from './KuendigungDocWidget';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 
 /**
@@ -62,6 +63,8 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [stageLoading, setStageLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [plzCopied, setPlzCopied] = useState(false);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
 
   const fetchRecord = useCallback(async () => {
     try {
@@ -275,12 +278,28 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     });
   }
 
+  async function handleArchive() {
+    setShowArchiveConfirm(false);
+    setArchiveLoading(true);
+    try {
+      const res = await fetch(`/api/termination/${id}/archive`, { method: 'POST' });
+      const json = await res.json();
+      if (json.ok) setRec(json.data);
+      else alert(json.error);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setArchiveLoading(false);
+    }
+  }
+
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full" /></div>;
   if (error || !rec) return <div className="px-5 pt-12"><p className="text-red-600">{error || 'Not found'}</p></div>;
 
   const stepIdx = STEPS.indexOf(rec.state);
   const canCancel = ['draft', 'confirmed', 'signed'].includes(rec.state);
+  const lastWorkingDayPassed = rec.last_working_day ? rec.last_working_day <= new Date().toISOString().slice(0, 10) : false;
 
   const fmt = (d: string | false) => {
     if (!d) return '\u2013';
@@ -544,6 +563,14 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </div>
           )}
 
+          {/* Archive employee — only when delivered and last working day has passed */}
+          {rec.state === 'delivered' && lastWorkingDayPassed && (
+            <button onClick={() => setShowArchiveConfirm(true)} disabled={archiveLoading}
+              className="w-full py-3.5 rounded-xl bg-gray-700 text-white font-semibold text-[14px] active:bg-gray-800 disabled:opacity-50">
+              {archiveLoading ? 'Archiving...' : 'Archive employee'}
+            </button>
+          )}
+
           {/* Delete draft / Cancel */}
           {rec.state === 'draft' && (
             <div className="pt-4 mt-4 border-t border-gray-200 space-y-2">
@@ -564,7 +591,18 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         </div>
       </div>
 
-
+      {/* Archive confirmation dialog */}
+      {showArchiveConfirm && (
+        <ConfirmDialog
+          title="Archive employee?"
+          message={`This will permanently deactivate ${rec.employee_name} in the system. The employee will no longer appear in active lists. This action cannot be undone from the portal.`}
+          confirmLabel="Archive employee"
+          cancelLabel="Cancel"
+          variant="danger"
+          onConfirm={handleArchive}
+          onCancel={() => setShowArchiveConfirm(false)}
+        />
+      )}
     </div>
   );
 }
