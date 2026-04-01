@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import SfnDashboard from '@/components/sfn/SfnDashboard';
 import SfnBatchGenerate from '@/components/sfn/SfnBatchGenerate';
-import SfnIndividual from '@/components/sfn/SfnIndividual';
-import SfnSimulator from '@/components/sfn/SfnSimulator';
-import SfnSettings from '@/components/sfn/SfnSettings';
+import { SfnIndividual, SfnSimulator, SfnSettings } from '@/components/sfn/SfnComponents';
+
+
+
 import SfnSidebar from '@/components/sfn/SfnSidebar';
 import {
   DEFAULT_OPENING_HOURS,
