@@ -70,7 +70,7 @@ export interface TerminationRecord {
   sent_to_accountant: boolean;
   sent_to_accountant_date: string | false;
   // Archive
-  archive_scheduled: boolean;
+  archive_scheduled?: boolean;
   display_name: string;
 }
 
@@ -139,5 +139,5 @@ export const TERMINATION_DETAIL_FIELDS = [
   'resignation_received_date',
   'delivery_date', 'delivery_tracking_number', 'delivery_witness',
   'delivery_confirmed_date', 'delivery_proof_attachment_id', 'delivery_notes',
-  'sent_to_accountant_date', 'archive_scheduled', 'display_name',
+  'sent_to_accountant_date', 'display_name',
 ];

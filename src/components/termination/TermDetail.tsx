@@ -65,6 +65,12 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [plzCopied, setPlzCopied] = useState(false);
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [archiveScheduled, setArchiveScheduled] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(`archive_scheduled_${id}`) === 'true';
+    }
+    return false;
+  });
 
   const fetchRecord = useCallback(async () => {
     try {
@@ -278,23 +284,10 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     });
   }
 
-  async function handleScheduleArchive() {
+  function handleScheduleArchive() {
     setShowArchiveConfirm(false);
-    setArchiveLoading(true);
-    try {
-      const res = await fetch(`/api/termination/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ archive_scheduled: true }),
-      });
-      const json = await res.json();
-      if (json.ok) setRec(json.data);
-      else alert(json.error);
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Error');
-    } finally {
-      setArchiveLoading(false);
-    }
+    localStorage.setItem(`archive_scheduled_${id}`, 'true');
+    setArchiveScheduled(true);
   }
 
   async function handleArchiveNow() {
@@ -583,13 +576,13 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           )}
 
           {/* Archive employee — delivered state */}
-          {rec.state === 'delivered' && !rec.archive_scheduled && !lastWorkingDayPassed && (
+          {rec.state === 'delivered' && !archiveScheduled && !lastWorkingDayPassed && (
             <button onClick={() => setShowArchiveConfirm(true)} disabled={archiveLoading}
               className="w-full py-3.5 rounded-xl bg-gray-700 text-white font-semibold text-[14px] active:bg-gray-800 disabled:opacity-50">
               {archiveLoading ? 'Scheduling...' : 'Archive employee'}
             </button>
           )}
-          {rec.state === 'delivered' && rec.archive_scheduled && !lastWorkingDayPassed && (
+          {rec.state === 'delivered' && archiveScheduled && !lastWorkingDayPassed && (
             <div className="w-full py-3.5 rounded-xl bg-gray-100 border border-gray-200 text-center">
               <span className="text-[13px] text-gray-500 font-medium">Archiving scheduled for </span>
               <span className="text-[13px] text-gray-900 font-bold">{fmt(rec.last_working_day)}</span>
