@@ -1,0 +1,265 @@
+/**
+ * Labeling system SQLite tables: printers, container splits, print jobs.
+ * Same DB file as portal.db via getDb().
+ */
+import { getDb } from './db';
+import type {
+  Printer, CreatePrinterRequest,
+  ContainerSplit, Container, CreateSplitRequest,
+  PrintJob,
+} from '@/types/labeling';
+
+function nowISO(): string {
+  return new Date().toISOString();
+}
+
+// =============================================================================
+// Schema
+// =============================================================================
+
+let _initialized = false;
+
+export function ensureLabelingTables() {
+  if (_initialized) return;
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS printers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      ip_address TEXT NOT NULL,
+      port INTEGER NOT NULL DEFAULT 9100,
+      location_id INTEGER NOT NULL,
+      location_name TEXT NOT NULL,
+      dpi INTEGER NOT NULL DEFAULT 203,
+      default_label_size_id TEXT NOT NULL DEFAULT '4x4',
+      custom_width_mm REAL,
+      custom_height_mm REAL,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS container_splits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mo_id INTEGER NOT NULL,
+      mo_name TEXT NOT NULL,
+      product_id INTEGER NOT NULL,
+      product_name TEXT NOT NULL,
+      total_qty REAL NOT NULL,
+      uom TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      confirmed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_splits_mo ON container_splits(mo_id);
+    CREATE TABLE IF NOT EXISTS containers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      split_id INTEGER NOT NULL REFERENCES container_splits(id) ON DELETE CASCADE,
+      sequence INTEGER NOT NULL,
+      qty REAL NOT NULL,
+      lot_name TEXT,
+      lot_id INTEGER,
+      expiry_date TEXT,
+      label_printed INTEGER NOT NULL DEFAULT 0,
+      last_printed_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_containers_split ON containers(split_id);
+    CREATE TABLE IF NOT EXISTS print_jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      container_id INTEGER NOT NULL REFERENCES containers(id),
+      printer_id INTEGER NOT NULL REFERENCES printers(id),
+      printer_name TEXT NOT NULL,
+      label_size_id TEXT NOT NULL,
+      label_width_mm REAL NOT NULL,
+      label_height_mm REAL NOT NULL,
+      zpl_content TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      error_message TEXT,
+      printed_by INTEGER NOT NULL,
+      printed_by_name TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pj_container ON print_jobs(container_id);
+  `);
+  _initialized = true;
+}
+
+// =============================================================================
+// Printers
+// =============================================================================
+
+export function listPrinters(activeOnly = true): Printer[] {
+  ensureLabelingTables();
+  const db = getDb();
+  const sql = activeOnly
+    ? 'SELECT * FROM printers WHERE active = 1 ORDER BY name'
+    : 'SELECT * FROM printers ORDER BY name';
+  return db.prepare(sql).all() as Printer[];
+}
+
+export function getPrinter(id: number): Printer | null {
+  ensureLabelingTables();
+  return getDb().prepare('SELECT * FROM printers WHERE id = ?').get(id) as Printer | null;
+}
+
+export function createPrinter(data: CreatePrinterRequest): number {
+  ensureLabelingTables();
+  const now = nowISO();
+  const r = getDb().prepare(`
+    INSERT INTO printers (name, ip_address, port, location_id, location_name, dpi,
+      default_label_size_id, custom_width_mm, custom_height_mm, active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+  `).run(
+    data.name, data.ip_address, data.port ?? 9100,
+    data.location_id, data.location_name, data.dpi ?? 203,
+    data.default_label_size_id ?? '4x4',
+    data.custom_width_mm ?? null, data.custom_height_mm ?? null,
+    now, now
+  );
+  return r.lastInsertRowid as number;
+}
+
+export function updatePrinter(id: number, data: Partial<CreatePrinterRequest> & { active?: number }) {
+  ensureLabelingTables();
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  const fields: Record<string, unknown> = { ...data, updated_at: nowISO() };
+  for (const [k, v] of Object.entries(fields)) {
+    if (v !== undefined) { sets.push(`${k} = ?`); vals.push(v); }
+  }
+  if (sets.length === 0) return;
+  vals.push(id);
+  getDb().prepare(`UPDATE printers SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+}
+
+export function deletePrinter(id: number) {
+  ensureLabelingTables();
+  getDb().prepare('UPDATE printers SET active = 0, updated_at = ? WHERE id = ?').run(nowISO(), id);
+}
+
+// =============================================================================
+// Container Splits
+// =============================================================================
+
+export function getSplitByMo(moId: number): ContainerSplit | null {
+  ensureLabelingTables();
+  return getDb().prepare(
+    'SELECT * FROM container_splits WHERE mo_id = ? ORDER BY created_at DESC LIMIT 1'
+  ).get(moId) as ContainerSplit | null;
+}
+
+export function getSplit(id: number): ContainerSplit | null {
+  ensureLabelingTables();
+  return getDb().prepare('SELECT * FROM container_splits WHERE id = ?').get(id) as ContainerSplit | null;
+}
+
+export function getContainers(splitId: number): Container[] {
+  ensureLabelingTables();
+  return getDb().prepare(
+    'SELECT * FROM containers WHERE split_id = ? ORDER BY sequence'
+  ).all(splitId) as Container[];
+}
+
+export function createSplit(data: CreateSplitRequest, userId: number): { splitId: number; containerIds: number[] } {
+  ensureLabelingTables();
+  const db = getDb();
+  const now = nowISO();
+
+  const sr = db.prepare(`
+    INSERT INTO container_splits (mo_id, mo_name, product_id, product_name, total_qty, uom, status, created_by, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+  `).run(data.mo_id, data.mo_name, data.product_id, data.product_name, data.total_qty, data.uom, userId, now);
+  const splitId = sr.lastInsertRowid as number;
+
+  const containerIds: number[] = [];
+  const stmt = db.prepare(`
+    INSERT INTO containers (split_id, sequence, qty, expiry_date, label_printed)
+    VALUES (?, ?, ?, ?, 0)
+  `);
+  for (let i = 0; i < data.containers.length; i++) {
+    const c = data.containers[i];
+    const cr = stmt.run(splitId, i + 1, c.qty, c.expiry_date ?? null);
+    containerIds.push(cr.lastInsertRowid as number);
+  }
+  return { splitId, containerIds };
+}
+
+export function confirmSplit(splitId: number) {
+  ensureLabelingTables();
+  getDb().prepare(
+    "UPDATE container_splits SET status = 'confirmed', confirmed_at = ? WHERE id = ?"
+  ).run(nowISO(), splitId);
+}
+
+export function markSplitPrinted(splitId: number) {
+  ensureLabelingTables();
+  getDb().prepare(
+    "UPDATE container_splits SET status = 'printed' WHERE id = ?"
+  ).run(splitId);
+}
+
+export function updateContainerLot(containerId: number, lotName: string, lotId: number) {
+  ensureLabelingTables();
+  getDb().prepare(
+    'UPDATE containers SET lot_name = ?, lot_id = ? WHERE id = ?'
+  ).run(lotName, lotId, containerId);
+}
+
+export function markContainerPrinted(containerId: number) {
+  ensureLabelingTables();
+  getDb().prepare(
+    'UPDATE containers SET label_printed = 1, last_printed_at = ? WHERE id = ?'
+  ).run(nowISO(), containerId);
+}
+
+// =============================================================================
+// Print Jobs
+// =============================================================================
+
+export function createPrintJob(data: {
+  container_id: number;
+  printer_id: number;
+  printer_name: string;
+  label_size_id: string;
+  label_width_mm: number;
+  label_height_mm: number;
+  zpl_content: string;
+  printed_by: number;
+  printed_by_name: string;
+}): number {
+  ensureLabelingTables();
+  const r = getDb().prepare(`
+    INSERT INTO print_jobs (container_id, printer_id, printer_name, label_size_id,
+      label_width_mm, label_height_mm, zpl_content, status, printed_by, printed_by_name, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)
+  `).run(
+    data.container_id, data.printer_id, data.printer_name, data.label_size_id,
+    data.label_width_mm, data.label_height_mm, data.zpl_content,
+    data.printed_by, data.printed_by_name, nowISO()
+  );
+  return r.lastInsertRowid as number;
+}
+
+export function updatePrintJobStatus(jobId: number, status: string, errorMessage?: string) {
+  ensureLabelingTables();
+  getDb().prepare(
+    'UPDATE print_jobs SET status = ?, error_message = ? WHERE id = ?'
+  ).run(status, errorMessage ?? null, jobId);
+}
+
+export function getPrintJobsForContainer(containerId: number): PrintJob[] {
+  ensureLabelingTables();
+  return getDb().prepare(
+    'SELECT * FROM print_jobs WHERE container_id = ? ORDER BY created_at DESC'
+  ).all(containerId) as PrintJob[];
+}
+
+export function getPrintJobsForSplit(splitId: number): PrintJob[] {
+  ensureLabelingTables();
+  return getDb().prepare(`
+    SELECT pj.* FROM print_jobs pj
+    JOIN containers c ON c.id = pj.container_id
+    WHERE c.split_id = ?
+    ORDER BY pj.created_at DESC
+  `).all(splitId) as PrintJob[];
+}
