@@ -1,53 +1,238 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
+import { getHolidaysInRange, isHoliday, isWeekend } from '@/lib/german-holidays';
 
 // ─────────────────────────────────────────────
-// PurchaseAlerts — Holiday warnings + supplier deadline alerts
-// Renders on the purchase dashboard above the tile grid
+// Types
 // ─────────────────────────────────────────────
 
-interface Holiday {
-  date: string;
+interface SupplierInfo {
+  id: number;
   name: string;
-  nameEn: string;
-  dayOfWeek: string;
-}
-
-interface Deadline {
-  supplierId: number;
-  supplierName: string;
-  nextDeliveryDate: string;
-  nextDeliveryDay: string;
-  orderByDate: string;
-  orderByDay: string;
-  daysUntilDeadline: number;
-  urgency: 'overdue' | 'today' | 'tomorrow' | 'soon' | 'ok';
-  leadTimeDays: number;
-  holidayImpact: string | null;
-}
-
-interface AlertsData {
-  today: string;
-  holidays: Holiday[];
-  deadlines: Deadline[];
+  order_days: string;      // JSON array e.g. '["mon","thu"]'
+  delivery_days?: string;  // JSON array e.g. '["wed","thu"]' — days they deliver
+  lead_time_days: number;
 }
 
 interface PurchaseAlertsProps {
-  locationId: number;
+  suppliers: SupplierInfo[];
 }
 
-const CalendarIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+interface HolidayAlert {
+  type: 'holiday';
+  date: Date;
+  name: string;
+  nameDE: string;
+  daysUntil: number;
+  dayOfWeek: string;
+}
+
+interface SupplierDeadlineAlert {
+  type: 'deadline';
+  supplier: string;
+  orderByDate: Date;
+  orderByDay: string;
+  deliveryInfo: string;
+  daysUntil: number;
+  isUrgent: boolean; // today or tomorrow
+}
+
+type Alert = HolidayAlert | SupplierDeadlineAlert;
+
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
+
+const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const DAY_LABELS: Record<string, string> = {
+  sun: 'Sunday', mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday',
+  thu: 'Thursday', fri: 'Friday', sat: 'Saturday',
+};
+const DAY_LABELS_SHORT: Record<string, string> = {
+  sun: 'Sun', mon: 'Mon', tue: 'Tue', wed: 'Wed',
+  thu: 'Thu', fri: 'Fri', sat: 'Sat',
+};
+
+function parseDays(json: string | undefined): string[] {
+  if (!json) return [];
+  try {
+    const arr = JSON.parse(json);
+    return Array.isArray(arr) ? arr.map((d: string) => d.toLowerCase().slice(0, 3)) : [];
+  } catch { return []; }
+}
+
+function todayLocal(): Date {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function addDays(date: Date, n: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function daysBetween(a: Date, b: Date): number {
+  const msPerDay = 86400000;
+  return Math.round((b.getTime() - a.getTime()) / msPerDay);
+}
+
+function formatDate(d: Date): string {
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function formatDateShort(d: Date): string {
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+/**
+ * Find the next occurrence of a given weekday from a start date (inclusive).
+ */
+function nextWeekday(from: Date, dayName: string): Date {
+  const targetIdx = DAY_NAMES.indexOf(dayName);
+  if (targetIdx < 0) return from;
+  const current = from.getDay();
+  let diff = targetIdx - current;
+  if (diff < 0) diff += 7;
+  return addDays(from, diff);
+}
+
+/**
+ * Find all next occurrences of given weekdays within N days from today.
+ */
+function nextOccurrences(dayNames: string[], withinDays: number): Date[] {
+  const today = todayLocal();
+  const results: Date[] = [];
+  for (const dayName of dayNames) {
+    let d = nextWeekday(today, dayName);
+    // If today matches, include it
+    while (daysBetween(today, d) <= withinDays) {
+      results.push(d);
+      d = addDays(d, 7); // next week same day
+    }
+  }
+  return results.sort((a, b) => a.getTime() - b.getTime());
+}
+
+// ─────────────────────────────────────────────
+// Alert computation
+// ─────────────────────────────────────────────
+
+function computeAlerts(suppliers: SupplierInfo[]): Alert[] {
+  const today = todayLocal();
+  const windowEnd = addDays(today, 7);
+  const alerts: Alert[] = [];
+
+  // 1. Public holiday alerts
+  const holidays = getHolidaysInRange(today, windowEnd);
+  for (const h of holidays) {
+    const du = daysBetween(today, h.date);
+    alerts.push({
+      type: 'holiday',
+      date: h.date,
+      name: h.name,
+      nameDE: h.nameDE,
+      daysUntil: du,
+      dayOfWeek: DAY_LABELS[DAY_NAMES[h.date.getDay()]] || '',
+    });
+  }
+
+  // 2. Supplier ordering deadline alerts
+  // Only for suppliers with lead_time > 1 (non-local suppliers with advance ordering)
+  for (const sup of suppliers) {
+    const orderDays = parseDays(sup.order_days);
+    const deliveryDays = parseDays(sup.delivery_days);
+    if (orderDays.length === 0) continue;
+    // Only show deadline alerts for suppliers that need advance ordering
+    if (sup.lead_time_days <= 1 && deliveryDays.length === 0) continue;
+
+    // Find next order-by dates within the 7-day window
+    const upcomingOrderDates = nextOccurrences(orderDays, 7);
+
+    for (const orderDate of upcomingOrderDates) {
+      const du = daysBetween(today, orderDate);
+
+      // Calculate delivery info
+      let deliveryInfo = '';
+      if (deliveryDays.length > 0) {
+        // Fixed delivery days — find the next delivery day after the order date + lead_time
+        const earliestDelivery = addDays(orderDate, sup.lead_time_days || 1);
+        const deliveryOccurrences = nextOccurrences(deliveryDays, 14)
+          .filter(d => d.getTime() >= earliestDelivery.getTime());
+        if (deliveryOccurrences.length > 0) {
+          const nextDelivery = deliveryOccurrences[0];
+          // Check if delivery day is a holiday
+          const deliveryHoliday = isHoliday(nextDelivery);
+          if (deliveryHoliday) {
+            deliveryInfo = `Delivery ${formatDate(nextDelivery)} (${deliveryHoliday.nameDE} - no delivery!)`;
+          } else {
+            deliveryInfo = `Delivery ${formatDate(nextDelivery)}`;
+          }
+        } else {
+          deliveryInfo = `Delivery days: ${deliveryDays.map(d => DAY_LABELS_SHORT[d] || d).join('/')}`;
+        }
+      } else if (sup.lead_time_days > 1) {
+        const estDelivery = addDays(orderDate, sup.lead_time_days);
+        // Skip weekends for delivery estimate
+        let deliveryDate = estDelivery;
+        while (isWeekend(deliveryDate)) {
+          deliveryDate = addDays(deliveryDate, 1);
+        }
+        const deliveryHoliday = isHoliday(deliveryDate);
+        if (deliveryHoliday) {
+          deliveryInfo = `Est. delivery ${formatDate(deliveryDate)} (${deliveryHoliday.nameDE} - may be delayed)`;
+        } else {
+          deliveryInfo = `Est. delivery ${formatDate(deliveryDate)}`;
+        }
+      }
+
+      alerts.push({
+        type: 'deadline',
+        supplier: sup.name,
+        orderByDate: orderDate,
+        orderByDay: DAY_LABELS[DAY_NAMES[orderDate.getDay()]] || '',
+        deliveryInfo,
+        daysUntil: du,
+        isUrgent: du <= 1,
+      });
+    }
+  }
+
+  // Sort: holidays first, then by days until
+  return alerts.sort((a, b) => {
+    if (a.type === 'holiday' && b.type !== 'holiday') return -1;
+    if (a.type !== 'holiday' && b.type === 'holiday') return 1;
+    return a.daysUntil - b.daysUntil;
+  });
+}
+
+// ─────────────────────────────────────────────
+// Urgency label
+// ─────────────────────────────────────────────
+
+function urgencyLabel(daysUntil: number): string {
+  if (daysUntil === 0) return 'Today';
+  if (daysUntil === 1) return 'Tomorrow';
+  return `In ${daysUntil} days`;
+}
+
+// ─────────────────────────────────────────────
+// Icons
+// ─────────────────────────────────────────────
+
+const HolidayIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
     <line x1="16" y1="2" x2="16" y2="6" />
     <line x1="8" y1="2" x2="8" y2="6" />
     <line x1="3" y1="10" x2="21" y2="10" />
+    <line x1="10" y1="14" x2="14" y2="14" />
   </svg>
 );
 
 const TruckIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <rect x="1" y="3" width="15" height="13" />
     <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
     <circle cx="5.5" cy="18.5" r="2.5" />
@@ -55,185 +240,88 @@ const TruckIcon = () => (
   </svg>
 );
 
-const AlertTriangle = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-    <path d="M12 9v4M12 17h.01" />
-    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-  </svg>
-);
+// ─────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────
 
-function formatDateShort(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
-}
+export default function PurchaseAlerts({ suppliers }: PurchaseAlertsProps) {
+  const alerts = useMemo(() => computeAlerts(suppliers), [suppliers]);
 
-function daysFromNow(dateStr: string, today: string): number {
-  const d = new Date(dateStr + 'T00:00:00');
-  const t = new Date(today + 'T00:00:00');
-  return Math.round((d.getTime() - t.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-export default function PurchaseAlerts({ locationId }: PurchaseAlertsProps) {
-  const [data, setData] = useState<AlertsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    fetch(`/api/purchase/alerts?location_id=${locationId}&window=7`)
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [locationId]);
-
-  if (loading) return null; // Don't show skeleton — just appear when ready
-  if (!data) return null;
-
-  const hasHolidays = data.holidays.length > 0;
-  const urgentDeadlines = data.deadlines.filter(
-    d => d.urgency === 'overdue' || d.urgency === 'today' || d.urgency === 'tomorrow' || d.urgency === 'soon'
-  );
-  const hasAlerts = hasHolidays || urgentDeadlines.length > 0;
-
-  if (!hasAlerts) return null; // Nothing to show
+  if (alerts.length === 0) return null;
 
   return (
-    <div className="px-4 pt-3">
-      {/* Section header */}
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center justify-between w-full mb-2"
-      >
-        <div className="flex items-center gap-1.5">
-          <span className="text-amber-500"><AlertTriangle /></span>
-          <span className="text-[11px] font-bold tracking-wide uppercase text-amber-700">
-            Order Alerts
-          </span>
-          <span className="text-[10px] font-mono text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded">
-            {data.holidays.length + urgentDeadlines.length}
-          </span>
-        </div>
-        <svg
-          width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2"
-          className={`transition-transform ${collapsed ? '' : 'rotate-180'}`}
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
-
-      {!collapsed && (
-        <div className="space-y-2">
-          {/* ── Holiday warnings ── */}
-          {data.holidays.map((h) => {
-            const daysAway = daysFromNow(h.date, data.today);
-            const isImminent = daysAway <= 2;
-            return (
-              <div
-                key={h.date}
-                className={`flex items-start gap-2.5 px-3.5 py-3 rounded-xl border ${
-                  isImminent
-                    ? 'bg-red-50 border-red-200'
-                    : 'bg-amber-50 border-amber-200'
-                }`}
-              >
-                <div className={`mt-0.5 flex-shrink-0 ${
-                  isImminent ? 'text-red-500' : 'text-amber-500'
-                }`}>
-                  <CalendarIcon />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-[13px] font-bold ${
-                    isImminent ? 'text-red-800' : 'text-amber-800'
-                  }`}>
-                    {h.name}
-                  </div>
-                  <div className={`text-[11px] mt-0.5 ${
-                    isImminent ? 'text-red-600' : 'text-amber-600'
-                  }`}>
-                    {h.dayOfWeek}, {formatDateShort(h.date)}
-                    {daysAway === 0 && ' — TODAY'}
-                    {daysAway === 1 && ' — TOMORROW'}
-                    {daysAway > 1 && ` — in ${daysAway} days`}
-                  </div>
-                  <div className={`text-[11px] mt-1 leading-relaxed ${
-                    isImminent ? 'text-red-700' : 'text-amber-700'
-                  }`}>
-                    No deliveries on this day. Order early to avoid gaps!
-                  </div>
-                </div>
+    <div className="px-4 pt-3 pb-1">
+      {alerts.map((alert, idx) => {
+        if (alert.type === 'holiday') {
+          const isSoon = alert.daysUntil <= 2;
+          return (
+            <div
+              key={`h-${idx}`}
+              className={`flex items-start gap-2.5 px-3.5 py-3 rounded-xl border mb-2 ${
+                isSoon
+                  ? 'bg-red-50 border-red-200'
+                  : 'bg-amber-50 border-amber-200'
+              }`}
+            >
+              <div className={`mt-0.5 flex-shrink-0 ${isSoon ? 'text-red-500' : 'text-amber-500'}`}>
+                <HolidayIcon />
               </div>
-            );
-          })}
-
-          {/* ── Supplier deadline alerts ── */}
-          {urgentDeadlines.map((d) => {
-            const isOverdue = d.urgency === 'overdue';
-            const isToday = d.urgency === 'today';
-            const isTomorrow = d.urgency === 'tomorrow';
-            const isCritical = isOverdue || isToday;
-
-            return (
-              <div
-                key={d.supplierId}
-                className={`flex items-start gap-2.5 px-3.5 py-3 rounded-xl border ${
-                  isCritical
-                    ? 'bg-red-50 border-red-200'
-                    : isTomorrow
-                    ? 'bg-orange-50 border-orange-200'
-                    : 'bg-blue-50 border-blue-200'
-                }`}
-              >
-                <div className={`mt-0.5 flex-shrink-0 ${
-                  isCritical ? 'text-red-500' : isTomorrow ? 'text-orange-500' : 'text-blue-500'
-                }`}>
-                  <TruckIcon />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[13px] font-bold ${
-                      isCritical ? 'text-red-800' : isTomorrow ? 'text-orange-800' : 'text-blue-800'
-                    }`}>
-                      {d.supplierName}
-                    </span>
-                    {isCritical && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500 text-white uppercase">
-                        {isOverdue ? 'Missed' : 'Order today!'}
-                      </span>
-                    )}
-                    {isTomorrow && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-500 text-white uppercase">
-                        Tomorrow
-                      </span>
-                    )}
-                  </div>
-                  <div className={`text-[11px] mt-0.5 ${
-                    isCritical ? 'text-red-600' : isTomorrow ? 'text-orange-600' : 'text-blue-600'
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`text-[var(--fs-sm)] font-bold ${isSoon ? 'text-red-800' : 'text-amber-800'}`}>
+                    {alert.nameDE}
+                  </span>
+                  <span className={`text-[var(--fs-xs)] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                    isSoon ? 'bg-red-200 text-red-800' : 'bg-amber-200 text-amber-800'
                   }`}>
-                    {isOverdue
-                      ? `Deadline was ${d.orderByDay}, ${formatDateShort(d.orderByDate)}`
-                      : `Order by ${d.orderByDay}, ${formatDateShort(d.orderByDate)}`
-                    }
-                    {' '}\u2192{' '}
-                    Delivery: {d.nextDeliveryDay}, {formatDateShort(d.nextDeliveryDate)}
-                  </div>
-                  {d.holidayImpact && (
-                    <div className={`text-[10px] mt-1 font-semibold ${
-                      isCritical ? 'text-red-700' : 'text-orange-700'
-                    }`}>
-                      \u26A0 Holiday in window: {d.holidayImpact}
-                    </div>
-                  )}
-                  <div className={`text-[10px] mt-0.5 ${
-                    isCritical ? 'text-red-500' : isTomorrow ? 'text-orange-500' : 'text-blue-400'
-                  }`}>
-                    {d.leadTimeDays} business day{d.leadTimeDays !== 1 ? 's' : ''} lead time
-                  </div>
+                    {urgencyLabel(alert.daysUntil)}
+                  </span>
                 </div>
+                <p className={`text-[var(--fs-xs)] mt-0.5 ${isSoon ? 'text-red-700' : 'text-amber-700'}`}>
+                  {alert.dayOfWeek}, {formatDateShort(alert.date)} &mdash; No deliveries. Order early!
+                </p>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          );
+        }
+
+        // Supplier deadline alert
+        const dl = alert as SupplierDeadlineAlert;
+        return (
+          <div
+            key={`d-${idx}`}
+            className={`flex items-start gap-2.5 px-3.5 py-3 rounded-xl border mb-2 ${
+              dl.isUrgent
+                ? 'bg-blue-50 border-blue-300'
+                : 'bg-blue-50/60 border-blue-200'
+            }`}
+          >
+            <div className={`mt-0.5 flex-shrink-0 ${dl.isUrgent ? 'text-blue-600' : 'text-blue-400'}`}>
+              <TruckIcon />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className={`text-[var(--fs-sm)] font-bold ${dl.isUrgent ? 'text-blue-900' : 'text-blue-800'}`}>
+                  {dl.supplier}
+                </span>
+                <span className={`text-[var(--fs-xs)] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                  dl.isUrgent ? 'bg-blue-200 text-blue-800' : 'bg-blue-100 text-blue-700'
+                }`}>
+                  {urgencyLabel(dl.daysUntil)}
+                </span>
+              </div>
+              <p className="text-[var(--fs-xs)] text-blue-700 mt-0.5">
+                Order by <strong>{formatDate(dl.orderByDate)}</strong>
+              </p>
+              {dl.deliveryInfo && (
+                <p className="text-[var(--fs-xs)] text-blue-600 mt-0.5">
+                  {dl.deliveryInfo}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
