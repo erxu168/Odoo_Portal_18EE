@@ -106,10 +106,9 @@ function nextOccurrences(dayNames: string[], withinDays: number): Date[] {
   const results: Date[] = [];
   for (const dayName of dayNames) {
     let d = nextWeekday(today, dayName);
-    // If today matches, include it
     while (daysBetween(today, d) <= withinDays) {
       results.push(d);
-      d = addDays(d, 7); // next week same day
+      d = addDays(d, 7);
     }
   }
   return results.sort((a, b) => a.getTime() - b.getTime());
@@ -139,7 +138,7 @@ function computeAlerts(suppliers: SupplierInfo[]): Alert[] {
   }
 
   // 2. Supplier ordering deadline alerts
-  // Only for suppliers with lead_time > 1 (non-local suppliers with advance ordering)
+  // Only for suppliers with lead_time > 1 or delivery_days configured
   for (const sup of suppliers) {
     const orderDays = parseDays(sup.order_days);
     const deliveryDays = parseDays(sup.delivery_days);
@@ -147,56 +146,53 @@ function computeAlerts(suppliers: SupplierInfo[]): Alert[] {
     // Only show deadline alerts for suppliers that need advance ordering
     if (sup.lead_time_days <= 1 && deliveryDays.length === 0) continue;
 
-    // Find next order-by dates within the 7-day window
+    // Find next order-by dates — only show the SOONEST one per supplier
     const upcomingOrderDates = nextOccurrences(orderDays, 7);
+    if (upcomingOrderDates.length === 0) continue;
+    const orderDate = upcomingOrderDates[0];
+    const du = daysBetween(today, orderDate);
 
-    for (const orderDate of upcomingOrderDates) {
-      const du = daysBetween(today, orderDate);
-
-      // Calculate delivery info
-      let deliveryInfo = '';
-      if (deliveryDays.length > 0) {
-        // Fixed delivery days — find the next delivery day after the order date + lead_time
-        const earliestDelivery = addDays(orderDate, sup.lead_time_days || 1);
-        const deliveryOccurrences = nextOccurrences(deliveryDays, 14)
-          .filter(d => d.getTime() >= earliestDelivery.getTime());
-        if (deliveryOccurrences.length > 0) {
-          const nextDelivery = deliveryOccurrences[0];
-          // Check if delivery day is a holiday
-          const deliveryHoliday = isHoliday(nextDelivery);
-          if (deliveryHoliday) {
-            deliveryInfo = `Delivery ${formatDate(nextDelivery)} (${deliveryHoliday.nameDE} - no delivery!)`;
-          } else {
-            deliveryInfo = `Delivery ${formatDate(nextDelivery)}`;
-          }
-        } else {
-          deliveryInfo = `Delivery days: ${deliveryDays.map(d => DAY_LABELS_SHORT[d] || d).join('/')}`;
-        }
-      } else if (sup.lead_time_days > 1) {
-        const estDelivery = addDays(orderDate, sup.lead_time_days);
-        // Skip weekends for delivery estimate
-        let deliveryDate = estDelivery;
-        while (isWeekend(deliveryDate)) {
-          deliveryDate = addDays(deliveryDate, 1);
-        }
-        const deliveryHoliday = isHoliday(deliveryDate);
+    // Calculate delivery info
+    let deliveryInfo = '';
+    if (deliveryDays.length > 0) {
+      // Fixed delivery days — find the next delivery day after the order date + lead_time
+      const earliestDelivery = addDays(orderDate, sup.lead_time_days || 1);
+      const deliveryOccurrences = nextOccurrences(deliveryDays, 14)
+        .filter(d => d.getTime() >= earliestDelivery.getTime());
+      if (deliveryOccurrences.length > 0) {
+        const nextDelivery = deliveryOccurrences[0];
+        const deliveryHoliday = isHoliday(nextDelivery);
         if (deliveryHoliday) {
-          deliveryInfo = `Est. delivery ${formatDate(deliveryDate)} (${deliveryHoliday.nameDE} - may be delayed)`;
+          deliveryInfo = `Delivery ${formatDate(nextDelivery)} (${deliveryHoliday.nameDE} - no delivery!)`;
         } else {
-          deliveryInfo = `Est. delivery ${formatDate(deliveryDate)}`;
+          deliveryInfo = `Delivery ${formatDate(nextDelivery)}`;
         }
+      } else {
+        deliveryInfo = `Delivery days: ${deliveryDays.map(d => DAY_LABELS_SHORT[d] || d).join('/')}`;
       }
-
-      alerts.push({
-        type: 'deadline',
-        supplier: sup.name,
-        orderByDate: orderDate,
-        orderByDay: DAY_LABELS[DAY_NAMES[orderDate.getDay()]] || '',
-        deliveryInfo,
-        daysUntil: du,
-        isUrgent: du <= 1,
-      });
+    } else if (sup.lead_time_days > 1) {
+      const estDelivery = addDays(orderDate, sup.lead_time_days);
+      let deliveryDate = estDelivery;
+      while (isWeekend(deliveryDate)) {
+        deliveryDate = addDays(deliveryDate, 1);
+      }
+      const deliveryHoliday = isHoliday(deliveryDate);
+      if (deliveryHoliday) {
+        deliveryInfo = `Est. delivery ${formatDate(deliveryDate)} (${deliveryHoliday.nameDE} - may be delayed)`;
+      } else {
+        deliveryInfo = `Est. delivery ${formatDate(deliveryDate)}`;
+      }
     }
+
+    alerts.push({
+      type: 'deadline',
+      supplier: sup.name,
+      orderByDate: orderDate,
+      orderByDay: DAY_LABELS[DAY_NAMES[orderDate.getDay()]] || '',
+      deliveryInfo,
+      daysUntil: du,
+      isUrgent: du <= 1,
+    });
   }
 
   // Sort: holidays first, then by days until
