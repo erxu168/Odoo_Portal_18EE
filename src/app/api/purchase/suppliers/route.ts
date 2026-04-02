@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'admin')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
   const { id, ...updates } = body;
