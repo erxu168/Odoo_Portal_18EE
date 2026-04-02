@@ -29,6 +29,7 @@ export function initPurchaseTables() {
       whatsapp_number TEXT NOT NULL DEFAULT '',
       min_order_value REAL NOT NULL DEFAULT 0,
       order_days TEXT NOT NULL DEFAULT '[]',
+      delivery_days TEXT NOT NULL DEFAULT '[]',
       lead_time_days INTEGER NOT NULL DEFAULT 1,
       approval_required INTEGER NOT NULL DEFAULT 0,
       location_id INTEGER NOT NULL DEFAULT 0,
@@ -157,6 +158,8 @@ export function initPurchaseTables() {
   try { db().exec('ALTER TABLE purchase_receipt_lines ADD COLUMN product_uom TEXT NOT NULL DEFAULT "Units"'); } catch (_e) { /* already exists */ }
   try { db().exec('ALTER TABLE purchase_orders ADD COLUMN cancelled_by INTEGER'); } catch (_e) { /* already exists */ }
   try { db().exec('ALTER TABLE purchase_orders ADD COLUMN cancelled_at TEXT'); } catch (_e) { /* already exists */ }
+  // v2: delivery_days for supplier delivery schedule alerts
+  try { db().exec("ALTER TABLE purchase_suppliers ADD COLUMN delivery_days TEXT NOT NULL DEFAULT '[]'"); } catch (_e) { /* already exists */ }
 }
 
 // ============================================================
@@ -178,22 +181,23 @@ export function getSupplier(id: number) {
 export function createSupplier(data: {
   odoo_partner_id: number; name: string; email: string; phone: string;
   send_method: string; min_order_value?: number; order_days?: string;
-  lead_time_days?: number; approval_required?: number; location_id?: number;
+  delivery_days?: string; lead_time_days?: number; approval_required?: number;
+  location_id?: number;
 }) {
   const result = db().prepare(`
     INSERT INTO purchase_suppliers (odoo_partner_id, name, email, phone, send_method, 
-      min_order_value, order_days, lead_time_days, approval_required, location_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      min_order_value, order_days, delivery_days, lead_time_days, approval_required, location_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.odoo_partner_id, data.name, data.email, data.phone, data.send_method,
-    data.min_order_value || 0, data.order_days || '[]',
+    data.min_order_value || 0, data.order_days || '[]', data.delivery_days || '[]',
     data.lead_time_days || 1, data.approval_required || 0, data.location_id || 0, nowISO()
   );
   return result.lastInsertRowid as number;
 }
 
 export function updateSupplier(id: number, data: Record<string, any>) {
-  const allowed = ['name','email','phone','send_method','whatsapp_number','min_order_value','order_days','lead_time_days','approval_required','location_id','active'];
+  const allowed = ['name','email','phone','send_method','whatsapp_number','min_order_value','order_days','delivery_days','lead_time_days','approval_required','location_id','active'];
   const sets: string[] = [];
   const vals: any[] = [];
   for (const [k, v] of Object.entries(data)) {
