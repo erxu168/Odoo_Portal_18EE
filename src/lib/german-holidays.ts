@@ -62,7 +62,7 @@ export function getBerlinHolidays(year: number): PublicHoliday[] {
  * Checks both current year and next year to handle year boundaries.
  */
 export function getHolidaysInRange(from: Date, to: Date): PublicHoliday[] {
-  const years = new Set([from.getFullYear(), to.getFullYear()]);
+  const years = Array.from(new Set([from.getFullYear(), to.getFullYear()]));
   const allHolidays: PublicHoliday[] = [];
   for (const y of years) {
     allHolidays.push(...getBerlinHolidays(y));
