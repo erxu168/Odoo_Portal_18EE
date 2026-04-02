@@ -34,6 +34,11 @@ const STATE_COLORS: Record<string, string> = {
 
 const STEPS = ['draft', 'confirmed', 'signed', 'delivered', 'archived'];
 
+/** Safely extract name from an Odoo M2O field (false | [number, string]) */
+function m2oName(field: false | [number, string]): string {
+  return Array.isArray(field) ? field[1] : '';
+}
+
 export default function TermDetail({ id, onBack, onHome }: Props) {
   const [rec, setRec] = useState<TerminationRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,7 +53,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [savingTracking, setSavingTracking] = useState(false);
   const [stageLoading, setStageLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  // For the initial PDF generation flow (opens viewer after generating)
   const [showGenPdf, setShowGenPdf] = useState(false);
   const [genPdfBase64, setGenPdfBase64] = useState<string | null>(null);
 
@@ -80,9 +84,9 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       r.readAsDataURL(blob);
     });
     const name = rec?.signed_pdf_attachment_id
-      ? rec.signed_pdf_attachment_id[1]
+      ? m2oName(rec.signed_pdf_attachment_id)
       : rec?.pdf_attachment_id
-        ? rec.pdf_attachment_id[1]
+        ? m2oName(rec.pdf_attachment_id)
         : 'Termination.pdf';
     return { base64, name };
   }
@@ -124,7 +128,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   }
 
   async function printProof() {
-    const { base64, name } = await fetchProofBase64();
+    const { base64 } = await fetchProofBase64();
     const raw = atob(base64);
     const arr = new Uint8Array(raw.length);
     for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
@@ -132,7 +136,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     const url = URL.createObjectURL(blob);
     const w = window.open(url, '_blank');
     if (w) w.addEventListener('load', () => setTimeout(() => w.print(), 500));
-    void name; // suppress unused
   }
 
   async function uploadProofDoc(file: File) {
@@ -266,6 +269,9 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const canCancel = ['draft', 'confirmed', 'signed'].includes(rec.state);
   const hasPdf = !!rec.pdf_attachment_id;
   const hasSigned = !!rec.signed_pdf_attachment_id;
+  const signedDocName = m2oName(rec.signed_pdf_attachment_id);
+  const pdfDocName = m2oName(rec.pdf_attachment_id);
+  const proofDocName = m2oName(rec.delivery_proof_attachment_id);
   const fmt = (d: string | false) => {
     if (!d) return '\u2013';
     const [y, m, day] = d.split('-');
@@ -291,14 +297,12 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       </div>
 
       <div className="flex-1 px-4 pb-8 -mt-3">
-        {/* Cancelled banner */}
         {rec.state === 'cancelled' && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-3 text-center">
             <span className="text-red-700 font-semibold text-[var(--fs-sm)]">This termination has been cancelled</span>
           </div>
         )}
 
-        {/* Progress bar */}
         {rec.state !== 'cancelled' && (
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
             {stageLoading && <div className="flex justify-center mb-2"><div className="w-4 h-4 border-2 border-gray-300 border-t-green-500 rounded-full animate-spin" /></div>}
@@ -340,13 +344,13 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           </div>
         </div>
 
-        {/* === TERMINATION LETTER / SIGNED DOC — PdfDocumentCard === */}
+        {/* TERMINATION LETTER / SIGNED DOC */}
         {hasPdf && !['draft', 'cancelled'].includes(rec.state) && (
           <div className="mb-3">
             <PdfDocumentCard
               label={hasSigned ? 'Signed document' : 'Termination letter'}
               hasDocument={true}
-              documentName={hasSigned ? rec.signed_pdf_attachment_id![1] : rec.pdf_attachment_id![1]}
+              documentName={hasSigned ? signedDocName : pdfDocName}
               onView={fetchPdfBase64}
               onPrint={printPdf}
               onUpload={uploadSignedDoc}
@@ -355,7 +359,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           </div>
         )}
 
-        {/* Upload signed doc slot (when PDF exists but no signed version yet) */}
+        {/* Upload signed doc slot */}
         {hasPdf && !hasSigned && !['draft', 'cancelled'].includes(rec.state) && (
           <div className="mb-3">
             <PdfDocumentCard
@@ -410,12 +414,12 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
               <div className="flex justify-between"><span className="text-gray-500">Confirmed</span><span className={rec.delivery_confirmed ? 'text-green-600 font-medium' : 'text-yellow-600'}>{rec.delivery_confirmed ? 'Yes' : 'Pending'}</span></div>
             </div>
 
-            {/* === COURIER CONFIRMATION — PdfDocumentCard === */}
+            {/* COURIER CONFIRMATION */}
             <div className="mt-3 pt-3 border-t border-gray-100">
               <PdfDocumentCard
                 label="Courier confirmation"
                 hasDocument={!!rec.delivery_proof_attachment_id}
-                documentName={Array.isArray(rec.delivery_proof_attachment_id) ? rec.delivery_proof_attachment_id[1] : undefined}
+                documentName={proofDocName || undefined}
                 onView={fetchProofBase64}
                 onPrint={printProof}
                 onUpload={uploadProofDoc}
@@ -426,7 +430,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           </div>
         )}
 
-        {/* Delivery form */}
         {showDelivery && (
           <DeliveryForm onSubmit={handleDeliverySubmit} onCancel={() => setShowDelivery(false)} />
         )}
@@ -438,41 +441,34 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
               className="w-full py-3.5 rounded-xl bg-blue-600 text-white font-semibold text-[14px] active:bg-blue-700 disabled:opacity-50">
               {confirmLoading ? 'Confirming...' : 'Confirm termination'}</button>
           )}
-
           {rec.state === 'confirmed' && !rec.pdf_attachment_id && (
             <button onClick={handleGeneratePdf} disabled={pdfLoading}
               className="w-full py-3.5 rounded-xl bg-red-600 text-white font-semibold text-[14px] active:bg-red-700 disabled:opacity-50">
               {pdfLoading ? 'Generating PDF...' : 'Generate PDF'}</button>
           )}
-
           {rec.state === 'confirmed' && rec.pdf_attachment_id && (
             <button onClick={() => handleSetState('signed')}
               className="w-full py-3.5 rounded-xl bg-green-600 text-white font-semibold text-[14px] active:bg-green-700">
               Mark as signed</button>
           )}
-
           {['signed', 'delivered'].includes(rec.state) && !showDelivery && !rec.delivery_method && (
             <button onClick={() => setShowDelivery(true)}
               className="w-full py-3.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50">
               Record delivery info</button>
           )}
-
           {rec.state === 'signed' && (
             <button onClick={() => handleSetState('delivered')}
               className="w-full py-3.5 rounded-xl bg-emerald-600 text-white font-semibold text-[14px] active:bg-emerald-700">
               Mark as delivered</button>
           )}
-
           {['signed', 'delivered'].includes(rec.state) && !rec.sent_to_accountant && (
             <button onClick={handleSendToAccountant} disabled={accountantLoading}
               className="w-full py-3.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50 disabled:opacity-50">
               {accountantLoading ? 'Sending...' : 'Send to accountant'}</button>
           )}
-
           {rec.sent_to_accountant && (
             <div className="text-center text-[var(--fs-xs)] text-green-600 font-medium py-2">{'\u2713'} Sent to accountant</div>
           )}
-
           {rec.state === 'draft' && (
             <div className="pt-4 mt-4 border-t border-gray-200 space-y-2">
               <button onClick={handleDelete} disabled={deleteLoading}
@@ -490,7 +486,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         </div>
       </div>
 
-      {/* PDF Viewer for initial generation */}
       {showGenPdf && genPdfBase64 && (
         <PdfViewer fileData={genPdfBase64} fileName={`Termination_${rec.employee_name.replace(/\s+/g, '_')}.pdf`} onClose={() => setShowGenPdf(false)} />
       )}
