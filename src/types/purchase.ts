@@ -13,8 +13,9 @@ export interface PurchaseSupplier {
   send_method: 'email' | 'whatsapp';
   whatsapp_number: string;
   min_order_value: number; // 0 = no minimum
-  order_days: string;      // JSON array e.g. '["mon","thu"]'
-  lead_time_days: number;
+  order_days: string;      // JSON array e.g. '["mon","thu"]' — days orders must be placed by
+  delivery_days: string;   // JSON array e.g. '["wed","thu"]' — days supplier actually delivers
+  lead_time_days: number;  // business days between order cutoff and delivery
   approval_required: number; // 0 or 1
   location_id: number;     // which Odoo stock.location this supplier serves
   active: number;
