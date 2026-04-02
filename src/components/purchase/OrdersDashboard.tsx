@@ -81,7 +81,6 @@ export default function OrdersDashboard({
   isManager,
   onManage,
   locationName,
-  locationId,
 }: OrdersDashboardProps) {
   const tiles: TileConfig[] = [
     {
@@ -124,8 +123,8 @@ export default function OrdersDashboard({
 
   return (
     <div>
-      {/* Order Alerts — holidays + supplier deadlines */}
-      <PurchaseAlerts locationId={locationId} />
+      {/* Order Alerts — holidays + supplier deadlines (TODO: wire up suppliers) */}
+      <PurchaseAlerts suppliers={[]} />
 
       <div className="px-4 py-4">
         {/* Location context pill */}
