@@ -56,7 +56,6 @@ export default function ManufacturingPage() {
 
   function handleDashboardNav(tile: string) {
     if (tile === 'orders') navigate({ type: 'mo-list', mode: 'production' });
-    else if (tile === 'create') navigate({ type: 'create' });
     else if (tile === 'recipes') navigate({ type: 'bom-list' });
     else if (tile === 'completed') navigate({ type: 'mo-list', mode: 'completed' });
     else if (tile === 'pick-list') navigate({ type: 'pick-list' });
