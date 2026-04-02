@@ -37,7 +37,7 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
   const tiles = [
     {
       key: 'orders',
-      label: 'Current Manufacturing',
+      label: 'Manufacturing',
       sublabel: 'Active orders',
       color: 'bg-orange-50 border-orange-200', iconBg: 'bg-orange-100', iconColor: 'text-orange-600',
       icon: (
