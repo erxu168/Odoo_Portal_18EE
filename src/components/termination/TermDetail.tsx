@@ -11,23 +11,17 @@ import FilePicker from '@/components/ui/FilePicker';
 
 /**
  * Build a carrier tracking URL from a tracking number.
- * German postal services (Einschreiben) use Deutsche Post / DHL tracking.
- * Falls back to DHL for unrecognized formats.
  */
 function getTrackingUrl(trackingNumber: string): string {
   const clean = trackingNumber.replace(/\s+/g, "");
   const dhl = (code: string) =>
     `https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode=${encodeURIComponent(code)}`;
-  // UPS
   if (/^1Z/i.test(clean))
     return `https://www.ups.com/track?tracknum=${encodeURIComponent(clean)}`;
-  // Hermes
   if (/^H\d{19}$/i.test(clean))
     return `https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation?trackingId=${encodeURIComponent(clean)}`;
-  // DPD (14 digits)
   if (/^\d{14}$/.test(clean))
     return `https://tracking.dpd.de/status/de_DE/parcel/${encodeURIComponent(clean)}`;
-  // Default: Deutsche Post / DHL (Einschreiben RR/RA/RB etc, or any number)
   return dhl(clean);
 }
 
@@ -233,14 +227,10 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   }
 
   async function handleSendToAccountant() {
-    if (!confirm('Send to accountant?')) return;
+    if (!confirm('Send termination letter to accountant via email?')) return;
     setAccountantLoading(true);
     try {
-      const res = await fetch(`/api/termination/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sent_to_accountant: true, sent_to_accountant_date: new Date().toISOString().replace('T', ' ').slice(0, 19) }),
-      });
+      const res = await fetch(`/api/termination/${id}/send-accountant`, { method: 'POST' });
       const json = await res.json();
       if (json.ok) setRec(json.data);
       else alert(json.error);
@@ -267,7 +257,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     }
   }
 
-
   async function handleDelete() {
     if (!confirm('Delete this draft termination? This cannot be undone.')) return;
     setDeleteLoading(true);
@@ -285,7 +274,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       setDeleteLoading(false);
     }
   }
-
 
   async function handleProofUpload(file: File) {
     const reader = new FileReader();
@@ -342,7 +330,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     }
   }
 
-
   if (loading) return <div className="flex items-center justify-center min-h-screen"><div className="animate-spin w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full" /></div>;
   if (error || !rec) return <div className="px-5 pt-12"><p className="text-red-600">{error || 'Not found'}</p></div>;
 
@@ -353,6 +340,15 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     const [y, m, day] = d.split('-');
     return `${day}.${m}.${y}`;
   };
+
+  // Determine document name to display
+  const docName = rec.signed_pdf_attachment_id
+    ? rec.signed_pdf_attachment_id[1]
+    : rec.pdf_attachment_id
+      ? rec.pdf_attachment_id[1]
+      : null;
+  const hasSigned = !!rec.signed_pdf_attachment_id;
+  const hasPdf = !!rec.pdf_attachment_id;
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -380,7 +376,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           </div>
         )}
 
-        {/* Progress bar — tappable stages */}
+        {/* Progress bar */}
         {rec.state !== 'cancelled' && (
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
             {stageLoading && (
@@ -439,6 +435,49 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           </div>
         </div>
 
+        {/* === UNIFIED DOCUMENT CARD === */}
+        {hasPdf && !['draft', 'cancelled'].includes(rec.state) && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
+            {/* Document header: icon + filename + signed badge */}
+            <div className="flex items-center gap-3 mb-3">
+              <button onClick={handleViewPdf} className={`flex-shrink-0 w-11 h-11 rounded-xl flex items-center justify-center ${hasSigned ? 'bg-green-50 border border-green-200' : 'bg-blue-50 border border-blue-200'}`}>
+                {hasSigned ? (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
+                ) : (
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                )}
+              </button>
+              <div className="flex-1 min-w-0" onClick={handleViewPdf}>
+                <div className="text-[13px] font-semibold text-gray-900">{hasSigned ? 'Signed document' : 'Termination letter'}</div>
+                <div className={`text-[11px] truncate ${hasSigned ? 'text-green-600' : 'text-gray-500'}`}>{docName}</div>
+              </div>
+            </div>
+
+            {/* Action buttons: View, Print, Replace */}
+            <div className="flex gap-2">
+              <button onClick={handleViewPdf}
+                className="flex-1 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 font-medium text-[12px] flex items-center justify-center gap-1.5 active:bg-gray-100">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                View
+              </button>
+              <button onClick={handlePrintPdf}
+                className="flex-1 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 font-medium text-[12px] flex items-center justify-center gap-1.5 active:bg-gray-100">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Print
+              </button>
+              <FilePicker
+                onFile={handleUploadSigned}
+                accept="image/*,.pdf"
+                label={hasSigned ? 'Replace' : 'Upload signed'}
+                icon=""
+                loading={uploadLoading}
+                variant="button"
+                className="flex-1 py-2.5 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 font-medium text-[12px] flex items-center justify-center gap-1.5 active:bg-gray-100"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Delivery card */}
         {rec.delivery_method && (
           <div className="bg-white rounded-2xl p-4 shadow-sm mb-3">
@@ -446,51 +485,31 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             <div className="space-y-2 text-[13px]">
               <div className="flex justify-between"><span className="text-gray-500">Method</span><span className="text-gray-900">{DELIVERY_METHOD_LABELS[rec.delivery_method]}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Date</span><span className="text-gray-900">{fmt(rec.delivery_date)}</span></div>
-              {/* Tracking number — editable */}
               {(rec.delivery_tracking_number || editingTracking) && (
                 <div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500">Tracking #</span>
                     {editingTracking ? (
                       <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={trackingDraft}
-                          onChange={e => setTrackingDraft(e.target.value)}
+                        <input type="text" value={trackingDraft} onChange={e => setTrackingDraft(e.target.value)}
                           placeholder="RR 1234 5678 9 DE"
-                          className="w-40 px-2.5 py-1.5 border border-gray-200 rounded-lg text-[var(--fs-sm)] text-gray-900 outline-none focus:border-green-600"
-                          autoFocus
-                        />
-                        <button
-                          onClick={handleTrackingSave}
-                          disabled={savingTracking}
-                          className="px-3 py-1.5 bg-green-600 text-white text-[var(--fs-xs)] font-bold rounded-lg active:bg-green-700 disabled:opacity-50"
-                        >
+                          className="w-40 px-2.5 py-1.5 border border-gray-200 rounded-lg text-[var(--fs-sm)] text-gray-900 outline-none focus:border-green-600" autoFocus />
+                        <button onClick={handleTrackingSave} disabled={savingTracking}
+                          className="px-3 py-1.5 bg-green-600 text-white text-[var(--fs-xs)] font-bold rounded-lg active:bg-green-700 disabled:opacity-50">
                           {savingTracking ? '...' : 'Save'}
                         </button>
-                        <button
-                          onClick={() => setEditingTracking(false)}
-                          className="px-2 py-1.5 text-gray-400 text-[var(--fs-xs)] font-semibold active:text-gray-600"
-                        >
-                          Cancel
-                        </button>
+                        <button onClick={() => setEditingTracking(false)}
+                          className="px-2 py-1.5 text-gray-400 text-[var(--fs-xs)] font-semibold active:text-gray-600">Cancel</button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <a
-                          href={getTrackingUrl(String(rec.delivery_tracking_number))}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 font-medium underline underline-offset-2 active:text-blue-800"
-                        >
+                        <a href={getTrackingUrl(String(rec.delivery_tracking_number))} target="_blank" rel="noopener noreferrer"
+                          className="text-blue-600 font-medium underline underline-offset-2 active:text-blue-800">
                           {rec.delivery_tracking_number}
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline ml-1 -mt-0.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                         </a>
-                        <button
-                          onClick={() => { setTrackingDraft(rec.delivery_tracking_number || ''); setEditingTracking(true); }}
-                          className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200"
-                          title="Edit tracking number"
-                        >
+                        <button onClick={() => { setTrackingDraft(rec.delivery_tracking_number || ''); setEditingTracking(true); }}
+                          className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200" title="Edit tracking number">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </button>
                       </div>
@@ -501,8 +520,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
               {rec.delivery_witness && <div className="flex justify-between"><span className="text-gray-500">Witness</span><span className="text-gray-900">{rec.delivery_witness}</span></div>}
               <div className="flex justify-between"><span className="text-gray-500">Confirmed</span><span className={rec.delivery_confirmed ? 'text-green-600 font-medium' : 'text-yellow-600'}>{rec.delivery_confirmed ? 'Yes' : 'Pending'}</span></div>
             </div>
-
-            {/* Delivery proof upload */}
             <div className="mt-3 pt-3 border-t border-gray-100">
               <DocumentUploadWidget
                 label="Courier confirmation"
@@ -540,62 +557,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </button>
           )}
 
-          {/* View + Print PDF row */}
-          {rec.pdf_attachment_id && (
-            <div className="flex gap-2">
-              <button onClick={handleViewPdf}
-                className="flex-1 py-3.5 rounded-xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                View PDF
-              </button>
-              <button onClick={handlePrintPdf}
-                className="flex-1 py-3.5 rounded-xl bg-white border border-gray-200 text-gray-900 font-semibold text-[14px] flex items-center justify-center gap-2 active:bg-gray-50">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                Print
-              </button>
-            </div>
-          )}
-
-          {/* Signed document upload — compact row when uploaded, slot when empty */}
-          {rec.pdf_attachment_id && !['draft', 'cancelled'].includes(rec.state) && (
-            <div className="bg-white rounded-2xl p-4 shadow-sm">
-              {rec.signed_pdf_attachment_id ? (
-                <div className="flex items-center gap-3">
-                  <button onClick={handleViewPdf} className="flex-shrink-0 w-12 h-12 rounded-xl bg-green-50 border border-green-200 flex items-center justify-center active:bg-green-100">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
-                  </button>
-                  <div className="flex-1 min-w-0" onClick={handleViewPdf}>
-                    <div className="text-[var(--fs-sm)] font-semibold text-gray-900">Signed document</div>
-                    <div className="text-[11px] text-green-600 truncate">{rec.signed_pdf_attachment_id[1]}</div>
-                  </div>
-                  <FilePicker
-                    onFile={handleUploadSigned}
-                    accept="image/*,.pdf"
-                    label="Replace"
-                    icon=""
-                    loading={uploadLoading}
-                    variant="button"
-                    className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-500 text-[var(--fs-xs)] font-semibold active:bg-gray-200"
-                  />
-                </div>
-              ) : (
-                <>
-                  <span className="text-[var(--fs-sm)] font-semibold text-gray-900 block mb-2">Upload signed document</span>
-                  <FilePicker
-                    onFile={handleUploadSigned}
-                    accept="image/*,.pdf"
-                    label="Take photo or upload signed letter"
-                    icon={"\uD83D\uDCF7"}
-                    loading={uploadLoading}
-                    variant="slot"
-                    size="sm"
-                  />
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Mark as signed */}
           {rec.state === 'confirmed' && rec.pdf_attachment_id && (
             <button onClick={() => handleSetState('signed')}
               className="w-full py-3.5 rounded-xl bg-green-600 text-white font-semibold text-[14px] active:bg-green-700">
@@ -603,7 +564,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </button>
           )}
 
-          {/* Record delivery info (does NOT change stage) */}
           {['signed', 'delivered'].includes(rec.state) && !showDelivery && !rec.delivery_method && (
             <button onClick={() => setShowDelivery(true)}
               className="w-full py-3.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50">
@@ -611,7 +571,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </button>
           )}
 
-          {/* Mark as delivered — separate explicit action */}
           {rec.state === 'signed' && (
             <button onClick={() => handleSetState('delivered')}
               className="w-full py-3.5 rounded-xl bg-emerald-600 text-white font-semibold text-[14px] active:bg-emerald-700">
@@ -632,7 +591,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
             </div>
           )}
 
-          {/* Delete draft / Cancel */}
           {rec.state === 'draft' && (
             <div className="pt-4 mt-4 border-t border-gray-200 space-y-2">
               <button onClick={handleDelete} disabled={deleteLoading}
@@ -644,7 +602,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           {canCancel && rec.state !== 'draft' && (
             <div className="pt-4 mt-4 border-t border-gray-200">
               <button onClick={handleCancel} disabled={cancelLoading}
-                className="w-full py-3 rounded-xl bg-white border border-red-200 text-green-600 font-medium text-[13px] active:bg-red-50 disabled:opacity-50">
+                className="w-full py-3 rounded-xl bg-white border border-red-200 text-red-600 font-medium text-[13px] active:bg-red-50 disabled:opacity-50">
                 {cancelLoading ? 'Cancelling...' : 'Cancel termination'}
               </button>
             </div>
@@ -660,8 +618,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           onClose={() => setShowPdf(false)}
         />
       )}
-
-
     </div>
   );
 }
