@@ -81,6 +81,34 @@ export function ensureLabelingTables() {
     );
     CREATE INDEX IF NOT EXISTS idx_pj_container ON print_jobs(container_id);
   `);
+
+  // Seed a test printer if none exist
+  const count = db.prepare('SELECT COUNT(*) as c FROM printers').get() as { c: number };
+  if (count.c === 0) {
+    const now = nowISO();
+    db.prepare(`
+      INSERT INTO printers (name, ip_address, port, location_id, location_name, dpi,
+        default_label_size_id, custom_width_mm, custom_height_mm, active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).run(
+      'WAJ Kitchen Zebra', '192.168.1.100', 9100,
+      22, 'What a Jerk / Stock', 203,
+      '4x4', null, null,
+      now, now
+    );
+    db.prepare(`
+      INSERT INTO printers (name, ip_address, port, location_id, location_name, dpi,
+        default_label_size_id, custom_width_mm, custom_height_mm, active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).run(
+      'Ssam Kitchen Zebra', '192.168.1.101', 9100,
+      32, 'Ssam Korean BBQ / Stock', 203,
+      '4x6', null, null,
+      now, now
+    );
+    console.log('Labeling: seeded 2 test printers (update IPs in admin settings)');
+  }
+
   _initialized = true;
 }
 
