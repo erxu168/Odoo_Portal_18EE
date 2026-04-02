@@ -11,6 +11,7 @@ import PickList from '@/components/manufacturing/PickList';
 import BomList from '@/components/manufacturing/BomList';
 import BomDetail from '@/components/manufacturing/BomDetail';
 import CreateBom from '@/components/manufacturing/CreateBom';
+import PackageLabel from '@/components/manufacturing/PackageLabel';
 
 type Screen =
   | { type: 'dashboard' }
@@ -21,7 +22,8 @@ type Screen =
   | { type: 'pick-list' }
   | { type: 'bom-list' }
   | { type: 'create-bom' }
-  | { type: 'bom-detail'; bomId: number };
+  | { type: 'bom-detail'; bomId: number }
+  | { type: 'package'; moId: number };
 
 export default function ManufacturingPage() {
   const router = useRouter();
@@ -97,6 +99,7 @@ export default function ManufacturingPage() {
             moId={screen.moId}
             onBack={goBack}
             onOpenWo={(woId) => navigate({ type: 'wo-detail', moId: screen.moId, woId })}
+            onPackage={() => navigate({ type: 'package', moId: screen.moId })}
           />
         );
       case 'wo-detail':
@@ -150,6 +153,14 @@ export default function ManufacturingPage() {
             bomId={screen.bomId}
             onBack={goBack}
             onCreateMo={() => navigate({ type: 'create' })}
+          />
+        );
+      case 'package':
+        return (
+          <PackageLabel
+            moId={screen.moId}
+            onBack={goBack}
+            onDone={goBack}
           />
         );
     }
