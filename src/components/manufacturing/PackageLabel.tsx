@@ -36,12 +36,13 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const [existingSplit, setExistingSplit] = useState<any>(null);
   const [existingContainers, setExistingContainers] = useState<any[]>([]);
 
-  const [selectedSize, setSelectedSize] = useState('4x4');
+  const [selectedSize, setSelectedSize] = useState('102x102');
   const [customWidth, setCustomWidth] = useState('102');
   const [customHeight, setCustomHeight] = useState('102');
   const [printing, setPrinting] = useState(false);
   const [printedIds, setPrintedIds] = useState<Set<number>>(new Set());
   const [printingContainerId, setPrintingContainerId] = useState<number | null>(null);
+  const [copiedZpl, setCopiedZpl] = useState<string | null>(null);
 
   const ble = useZebraBluetooth();
 
@@ -133,8 +134,6 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         }),
       });
       const data = await res.json();
-
-      // Handle ALL error shapes from the API
       if (!res.ok || data.error) {
         setError(data.error || data.message || `Server error (${res.status})`);
         setSplitLoading(false);
@@ -143,7 +142,6 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
       if (data.errors && Array.isArray(data.errors)) {
         setError(data.errors.join('\n'));
       }
-
       if (data.split) {
         setExistingSplit(data.split);
         setExistingContainers(data.containers || []);
@@ -175,19 +173,14 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         params.set('container_id', String(cId));
         const res = await fetch(`/api/manufacturing-orders/${moId}/labels?${params}`);
         const data = await res.json();
-
-        if (!res.ok || data.error) {
-          setError(data.error || `Label generation failed (${res.status})`);
-          break;
-        }
-
+        if (!res.ok || data.error) { setError(data.error || `Label generation failed (${res.status})`); break; }
         if (data.previews && data.previews.length > 0) {
           const success = await ble.print(data.previews[0].zpl);
           if (success) {
             setPrintedIds(prev => new Set([...Array.from(prev), cId]));
             setExistingContainers(prev => prev.map(c => c.id === cId ? { ...c, label_printed: 1 } : c));
           } else {
-            setError(`Print failed for container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'}: ${ble.error || 'Unknown BLE error'}`);
+            setError(`Print failed for container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'}`);
             break;
           }
           if (targets.length > 1) await new Promise(r => setTimeout(r, 500));
@@ -198,6 +191,48 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     } finally {
       setPrinting(false);
       setPrintingContainerId(null);
+    }
+  }
+
+  // Copy ZPL to clipboard (fallback when BLE not available)
+  async function copyZplForContainer(containerId: number) {
+    try {
+      const params = new URLSearchParams({ label_size_id: selectedSize, container_id: String(containerId) });
+      if (selectedSize === 'custom') {
+        params.set('custom_width_mm', customWidth);
+        params.set('custom_height_mm', customHeight);
+      }
+      const res = await fetch(`/api/manufacturing-orders/${moId}/labels?${params}`);
+      const data = await res.json();
+      if (data.previews?.[0]?.zpl) {
+        await navigator.clipboard.writeText(data.previews[0].zpl);
+        setCopiedZpl(String(containerId));
+        setTimeout(() => setCopiedZpl(null), 2000);
+      }
+    } catch {
+      setError('Failed to copy ZPL');
+    }
+  }
+
+  async function copyAllZpl() {
+    try {
+      const params = new URLSearchParams({ label_size_id: selectedSize });
+      if (selectedSize === 'custom') {
+        params.set('custom_width_mm', customWidth);
+        params.set('custom_height_mm', customHeight);
+      }
+      const allZpl: string[] = [];
+      for (const c of existingContainers) {
+        params.set('container_id', String(c.id));
+        const res = await fetch(`/api/manufacturing-orders/${moId}/labels?${params}`);
+        const data = await res.json();
+        if (data.previews?.[0]?.zpl) allZpl.push(data.previews[0].zpl);
+      }
+      await navigator.clipboard.writeText(allZpl.join('\n'));
+      setCopiedZpl('all');
+      setTimeout(() => setCopiedZpl(null), 2000);
+    } catch {
+      setError('Failed to copy ZPL');
     }
   }
 
@@ -288,9 +323,6 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
               </button>
             )}
           </div>
-          {!ble.isSupported && (
-            <p className="text-[var(--fs-xs)] text-amber-600 mt-1 px-1">Web Bluetooth requires Chrome on Android or desktop.</p>
-          )}
         </div>
       )}
 
@@ -370,7 +402,6 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             )}
           </div>
 
-          {/* Action button */}
           <button onClick={handleConfirmSplit} disabled={!canConfirm || splitLoading}
             className={`w-full py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
               canConfirm ? 'bg-green-600 text-white shadow-green-600/30' : 'bg-gray-200 text-gray-400 shadow-none'
@@ -463,12 +494,10 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             ))}
           </div>
 
-          {/* Action button */}
-          <button onClick={() => setStep('print')} disabled={!ble.isConnected}
-            className={`w-full py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
-              ble.isConnected ? 'bg-green-600 text-white shadow-green-600/30' : 'bg-gray-200 text-gray-500 shadow-none'
-            }`}>
-            {ble.isConnected ? 'Continue to Print' : 'Connect printer to continue'}
+          {/* Always allow going to print step */}
+          <button onClick={() => setStep('print')}
+            className="w-full py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] bg-green-600 text-white shadow-green-600/30">
+            Continue to Print
           </button>
         </div>
       )}
@@ -481,6 +510,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             {existingContainers.map((c: any) => {
               const isPrinted = printedIds.has(c.id) || c.label_printed;
               const isPrintingThis = printingContainerId === c.id;
+              const isCopied = copiedZpl === String(c.id);
               return (
                 <div key={c.id} className={`bg-white border rounded-xl p-4 mb-2 flex items-center gap-3 ${
                   isPrinted ? 'border-green-200 bg-green-50/30' : isPrintingThis ? 'border-blue-200 bg-blue-50/20' : 'border-gray-200'
@@ -500,12 +530,23 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
                       {c.lot_name || 'No lot'} {'\u2022'} Exp {fmtDate(c.expiry_date)}
                     </div>
                   </div>
-                  <button onClick={() => fetchZplAndPrint([c.id])} disabled={printing || !ble.isConnected}
-                    className={`text-[var(--fs-xs)] px-3 py-2 rounded-xl font-bold min-w-[72px] text-center disabled:opacity-40 ${
-                      isPrinted ? 'bg-gray-100 text-gray-600 active:bg-gray-200' : 'bg-green-600 text-white active:bg-green-700 shadow-sm'
-                    }`}>
-                    {isPrintingThis ? '\u2026' : isPrinted ? 'Reprint' : 'Print'}
-                  </button>
+                  <div className="flex gap-1.5 flex-shrink-0">
+                    {ble.isConnected ? (
+                      <button onClick={() => fetchZplAndPrint([c.id])} disabled={printing}
+                        className={`text-[var(--fs-xs)] px-3 py-2 rounded-xl font-bold text-center disabled:opacity-40 ${
+                          isPrinted ? 'bg-gray-100 text-gray-600 active:bg-gray-200' : 'bg-green-600 text-white active:bg-green-700 shadow-sm'
+                        }`}>
+                        {isPrintingThis ? '\u2026' : isPrinted ? 'Reprint' : 'Print'}
+                      </button>
+                    ) : (
+                      <button onClick={() => copyZplForContainer(c.id)}
+                        className={`text-[var(--fs-xs)] px-3 py-2 rounded-xl font-bold text-center ${
+                          isCopied ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+                        }`}>
+                        {isCopied ? '\u2713 Copied' : 'Copy ZPL'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -517,18 +558,36 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
               className="py-4 px-5 rounded-xl bg-white border border-gray-200 text-gray-600 font-bold text-[var(--fs-sm)] active:bg-gray-50">
               Done
             </button>
-            <button onClick={() => fetchZplAndPrint()} disabled={printing || !ble.isConnected}
-              className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
-              {printing ? (
-                <span className="flex items-center justify-center gap-2">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Printing...
-                </span>
-              ) : (
-                `Print All (${existingContainers.length} labels)`
-              )}
-            </button>
+            {ble.isConnected ? (
+              <button onClick={() => fetchZplAndPrint()} disabled={printing}
+                className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+                {printing ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Printing...
+                  </span>
+                ) : (
+                  `Print All (${existingContainers.length} labels)`
+                )}
+              </button>
+            ) : (
+              <button onClick={copyAllZpl}
+                className={`flex-1 py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg active:scale-[0.975] transition-transform ${
+                  copiedZpl === 'all' ? 'bg-green-100 text-green-700 shadow-none' : 'bg-gray-700 text-white shadow-gray-700/30'
+                }`}>
+                {copiedZpl === 'all' ? '\u2713 ZPL Copied to Clipboard' : `Copy All ZPL (${existingContainers.length} labels)`}
+              </button>
+            )}
           </div>
+
+          {!ble.isConnected && (
+            <p className="text-[var(--fs-xs)] text-gray-400 text-center mt-3 px-4">
+              No BLE printer connected. Copy ZPL and send to printer via terminal:
+              <code className="block mt-1 bg-gray-100 rounded-lg px-3 py-2 text-left text-gray-600 font-mono">
+                echo &apos;PASTE_ZPL&apos; &gt; /dev/tty.ZD420*
+              </code>
+            </p>
+          )}
         </div>
       )}
     </div>
