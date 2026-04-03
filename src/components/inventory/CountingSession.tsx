@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState } from './ui';
 import NumpadModal from './NumpadModal';
 import FilePicker from "@/components/ui/FilePicker";
+import BarcodeScanner from '@/components/ui/BarcodeScanner';
+import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 
 interface CountingSessionProps {
   sessionId: number;
@@ -29,7 +31,43 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [showConfirm, setShowConfirm] = useState(false);
   const [proofPhoto, setProofPhoto] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  
+
+  // ── Barcode scanner state ──
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'warning' | 'error'; msg: string } | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showScanFeedback(type: 'success' | 'warning' | 'error', msg: string) {
+    setScanFeedback({ type, msg });
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = setTimeout(() => setScanFeedback(null), 3000);
+  }
+
+  function handleBarcodeScan(barcode: string) {
+    setShowScanner(false);
+
+    // Look up barcode in the loaded products for this session
+    const product = products.find((p: any) => p.barcode && p.barcode === barcode);
+    if (product) {
+      // Clear filters so product is visible, then open numpad
+      setSearch('');
+      setCatFilter('all');
+      setStatusFilter('all');
+      showScanFeedback('success', product.name);
+      setTimeout(() => openNumpad(product), 150);
+      return;
+    }
+
+    // Barcode not in session product list
+    showScanFeedback('warning', `Not in this list: ${barcode}`);
+  }
+
+  // Hardware scanner — active when counting view is open and no modals
+  useHardwareScanner({
+    enabled: view === 'counting' && !numpad.open && !showScanner && !showConfirm && !loading,
+    onScan: handleBarcodeScan,
+  });
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -139,7 +177,6 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      // Resize to max 800px to keep payload small
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
@@ -189,6 +226,51 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const isReadOnly = session?.status === 'submitted' || session?.status === 'approved' || session?.status === 'rejected';
   const locationName = session?.location_name || '';
 
+  // ── Scan feedback banner ──
+  const scanBanner = scanFeedback && (
+    <div className={`mx-4 mb-2 px-4 py-2.5 rounded-xl flex items-center gap-2.5 ${
+      scanFeedback.type === 'success' ? 'bg-green-50 border border-green-200' :
+      scanFeedback.type === 'warning' ? 'bg-amber-50 border border-amber-200' :
+      'bg-red-50 border border-red-200'
+    }`}>
+      {scanFeedback.type === 'success' && (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+      )}
+      {scanFeedback.type === 'warning' && (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      )}
+      <span className={`text-[14px] font-semibold truncate ${
+        scanFeedback.type === 'success' ? 'text-green-700' :
+        scanFeedback.type === 'warning' ? 'text-amber-700' : 'text-red-700'
+      }`}>{scanFeedback.msg}</span>
+    </div>
+  );
+
+  // ── Scan FAB button ──
+  const scanFab = !isReadOnly && (
+    <button
+      onClick={() => setShowScanner(true)}
+      className="fixed bottom-28 right-5 z-[30] w-14 h-14 rounded-full bg-[#2563EB] text-white shadow-lg shadow-blue-600/40 flex items-center justify-center active:scale-95 active:bg-blue-700 transition-transform"
+      aria-label="Scan barcode"
+    >
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        {/* Barcode scan icon */}
+        <path d="M3 7V5a2 2 0 012-2h2"/>
+        <path d="M17 3h2a2 2 0 012 2v2"/>
+        <path d="M21 17v2a2 2 0 01-2 2h-2"/>
+        <path d="M7 21H5a2 2 0 01-2-2v-2"/>
+        <line x1="7" y1="12" x2="17" y2="12"/>
+        <line x1="7" y1="8" x2="10" y2="8"/>
+        <line x1="14" y1="8" x2="17" y2="8"/>
+        <line x1="7" y1="16" x2="10" y2="16"/>
+        <line x1="14" y1="16" x2="17" y2="16"/>
+      </svg>
+    </button>
+  );
+
+  // ══════════════════════════════════════════════
+  // REVIEW VIEW
+  // ══════════════════════════════════════════════
   if (view === 'review') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -247,11 +329,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             </div>
           )}
 
-          {/* Proof photo capture */}
           {canSubmit && (
             <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
               <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mb-2">Proof photo</p>
-              
               {proofPhoto ? (
                 <div className="relative">
                   <img src={proofPhoto} alt="Proof" className="w-full rounded-xl border border-gray-200" />
@@ -262,7 +342,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 </div>
               ) : (
                 <FilePicker
-                  onFile={(file, dataUrl) => handlePhotoCapture({ target: { files: [file] } } as any)}
+                  onFile={(file) => handlePhotoCapture({ target: { files: [file] } } as any)}
                   accept="image/*"
                   label="Take a photo of the shelf"
                   className="w-full py-4 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 text-[var(--fs-base)] font-semibold flex items-center justify-center gap-2 active:bg-gray-50"
@@ -355,6 +435,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     );
   }
 
+  // ══════════════════════════════════════════════
+  // COUNTING VIEW
+  // ══════════════════════════════════════════════
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <BackHeader onBack={onBack}
@@ -380,6 +463,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       )}
 
       <CountProgress counted={countedCount} total={totalCount} />
+
+      {/* Scan feedback banner */}
+      {scanBanner}
 
       <div className="flex-1 overflow-y-auto px-4 pb-36">
         {totalCount === 0 ? (
@@ -431,6 +517,17 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           </p>
         </div>
       )}
+
+      {/* Scan FAB */}
+      {scanFab}
+
+      {/* Barcode scanner overlay */}
+      <BarcodeScanner
+        open={showScanner}
+        onScan={handleBarcodeScan}
+        onClose={() => setShowScanner(false)}
+        title="Scan product"
+      />
 
       {!isReadOnly && (
         <NumpadModal
