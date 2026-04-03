@@ -17,7 +17,6 @@ import { useState, useRef, useCallback } from 'react';
 // Zebra BLE GATT UUIDs
 const ZEBRA_SERVICE_UUID = '38eb4a84-c570-11e3-9507-0002a5d5c51b';
 const ZEBRA_WRITE_CHAR_UUID = '38eb4a82-c570-11e3-9507-0002a5d5c51b';
-const ZEBRA_READ_CHAR_UUID = '38eb4a81-c570-11e3-9507-0002a5d5c51b';
 
 // Max bytes per BLE write (safe chunk size)
 const CHUNK_SIZE = 512;
@@ -35,14 +34,22 @@ export interface UseZebraBluetoothReturn {
   error: string | null;
 }
 
+// Web Bluetooth types are not in default TS lib — use any for refs
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BleDevice = any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BleCharacteristic = any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BleServer = any;
+
 export function useZebraBluetooth(): UseZebraBluetoothReturn {
   const [status, setStatus] = useState<BleStatus>('idle');
   const [printerName, setPrinterName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const deviceRef = useRef<BluetoothDevice | null>(null);
-  const writeCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
-  const serverRef = useRef<BluetoothRemoteGATTServer | null>(null);
+  const deviceRef = useRef<BleDevice>(null);
+  const writeCharRef = useRef<BleCharacteristic>(null);
+  const serverRef = useRef<BleServer>(null);
 
   const isSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
   const isConnected = status === 'connected' || status === 'printing';
@@ -59,11 +66,13 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       setError(null);
 
       // Show browser BLE picker — filters for Zebra printers
-      const device = await navigator.bluetooth.requestDevice({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nav = navigator as any;
+      const device = await nav.bluetooth.requestDevice({
         filters: [
           { services: [ZEBRA_SERVICE_UUID] },
         ],
-        optionalServices: [ZEBRA_SERVICE_UUID, '0000180a-0000-1000-8000-00805f9b34fb'], // DIS
+        optionalServices: [ZEBRA_SERVICE_UUID, '0000180a-0000-1000-8000-00805f9b34fb'],
       });
 
       if (!device) {
@@ -84,7 +93,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       setStatus('connecting');
 
       // Connect to GATT server
-      const server = await device.gatt!.connect();
+      const server = await device.gatt.connect();
       serverRef.current = server;
 
       // Get the Zebra Parser Service
@@ -158,9 +167,9 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
 
             // Retry the print
             const encoder = new TextEncoder();
-            const data = encoder.encode(zpl);
-            for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
-              const chunk = data.slice(offset, Math.min(offset + CHUNK_SIZE, data.length));
+            const retryData = encoder.encode(zpl);
+            for (let offset = 0; offset < retryData.length; offset += CHUNK_SIZE) {
+              const chunk = retryData.slice(offset, Math.min(offset + CHUNK_SIZE, retryData.length));
               await writeCharRef.current.writeValueWithoutResponse(chunk);
             }
 

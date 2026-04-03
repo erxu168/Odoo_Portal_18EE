@@ -7,7 +7,7 @@
  * 300 DPI: 1mm = 11.81 dots (~12)
  * 600 DPI: 1mm = 23.62 dots (~24)
  */
-import { LABEL_SIZE_PRESETS, type LabelData, type LabelSize } from '@/types/labeling';
+import { LABEL_SIZE_PRESETS, type LabelData } from '@/types/labeling';
 
 const DPI_SCALE: Record<number, number> = {
   203: 8,
@@ -69,7 +69,6 @@ export function generateZPL(data: LabelData, opts: {
   const lineGap = Math.round(1.5 * scale); // 1.5mm between fields
 
   // --- Product Name (always shown, large font) ---
-  // Truncate if needed based on width
   const maxChars = Math.floor(printW / (fontLg * 0.6));
   const productName = data.productName.length > maxChars
     ? data.productName.substring(0, maxChars - 1) + '.'
