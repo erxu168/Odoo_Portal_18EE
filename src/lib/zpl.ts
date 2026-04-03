@@ -33,10 +33,11 @@ function font(h: number): { h: number; w: number } {
 /**
  * RESPONSIVE LAYOUT:
  * - Title:      9.3% per line, max 3 lines (product name)
- * - Body:       6% per line (produced date — normal)
- * - Emphasis:   9% per line (qty + expiry — big and bold, nearly title-sized)
- * - Meta:       4% per line (MO, lot — compact)
- * - Gap:        1.3%
+ * - Body:       5.5% per line (produced date — normal)
+ * - Qty:        9% per line (emphasized)
+ * - Expiry:     18% per line (DOUBLE emphasized — biggest after title)
+ * - Meta:       3.5% per line (MO, lot — compact)
+ * - Gap:        1.2%
  * - Barcode:    fills remaining bottom
  */
 export function generateZPL(data: LabelData, opts: {
@@ -50,16 +51,17 @@ export function generateZPL(data: LabelData, opts: {
   const hDots = Math.round(opts.heightMm * scale);
   const margin = Math.round(2 * scale);
   const printW = wDots - margin * 2;
-  const gap = Math.max(4, Math.round(hDots * 0.013));
+  const gap = Math.max(4, Math.round(hDots * 0.012));
 
   // Responsive fonts — percentages of label height
-  const title = font(hDots * 0.093);  // ~56 dots on 75mm
-  const body  = font(hDots * 0.06);   // ~36 dots on 75mm
-  const emph  = font(hDots * 0.09);   // ~54 dots on 75mm — nearly title-sized!
-  const meta  = font(hDots * 0.04);   // ~24 dots on 75mm
+  const title = font(hDots * 0.093);   // ~56 dots on 75mm
+  const body  = font(hDots * 0.055);   // ~33 dots on 75mm (produced)
+  const qty   = font(hDots * 0.09);    // ~54 dots on 75mm
+  const exp   = font(hDots * 0.18);    // ~108 dots on 75mm — 2x bigger!
+  const meta  = font(hDots * 0.035);   // ~21 dots on 75mm
   const sepH  = Math.max(2, Math.round(hDots * 0.005));
 
-  // Product name: max 3 lines (font is big enough, save space for qty/expiry)
+  // Product name: max 3 lines
   const charsPerLine = Math.max(6, Math.floor(printW / title.w));
   const nameLines = Math.min(3, Math.ceil(data.productName.length / charsPerLine));
 
@@ -86,14 +88,15 @@ export function generateZPL(data: LabelData, opts: {
   lines.push(`^FO${margin},${y}^FDProduced: ${data.productionDate}^FS`);
   y += body.h + gap;
 
-  // ── Quantity (BIG — emphasized) ──
-  lines.push(`^A0N,${emph.h},${emph.w}`);
+  // ── Quantity (emphasized) ──
+  lines.push(`^A0N,${qty.h},${qty.w}`);
   lines.push(`^FO${margin},${y}^FDQty: ${data.qty} ${data.uom}^FS`);
-  y += emph.h + gap;
+  y += qty.h + gap;
 
-  // ── Expiry Date (BIG — emphasized) ──
-  lines.push(`^FO${margin},${y}^FDExpiry: ${data.expiryDate}^FS`);
-  y += emph.h + gap + gap;
+  // ── Expiry Date (HUGE — 2x emphasis) ──
+  lines.push(`^A0N,${exp.h},${exp.w}`);
+  lines.push(`^FO${margin},${y}^FDExp: ${data.expiryDate}^FS`);
+  y += exp.h + gap;
 
   // ── MO + Container (small meta) ──
   lines.push(`^A0N,${meta.h},${meta.w}`);
@@ -110,7 +113,7 @@ export function generateZPL(data: LabelData, opts: {
   const remainingDots = hDots - y - margin;
   if (remainingDots > (8 * scale) && data.barcodeValue) {
     y += gap;
-    const barcodeH = Math.min(remainingDots - Math.round(4 * scale), Math.round(15 * scale));
+    const barcodeH = Math.min(remainingDots - Math.round(4 * scale), Math.round(12 * scale));
     if (barcodeH > 16) {
       lines.push(`^FO${margin},${y}^BY2^BCN,${barcodeH},Y,N,N^FD${escapeZPL(data.barcodeValue)}^FS`);
     }

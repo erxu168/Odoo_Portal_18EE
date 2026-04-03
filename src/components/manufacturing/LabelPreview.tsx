@@ -4,7 +4,7 @@ import React from 'react';
 
 /**
  * Visual HTML preview — mirrors zpl.ts responsive percentages exactly.
- * Title: 9.3%, Body: 6%, Emphasis (Qty/Expiry): 9%, Meta: 4%
+ * Title: 9.3%, Body: 5.5%, Qty: 9%, Expiry: 18%, Meta: 3.5%
  */
 
 interface LabelPreviewProps {
@@ -26,21 +26,22 @@ export default function LabelPreview({
   lotName, moName, containerNumber, totalContainers,
   widthMm, heightMm,
 }: LabelPreviewProps) {
-  const px = 2.5; // mm → CSS pixels
+  const px = 2.5;
   const w = widthMm * px;
   const h = heightMm * px;
   const margin = 2 * px;
-  const gap = h * 0.013;
+  const gap = h * 0.012;
 
   // Same percentages as zpl.ts
   const titlePx = h * 0.093;
-  const bodyPx = h * 0.06;
-  const emphPx = h * 0.09;  // Qty + Expiry — nearly title-sized
-  const metaPx = h * 0.04;
+  const bodyPx = h * 0.055;
+  const qtyPx = h * 0.09;
+  const expPx = h * 0.18;   // 2x emphasis!
+  const metaPx = h * 0.035;
   const sepH = Math.max(1, h * 0.005);
 
   // Barcode space estimate
-  const textH = titlePx * 2.5 + sepH + gap * 9 + bodyPx + emphPx * 2 + metaPx * 2 + margin * 2;
+  const textH = titlePx * 2.5 + sepH + gap * 8 + bodyPx + qtyPx + expPx + metaPx * 2 + margin * 2;
   const barcodeH = Math.max(0, h - textH - margin);
   const showBarcode = barcodeH > (8 * px);
 
@@ -84,7 +85,7 @@ export default function LabelPreview({
           flexShrink: 0,
         }} />
 
-        {/* Production Date — normal body */}
+        {/* Production Date — normal */}
         <div style={{
           fontSize: bodyPx,
           color: '#1a1a1a',
@@ -94,9 +95,9 @@ export default function LabelPreview({
           Produced: {productionDate}
         </div>
 
-        {/* Quantity — BIG emphasized */}
+        {/* Quantity — emphasized */}
         <div style={{
-          fontSize: emphPx,
+          fontSize: qtyPx,
           fontWeight: 700,
           color: '#1a1a1a',
           lineHeight: 1.2,
@@ -105,15 +106,15 @@ export default function LabelPreview({
           Qty: {qty} {uom}
         </div>
 
-        {/* Expiry — BIG emphasized */}
+        {/* Expiry — HUGE 2x emphasis */}
         <div style={{
-          fontSize: emphPx,
-          fontWeight: 700,
+          fontSize: expPx,
+          fontWeight: 800,
           color: '#1a1a1a',
-          lineHeight: 1.2,
-          marginBottom: gap * 2,
+          lineHeight: 1.1,
+          marginBottom: gap,
         }}>
-          Expiry: {expiryDate}
+          Exp: {expiryDate}
         </div>
 
         {/* MO + Container — small meta */}
@@ -146,7 +147,7 @@ export default function LabelPreview({
         {/* Barcode */}
         {showBarcode && (
           <div style={{
-            height: Math.min(barcodeH, 15 * px),
+            height: Math.min(barcodeH, 12 * px),
             background: `repeating-linear-gradient(90deg, 
               #1a1a1a 0px, #1a1a1a 1.5px, 
               transparent 1.5px, transparent 3px, 
