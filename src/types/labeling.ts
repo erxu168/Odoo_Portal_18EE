@@ -16,15 +16,15 @@ export interface LabelSize {
 
 /** Standard Zebra-compatible label sizes (metric primary) */
 export const LABEL_SIZE_PRESETS: LabelSize[] = [
-  { id: '55x75',   name: '55 \u00d7 75 mm',   category: 'medium', widthMm: 55,  heightMm: 75,  description: 'WAJ Standard' },
-  { id: '51x25',   name: '51 \u00d7 25 mm',   category: 'small',  widthMm: 51,  heightMm: 25,  description: 'Prep \u2013 Small' },
-  { id: '51x51',   name: '51 \u00d7 51 mm',   category: 'small',  widthMm: 51,  heightMm: 51,  description: 'Prep \u2013 Square' },
-  { id: '57x32',   name: '57 \u00d7 32 mm',   category: 'small',  widthMm: 57,  heightMm: 32,  description: 'Product ID' },
-  { id: '76x51',   name: '76 \u00d7 51 mm',   category: 'medium', widthMm: 76,  heightMm: 51,  description: 'Container' },
-  { id: '102x51',  name: '102 \u00d7 51 mm',  category: 'medium', widthMm: 102, heightMm: 51,  description: 'Ingredient' },
-  { id: '102x76',  name: '102 \u00d7 76 mm',  category: 'medium', widthMm: 102, heightMm: 76,  description: 'Production' },
-  { id: '102x102', name: '102 \u00d7 102 mm', category: 'large',  widthMm: 102, heightMm: 102, description: 'Barrel / Drum' },
-  { id: '102x152', name: '102 \u00d7 152 mm', category: 'large',  widthMm: 102, heightMm: 152, description: 'Full Detail' },
+  { id: '55x75',   name: '55 × 75 mm',   category: 'medium', widthMm: 55,  heightMm: 75,  description: 'WAJ Standard' },
+  { id: '51x25',   name: '51 × 25 mm',   category: 'small',  widthMm: 51,  heightMm: 25,  description: 'Prep – Small' },
+  { id: '51x51',   name: '51 × 51 mm',   category: 'small',  widthMm: 51,  heightMm: 51,  description: 'Prep – Square' },
+  { id: '57x32',   name: '57 × 32 mm',   category: 'small',  widthMm: 57,  heightMm: 32,  description: 'Product ID' },
+  { id: '76x51',   name: '76 × 51 mm',   category: 'medium', widthMm: 76,  heightMm: 51,  description: 'Container' },
+  { id: '102x51',  name: '102 × 51 mm',  category: 'medium', widthMm: 102, heightMm: 51,  description: 'Ingredient' },
+  { id: '102x76',  name: '102 × 76 mm',  category: 'medium', widthMm: 102, heightMm: 76,  description: 'Production' },
+  { id: '102x102', name: '102 × 102 mm', category: 'large',  widthMm: 102, heightMm: 102, description: 'Barrel / Drum' },
+  { id: '102x152', name: '102 × 152 mm', category: 'large',  widthMm: 102, heightMm: 152, description: 'Full Detail' },
 ];
 
 export const LABEL_CONSTRAINTS = {
@@ -150,4 +150,31 @@ export interface PrintResponse {
 export interface SplitResponse {
   split: ContainerSplit;
   containers: Container[];
+}
+
+// --- Saved Custom Sizes (SQLite-persisted) ---
+
+export interface SavedCustomSize {
+  id: number;
+  name: string;
+  width_mm: number;
+  height_mm: number;
+  created_by: number;
+  created_by_name: string;
+  created_at: string;
+  company_id: number;
+}
+
+// --- Default Label Size Preference (per user+company) ---
+
+export interface LabelSizePreference {
+  id: number;
+  user_id: number;
+  company_id: number;
+  size_type: 'preset' | 'custom' | 'saved';
+  preset_id: string | null;
+  saved_size_id: number | null;
+  custom_width_mm: number | null;
+  custom_height_mm: number | null;
+  updated_at: string;
 }

@@ -1,12 +1,13 @@
 /**
- * Labeling system SQLite tables: printers, container splits, print jobs.
+ * Labeling system SQLite tables: printers, container splits, print jobs,
+ * saved label sizes, label size preferences.
  * Same DB file as portal.db via getDb().
  */
 import { getDb } from './db';
 import type {
   Printer, CreatePrinterRequest,
   ContainerSplit, Container, CreateSplitRequest,
-  PrintJob,
+  PrintJob, SavedCustomSize, LabelSizePreference,
 } from '@/types/labeling';
 
 function nowISO(): string {
@@ -80,6 +81,31 @@ export function ensureLabelingTables() {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_pj_container ON print_jobs(container_id);
+
+    CREATE TABLE IF NOT EXISTS saved_label_sizes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      width_mm REAL NOT NULL,
+      height_mm REAL NOT NULL,
+      company_id INTEGER NOT NULL,
+      created_by INTEGER NOT NULL,
+      created_by_name TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(name, company_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS label_size_preferences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      company_id INTEGER NOT NULL,
+      size_type TEXT NOT NULL DEFAULT 'preset',
+      preset_id TEXT,
+      saved_size_id INTEGER,
+      custom_width_mm REAL,
+      custom_height_mm REAL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, company_id)
+    );
   `);
 
   // Seed a test printer if none exist
@@ -290,4 +316,73 @@ export function getPrintJobsForSplit(splitId: number): PrintJob[] {
     WHERE c.split_id = ?
     ORDER BY pj.created_at DESC
   `).all(splitId) as PrintJob[];
+}
+
+// =============================================================================
+// Saved Label Sizes
+// =============================================================================
+
+export function getSavedLabelSizes(companyId: number): SavedCustomSize[] {
+  ensureLabelingTables();
+  return getDb().prepare(
+    'SELECT * FROM saved_label_sizes WHERE company_id = ? ORDER BY name ASC'
+  ).all(companyId) as SavedCustomSize[];
+}
+
+export function createSavedLabelSize(
+  name: string, widthMm: number, heightMm: number,
+  companyId: number, userId: number, userName: string
+): SavedCustomSize {
+  ensureLabelingTables();
+  const db = getDb();
+  const info = db.prepare(`
+    INSERT INTO saved_label_sizes (name, width_mm, height_mm, company_id, created_by, created_by_name)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(name, widthMm, heightMm, companyId, userId, userName);
+  return db.prepare('SELECT * FROM saved_label_sizes WHERE id = ?').get(info.lastInsertRowid) as SavedCustomSize;
+}
+
+export function deleteSavedLabelSize(id: number, companyId: number): boolean {
+  ensureLabelingTables();
+  const db = getDb();
+  // Clear any preferences referencing this saved size
+  db.prepare(`
+    UPDATE label_size_preferences SET size_type = 'preset', preset_id = '55x75', saved_size_id = NULL
+    WHERE saved_size_id = ? AND company_id = ?
+  `).run(id, companyId);
+  const info = db.prepare('DELETE FROM saved_label_sizes WHERE id = ? AND company_id = ?').run(id, companyId);
+  return info.changes > 0;
+}
+
+// =============================================================================
+// Label Size Preferences
+// =============================================================================
+
+export function getLabelSizePreference(userId: number, companyId: number): LabelSizePreference | null {
+  ensureLabelingTables();
+  return getDb().prepare(
+    'SELECT * FROM label_size_preferences WHERE user_id = ? AND company_id = ?'
+  ).get(userId, companyId) as LabelSizePreference | null;
+}
+
+export function setLabelSizePreference(
+  userId: number, companyId: number,
+  sizeType: 'preset' | 'custom' | 'saved',
+  presetId: string | null, savedSizeId: number | null,
+  customWidthMm: number | null, customHeightMm: number | null
+): LabelSizePreference {
+  ensureLabelingTables();
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO label_size_preferences (user_id, company_id, size_type, preset_id, saved_size_id, custom_width_mm, custom_height_mm, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(user_id, company_id) DO UPDATE SET
+      size_type = excluded.size_type,
+      preset_id = excluded.preset_id,
+      saved_size_id = excluded.saved_size_id,
+      custom_width_mm = excluded.custom_width_mm,
+      custom_height_mm = excluded.custom_height_mm,
+      updated_at = datetime('now')
+  `).run(userId, companyId, sizeType, presetId, savedSizeId, customWidthMm, customHeightMm);
+  return getLabelSizePreference(userId, companyId)!;
 }

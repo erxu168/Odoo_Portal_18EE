@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import LabelPreview from '@/components/manufacturing/LabelPreview';
+import LabelSizeSelector from '@/components/manufacturing/LabelSizeSelector';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
-import { LABEL_SIZE_PRESETS } from '@/types/labeling';
+import { useCompany } from '@/lib/company-context';
 
 interface PackageLabelProps {
   moId: number;
@@ -23,6 +24,7 @@ const CONTAINER_TYPES = ['Barrel', 'Bucket', 'Bin', 'Cambro', 'Bottle', 'Other']
 type Step = 'split' | 'preview' | 'print';
 
 export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps) {
+  const { companyId } = useCompany();
   const [step, setStep] = useState<Step>('split');
   const [loading, setLoading] = useState(true);
   const [mo, setMo] = useState<any>(null);
@@ -53,12 +55,18 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   }
 
   const labelDims = useMemo(() => {
-    if (selectedSize === 'custom') {
+    if (selectedSize === 'custom' || selectedSize?.startsWith('saved-')) {
       return { widthMm: parseFloat(customWidth) || 55, heightMm: parseFloat(customHeight) || 75 };
     }
-    const preset = LABEL_SIZE_PRESETS.find(p => p.id === selectedSize);
-    return preset ? { widthMm: preset.widthMm, heightMm: preset.heightMm } : { widthMm: 55, heightMm: 75 };
+    // For presets, customWidth/customHeight are synced by LabelSizeSelector
+    return { widthMm: parseFloat(customWidth) || 55, heightMm: parseFloat(customHeight) || 75 };
   }, [selectedSize, customWidth, customHeight]);
+
+  const handleSizeChange = useCallback((w: number, h: number, sizeId: string | null) => {
+    setSelectedSize(sizeId ?? 'custom');
+    setCustomWidth(String(w));
+    setCustomHeight(String(h));
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -163,7 +171,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     setError(null);
     try {
       const params = new URLSearchParams({ label_size_id: selectedSize });
-      if (selectedSize === 'custom') {
+      if (selectedSize === 'custom' || selectedSize?.startsWith('saved-')) {
         params.set('custom_width_mm', customWidth);
         params.set('custom_height_mm', customHeight);
       }
@@ -194,11 +202,10 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     }
   }
 
-  // Copy ZPL to clipboard (fallback when BLE not available)
   async function copyZplForContainer(containerId: number) {
     try {
       const params = new URLSearchParams({ label_size_id: selectedSize, container_id: String(containerId) });
-      if (selectedSize === 'custom') {
+      if (selectedSize === 'custom' || selectedSize?.startsWith('saved-')) {
         params.set('custom_width_mm', customWidth);
         params.set('custom_height_mm', customHeight);
       }
@@ -217,7 +224,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   async function copyAllZpl() {
     try {
       const params = new URLSearchParams({ label_size_id: selectedSize });
-      if (selectedSize === 'custom') {
+      if (selectedSize === 'custom' || selectedSize?.startsWith('saved-')) {
         params.set('custom_width_mm', customWidth);
         params.set('custom_height_mm', customHeight);
       }
@@ -242,12 +249,6 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     const dt = new Date(d);
     return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('de-DE');
   };
-
-  const BleIcon = () => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/>
-    </svg>
-  );
 
   if (loading) {
     return (
@@ -335,7 +336,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         </div>
       )}
 
-      {/* ════════ STEP 1: SPLIT ════════ */}
+      {/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 STEP 1: SPLIT \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */}
       {step === 'split' && !splitDone && (
         <div className="px-4 pt-3 pb-24">
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-4">
@@ -418,7 +419,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         </div>
       )}
 
-      {/* ════════ STEP 2: PREVIEW ════════ */}
+      {/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 STEP 2: PREVIEW \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */}
       {step === 'preview' && splitDone && (
         <div className="px-4 pt-3 pb-24">
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-4">
@@ -440,43 +441,8 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             </div>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-4">
-            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Label Size</div>
-            <div className="grid grid-cols-3 gap-1.5">
-              {LABEL_SIZE_PRESETS.map(p => (
-                <button key={p.id} onClick={() => setSelectedSize(p.id)}
-                  className={`p-2 rounded-xl border text-center transition-all ${
-                    selectedSize === p.id ? 'border-green-500 bg-green-50 shadow-sm' : 'border-gray-100 active:bg-gray-50'
-                  }`}>
-                  <div className="text-[var(--fs-sm)] font-bold text-gray-900">{p.name}</div>
-                  <div className="text-[var(--fs-xs)] text-gray-400">{p.description}</div>
-                </button>
-              ))}
-              <button onClick={() => setSelectedSize('custom')}
-                className={`p-2 rounded-xl border text-center transition-all ${
-                  selectedSize === 'custom' ? 'border-green-500 bg-green-50 shadow-sm' : 'border-gray-100 active:bg-gray-50'
-                }`}>
-                <div className="text-[var(--fs-sm)] font-bold text-gray-900">Custom</div>
-                <div className="text-[var(--fs-xs)] text-gray-400">Manual</div>
-              </button>
-            </div>
-            {selectedSize === 'custom' && (
-              <div className="flex gap-3 mt-3">
-                <div className="flex-1">
-                  <label className="text-[var(--fs-xs)] text-gray-400 font-semibold mb-1 block">Width (mm)</label>
-                  <input type="number" inputMode="decimal" min="20" max="108"
-                    value={customWidth} onChange={e => setCustomWidth(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-mono focus:border-green-500 outline-none" />
-                </div>
-                <div className="flex-1">
-                  <label className="text-[var(--fs-xs)] text-gray-400 font-semibold mb-1 block">Height (mm)</label>
-                  <input type="number" inputMode="decimal" min="25" max="300"
-                    value={customHeight} onChange={e => setCustomHeight(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-mono focus:border-green-500 outline-none" />
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Label Size Selector (dropdown with save + default) */}
+          <LabelSizeSelector companyId={companyId} onSizeChange={handleSizeChange} />
 
           <div className="mb-6">
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2 px-1">
@@ -494,7 +460,6 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             ))}
           </div>
 
-          {/* Always allow going to print step */}
           <button onClick={() => setStep('print')}
             className="w-full py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] bg-green-600 text-white shadow-green-600/30">
             Continue to Print
@@ -502,7 +467,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         </div>
       )}
 
-      {/* ════════ STEP 3: PRINT ════════ */}
+      {/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 STEP 3: PRINT \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */}
       {step === 'print' && splitDone && (
         <div className="px-4 pt-3 pb-24">
           <div className="mb-6">
@@ -552,7 +517,6 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             })}
           </div>
 
-          {/* Action buttons */}
           <div className="flex gap-2">
             <button onClick={onDone}
               className="py-4 px-5 rounded-xl bg-white border border-gray-200 text-gray-600 font-bold text-[var(--fs-sm)] active:bg-gray-50">
