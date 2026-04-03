@@ -3,17 +3,18 @@
  * Works with ZD420T and any Zebra printer with BLE.
  *
  * Zebra BLE GATT UUIDs (from Zebra Link-OS BLE AppNote):
- * - Parser Service:  38eb4a84-c570-11e3-9507-0002a5d5c51b
- * - Write (To Printer): 38eb4a82-c570-11e3-9507-0002a5d5c51b
- *
- * Usage:
- *   const { connect, disconnect, print, isConnected, printerName, status } = useZebraBluetooth();
- *   await connect();    // shows browser BLE picker
- *   await print(zpl);   // sends ZPL string to printer
+ * Multiple service UUIDs exist across Zebra models:
+ * - 38eb4a80-c570-11e3-9507-0002a5d5c51b (Parser Service - primary)
+ * - 38eb4a84-c570-11e3-9507-0002a5d5c51b (Parser Service - alt)
+ * Write characteristic: 38eb4a82-c570-11e3-9507-0002a5d5c51b
  */
 import { useState, useRef, useCallback } from 'react';
 
-const ZEBRA_SERVICE_UUID = '38eb4a84-c570-11e3-9507-0002a5d5c51b';
+// All known Zebra BLE service UUIDs (try in order)
+const ZEBRA_SERVICE_UUIDS = [
+  '38eb4a80-c570-11e3-9507-0002a5d5c51b', // ZPS primary
+  '38eb4a84-c570-11e3-9507-0002a5d5c51b', // ZPS alternate
+];
 const ZEBRA_WRITE_CHAR_UUID = '38eb4a82-c570-11e3-9507-0002a5d5c51b';
 const CHUNK_SIZE = 512;
 
@@ -41,6 +42,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
   const deviceRef = useRef<BleAny>(null);
   const writeCharRef = useRef<BleAny>(null);
   const serverRef = useRef<BleAny>(null);
+  const serviceUuidRef = useRef<string>('');
 
   const isSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
   const isConnected = status === 'connected' || status === 'printing';
@@ -59,30 +61,36 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const nav = navigator as any;
 
+      // Request device with broad filters — accept all devices and list
+      // Zebra services as optional so we can discover them after connecting
       let device: BleAny = null;
-
-      // Strategy 1: Try filtering by Zebra service UUID
       try {
         device = await nav.bluetooth.requestDevice({
           filters: [
-            { services: [ZEBRA_SERVICE_UUID] },
-            { namePrefix: 'ZD' },     // Zebra ZD-series
-            { namePrefix: 'Zebra' },   // Other Zebra models
-            { namePrefix: 'XXRZ' },    // Zebra serial prefix
+            { namePrefix: 'ZD' },
+            { namePrefix: 'Zebra' },
+            { namePrefix: 'XXRZ' },
+            { namePrefix: 'ZQ' },
+            { namePrefix: 'ZT' },
           ],
-          optionalServices: [ZEBRA_SERVICE_UUID, '0000180a-0000-1000-8000-00805f9b34fb'],
+          optionalServices: [
+            ...ZEBRA_SERVICE_UUIDS,
+            '0000180a-0000-1000-8000-00805f9b34fb', // DIS
+          ],
         });
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        // If user cancelled, stop
         if (msg.includes('cancelled') || msg.includes('canceled') || msg.includes('User cancelled')) {
           setStatus('idle');
           return false;
         }
-        // If no devices found with filter, try acceptAllDevices
+        // Fallback: accept all devices
         device = await nav.bluetooth.requestDevice({
           acceptAllDevices: true,
-          optionalServices: [ZEBRA_SERVICE_UUID, '0000180a-0000-1000-8000-00805f9b34fb'],
+          optionalServices: [
+            ...ZEBRA_SERVICE_UUIDS,
+            '0000180a-0000-1000-8000-00805f9b34fb',
+          ],
         });
       }
 
@@ -105,19 +113,61 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       const server = await device.gatt.connect();
       serverRef.current = server;
 
-      // Try to get Zebra Parser Service
+      // Try each known Zebra service UUID until one works
       let writeChar: BleAny = null;
-      try {
-        const service = await server.getPrimaryService(ZEBRA_SERVICE_UUID);
-        writeChar = await service.getCharacteristic(ZEBRA_WRITE_CHAR_UUID);
-      } catch {
-        // If Zebra-specific service not found, try to find any writable characteristic
-        // This handles printers that expose data via a different GATT profile
-        setError('Could not find Zebra print service. Make sure the printer BLE is enabled and discoverable.');
+      let foundServiceUuid = '';
+
+      for (const svcUuid of ZEBRA_SERVICE_UUIDS) {
+        try {
+          const service = await server.getPrimaryService(svcUuid);
+          writeChar = await service.getCharacteristic(ZEBRA_WRITE_CHAR_UUID);
+          foundServiceUuid = svcUuid;
+          break;
+        } catch {
+          // This UUID not available, try next
+          continue;
+        }
+      }
+
+      // If no known service found, try to discover all services and find a writable one
+      if (!writeChar) {
+        try {
+          const services = await server.getPrimaryServices();
+          const serviceList = services.map((s: BleAny) => s.uuid).join(', ');
+          console.log('Available BLE services:', serviceList);
+
+          for (const svc of services) {
+            try {
+              const chars = await svc.getCharacteristics();
+              for (const ch of chars) {
+                if (ch.properties.writeWithoutResponse || ch.properties.write) {
+                  writeChar = ch;
+                  foundServiceUuid = svc.uuid;
+                  console.log(`Found writable characteristic ${ch.uuid} on service ${svc.uuid}`);
+                  break;
+                }
+              }
+              if (writeChar) break;
+            } catch {
+              continue;
+            }
+          }
+        } catch (discErr: unknown) {
+          console.error('Service discovery failed:', discErr);
+        }
+      }
+
+      if (!writeChar) {
+        setError(
+          'Connected to printer but could not find a print service. ' +
+          'The printer BLE may be in configuration-only mode. ' +
+          'Try power-cycling the printer, then reconnect.'
+        );
         setStatus('error');
         return false;
       }
 
+      serviceUuidRef.current = foundServiceUuid;
       writeCharRef.current = writeChar;
       setStatus('connected');
       return true;
@@ -140,6 +190,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
     deviceRef.current = null;
     writeCharRef.current = null;
     serverRef.current = null;
+    serviceUuidRef.current = '';
     setPrinterName(null);
     setStatus('idle');
     setError(null);
@@ -160,7 +211,12 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
 
       for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
         const chunk = data.slice(offset, Math.min(offset + CHUNK_SIZE, data.length));
-        await writeCharRef.current.writeValueWithoutResponse(chunk);
+        // Try writeWithoutResponse first (faster), fall back to write
+        if (writeCharRef.current.properties?.writeWithoutResponse) {
+          await writeCharRef.current.writeValueWithoutResponse(chunk);
+        } else {
+          await writeCharRef.current.writeValue(chunk);
+        }
       }
 
       setStatus('connected');
@@ -171,9 +227,9 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       // Auto-reconnect on GATT disconnect
       if (msg.includes('GATT') || msg.includes('disconnected')) {
         try {
-          if (deviceRef.current?.gatt) {
+          if (deviceRef.current?.gatt && serviceUuidRef.current) {
             const server = await deviceRef.current.gatt.connect();
-            const service = await server.getPrimaryService(ZEBRA_SERVICE_UUID);
+            const service = await server.getPrimaryService(serviceUuidRef.current);
             const writeChar = await service.getCharacteristic(ZEBRA_WRITE_CHAR_UUID);
             writeCharRef.current = writeChar;
             serverRef.current = server;
@@ -182,7 +238,11 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
             const retryData = encoder.encode(zpl);
             for (let offset = 0; offset < retryData.length; offset += CHUNK_SIZE) {
               const chunk = retryData.slice(offset, Math.min(offset + CHUNK_SIZE, retryData.length));
-              await writeCharRef.current.writeValueWithoutResponse(chunk);
+              if (writeCharRef.current.properties?.writeWithoutResponse) {
+                await writeCharRef.current.writeValueWithoutResponse(chunk);
+              } else {
+                await writeCharRef.current.writeValue(chunk);
+              }
             }
             setStatus('connected');
             return true;
