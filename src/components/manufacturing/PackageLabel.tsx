@@ -36,9 +36,9 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const [existingSplit, setExistingSplit] = useState<any>(null);
   const [existingContainers, setExistingContainers] = useState<any[]>([]);
 
-  const [selectedSize, setSelectedSize] = useState('102x102');
-  const [customWidth, setCustomWidth] = useState('102');
-  const [customHeight, setCustomHeight] = useState('102');
+  const [selectedSize, setSelectedSize] = useState('55x75');
+  const [customWidth, setCustomWidth] = useState('55');
+  const [customHeight, setCustomHeight] = useState('75');
   const [printing, setPrinting] = useState(false);
   const [printedIds, setPrintedIds] = useState<Set<number>>(new Set());
   const [printingContainerId, setPrintingContainerId] = useState<number | null>(null);
@@ -54,10 +54,10 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
 
   const labelDims = useMemo(() => {
     if (selectedSize === 'custom') {
-      return { widthMm: parseFloat(customWidth) || 102, heightMm: parseFloat(customHeight) || 102 };
+      return { widthMm: parseFloat(customWidth) || 55, heightMm: parseFloat(customHeight) || 75 };
     }
     const preset = LABEL_SIZE_PRESETS.find(p => p.id === selectedSize);
-    return preset ? { widthMm: preset.widthMm, heightMm: preset.heightMm } : { widthMm: 102, heightMm: 102 };
+    return preset ? { widthMm: preset.widthMm, heightMm: preset.heightMm } : { widthMm: 55, heightMm: 75 };
   }, [selectedSize, customWidth, customHeight]);
 
   useEffect(() => {

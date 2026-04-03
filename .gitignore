@@ -36,3 +36,8 @@ next-env.d.ts
 # portal database
 /data/
 .env
+
+
+# Capacitor native projects (not committed — rebuild from capacitor.config.ts)
+/android/
+/ios/
