@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import LabelPreview from '@/components/manufacturing/LabelPreview';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
+import { LABEL_SIZE_PRESETS } from '@/types/labeling';
 
 interface PackageLabelProps {
   moId: number;
@@ -13,17 +15,12 @@ interface PackageLabelProps {
 interface ContainerRow {
   qty: string;
   expiryDate: string;
+  type: string;
 }
 
-interface LabelPreset {
-  id: string;
-  name: string;
-  widthMm: number;
-  heightMm: number;
-  description: string;
-}
+const CONTAINER_TYPES = ['Barrel', 'Bucket', 'Bin', 'Cambro', 'Bottle', 'Other'] as const;
 
-type Step = 'split' | 'print';
+type Step = 'split' | 'preview' | 'print';
 
 export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps) {
   const [step, setStep] = useState<Step>('split');
@@ -33,7 +30,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
 
   // Split state
   const [containers, setContainers] = useState<ContainerRow[]>([
-    { qty: '', expiryDate: getDefaultExpiry() },
+    { qty: '', expiryDate: getDefaultExpiry(), type: 'Barrel' },
   ]);
   const [splitLoading, setSplitLoading] = useState(false);
   const [splitDone, setSplitDone] = useState(false);
@@ -41,12 +38,12 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const [existingContainers, setExistingContainers] = useState<any[]>([]);
 
   // Print state
-  const [labelPresets, setLabelPresets] = useState<LabelPreset[]>([]);
   const [selectedSize, setSelectedSize] = useState('4x4');
-  const [customWidth, setCustomWidth] = useState('');
-  const [customHeight, setCustomHeight] = useState('');
+  const [customWidth, setCustomWidth] = useState('102');
+  const [customHeight, setCustomHeight] = useState('102');
   const [printing, setPrinting] = useState(false);
   const [printedIds, setPrintedIds] = useState<Set<number>>(new Set());
+  const [printingContainerId, setPrintingContainerId] = useState<number | null>(null);
 
   // BLE
   const ble = useZebraBluetooth();
@@ -57,19 +54,26 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     return d.toISOString().slice(0, 10);
   }
 
-  // Fetch MO detail + existing split + presets
+  // Resolve current label dimensions
+  const labelDims = useMemo(() => {
+    if (selectedSize === 'custom') {
+      return { widthMm: parseFloat(customWidth) || 102, heightMm: parseFloat(customHeight) || 102 };
+    }
+    const preset = LABEL_SIZE_PRESETS.find(p => p.id === selectedSize);
+    return preset ? { widthMm: preset.widthMm, heightMm: preset.heightMm } : { widthMm: 102, heightMm: 102 };
+  }, [selectedSize, customWidth, customHeight]);
+
+  // Fetch MO detail + existing split
   useEffect(() => {
     async function load() {
       setLoading(true);
       try {
-        const [moRes, splitRes, printerRes] = await Promise.all([
+        const [moRes, splitRes] = await Promise.all([
           fetch(`/api/manufacturing-orders/${moId}`),
           fetch(`/api/manufacturing-orders/${moId}/package`),
-          fetch('/api/printers'),
         ]);
         const moData = await moRes.json();
         const splitData = await splitRes.json();
-        const printerData = await printerRes.json();
 
         setMo(moData.order);
 
@@ -77,16 +81,13 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
           setExistingSplit(splitData.split);
           setExistingContainers(splitData.containers || []);
           setSplitDone(true);
-          setStep('print');
-          // Track already-printed containers
+          setStep('preview');
           const alreadyPrinted = new Set<number>();
           for (const c of (splitData.containers || [])) {
             if (c.label_printed) alreadyPrinted.add(c.id);
           }
           setPrintedIds(alreadyPrinted);
         }
-
-        setLabelPresets(printerData.label_presets || []);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load');
       } finally {
@@ -98,15 +99,13 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
 
   // Container CRUD
   function addContainer() {
-    setContainers(prev => [...prev, { qty: '', expiryDate: getDefaultExpiry() }]);
+    setContainers(prev => [...prev, { qty: '', expiryDate: getDefaultExpiry(), type: 'Barrel' }]);
   }
-
   function removeContainer(idx: number) {
     if (containers.length <= 1) return;
     setContainers(prev => prev.filter((_, i) => i !== idx));
   }
-
-  function updateContainer(idx: number, field: 'qty' | 'expiryDate', value: string) {
+  function updateContainer(idx: number, field: keyof ContainerRow, value: string) {
     setContainers(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c));
   }
 
@@ -155,7 +154,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         setExistingSplit(data.split);
         setExistingContainers(data.containers || []);
         setSplitDone(true);
-        setStep('print');
+        setStep('preview');
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to package');
@@ -173,17 +172,16 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     setPrinting(true);
     setError(null);
     try {
-      // Build query params for ZPL preview
       const params = new URLSearchParams({ label_size_id: selectedSize });
       if (selectedSize === 'custom') {
         params.set('custom_width_mm', customWidth);
         params.set('custom_height_mm', customHeight);
       }
 
-      // If printing specific containers, do them one at a time
       const targets = containerIds || existingContainers.map((c: any) => c.id);
 
       for (const cId of targets) {
+        setPrintingContainerId(cId);
         params.set('container_id', String(cId));
         const res = await fetch(`/api/manufacturing-orders/${moId}/labels?${params}`);
         const data = await res.json();
@@ -193,45 +191,40 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
           const success = await ble.print(zpl);
           if (success) {
             setPrintedIds(prev => new Set([...Array.from(prev), cId]));
-            // Mark printed on server
             setExistingContainers(prev =>
               prev.map(c => c.id === cId ? { ...c, label_printed: 1 } : c)
             );
           } else {
-            setError(`Failed to print container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'}: ${ble.error || 'Unknown error'}`);
+            setError(`Failed: container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'}: ${ble.error || 'Unknown error'}`);
             break;
           }
-          // Small delay between prints for printer to process
-          if (targets.length > 1) {
-            await new Promise(r => setTimeout(r, 500));
-          }
+          if (targets.length > 1) await new Promise(r => setTimeout(r, 500));
         }
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Print failed');
     } finally {
       setPrinting(false);
+      setPrintingContainerId(null);
     }
   }
 
   const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 }).format(n);
+  const fmtDate = (d: string | null) => {
+    if (!d) return '-';
+    const dt = new Date(d);
+    return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('de-DE');
+  };
 
-  // BLE status indicator
   const BleIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5"/>
-    </svg>
-  );
-
-  const PrinterIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
     </svg>
   );
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#F6F7F9] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
       </div>
     );
@@ -239,15 +232,18 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
 
   if (!mo) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-[#F6F7F9]">
         <AppHeader title="Package & Label" showBack onBack={onBack} />
-        <div className="p-4 text-center text-gray-500">MO not found</div>
+        <div className="p-4 text-center text-[var(--fs-sm)] text-gray-500">Manufacturing order not found</div>
       </div>
     );
   }
 
+  // First container for preview
+  const previewContainer = existingContainers[0];
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#F6F7F9]">
       <AppHeader
         title="Package & Label"
         subtitle={`${mo.product_id[1]} \u2014 ${mo.name}`}
@@ -255,69 +251,106 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         onBack={onBack}
       />
 
-      {/* Step indicator */}
-      <div className="px-4 pt-3 pb-2">
-        <div className="flex gap-2">
-          <button
-            onClick={() => !splitDone && setStep('split')}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold text-center transition-all ${
-              step === 'split' ? 'bg-green-600 text-white' : splitDone ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'
-            }`}
-          >
-            {splitDone ? '\u2713 ' : '1. '}Split
-          </button>
-          <button
-            onClick={() => splitDone && setStep('print')}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold text-center transition-all ${
-              step === 'print' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'
-            }`}
-          >
-            2. Print Labels
-          </button>
+      {/* ── Step indicator ── */}
+      <div className="px-4 pt-3 pb-1">
+        <div className="flex gap-1.5">
+          {(['split', 'preview', 'print'] as Step[]).map((s, i) => {
+            const labels = ['1. Split', '2. Preview', '3. Print'];
+            const isDone = (s === 'split' && splitDone);
+            const isCurrent = step === s;
+            const isReachable = (s === 'split' && !splitDone) || (s !== 'split' && splitDone);
+            return (
+              <button key={s}
+                onClick={() => isReachable && setStep(s)}
+                className={`flex-1 py-2 rounded-lg text-[var(--fs-xs)] font-bold text-center transition-all ${
+                  isCurrent ? 'bg-green-600 text-white' :
+                  isDone ? 'bg-green-100 text-green-700' :
+                  'bg-gray-100 text-gray-400'
+                }`}>
+                {isDone ? '\u2713 ' : ''}{labels[i]}
+              </button>
+            );
+          })}
         </div>
       </div>
 
+      {/* ── BLE status bar (always visible in preview/print steps) ── */}
+      {step !== 'split' && (
+        <div className="px-4 pt-2">
+          <div className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-[var(--fs-xs)] font-semibold ${
+            ble.isConnected
+              ? 'bg-blue-50 border border-blue-200 text-blue-700'
+              : 'bg-gray-100 border border-gray-200 text-gray-500'
+          }`}>
+            <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+              ble.isConnected ? 'bg-green-500' :
+              ble.status === 'scanning' || ble.status === 'connecting' ? 'bg-amber-400 animate-pulse' :
+              'bg-gray-300'
+            }`} />
+            <span className="flex-1 truncate">
+              {ble.isConnected ? ble.printerName :
+               ble.status === 'scanning' ? 'Scanning\u2026' :
+               ble.status === 'connecting' ? 'Connecting\u2026' :
+               'No printer connected'}
+            </span>
+            {ble.isConnected ? (
+              <button onClick={ble.disconnect} className="text-blue-500 active:text-blue-700">Change</button>
+            ) : (
+              <button
+                onClick={async () => { setError(null); const ok = await ble.connect(); if (!ok && ble.error) setError(ble.error); }}
+                disabled={!ble.isSupported || ble.status === 'scanning' || ble.status === 'connecting'}
+                className="text-blue-600 font-bold active:text-blue-800 disabled:opacity-50">
+                Connect
+              </button>
+            )}
+          </div>
+          {!ble.isSupported && (
+            <p className="text-[var(--fs-xs)] text-amber-600 mt-1 px-1">Web Bluetooth requires Chrome on Android or desktop.</p>
+          )}
+        </div>
+      )}
+
       {error && (
         <div className="px-4 pt-2">
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-sm whitespace-pre-line">
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-[var(--fs-xs)] whitespace-pre-line">
             {error}
             <button onClick={() => setError(null)} className="ml-2 text-red-400 font-bold">{'\u2715'}</button>
           </div>
         </div>
       )}
 
-      {/* ============ STEP 1: SPLIT ============ */}
+      {/* ════════════════ STEP 1: SPLIT ════════════════ */}
       {step === 'split' && !splitDone && (
-        <div className="px-4 pt-3 pb-32">
-          {/* Summary card */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="px-4 pt-3 pb-44">
+          {/* Summary */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-4">
             <div className="flex justify-between items-center">
               <div>
-                <div className="text-xs text-gray-400 font-semibold">TOTAL TO PACKAGE</div>
-                <div className="text-2xl font-extrabold text-gray-900 font-mono">{fmt(totalQty)} <span className="text-base font-semibold text-gray-400">{uom}</span></div>
+                <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">Total to package</div>
+                <div className="text-[var(--fs-xxl)] font-extrabold text-gray-900 font-mono mt-0.5">{fmt(totalQty)} <span className="text-[var(--fs-sm)] font-semibold text-gray-400">{uom}</span></div>
               </div>
               <div className={`text-right ${isBalanced ? 'text-green-600' : remaining > 0 ? 'text-amber-600' : 'text-red-600'}`}>
-                <div className="text-xs font-semibold">REMAINING</div>
-                <div className="text-xl font-extrabold font-mono">{fmt(remaining)} {uom}</div>
+                <div className="text-[var(--fs-xs)] font-bold">REMAINING</div>
+                <div className="text-[var(--fs-xl)] font-extrabold font-mono">{fmt(remaining)}</div>
               </div>
             </div>
             <div className="h-2 bg-gray-200 rounded-full mt-3 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-300 ${isBalanced ? 'bg-green-500' : sumQty > totalQty ? 'bg-red-500' : 'bg-amber-500'}`}
-                style={{ width: `${Math.min((sumQty / totalQty) * 100, 100)}%` }}
-              />
+              <div className={`h-full rounded-full transition-all duration-300 ${isBalanced ? 'bg-green-500' : sumQty > totalQty ? 'bg-red-500' : 'bg-amber-500'}`}
+                style={{ width: `${Math.min((sumQty / totalQty) * 100, 100)}%` }} />
             </div>
           </div>
 
           {/* Container rows */}
           {containers.map((c, idx) => (
-            <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 mb-3">
+            <div key={idx} className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center font-extrabold text-sm">
-                    {idx + 1}
-                  </div>
-                  <span className="text-sm font-bold text-gray-700">Container {idx + 1}</span>
+                  <div className="w-8 h-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center font-extrabold text-[var(--fs-sm)]">{idx + 1}</div>
+                  {/* Type selector */}
+                  <select value={c.type} onChange={e => updateContainer(idx, 'type', e.target.value)}
+                    className="text-[var(--fs-sm)] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-green-500">
+                    {CONTAINER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
                 </div>
                 {containers.length > 1 && (
                   <button onClick={() => removeContainer(idx)}
@@ -328,16 +361,16 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="text-xs text-gray-400 font-semibold mb-1 block">QUANTITY ({uom})</label>
+                  <label className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-1.5 block">Qty ({uom})</label>
                   <input type="number" inputMode="decimal" step="0.01" min="0"
                     value={c.qty} onChange={e => updateContainer(idx, 'qty', e.target.value)}
                     placeholder="0.00"
-                    className="w-full px-3 py-3 border border-gray-200 rounded-xl text-lg font-mono font-bold text-gray-900 focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none" />
+                    className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs text-gray-400 font-semibold mb-1 block">EXPIRY DATE</label>
+                  <label className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-1.5 block">Expiry</label>
                   <input type="date" value={c.expiryDate} onChange={e => updateContainer(idx, 'expiryDate', e.target.value)}
-                    className="w-full px-3 py-3 border border-gray-200 rounded-xl text-base text-gray-900 focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none" />
+                    className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
                 </div>
               </div>
             </div>
@@ -345,13 +378,13 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
 
           <div className="flex gap-2 mb-4">
             <button onClick={addContainer}
-              className="flex-1 py-3 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 font-semibold text-sm active:bg-gray-50 flex items-center justify-center gap-1">
+              className="flex-1 py-3.5 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 font-semibold text-[var(--fs-sm)] active:bg-gray-50 flex items-center justify-center gap-1">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
               Add Container
             </button>
             {containers.length >= 2 && remaining > 0 && (
               <button onClick={autoFillLast}
-                className="py-3 px-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 font-semibold text-sm active:bg-amber-100">
+                className="py-3.5 px-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 font-semibold text-[var(--fs-sm)] active:bg-amber-100">
                 Auto-fill last ({fmt(remaining)})
               </button>
             )}
@@ -359,150 +392,139 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         </div>
       )}
 
-      {/* ============ STEP 2: PRINT ============ */}
-      {step === 'print' && splitDone && (
-        <div className="px-4 pt-3 pb-32">
-
-          {/* Bluetooth connection card */}
-          <div className={`border rounded-xl p-4 mb-4 ${ble.isConnected ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}>
-            <div className="text-xs font-bold text-gray-400 tracking-wider mb-2">PRINTER CONNECTION</div>
-
-            {!ble.isSupported && (
-              <div className="text-sm text-amber-700 bg-amber-50 rounded-lg p-3 mb-2">
-                Web Bluetooth is not available in this browser. Use Chrome on Android for Bluetooth printing.
-              </div>
-            )}
-
-            {ble.isConnected ? (
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-blue-500 text-white flex items-center justify-center">
-                  <BleIcon />
-                </div>
-                <div className="flex-1">
-                  <div className="font-bold text-blue-900">{ble.printerName}</div>
-                  <div className="text-xs text-blue-600">
-                    {ble.status === 'printing' ? 'Printing...' : 'Connected via Bluetooth'}
-                  </div>
-                </div>
-                <button onClick={ble.disconnect}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-blue-600 font-semibold active:bg-blue-50">
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={async () => {
-                  setError(null);
-                  const ok = await ble.connect();
-                  if (!ok && ble.error) setError(ble.error);
-                }}
-                disabled={!ble.isSupported || ble.status === 'scanning' || ble.status === 'connecting'}
-                className="w-full flex items-center justify-center gap-3 py-4 rounded-xl bg-blue-600 text-white font-bold text-sm shadow-lg shadow-blue-600/30 active:scale-[0.975] transition-transform disabled:opacity-50"
-              >
-                {ble.status === 'scanning' || ble.status === 'connecting' ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    {ble.status === 'scanning' ? 'Scanning...' : 'Connecting...'}
-                  </>
-                ) : (
-                  <>
-                    <BleIcon />
-                    Connect Zebra Printer
-                  </>
-                )}
-              </button>
-            )}
-
-            {ble.error && !error && (
-              <div className="mt-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{ble.error}</div>
-            )}
-          </div>
-
-          {/* Container list */}
-          <div className="mb-4">
-            <div className="text-xs font-bold text-gray-400 tracking-wider mb-2">CONTAINERS</div>
-            {existingContainers.map((c: any) => {
-              const isPrinted = printedIds.has(c.id) || c.label_printed;
-              return (
-                <div key={c.id} className={`bg-white border rounded-xl p-4 mb-2 flex items-center gap-3 ${
-                  isPrinted ? 'border-green-200 bg-green-50/30' : 'border-gray-200'
-                }`}>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-extrabold text-sm ${
-                    isPrinted ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500'
-                  }`}>
-                    {isPrinted ? (
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
-                    ) : c.sequence}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-bold text-gray-900">{fmt(c.qty)} {existingSplit?.uom || uom}</div>
-                    <div className="text-xs text-gray-400">
-                      {c.lot_name || 'No lot'}
-                      {c.expiry_date && ` \u2022 Exp: ${new Date(c.expiry_date).toLocaleDateString('de-DE')}`}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => fetchZplAndPrint([c.id])}
-                    disabled={printing || !ble.isConnected}
-                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50 ${
-                      isPrinted
-                        ? 'bg-gray-100 text-gray-500 active:bg-gray-200'
-                        : 'bg-green-100 text-green-700 active:bg-green-200'
-                    }`}
-                  >
-                    {isPrinted ? 'Reprint' : 'Print'}
-                  </button>
-                </div>
-              );
-            })}
+      {/* ════════════════ STEP 2: PREVIEW ════════════════ */}
+      {step === 'preview' && splitDone && (
+        <div className="px-4 pt-3 pb-44">
+          {/* Label preview */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-4">
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-3">Label Preview</div>
+            <div className="flex justify-center py-2 bg-gray-50 rounded-lg">
+              <LabelPreview
+                productName={existingSplit?.product_name || mo.product_id[1]}
+                productionDate={fmtDate(existingSplit?.confirmed_at || existingSplit?.created_at)}
+                qty={previewContainer?.qty || totalQty}
+                uom={existingSplit?.uom || uom}
+                expiryDate={fmtDate(previewContainer?.expiry_date)}
+                lotName={previewContainer?.lot_name}
+                moName={existingSplit?.mo_name || mo.name}
+                containerNumber={1}
+                totalContainers={existingContainers.length}
+                widthMm={labelDims.widthMm}
+                heightMm={labelDims.heightMm}
+              />
+            </div>
           </div>
 
           {/* Label size selection */}
-          <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-            <div className="text-xs font-bold text-gray-400 tracking-wider mb-2">LABEL SIZE</div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {labelPresets.map(p => (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-4">
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Label Size</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {LABEL_SIZE_PRESETS.map(p => (
                 <button key={p.id} onClick={() => setSelectedSize(p.id)}
-                  className={`p-2.5 rounded-xl border text-left transition-all ${
-                    selectedSize === p.id ? 'border-green-500 bg-green-50' : 'border-gray-100 active:bg-gray-50'
+                  className={`p-2 rounded-xl border text-center transition-all ${
+                    selectedSize === p.id ? 'border-green-500 bg-green-50 shadow-sm' : 'border-gray-100 active:bg-gray-50'
                   }`}>
-                  <div className="text-sm font-bold text-gray-900">{p.name}</div>
-                  <div className="text-xs text-gray-400">{p.widthMm}{'\u00d7'}{p.heightMm}mm {'\u2022'} {p.description}</div>
+                  <div className="text-[var(--fs-sm)] font-bold text-gray-900">{p.name}</div>
+                  <div className="text-[var(--fs-xs)] text-gray-400">{p.description}</div>
                 </button>
               ))}
               <button onClick={() => setSelectedSize('custom')}
-                className={`p-2.5 rounded-xl border text-left transition-all ${
-                  selectedSize === 'custom' ? 'border-green-500 bg-green-50' : 'border-gray-100 active:bg-gray-50'
+                className={`p-2 rounded-xl border text-center transition-all ${
+                  selectedSize === 'custom' ? 'border-green-500 bg-green-50 shadow-sm' : 'border-gray-100 active:bg-gray-50'
                 }`}>
-                <div className="text-sm font-bold text-gray-900">Custom</div>
-                <div className="text-xs text-gray-400">Enter dimensions</div>
+                <div className="text-[var(--fs-sm)] font-bold text-gray-900">Custom</div>
+                <div className="text-[var(--fs-xs)] text-gray-400">Manual</div>
               </button>
             </div>
             {selectedSize === 'custom' && (
               <div className="flex gap-3 mt-3">
                 <div className="flex-1">
-                  <label className="text-xs text-gray-400 font-semibold mb-1 block">WIDTH (mm)</label>
+                  <label className="text-[var(--fs-xs)] text-gray-400 font-semibold mb-1 block">Width (mm)</label>
                   <input type="number" inputMode="decimal" min="20" max="108"
                     value={customWidth} onChange={e => setCustomWidth(e.target.value)}
-                    placeholder="102" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:border-green-500 outline-none" />
+                    className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-mono focus:border-green-500 outline-none" />
                 </div>
                 <div className="flex-1">
-                  <label className="text-xs text-gray-400 font-semibold mb-1 block">HEIGHT (mm)</label>
+                  <label className="text-[var(--fs-xs)] text-gray-400 font-semibold mb-1 block">Height (mm)</label>
                   <input type="number" inputMode="decimal" min="25" max="300"
                     value={customHeight} onChange={e => setCustomHeight(e.target.value)}
-                    placeholder="102" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-mono focus:border-green-500 outline-none" />
+                    className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-mono focus:border-green-500 outline-none" />
                 </div>
               </div>
             )}
           </div>
+
+          {/* Containers summary */}
+          <div className="mb-4">
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2 px-1">
+              {existingContainers.length} Container{existingContainers.length !== 1 ? 's' : ''} to label
+            </div>
+            {existingContainers.map((c: any) => (
+              <div key={c.id} className="bg-white border border-gray-200 rounded-xl p-3 mb-1.5 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-green-100 text-green-700 flex items-center justify-center font-extrabold text-[var(--fs-xs)]">{c.sequence}</div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-[var(--fs-sm)] font-bold text-gray-900">{fmt(c.qty)} {existingSplit?.uom || uom}</span>
+                  <span className="text-[var(--fs-xs)] text-gray-400 ml-2">{c.lot_name || ''}</span>
+                </div>
+                <span className="text-[var(--fs-xs)] text-gray-400">Exp {fmtDate(c.expiry_date)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* ============ BOTTOM BAR ============ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-4 pb-8 z-30">
+      {/* ════════════════ STEP 3: PRINT ════════════════ */}
+      {step === 'print' && splitDone && (
+        <div className="px-4 pt-3 pb-44">
+          {/* Per-container print status */}
+          <div className="mb-4">
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2 px-1">Print Status</div>
+            {existingContainers.map((c: any) => {
+              const isPrinted = printedIds.has(c.id) || c.label_printed;
+              const isPrinting = printingContainerId === c.id;
+              return (
+                <div key={c.id} className={`bg-white border rounded-xl p-4 mb-2 flex items-center gap-3 ${
+                  isPrinted ? 'border-green-200 bg-green-50/30' : isPrinting ? 'border-blue-200 bg-blue-50/20' : 'border-gray-200'
+                }`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-extrabold text-[var(--fs-sm)] ${
+                    isPrinted ? 'bg-green-500 text-white' :
+                    isPrinting ? 'bg-blue-500 text-white' :
+                    'bg-gray-100 text-gray-500'
+                  }`}>
+                    {isPrinting ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : isPrinted ? (
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
+                    ) : c.sequence}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[var(--fs-sm)] font-bold text-gray-900">{fmt(c.qty)} {existingSplit?.uom || uom}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-400 truncate">
+                      {c.lot_name || 'No lot'} {'\u2022'} Exp {fmtDate(c.expiry_date)}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => fetchZplAndPrint([c.id])}
+                    disabled={printing || !ble.isConnected}
+                    className={`text-[var(--fs-xs)] px-3 py-2 rounded-xl font-bold min-w-[72px] text-center disabled:opacity-40 ${
+                      isPrinted
+                        ? 'bg-gray-100 text-gray-600 active:bg-gray-200'
+                        : 'bg-green-600 text-white active:bg-green-700 shadow-sm'
+                    }`}>
+                    {isPrinting ? '\u2026' : isPrinted ? 'Reprint' : 'Print'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ BOTTOM BAR (safe-area aware) ════════════════ */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 pt-3 z-30 safe-bottom" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 20px)' }}>
         {step === 'split' && !splitDone && (
           <button onClick={handleConfirmSplit} disabled={!canConfirm || splitLoading}
-            className={`w-full py-4 rounded-xl font-bold text-base shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
+            className={`w-full py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
               canConfirm ? 'bg-green-600 text-white shadow-green-600/30' : 'bg-gray-200 text-gray-400 shadow-none'
             }`}>
             {splitLoading ? (
@@ -516,26 +538,33 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
           </button>
         )}
 
+        {step === 'preview' && splitDone && (
+          <button onClick={() => setStep('print')}
+            disabled={!ble.isConnected}
+            className={`w-full py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
+              ble.isConnected ? 'bg-green-600 text-white shadow-green-600/30' : 'bg-gray-200 text-gray-500 shadow-none'
+            }`}>
+            {ble.isConnected ? 'Continue to Print' : 'Connect printer to continue'}
+          </button>
+        )}
+
         {step === 'print' && splitDone && (
           <div className="flex gap-2">
             <button onClick={onDone}
-              className="py-4 px-6 rounded-xl bg-white border border-gray-200 text-gray-600 font-bold text-sm active:bg-gray-50">
+              className="py-4 px-5 rounded-xl bg-white border border-gray-200 text-gray-600 font-bold text-[var(--fs-sm)] active:bg-gray-50">
               Done
             </button>
             <button
               onClick={() => fetchZplAndPrint()}
               disabled={printing || !ble.isConnected}
-              className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-base shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50"
-            >
+              className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
               {printing ? (
                 <span className="flex items-center justify-center gap-2">
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Printing...
                 </span>
-              ) : !ble.isConnected ? (
-                'Connect printer to print'
               ) : (
-                `Print All Labels (${existingContainers.length})`
+                `Print All (${existingContainers.length} labels)`
               )}
             </button>
           </div>
