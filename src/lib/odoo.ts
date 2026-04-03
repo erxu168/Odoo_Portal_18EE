@@ -262,3 +262,16 @@ export function getOdoo(): OdooClient {
 export function resetOdooSession(): void {
   _instance = null;
 }
+
+/**
+ * Convenience wrapper: odooRPC(model, method, args) → getOdoo().call(...)
+ * Used by manufacturing-orders package route and other API routes.
+ */
+export async function odooRPC(
+  model: string,
+  method: string,
+  args: any[] = [],
+  kwargs: Record<string, any> = {},
+): Promise<any> {
+  return getOdoo().call(model, method, args, kwargs);
+}
