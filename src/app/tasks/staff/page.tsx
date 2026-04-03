@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Shift, ShiftTaskList, getTaskListForShift } from '@/lib/odoo-tasks';
+import type { Shift, ShiftTaskList } from '@/lib/odoo-tasks';
 import ShiftPill from '../_components/ShiftPill';
 import ChecklistCard from '../_components/ChecklistCard';
 import BottomNav from '../_components/BottomNav';
@@ -28,11 +28,14 @@ export default function StaffPage() {
   async function selectShift(shift: Shift) {
     setSelected(shift);
     setListLoading(true);
+    setTaskList(null);
     try {
-      // Task list fetch is client-side since getTaskListForShift uses stubs
-      // Once real API exists, swap this for: fetch(`/api/tasks/list/${shift.id}`)
-      const list = await getTaskListForShift(shift);
-      setTaskList(list);
+      const res  = await fetch(`/api/tasks/list/${shift.id}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setTaskList(data.taskList ?? null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Could not load task list');
     } finally {
       setListLoading(false);
     }
@@ -42,13 +45,12 @@ export default function StaffPage() {
     const res  = await fetch(`/api/tasks/${taskLineId}/complete`, { method: 'POST' });
     const data = await res.json();
     if (!data.ok) { alert(data.error || 'Failed to complete task'); return; }
-    // Optimistic update
     setTaskList(prev => {
       if (!prev) return prev;
       const lines = prev.task_lines.map(t =>
         t.id === taskLineId
           ? { ...t, state: 'done' as const, completed_at: new Date().toISOString(), completed_by_name: 'You' }
-          : t
+          : t,
       );
       const done = lines.filter(t => t.state === 'done').length;
       return { ...prev, task_lines: lines, completion_rate: Math.round(done / lines.length * 100) };
@@ -75,6 +77,7 @@ export default function StaffPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 max-w-[430px] mx-auto">
+
       {/* Top bar */}
       <div className="bg-orange-500 px-5 pt-5 pb-4 flex-shrink-0">
         <p className="text-orange-100 text-xs font-medium">{today}</p>
@@ -101,7 +104,7 @@ export default function StaffPage() {
             )}
             {loading ? (
               <div className="space-y-2">
-                {[1,2].map(i => <div key={i} className="h-16 bg-gray-200 rounded-2xl animate-pulse" />)}
+                {[1, 2].map(i => <div key={i} className="h-16 bg-gray-200 rounded-2xl animate-pulse" />)}
               </div>
             ) : shifts.length === 0 ? (
               <div className="text-center py-12 text-gray-400">
@@ -114,7 +117,7 @@ export default function StaffPage() {
                 <ShiftPill
                   key={shift.id}
                   shift={shift}
-                  selected={selectedShift?.id === shift.id}
+                  selected={selectedShift !== null && (selectedShift as Shift).id === shift.id}
                   onClick={() => selectShift(shift)}
                 />
               ))
