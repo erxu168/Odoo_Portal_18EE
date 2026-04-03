@@ -133,15 +133,27 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         }),
       });
       const data = await res.json();
-      if (data.errors) setError(data.errors.join('\n'));
+
+      // Handle ALL error shapes from the API
+      if (!res.ok || data.error) {
+        setError(data.error || data.message || `Server error (${res.status})`);
+        setSplitLoading(false);
+        return;
+      }
+      if (data.errors && Array.isArray(data.errors)) {
+        setError(data.errors.join('\n'));
+      }
+
       if (data.split) {
         setExistingSplit(data.split);
         setExistingContainers(data.containers || []);
         setSplitDone(true);
         setStep('preview');
+      } else if (!data.error && !data.errors) {
+        setError('Unexpected response from server. Please try again.');
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to package');
+      setError(err instanceof Error ? err.message : 'Failed to package. Check your connection.');
     } finally {
       setSplitLoading(false);
     }
@@ -163,13 +175,19 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         params.set('container_id', String(cId));
         const res = await fetch(`/api/manufacturing-orders/${moId}/labels?${params}`);
         const data = await res.json();
+
+        if (!res.ok || data.error) {
+          setError(data.error || `Label generation failed (${res.status})`);
+          break;
+        }
+
         if (data.previews && data.previews.length > 0) {
           const success = await ble.print(data.previews[0].zpl);
           if (success) {
             setPrintedIds(prev => new Set([...Array.from(prev), cId]));
             setExistingContainers(prev => prev.map(c => c.id === cId ? { ...c, label_printed: 1 } : c));
           } else {
-            setError(`Failed: container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'}`);
+            setError(`Print failed for container ${existingContainers.find((c: any) => c.id === cId)?.sequence ?? '?'}: ${ble.error || 'Unknown BLE error'}`);
             break;
           }
           if (targets.length > 1) await new Promise(r => setTimeout(r, 500));
@@ -352,7 +370,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             )}
           </div>
 
-          {/* Action button — inline, not fixed */}
+          {/* Action button */}
           <button onClick={handleConfirmSplit} disabled={!canConfirm || splitLoading}
             className={`w-full py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
               canConfirm ? 'bg-green-600 text-white shadow-green-600/30' : 'bg-gray-200 text-gray-400 shadow-none'
@@ -445,7 +463,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             ))}
           </div>
 
-          {/* Action button — inline */}
+          {/* Action button */}
           <button onClick={() => setStep('print')} disabled={!ble.isConnected}
             className={`w-full py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
               ble.isConnected ? 'bg-green-600 text-white shadow-green-600/30' : 'bg-gray-200 text-gray-500 shadow-none'
@@ -493,7 +511,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             })}
           </div>
 
-          {/* Action buttons — inline */}
+          {/* Action buttons */}
           <div className="flex gap-2">
             <button onClick={onDone}
               className="py-4 px-5 rounded-xl bg-white border border-gray-200 text-gray-600 font-bold text-[var(--fs-sm)] active:bg-gray-50">
