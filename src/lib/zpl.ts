@@ -1,12 +1,12 @@
 /**
  * ZPL (Zebra Programming Language) template engine.
  *
- * Coordinate system: origin top-left, units = dots.
- * 203 DPI: 1mm = 8 dots
- *
+ * RESPONSIVE DESIGN: Layout adapts proportionally to ANY label size.
+ * Font sizes and spacing scale with label dimensions.
+ * 
  * CRITICAL: Always use ^A0N,height,width with EXPLICIT width.
  * Without width, Zebra auto-calculates incorrectly → garbled text.
- * Safe ratio: width = height * 0.55 (slightly wider than 0.5 for clarity)
+ * Safe ratio: width = height * 0.55
  */
 import { LABEL_SIZE_PRESETS, type LabelData } from '@/types/labeling';
 
@@ -29,6 +29,23 @@ export function resolveLabelSize(
   return { widthMm: 55, heightMm: 75 };
 }
 
+/** Helper: font height + explicit width (0.55 ratio) */
+function font(h: number): { h: number; w: number } {
+  const fh = Math.round(h);
+  return { h: fh, w: Math.round(fh * 0.55) };
+}
+
+/**
+ * Generate ZPL for a production label.
+ *
+ * RESPONSIVE LAYOUT — scales to any label size:
+ * - Title:  ~13% of label height per line (large, bold)
+ * - Body:   ~7% per line (produced date)
+ * - Emph:   ~9% per line (qty + expiry — emphasized)
+ * - Meta:   ~5% per line (MO, lot — small)
+ * - Gap:    ~1.5% between fields
+ * - Barcode: fills whatever space remains at the bottom
+ */
 export function generateZPL(data: LabelData, opts: {
   widthMm: number;
   heightMm: number;
@@ -38,22 +55,18 @@ export function generateZPL(data: LabelData, opts: {
   const scale = dotsPerMm(dpi);
   const wDots = Math.round(opts.widthMm * scale);
   const hDots = Math.round(opts.heightMm * scale);
-  const margin = Math.round(2 * scale); // 2mm
+  const margin = Math.round(2 * scale); // 2mm margin
   const printW = wDots - margin * 2;
-  const gap = Math.round(0.8 * scale); // 0.8mm tight gap
 
-  // Font sizes with EXPLICIT width (height * 0.55)
-  const titleH = Math.min(Math.round(7 * scale), 56);
-  const titleW = Math.round(titleH * 0.55);
-  const bodyH = Math.min(Math.round(4.5 * scale), 40);
-  const bodyW = Math.round(bodyH * 0.55);
-  const emphH = Math.min(Math.round(5.5 * scale), 48); // emphasis: qty + expiry
-  const emphW = Math.round(emphH * 0.55);
-  const metaH = Math.min(Math.round(3 * scale), 28);
-  const metaW = Math.round(metaH * 0.55);
+  // Responsive font sizes — proportional to label height
+  const title = font(hDots * 0.093);  // ~7mm on 75mm label
+  const body  = font(hDots * 0.06);   // ~4.5mm on 75mm label
+  const emph  = font(hDots * 0.073);  // ~5.5mm on 75mm label
+  const meta  = font(hDots * 0.04);   // ~3mm on 75mm label
+  const gap   = Math.max(4, Math.round(hDots * 0.013)); // ~1mm on 75mm label
 
-  // Product name wrapping (up to 5 lines)
-  const charsPerLine = Math.max(6, Math.floor(printW / titleW));
+  // Product name wrapping — calculate lines needed, max 5
+  const charsPerLine = Math.max(6, Math.floor(printW / title.w));
   const nameLines = Math.min(5, Math.ceil(data.productName.length / charsPerLine));
 
   const lines: string[] = [
@@ -66,42 +79,43 @@ export function generateZPL(data: LabelData, opts: {
   let y = margin;
 
   // ── PRODUCT NAME (large, wrapping) ──
-  lines.push(`^A0N,${titleH},${titleW}`);
+  lines.push(`^A0N,${title.h},${title.w}`);
   lines.push(`^FO${margin},${y}^FB${printW},${nameLines},0,L^FD${escapeZPL(data.productName)}^FS`);
-  y += titleH * nameLines + gap;
+  y += title.h * nameLines + gap;
 
   // ── Separator ──
-  lines.push(`^FO${margin},${y}^GB${printW},3,3^FS`);
-  y += 3 + gap;
+  const sepH = Math.max(2, Math.round(hDots * 0.005));
+  lines.push(`^FO${margin},${y}^GB${printW},${sepH},${sepH}^FS`);
+  y += sepH + gap;
 
-  // ── Production Date (normal) ──
-  lines.push(`^A0N,${bodyH},${bodyW}`);
+  // ── Production Date (normal body size) ──
+  lines.push(`^A0N,${body.h},${body.w}`);
   lines.push(`^FO${margin},${y}^FDProduced: ${data.productionDate}^FS`);
-  y += bodyH + gap;
+  y += body.h + gap;
 
-  // ── Quantity (emphasized — larger + bold) ──
-  lines.push(`^A0N,${emphH},${emphW}`);
+  // ── Quantity (emphasized — larger) ──
+  lines.push(`^A0N,${emph.h},${emph.w}`);
   lines.push(`^FO${margin},${y}^FDQty: ${data.qty} ${data.uom}^FS`);
-  y += emphH + gap;
+  y += emph.h + gap;
 
-  // ── Expiry Date (emphasized — larger + bold) ──
+  // ── Expiry Date (emphasized — larger) ──
   lines.push(`^FO${margin},${y}^FDExpiry: ${data.expiryDate}^FS`);
-  y += emphH + gap + gap;
+  y += emph.h + gap + gap;
 
-  // ── MO + Container (meta) ──
-  lines.push(`^A0N,${metaH},${metaW}`);
+  // ── MO + Container (meta — small) ──
+  lines.push(`^A0N,${meta.h},${meta.w}`);
   lines.push(`^FO${margin},${y}^FD${escapeZPL(data.moName)} | ${data.containerNumber}/${data.totalContainers}^FS`);
-  y += metaH + gap;
+  y += meta.h + gap;
 
-  // ── Lot (meta) ──
+  // ── Lot (meta — small) ──
   if (data.lotName) {
     lines.push(`^FO${margin},${y}^FDLot: ${escapeZPL(data.lotName)}^FS`);
-    y += metaH + gap;
+    y += meta.h + gap;
   }
 
   // ── Barcode: fill remaining bottom space ──
   const remainingDots = hDots - y - margin;
-  if (remainingDots > (10 * scale) && data.barcodeValue) {
+  if (remainingDots > (8 * scale) && data.barcodeValue) {
     y += gap;
     const barcodeH = Math.min(remainingDots - Math.round(4 * scale), Math.round(15 * scale));
     if (barcodeH > 16) {
