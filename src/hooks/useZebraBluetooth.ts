@@ -2,13 +2,12 @@
  * Zebra Printer Hook — dual-mode: Native BT Classic (Capacitor) + Web BLE fallback.
  *
  * When running inside the Capacitor Android shell:
- *   → Uses capacitor-bluetooth-serial for BT Classic SPP
+ *   → Uses custom ZebraPrint Capacitor plugin for BT Classic SPP
  *   → Connects to paired Zebra printers via RFCOMM
  *   → Sends raw ZPL over serial
  *
  * When running in a regular browser:
  *   → Uses Web Bluetooth API for BLE
- *   → Tries Zebra Parser Service UUID 38eb4a80
  *   → Falls back to Copy ZPL if BLE not available
  */
 import { useState, useRef, useCallback } from 'react';
@@ -37,17 +36,16 @@ export interface UseZebraBluetoothReturn {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type BleAny = any;
 
-// Detect if running inside Capacitor native shell
 function isCapacitor(): boolean {
   return typeof window !== 'undefined' && !!(window as BleAny).Capacitor;
 }
 
-// Get the native BT Serial plugin (Capacitor only)
+// Get our custom ZebraPrint Capacitor plugin
 function getNativeBT(): BleAny | null {
   if (!isCapacitor()) return null;
   try {
     const cap = (window as BleAny).Capacitor;
-    return cap.Plugins?.BluetoothSerial || null;
+    return cap.Plugins?.ZebraPrint || null;
   } catch {
     return null;
   }
@@ -58,13 +56,10 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
   const [printerName, setPrinterName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // BLE refs (browser mode)
   const deviceRef = useRef<BleAny>(null);
   const writeCharRef = useRef<BleAny>(null);
   const serverRef = useRef<BleAny>(null);
   const serviceUuidRef = useRef<string>('');
-
-  // Native BT ref (Capacitor mode)
   const nativeAddressRef = useRef<string>('');
 
   const nativeBT = getNativeBT();
@@ -73,16 +68,13 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
   const isSupported = isNative || isBleSupported;
   const isConnected = status === 'connected' || status === 'printing';
 
-  // ═══════════════════════════════════════════════
-  // NATIVE BT CLASSIC (Capacitor Android)
-  // ═══════════════════════════════════════════════
+  // ═══════ NATIVE BT CLASSIC (Capacitor Android) ═══════
   const connectNative = useCallback(async (): Promise<boolean> => {
     if (!nativeBT) return false;
     try {
       setStatus('scanning');
       setError(null);
 
-      // Check if Bluetooth is enabled
       const { enabled } = await nativeBT.isEnabled();
       if (!enabled) {
         setError('Bluetooth is turned off. Enable it in Settings.');
@@ -90,11 +82,9 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
         return false;
       }
 
-      // List paired devices
       const { devices } = await nativeBT.list();
       console.log('Paired BT devices:', devices);
 
-      // Find Zebra printer (name starts with ZD, Zebra, ZQ, ZT, or XXRZ)
       const zebra = devices.find((d: BleAny) => {
         const name = (d.name || '').toUpperCase();
         return name.startsWith('ZD') || name.startsWith('ZEBRA') ||
@@ -113,7 +103,6 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       setStatus('connecting');
       setPrinterName(zebra.name || 'Zebra Printer');
 
-      // Connect via BT Classic SPP
       await nativeBT.connect({ address: zebra.address });
       nativeAddressRef.current = zebra.address;
 
@@ -121,7 +110,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(`BT Classic connection failed: ${msg}`);
+      setError(`BT connection failed: ${msg}`);
       setStatus('error');
       return false;
     }
@@ -129,9 +118,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
 
   const disconnectNative = useCallback(async () => {
     if (!nativeBT) return;
-    try {
-      await nativeBT.disconnect();
-    } catch { /* ignore */ }
+    try { await nativeBT.disconnect(); } catch { /* ignore */ }
     nativeAddressRef.current = '';
     setPrinterName(null);
     setStatus('idle');
@@ -148,8 +135,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Try reconnect once
-      if (msg.includes('not connected') || msg.includes('socket')) {
+      if (msg.includes('not connected') || msg.includes('socket') || msg.includes('closed')) {
         try {
           await nativeBT.connect({ address: nativeAddressRef.current });
           await nativeBT.write({ data: zpl });
@@ -163,23 +149,19 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
     }
   }, [nativeBT]);
 
-  // ═══════════════════════════════════════════════
-  // WEB BLUETOOTH BLE (Browser fallback)
-  // ═══════════════════════════════════════════════
+  // ═══════ WEB BLUETOOTH BLE (Browser fallback) ═══════
   const connectBle = useCallback(async (): Promise<boolean> => {
     if (!isBleSupported) {
       setStatus('unsupported');
       setError('Web Bluetooth not supported. Use the Krawings app on Android for BT Classic printing.');
       return false;
     }
-
     try {
       setStatus('scanning');
       setError(null);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const nav = navigator as any;
       let device: BleAny = null;
-
       try {
         device = await nav.bluetooth.requestDevice({
           filters: [
@@ -199,29 +181,22 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
           throw e2;
         }
       }
-
       if (!device) { setStatus('idle'); return false; }
       deviceRef.current = device;
       setPrinterName(device.name || 'Zebra Printer');
       device.addEventListener('gattserverdisconnected', () => {
         setStatus('idle'); writeCharRef.current = null; serverRef.current = null;
       });
-
       setStatus('connecting');
       const server = await device.gatt.connect();
       serverRef.current = server;
-
       let writeChar: BleAny = null;
       let foundUuid = '';
-
-      // Try Parser Service
       try {
         const svc = await server.getPrimaryService(ZEBRA_PARSER_SERVICE);
         writeChar = await svc.getCharacteristic(ZEBRA_WRITE_CHAR);
         foundUuid = ZEBRA_PARSER_SERVICE;
       } catch { /* not found */ }
-
-      // Try FE79
       if (!writeChar) {
         try {
           const svc = await server.getPrimaryService(ZEBRA_FE79_SERVICE);
@@ -233,7 +208,6 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
           }
         } catch { /* not found */ }
       }
-
       if (!writeChar) {
         setError(
           `Connected to ${device.name} but no print service found.\n` +
@@ -243,7 +217,6 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
         setStatus('error');
         return false;
       }
-
       serviceUuidRef.current = foundUuid;
       writeCharRef.current = writeChar;
       setStatus('connected');
@@ -289,9 +262,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
     }
   }, []);
 
-  // ═══════════════════════════════════════════════
-  // ROUTER: pick native or BLE based on environment
-  // ═══════════════════════════════════════════════
+  // ═══════ ROUTER ═══════
   const connect = useCallback(async () => {
     return isNative ? connectNative() : connectBle();
   }, [isNative, connectNative, connectBle]);
