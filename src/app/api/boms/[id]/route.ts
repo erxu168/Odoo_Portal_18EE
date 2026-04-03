@@ -32,7 +32,6 @@ async function resolveBomLines(
     let subBomLines: ComponentAvailability[] = [];
 
     if (hasSubBom) {
-      // Fetch the sub-BOM's lines
       const subBom = await odoo.read('mrp.bom', [line.child_bom_id[0]], [
         'bom_line_ids',
         'product_qty',
@@ -76,7 +75,6 @@ export async function GET(
     const odoo = getOdoo();
     const bomId = parseInt(params.id);
 
-    // Fetch the BOM (include company_id)
     const boms = await odoo.read('mrp.bom', [bomId], [
       'product_tmpl_id',
       'product_id',
@@ -95,8 +93,6 @@ export async function GET(
 
     const bom = boms[0];
 
-    // Resolve the product.product ID
-    // If bom.product_id is false, look up the default variant from the template
     let resolvedProductId = bom.product_id ? bom.product_id[0] : null;
     if (!resolvedProductId && bom.product_tmpl_id) {
       const variants = await odoo.searchRead(
@@ -110,15 +106,14 @@ export async function GET(
       }
     }
 
-
-    // Fetch operations (work order steps)
+    // Fetch operations — include all worksheet fields
     const operations = bom.operation_ids?.length
       ? await odoo.read('mrp.routing.workcenter', bom.operation_ids, [
-          'id', 'name', 'workcenter_id', 'sequence', 'time_cycle_manual', 'note', 'worksheet_type',
+          'id', 'name', 'workcenter_id', 'sequence', 'time_cycle_manual',
+          'note', 'worksheet_type', 'worksheet_google_slide',
         ])
       : [];
 
-    // Fetch all BOM lines
     const lines = await odoo.read('mrp.bom.line', bom.bom_line_ids, [
       'product_id',
       'product_qty',
@@ -126,7 +121,6 @@ export async function GET(
       'child_bom_id',
     ]);
 
-    // Collect all product IDs (including sub-BOM products) for stock lookup
     const allProductIds = new Set<number>();
     const collectProductIds = async (lineIds: number[]) => {
       const ls = await odoo.read('mrp.bom.line', lineIds, [
@@ -148,7 +142,6 @@ export async function GET(
     };
     await collectProductIds(bom.bom_line_ids);
 
-    // Fetch stock for all products at once
     const quants = allProductIds.size
       ? await odoo.searchRead(
           'stock.quant',
@@ -166,7 +159,6 @@ export async function GET(
       stockMap[pid] = (stockMap[pid] || 0) + (q.quantity - q.reserved_quantity);
     }
 
-    // Fetch product categories for grouping
     const catProducts = allProductIds.size
       ? await odoo.read('product.product', Array.from(allProductIds), ['categ_id'])
       : [];
@@ -177,15 +169,12 @@ export async function GET(
       categMap[p.id] = parts[parts.length - 1];
     }
 
-    // Resolve all components with sub-BOMs
     const components = await resolveBomLines(odoo, bom.bom_line_ids, stockMap);
 
-    // Enrich with category
     for (const comp of components) {
       (comp as any).category = categMap[comp.product_id] || 'Other';
     }
 
-    // Calculate max producible quantity
     let canMakeQty = Infinity;
     for (const comp of components) {
       if (comp.required_qty > 0) {
@@ -196,7 +185,6 @@ export async function GET(
     }
     if (canMakeQty === Infinity) canMakeQty = 0;
 
-    // Fetch last production date
     const lastMo = await odoo.searchRead(
       'mrp.production',
       [
@@ -230,14 +218,7 @@ export async function GET(
 
 /**
  * PATCH /api/boms/:id
- * Edit a BOM: update line quantities, add lines, remove lines, update output qty.
- *
- * Body: {
- *   product_qty?: number,
- *   update_lines?: Array<{ line_id: number, product_qty: number }>,
- *   add_lines?: Array<{ product_id: number, product_qty: number, product_uom_id: number }>,
- *   remove_lines?: number[],
- * }
+ * Edit a BOM: lines + operations with full worksheet support.
  */
 export async function PATCH(
   req: NextRequest,
@@ -289,8 +270,21 @@ export async function PATCH(
         if (op.workcenter_id !== undefined) vals.workcenter_id = op.workcenter_id;
         if (op.time_cycle_manual !== undefined) vals.time_cycle_manual = op.time_cycle_manual;
         if (op.sequence !== undefined) vals.sequence = op.sequence;
-        if (op.note !== undefined) vals.note = op.note;
-        if (op.worksheet !== undefined) { vals.worksheet = op.worksheet; vals.worksheet_type = 'pdf'; }
+        if (op.note !== undefined) vals.note = op.note || false;
+        // Worksheet fields
+        if (op.worksheet_type !== undefined) vals.worksheet_type = op.worksheet_type || false;
+        if (op.worksheet !== undefined) {
+          let fileData = op.worksheet || '';
+          if (typeof fileData === 'string' && fileData.startsWith('data:')) {
+            fileData = fileData.replace(/^data:[^;]+;base64,/, '');
+          }
+          vals.worksheet = fileData || false;
+          if (fileData) vals.worksheet_type = 'pdf';
+        }
+        if (op.worksheet_google_slide !== undefined) {
+          vals.worksheet_google_slide = op.worksheet_google_slide || false;
+          if (op.worksheet_google_slide) vals.worksheet_type = 'google_slide';
+        }
         if (Object.keys(vals).length) {
           await odoo.write('mrp.routing.workcenter', [op.operation_id], vals);
         }
@@ -300,16 +294,28 @@ export async function PATCH(
     // Add new operations
     if (body.add_operations?.length) {
       for (const op of body.add_operations) {
-        await odoo.create('mrp.routing.workcenter', {
+        const createVals: Record<string, unknown> = {
           bom_id: bomId,
           name: op.name,
           workcenter_id: op.workcenter_id,
           time_cycle_manual: op.time_cycle_manual || 0,
           sequence: op.sequence || 10,
           note: op.note || false,
-          worksheet: op.worksheet || false,
-          worksheet_type: op.worksheet ? 'pdf' : false,
-        });
+          worksheet_type: op.worksheet_type || false,
+          worksheet_google_slide: op.worksheet_google_slide || false,
+        };
+        // Handle PDF worksheet
+        if (op.worksheet) {
+          let fileData = op.worksheet;
+          if (typeof fileData === 'string' && fileData.startsWith('data:')) {
+            fileData = fileData.replace(/^data:[^;]+;base64,/, '');
+          }
+          createVals.worksheet = fileData;
+          createVals.worksheet_type = 'pdf';
+        } else {
+          createVals.worksheet = false;
+        }
+        await odoo.create('mrp.routing.workcenter', createVals);
       }
     }
 
