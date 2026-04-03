@@ -11,20 +11,19 @@ export interface LabelSize {
   category: 'small' | 'medium' | 'large';
   widthMm: number;
   heightMm: number;
-  widthIn: string;
-  heightIn: string;
   description: string;
 }
 
+/** Standard Zebra-compatible label sizes (metric primary) */
 export const LABEL_SIZE_PRESETS: LabelSize[] = [
-  { id: '2x1', name: '2\" x 1\"', category: 'small', widthMm: 51, heightMm: 25, widthIn: '2\"', heightIn: '1\"', description: 'Prep \u2013 Small' },
-  { id: '2x2', name: '2\" x 2\"', category: 'small', widthMm: 51, heightMm: 51, widthIn: '2\"', heightIn: '2\"', description: 'Prep \u2013 Square' },
-  { id: '2.25x1.25', name: '2.25\" x 1.25\"', category: 'small', widthMm: 57, heightMm: 32, widthIn: '2.25\"', heightIn: '1.25\"', description: 'Product ID' },
-  { id: '3x2', name: '3\" x 2\"', category: 'medium', widthMm: 76, heightMm: 51, widthIn: '3\"', heightIn: '2\"', description: 'Container' },
-  { id: '4x2', name: '4\" x 2\"', category: 'medium', widthMm: 102, heightMm: 51, widthIn: '4\"', heightIn: '2\"', description: 'Ingredient' },
-  { id: '4x3', name: '4\" x 3\"', category: 'medium', widthMm: 102, heightMm: 76, widthIn: '4\"', heightIn: '3\"', description: 'Production' },
-  { id: '4x4', name: '4\" x 4\"', category: 'large', widthMm: 102, heightMm: 102, widthIn: '4\"', heightIn: '4\"', description: 'Barrel / Drum' },
-  { id: '4x6', name: '4\" x 6\"', category: 'large', widthMm: 102, heightMm: 152, widthIn: '4\"', heightIn: '6\"', description: 'Full Detail' },
+  { id: '51x25',   name: '51 \u00d7 25 mm',   category: 'small',  widthMm: 51,  heightMm: 25,  description: 'Prep \u2013 Small' },
+  { id: '51x51',   name: '51 \u00d7 51 mm',   category: 'small',  widthMm: 51,  heightMm: 51,  description: 'Prep \u2013 Square' },
+  { id: '57x32',   name: '57 \u00d7 32 mm',   category: 'small',  widthMm: 57,  heightMm: 32,  description: 'Product ID' },
+  { id: '76x51',   name: '76 \u00d7 51 mm',   category: 'medium', widthMm: 76,  heightMm: 51,  description: 'Container' },
+  { id: '102x51',  name: '102 \u00d7 51 mm',  category: 'medium', widthMm: 102, heightMm: 51,  description: 'Ingredient' },
+  { id: '102x76',  name: '102 \u00d7 76 mm',  category: 'medium', widthMm: 102, heightMm: 76,  description: 'Production' },
+  { id: '102x102', name: '102 \u00d7 102 mm', category: 'large',  widthMm: 102, heightMm: 102, description: 'Barrel / Drum' },
+  { id: '102x152', name: '102 \u00d7 152 mm', category: 'large',  widthMm: 102, heightMm: 152, description: 'Full Detail' },
 ];
 
 export const LABEL_CONSTRAINTS = {

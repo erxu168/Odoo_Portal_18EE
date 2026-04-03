@@ -5,7 +5,6 @@ import React from 'react';
 /**
  * Visual HTML preview of a Zebra label.
  * Renders a scaled-down representation matching the selected label size.
- * Shows: product name, production date, qty+UOM, expiry, lot, barcode area.
  */
 
 interface LabelPreviewProps {
@@ -27,14 +26,12 @@ export default function LabelPreview({
   lotName, moName, containerNumber, totalContainers,
   widthMm, heightMm,
 }: LabelPreviewProps) {
-  // Scale: 1mm = 2.5px on screen (gives a nice preview size)
   const scale = 2.5;
   const w = widthMm * scale;
   const h = heightMm * scale;
   const isSmall = heightMm < 40;
   const isMedium = heightMm >= 40 && heightMm < 80;
 
-  // Font sizes relative to label height
   const titleSize = isSmall ? 11 : isMedium ? 14 : 16;
   const bodySize = isSmall ? 9 : isMedium ? 11 : 13;
   const metaSize = isSmall ? 8 : isMedium ? 9 : 11;
@@ -42,7 +39,6 @@ export default function LabelPreview({
 
   return (
     <div className="flex flex-col items-center">
-      {/* Label card */}
       <div
         style={{
           width: w,
@@ -73,12 +69,10 @@ export default function LabelPreview({
           {productName}
         </div>
 
-        {/* Separator */}
         {!isSmall && (
           <div style={{ borderTop: '1px solid #D1D5DB', margin: '3px 0' }} />
         )}
 
-        {/* Fields */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: isSmall ? 1 : 2 }}>
           <div style={{ fontSize: bodySize, color: '#374151' }}>
             <span style={{ color: '#9CA3AF' }}>Produced:</span> {productionDate}
@@ -103,7 +97,6 @@ export default function LabelPreview({
           )}
         </div>
 
-        {/* Barcode area (large labels only) */}
         {heightMm >= 76 && (
           <div style={{
             marginTop: 4,
@@ -115,10 +108,10 @@ export default function LabelPreview({
         )}
       </div>
 
-      {/* Size caption */}
+      {/* Size caption — proper multiplication sign */}
       <div className="mt-2 text-center">
         <span className="text-[var(--fs-xs)] text-gray-400 font-mono">
-          {widthMm}\u00d7{heightMm}mm
+          {widthMm} {'\u00d7'} {heightMm} mm
         </span>
       </div>
     </div>
