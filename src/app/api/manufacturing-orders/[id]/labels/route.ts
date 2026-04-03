@@ -50,7 +50,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   const containers = getContainers(split.id);
   const { searchParams } = new URL(req.url);
   const containerIdParam = searchParams.get('container_id');
-  const labelSizeId = searchParams.get('label_size_id') ?? '4x4';
+  const labelSizeId = searchParams.get('label_size_id') ?? '55x75';
   const customW = searchParams.get('custom_width_mm');
   const customH = searchParams.get('custom_height_mm');
 
