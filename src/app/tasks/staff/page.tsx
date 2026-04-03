@@ -13,8 +13,12 @@ export default function StaffPage() {
   const [loading, setLoading]         = useState(true);
   const [listLoading, setListLoading] = useState(false);
   const [error, setError]             = useState<string | null>(null);
+  const [seeding, setSeeding]         = useState(false);
+  const [seedLog, setSeedLog]         = useState<string[] | null>(null);
 
-  useEffect(() => {
+  function loadShifts() {
+    setLoading(true);
+    setError(null);
     fetch('/api/tasks/shifts')
       .then(r => r.json())
       .then(d => {
@@ -23,7 +27,31 @@ export default function StaffPage() {
       })
       .catch(() => setError('Could not load shifts'))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(() => { loadShifts(); }, []);
+
+  async function handleSeed() {
+    setSeeding(true);
+    setSeedLog(null);
+    try {
+      const res  = await fetch('/api/tasks/seed', { method: 'POST' });
+      const data = await res.json();
+      setSeedLog(data.log ?? ['Done']);
+      // Reload shifts after seeding
+      loadShifts();
+    } catch {
+      setSeedLog(['Failed to seed test data']);
+    } finally {
+      setSeeding(false);
+    }
+  }
+
+  async function handleCleanup() {
+    await fetch('/api/tasks/seed', { method: 'DELETE' });
+    setSeedLog(null);
+    loadShifts();
+  }
 
   async function selectShift(shift: Shift) {
     setSelected(shift);
@@ -67,7 +95,6 @@ export default function StaffPage() {
   }
 
   async function handlePhotoUpload(taskLineId: number) {
-    // TODO: open file picker → POST to /api/tasks/[id]/photo
     console.log('photo upload for task', taskLineId);
   }
 
@@ -99,28 +126,63 @@ export default function StaffPage() {
         {!selectedShift && (
           <>
             <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2.5">Today&apos;s shifts</p>
+
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm mb-3">{error}</div>
             )}
+
             {loading ? (
               <div className="space-y-2">
                 {[1, 2].map(i => <div key={i} className="h-16 bg-gray-200 rounded-2xl animate-pulse" />)}
               </div>
             ) : shifts.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <p className="text-3xl mb-2">📋</p>
-                <p className="font-semibold">No shifts today</p>
-                <p className="text-sm mt-1">Check back later or contact your manager</p>
-              </div>
+              <>
+                <div className="text-center py-8 text-gray-400">
+                  <p className="text-3xl mb-2">📋</p>
+                  <p className="font-semibold">No shifts today</p>
+                  <p className="text-sm mt-1">Check back later or contact your manager</p>
+                </div>
+
+                {/* ── Test Data Banner ── */}
+                <div className="mt-4 border border-dashed border-orange-300 rounded-2xl p-4 bg-orange-50">
+                  <p className="text-xs font-bold text-orange-600 uppercase tracking-wide mb-1">🧪 Test mode</p>
+                  <p className="text-xs text-orange-700 mb-3">
+                    No shifts found. Click below to inject test data into Odoo and link your account to a test employee.
+                  </p>
+                  <button
+                    onClick={handleSeed}
+                    disabled={seeding}
+                    className="w-full bg-orange-500 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-orange-600 transition-colors disabled:opacity-60"
+                  >
+                    {seeding ? '⏳ Setting up test data...' : '⚡ Load test data for today'}
+                  </button>
+                  {seedLog && (
+                    <div className="mt-3 space-y-1">
+                      {seedLog.map((line, i) => (
+                        <p key={i} className="text-xs text-orange-800 font-mono">{line}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
             ) : (
-              shifts.map(shift => (
-                <ShiftPill
-                  key={shift.id}
-                  shift={shift}
-                  selected={selectedShift !== null && (selectedShift as Shift).id === shift.id}
-                  onClick={() => selectShift(shift)}
-                />
-              ))
+              <>
+                {shifts.map(shift => (
+                  <ShiftPill
+                    key={shift.id}
+                    shift={shift}
+                    selected={selectedShift !== null && (selectedShift as Shift).id === shift.id}
+                    onClick={() => selectShift(shift)}
+                  />
+                ))}
+                {/* Cleanup button shown when test data exists */}
+                <button
+                  onClick={handleCleanup}
+                  className="mt-3 w-full text-xs text-gray-400 underline text-center"
+                >
+                  Remove test data
+                </button>
+              </>
             )}
           </>
         )}
