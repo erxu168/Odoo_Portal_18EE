@@ -2,18 +2,15 @@
  * odoo-tasks.ts
  * Data layer for the Task Management module.
  *
- * Shifts:     read from planning.slot (real Odoo data — confirmed working)
- * Task lists: stubs until restaurant_shift_tasks Odoo module is installed
- *
- * Every stub function has a TODO comment showing the exact RPC call to swap in.
+ * Shifts:     read from planning.slot (real Odoo data).
+ *             Falls back to STUB shifts when no slots exist for today
+ *             (useful for testing before real shifts are planned).
+ * Task lists: stubs until restaurant_shift_tasks Odoo module is installed.
  */
 
 import { getOdoo } from './odoo';
 
 // ─────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────
-
 export interface SubTask {
   id: number;
   name: string;
@@ -25,7 +22,7 @@ export interface TaskLine {
   name: string;
   sequence: number;
   state: 'pending' | 'done' | 'overdue';
-  deadline_datetime: string | null;   // ISO UTC
+  deadline_datetime: string | null;
   photo_required: boolean;
   photo_uploaded: boolean;
   subtasks: SubTask[];
@@ -50,17 +47,18 @@ export interface ShiftTaskList {
 }
 
 export interface Shift {
-  id: number;                   // planning.slot id
-  name: string;                 // derived from role_id name
-  start: string;                // ISO UTC
-  end: string;                  // ISO UTC
+  id: number;
+  name: string;
+  start: string;
+  end: string;
   state: 'active' | 'upcoming' | 'done';
-  task_list_id: number | null;  // restaurant.shift.task.list id (null until module installed)
+  task_list_id: number | null;
   completion_rate: number;
   overdue_count: number;
-  role: string;                 // e.g. "D2 (GBM)"
+  role: string;
   employee_id: number;
   employee_name: string;
+  is_stub?: boolean; // true when generated as fallback test data
 }
 
 export interface ManagerDashboard {
@@ -75,17 +73,13 @@ export interface ManagerDashboard {
 // Helpers
 // ─────────────────────────────────────────────
 
-/** Returns today's date range in UTC as ISO strings */
-function todayUTCRange(): { start: string; end: string } {
+function todayUTCRange() {
   const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(now);
-  end.setHours(23, 59, 59, 999);
+  const start = new Date(now); start.setHours(0, 0, 0, 0);
+  const end   = new Date(now); end.setHours(23, 59, 59, 999);
   return { start: start.toISOString(), end: end.toISOString() };
 }
 
-/** Derives shift state from start/end times */
 function shiftState(start: string, end: string): 'active' | 'upcoming' | 'done' {
   const now = Date.now();
   const s = new Date(start).getTime();
@@ -95,39 +89,64 @@ function shiftState(start: string, end: string): 'active' | 'upcoming' | 'done' 
   return 'done';
 }
 
-/** Converts planning.slot Odoo record → our Shift type */
 function slotToShift(slot: any): Shift {
   const roleName = Array.isArray(slot.role_id) ? slot.role_id[1] : (slot.role_id || 'Shift');
   const empId    = Array.isArray(slot.employee_id) ? slot.employee_id[0] : slot.employee_id;
   const empName  = Array.isArray(slot.employee_id) ? slot.employee_id[1] : 'Unknown';
-
-  // Odoo stores datetimes as UTC strings like "2026-04-04 10:30:00"
-  // Convert to ISO format for consistency
   const startISO = slot.start_datetime
     ? new Date(slot.start_datetime.replace(' ', 'T') + 'Z').toISOString()
     : new Date().toISOString();
   const endISO = slot.end_datetime
     ? new Date(slot.end_datetime.replace(' ', 'T') + 'Z').toISOString()
     : new Date().toISOString();
-
   return {
-    id:              slot.id,
-    name:            roleName,
-    start:           startISO,
-    end:             endISO,
-    state:           shiftState(startISO, endISO),
-    task_list_id:    null,      // TODO: read from restaurant.shift.task.list once module installed
-    completion_rate: 0,         // TODO: read from task list
-    overdue_count:   0,         // TODO: read from task list
-    role:            roleName,
-    employee_id:     empId,
-    employee_name:   empName,
+    id: slot.id, name: roleName, start: startISO, end: endISO,
+    state: shiftState(startISO, endISO),
+    task_list_id: null, completion_rate: 0, overdue_count: 0,
+    role: roleName, employee_id: empId, employee_name: empName,
   };
 }
 
 // ─────────────────────────────────────────────
-// Stub task list (used until Odoo module exists)
+// Stub fallback shifts (used when no planning.slot found for today)
 // ─────────────────────────────────────────────
+
+function stubShiftsForToday(employeeId: number): Shift[] {
+  const now = new Date();
+  const todayAt = (h: number, m = 0) => {
+    const d = new Date(now); d.setHours(h, m, 0, 0); return d.toISOString();
+  };
+  return [
+    {
+      id: 90001,
+      name: 'Morning Opening',
+      start: todayAt(7),
+      end:   todayAt(11),
+      state: shiftState(todayAt(7), todayAt(11)),
+      task_list_id: null,
+      completion_rate: 57,
+      overdue_count: 1,
+      role: 'Opening',
+      employee_id: employeeId,
+      employee_name: 'You',
+      is_stub: true,
+    },
+    {
+      id: 90002,
+      name: 'Evening Service',
+      start: todayAt(17),
+      end:   todayAt(23),
+      state: shiftState(todayAt(17), todayAt(23)),
+      task_list_id: null,
+      completion_rate: 0,
+      overdue_count: 0,
+      role: 'Service',
+      employee_id: employeeId,
+      employee_name: 'You',
+      is_stub: true,
+    },
+  ];
+}
 
 function stubTaskList(shift: Shift): ShiftTaskList {
   return {
@@ -193,132 +212,98 @@ function stubTaskList(shift: Shift): ShiftTaskList {
         completed_at: new Date(new Date(shift.start).getTime() + 55 * 60000).toISOString(),
         completed_by_name: shift.employee_name,
       },
+      {
+        id: 106, name: 'Brief kitchen team on specials', sequence: 6,
+        state: 'pending',
+        deadline_datetime: new Date(new Date(shift.start).getTime() + 180 * 60000).toISOString(),
+        photo_required: false, photo_uploaded: false,
+        subtasks: [], all_subtasks_done: true,
+        module_link_type: '', module_link_label: '',
+        completed_at: null, completed_by_name: null,
+      },
     ],
   };
 }
 
 // ─────────────────────────────────────────────
-// Public API — Shifts (REAL Odoo data)
+// Public API — Shifts
 // ─────────────────────────────────────────────
 
 /**
- * Get today's shifts for a specific employee.
- * Queries planning.slot filtered by employee_id and today's date range.
+ * Get today's shifts for an employee.
+ * Queries planning.slot first. Falls back to stub shifts if none found today.
  */
 export async function getMyShifts(employeeId: number): Promise<Shift[]> {
   if (!employeeId) return [];
 
   const { start, end } = todayUTCRange();
-
-  // Convert ISO to Odoo datetime format "YYYY-MM-DD HH:MM:SS"
   const odooStart = start.replace('T', ' ').substring(0, 19);
   const odooEnd   = end.replace('T', ' ').substring(0, 19);
 
-  const slots = await getOdoo().searchRead(
-    'planning.slot',
-    [
-      ['employee_id', '=', employeeId],
-      ['start_datetime', '>=', odooStart],
-      ['start_datetime', '<=', odooEnd],
-    ],
-    ['id', 'name', 'employee_id', 'start_datetime', 'end_datetime', 'role_id'],
-    { order: 'start_datetime asc' },
-  );
+  try {
+    const slots = await getOdoo().searchRead(
+      'planning.slot',
+      [
+        ['employee_id', '=', employeeId],
+        ['start_datetime', '>=', odooStart],
+        ['start_datetime', '<=', odooEnd],
+      ],
+      ['id', 'name', 'employee_id', 'start_datetime', 'end_datetime', 'role_id'],
+      { order: 'start_datetime asc' },
+    );
 
-  return slots.map(slotToShift);
+    if (slots.length > 0) return slots.map(slotToShift);
+  } catch (e) {
+    console.warn('[odoo-tasks] planning.slot query failed, using stubs:', e);
+  }
+
+  // No real shifts today — return stub data for testing
+  console.log('[odoo-tasks] No planning.slot found for today, returning stub shifts');
+  return stubShiftsForToday(employeeId);
 }
 
-/**
- * Get all shifts today (manager view).
- */
 export async function getAllShiftsToday(): Promise<Shift[]> {
   const { start, end } = todayUTCRange();
   const odooStart = start.replace('T', ' ').substring(0, 19);
   const odooEnd   = end.replace('T', ' ').substring(0, 19);
-
-  const slots = await getOdoo().searchRead(
-    'planning.slot',
-    [
-      ['start_datetime', '>=', odooStart],
-      ['start_datetime', '<=', odooEnd],
-    ],
-    ['id', 'name', 'employee_id', 'start_datetime', 'end_datetime', 'role_id'],
-    { order: 'start_datetime asc' },
-  );
-
-  return slots.map(slotToShift);
+  try {
+    const slots = await getOdoo().searchRead(
+      'planning.slot',
+      [['start_datetime', '>=', odooStart], ['start_datetime', '<=', odooEnd]],
+      ['id', 'name', 'employee_id', 'start_datetime', 'end_datetime', 'role_id'],
+      { order: 'start_datetime asc' },
+    );
+    return slots.map(slotToShift);
+  } catch {
+    return [];
+  }
 }
 
 // ─────────────────────────────────────────────
-// Public API — Task Lists (STUBS)
-// Replace these once restaurant_shift_tasks is installed
+// Public API — Task Lists (stubs)
 // ─────────────────────────────────────────────
 
-/**
- * Get task list for a shift.
- * TODO: replace with real query:
- *   getOdoo().searchRead('restaurant.shift.task.list',
- *     [['planning_slot_id','=',shiftId]], ...)
- */
 export async function getTaskListForShift(shift: Shift): Promise<ShiftTaskList | null> {
-  if (shift.task_list_id) {
-    // TODO: real fetch from restaurant.shift.task.list
-    return stubTaskList(shift);
-  }
-  // No task list assigned yet — return stub for active shifts
-  if (shift.state === 'active') {
-    return stubTaskList(shift);
-  }
-  return null;
+  // TODO: query restaurant.shift.task.list once Odoo module is installed
+  if (shift.state === 'done') return null;
+  return stubTaskList(shift);
 }
 
-/**
- * Complete a task line.
- * TODO: getOdoo().call('restaurant.task.line', 'action_complete', [[taskLineId]])
- */
-export async function completeTask(
-  taskLineId: number,
-): Promise<{ ok: boolean; error?: string }> {
+export async function completeTask(taskLineId: number): Promise<{ ok: boolean; error?: string }> {
   console.log('[stub] completeTask', taskLineId);
   return { ok: true };
 }
 
-/**
- * Toggle a subtask done/undone.
- * TODO: getOdoo().write('restaurant.task.line', [subtaskId], { done })
- */
-export async function toggleSubtask(
-  _taskLineId: number,
-  subtaskId: number,
-  done: boolean,
-): Promise<void> {
+export async function toggleSubtask(_taskLineId: number, subtaskId: number, done: boolean): Promise<void> {
   console.log('[stub] toggleSubtask', subtaskId, done);
 }
 
-/**
- * Upload a photo for a task.
- * TODO: POST binary to /web/binary/upload_attachment with task line reference
- */
-export async function uploadTaskPhoto(
-  _taskLineId: number,
-  _file: File,
-): Promise<{ attachment_id: number }> {
+export async function uploadTaskPhoto(_taskLineId: number, _file: File): Promise<{ attachment_id: number }> {
   return { attachment_id: 9999 };
 }
 
-// ─────────────────────────────────────────────
-// Manager dashboard
-// ─────────────────────────────────────────────
-
 export async function getManagerDashboard(): Promise<ManagerDashboard> {
   const shifts = await getAllShiftsToday();
-  const activeShifts = shifts.filter(s => s.state === 'active');
-
-  return {
-    active_shifts:  activeShifts.length,
-    avg_completion: 0,   // TODO: compute from task lists
-    overdue_count:  0,   // TODO: count from task lines
-    photos_pending: 0,   // TODO: count from task completions
-    shifts,
-  };
+  const active = shifts.filter(s => s.state === 'active');
+  return { active_shifts: active.length, avg_completion: 0, overdue_count: 0, photos_pending: 0, shifts };
 }
