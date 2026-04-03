@@ -16,6 +16,7 @@ export interface LabelSize {
 
 /** Standard Zebra-compatible label sizes (metric primary) */
 export const LABEL_SIZE_PRESETS: LabelSize[] = [
+  { id: '55x75',   name: '55 \u00d7 75 mm',   category: 'medium', widthMm: 55,  heightMm: 75,  description: 'WAJ Standard' },
   { id: '51x25',   name: '51 \u00d7 25 mm',   category: 'small',  widthMm: 51,  heightMm: 25,  description: 'Prep \u2013 Small' },
   { id: '51x51',   name: '51 \u00d7 51 mm',   category: 'small',  widthMm: 51,  heightMm: 51,  description: 'Prep \u2013 Square' },
   { id: '57x32',   name: '57 \u00d7 32 mm',   category: 'small',  widthMm: 57,  heightMm: 32,  description: 'Product ID' },
