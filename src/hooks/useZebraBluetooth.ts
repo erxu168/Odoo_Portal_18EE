@@ -1,18 +1,12 @@
 /**
  * Zebra Printer Hook — dual-mode: Native BT Classic (Capacitor) + Web BLE fallback.
  *
- * When running inside the Capacitor Android shell:
- *   → Uses custom ZebraPrint Capacitor plugin for BT Classic SPP
- *   → Connects to paired Zebra printers via RFCOMM
- *   → Sends raw ZPL over serial
- *
- * When running in a regular browser:
- *   → Uses Web Bluetooth API for BLE
- *   → Falls back to Copy ZPL if BLE not available
+ * PERSISTENT CONNECTION: When running in Capacitor, the BT Classic socket
+ * stays open at the native Java layer even when React components unmount.
+ * On mount, the hook checks if a connection already exists and restores state.
  */
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
-// Zebra BLE UUIDs (browser fallback)
 const ZEBRA_PARSER_SERVICE = '38eb4a80-c570-11e3-9507-0002a5d5c51b';
 const ZEBRA_WRITE_CHAR = '38eb4a82-c570-11e3-9507-0002a5d5c51b';
 const ZEBRA_FE79_SERVICE = '0000fe79-0000-1000-8000-00805f9b34fb';
@@ -40,7 +34,6 @@ function isCapacitor(): boolean {
   return typeof window !== 'undefined' && !!(window as BleAny).Capacitor;
 }
 
-// Get our custom ZebraPrint Capacitor plugin
 function getNativeBT(): BleAny | null {
   if (!isCapacitor()) return null;
   try {
@@ -68,10 +61,43 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
   const isSupported = isNative || isBleSupported;
   const isConnected = status === 'connected' || status === 'printing';
 
+  // ═══════ CHECK EXISTING CONNECTION ON MOUNT ═══════
+  // When the component remounts (e.g. navigating back), check if the
+  // native Java plugin still has an open socket from a previous connection
+  useEffect(() => {
+    if (!nativeBT) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await nativeBT.isConnected();
+        if (!cancelled && result.connected) {
+          setPrinterName(result.name || 'Zebra Printer');
+          nativeAddressRef.current = result.address || '';
+          setStatus('connected');
+          console.log('Restored existing BT connection to', result.name);
+        }
+      } catch {
+        // Plugin doesn't support isConnected yet, or no connection — stay idle
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [nativeBT]);
+
   // ═══════ NATIVE BT CLASSIC (Capacitor Android) ═══════
   const connectNative = useCallback(async (): Promise<boolean> => {
     if (!nativeBT) return false;
     try {
+      // First check if already connected
+      try {
+        const check = await nativeBT.isConnected();
+        if (check.connected) {
+          setPrinterName(check.name || 'Zebra Printer');
+          nativeAddressRef.current = check.address || '';
+          setStatus('connected');
+          return true;
+        }
+      } catch { /* isConnected not available */ }
+
       setStatus('scanning');
       setError(null);
 
@@ -135,7 +161,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('not connected') || msg.includes('socket') || msg.includes('closed')) {
+      if (msg.includes('not connected') || msg.includes('socket') || msg.includes('closed') || msg.includes('Not connected')) {
         try {
           await nativeBT.connect({ address: nativeAddressRef.current });
           await nativeBT.write({ data: zpl });
