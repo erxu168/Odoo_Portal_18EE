@@ -5,9 +5,9 @@
  * Coordinate system: origin top-left, units = dots.
  * 203 DPI: 1mm = 8 dots
  *
- * IMPORTANT: Font 0 (^CF0 / ^A0) width must be explicitly set to avoid
- * garbled text when the printer auto-calculates width differently than expected.
- * Always use ^A0N,height,width format.
+ * IMPORTANT: Font 0 width must be explicitly set via ^A0N,height,width
+ * to avoid garbled text. The printer auto-calculates width incorrectly
+ * when only height is specified.
  */
 import { LABEL_SIZE_PRESETS, type LabelData } from '@/types/labeling';
 
@@ -36,7 +36,9 @@ export function resolveLabelSize(
 
 /**
  * Generate ZPL for a production label.
- * Font sizes scale with label width to prevent text overflow/garbling.
+ * Uses large bold fonts with explicit width to prevent garbling.
+ * Product name gets as many lines as needed (up to 5).
+ * Fills available space — no wasted white space at bottom.
  */
 export function generateZPL(data: LabelData, opts: {
   widthMm: number;
@@ -47,26 +49,22 @@ export function generateZPL(data: LabelData, opts: {
   const scale = dotsPerMm(dpi);
   const wDots = Math.round(opts.widthMm * scale);
   const hDots = Math.round(opts.heightMm * scale);
-  const margin = Math.round(2 * scale);
+  const margin = Math.round(2 * scale); // 2mm
   const printW = wDots - margin * 2;
-  const gap = Math.round(1 * scale); // 1mm gap between fields
+  const gap = Math.round(0.8 * scale); // tight 0.8mm gap
 
-  // Scale font sizes based on label width
-  // Narrow labels (< 60mm): smaller title to prevent wrapping issues
-  // Wide labels (100mm+): can use large fonts
-  const isNarrow = opts.widthMm < 60;
-  const isWide = opts.widthMm >= 100;
-
-  const titleH = isNarrow ? Math.round(4.5 * scale) : isWide ? Math.round(7 * scale) : Math.round(5.5 * scale);
-  const titleW = Math.round(titleH * 0.5); // explicit width = 50% of height for font 0
-  const bodyH = isNarrow ? Math.round(3.5 * scale) : Math.round(4 * scale);
+  // Large fonts — same size regardless of label width
+  // The key fix: explicit width (50% of height) prevents garbling
+  const titleH = Math.min(Math.round(7 * scale), 56); // ~7mm, big bold
+  const titleW = Math.round(titleH * 0.5);             // explicit width!
+  const bodyH = Math.min(Math.round(4.5 * scale), 40); // ~4.5mm
   const bodyW = Math.round(bodyH * 0.5);
-  const metaH = isNarrow ? Math.round(2.5 * scale) : Math.round(3 * scale);
+  const metaH = Math.min(Math.round(3 * scale), 28);   // ~3mm
   const metaW = Math.round(metaH * 0.5);
 
-  // Calculate wrapping: allow up to 4 lines for product name
+  // Calculate product name wrapping — allow up to 5 lines
   const charsPerLine = Math.max(6, Math.floor(printW / titleW));
-  const nameLines = Math.min(4, Math.ceil(data.productName.length / charsPerLine));
+  const nameLines = Math.min(5, Math.ceil(data.productName.length / charsPerLine));
 
   const lines: string[] = [
     '^XA',
@@ -77,7 +75,7 @@ export function generateZPL(data: LabelData, opts: {
 
   let y = margin;
 
-  // ── PRODUCT NAME (large, wrapping, explicit width) ──
+  // ── PRODUCT NAME (large, wraps as needed) ──
   lines.push(`^A0N,${titleH},${titleW}`);
   lines.push(`^FO${margin},${y}^FB${printW},${nameLines},0,L^FD${escapeZPL(data.productName)}^FS`);
   y += titleH * nameLines + gap;
@@ -110,13 +108,12 @@ export function generateZPL(data: LabelData, opts: {
     y += metaH + gap;
   }
 
-  // ── Barcode (only if 20mm+ space remains) ──
+  // ── Barcode: fill remaining space at bottom ──
   const remainingDots = hDots - y - margin;
-  const minBarcodeSpace = 20 * scale;
-  if (remainingDots > minBarcodeSpace && data.barcodeValue && !isNarrow) {
+  if (remainingDots > (12 * scale) && data.barcodeValue) {
     y += gap;
-    // Barcode height = remaining space minus room for human-readable text (3mm)
-    const barcodeH = Math.min(Math.round(8 * scale), remainingDots - Math.round(5 * scale));
+    // Use all remaining space for the barcode
+    const barcodeH = Math.min(remainingDots - Math.round(4 * scale), Math.round(15 * scale));
     if (barcodeH > 16) {
       lines.push(`^FO${margin},${y}^BY2^BCN,${barcodeH},Y,N,N^FD${escapeZPL(data.barcodeValue)}^FS`);
     }
