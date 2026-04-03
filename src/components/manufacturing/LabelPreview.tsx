@@ -4,7 +4,13 @@ import React from 'react';
 
 /**
  * Visual HTML preview of a Zebra label.
- * Renders a scaled-down representation matching the selected label size.
+ * 
+ * MIRRORS the ZPL generator (src/lib/zpl.ts) exactly:
+ * - Same responsive percentages of label height for font sizes
+ * - Same layout order: title → separator → produced → qty → expiry → MO → lot → barcode
+ * - Same 2mm margin, 0.8mm gap
+ * 
+ * When zpl.ts changes, update the percentages here to match.
  */
 
 interface LabelPreviewProps {
@@ -26,16 +32,26 @@ export default function LabelPreview({
   lotName, moName, containerNumber, totalContainers,
   widthMm, heightMm,
 }: LabelPreviewProps) {
-  const scale = 2.5;
-  const w = widthMm * scale;
-  const h = heightMm * scale;
-  const isSmall = heightMm < 40;
-  const isMedium = heightMm >= 40 && heightMm < 80;
+  // Scale: mm → CSS pixels (2.5px per mm gives a good on-screen size)
+  const pxPerMm = 2.5;
+  const w = widthMm * pxPerMm;
+  const h = heightMm * pxPerMm;
+  const marginPx = 2 * pxPerMm;  // 2mm margin (matches ZPL)
+  const gapPx = 0.8 * pxPerMm;   // 0.8mm gap (matches ZPL)
 
-  const titleSize = isSmall ? 11 : isMedium ? 14 : 16;
-  const bodySize = isSmall ? 9 : isMedium ? 11 : 13;
-  const metaSize = isSmall ? 8 : isMedium ? 9 : 11;
-  const padding = isSmall ? 6 : 10;
+  // Responsive font sizes — SAME percentages as zpl.ts
+  const titleFontPx = h * 0.093;  // 9.3% of height per line
+  const bodyFontPx = h * 0.06;    // 6% — production date
+  const emphFontPx = h * 0.073;   // 7.3% — qty + expiry (emphasized)
+  const metaFontPx = h * 0.04;    // 4% — MO, lot
+  const sepH = Math.max(1, h * 0.005); // separator thickness
+
+  // Estimate barcode height: whatever remains after text content
+  // Rough calc matching ZPL: title(2 lines) + sep + produced + qty + expiry + meta*2 + gaps
+  const textHeight = titleFontPx * 2.2 + sepH + gapPx * 8 +
+    bodyFontPx + emphFontPx * 2 + metaFontPx * 2 + marginPx * 2;
+  const barcodeH = Math.max(0, h - textHeight - marginPx);
+  const showBarcode = barcodeH > (8 * pxPerMm);
 
   return (
     <div className="flex flex-col items-center">
@@ -43,72 +59,116 @@ export default function LabelPreview({
         style={{
           width: w,
           height: h,
-          padding,
-          border: '2px solid #1F2933',
-          borderRadius: 4,
+          padding: marginPx,
+          border: '1.5px solid #333',
+          borderRadius: 3,
           backgroundColor: '#FFFFFF',
-          fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+          fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace',
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
           position: 'relative',
+          boxSizing: 'border-box',
         }}
       >
-        {/* Product name */}
+        {/* ── Product Name (large, wrapping) ── */}
         <div style={{
-          fontSize: titleSize,
+          fontSize: titleFontPx,
           fontWeight: 800,
-          color: '#1F2933',
-          lineHeight: 1.1,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: isSmall ? 'nowrap' : undefined,
-          maxHeight: isSmall ? titleSize + 2 : titleSize * 2.2 + 4,
+          color: '#1a1a1a',
+          lineHeight: 1.15,
+          letterSpacing: '-0.01em',
+          marginBottom: gapPx,
+          wordBreak: 'break-word',
         }}>
           {productName}
         </div>
 
-        {!isSmall && (
-          <div style={{ borderTop: '1px solid #D1D5DB', margin: '3px 0' }} />
-        )}
+        {/* ── Separator ── */}
+        <div style={{
+          height: sepH,
+          backgroundColor: '#1a1a1a',
+          marginBottom: gapPx,
+          flexShrink: 0,
+        }} />
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: isSmall ? 1 : 2 }}>
-          <div style={{ fontSize: bodySize, color: '#374151' }}>
-            <span style={{ color: '#9CA3AF' }}>Produced:</span> {productionDate}
-          </div>
-          <div style={{ fontSize: bodySize, color: '#374151', fontWeight: 700 }}>
-            <span style={{ color: '#9CA3AF', fontWeight: 400 }}>Qty:</span> {qty} {uom}
-          </div>
-          <div style={{ fontSize: bodySize, color: '#374151' }}>
-            <span style={{ color: '#9CA3AF' }}>Expiry:</span> {expiryDate}
-          </div>
-
-          {!isSmall && moName && containerNumber && totalContainers && (
-            <div style={{ fontSize: metaSize, color: '#6B7280' }}>
-              {moName} | {containerNumber}/{totalContainers}
-            </div>
-          )}
-
-          {!isSmall && lotName && (
-            <div style={{ fontSize: metaSize, color: '#6B7280' }}>
-              Lot: {lotName}
-            </div>
-          )}
+        {/* ── Production Date (normal body) ── */}
+        <div style={{
+          fontSize: bodyFontPx,
+          color: '#1a1a1a',
+          lineHeight: 1.2,
+          marginBottom: gapPx,
+        }}>
+          Produced: {productionDate}
         </div>
 
-        {heightMm >= 76 && (
+        {/* ── Quantity (emphasized — larger) ── */}
+        <div style={{
+          fontSize: emphFontPx,
+          fontWeight: 700,
+          color: '#1a1a1a',
+          lineHeight: 1.2,
+          marginBottom: gapPx,
+        }}>
+          Qty: {qty} {uom}
+        </div>
+
+        {/* ── Expiry Date (emphasized — larger) ── */}
+        <div style={{
+          fontSize: emphFontPx,
+          fontWeight: 700,
+          color: '#1a1a1a',
+          lineHeight: 1.2,
+          marginBottom: gapPx * 2,
+        }}>
+          Expiry: {expiryDate}
+        </div>
+
+        {/* ── MO + Container (meta — small) ── */}
+        {moName && containerNumber != null && totalContainers != null && (
           <div style={{
-            marginTop: 4,
-            height: Math.min(30, h * 0.18),
-            background: 'repeating-linear-gradient(90deg, #1F2933 0px, #1F2933 2px, transparent 2px, transparent 4px, #1F2933 4px, #1F2933 5px, transparent 5px, transparent 8px)',
-            borderRadius: 2,
-            opacity: 0.7,
+            fontSize: metaFontPx,
+            color: '#1a1a1a',
+            lineHeight: 1.2,
+            marginBottom: gapPx,
+          }}>
+            {moName} | {containerNumber}/{totalContainers}
+          </div>
+        )}
+
+        {/* ── Lot (meta — small) ── */}
+        {lotName && (
+          <div style={{
+            fontSize: metaFontPx,
+            color: '#1a1a1a',
+            lineHeight: 1.2,
+            marginBottom: gapPx,
+          }}>
+            Lot: {lotName}
+          </div>
+        )}
+
+        {/* ── Spacer to push barcode to bottom ── */}
+        <div style={{ flex: 1 }} />
+
+        {/* ── Barcode (fills remaining bottom space) ── */}
+        {showBarcode && (
+          <div style={{
+            height: Math.min(barcodeH, 15 * pxPerMm),
+            background: `repeating-linear-gradient(90deg, 
+              #1a1a1a 0px, #1a1a1a 1.5px, 
+              transparent 1.5px, transparent 3px, 
+              #1a1a1a 3px, #1a1a1a 4px, 
+              transparent 4px, transparent 5.5px,
+              #1a1a1a 5.5px, #1a1a1a 6px,
+              transparent 6px, transparent 9px)`,
+            opacity: 0.85,
+            flexShrink: 0,
           }} />
         )}
       </div>
 
-      {/* Size caption — proper multiplication sign */}
+      {/* Size caption */}
       <div className="mt-2 text-center">
         <span className="text-[var(--fs-xs)] text-gray-400 font-mono">
           {widthMm} {'\u00d7'} {heightMm} mm
