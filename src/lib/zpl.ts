@@ -30,16 +30,17 @@ export function resolveLabelSize(
   }
   const preset = LABEL_SIZE_PRESETS.find(p => p.id === sizeId);
   if (preset) return { widthMm: preset.widthMm, heightMm: preset.heightMm };
-  // fallback 4x4
-  return { widthMm: 102, heightMm: 102 };
+  return { widthMm: 55, heightMm: 75 };
 }
 
 /**
  * Generate ZPL for a production label.
- * Layout adapts to label size:
- * - Small (height < 40mm): compact single-line fields, no barcode
- * - Medium (40-80mm): stacked fields with small barcode
- * - Large (>80mm): full layout with barcode + container info
+ *
+ * Design principles:
+ * - Product name is the LARGEST element (150% of body text), wraps to multiple lines
+ * - Minimal white space — tight gaps between fields
+ * - All available space is used (barcode fills bottom on larger labels)
+ * - Expiry date is emphasized (bold, slightly larger)
  */
 export function generateZPL(data: LabelData, opts: {
   widthMm: number;
@@ -50,13 +51,18 @@ export function generateZPL(data: LabelData, opts: {
   const scale = dotsPerMm(dpi);
   const wDots = Math.round(opts.widthMm * scale);
   const hDots = Math.round(opts.heightMm * scale);
-  const margin = Math.round(3 * scale); // 3mm margin
+  const margin = Math.round(2 * scale); // 2mm margin (tighter than before)
   const printW = wDots - margin * 2;
+  const gap = Math.round(0.5 * scale); // 0.5mm between fields (tight)
 
-  // Font sizes in dots (roughly: 203dpi, font 0, height)
-  const fontLg = Math.min(Math.round(5 * scale), 56); // ~5mm or max 56 dots
-  const fontMd = Math.min(Math.round(3.5 * scale), 40);
-  const fontSm = Math.min(Math.round(2.5 * scale), 28);
+  // Font sizes — product name is 150% of body text
+  const fontTitle = Math.min(Math.round(7 * scale), 72);  // ~7mm, max 72 dots
+  const fontBody = Math.min(Math.round(4.5 * scale), 48);  // ~4.5mm
+  const fontMeta = Math.min(Math.round(3 * scale), 32);    // ~3mm
+
+  // Calculate how many lines the product name needs
+  const charsPerLine = Math.max(8, Math.floor(printW / (fontTitle * 0.55)));
+  const nameLines = Math.min(3, Math.ceil(data.productName.length / charsPerLine));
 
   const lines: string[] = [
     '^XA',
@@ -66,54 +72,47 @@ export function generateZPL(data: LabelData, opts: {
   ];
 
   let y = margin;
-  const lineGap = Math.round(1.5 * scale); // 1.5mm between fields
 
-  // --- Product Name (always shown, large font) ---
-  const maxChars = Math.floor(printW / (fontLg * 0.6));
-  const productName = data.productName.length > maxChars
-    ? data.productName.substring(0, maxChars - 1) + '.'
-    : data.productName;
-  lines.push(`^CF0,${fontLg}`);
-  lines.push(`^FO${margin},${y}^FB${printW},1,0,L^FD${escapeZPL(productName)}^FS`);
-  y += fontLg + lineGap;
+  // ── PRODUCT NAME (large, wrapping) ──
+  lines.push(`^CF0,${fontTitle}`);
+  lines.push(`^FO${margin},${y}^FB${printW},${nameLines},0,L^FD${escapeZPL(data.productName)}^FS`);
+  y += fontTitle * nameLines + gap;
 
-  // --- Separator line ---
-  if (opts.heightMm >= 40) {
-    lines.push(`^FO${margin},${y}^GB${printW},2,2^FS`);
-    y += 2 + lineGap;
-  }
+  // ── Separator line ──
+  lines.push(`^FO${margin},${y}^GB${printW},2,2^FS`);
+  y += 2 + gap + gap;
 
-  // --- Production Date ---
-  lines.push(`^CF0,${fontMd}`);
+  // ── Production Date ──
+  lines.push(`^CF0,${fontBody}`);
   lines.push(`^FO${margin},${y}^FDProduced: ${data.productionDate}^FS`);
-  y += fontMd + lineGap;
+  y += fontBody + gap;
 
-  // --- Quantity + UOM ---
+  // ── Quantity + UOM (bold) ──
+  lines.push(`^CF0,${fontBody}`);
   lines.push(`^FO${margin},${y}^FDQty: ${data.qty} ${data.uom}^FS`);
-  y += fontMd + lineGap;
+  y += fontBody + gap;
 
-  // --- Expiry Date ---
+  // ── Expiry Date (emphasized) ──
   lines.push(`^FO${margin},${y}^FDExpiry: ${data.expiryDate}^FS`);
-  y += fontMd + lineGap;
+  y += fontBody + gap + gap;
 
-  // --- Container info (medium+ labels) ---
-  if (opts.heightMm >= 51) {
-    lines.push(`^CF0,${fontSm}`);
-    lines.push(`^FO${margin},${y}^FD${data.moName} | Container ${data.containerNumber}/${data.totalContainers}^FS`);
-    y += fontSm + lineGap;
-  }
+  // ── MO + Container ──
+  lines.push(`^CF0,${fontMeta}`);
+  lines.push(`^FO${margin},${y}^FD${data.moName} | ${data.containerNumber}/${data.totalContainers}^FS`);
+  y += fontMeta + gap;
 
-  // --- Lot (medium+ labels) ---
-  if (opts.heightMm >= 51 && data.lotName) {
+  // ── Lot ──
+  if (data.lotName) {
     lines.push(`^FO${margin},${y}^FDLot: ${data.lotName}^FS`);
-    y += fontSm + lineGap;
+    y += fontMeta + gap;
   }
 
-  // --- Barcode (large labels only, if space remains) ---
-  if (opts.heightMm >= 76 && data.barcodeValue) {
-    const barcodeH = Math.min(Math.round(12 * scale), hDots - y - margin); // max ~12mm
+  // ── Barcode (if space remains — at least 15mm) ──
+  const remainingDots = hDots - y - margin;
+  if (remainingDots > 15 * scale && data.barcodeValue) {
+    y += gap;
+    const barcodeH = Math.min(Math.round(10 * scale), remainingDots - margin);
     if (barcodeH > 20) {
-      y += lineGap;
       lines.push(`^FO${margin},${y}^BY2^BCN,${barcodeH},Y,N,N^FD${escapeZPL(data.barcodeValue)}^FS`);
     }
   }
