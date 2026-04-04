@@ -23,18 +23,29 @@ export async function GET(
     const mo = mos[0];
 
     // Fetch finished product expiration settings
+    // These fields live on product.template, so we need to go through the variant
     let expirationTimeDays = 0;
     let useExpirationDate = false;
     try {
-      const finishedProducts = await odoo.read(
+      // Step 1: get product_tmpl_id from product.product
+      const variants = await odoo.read(
         'product.product',
         [mo.product_id[0]],
-        ['use_expiration_date', 'expiration_time'],
+        ['product_tmpl_id'],
       );
-      if (finishedProducts.length > 0) {
-        useExpirationDate = !!finishedProducts[0].use_expiration_date;
-        // expiration_time is stored in days (float)
-        expirationTimeDays = finishedProducts[0].expiration_time || 0;
+      if (variants.length > 0 && variants[0].product_tmpl_id) {
+        const tmplId = variants[0].product_tmpl_id[0];
+        // Step 2: read expiration fields from product.template
+        const templates = await odoo.read(
+          'product.template',
+          [tmplId],
+          ['use_expiration_date', 'expiration_time'],
+        );
+        if (templates.length > 0) {
+          useExpirationDate = !!templates[0].use_expiration_date;
+          // expiration_time is stored in days (float)
+          expirationTimeDays = templates[0].expiration_time || 0;
+        }
       }
     } catch (err) {
       // Non-fatal: if fields don't exist, default to 0
@@ -86,7 +97,7 @@ export async function GET(
         components: enrichedComponents,
         work_orders: workOrders,
         progress_percent: totalWos > 0 ? Math.round((doneWos / totalWos) * 100) : 0,
-        // Expiration settings from finished product
+        // Expiration settings from finished product template
         use_expiration_date: useExpirationDate,
         expiration_time_days: expirationTimeDays,
       },
