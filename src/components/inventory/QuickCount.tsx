@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, SearchBar, Stepper, Spinner, EmptyState } from './ui';
 import NumpadModal from './NumpadModal';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
@@ -22,39 +22,22 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  // ── Barcode scanner state ──
+  // ── Barcode scanner ──
   const [showScanner, setShowScanner] = useState(false);
-  const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'warning' | 'error'; msg: string } | null>(null);
-  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function showScanFeedback(type: 'success' | 'warning' | 'error', msg: string) {
-    setScanFeedback({ type, msg });
-    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
-    feedbackTimerRef.current = setTimeout(() => setScanFeedback(null), 3000);
-  }
-
-  function handleBarcodeScan(barcode: string) {
-    setShowScanner(false);
-
-    // Look up barcode in loaded products
+  // Hardware scanner — opens numpad for matched products
+  function handleHardwareScan(barcode: string) {
     const product = products.find((p: any) => p.barcode && p.barcode === barcode);
     if (product) {
-      // Clear filters so product is visible
       setSearch('');
       setCatFilter('all');
-      showScanFeedback('success', product.name);
-      setTimeout(() => openNumpad(product), 150);
-      return;
+      openNumpad(product);
     }
-
-    // Barcode not found in any loaded product
-    showScanFeedback('warning', `Unknown barcode: ${barcode}`);
   }
 
-  // Hardware scanner
   useHardwareScanner({
     enabled: !numpad.open && !showScanner && !loading,
-    onScan: handleBarcodeScan,
+    onScan: handleHardwareScan,
   });
 
   const fetchData = useCallback(async () => {
@@ -120,6 +103,11 @@ export default function QuickCount({ userRole }: QuickCountProps) {
     setNumpad({ open: false, product: null });
   }
 
+  // Called by scanner overlay when user confirms a count
+  function handleScanCount(productId: number, qty: number, _uom: string) {
+    setCounts((prev) => ({ ...prev, [productId]: qty }));
+  }
+
   async function handleSubmit() {
     if (!locFilter || countedN === 0) return;
     setSubmitting(true);
@@ -173,26 +161,6 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       {countedN > 0 && (
         <div className="px-4 pb-2">
           <span className="text-[var(--fs-sm)] font-semibold text-green-700">{countedN} product{countedN !== 1 ? 's' : ''} counted</span>
-        </div>
-      )}
-
-      {/* Scan feedback banner */}
-      {scanFeedback && (
-        <div className={`mx-4 mb-2 px-4 py-2.5 rounded-xl flex items-center gap-2.5 ${
-          scanFeedback.type === 'success' ? 'bg-green-50 border border-green-200' :
-          scanFeedback.type === 'warning' ? 'bg-amber-50 border border-amber-200' :
-          'bg-red-50 border border-red-200'
-        }`}>
-          {scanFeedback.type === 'success' && (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-          )}
-          {scanFeedback.type === 'warning' && (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          )}
-          <span className={`text-[14px] font-semibold truncate ${
-            scanFeedback.type === 'success' ? 'text-green-700' :
-            scanFeedback.type === 'warning' ? 'text-amber-700' : 'text-red-700'
-          }`}>{scanFeedback.msg}</span>
         </div>
       )}
 
@@ -257,11 +225,16 @@ export default function QuickCount({ userRole }: QuickCountProps) {
         </svg>
       </button>
 
-      {/* Barcode scanner overlay */}
+      {/* Barcode scanner overlay — persistent, never unmounts */}
       <BarcodeScanner
         open={showScanner}
-        onScan={handleBarcodeScan}
         onClose={() => setShowScanner(false)}
+        products={products}
+        entries={counts}
+        totalCount={products.length}
+        countedCount={countedN}
+        onCount={handleScanCount}
+        userRole={userRole}
         title="Scan product"
       />
 

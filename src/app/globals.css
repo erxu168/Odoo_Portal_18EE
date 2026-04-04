@@ -106,3 +106,12 @@ select.form-input {
   background-position: right 14px center;
   padding-right: 36px;
 }
+
+/* ── Scanner overlay animations ── */
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0.8; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.animate-slideUp {
+  animation: slideUp 300ms ease-out;
+}
