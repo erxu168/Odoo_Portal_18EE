@@ -153,20 +153,16 @@ export default function MoIngredients({ userRole }: MoIngredientsProps) {
                 return (
                   <div key={item.product_id} className="flex items-center gap-3 py-3 border-b border-gray-100">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="text-[var(--fs-lg)] font-semibold text-gray-900 truncate">
-                          {item.product_name}
-                        </span>
-                        <span className="text-[var(--fs-sm)] text-gray-400 flex-shrink-0">
-                          {item.uom}
-                        </span>
+                      <div className="text-[var(--fs-lg)] font-semibold text-gray-900 truncate">
+                        {item.product_name}
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="text-[var(--fs-sm)] font-mono font-semibold text-blue-600">
-                          Need: {fmtQty(item.total_demand)}
+                          Need: {fmtQty(item.total_demand)} {item.uom}
                         </span>
+                        <span className="text-[var(--fs-xs)] text-gray-300">&middot;</span>
                         <span className="text-[var(--fs-xs)] text-gray-400">
-                          {item.mo_count} MO{item.mo_count !== 1 ? 's' : ''}
+                          {item.mo_count} MO{item.mo_count !== 1 ? "s" : ""}
                         </span>
                       </div>
                     </div>
