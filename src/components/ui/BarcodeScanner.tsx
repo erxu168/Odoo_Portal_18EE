@@ -153,15 +153,47 @@ export default function BarcodeScanner({
         scannerRef.current = s;
 
         await s.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 280, height: 120 }, disableFlip: false },
+          { facingMode: { exact: 'environment' } },
+          {
+            fps: 15,
+            qrbox: { width: 300, height: 150 },
+            disableFlip: false,
+            ...(({ experimentalFeatures: { useBarCodeDetectorIfSupported: true } }) as any),
+          },
           (decoded: string) => {
             processBarcodeRef.current(decoded);
           },
           () => { /* ignore failed decode attempts */ },
         );
 
+        // Request continuous autofocus + higher resolution
         if (!cancelled) {
+          try {
+            const videoEl = document.querySelector('#' + READER_ID + ' video') as HTMLVideoElement | null;
+            const track = videoEl?.srcObject instanceof MediaStream
+              ? videoEl.srcObject.getVideoTracks()[0]
+              : null;
+            if (track) {
+              const caps = track.getCapabilities?.() as any;
+              const advConstraints: any[] = [];
+              if (caps?.focusMode?.includes('continuous')) {
+                advConstraints.push({ focusMode: 'continuous' });
+              }
+              if (caps?.zoom) {
+                // slight zoom helps barcode readability
+                advConstraints.push({ zoom: Math.min(caps.zoom.max, 2.0) });
+              }
+              if (advConstraints.length > 0) {
+                await track.applyConstraints({
+                  advanced: advConstraints,
+                  width: { ideal: 1920 },
+                  height: { ideal: 1080 },
+                } as any);
+              }
+            }
+          } catch (_focusErr) {
+            console.debug('[BarcodeScanner] autofocus setup skipped');
+          }
           setCameraReady(true);
           setError(null);
         }
