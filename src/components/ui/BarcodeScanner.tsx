@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 type ScanResult =
   | { kind: 'scanning' }
-  | { kind: 'found'; product: any; }
+  | { kind: 'found'; product: any }
   | { kind: 'looking_up'; barcode: string }
   | { kind: 'not_in_list'; barcode: string; productName: string }
   | { kind: 'unknown'; barcode: string }
@@ -14,13 +14,10 @@ type ScanResult =
 interface BarcodeScannerProps {
   open: boolean;
   onClose: () => void;
-  /** Products loaded for this session/quick-count */
   products: any[];
-  /** Current count entries: product_id → counted_qty */
   entries: Record<number, number>;
   totalCount: number;
   countedCount: number;
-  /** Called when user confirms a count from the scanner */
   onCount: (productId: number, qty: number, uom: string) => void;
   userRole: string;
   title?: string;
@@ -38,16 +35,27 @@ export default function BarcodeScanner({
   const [cameraReady, setCameraReady] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'warning' } | null>(null);
   const [manualValue, setManualValue] = useState('');
+  const [isNative, setIsNative] = useState<boolean | null>(null);
 
   const scannerRef = useRef<any>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const manualInputRef = useRef<HTMLInputElement>(null);
 
-  // Refs to avoid stale closures in scanner callback
   const productsRef = useRef(products);
   productsRef.current = products;
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
+
+  /* ───── Detect native platform ───── */
+
+  useEffect(() => {
+    try {
+      const cap = (window as any).Capacitor;
+      setIsNative(cap?.isNativePlatform?.() === true);
+    } catch {
+      setIsNative(false);
+    }
+  }, []);
 
   /* ───── Helpers ───── */
 
@@ -74,40 +82,22 @@ export default function BarcodeScanner({
     setCameraReady(false);
   }, [cleanContainer]);
 
-  const pauseScanner = useCallback(() => {
-    if (scannerRef.current) {
-      try { scannerRef.current.pause(false); } catch (_e) { /* ignore */ }
-    }
-  }, []);
-
-  const resumeScanner = useCallback(() => {
-    if (scannerRef.current) {
-      try { scannerRef.current.resume(); } catch (_e) { /* ignore */ }
-    }
-    setScanResult({ kind: 'scanning' });
-  }, []);
-
   /* ───── Barcode processing ───── */
 
   const processBarcode = useCallback(async (barcode: string) => {
     const prods = productsRef.current;
     const ents = entriesRef.current;
 
-    // 1. Check local products (by barcode field)
     const product = prods.find((p: any) => p.barcode && p.barcode === barcode);
     if (product) {
       const currentQty = ents[product.id];
-      const defaultQty = currentQty !== undefined ? currentQty + 1 : 1;
-      setQty(defaultQty);
+      setQty(currentQty !== undefined ? currentQty + 1 : 1);
       setScanResult({ kind: 'found', product });
-      pauseScanner();
       try { navigator.vibrate(100); } catch (_e) { /* ignore */ }
       return;
     }
 
-    // 2. Not in local products — look up in Odoo
     setScanResult({ kind: 'looking_up', barcode });
-    pauseScanner();
     try { navigator.vibrate(100); } catch (_e) { /* ignore */ }
 
     try {
@@ -121,24 +111,66 @@ export default function BarcodeScanner({
     } catch (_err) {
       setScanResult({ kind: 'unknown', barcode });
     }
-  }, [pauseScanner]);
+  }, []);
 
-  // Stable ref for the scanner callback
   const processBarcodeRef = useRef(processBarcode);
   processBarcodeRef.current = processBarcode;
 
-  /* ───── Camera lifecycle ───── */
-
-  const isManual = scanResult.kind === 'manual';
-  const wantCamera = open && !isManual;
+  /* ───── Native ML Kit scanning ───── */
 
   useEffect(() => {
-    if (!wantCamera) {
+    if (!open || isNative !== true || scanResult.kind !== 'scanning') return;
+
+    let cancelled = false;
+
+    async function doNativeScan() {
+      try {
+        const { BarcodeScanner: NativeScanner, BarcodeFormat } =
+          await import('@capacitor-mlkit/barcode-scanning');
+
+        // Ensure Google Barcode Scanner module is available
+        const { available } = await NativeScanner.isGoogleBarcodeScannerModuleAvailable();
+        if (!available) {
+          await NativeScanner.installGoogleBarcodeScannerModule();
+        }
+
+        const { barcodes } = await NativeScanner.scan({
+          formats: [BarcodeFormat.Ean13, BarcodeFormat.Ean8, BarcodeFormat.Code128, BarcodeFormat.UpcA],
+        });
+
+        if (cancelled) return;
+
+        if (barcodes.length > 0 && barcodes[0].rawValue) {
+          processBarcodeRef.current(barcodes[0].rawValue);
+        } else {
+          // User cancelled
+          onClose();
+        }
+      } catch (err: unknown) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[BarcodeScanner] native scan error:', msg);
+        // Fall back to html5-qrcode
+        setIsNative(false);
+      }
+    }
+
+    // Small delay so the overlay renders first
+    const timer = setTimeout(doNativeScan, 100);
+    return () => { cancelled = true; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isNative, scanResult.kind]);
+
+  /* ───── html5-qrcode fallback (web only) ───── */
+
+  const isManual = scanResult.kind === 'manual';
+  const wantWebCamera = open && isNative === false && !isManual;
+
+  useEffect(() => {
+    if (!wantWebCamera) {
       stopScanner();
       return;
     }
-
-    // Don't restart if scanner is already running (just paused between scans)
     if (scannerRef.current) return;
 
     let cancelled = false;
@@ -153,76 +185,45 @@ export default function BarcodeScanner({
         scannerRef.current = s;
 
         await s.start(
-          { facingMode: { exact: 'environment' } },
-          {
-            fps: 15,
-            qrbox: { width: 300, height: 150 },
-            disableFlip: false,
-            ...(({ experimentalFeatures: { useBarCodeDetectorIfSupported: true } }) as any),
-          },
-          (decoded: string) => {
-            processBarcodeRef.current(decoded);
-          },
-          () => { /* ignore failed decode attempts */ },
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 280, height: 120 }, disableFlip: false },
+          (decoded: string) => { processBarcodeRef.current(decoded); },
+          () => {},
         );
 
-        // Request continuous autofocus + higher resolution
         if (!cancelled) {
-          try {
-            const videoEl = document.querySelector('#' + READER_ID + ' video') as HTMLVideoElement | null;
-            const track = videoEl?.srcObject instanceof MediaStream
-              ? videoEl.srcObject.getVideoTracks()[0]
-              : null;
-            if (track) {
-              const caps = track.getCapabilities?.() as any;
-              const advConstraints: any[] = [];
-              if (caps?.focusMode?.includes('continuous')) {
-                advConstraints.push({ focusMode: 'continuous' });
-              }
-              if (caps?.zoom) {
-                // slight zoom helps barcode readability
-                advConstraints.push({ zoom: Math.min(caps.zoom.max, 2.0) });
-              }
-              if (advConstraints.length > 0) {
-                await track.applyConstraints({
-                  advanced: advConstraints,
-                  width: { ideal: 1920 },
-                  height: { ideal: 1080 },
-                } as any);
-              }
-            }
-          } catch (_focusErr) {
-            console.debug('[BarcodeScanner] autofocus setup skipped');
-          }
           setCameraReady(true);
           setError(null);
         }
       } catch (err: unknown) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
-        console.error('[BarcodeScanner]', msg);
+        console.error('[BarcodeScanner] web camera error:', msg);
         if (msg.includes('Permission') || msg.includes('NotAllowed')) {
-          setError('Camera access denied. Go to Android Settings \u2192 Apps \u2192 Krawings Portal \u2192 Permissions \u2192 enable Camera, then reopen the scanner.');
-        } else if (msg.includes('NotFound') || msg.includes('device not found') || msg.includes('Requested device')) {
-          setError('No camera found. Use manual entry.');
-        } else if (msg.includes('NotReadable') || msg.includes('Could not start')) {
-          setError('Camera in use by another app. Close it and retry.');
+          setError('Camera access denied. Check browser permissions.');
         } else {
-          setError('Camera error. Try manual entry.');
+          setError('Camera error. Use manual entry.');
         }
       }
     };
 
     const timer = setTimeout(start, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      stopScanner();
-    };
+    return () => { cancelled = true; clearTimeout(timer); stopScanner(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wantCamera]);
+  }, [wantWebCamera]);
 
-  // Focus manual input when switching to manual mode
+  // Pause/resume web scanner when result is shown
+  useEffect(() => {
+    if (!scannerRef.current || isNative !== false) return;
+    const hasResult = scanResult.kind === 'found' || scanResult.kind === 'not_in_list'
+      || scanResult.kind === 'unknown' || scanResult.kind === 'looking_up';
+    if (hasResult) {
+      try { scannerRef.current.pause(false); } catch (_e) { /* ignore */ }
+    } else if (scanResult.kind === 'scanning') {
+      try { scannerRef.current.resume(); } catch (_e) { /* ignore */ }
+    }
+  }, [scanResult.kind, isNative]);
+
   useEffect(() => {
     if (open && isManual) {
       const t = setTimeout(() => manualInputRef.current?.focus(), 120);
@@ -238,11 +239,12 @@ export default function BarcodeScanner({
     const uom = product.uom_id?.[1] || 'Units';
     onCount(product.id, qty, uom);
     showToast(`${product.name} \u2192 ${qty} ${uom}`);
-    resumeScanner();
+    // Return to scanning — triggers next native scan automatically
+    setScanResult({ kind: 'scanning' });
   }
 
   function handleDismissResult() {
-    resumeScanner();
+    setScanResult({ kind: 'scanning' });
   }
 
   function handleManualSubmit() {
@@ -307,31 +309,41 @@ export default function BarcodeScanner({
         </div>
       </div>
 
-      {/* ── Camera view ── */}
-      <div
-        style={{ display: isManual ? 'none' : 'flex' }}
-        className="flex-1 flex-col items-center justify-center relative"
-      >
-        <div id={READER_ID} className="w-full max-w-[320px] aspect-square rounded-2xl overflow-hidden" />
+      {/* ── Native scanning state (camera handled natively) ── */}
+      {isNative && scanResult.kind === 'scanning' && !isManual && (
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mb-4" />
+          <p className="text-white/50 text-[14px]">Opening scanner...</p>
+        </div>
+      )}
 
-        {cameraReady && !hasResult && !error && (
-          <p className="text-white/50 text-[13px] mt-4">Point camera at barcode</p>
-        )}
-
-        {error && (
-          <div className="absolute bottom-24 left-6 right-6">
-            <div className="bg-red-500/90 rounded-xl p-4 text-center">
-              <p className="text-white text-[14px] font-semibold leading-snug">{error}</p>
-              <button onClick={toggleManual}
-                className="mt-3 w-full px-4 py-3 rounded-xl bg-white/20 text-white text-[14px] font-bold active:bg-white/30">
-                Use manual entry
-              </button>
-            </div>
+      {/* ── Web camera view (html5-qrcode fallback) ── */}
+      {isNative === false && (
+        <>
+          <div
+            style={{ display: isManual ? 'none' : 'flex' }}
+            className="flex-1 flex-col items-center justify-center relative"
+          >
+            <div id={READER_ID} className="w-full max-w-[320px] aspect-square rounded-2xl overflow-hidden" />
+            {cameraReady && !hasResult && !error && (
+              <p className="text-white/50 text-[13px] mt-4">Point camera at barcode</p>
+            )}
+            {error && (
+              <div className="absolute bottom-24 left-6 right-6">
+                <div className="bg-red-500/90 rounded-xl p-4 text-center">
+                  <p className="text-white text-[14px] font-semibold leading-snug">{error}</p>
+                  <button onClick={toggleManual}
+                    className="mt-3 w-full px-4 py-3 rounded-xl bg-white/20 text-white text-[14px] font-bold active:bg-white/30">
+                    Use manual entry
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
 
-      {/* ── Manual entry view ── */}
+      {/* ── Manual entry ── */}
       <div
         style={{ display: isManual ? 'flex' : 'none' }}
         className="flex-1 flex-col items-center justify-center px-6"
@@ -355,7 +367,7 @@ export default function BarcodeScanner({
         </div>
       </div>
 
-      {/* ── Toast (shows briefly after confirm) ── */}
+      {/* ── Toast ── */}
       {toast && (
         <div className={`absolute top-28 left-4 right-4 px-4 py-3 rounded-xl flex items-center gap-2 z-[72] ${
           toast.type === 'success' ? 'bg-green-600/95' : 'bg-amber-500/95'
@@ -367,7 +379,7 @@ export default function BarcodeScanner({
         </div>
       )}
 
-      {/* ── Product found — qty input + confirm ── */}
+      {/* ── Product found card ── */}
       {scanResult.kind === 'found' && (
         <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-5 pb-8 z-[71] animate-slideUp">
           <div className="flex items-start justify-between mb-3">
@@ -396,7 +408,6 @@ export default function BarcodeScanner({
             </p>
           )}
 
-          {/* Qty stepper */}
           <div className="flex items-center justify-center gap-4 mb-5">
             <button onClick={() => setQty((q) => Math.max(0, q - 1))}
               className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-[22px] font-bold text-gray-600 active:bg-gray-200 select-none">
@@ -427,7 +438,7 @@ export default function BarcodeScanner({
         </div>
       )}
 
-      {/* ── Looking up barcode (loading) ── */}
+      {/* ── Looking up ── */}
       {scanResult.kind === 'looking_up' && (
         <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-5 pb-8 z-[71] animate-slideUp">
           <div className="flex items-center justify-center gap-3 py-6">
@@ -437,7 +448,7 @@ export default function BarcodeScanner({
         </div>
       )}
 
-      {/* ── Not in this count list ── */}
+      {/* ── Not in list ── */}
       {scanResult.kind === 'not_in_list' && (
         <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-5 pb-8 z-[71] animate-slideUp">
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
@@ -455,7 +466,7 @@ export default function BarcodeScanner({
           </div>
           <button onClick={handleDismissResult}
             className="w-full py-3.5 rounded-xl bg-gray-100 text-gray-700 text-[15px] font-semibold active:bg-gray-200">
-            Continue scanning
+            Scan next
           </button>
         </div>
       )}
@@ -479,7 +490,7 @@ export default function BarcodeScanner({
           </div>
           <button onClick={handleDismissResult}
             className="w-full py-3.5 rounded-xl bg-gray-100 text-gray-700 text-[15px] font-semibold active:bg-gray-200">
-            Continue scanning
+            Scan next
           </button>
         </div>
       )}
