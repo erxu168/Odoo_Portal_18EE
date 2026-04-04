@@ -88,8 +88,9 @@ function now(): string {
 }
 
 function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Use Berlin timezone so day boundary matches the restaurant local time
+  const berlin = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" }));
+  return `${berlin.getFullYear()}-${String(berlin.getMonth() + 1).padStart(2, "0")}-${String(berlin.getDate()).padStart(2, "0")}`;
 }
 
 // ===
