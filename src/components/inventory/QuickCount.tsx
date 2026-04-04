@@ -24,15 +24,12 @@ export default function QuickCount({ userRole }: QuickCountProps) {
 
   // ── Barcode scanner ──
   const [showScanner, setShowScanner] = useState(false);
+  const [hwBarcode, setHwBarcode] = useState<string | undefined>();
 
-  // Hardware scanner — opens numpad for matched products
+  // Hardware scanner — opens scanner overlay with product card
   function handleHardwareScan(barcode: string) {
-    const product = products.find((p: any) => p.barcode && p.barcode === barcode);
-    if (product) {
-      setSearch('');
-      setCatFilter('all');
-      openNumpad(product);
-    }
+    setHwBarcode(barcode);
+    setShowScanner(true);
   }
 
   useHardwareScanner({
@@ -228,7 +225,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       {/* Barcode scanner overlay — persistent, never unmounts */}
       <BarcodeScanner
         open={showScanner}
-        onClose={() => setShowScanner(false)}
+        onClose={() => { setShowScanner(false); setHwBarcode(undefined); }}
         products={products}
         entries={counts}
         totalCount={products.length}
@@ -236,6 +233,8 @@ export default function QuickCount({ userRole }: QuickCountProps) {
         onCount={handleScanCount}
         userRole={userRole}
         title="Scan product"
+        pendingBarcode={hwBarcode}
+        onPendingConsumed={() => setHwBarcode(undefined)}
       />
 
       {/* Numpad */}

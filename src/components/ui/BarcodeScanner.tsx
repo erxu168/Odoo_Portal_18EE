@@ -21,6 +21,9 @@ interface BarcodeScannerProps {
   onCount: (productId: number, qty: number, uom: string) => void;
   userRole: string;
   title?: string;
+  /** Barcode from hardware scanner — process immediately without camera */
+  pendingBarcode?: string;
+  onPendingConsumed?: () => void;
 }
 
 const READER_ID = 'krawings-barcode-reader';
@@ -58,6 +61,7 @@ function doNativeScan(): Promise<string | null> {
 export default function BarcodeScanner({
   open, onClose, products, entries, totalCount, countedCount,
   onCount, userRole, title = 'Scan product',
+  pendingBarcode, onPendingConsumed,
 }: BarcodeScannerProps) {
   const [scanResult, setScanResult] = useState<ScanResult>({ kind: 'scanning' });
   const [qty, setQty] = useState(1);
@@ -86,6 +90,15 @@ export default function BarcodeScanner({
     console.debug('[BarcodeScanner] native scanner:', native);
     setIsNative(native);
   }, []);
+
+  /* ───── Process pending barcode from hardware scanner ───── */
+
+  useEffect(() => {
+    if (open && pendingBarcode) {
+      processBarcodeRef.current(pendingBarcode);
+      onPendingConsumed?.();
+    }
+  }, [open, pendingBarcode, onPendingConsumed]);
 
   /* ───── Helpers ───── */
 
@@ -154,6 +167,7 @@ export default function BarcodeScanner({
   useEffect(() => {
     if (!open || isNative !== true || scanResult.kind !== 'scanning') return;
     if (isManual) return;
+    if (pendingBarcode) return; // hardware scanner handles this
 
     let cancelled = false;
 
@@ -306,11 +320,7 @@ export default function BarcodeScanner({
             <path d="M18 6L6 18M6 6l12 12"/>
           </svg>
         </button>
-        <span className="text-white text-[16px] font-semibold">{title}
-          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-white/20">
-            {isNative === null ? '...' : isNative ? 'NATIVE' : 'WEB'}
-          </span>
-        </span>
+        <span className="text-white text-[16px] font-semibold">{title}</span>
         <div className="flex items-center gap-2">
           {totalCount > 0 && (
             <span className={`text-[13px] font-bold px-2.5 py-1 rounded-full ${

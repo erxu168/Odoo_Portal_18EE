@@ -34,6 +34,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
   // -- Barcode scanner --
   const [showScanner, setShowScanner] = useState(false);
+  const [hwBarcode, setHwBarcode] = useState<string | undefined>();
 
   function handleHardwareScan(barcode: string) {
     const product = products.find((p: any) => p.barcode && p.barcode === barcode);
@@ -535,7 +536,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       <BarcodeScanner
         open={showScanner}
-        onClose={() => setShowScanner(false)}
+        onClose={() => { setShowScanner(false); setHwBarcode(undefined); }}
         products={products}
         entries={entries}
         totalCount={totalCount}
@@ -543,6 +544,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         onCount={handleScanCount}
         userRole={userRole}
         title="Scan product"
+        pendingBarcode={hwBarcode}
+        onPendingConsumed={() => setHwBarcode(undefined)}
       />
 
       {!isReadOnly && (
