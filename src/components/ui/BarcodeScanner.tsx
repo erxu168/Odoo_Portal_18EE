@@ -25,6 +25,36 @@ interface BarcodeScannerProps {
 
 const READER_ID = 'krawings-barcode-reader';
 
+/**
+ * Check if the native KrawingsScanner bridge is available.
+ * Injected by BarcodeScannerBridge.java via @JavascriptInterface.
+ */
+function hasNativeScanner(): boolean {
+  try {
+    return (window as any).KrawingsScanner?.isAvailable?.() === true;
+  } catch (_e) { return false; }
+}
+
+/**
+ * Trigger native ML Kit scan. Returns a promise that resolves with
+ * the barcode string, or null if cancelled/error.
+ */
+function doNativeScan(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const handler = (e: Event) => {
+      window.removeEventListener('nativeBarcodeScan', handler);
+      const detail = (e as CustomEvent).detail || {};
+      if (detail.barcode) {
+        resolve(detail.barcode);
+      } else {
+        resolve(null);
+      }
+    };
+    window.addEventListener('nativeBarcodeScan', handler);
+    (window as any).KrawingsScanner.scan();
+  });
+}
+
 export default function BarcodeScanner({
   open, onClose, products, entries, totalCount, countedCount,
   onCount, userRole, title = 'Scan product',
@@ -35,6 +65,7 @@ export default function BarcodeScanner({
   const [cameraReady, setCameraReady] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'warning' } | null>(null);
   const [manualValue, setManualValue] = useState('');
+  // null = still detecting, true = native available, false = web fallback
   const [isNative, setIsNative] = useState<boolean | null>(null);
 
   const scannerRef = useRef<any>(null);
@@ -46,15 +77,14 @@ export default function BarcodeScanner({
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
 
-  /* ───── Detect native platform ───── */
+  /* ───── Detect native scanner (JavascriptInterface) ───── */
 
   useEffect(() => {
-    try {
-      const cap = (window as any).Capacitor;
-      setIsNative(cap?.isNativePlatform?.() === true);
-    } catch {
-      setIsNative(false);
-    }
+    // KrawingsScanner is injected synchronously by the native WebView,
+    // so it is available immediately — no polling needed.
+    const native = hasNativeScanner();
+    console.debug('[BarcodeScanner] native scanner:', native);
+    setIsNative(native);
   }, []);
 
   /* ───── Helpers ───── */
@@ -116,55 +146,41 @@ export default function BarcodeScanner({
   const processBarcodeRef = useRef(processBarcode);
   processBarcodeRef.current = processBarcode;
 
-  /* ───── Native ML Kit scanning ───── */
+  const isManual = scanResult.kind === 'manual';
+  const wantWebCamera = open && isNative === false && !isManual;
+
+  /* ───── Native ML Kit scanning (via JavascriptInterface) ───── */
 
   useEffect(() => {
     if (!open || isNative !== true || scanResult.kind !== 'scanning') return;
+    if (isManual) return;
 
     let cancelled = false;
 
-    async function doNativeScan() {
+    async function triggerScan() {
       try {
-        const { BarcodeScanner: NativeScanner, BarcodeFormat } =
-          await import('@capacitor-mlkit/barcode-scanning');
-
-        // Ensure Google Barcode Scanner module is available
-        const { available } = await NativeScanner.isGoogleBarcodeScannerModuleAvailable();
-        if (!available) {
-          await NativeScanner.installGoogleBarcodeScannerModule();
-        }
-
-        const { barcodes } = await NativeScanner.scan({
-          formats: [BarcodeFormat.Ean13, BarcodeFormat.Ean8, BarcodeFormat.Code128, BarcodeFormat.UpcA],
-        });
-
+        const barcode = await doNativeScan();
         if (cancelled) return;
 
-        if (barcodes.length > 0 && barcodes[0].rawValue) {
-          processBarcodeRef.current(barcodes[0].rawValue);
+        if (barcode) {
+          processBarcodeRef.current(barcode);
         } else {
           // User cancelled
           onClose();
         }
       } catch (err: unknown) {
         if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error('[BarcodeScanner] native scan error:', msg);
-        // Fall back to html5-qrcode
-        setIsNative(false);
+        console.error('[BarcodeScanner] native scan error:', err);
+        setIsNative(false); // fall back to web
       }
     }
 
-    // Small delay so the overlay renders first
-    const timer = setTimeout(doNativeScan, 100);
+    const timer = setTimeout(triggerScan, 100);
     return () => { cancelled = true; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isNative, scanResult.kind]);
+  }, [open, isNative, scanResult.kind, isManual]);
 
   /* ───── html5-qrcode fallback (web only) ───── */
-
-  const isManual = scanResult.kind === 'manual';
-  const wantWebCamera = open && isNative === false && !isManual;
 
   useEffect(() => {
     if (!wantWebCamera) {
@@ -200,7 +216,7 @@ export default function BarcodeScanner({
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[BarcodeScanner] web camera error:', msg);
         if (msg.includes('Permission') || msg.includes('NotAllowed')) {
-          setError('Camera access denied. Check browser permissions.');
+          setError('Camera access denied. Check browser or app permissions.');
         } else {
           setError('Camera error. Use manual entry.');
         }
@@ -212,7 +228,7 @@ export default function BarcodeScanner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantWebCamera]);
 
-  // Pause/resume web scanner when result is shown
+  // Pause/resume web scanner when result card is shown
   useEffect(() => {
     if (!scannerRef.current || isNative !== false) return;
     const hasResult = scanResult.kind === 'found' || scanResult.kind === 'not_in_list'
@@ -239,7 +255,6 @@ export default function BarcodeScanner({
     const uom = product.uom_id?.[1] || 'Units';
     onCount(product.id, qty, uom);
     showToast(`${product.name} \u2192 ${qty} ${uom}`);
-    // Return to scanning — triggers next native scan automatically
     setScanResult({ kind: 'scanning' });
   }
 
@@ -291,7 +306,11 @@ export default function BarcodeScanner({
             <path d="M18 6L6 18M6 6l12 12"/>
           </svg>
         </button>
-        <span className="text-white text-[16px] font-semibold">{title}</span>
+        <span className="text-white text-[16px] font-semibold">{title}
+          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-white/20">
+            {isNative === null ? '...' : isNative ? 'NATIVE' : 'WEB'}
+          </span>
+        </span>
         <div className="flex items-center gap-2">
           {totalCount > 0 && (
             <span className={`text-[13px] font-bold px-2.5 py-1 rounded-full ${
@@ -309,7 +328,7 @@ export default function BarcodeScanner({
         </div>
       </div>
 
-      {/* ── Native scanning state (camera handled natively) ── */}
+      {/* ── Native: scanning state (camera handled natively) ── */}
       {isNative && scanResult.kind === 'scanning' && !isManual && (
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin mb-4" />
@@ -317,30 +336,36 @@ export default function BarcodeScanner({
         </div>
       )}
 
+      {/* ── Still detecting bridge ── */}
+      {isNative === null && !isManual && (
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin mb-3" />
+          <p className="text-white/40 text-[13px]">Detecting scanner...</p>
+        </div>
+      )}
+
       {/* ── Web camera view (html5-qrcode fallback) ── */}
       {isNative === false && (
-        <>
-          <div
-            style={{ display: isManual ? 'none' : 'flex' }}
-            className="flex-1 flex-col items-center justify-center relative"
-          >
-            <div id={READER_ID} className="w-full max-w-[320px] aspect-square rounded-2xl overflow-hidden" />
-            {cameraReady && !hasResult && !error && (
-              <p className="text-white/50 text-[13px] mt-4">Point camera at barcode</p>
-            )}
-            {error && (
-              <div className="absolute bottom-24 left-6 right-6">
-                <div className="bg-red-500/90 rounded-xl p-4 text-center">
-                  <p className="text-white text-[14px] font-semibold leading-snug">{error}</p>
-                  <button onClick={toggleManual}
-                    className="mt-3 w-full px-4 py-3 rounded-xl bg-white/20 text-white text-[14px] font-bold active:bg-white/30">
-                    Use manual entry
-                  </button>
-                </div>
+        <div
+          style={{ display: isManual ? 'none' : 'flex' }}
+          className="flex-1 flex-col items-center justify-center relative"
+        >
+          <div id={READER_ID} className="w-full max-w-[320px] aspect-square rounded-2xl overflow-hidden" />
+          {cameraReady && !hasResult && !error && (
+            <p className="text-white/50 text-[13px] mt-4">Point camera at barcode</p>
+          )}
+          {error && (
+            <div className="absolute bottom-24 left-6 right-6">
+              <div className="bg-red-500/90 rounded-xl p-4 text-center">
+                <p className="text-white text-[14px] font-semibold leading-snug">{error}</p>
+                <button onClick={toggleManual}
+                  className="mt-3 w-full px-4 py-3 rounded-xl bg-white/20 text-white text-[14px] font-bold active:bg-white/30">
+                  Use manual entry
+                </button>
               </div>
-            )}
-          </div>
-        </>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Manual entry ── */}
