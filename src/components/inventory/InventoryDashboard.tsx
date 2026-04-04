@@ -101,6 +101,21 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     },
+    {
+      id: 'mo-ingredients',
+      label: 'MO Ingredients',
+      color: 'bg-orange-50 border-orange-200', iconBg: 'bg-orange-100', iconColor: 'text-orange-600',
+      sublabel: 'Confirmed MO needs',
+      badge: 0,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round"/>
+          <circle cx="7" cy="6" r="1.5" fill="currentColor" stroke="none"/>
+          <circle cx="7" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+          <circle cx="7" cy="18" r="1.5" fill="currentColor" stroke="none"/>
+        </svg>
+      ),
+    },
     ...(canManage ? [{
       id: 'manage',
       label: 'Manage Lists',
