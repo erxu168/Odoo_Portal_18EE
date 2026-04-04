@@ -13,7 +13,7 @@ export async function GET(
       'name', 'product_id', 'product_qty', 'product_uom_id',
       'bom_id', 'state', 'date_start', 'date_finished',
       'date_deadline', 'user_id', 'qty_producing',
-      'workorder_ids', 'move_raw_ids',
+      'workorder_ids', 'move_raw_ids', 'lot_producing_id',
     ]);
 
     if (!mos.length) {
@@ -22,29 +22,33 @@ export async function GET(
 
     const mo = mos[0];
 
-    // Fetch finished product expiration settings
+    // Fetch finished product expiration settings + tracking
     // These fields live on product.template, so we need to go through the variant
     let expirationTimeDays = 0;
     let useExpirationDate = false;
+    let productTracking = 'none';
     try {
-      // Step 1: get product_tmpl_id from product.product
+      // Step 1: get product_tmpl_id and tracking from product.product
       const variants = await odoo.read(
         'product.product',
         [mo.product_id[0]],
-        ['product_tmpl_id'],
+        ['product_tmpl_id', 'tracking'],
       );
-      if (variants.length > 0 && variants[0].product_tmpl_id) {
-        const tmplId = variants[0].product_tmpl_id[0];
-        // Step 2: read expiration fields from product.template
-        const templates = await odoo.read(
-          'product.template',
-          [tmplId],
-          ['use_expiration_date', 'expiration_time'],
-        );
-        if (templates.length > 0) {
-          useExpirationDate = !!templates[0].use_expiration_date;
-          // expiration_time is stored in days (float)
-          expirationTimeDays = templates[0].expiration_time || 0;
+      if (variants.length > 0) {
+        productTracking = variants[0].tracking || 'none';
+        if (variants[0].product_tmpl_id) {
+          const tmplId = variants[0].product_tmpl_id[0];
+          // Step 2: read expiration fields from product.template
+          const templates = await odoo.read(
+            'product.template',
+            [tmplId],
+            ['use_expiration_date', 'expiration_time'],
+          );
+          if (templates.length > 0) {
+            useExpirationDate = !!templates[0].use_expiration_date;
+            // expiration_time is stored in days (float)
+            expirationTimeDays = templates[0].expiration_time || 0;
+          }
         }
       }
     } catch (err) {
@@ -100,6 +104,7 @@ export async function GET(
         // Expiration settings from finished product template
         use_expiration_date: useExpirationDate,
         expiration_time_days: expirationTimeDays,
+        product_tracking: productTracking,
       },
     });
   } catch (error: any) {
@@ -126,6 +131,74 @@ export async function PATCH(
           await odoo.buttonCall('mrp.production', 'action_confirm', [moId]);
           break;
         case 'mark_done': {
+          // Before marking done, ensure lot is set if product requires tracking
+          const moData = await odoo.read('mrp.production', [moId], [
+            'name', 'product_id', 'lot_producing_id', 'company_id',
+          ]);
+          if (moData.length > 0) {
+            const currentMo = moData[0];
+            const productId = currentMo.product_id[0];
+
+            // Check product tracking setting
+            const prodData = await odoo.read('product.product', [productId], [
+              'tracking', 'product_tmpl_id',
+            ]);
+            const tracking = prodData[0]?.tracking || 'none';
+
+            if (tracking !== 'none' && !currentMo.lot_producing_id) {
+              // Auto-create a lot using the MO name as lot name
+              const lotName = currentMo.name;
+              const companyId = currentMo.company_id?.[0] || false;
+
+              // Check if lot already exists with this name for this product
+              const existingLots = await odoo.searchRead('stock.lot',
+                [['name', '=', lotName], ['product_id', '=', productId]],
+                ['id'],
+                { limit: 1 },
+              );
+
+              let lotId: number;
+              if (existingLots.length > 0) {
+                lotId = existingLots[0].id;
+              } else {
+                // Build lot vals
+                const lotVals: Record<string, any> = {
+                  name: lotName,
+                  product_id: productId,
+                };
+                if (companyId) lotVals.company_id = companyId;
+
+                // Set expiration date if product uses it
+                try {
+                  const tmplId = prodData[0]?.product_tmpl_id?.[0];
+                  if (tmplId) {
+                    const tmplData = await odoo.read('product.template', [tmplId], [
+                      'use_expiration_date', 'expiration_time',
+                    ]);
+                    if (tmplData[0]?.use_expiration_date && tmplData[0]?.expiration_time) {
+                      const days = tmplData[0].expiration_time;
+                      const expDate = new Date();
+                      expDate.setDate(expDate.getDate() + Math.floor(days));
+                      // Odoo expects datetime as 'YYYY-MM-DD HH:MM:SS'
+                      const pad = (n: number) => String(n).padStart(2, '0');
+                      lotVals.expiration_date = `${expDate.getFullYear()}-${pad(expDate.getMonth() + 1)}-${pad(expDate.getDate())} 23:59:59`;
+                    }
+                  }
+                } catch (expErr) {
+                  console.warn('Could not set expiration date on lot:', expErr);
+                }
+
+                lotId = await odoo.create('stock.lot', lotVals);
+              }
+
+              // Set lot_producing_id on the MO
+              await odoo.write('mrp.production', [moId], {
+                lot_producing_id: lotId,
+              });
+              console.log(`[MO ${moId}] Auto-created lot ${lotName} (id=${lotId}) for tracked product`);
+            }
+          }
+
           const result = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
           if (result && typeof result === 'object' && result.res_model) {
             try {
