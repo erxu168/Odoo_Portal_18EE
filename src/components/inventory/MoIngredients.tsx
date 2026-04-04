@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { FilterBar, FilterPill, SearchBar, Spinner, EmptyState } from './ui';
+import { FilterBar, FilterPill, SearchBar, Stepper, Spinner, EmptyState, CountProgress } from './ui';
+import NumpadModal from './NumpadModal';
 
 interface MoIngredientsProps {
   userRole: string;
@@ -26,6 +27,8 @@ export default function MoIngredients({ userRole }: MoIngredientsProps) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('all');
+  const [counts, setCounts] = useState<Record<number, number>>({});
+  const [numpad, setNumpad] = useState<{ open: boolean; item: PickItem | null }>({ open: false, item: null });
 
   useEffect(() => {
     async function load() {
@@ -52,7 +55,6 @@ export default function MoIngredients({ userRole }: MoIngredientsProps) {
     return list;
   }, [items, search, catFilter]);
 
-  // Group by category
   const grouped = useMemo(() => {
     const groups: Record<string, PickItem[]> = {};
     for (const item of filtered) {
@@ -61,6 +63,37 @@ export default function MoIngredients({ userRole }: MoIngredientsProps) {
     }
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
+
+  const countedN = Object.keys(counts).length;
+
+  function stepQty(productId: number, delta: number) {
+    setCounts((prev) => {
+      const current = prev[productId] ?? 0;
+      const next = Math.max(0, current + delta);
+      if (next === 0 && (prev[productId] === undefined || prev[productId] === 0) && delta < 0) return prev;
+      return { ...prev, [productId]: next };
+    });
+  }
+
+  function openNumpad(item: PickItem) {
+    setNumpad({ open: true, item });
+  }
+
+  function handleNumpadSave(value: number | null) {
+    if (numpad.item) {
+      setCounts((prev) => {
+        const copy = { ...prev };
+        if (value === null) delete copy[numpad.item!.product_id];
+        else copy[numpad.item!.product_id] = value;
+        return copy;
+      });
+    }
+    setNumpad({ open: false, item: null });
+  }
+
+  function fmtQty(n: number): string {
+    return n % 1 === 0 ? String(n) : n.toFixed(2);
+  }
 
   if (loading) return <Spinner />;
 
@@ -75,6 +108,14 @@ export default function MoIngredients({ userRole }: MoIngredientsProps) {
         <span className="text-[var(--fs-xs)] font-semibold text-gray-500">
           {items.length} ingredient{items.length !== 1 ? 's' : ''}
         </span>
+        {countedN > 0 && (
+          <>
+            <span className="text-gray-300">&middot;</span>
+            <span className="text-[var(--fs-xs)] font-semibold text-green-600">
+              {countedN} counted
+            </span>
+          </>
+        )}
       </div>
 
       <SearchBar value={search} onChange={setSearch} placeholder="Search ingredients..." />
@@ -90,7 +131,11 @@ export default function MoIngredients({ userRole }: MoIngredientsProps) {
         </FilterBar>
       )}
 
-      {/* Ingredient list grouped by category */}
+      {countedN > 0 && (
+        <CountProgress counted={countedN} total={items.length} />
+      )}
+
+      {/* Ingredient list */}
       <div className="flex-1 overflow-y-auto px-4 pb-24">
         {filtered.length === 0 ? (
           <EmptyState
@@ -99,38 +144,60 @@ export default function MoIngredients({ userRole }: MoIngredientsProps) {
           />
         ) : (
           grouped.map(([category, catItems]) => (
-            <div key={category} className="mb-4">
+            <div key={category} className="mb-3">
               <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mt-2 mb-2">
                 {category} ({catItems.length})
               </p>
-              {catItems.map((item) => (
-                <div key={item.product_id} className="flex items-center gap-3 py-3 border-b border-gray-100">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">
-                      {item.product_name}
-                    </div>
-                    <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5 flex items-center gap-1.5">
-                      <span>{item.uom}</span>
-                      <span className="text-gray-300">&middot;</span>
-                      <span>{item.mo_count} MO{item.mo_count !== 1 ? 's' : ''}</span>
-                    </div>
-                  </div>
-                  <div className="text-right flex-shrink-0 ml-2">
-                    <div className="text-[15px] font-mono font-semibold text-gray-900 tabular-nums">
-                      {item.total_demand % 1 === 0 ? item.total_demand : item.total_demand.toFixed(2)}
-                    </div>
-                    {item.total_picked > 0 && (
-                      <div className="text-[var(--fs-xs)] text-green-600 font-mono tabular-nums">
-                        {item.total_picked % 1 === 0 ? item.total_picked : item.total_picked.toFixed(2)} picked
+              {catItems.map((item) => {
+                const val = counts[item.product_id] ?? null;
+                return (
+                  <div key={item.product_id} className="flex items-center gap-3 py-3 border-b border-gray-100">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-[var(--fs-lg)] font-semibold text-gray-900 truncate">
+                          {item.product_name}
+                        </span>
+                        <span className="text-[var(--fs-sm)] text-gray-400 flex-shrink-0">
+                          {item.uom}
+                        </span>
                       </div>
-                    )}
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[var(--fs-sm)] font-mono font-semibold text-blue-600">
+                          Need: {fmtQty(item.total_demand)}
+                        </span>
+                        <span className="text-[var(--fs-xs)] text-gray-400">
+                          {item.mo_count} MO{item.mo_count !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    </div>
+                    <Stepper
+                      value={val}
+                      uom={item.uom}
+                      onMinus={() => stepQty(item.product_id, -1)}
+                      onPlus={() => stepQty(item.product_id, 1)}
+                      onTap={() => openNumpad(item)}
+                    />
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ))
         )}
       </div>
+
+      {/* Numpad */}
+      <NumpadModal
+        open={numpad.open}
+        productName={numpad.item?.product_name || ''}
+        category={numpad.item?.category || ''}
+        uom={numpad.item?.uom || 'Units'}
+        initialValue={numpad.item ? (counts[numpad.item.product_id] ?? null) : null}
+        showSystemQty={true}
+        systemQty={numpad.item ? numpad.item.total_demand : null}
+        locationName=""
+        onSave={handleNumpadSave}
+        onClose={() => setNumpad({ open: false, item: null })}
+      />
     </div>
   );
 }
