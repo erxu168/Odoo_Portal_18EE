@@ -4,8 +4,16 @@ import React from 'react';
 
 /**
  * Shared UI components for inventory module.
- * All colors follow DESIGN_GUIDE.md \u2014 semantic only.
+ * All colors follow DESIGN_GUIDE.md — semantic only.
+ * All font sizes use var(--fs-*) tokens.
  */
+
+// --- Helpers ---
+export function leafCategory(fullPath: string): string {
+  if (!fullPath) return '';
+  const parts = fullPath.split(' / ');
+  return parts[parts.length - 1];
+}
 
 // --- Filter Pill Bar ---
 export function FilterBar({ children }: { children: React.ReactNode }) {
@@ -15,7 +23,7 @@ export function FilterBar({ children }: { children: React.ReactNode }) {
 export function FilterPill({ active, label, count, onClick }: { active: boolean; label: string; count?: number; onClick: () => void }) {
   return (
     <button onClick={onClick}
-      className={`px-3.5 py-2 rounded-full text-[var(--fs-sm)] font-semibold whitespace-nowrap transition-all ${
+      className={`px-4 py-3 rounded-full text-[var(--fs-sm)] font-bold whitespace-nowrap transition-all ${
         active ? 'bg-green-600 text-white shadow-sm' : 'bg-white text-gray-500 border border-gray-200'
       }`}>
       {label}{count !== undefined ? ` (${count})` : ''}
@@ -64,20 +72,20 @@ export function Stepper({
 }) {
   const hasVal = value !== null && value !== undefined;
   return (
-    <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden h-11 flex-shrink-0">
+    <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden h-12 flex-shrink-0">
       <button onClick={(e) => { e.stopPropagation(); onMinus(); }}
-        className="w-11 h-11 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-r border-gray-200 select-none">
+        className="w-12 h-12 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-r border-gray-200 select-none">
         &minus;
       </button>
       <button onClick={(e) => { e.stopPropagation(); onTap(); }}
-        className="min-w-[56px] h-11 flex flex-col items-center justify-center px-1 active:bg-gray-50">
-        <span className={`font-mono text-[var(--fs-lg)] font-semibold leading-tight ${hasVal ? 'text-gray-900' : 'text-gray-300'}`}>
+        className="min-w-[60px] h-12 flex flex-col items-center justify-center px-1 active:bg-gray-50">
+        <span className={`font-mono text-[var(--fs-xl)] font-semibold leading-tight ${hasVal ? 'text-gray-900' : 'text-gray-300'}`}>
           {hasVal ? value : '--'}
         </span>
-        <span className="text-[9px] text-gray-400 leading-tight">{uom}</span>
+        <span className="text-[10px] text-gray-400 leading-tight">{uom}</span>
       </button>
       <button onClick={(e) => { e.stopPropagation(); onPlus(); }}
-        className="w-11 h-11 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-l border-gray-200 select-none font-semibold">
+        className="w-12 h-12 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-l border-gray-200 select-none font-semibold">
         +
       </button>
     </div>
@@ -101,7 +109,7 @@ export function CountProgress({ counted, total }: { counted: number; total: numb
 export function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div className="px-4 pb-3">
-      <div className="flex items-center gap-2.5 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-green-500 transition-colors">
+      <div className="flex items-center gap-2.5 bg-white border border-gray-200 rounded-xl px-3.5 h-12 focus-within:border-green-500 transition-colors">
         <svg width="16" height="16" viewBox="0 0 18 18" fill="none" className="text-gray-400 flex-shrink-0">
           <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="2"/>
           <path d="M12.5 12.5L16 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
@@ -132,7 +140,7 @@ export function BackHeader({ onBack, title, subtitle, right }: {
         </button>
         {right}
       </div>
-      <h1 className="text-[18px] font-bold text-gray-900">{title}</h1>
+      <h1 className="text-[var(--fs-xl)] font-bold text-gray-900">{title}</h1>
       {subtitle && <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">{subtitle}</p>}
     </div>
   );

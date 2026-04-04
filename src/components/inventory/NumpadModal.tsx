@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { leafCategory } from './ui';
 
 interface NumpadModalProps {
   open: boolean;
@@ -49,6 +50,7 @@ export default function NumpadModal({
 
   const displayVal = buf || '0';
   const isEmpty = !buf || buf === '0';
+  const catLeaf = leafCategory(category);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-50">
@@ -65,8 +67,8 @@ export default function NumpadModal({
 
       {/* Product info */}
       <div className="text-center py-5 px-4">
-        <div className="text-[18px] font-bold text-gray-900">{productName}</div>
-        <div className="text-[var(--fs-base)] text-gray-500 mt-1">{category}</div>
+        <div className="text-[var(--fs-xxl)] font-bold text-gray-900">{productName}</div>
+        {catLeaf && <div className="text-[var(--fs-sm)] text-gray-500 mt-1">{catLeaf}</div>}
         {showSystemQty && (
           <div className="text-[var(--fs-sm)] text-gray-400 mt-2">
             System qty: <span className="font-mono font-medium text-gray-500">{systemQty ?? '--'}</span>
@@ -79,21 +81,21 @@ export default function NumpadModal({
         <div className={`font-mono text-[48px] font-semibold tracking-tight ${isEmpty ? 'text-gray-300' : 'text-gray-900'}`}>
           {displayVal}
         </div>
-        <div className="text-[14px] text-gray-500 mt-1">{uom}</div>
+        <div className="text-[var(--fs-sm)] text-gray-500 mt-1">{uom}</div>
       </div>
 
       {/* Numpad */}
-      <div className="mt-auto px-5 pb-4">
+      <div className="mt-auto px-5 pb-10">
         <div className="grid grid-cols-3 gap-2 mb-3">
           {['1','2','3','4','5','6','7','8','9','.','0','del'].map((key) => (
             <button key={key} onClick={() => press(key)}
-              className={`h-14 rounded-xl font-mono text-xl font-medium flex items-center justify-center select-none transition-colors ${
+              className={`h-14 rounded-xl font-mono text-[var(--fs-xxl)] font-medium flex items-center justify-center select-none transition-colors ${
                 key === 'del'
                   ? 'bg-gray-100 text-gray-600 active:bg-gray-200'
                   : 'bg-white border border-gray-200 text-gray-900 active:bg-gray-100 shadow-sm'
               }`}>
               {key === 'del' ? (
-                <svg width="20" height="20" viewBox="0 0 22 22" fill="none">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
                   <path d="M8 5L3 11L8 17H19V5H8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   <path d="M12 9L16 13M16 9L12 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                 </svg>
@@ -104,7 +106,7 @@ export default function NumpadModal({
 
         <div className="flex gap-2">
           <button onClick={() => setBuf('')}
-            className="w-20 h-14 rounded-xl border border-gray-200 bg-white text-gray-500 text-[14px] font-semibold active:bg-gray-50">
+            className="w-20 h-14 rounded-xl border border-gray-200 bg-white text-gray-500 text-[var(--fs-sm)] font-bold active:bg-gray-50">
             Clear
           </button>
           <button onClick={handleSave}
