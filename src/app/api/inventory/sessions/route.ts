@@ -17,6 +17,9 @@ export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // Auto-generate today's sessions if they don't exist yet (idempotent)
+  try { generateTodaySessions(); } catch (_e) { /* non-fatal */ }
+
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status') as string | null;
   const templateId = searchParams.get('template_id');
