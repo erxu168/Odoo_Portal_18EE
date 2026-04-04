@@ -22,6 +22,25 @@ export async function GET(
 
     const mo = mos[0];
 
+    // Fetch finished product expiration settings
+    let expirationTimeDays = 0;
+    let useExpirationDate = false;
+    try {
+      const finishedProducts = await odoo.read(
+        'product.product',
+        [mo.product_id[0]],
+        ['use_expiration_date', 'expiration_time'],
+      );
+      if (finishedProducts.length > 0) {
+        useExpirationDate = !!finishedProducts[0].use_expiration_date;
+        // expiration_time is stored in days (float)
+        expirationTimeDays = finishedProducts[0].expiration_time || 0;
+      }
+    } catch (err) {
+      // Non-fatal: if fields don't exist, default to 0
+      console.warn('Could not fetch product expiration fields:', err);
+    }
+
     const components = mo.move_raw_ids?.length
       ? await odoo.searchRead('stock.move',
           [['id', 'in', mo.move_raw_ids]],
@@ -67,6 +86,9 @@ export async function GET(
         components: enrichedComponents,
         work_orders: workOrders,
         progress_percent: totalWos > 0 ? Math.round((doneWos / totalWos) * 100) : 0,
+        // Expiration settings from finished product
+        use_expiration_date: useExpirationDate,
+        expiration_time_days: expirationTimeDays,
       },
     });
   } catch (error: any) {
