@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { initInventoryTables, createTemplate, listTemplates, updateTemplate, getTemplate, generateSessionForTemplate } from '@/lib/inventory-db';
+import { createTemplate, listTemplates, updateTemplate, generateSessionForTemplate } from '@/lib/inventory-db';
 
 
 export async function GET(request: Request) {
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { name, frequency, location_id, category_ids, product_ids, assign_type, assign_id } = body;
+  const { name, frequency, schedule_days, location_id, category_ids, product_ids, assign_type, assign_id } = body;
 
   if (!name || !location_id) {
     return NextResponse.json({ error: 'name and location_id are required' }, { status: 400 });
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
   const id = createTemplate({
     name,
     frequency: frequency || 'adhoc',
+    schedule_days: schedule_days || [],
     location_id,
     category_ids: category_ids || [],
     product_ids: product_ids || [],
@@ -51,10 +52,16 @@ export async function POST(request: Request) {
     created_by: user.id,
   });
 
-  // Auto-generate a counting session for today
+  // Auto-generate a counting session for today (respects frequency + schedule_days)
   const sessionId = generateSessionForTemplate(id);
 
-  return NextResponse.json({ id, session_id: sessionId, message: 'Template created + session generated for today' }, { status: 201 });
+  return NextResponse.json({
+    id,
+    session_id: sessionId,
+    message: sessionId
+      ? 'Template created + session generated for today'
+      : 'Template created (not scheduled for today)',
+  }, { status: 201 });
 }
 
 export async function PUT(request: Request) {

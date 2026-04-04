@@ -22,6 +22,7 @@ export function initInventoryTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       frequency TEXT NOT NULL DEFAULT 'adhoc',
+      schedule_days TEXT NOT NULL DEFAULT '[]',
       location_id INTEGER NOT NULL,
       category_ids TEXT NOT NULL DEFAULT '[]',
       product_ids TEXT NOT NULL DEFAULT '[]',
@@ -75,6 +76,7 @@ export function initInventoryTables() {
 
     CREATE INDEX IF NOT EXISTS idx_sessions_template ON counting_sessions(template_id);
     CREATE INDEX IF NOT EXISTS idx_sessions_status ON counting_sessions(status);
+    CREATE INDEX IF NOT EXISTS idx_sessions_date ON counting_sessions(scheduled_date);
     CREATE INDEX IF NOT EXISTS idx_entries_session ON count_entries(session_id);
     CREATE INDEX IF NOT EXISTS idx_quick_status ON quick_counts(status);
   `);
@@ -85,16 +87,53 @@ function now(): string {
   return new Date().toISOString();
 }
 
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // ===
 // SCHEMA MIGRATIONS
 // ===
 
 function migrateInventorySchema(db: ReturnType<typeof getDb>) {
-  const cols = db.prepare("PRAGMA table_info('counting_sessions')").all() as { name: string }[];
-  const colNames = cols.map(c => c.name);
-  if (!colNames.includes('proof_photo')) {
+  // Sessions migrations
+  const sessCols = db.prepare("PRAGMA table_info('counting_sessions')").all() as { name: string }[];
+  const sessColNames = sessCols.map(c => c.name);
+  if (!sessColNames.includes('proof_photo')) {
     db.exec("ALTER TABLE counting_sessions ADD COLUMN proof_photo TEXT");
   }
+
+  // Template migrations
+  const tmplCols = db.prepare("PRAGMA table_info('counting_templates')").all() as { name: string }[];
+  const tmplColNames = tmplCols.map(c => c.name);
+  if (!tmplColNames.includes('schedule_days')) {
+    db.exec("ALTER TABLE counting_templates ADD COLUMN schedule_days TEXT NOT NULL DEFAULT '[]'");
+  }
+}
+
+// ===
+// SCHEDULE HELPERS
+// ===
+
+/**
+ * Check if a template should auto-generate a session for today.
+ * - daily: always yes
+ * - weekly: only if today's weekday is in schedule_days
+ * - monthly: not yet implemented (returns false)
+ * - adhoc: never auto-generate
+ */
+function shouldGenerateToday(tmpl: CountingTemplate): boolean {
+  if (tmpl.frequency === 'daily') return true;
+  if (tmpl.frequency === 'weekly') {
+    const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const days = tmpl.schedule_days || [];
+    // If no days configured, don't generate (misconfigured template)
+    if (days.length === 0) return false;
+    return days.includes(dayOfWeek);
+  }
+  // adhoc + monthly: no auto-generation
+  return false;
 }
 
 // ===
@@ -104,6 +143,7 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
 export function createTemplate(data: {
   name: string;
   frequency: Frequency;
+  schedule_days?: number[];
   location_id: number;
   category_ids: number[];
   product_ids?: number[];
@@ -114,10 +154,11 @@ export function createTemplate(data: {
   const db = getDb();
   const ts = now();
   const r = db.prepare(`
-    INSERT INTO counting_templates (name, frequency, location_id, category_ids, product_ids, assign_type, assign_id, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO counting_templates (name, frequency, schedule_days, location_id, category_ids, product_ids, assign_type, assign_id, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    data.name, data.frequency, data.location_id,
+    data.name, data.frequency, JSON.stringify(data.schedule_days || []),
+    data.location_id,
     JSON.stringify(data.category_ids), JSON.stringify(data.product_ids || []),
     data.assign_type, data.assign_id, data.created_by, ts, ts
   );
@@ -127,6 +168,7 @@ export function createTemplate(data: {
 export function updateTemplate(id: number, data: Partial<{
   name: string;
   frequency: Frequency;
+  schedule_days: number[];
   location_id: number;
   category_ids: number[];
   product_ids: number[];
@@ -136,9 +178,10 @@ export function updateTemplate(id: number, data: Partial<{
 }>) {
   const db = getDb();
   const sets: string[] = [];
-  const vals: any[] = [];
+  const vals: unknown[] = [];
   if (data.name !== undefined) { sets.push('name = ?'); vals.push(data.name); }
   if (data.frequency !== undefined) { sets.push('frequency = ?'); vals.push(data.frequency); }
+  if (data.schedule_days !== undefined) { sets.push('schedule_days = ?'); vals.push(JSON.stringify(data.schedule_days)); }
   if (data.location_id !== undefined) { sets.push('location_id = ?'); vals.push(data.location_id); }
   if (data.category_ids !== undefined) { sets.push('category_ids = ?'); vals.push(JSON.stringify(data.category_ids)); }
   if (data.product_ids !== undefined) { sets.push('product_ids = ?'); vals.push(JSON.stringify(data.product_ids)); }
@@ -153,26 +196,27 @@ export function updateTemplate(id: number, data: Partial<{
 
 export function getTemplate(id: number): CountingTemplate | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM counting_templates WHERE id = ?').get(id) as any;
+  const row = db.prepare('SELECT * FROM counting_templates WHERE id = ?').get(id) as Record<string, unknown> | undefined;
   return row ? parseTemplate(row) : null;
 }
 
 export function listTemplates(filters?: { location_id?: number; active?: boolean }): CountingTemplate[] {
   const db = getDb();
   const where: string[] = [];
-  const vals: any[] = [];
+  const vals: unknown[] = [];
   if (filters?.location_id) { where.push('location_id = ?'); vals.push(filters.location_id); }
   if (filters?.active !== undefined) { where.push('active = ?'); vals.push(filters.active ? 1 : 0); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-  const rows = db.prepare(`SELECT * FROM counting_templates ${clause} ORDER BY updated_at DESC`).all(...vals) as any[];
+  const rows = db.prepare(`SELECT * FROM counting_templates ${clause} ORDER BY updated_at DESC`).all(...vals) as Record<string, unknown>[];
   return rows.map(parseTemplate);
 }
 
-function parseTemplate(row: any): CountingTemplate {
+function parseTemplate(row: Record<string, unknown>): CountingTemplate {
   return {
-    ...row,
-    category_ids: JSON.parse(row.category_ids || '[]'),
-    product_ids: JSON.parse(row.product_ids || '[]'),
+    ...(row as unknown as CountingTemplate),
+    category_ids: JSON.parse((row.category_ids as string) || '[]'),
+    product_ids: JSON.parse((row.product_ids as string) || '[]'),
+    schedule_days: JSON.parse((row.schedule_days as string) || '[]'),
     active: !!row.active,
   };
 }
@@ -200,17 +244,20 @@ export function listSessions(filters?: {
   template_id?: number;
   location_id?: number;
   assigned_user_id?: number;
+  scheduled_date?: string;
 }): CountingSession[] {
   const db = getDb();
   const where: string[] = [];
-  const vals: any[] = [];
+  const vals: unknown[] = [];
   if (filters?.status) { where.push('s.status = ?'); vals.push(filters.status); }
   if (filters?.template_id) { where.push('s.template_id = ?'); vals.push(filters.template_id); }
   if (filters?.location_id) { where.push('s.location_id = ?'); vals.push(filters.location_id); }
   if (filters?.assigned_user_id) { where.push('s.assigned_user_id = ?'); vals.push(filters.assigned_user_id); }
+  if (filters?.scheduled_date) { where.push('s.scheduled_date = ?'); vals.push(filters.scheduled_date); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
   return db.prepare(`
-    SELECT s.*, t.name as template_name, t.product_ids as template_product_ids, t.category_ids as template_category_ids
+    SELECT s.*, t.name as template_name, t.frequency as template_frequency,
+           t.product_ids as template_product_ids, t.category_ids as template_category_ids
     FROM counting_sessions s
     LEFT JOIN counting_templates t ON t.id = s.template_id
     ${clause}
@@ -221,7 +268,8 @@ export function listSessions(filters?: {
 export function getSession(id: number): CountingSession | null {
   const db = getDb();
   return db.prepare(`
-    SELECT s.*, t.name as template_name, t.product_ids as template_product_ids, t.category_ids as template_category_ids
+    SELECT s.*, t.name as template_name, t.frequency as template_frequency,
+           t.product_ids as template_product_ids, t.category_ids as template_category_ids
     FROM counting_sessions s
     LEFT JOIN counting_templates t ON t.id = s.template_id
     WHERE s.id = ?
@@ -251,19 +299,27 @@ export function updateSessionStatus(id: number, status: SessionStatus, extra?: {
 
 /**
  * Generate counting sessions for today from all active templates.
+ * Respects frequency + schedule_days:
+ * - daily: generates every day
+ * - weekly: only on days listed in schedule_days
+ * - adhoc/monthly: skipped (adhoc = manual, monthly = not yet implemented)
  * Skips templates that already have a session for today.
- * Returns the number of new sessions created.
  */
 export function generateTodaySessions(): { created: number; skipped: number } {
   const db = getDb();
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const today = todayStr();
 
   const templates = listTemplates({ active: true });
   let created = 0;
   let skipped = 0;
 
   for (const tmpl of templates) {
+    // Check if this template should generate today based on frequency + schedule
+    if (!shouldGenerateToday(tmpl)) {
+      skipped++;
+      continue;
+    }
+
     const existing = db.prepare(
       'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
     ).get(tmpl.id, today);
@@ -292,15 +348,18 @@ export function generateTodaySessions(): { created: number; skipped: number } {
 
 /**
  * Generate a single session for today from a specific template.
- * Returns the session ID, or null if one already exists.
+ * Respects frequency + schedule_days.
+ * Returns the session ID, or null if not scheduled today or already exists.
  */
 export function generateSessionForTemplate(templateId: number): number | null {
   const db = getDb();
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const today = todayStr();
 
   const tmpl = getTemplate(templateId);
   if (!tmpl || !tmpl.active) return null;
+
+  // Check if this template should generate today
+  if (!shouldGenerateToday(tmpl)) return null;
 
   const existing = db.prepare(
     'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
@@ -386,7 +445,7 @@ export function createQuickCount(data: {
 export function listQuickCounts(filters?: { status?: string; counted_by?: number }): QuickCount[] {
   const db = getDb();
   const where: string[] = [];
-  const vals: any[] = [];
+  const vals: unknown[] = [];
   if (filters?.status) { where.push('status = ?'); vals.push(filters.status); }
   if (filters?.counted_by) { where.push('counted_by = ?'); vals.push(filters.counted_by); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';

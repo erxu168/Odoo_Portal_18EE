@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { FilterBar, FilterPill, StatusBadge, SearchBar, Spinner, EmptyState } from './ui';
+import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
 
 interface MyListsProps {
   userRole: string;
@@ -14,6 +14,18 @@ const STATUS_FILTER_OPTIONS = [
   { key: 'submitted', label: 'Submitted' },
   { key: 'approved', label: 'Approved' },
 ];
+
+const FREQ_LABELS: Record<string, string> = {
+  daily: 'Daily',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  adhoc: 'Ad-hoc',
+};
+
+function getTodayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProps) {
   const [sessions, setSessions] = useState<any[]>([]);
@@ -28,6 +40,9 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (locationFilter !== 'all') params.set('location_id', locationFilter);
+
+      // Always filter to today — staff only needs to see today's tasks
+      params.set('date', getTodayStr());
 
       const [sessRes, locRes] = await Promise.all([
         fetch(`/api/inventory/sessions?${params}`),
@@ -52,6 +67,30 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
 
   const statusLabel = STATUS_FILTER_OPTIONS.find(o => o.key === statusFilter)?.label || statusFilter;
 
+  const emptyMessages: Record<string, { icon: string; title: string; body: string }> = {
+    pending: {
+      icon: '\u2705',
+      title: 'All done for today!',
+      body: 'No counting lists pending. Check back tomorrow or ask your manager if something is missing.',
+    },
+    submitted: {
+      icon: '\u23F3',
+      title: 'Nothing submitted today',
+      body: 'Once you complete and submit a count, it will appear here.',
+    },
+    approved: {
+      icon: '\uD83D\uDCCB',
+      title: 'No approvals yet today',
+      body: 'Approved counts for today will show here.',
+    },
+  };
+
+  const empty = emptyMessages[statusFilter] || {
+    icon: '\uD83D\uDCCB',
+    title: `No ${statusLabel.toLowerCase()} lists`,
+    body: 'Check back later.',
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -63,10 +102,10 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
           </button>
           <div className="flex-1">
             <h1 className="text-[20px] font-bold text-white">
-              {userRole === 'admin' ? 'All Inventory' : 'My Counts'}
+              {userRole === 'admin' ? 'Today\u2019s Counts' : 'My Counts'}
             </h1>
             <p className="text-[var(--fs-sm)] text-white/50 mt-0.5">
-              {userRole === 'admin' ? 'All counting sessions' : 'Your assigned counting lists'}
+              {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}
             </p>
           </div>
         </div>
@@ -98,28 +137,41 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
       {/* Session cards */}
       <div className="px-4 pb-24">
         {loading ? <Spinner /> : sessions.length === 0 ? (
-          <EmptyState icon="\uD83D\uDCCB" title={`No ${statusLabel.toLowerCase()} lists`} body="Check back later or ask your manager to assign you a counting list." />
+          <EmptyState icon={empty.icon} title={empty.title} body={empty.body} />
         ) : (
           <div className="flex flex-col gap-3">
-            {sessions.map((sess: any) => (
-              <button key={sess.id} onClick={() => onOpenSession(sess.id)}
-                className="bg-white border border-gray-200 rounded-2xl p-4 text-left active:scale-[0.98] transition-all">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[var(--fs-xs)] text-gray-400 font-mono">{sess.scheduled_date}</span>
-                  <StatusBadge status={sess.status} />
-                </div>
-                <div className="text-[var(--fs-lg)] font-bold text-gray-900 leading-tight">
-                  {sess.template_name || `Session #${sess.id}`}
-                </div>
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  {sess.location_name && (
-                    <span className="text-[var(--fs-xs)] px-2 py-0.5 rounded-md bg-green-50 text-green-700 font-semibold">
-                      {sess.location_name}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))}
+            {sessions.map((sess: any) => {
+              const freqLabel = FREQ_LABELS[sess.template_frequency] || '';
+              return (
+                <button key={sess.id} onClick={() => onOpenSession(sess.id)}
+                  className="bg-white border border-gray-200 rounded-2xl p-4 text-left active:scale-[0.98] transition-all">
+                  <div className="flex items-center justify-between mb-1.5">
+                    {freqLabel && (
+                      <span className={`text-[var(--fs-xs)] font-semibold px-2 py-0.5 rounded-md ${
+                        sess.template_frequency === 'daily'
+                          ? 'bg-blue-50 text-blue-600'
+                          : sess.template_frequency === 'weekly'
+                            ? 'bg-purple-50 text-purple-600'
+                            : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {freqLabel}
+                      </span>
+                    )}
+                    <StatusBadge status={sess.status} />
+                  </div>
+                  <div className="text-[var(--fs-lg)] font-bold text-gray-900 leading-tight">
+                    {sess.template_name || `Session #${sess.id}`}
+                  </div>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {sess.location_name && (
+                      <span className="text-[var(--fs-xs)] px-2 py-0.5 rounded-md bg-green-50 text-green-700 font-semibold">
+                        {sess.location_name}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

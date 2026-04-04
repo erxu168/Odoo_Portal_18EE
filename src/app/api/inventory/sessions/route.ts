@@ -2,14 +2,14 @@ export const dynamic = 'force-dynamic';
 /**
  * /api/inventory/sessions
  *
- * GET  — list sessions (filter by status, template, location)
+ * GET  — list sessions (filter by status, template, location, date)
  *       Staff: only sees sessions assigned to them
  *       Manager/Admin: sees all sessions
  * POST — create a new session from a template (manager/admin)
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate } from '@/lib/inventory-db';
+import { createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate } from '@/lib/inventory-db';
 import { logAudit } from '@/lib/db';
 
 
@@ -18,18 +18,20 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
-  const status = searchParams.get('status') as any;
+  const status = searchParams.get('status') as string | null;
   const templateId = searchParams.get('template_id');
   const locationId = searchParams.get('location_id');
+  const date = searchParams.get('date'); // YYYY-MM-DD format
 
   // Staff only see sessions assigned to them; managers/admins see all
   const isStaff = !hasRole(user, 'manager');
 
   const sessions = listSessions({
-    status: status || undefined,
+    status: (status || undefined) as undefined,
     template_id: templateId ? parseInt(templateId) : undefined,
     location_id: locationId ? parseInt(locationId) : undefined,
     assigned_user_id: isStaff ? user.id : undefined,
+    scheduled_date: date || undefined,
   });
 
   return NextResponse.json({ sessions });
@@ -47,7 +49,7 @@ export async function POST(request: Request) {
   // Generate all today's sessions from active templates
   if (body.action === 'generate_today') {
     const result = generateTodaySessions();
-    return NextResponse.json({ ...result, message: `Generated ${result.created} sessions (${result.skipped} already existed)` });
+    return NextResponse.json({ ...result, message: `Generated ${result.created} sessions (${result.skipped} skipped)` });
   }
 
   const { template_id, scheduled_date, location_id, assigned_user_id } = body;
@@ -83,7 +85,7 @@ export async function PUT(request: Request) {
     const template = getTemplate(session.template_id);
     if (template) {
       const productIds: number[] = (() => {
-        try { return JSON.parse((template as any).product_ids || '[]'); } catch { return []; }
+        try { return JSON.parse((template as unknown as Record<string, string>).product_ids || '[]'); } catch { return []; }
       })();
       const expectedCount = productIds.length > 0 ? productIds.length : 0;
       if (expectedCount > 0 && entries.length < expectedCount) {

@@ -49,6 +49,7 @@ export interface CountingTemplate {
   id: number;
   name: string;
   frequency: Frequency;
+  schedule_days: number[];  // JS weekday numbers: 0=Sun, 1=Mon, ..., 6=Sat
   location_id: number;
   location_name?: string;
   category_ids: number[];   // JSON stored
@@ -66,6 +67,7 @@ export interface CountingSession {
   id: number;
   template_id: number;
   template_name?: string;
+  template_frequency?: Frequency;
   scheduled_date: string;
   status: SessionStatus;
   location_id: number;

@@ -10,6 +10,16 @@ const FREQUENCIES = [
   { id: 'adhoc', label: 'Ad-hoc' },
 ];
 
+const WEEKDAYS = [
+  { id: 1, label: 'Mon' },
+  { id: 2, label: 'Tue' },
+  { id: 3, label: 'Wed' },
+  { id: 4, label: 'Thu' },
+  { id: 5, label: 'Fri' },
+  { id: 6, label: 'Sat' },
+  { id: 0, label: 'Sun' },
+];
+
 const ASSIGN_TYPES = [
   { id: 'person', label: 'Person' },
   { id: 'department', label: 'Department' },
@@ -27,6 +37,7 @@ interface TemplateFormProps {
 export default function TemplateForm({ template, locations, departments, onSave, onCancel }: TemplateFormProps) {
   const [name, setName] = useState(template?.name || '');
   const [frequency, setFrequency] = useState(template?.frequency || 'adhoc');
+  const [scheduleDays, setScheduleDays] = useState<number[]>(template?.schedule_days || []);
   const [locationId, setLocationId] = useState<number | null>(template?.location_id || null);
   const [assignType, setAssignType] = useState<string | null>(template?.assign_type || null);
   const [assignId, setAssignId] = useState<number | null>(template?.assign_id || null);
@@ -74,6 +85,22 @@ export default function TemplateForm({ template, locations, departments, onSave,
       setLocationId(locations[0].id);
     }
   }, [locations, locationId]);
+
+  // Clear schedule_days when frequency changes away from weekly
+  useEffect(() => {
+    if (frequency !== 'weekly') {
+      setScheduleDays([]);
+    }
+  }, [frequency]);
+
+  function toggleDay(dayId: number) {
+    setScheduleDays((prev) => {
+      if (prev.includes(dayId)) {
+        return prev.filter((d) => d !== dayId);
+      }
+      return [...prev, dayId];
+    });
+  }
 
   const categories = useMemo(() => {
     const catMap = new Map<number, { id: number; name: string; count: number }>();
@@ -145,7 +172,8 @@ export default function TemplateForm({ template, locations, departments, onSave,
   }
 
   const selectedCount = selectedProductIds.size;
-  const canSave = name.trim().length > 0 && locationId !== null && selectedCount > 0;
+  const needsDays = frequency === 'weekly' && scheduleDays.length === 0;
+  const canSave = name.trim().length > 0 && locationId !== null && selectedCount > 0 && !needsDays;
 
   async function handleSubmit() {
     if (!canSave) return;
@@ -159,6 +187,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
       ...(isEdit ? { id: template.id } : {}),
       name: name.trim(),
       frequency,
+      schedule_days: frequency === 'weekly' ? scheduleDays : [],
       location_id: locationId,
       category_ids: catIds,
       product_ids: Array.from(selectedProductIds),
@@ -302,6 +331,35 @@ export default function TemplateForm({ template, locations, departments, onSave,
               ))}
             </div>
           </div>
+
+          {/* Day-of-week picker — only for weekly */}
+          {frequency === 'weekly' && (
+            <div className="mb-5">
+              <label className="block text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">
+                Which days?
+              </label>
+              <div className="flex gap-2">
+                {WEEKDAYS.map((day) => {
+                  const isActive = scheduleDays.includes(day.id);
+                  return (
+                    <button key={day.id} onClick={() => toggleDay(day.id)}
+                      className={`flex-1 py-2.5 rounded-xl text-[var(--fs-base)] font-semibold border transition-all text-center ${
+                        isActive
+                          ? 'bg-purple-50 border-purple-300 text-purple-800'
+                          : 'bg-white border-gray-200 text-gray-400'
+                      }`}>
+                      {day.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {scheduleDays.length === 0 && (
+                <p className="text-[var(--fs-xs)] text-amber-600 mt-1.5 font-medium">
+                  Select at least one day for this list to auto-generate.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Location */}
           <div className="mb-5">
@@ -449,11 +507,13 @@ export default function TemplateForm({ template, locations, departments, onSave,
           className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-xl)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
           {saving
             ? 'Saving...'
-            : selectedCount === 0
-              ? 'Add products to save'
-              : isEdit
-                ? `Save changes (${selectedCount} products)`
-                : `Create counting list (${selectedCount} products)`
+            : needsDays
+              ? 'Select days first'
+              : selectedCount === 0
+                ? 'Add products to save'
+                : isEdit
+                  ? `Save changes (${selectedCount} products)`
+                  : `Create counting list (${selectedCount} products)`
           }
         </button>
       </div>
