@@ -23,6 +23,17 @@ const CONTAINER_TYPES = ['Barrel', 'Bucket', 'Bin', 'Cambro', 'Bottle', 'Other']
 
 type Step = 'split' | 'preview' | 'print';
 
+/**
+ * Calculate expiry date string (YYYY-MM-DD) from today + days.
+ * Falls back to 14 days if shelfLifeDays is 0 or not provided.
+ */
+function calcExpiryDate(shelfLifeDays: number): string {
+  const days = shelfLifeDays > 0 ? shelfLifeDays : 14;
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps) {
   const { companyId } = useCompany();
   const [step, setStep] = useState<Step>('split');
@@ -30,9 +41,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const [mo, setMo] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [containers, setContainers] = useState<ContainerRow[]>([
-    { qty: '', expiryDate: getDefaultExpiry(), type: 'Barrel' },
-  ]);
+  const [containers, setContainers] = useState<ContainerRow[]>([]);
   const [splitLoading, setSplitLoading] = useState(false);
   const [splitDone, setSplitDone] = useState(false);
   const [existingSplit, setExistingSplit] = useState<any>(null);
@@ -48,11 +57,9 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
 
   const ble = useZebraBluetooth();
 
-  function getDefaultExpiry(): string {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toISOString().slice(0, 10);
-  }
+  // Shelf life from Odoo product settings (days)
+  const shelfLifeDays = mo?.expiration_time_days || 0;
+  const hasShelfLife = shelfLifeDays > 0;
 
   const labelDims = useMemo(() => {
     if (selectedSize === 'custom' || selectedSize?.startsWith('saved-')) {
@@ -78,7 +85,13 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         ]);
         const moData = await moRes.json();
         const splitData = await splitRes.json();
-        setMo(moData.order);
+        const order = moData.order;
+        setMo(order);
+
+        // Initialize first container with auto-calculated expiry from product shelf life
+        const defaultExpiry = calcExpiryDate(order?.expiration_time_days || 0);
+        setContainers([{ qty: '', expiryDate: defaultExpiry, type: 'Barrel' }]);
+
         if (splitData.split && splitData.split.status !== 'draft') {
           setExistingSplit(splitData.split);
           setExistingContainers(splitData.containers || []);
@@ -100,7 +113,8 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   }, [moId]);
 
   function addContainer() {
-    setContainers(prev => [...prev, { qty: '', expiryDate: getDefaultExpiry(), type: 'Barrel' }]);
+    const defaultExpiry = calcExpiryDate(shelfLifeDays);
+    setContainers(prev => [...prev, { qty: '', expiryDate: defaultExpiry, type: 'Barrel' }]);
   }
   function removeContainer(idx: number) {
     if (containers.length <= 1) return;
@@ -336,7 +350,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         </div>
       )}
 
-      {/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 STEP 1: SPLIT \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */}
+      {/* ======== STEP 1: SPLIT ======== */}
       {step === 'split' && !splitDone && (
         <div className="px-4 pt-3 pb-24">
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-4">
@@ -355,6 +369,18 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
                 style={{ width: `${Math.min((sumQty / totalQty) * 100, 100)}%` }} />
             </div>
           </div>
+
+          {/* Shelf life info banner */}
+          {hasShelfLife && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500 flex-shrink-0">
+                <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+              </svg>
+              <span className="text-[var(--fs-xs)] text-blue-700 font-semibold">
+                Shelf life: {shelfLifeDays} days &mdash; expiry auto-set to {fmtDate(calcExpiryDate(shelfLifeDays))}
+              </span>
+            </div>
+          )}
 
           {containers.map((c, idx) => (
             <div key={idx} className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
@@ -419,7 +445,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         </div>
       )}
 
-      {/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 STEP 2: PREVIEW \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */}
+      {/* ======== STEP 2: PREVIEW ======== */}
       {step === 'preview' && splitDone && (
         <div className="px-4 pt-3 pb-24">
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-4">
@@ -467,7 +493,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         </div>
       )}
 
-      {/* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 STEP 3: PRINT \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */}
+      {/* ======== STEP 3: PRINT ======== */}
       {step === 'print' && splitDone && (
         <div className="px-4 pt-3 pb-24">
           <div className="mb-6">
