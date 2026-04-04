@@ -1,11 +1,13 @@
 /**
  * GET /api/products/[id]/expiry-debug
  * 
- * Diagnostic endpoint to check what expiration fields exist on a product.
- * Returns all fields containing 'expir' or 'life' or 'shelf' from product.template.
+ * Diagnostic endpoint — NO AUTH required (temporary).
+ * Returns all expiration-related fields from product.template.
  */
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   _request: Request,
@@ -13,18 +15,38 @@ export async function GET(
 ) {
   try {
     const odoo = getOdoo();
-    const productId = parseInt(params.id);
+    const inputId = parseInt(params.id);
 
-    // Step 1: Get product variant info
-    const variants = await odoo.read('product.product', [productId], [
-      'name', 'product_tmpl_id',
-    ]);
-    if (!variants.length) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    // Try as product.product first, fall back to product.template
+    let tmplId: number;
+    let productName: string;
+    try {
+      const variants = await odoo.read('product.product', [inputId], [
+        'name', 'product_tmpl_id',
+      ]);
+      if (variants.length > 0) {
+        tmplId = variants[0].product_tmpl_id[0];
+        productName = variants[0].name;
+      } else {
+        // Try as template ID directly
+        const templates = await odoo.read('product.template', [inputId], ['name']);
+        if (!templates.length) {
+          return NextResponse.json({ error: 'Not found as product.product or product.template' }, { status: 404 });
+        }
+        tmplId = inputId;
+        productName = templates[0].name;
+      }
+    } catch {
+      // If product.product read fails, try template
+      const templates = await odoo.read('product.template', [inputId], ['name']);
+      if (!templates.length) {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      }
+      tmplId = inputId;
+      productName = templates[0].name;
     }
-    const tmplId = variants[0].product_tmpl_id[0];
 
-    // Step 2: Get ALL fields on product.template to find expiry-related ones
+    // Get ALL fields on product.template to find expiry-related ones
     const allFields = await odoo.call('product.template', 'fields_get', [], {
       attributes: ['string', 'type', 'help'],
     });
@@ -50,7 +72,7 @@ export async function GET(
       }
     }
 
-    // Step 3: Read the actual values of those fields
+    // Read the actual values of those fields
     const fieldNames = Object.keys(expiryFields);
     let fieldValues: Record<string, any> = {};
     if (fieldNames.length > 0) {
@@ -61,15 +83,15 @@ export async function GET(
     }
 
     return NextResponse.json({
-      product_id: productId,
-      product_name: variants[0].name,
+      product_name: productName,
       product_tmpl_id: tmplId,
+      input_id: inputId,
       expiry_field_definitions: expiryFields,
       expiry_field_values: fieldValues,
     });
   } catch (error: any) {
     return NextResponse.json(
-      { error: error.message || 'Failed', stack: error.stack },
+      { error: error.message, stack: error.stack?.split('\n').slice(0, 5) },
       { status: 500 },
     );
   }
