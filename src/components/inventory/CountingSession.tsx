@@ -246,6 +246,30 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const locationName = session?.location_name || '';
   const showCatGroups = categories.length > 1 && catFilter === 'all' && !search;
 
+  // -- Product row component --
+  function ProductRow({ p }: { p: any }) {
+    const val = entries[p.id] ?? null;
+    const uom = p.uom_id?.[1] || 'Units';
+    return (
+      <div className="flex items-center gap-3 py-3 border-b border-gray-100">
+        <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
+          <span className="text-[var(--fs-xxl)] font-semibold text-gray-900 truncate">{p.name}</span>
+          <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">{uom}</span>
+        </div>
+        {!isReadOnly ? (
+          <Stepper value={val} uom={uom}
+            onMinus={() => stepQty(p, -1)}
+            onPlus={() => stepQty(p, 1)}
+            onTap={() => openNumpad(p)} />
+        ) : (
+          <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700">
+            {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // -- Scan FAB --
   const scanFab = !isReadOnly && (
     <button
@@ -363,8 +387,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 const uom = p.uom_id?.[1] || 'Units';
                 return (
                   <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-gray-100">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <div className="flex items-baseline gap-1.5 flex-1 min-w-0">
+                      <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 self-center">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                       </div>
                       <span className="text-[var(--fs-lg)] text-gray-900 truncate">{p.name}</span>
@@ -385,8 +409,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 const uom = p.uom_id?.[1] || 'Units';
                 return (
                   <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-gray-100 opacity-50">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                    <div className="flex items-baseline gap-1.5 flex-1 min-w-0">
+                      <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 self-center">
                         <span className="text-gray-400 text-[var(--fs-xs)] font-bold">--</span>
                       </div>
                       <span className="text-[var(--fs-lg)] text-gray-500 truncate">{p.name}</span>
@@ -478,59 +502,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 pt-4 pb-2">
                   {group.catName}
                 </div>
-                {group.items.map((p) => {
-                  const val = entries[p.id] ?? null;
-                  const uom = p.uom_id?.[1] || 'Units';
-                  return (
-                    <div key={p.id} className="flex items-center gap-3 py-3 border-b border-gray-100">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[var(--fs-lg)] font-semibold text-gray-900 truncate">{p.name}</div>
-                        {uom !== 'Units' && (
-                          <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{uom}</div>
-                        )}
-                      </div>
-                      {!isReadOnly ? (
-                        <Stepper value={val} uom={uom}
-                          onMinus={() => stepQty(p, -1)}
-                          onPlus={() => stepQty(p, 1)}
-                          onTap={() => openNumpad(p)} />
-                      ) : (
-                        <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700">
-                          {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {group.items.map((p) => <ProductRow key={p.id} p={p} />)}
               </div>
             ))}
           </div>
         ) : (
           /* Flat list (when filtered by category or searching) */
           <div className="flex flex-col">
-            {filtered.map((p) => {
-              const val = entries[p.id] ?? null;
-              const uom = p.uom_id?.[1] || 'Units';
-              const catName = leafCategory(p.categ_id?.[1] || '');
-              return (
-                <div key={p.id} className="flex items-center gap-3 py-3 border-b border-gray-100">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[var(--fs-lg)] font-semibold text-gray-900 truncate">{p.name}</div>
-                    <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{catName}{uom !== 'Units' ? ` \u00B7 ${uom}` : ''}</div>
-                  </div>
-                  {!isReadOnly ? (
-                    <Stepper value={val} uom={uom}
-                      onMinus={() => stepQty(p, -1)}
-                      onPlus={() => stepQty(p, 1)}
-                      onTap={() => openNumpad(p)} />
-                  ) : (
-                    <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700">
-                      {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {filtered.map((p) => <ProductRow key={p.id} p={p} />)}
           </div>
         )}
       </div>

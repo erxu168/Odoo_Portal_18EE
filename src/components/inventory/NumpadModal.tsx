@@ -53,7 +53,7 @@ export default function NumpadModal({
   const catLeaf = leafCategory(category);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gray-50">
+    <div className="fixed inset-0 z-50 flex flex-col bg-gray-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       {/* Header */}
       <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
         <div className="flex items-center justify-between mb-1">
@@ -85,7 +85,7 @@ export default function NumpadModal({
       </div>
 
       {/* Numpad */}
-      <div className="mt-auto px-5 pb-10">
+      <div className="mt-auto px-5 pb-20">
         <div className="grid grid-cols-3 gap-2 mb-3">
           {['1','2','3','4','5','6','7','8','9','.','0','del'].map((key) => (
             <button key={key} onClick={() => press(key)}
