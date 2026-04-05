@@ -227,8 +227,8 @@ export default function CreateMo({ onBack, onCreated, onNavigateToCreate }: Crea
       }
 
       onCreated(moId!);
-    } catch (err: any) {
-      setSubmitError(err.message || 'Failed to create order');
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to create order');
     } finally {
       setSubmitting(false);
     }
@@ -269,8 +269,8 @@ export default function CreateMo({ onBack, onCreated, onNavigateToCreate }: Crea
         moId = data.id;
       }
       onCreated(moId!);
-    } catch (err: any) {
-      setSubmitError(err.message || 'Failed to save draft');
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : 'Failed to save draft');
     } finally {
       setSubmitting(false);
     }

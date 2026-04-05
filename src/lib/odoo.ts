@@ -22,7 +22,7 @@ interface JsonRpcResponse {
   error?: {
     code: number;
     message: string;
-    data: { message: string; debug: string };
+    data: { name?: string; message: string; debug: string };
   };
 }
 
@@ -44,9 +44,10 @@ export class OdooClient {
   }
 
   /**
-   * Raw JSON-RPC call
+   * Raw JSON-RPC call.
+   * If Odoo returns a session-expired error, clears auth state and retries once.
    */
-  private async rpc(endpoint: string, params: Record<string, any>): Promise<any> {
+  private async rpc(endpoint: string, params: Record<string, any>, _retried = false): Promise<any> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -75,6 +76,16 @@ export class OdooClient {
     const data: JsonRpcResponse = await response.json();
 
     if (data.error) {
+      // Session expired — re-authenticate and retry once
+      const errName = data.error.data?.name || '';
+      if (!_retried && (errName.includes('SessionExpired') || errName.includes('session_expired'))) {
+        console.warn('[OdooClient] Session expired, re-authenticating...');
+        this.uid = null;
+        this.sessionId = null;
+        await this.ensureAuth();
+        return this.rpc(endpoint, params, true);
+      }
+
       throw new Error(
         `Odoo RPC Error: ${data.error.message} — ${data.error.data?.message || ''}`
       );
@@ -256,6 +267,15 @@ export function getOdoo(): OdooClient {
     _instance = new OdooClient();
   }
   return _instance;
+}
+
+/**
+ * Parse an Odoo datetime string safely.
+ * Odoo uses space separator ("2026-03-27 14:00:00") which Safari/iOS rejects.
+ */
+export function parseOdooDate(dateStr: string | false | null | undefined): Date | null {
+  if (!dateStr) return null;
+  return new Date(dateStr.replace(' ', 'T'));
 }
 
 /** Force re-authentication on next call (e.g. after company changes) */

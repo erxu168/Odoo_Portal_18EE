@@ -165,7 +165,7 @@ export async function POST(request: Request) {
       contact: managerName,
     }, { status: 201 });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('POST /api/auth/register error:', error);
     return NextResponse.json({ error: 'Registration failed. Please try again.' }, { status: 500 });
   }
@@ -239,7 +239,7 @@ export async function GET(request: Request) {
       },
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('GET /api/auth/register error:', error);
     return NextResponse.json({ error: 'Lookup failed. Please try again.' }, { status: 500 });
   }

@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     deletePasswordResetToken(token);
 
     return NextResponse.json({ message: 'Password has been reset. You can now sign in.' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('POST /api/auth/reset-password error:', error);
     return NextResponse.json(
       { error: 'Something went wrong. Please try again.' },

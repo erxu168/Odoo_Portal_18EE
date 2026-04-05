@@ -25,7 +25,7 @@ export async function POST() {
     });
 
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('POST /api/auth/logout error:', error);
     return NextResponse.json({ ok: true });
   }

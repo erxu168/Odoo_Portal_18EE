@@ -41,6 +41,9 @@ export default function AdminUsersPage() {
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newRole, setNewRole] = useState('staff');
+  const [resetPasswordUser, setResetPasswordUser] = useState<{ id: number; name: string } | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -125,8 +128,8 @@ export default function AdminUsersPage() {
       setSuccessMsg(data.message);
       setTimeout(() => setSuccessMsg(null), 3000);
       fetchAll();
-    } catch (err: any) {
-      setError(err.message || 'Approval failed');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Approval failed');
     } finally { setActionLoading(null); }
   }
 
@@ -142,8 +145,8 @@ export default function AdminUsersPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       fetchAll();
-    } catch (err: any) {
-      setError(err.message || 'Rejection failed');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Rejection failed');
     } finally { setActionLoading(null); }
   }
 
@@ -160,8 +163,8 @@ export default function AdminUsersPage() {
       setSuccessMsg(data.message);
       setTimeout(() => setSuccessMsg(null), 3000);
       fetchAll();
-    } catch (err: any) {
-      setError(err.message || 'Failed to clear rejection');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to clear rejection');
     } finally { setActionLoading(null); }
   }
 
@@ -180,8 +183,8 @@ export default function AdminUsersPage() {
       setShowCreate(false);
       setNewName(''); setNewEmail(''); setNewPassword(''); setNewRole('staff');
       fetchAll();
-    } catch (err: any) {
-      setError(err.message || 'Failed to create user');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create user');
     } finally { setCreating(false); }
   }
 
@@ -196,17 +199,33 @@ export default function AdminUsersPage() {
     } catch { /* ignore */ }
   }
 
-  async function handleResetPassword(user: User) {
-    const pw = prompt(`New password for ${user.name}:`);
-    if (!pw) return;
+  function handleResetPassword(user: User) {
+    setResetPasswordUser({ id: user.id, name: user.name });
+    setResetPasswordValue('');
+  }
+
+  async function submitResetPassword() {
+    if (!resetPasswordUser || !resetPasswordValue) return;
+    setResettingPassword(true);
     try {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
+      const res = await fetch(`/api/admin/users/${resetPasswordUser.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ new_password: pw }),
+        body: JSON.stringify({ new_password: resetPasswordValue }),
       });
-      if (res.ok) alert('Password updated.');
-    } catch { /* ignore */ }
+      if (res.ok) {
+        setSuccessMsg('Password updated.');
+        setTimeout(() => setSuccessMsg(null), 3000);
+      } else {
+        setError('Failed to update password.');
+      }
+    } catch {
+      setError('Failed to update password.');
+    } finally {
+      setResettingPassword(false);
+      setResetPasswordUser(null);
+      setResetPasswordValue('');
+    }
   }
 
   async function handleChangeRole(user: User, role: string) {
@@ -419,7 +438,7 @@ export default function AdminUsersPage() {
 
                         {u.last_login && (
                           <div className="text-[11px] text-gray-400 mt-2">
-                            Last login: {new Date(u.last_login).toLocaleString('de-DE')}
+                            Last login: {new Date(u.last_login).toLocaleString('de-DE', { timeZone: 'Europe/Berlin' })}
                           </div>
                         )}
                       </div>
@@ -539,6 +558,43 @@ export default function AdminUsersPage() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset password modal */}
+      {resetPasswordUser && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setResetPasswordUser(null)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-24"
+            onClick={(e) => e.stopPropagation()}
+            style={{ animation: 'slideUp .25s ease-out' }}>
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
+            <h3 className="text-lg font-bold text-gray-900 mb-1">Reset password</h3>
+            <p className="text-[13px] text-gray-500 mb-4">Enter a new password for {resetPasswordUser.name}</p>
+            <input
+              type="text"
+              placeholder="New password"
+              value={resetPasswordValue}
+              onChange={(e) => setResetPasswordValue(e.target.value)}
+              autoFocus
+              className="w-full h-12 px-4 rounded-xl bg-white border border-gray-200 text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500 mb-3"
+            />
+            <button
+              onClick={submitResetPassword}
+              disabled={resettingPassword || !resetPasswordValue}
+              className="w-full h-14 rounded-xl bg-green-600 text-white font-bold text-[14px] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {resettingPassword ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                'Update password'
+              )}
+            </button>
+            <button onClick={() => setResetPasswordUser(null)}
+              className="w-full py-3 mt-2 rounded-xl text-[13px] font-semibold text-gray-500 bg-gray-100 active:bg-gray-200 transition-all">
+              Cancel
+            </button>
           </div>
         </div>
       )}

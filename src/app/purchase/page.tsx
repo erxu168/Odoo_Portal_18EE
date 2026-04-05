@@ -222,7 +222,7 @@ export default function PurchasePage() {
     finally { setMgConfigSaving(false); }
   }
 
-  async function runSeed() { setSeedMsg('Seeding...'); try { const r = await fetch('/api/purchase/seed', { method: 'POST' }); const d = await r.json(); setSeedMsg(d.message || 'Done'); fetchSuppliers(); } catch (e: any) { setSeedMsg(`Error: ${e.message}`); } }
+  async function runSeed() { setSeedMsg('Seeding...'); try { const r = await fetch('/api/purchase/seed', { method: 'POST' }); const d = await r.json(); setSeedMsg(d.message || 'Done'); fetchSuppliers(); } catch (e: unknown) { setSeedMsg(`Error: ${e instanceof Error ? e.message : 'Unknown error'}`); } }
 
   // Tax calc helper
   function calcCartTax(cart: CartSummary) {

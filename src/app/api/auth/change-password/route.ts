@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     updateUser(user.id, { must_change_password: 0 });
 
     return NextResponse.json({ message: 'Password changed successfully.' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('POST /api/auth/change-password error:', error);
     return NextResponse.json(
       { error: 'Something went wrong. Please try again.' },

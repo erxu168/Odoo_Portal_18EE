@@ -29,8 +29,9 @@ export async function GET() {
       { order: 'complete_name' }
     );
     return NextResponse.json({ locations });
-  } catch (err: any) {
-    console.error('Inventory locations error:', err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Inventory locations error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

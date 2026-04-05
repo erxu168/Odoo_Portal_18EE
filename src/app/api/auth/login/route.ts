@@ -4,6 +4,21 @@ import { getUserByEmail, createSession, logAudit } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { COOKIE_NAME } from '@/lib/auth';
 
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const MAX_ATTEMPTS = 10;
+const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+function checkLoginRate(ip: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= MAX_ATTEMPTS;
+}
+
 /**
  * POST /api/auth/login
  * Authenticates a portal user and creates a session.
@@ -11,6 +26,11 @@ import { COOKIE_NAME } from '@/lib/auth';
  */
 export async function POST(request: Request) {
   try {
+    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+    if (!checkLoginRate(ip)) {
+      return NextResponse.json({ error: 'Too many login attempts. Try again later.' }, { status: 429 });
+    }
+
     const { email, password } = await request.json();
 
     if (!email || !password) {
@@ -109,7 +129,7 @@ export async function POST(request: Request) {
     });
 
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('POST /api/auth/login error:', error);
     return NextResponse.json(
       { error: 'Login failed. Please try again.' },

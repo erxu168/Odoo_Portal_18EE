@@ -29,8 +29,8 @@ export default function BomList({ onSelect, onBack, onCreate }: BomListProps) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setBoms(data.boms || []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load recipes');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load recipes');
     } finally {
       setLoading(false);
     }

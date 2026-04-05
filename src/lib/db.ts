@@ -15,7 +15,7 @@ const DB_PATH = path.join(process.cwd(), 'data', 'portal.db');
 let _db: Database.Database | null = null;
 
 function nowISO(): string {
-  return new Date().toISOString();
+  return new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).replace(' ', 'T');
 }
 
 export function getDb(): Database.Database {

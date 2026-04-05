@@ -29,14 +29,16 @@ export default function DeliveryForm({ onSubmit, onCancel }: Props) {
   const [witness, setWitness] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const needsTracking = method === 'einschreiben_rueckschein' || method === 'einwurf_einschreiben';
   const needsWitness = method === 'personal' || method === 'bote';
 
   async function handleSubmit() {
-    if (!method) { alert('Please select a delivery method'); return; }
-    if (!date) { alert('Please enter a date'); return; }
-    if (needsWitness && !witness.trim()) { alert('Witness is required for personal handover'); return; }
+    setValidationError(null);
+    if (!method) { setValidationError('Please select a delivery method'); return; }
+    if (!date) { setValidationError('Please enter a date'); return; }
+    if (needsWitness && !witness.trim()) { setValidationError('Witness is required for personal handover'); return; }
     setSubmitting(true);
     try {
       await onSubmit({
@@ -100,6 +102,13 @@ export default function DeliveryForm({ onSubmit, onCancel }: Props) {
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
           className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-[14px] bg-gray-50 resize-none" />
       </label>
+
+      {validationError && (
+        <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3">
+          <span className="text-[12px] text-red-700 font-medium">{validationError}</span>
+          <button onClick={() => setValidationError(null)} className="text-red-500 text-[11px] font-bold ml-2">Dismiss</button>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button onClick={onCancel}

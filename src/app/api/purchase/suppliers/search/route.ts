@@ -50,8 +50,8 @@ export async function GET(request: Request) {
     }));
 
     return NextResponse.json({ suppliers });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('Odoo supplier search error:', e);
-    return NextResponse.json({ error: 'Failed to search Odoo', detail: e.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to search Odoo', detail: e instanceof Error ? e.message : 'Unknown error' }, { status: 500 });
   }
 }

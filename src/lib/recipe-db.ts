@@ -253,3 +253,6 @@ export function getRecentCookSessions(limit: number = 20): CookSession[] {
     'SELECT * FROM cook_sessions ORDER BY started_at DESC LIMIT ?'
   ).all(limit) as CookSession[];
 }
+
+// Init on import
+try { initRecipeTables(); } catch (_e) { /* tables may already exist */ }

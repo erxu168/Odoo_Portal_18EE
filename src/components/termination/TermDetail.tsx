@@ -6,6 +6,8 @@ import { TERMINATION_TYPE_LABELS, STATE_LABELS, DELIVERY_METHOD_LABELS } from '@
 import DeliveryForm from './DeliveryForm';
 import PdfViewer from '@/components/ui/PdfViewer';
 import PdfDocumentCard from '@/components/ui/PdfDocumentCard';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import Toast from '@/components/ui/Toast';
 
 function getTrackingUrl(trackingNumber: string): string {
   const clean = trackingNumber.replace(/\s+/g, "");
@@ -55,6 +57,8 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showGenPdf, setShowGenPdf] = useState(false);
   const [genPdfBase64, setGenPdfBase64] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; confirmLabel: string; variant?: 'primary' | 'danger'; onConfirm: () => void } | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'error' | 'success' | 'info' } | null>(null);
 
   const fetchRecord = useCallback(async () => {
     try {
@@ -156,31 +160,47 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
 
   // --- State actions ---
 
-  async function handleSetState(newState: string) {
+  function handleSetState(newState: string) {
     if (!rec || newState === rec.state) return;
     const label = STATE_LABELS[newState as keyof typeof STATE_LABELS] || newState;
-    if (!confirm(`Change stage to "${label}"?`)) return;
-    setStageLoading(true);
-    try {
-      const res = await fetch(`/api/termination/${id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ state: newState }),
-      });
-      const json = await res.json();
-      if (json.ok) setRec(json.data); else alert(json.error);
-    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Error'); }
-    finally { setStageLoading(false); }
+    setConfirmAction({
+      title: 'Change stage',
+      message: `Change stage to "${label}"?`,
+      confirmLabel: 'Change',
+      variant: 'primary',
+      onConfirm: async () => {
+        setConfirmAction(null);
+        setStageLoading(true);
+        try {
+          const res = await fetch(`/api/termination/${id}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: newState }),
+          });
+          const json = await res.json();
+          if (json.ok) setRec(json.data); else setToastMsg({ text: json.error, type: 'error' });
+        } catch (err: unknown) { setToastMsg({ text: err instanceof Error ? err.message : 'Error', type: 'error' }); }
+        finally { setStageLoading(false); }
+      },
+    });
   }
 
-  async function handleConfirm() {
-    if (!confirm('Confirm this termination? Employee departure date will be set.')) return;
-    setConfirmLoading(true);
-    try {
-      const res = await fetch(`/api/termination/${id}/confirm`, { method: 'POST' });
-      const json = await res.json();
-      if (json.ok) setRec(json.data); else alert(json.error);
-    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Error'); }
-    finally { setConfirmLoading(false); }
+  function handleConfirm() {
+    setConfirmAction({
+      title: 'Confirm termination',
+      message: 'Confirm this termination? Employee departure date will be set.',
+      confirmLabel: 'Confirm',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmAction(null);
+        setConfirmLoading(true);
+        try {
+          const res = await fetch(`/api/termination/${id}/confirm`, { method: 'POST' });
+          const json = await res.json();
+          if (json.ok) setRec(json.data); else setToastMsg({ text: json.error, type: 'error' });
+        } catch (err: unknown) { setToastMsg({ text: err instanceof Error ? err.message : 'Error', type: 'error' }); }
+        finally { setConfirmLoading(false); }
+      },
+    });
   }
 
   async function handleGeneratePdf() {
@@ -195,9 +215,9 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         await fetchRecord();
       } else {
         const json = await res.json();
-        alert(json.error || 'PDF generation failed');
+        setToastMsg({ text: json.error || 'PDF generation failed', type: 'error' });
       }
-    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Error'); }
+    } catch (err: unknown) { setToastMsg({ text: err instanceof Error ? err.message : 'Error', type: 'error' }); }
     finally { setPdfLoading(false); }
   }
 
@@ -211,42 +231,65 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         body: JSON.stringify(data),
       });
       const json = await res.json();
-      if (json.ok) { setRec(json.data); setShowDelivery(false); } else alert(json.error);
-    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Error'); }
+      if (json.ok) { setRec(json.data); setShowDelivery(false); } else setToastMsg({ text: json.error, type: 'error' });
+    } catch (err: unknown) { setToastMsg({ text: err instanceof Error ? err.message : 'Error', type: 'error' }); }
   }
 
-  async function handleSendToAccountant() {
-    if (!confirm('Send termination letter to accountant via email?')) return;
-    setAccountantLoading(true);
-    try {
-      const res = await fetch(`/api/termination/${id}/send-accountant`, { method: 'POST' });
-      const json = await res.json();
-      if (json.ok) setRec(json.data); else alert(json.error);
-    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Error'); }
-    finally { setAccountantLoading(false); }
+  function handleSendToAccountant() {
+    setConfirmAction({
+      title: 'Send to accountant',
+      message: 'Send termination letter to accountant via email?',
+      confirmLabel: 'Send',
+      variant: 'primary',
+      onConfirm: async () => {
+        setConfirmAction(null);
+        setAccountantLoading(true);
+        try {
+          const res = await fetch(`/api/termination/${id}/send-accountant`, { method: 'POST' });
+          const json = await res.json();
+          if (json.ok) setRec(json.data); else setToastMsg({ text: json.error, type: 'error' });
+        } catch (err: unknown) { setToastMsg({ text: err instanceof Error ? err.message : 'Error', type: 'error' }); }
+        finally { setAccountantLoading(false); }
+      },
+    });
   }
 
-  async function handleCancel() {
-    if (!confirm('Cancel this termination? This will reset the employee\u2019s departure date.')) return;
-    if (!confirm('Are you sure? This action cannot be undone.')) return;
-    setCancelLoading(true);
-    try {
-      const res = await fetch(`/api/termination/${id}/cancel`, { method: 'POST' });
-      const json = await res.json();
-      if (json.ok) setRec(json.data); else alert(json.error);
-    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Error'); }
-    finally { setCancelLoading(false); }
+  function handleCancel() {
+    setConfirmAction({
+      title: 'Cancel termination',
+      message: 'Cancel this termination? This will reset the employee\u2019s departure date. This action cannot be undone.',
+      confirmLabel: 'Yes, cancel termination',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmAction(null);
+        setCancelLoading(true);
+        try {
+          const res = await fetch(`/api/termination/${id}/cancel`, { method: 'POST' });
+          const json = await res.json();
+          if (json.ok) setRec(json.data); else setToastMsg({ text: json.error, type: 'error' });
+        } catch (err: unknown) { setToastMsg({ text: err instanceof Error ? err.message : 'Error', type: 'error' }); }
+        finally { setCancelLoading(false); }
+      },
+    });
   }
 
-  async function handleDelete() {
-    if (!confirm('Delete this draft termination? This cannot be undone.')) return;
-    setDeleteLoading(true);
-    try {
-      const res = await fetch(`/api/termination/${id}/delete`, { method: 'POST' });
-      const json = await res.json();
-      if (json.ok) onBack(); else alert(json.error || 'Delete failed');
-    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Delete failed'); }
-    finally { setDeleteLoading(false); }
+  function handleDelete() {
+    setConfirmAction({
+      title: 'Delete draft',
+      message: 'Delete this draft termination? This cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmAction(null);
+        setDeleteLoading(true);
+        try {
+          const res = await fetch(`/api/termination/${id}/delete`, { method: 'POST' });
+          const json = await res.json();
+          if (json.ok) onBack(); else setToastMsg({ text: json.error || 'Delete failed', type: 'error' });
+        } catch (err: unknown) { setToastMsg({ text: err instanceof Error ? err.message : 'Delete failed', type: 'error' }); }
+        finally { setDeleteLoading(false); }
+      },
+    });
   }
 
   async function handleTrackingSave() {
@@ -489,6 +532,24 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
       {showGenPdf && genPdfBase64 && (
         <PdfViewer fileData={genPdfBase64} fileName={`Termination_${rec.employee_name.replace(/\s+/g, '_')}.pdf`} onClose={() => setShowGenPdf(false)} />
       )}
+
+      {confirmAction && (
+        <ConfirmDialog
+          title={confirmAction.title}
+          message={confirmAction.message}
+          confirmLabel={confirmAction.confirmLabel}
+          variant={confirmAction.variant}
+          onConfirm={confirmAction.onConfirm}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
+
+      <Toast
+        message={toastMsg?.text || ''}
+        type={toastMsg?.type || 'error'}
+        visible={!!toastMsg}
+        onDismiss={() => setToastMsg(null)}
+      />
     </div>
   );
 }

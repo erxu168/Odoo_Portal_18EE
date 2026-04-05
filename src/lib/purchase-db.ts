@@ -7,7 +7,7 @@ import { getDb } from './db';
 import type Database from 'better-sqlite3';
 
 function nowISO(): string {
-  return new Date().toISOString();
+  return new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).replace(' ', 'T');
 }
 
 function db(): Database.Database {
@@ -154,6 +154,7 @@ export function initPurchaseTables() {
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_carts_unique_draft ON purchase_carts(location_id, supplier_id) WHERE status = 'draft';
     CREATE UNIQUE INDEX IF NOT EXISTS idx_cart_items_unique ON purchase_cart_items(cart_id, product_id);
+    CREATE INDEX IF NOT EXISTS idx_orders_supplier ON purchase_orders(supplier_id, location_id, status);
   `);
 
   // Migration: add columns that may not exist on older DBs
@@ -342,23 +343,26 @@ export function createOrder(data: {
     quantity: number; price: number;
   }>;
 }) {
-  const now = nowISO();
-  const result = db().prepare(`
-    INSERT INTO purchase_orders (supplier_id, location_id, status, delivery_date, order_note, total_amount, ordered_by, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(data.supplier_id, data.location_id, data.status, data.delivery_date,
-    data.order_note, data.total_amount, data.ordered_by, now);
-  const orderId = result.lastInsertRowid as number;
+  const createOrderTx = db().transaction(() => {
+    const now = nowISO();
+    const result = db().prepare(`
+      INSERT INTO purchase_orders (supplier_id, location_id, status, delivery_date, order_note, total_amount, ordered_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(data.supplier_id, data.location_id, data.status, data.delivery_date,
+      data.order_note, data.total_amount, data.ordered_by, now);
+    const orderId = result.lastInsertRowid as number;
 
-  const insertLine = db().prepare(`
-    INSERT INTO purchase_order_lines (order_id, product_id, product_name, product_uom, quantity, price, subtotal)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
-  for (const line of data.lines) {
-    insertLine.run(orderId, line.product_id, line.product_name, line.product_uom,
-      line.quantity, line.price, line.quantity * line.price);
-  }
-  return orderId;
+    const insertLine = db().prepare(`
+      INSERT INTO purchase_order_lines (order_id, product_id, product_name, product_uom, quantity, price, subtotal)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const line of data.lines) {
+      insertLine.run(orderId, line.product_id, line.product_name, line.product_uom,
+        line.quantity, line.price, line.quantity * line.price);
+    }
+    return orderId;
+  });
+  return createOrderTx();
 }
 
 export function getOrder(id: number) {
@@ -398,7 +402,7 @@ export function cancelOrder(id: number, userId: number) {
 }
 
 export function checkDuplicateOrder(supplierId: number, locationId: number): boolean {
-  const today = new Date().toISOString().split('T')[0];
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
   const row = db().prepare(
     "SELECT COUNT(*) as c FROM purchase_orders WHERE supplier_id = ? AND location_id = ? AND status != 'cancelled' AND created_at >= ?"
   ).get(supplierId, locationId, today + 'T00:00:00') as any;
@@ -420,20 +424,25 @@ export function countPendingApprovals(locationId?: number) {
 export function createReceipt(orderId: number, receivedBy: number) {
   const order = getOrder(orderId);
   if (!order) return null;
-  const now = nowISO();
-  const result = db().prepare(
-    'INSERT INTO purchase_receipts (order_id, location_id, status, received_by, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(orderId, order.location_id, 'pending', receivedBy, '', now);
-  const receiptId = result.lastInsertRowid as number;
 
-  const insertLine = db().prepare(`
-    INSERT INTO purchase_receipt_lines (receipt_id, order_line_id, product_id, product_name, product_uom, ordered_qty)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
-  for (const line of order.lines) {
-    insertLine.run(receiptId, line.id, line.product_id, line.product_name, line.product_uom || 'Units', line.quantity);
-  }
-  return receiptId;
+  const createReceiptTx = db().transaction(() => {
+    const now = nowISO();
+    const result = db().prepare(
+      'INSERT INTO purchase_receipts (order_id, location_id, status, received_by, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(orderId, order.location_id, 'pending', receivedBy, '', now);
+    const receiptId = result.lastInsertRowid as number;
+
+    const insertLine = db().prepare(`
+      INSERT INTO purchase_receipt_lines (receipt_id, order_line_id, product_id, product_name, product_uom, ordered_qty)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    for (const line of order.lines) {
+      insertLine.run(receiptId, line.id, line.product_id, line.product_name, line.product_uom || 'Units', line.quantity);
+    }
+    return receiptId;
+  });
+
+  return createReceiptTx();
 }
 
 export function getReceipt(id: number) {

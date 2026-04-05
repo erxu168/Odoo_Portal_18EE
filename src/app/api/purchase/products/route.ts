@@ -59,8 +59,8 @@ export async function GET(request: Request) {
     }));
 
     return NextResponse.json({ products: formatted, categories: categoryList });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('Failed to search Odoo products:', e);
-    return NextResponse.json({ error: e.message || 'Failed to search products', products: [], categories: [] }, { status: 500 });
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to search products', products: [], categories: [] }, { status: 500 });
   }
 }

@@ -24,8 +24,9 @@ export async function GET() {
       .map((d: any) => ({ id: d.id, name: d.name, member_count: d.member_ids.length }));
 
     return NextResponse.json({ departments: active });
-  } catch (err: any) {
-    console.error('Departments error:', err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Departments error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

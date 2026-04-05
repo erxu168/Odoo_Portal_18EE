@@ -75,7 +75,7 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json({ message: `Order approved and sent as ${poName}`, odoo_po_name: poName });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to create Odoo PO on approval:', e);
       // Still mark approved even if Odoo sync fails
       updateOrderStatus(order_id, 'approved', { approved_by: user.id });

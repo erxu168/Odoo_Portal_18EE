@@ -59,8 +59,8 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       await fetchDetail();
-    } catch (err: any) {
-      setActionError(err.message || 'Failed to confirm order');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to confirm order');
     } finally {
       setConfirmLoading(false);
     }
@@ -79,8 +79,8 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       onBack();
-    } catch (err: any) {
-      setActionError(err.message || 'Failed to cancel order');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to cancel order');
     } finally {
       setCancelLoading(false);
     }
@@ -98,8 +98,8 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       onBack();
-    } catch (err: any) {
-      setProduceError(err.message || 'Failed to produce');
+    } catch (err: unknown) {
+      setProduceError(err instanceof Error ? err.message : 'Failed to produce');
       setProducing(false);
     }
   }
@@ -130,8 +130,8 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
         ));
         throw new Error(data.error);
       }
-    } catch (err: any) {
-      setActionError(err.message || 'Failed to update ingredient');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update ingredient');
     }
   }
 

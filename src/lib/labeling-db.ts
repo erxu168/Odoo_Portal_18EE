@@ -11,7 +11,7 @@ import type {
 } from '@/types/labeling';
 
 function nowISO(): string {
-  return new Date().toISOString();
+  return new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).replace(' ', 'T');
 }
 
 // =============================================================================
@@ -225,25 +225,30 @@ export function getContainers(splitId: number): Container[] {
 export function createSplit(data: CreateSplitRequest, userId: number): { splitId: number; containerIds: number[] } {
   ensureLabelingTables();
   const db = getDb();
-  const now = nowISO();
 
-  const sr = db.prepare(`
-    INSERT INTO container_splits (mo_id, mo_name, product_id, product_name, total_qty, uom, status, created_by, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)
-  `).run(data.mo_id, data.mo_name, data.product_id, data.product_name, data.total_qty, data.uom, userId, now);
-  const splitId = sr.lastInsertRowid as number;
+  const createSplitTx = db.transaction(() => {
+    const now = nowISO();
 
-  const containerIds: number[] = [];
-  const stmt = db.prepare(`
-    INSERT INTO containers (split_id, sequence, qty, expiry_date, label_printed)
-    VALUES (?, ?, ?, ?, 0)
-  `);
-  for (let i = 0; i < data.containers.length; i++) {
-    const c = data.containers[i];
-    const cr = stmt.run(splitId, i + 1, c.qty, c.expiry_date ?? null);
-    containerIds.push(cr.lastInsertRowid as number);
-  }
-  return { splitId, containerIds };
+    const sr = db.prepare(`
+      INSERT INTO container_splits (mo_id, mo_name, product_id, product_name, total_qty, uom, status, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+    `).run(data.mo_id, data.mo_name, data.product_id, data.product_name, data.total_qty, data.uom, userId, now);
+    const splitId = sr.lastInsertRowid as number;
+
+    const containerIds: number[] = [];
+    const stmt = db.prepare(`
+      INSERT INTO containers (split_id, sequence, qty, expiry_date, label_printed)
+      VALUES (?, ?, ?, ?, 0)
+    `);
+    for (let i = 0; i < data.containers.length; i++) {
+      const c = data.containers[i];
+      const cr = stmt.run(splitId, i + 1, c.qty, c.expiry_date ?? null);
+      containerIds.push(cr.lastInsertRowid as number);
+    }
+    return { splitId, containerIds };
+  });
+
+  return createSplitTx();
 }
 
 export function confirmSplit(splitId: number) {

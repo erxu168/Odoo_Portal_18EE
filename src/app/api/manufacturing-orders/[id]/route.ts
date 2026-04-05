@@ -222,8 +222,8 @@ export async function PATCH(
               } else {
                 await odoo.call(wizModel, 'process', [wizIds]);
               }
-            } catch (wizErr: any) {
-              console.error('Wizard error:', wizErr.message);
+            } catch (wizErr: unknown) {
+              console.error('Wizard error:', wizErr instanceof Error ? wizErr.message : 'Unknown wizard error');
             }
           }
           break;

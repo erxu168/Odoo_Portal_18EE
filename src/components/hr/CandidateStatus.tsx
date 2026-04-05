@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { parseOdooDate } from '@/lib/odoo';
 
 interface StageInfo {
   key: string;
@@ -109,7 +110,7 @@ export default function CandidateStatus({ onHome, onStartOnboarding }: Props) {
           )}
           {data.applied_date && (
             <div className="text-[var(--fs-xs)] text-gray-400 mt-2">
-              Applied: {new Date(data.applied_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              Applied: {parseOdooDate(data.applied_date)?.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
             </div>
           )}
         </div>

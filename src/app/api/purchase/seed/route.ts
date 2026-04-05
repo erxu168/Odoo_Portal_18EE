@@ -111,8 +111,8 @@ export async function POST(request: Request) {
         results.push(`Created guide for Frucht & Feld @ SSAM with ${fruchtProducts.length} products`);
       }
     }
-  } catch (e: any) {
-    results.push(`Failed to fetch Odoo products: ${e.message}`);
+  } catch (e: unknown) {
+    results.push(`Failed to fetch Odoo products: ${e instanceof Error ? e.message : 'Unknown error'}`);
   }
 
   return NextResponse.json({ message: 'Seed complete', results }, { status: 201 });

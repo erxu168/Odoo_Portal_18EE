@@ -142,8 +142,8 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Failed to create recipe');
       onCreated(data.id);
-    } catch (err: any) {
-      setSaveError(err.message || 'Failed to create recipe');
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to create recipe');
     } finally {
       setSaving(false);
     }

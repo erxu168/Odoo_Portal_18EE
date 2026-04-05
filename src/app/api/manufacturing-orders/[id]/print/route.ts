@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOdoo } from '@/lib/odoo';
+import { getOdoo, parseOdooDate } from '@/lib/odoo';
 import { requireAuth, AuthError } from '@/lib/auth';
 
 /**
@@ -60,7 +60,9 @@ export async function GET(
 
     const fmtDate = (d: string | false) => {
       if (!d) return '-';
-      return new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const parsed = parseOdooDate(d);
+      if (!parsed) return '-';
+      return parsed.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Berlin' });
     };
 
     const fmtNum = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4 }).format(n);
@@ -175,7 +177,7 @@ export async function GET(
 
   <div class="footer">
     <span>${mo.company_id?.[1] || 'Krawings'}</span>
-    <span>Printed ${new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+    <span>Printed ${new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })}</span>
   </div>
 
   <button class="print-btn" onclick="window.print()">Print</button>

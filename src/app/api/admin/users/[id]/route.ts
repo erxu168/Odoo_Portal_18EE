@@ -24,8 +24,16 @@ export async function PATCH(
 
     const body = await request.json();
 
-    // Reset password
+    // Validate role enum
+    if (body.role && !['staff', 'manager', 'admin'].includes(body.role)) {
+      return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+    }
+
+    // Reset password with complexity check
     if (body.new_password) {
+      if (body.new_password.length < 8 || !/\d/.test(body.new_password)) {
+        return NextResponse.json({ error: 'Password must be at least 8 characters with a number' }, { status: 400 });
+      }
       resetPassword(userId, body.new_password);
     }
 
@@ -51,10 +59,10 @@ export async function PATCH(
 
     const updated = getUserById(userId);
     return NextResponse.json({ user: updated });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`PATCH /api/admin/users/${params.id} error:`, error);
     return NextResponse.json(
-      { error: error.message || 'Failed to update user' },
+      { error: error instanceof Error ? error.message : 'Failed to update user' },
       { status: 500 },
     );
   }

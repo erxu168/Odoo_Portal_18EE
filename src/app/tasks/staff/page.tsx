@@ -94,8 +94,8 @@ export default function StaffPage() {
     });
   }
 
-  async function handlePhotoUpload(taskLineId: number) {
-    console.log('photo upload for task', taskLineId);
+  async function handlePhotoUpload(_taskLineId: number) {
+    throw new Error('Photo upload is not yet available');
   }
 
   const today    = new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });

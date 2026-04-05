@@ -66,9 +66,10 @@ export async function POST(request: Request) {
     if (toApply.length > 0) {
       await odoo.call('stock.quant', 'action_apply_inventory', [toApply.map((q: any) => q.id)]);
     }
-  } catch (err: any) {
-    console.error('QC Odoo write failed (still approved):', err.message);
-    warning = `Approved but Odoo sync failed: ${err.message}`;
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('QC Odoo write failed (still approved):', message);
+    warning = `Approved but Odoo sync failed: ${message}`;
   }
 
   return NextResponse.json({

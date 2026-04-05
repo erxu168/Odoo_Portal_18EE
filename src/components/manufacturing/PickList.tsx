@@ -57,8 +57,8 @@ export default function PickList({ onBack, onHome }: PickListProps) {
       setItems(data.items || []);
       setCategories(data.categories || []);
       setMoCount(data.mo_count || 0);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }

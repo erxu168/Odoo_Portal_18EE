@@ -39,8 +39,9 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(result);
-  } catch (err: any) {
-    console.error('Recipe categories error:', err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Recipe categories error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

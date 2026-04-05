@@ -84,7 +84,7 @@ export function initInventoryTables() {
 }
 
 function now(): string {
-  return new Date().toISOString();
+  return new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).replace(' ', 'T');
 }
 
 // ===
@@ -258,8 +258,7 @@ export function updateSessionStatus(id: number, status: SessionStatus, extra?: {
  */
 export function generateTodaySessions(): { created: number; skipped: number } {
   const db = getDb();
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
 
   const templates = listTemplates({ active: true });
   let created = 0;
@@ -298,8 +297,7 @@ export function generateTodaySessions(): { created: number; skipped: number } {
  */
 export function generateSessionForTemplate(templateId: number): number | null {
   const db = getDb();
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
 
   const tmpl = getTemplate(templateId);
   if (!tmpl || !tmpl.active) return null;

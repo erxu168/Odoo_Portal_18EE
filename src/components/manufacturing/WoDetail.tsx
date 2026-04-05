@@ -113,8 +113,8 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       return data;
-    } catch (err: any) {
-      setActionError(err.message || 'Something went wrong.');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Something went wrong.');
       throw err;
     } finally { setActionLoading(null); }
   }, [moId, woId]);
@@ -144,8 +144,8 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       if (data.error) throw new Error(data.error);
       setNumpadComp(null);
       await fetchData();
-    } catch (err: any) {
-      setActionError(err.message || 'Failed to update quantity');
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update quantity');
     } finally {
       setNumpadSaving(false);
     }

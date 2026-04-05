@@ -9,14 +9,12 @@ import { TopBarProvider } from '@/components/ui/TopBarContext';
 
 export const metadata: Metadata = {
   title: 'Krawings Portal',
-  description: 'SSAM Korean BBQ - Staff Portal',
+  description: 'Krawings - Staff Portal',
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   themeColor: '#2563EB',
 };
 

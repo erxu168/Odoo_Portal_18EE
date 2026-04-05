@@ -22,14 +22,15 @@ import {
 } from '@/lib/labeling-db';
 import { generateZPL, resolveLabelSize, sendToZebra } from '@/lib/zpl';
 import type { LabelData } from '@/types/labeling';
+import { parseOdooDate } from '@/lib/odoo';
 
 interface RouteParams { params: Promise<{ id: string }> }
 
 function formatDateDE(isoOrDate: string | null): string {
   if (!isoOrDate) return '-';
-  const d = new Date(isoOrDate);
-  if (isNaN(d.getTime())) return isoOrDate;
-  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const d = parseOdooDate(isoOrDate);
+  if (!d || isNaN(d.getTime())) return isoOrDate;
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Berlin' });
 }
 
 // --- GET: preview ZPL ---

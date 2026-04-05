@@ -61,6 +61,7 @@ export default function PdfDocumentCard({
   const [uploading, setUploading] = useState(false);
   const [viewLoading, setViewLoading] = useState(false);
   const [pdfData, setPdfData] = useState<{ base64: string; name: string } | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const accentStyles = {
     green: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-600', icon: '#16A34A' },
@@ -69,33 +70,36 @@ export default function PdfDocumentCard({
   }[accent];
 
   async function handleView() {
+    setErrorMsg(null);
     setViewLoading(true);
     try {
       const data = await onView();
       setPdfData(data);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to load document');
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to load document');
     } finally {
       setViewLoading(false);
     }
   }
 
   async function handleUpload(file: File) {
+    setErrorMsg(null);
     setUploading(true);
     try {
       await onUpload(file);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Upload failed');
+      setErrorMsg(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
     }
   }
 
   async function handlePrint() {
+    setErrorMsg(null);
     try {
       await onPrint();
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Print failed');
+      setErrorMsg(err instanceof Error ? err.message : 'Print failed');
     }
   }
 
@@ -115,6 +119,12 @@ export default function PdfDocumentCard({
     return (
       <div className="bg-white rounded-2xl p-4 shadow-sm">
         <span className="text-[13px] font-semibold text-gray-900 block mb-2">{label}</span>
+        {errorMsg && (
+          <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-2">
+            <span className="text-[12px] text-red-700 font-medium">{errorMsg}</span>
+            <button onClick={() => setErrorMsg(null)} className="text-red-500 text-[11px] font-bold ml-2">Dismiss</button>
+          </div>
+        )}
         <label className={`flex items-center justify-center gap-2 w-full py-3.5 rounded-xl border-[1.5px] border-dashed border-gray-300 text-[13px] font-semibold text-gray-500 active:bg-gray-50 cursor-pointer ${disabled || uploading ? 'opacity-50 pointer-events-none' : ''}`}>
           {uploading ? (
             <>
@@ -168,6 +178,13 @@ export default function PdfDocumentCard({
           <div className={`text-[11px] ${accentStyles.text} truncate`}>{documentName || 'Document uploaded'}</div>
         </div>
       </button>
+
+      {errorMsg && (
+        <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-3 py-2 mb-3">
+          <span className="text-[12px] text-red-700 font-medium">{errorMsg}</span>
+          <button onClick={() => setErrorMsg(null)} className="text-red-500 text-[11px] font-bold ml-2">Dismiss</button>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex gap-2">

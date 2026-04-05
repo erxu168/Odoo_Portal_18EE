@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
-import StandardFilter from '@/components/ui/StandardFilter';
+import DateFilter, { type DateRange } from '@/components/ui/DateFilter';
 
 interface ReviewSubmissionsProps {
   onViewSession: (sessionId: number) => void;
@@ -21,7 +21,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [reviewLoading, setReviewLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState<'approve' | 'reject' | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<{ from: string; to: string } | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
+  const [datePreset, setDatePreset] = useState('all');
   const [reviewQC, setReviewQC] = useState<any>(null);
   const [qcProduct, setQcProduct] = useState<any>(null);
   const [qcConfirm, setQcConfirm] = useState<'approve' | 'reject' | null>(null);
@@ -183,7 +184,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     const productName = qcProduct?.name || `Product #${reviewQC.product_id}`;
     const uom = qcProduct?.uom_id?.[1] || reviewQC.uom || 'Units';
     const catName = qcProduct?.categ_id?.[1] || '';
-    const submittedDate = reviewQC.submitted_at ? new Date(reviewQC.submitted_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+    const submittedDate = reviewQC.submitted_at ? new Date(reviewQC.submitted_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' }) : '';
 
     return (
       <div className="flex flex-col min-h-0 flex-1">
@@ -430,14 +431,14 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         <FilterBar>
           {['submitted', 'approved', 'rejected'].map((s) => (
             <FilterPill key={s} active={filter === s} label={s.charAt(0).toUpperCase() + s.slice(1)}
-              onClick={() => { setFilter(s); setDateRange(null); }} />
+              onClick={() => { setFilter(s); setDateRange(null); setDatePreset('all'); }} />
           ))}
         </FilterBar>
       </div>
 
       {showDateFilter && (
         <div className="px-4 pb-2">
-          <StandardFilter onChange={(range) => setDateRange(range)} />
+          <DateFilter value={datePreset} onChange={(preset, range) => { setDatePreset(preset); setDateRange(range); }} />
         </div>
       )}
 
@@ -488,7 +489,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                     <div className="flex items-center gap-3 text-[var(--fs-base)] text-gray-500 mb-3">
                       <span className="font-mono font-semibold text-gray-900">{qc.counted_qty} {qc.uom}</span>
                       <span>by user #{qc.counted_by}</span>
-                      <span>{new Date(qc.submitted_at).toLocaleDateString('de-DE')}</span>
+                      <span>{new Date(qc.submitted_at).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' })}</span>
                     </div>
                     {qc.status === 'pending' ? (
                       <button onClick={() => openQCReview(qc)} className="w-full py-2.5 rounded-xl bg-green-600 text-white text-[var(--fs-base)] font-bold active:bg-green-700 shadow-sm">Review</button>

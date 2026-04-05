@@ -53,10 +53,10 @@ export async function POST(request: Request) {
 
     const id = createUser(name, email, password, role || 'staff');
     return NextResponse.json({ id, message: 'User created' }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('POST /api/admin/users error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to create user' },
+      { error: error instanceof Error ? error.message : 'Failed to create user' },
       { status: 500 },
     );
   }

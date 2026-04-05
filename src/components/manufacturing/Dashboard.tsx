@@ -72,7 +72,7 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
       <div className="px-5 pt-5 pb-2">
         <div className="text-xl font-bold text-gray-900">{greeting} \uD83D\uDC4B</div>
         <div className="text-[var(--fs-xs)] text-gray-500 mt-1">
-          {new Date().toLocaleDateString('en-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          {new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
         </div>
       </div>
 

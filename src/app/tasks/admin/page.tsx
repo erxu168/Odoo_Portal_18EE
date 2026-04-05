@@ -16,8 +16,11 @@ export default function AdminPage() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
-        <section>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Notifications</p>
+        <section className="opacity-50 pointer-events-none">
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Notifications</p>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5">Coming Soon</span>
+          </div>
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             {[
               { label: 'Overdue task alerts',      desc: 'Notify manager when a task passes its deadline',     defaultOn: true  },
@@ -29,8 +32,8 @@ export default function AdminPage() {
                   <p className="font-semibold text-sm text-gray-800">{item.label}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{item.desc}</p>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" defaultChecked={item.defaultOn} className="sr-only peer" />
+                <label className="relative inline-flex items-center cursor-not-allowed">
+                  <input type="checkbox" defaultChecked={item.defaultOn} disabled className="sr-only peer" />
                   <div className="w-9 h-5 bg-gray-200 rounded-full peer peer-checked:bg-orange-500 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-4" />
                 </label>
               </div>
@@ -38,19 +41,22 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Cron schedule</p>
+        <section className="opacity-50 pointer-events-none">
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Cron schedule</p>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-orange-600 bg-orange-50 border border-orange-200 rounded-full px-2 py-0.5">Coming Soon</span>
+          </div>
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Deadline check interval</label>
               <div className="flex gap-2">
-                <input type="number" defaultValue={5} className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                <select className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+                <input type="number" defaultValue={5} disabled className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                <select disabled className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
                   <option>minutes</option><option>hours</option>
                 </select>
               </div>
             </div>
-            <button className="bg-orange-500 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-orange-600 transition-colors">
+            <button disabled className="bg-orange-500 text-white text-sm font-semibold px-4 py-2 rounded-xl opacity-50 cursor-not-allowed">
               Save Settings
             </button>
           </div>

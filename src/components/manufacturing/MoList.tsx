@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import DateFilter, { DateRange, isInRange } from '@/components/ui/DateFilter';
 import { useCompany } from '@/lib/company-context';
+import { parseOdooDate } from '@/lib/odoo';
 
 interface MoListProps {
   onSelect: (moId: number) => void;
@@ -42,8 +43,9 @@ const COMPLETED_FILTERS = [
 ];
 
 function fmtDate(d: string | null | false) {
-  if (!d) return null;
-  return new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const parsed = parseOdooDate(d);
+  if (!parsed) return null;
+  return parsed.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
 }
 
 export default function MoList({ onSelect, onCreate, onHome, mode = 'production' }: MoListProps) {
@@ -68,9 +70,9 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
       }
       const data = await res.json();
       setOrders(data.orders || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to fetch MOs:', err);
-      setError(err.message || 'Failed to load orders');
+      setError(err instanceof Error ? err.message : 'Failed to load orders');
     } finally {
       setLoading(false);
     }
@@ -165,8 +167,9 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                   const woDone = mo.work_order_done || 0;
                   const woTotal = mo.work_order_count || 0;
                   const pct = woTotal > 0 ? Math.round((woDone / woTotal) * 100) : (mo.product_qty > 0 ? Math.round((mo.qty_producing / mo.product_qty) * 100) : 0);
-                  const deadlineStr = mo.date_deadline
-                    ? new Date(mo.date_deadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                  const deadlineParsed = parseOdooDate(mo.date_deadline);
+                  const deadlineStr = deadlineParsed
+                    ? deadlineParsed.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' })
                     : null;
                   const doneDate = fmtDate(mo.date_finished);
                   const startDate = fmtDate(mo.date_start);
@@ -202,7 +205,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                       )}
                       <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-2 text-[var(--fs-xs)] text-gray-400">
                         {mo.create_date && <span>Created: {fmtDate(mo.create_date)}</span>}
-                        {mo.date_deadline && <span>Planned: {new Date(mo.date_deadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>}
+                        {mo.date_deadline && <span>Planned: {parseOdooDate(mo.date_deadline)?.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Berlin' })}</span>}
                         {mode === 'production' && startDate && mo.state === 'progress' && <span>Started: {startDate}</span>}
                         {mode === 'completed' && doneDate && <span className="text-green-600 font-semibold">Done: {doneDate}</span>}
                       </div>

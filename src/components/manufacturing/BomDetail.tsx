@@ -89,8 +89,8 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
       setCanMakeQty(data.can_make_qty || 0);
       setOperations(data.operations || []);
       setRawLines(data.bom?.bom_line_ids || []);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load recipe details');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load recipe details');
     } finally {
       setLoading(false);
     }
@@ -318,8 +318,8 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
       setEditing(false);
       setEditingOpId(null);
       await fetchBomDetail();
-    } catch (err: any) {
-      setSaveError(err.message || 'Failed to save');
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }

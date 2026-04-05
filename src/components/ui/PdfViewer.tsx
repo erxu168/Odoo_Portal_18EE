@@ -82,8 +82,8 @@ export default function PdfViewer({
       setTotalPages(pages);
       setCurrentPage(Math.min(initialPage, pages));
       setLoading(false);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load PDF');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load PDF');
       setLoading(false);
     }
   }, [fileUrl, fileData, initialPage]);
@@ -121,8 +121,8 @@ export default function PdfViewer({
       renderTaskRef.current = task;
       await task.promise;
       renderTaskRef.current = null;
-    } catch (err: any) {
-      if (err?.name !== 'RenderingCancelledException') console.error('PDF render error:', err);
+    } catch (err: unknown) {
+      if (!(err instanceof Error && err.name === 'RenderingCancelledException')) console.error('PDF render error:', err);
     } finally {
       setRendering(false);
     }

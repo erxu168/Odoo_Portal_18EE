@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { getCurrentUser, hasRole } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 import { createUser, getUserByApplicantId, getUserByEmail, logAudit } from '@/lib/db';
 import { sendCandidateWelcomeEmail } from '@/lib/email';
 
-function generateTempPassword(): string {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let pw = '';
-  for (let i = 0; i < 10; i++) {
-    pw += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return pw;
+function generateTempPassword(length = 12): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%';
+  const bytes = crypto.randomBytes(length);
+  return Array.from(bytes, b => chars[b % chars.length]).join('');
 }
 
 /**
@@ -97,8 +95,7 @@ export async function POST(req: NextRequest) {
         success: true,
         portal_user_id: portalUserId,
         email_sent: false,
-        temp_password: tempPassword,
-        warning: 'Portal account created but email failed to send. Share the password manually.',
+        warning: 'Account created but email failed. Use admin panel to reset password.',
       });
     }
 

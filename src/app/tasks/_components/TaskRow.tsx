@@ -23,7 +23,7 @@ const MODULE_ICONS: Record<string, string> = {
 };
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
 }
 
 export default function TaskRow({ task, taskListId, onComplete, onSubtaskToggle, onPhotoUpload }: Props) {
@@ -69,7 +69,7 @@ export default function TaskRow({ task, taskListId, onComplete, onSubtaskToggle,
     e.stopPropagation();
     setUploading(true);
     try { await onPhotoUpload(task.id); setPhoto(true); setError(null); }
-    catch { setError('Photo upload failed'); }
+    catch (err: unknown) { setError(err instanceof Error ? err.message : 'Photo upload failed'); }
     finally { setUploading(false); }
   }
 
