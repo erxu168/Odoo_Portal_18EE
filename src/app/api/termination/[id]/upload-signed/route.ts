@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 import { exec } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
@@ -23,6 +24,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    requireRole('manager');
     const { id } = await params;
     const termId = Number(id);
     const body = await req.json();
@@ -152,8 +154,8 @@ export async function POST(
     const updatedRecords = await odoo.read('kw.termination', [termId], TERMINATION_DETAIL_FIELDS);
     return NextResponse.json({ ok: true, data: updatedRecords[0] });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('POST /api/termination/[id]/upload-signed error:', message);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('POST /api/termination/[id]/upload-signed error:', err);
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, requireRole, AuthError } from '@/lib/auth';
 import type { CreateMoRequest } from '@/types/manufacturing';
 
 /**
@@ -9,6 +10,7 @@ import type { CreateMoRequest } from '@/types/manufacturing';
  */
 export async function GET(request: Request) {
   try {
+    requireAuth();
     const odoo = getOdoo();
     const { searchParams } = new URL(request.url);
     const state = searchParams.get('state');
@@ -73,10 +75,11 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({ orders: enriched, total: enriched.length });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('GET /api/manufacturing-orders error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch manufacturing orders' },
+      { error: 'Failed to fetch manufacturing orders' },
       { status: 500 },
     );
   }
@@ -88,6 +91,7 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
+    requireRole('manager');
     const odoo = getOdoo();
     const body: CreateMoRequest = await request.json();
 
@@ -126,10 +130,11 @@ export async function POST(request: Request) {
     ]);
 
     return NextResponse.json({ order: created[0], id: moId }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('POST /api/manufacturing-orders error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to create manufacturing order' },
+      { error: 'Failed to create manufacturing order' },
       { status: 500 },
     );
   }

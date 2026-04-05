@@ -14,7 +14,7 @@ import { cookies } from 'next/headers';
 
 const ODOO_URL = process.env.ODOO_URL || 'http://89.167.124.0:15069';
 const ODOO_DB = process.env.ODOO_DB || 'krawings';
-const ODOO_USER = process.env.ODOO_USER || 'biz@krawings.de';
+const ODOO_USER = process.env.ODOO_USER || '';
 const ODOO_PASSWORD = process.env.ODOO_PASSWORD || '';
 
 export const PORTAL_LANG_COOKIE = 'portal_lang';

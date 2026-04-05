@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, requireRole, AuthError } from '@/lib/auth';
 import type { ComponentAvailability } from '@/types/manufacturing';
 
 /**
@@ -72,6 +73,7 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
+    requireAuth();
     const odoo = getOdoo();
     const bomId = parseInt(params.id);
 
@@ -220,10 +222,11 @@ export async function GET(
       can_make_qty: Math.floor(canMakeQty * 100) / 100,
       operations: operations.sort((a: any, b: any) => (a.sequence || 0) - (b.sequence || 0)),
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error(`GET /api/boms/${params.id} error:`, error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch BOM detail' },
+      { error: 'Failed to fetch BOM detail' },
       { status: 500 },
     );
   }
@@ -239,6 +242,7 @@ export async function PATCH(
   { params }: { params: { id: string } },
 ) {
   try {
+    requireRole('manager');
     const bomId = parseInt(params.id);
     const odoo = getOdoo();
     const body = await req.json();
@@ -342,8 +346,8 @@ export async function PATCH(
 
     return NextResponse.json({ ok: true });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`PATCH /api/boms/${params.id} error:`, message);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error(`PATCH /api/boms/${params.id} error:`, error);
+    return NextResponse.json({ ok: false, error: 'Failed to update BOM' }, { status: 500 });
   }
 }

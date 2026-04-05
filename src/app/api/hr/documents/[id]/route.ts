@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
-import { OdooClient } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 import { DOCUMENT_TYPES } from '@/types/hr';
 
 /** Maps doc type key → employee field that tracks admin confirmation */
@@ -31,8 +31,7 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid document ID' }, { status: 400 });
     }
 
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
 
     const docs = await odoo.read('documents.document', [docId], [
       'name', 'mimetype', 'file_size', 'datas', 'res_model', 'res_id',
@@ -88,8 +87,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid document ID' }, { status: 400 });
     }
 
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
 
     // Fetch the doc to verify ownership and get metadata
     const docs = await odoo.read('documents.document', [docId], [

@@ -15,7 +15,8 @@ function ResetForm() {
 
   async function handleSubmit() {
     setError(null);
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return; }
+    if (password.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    if (!/\d/.test(password)) { setError('Password must contain at least one number.'); return; }
     if (password !== confirmPassword) { setError('Passwords do not match.'); return; }
 
     setLoading(true);
@@ -82,7 +83,7 @@ function ResetForm() {
         <div>
           <label className="block text-[12px] font-semibold text-gray-500 tracking-wider uppercase mb-1.5">New password</label>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-            placeholder="At least 6 characters" autoFocus
+            placeholder="At least 8 characters, including a number" autoFocus
             className="w-full h-14 px-4 rounded-xl bg-white border border-gray-200 text-[16px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all" />
         </div>
         <div>

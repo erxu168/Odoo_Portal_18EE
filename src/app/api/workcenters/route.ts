@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, AuthError } from '@/lib/auth';
 
 /**
  * GET /api/workcenters
@@ -7,6 +8,7 @@ import { getOdoo } from '@/lib/odoo';
  */
 export async function GET() {
   try {
+    requireAuth();
     const odoo = getOdoo();
     const wcs = await odoo.searchRead(
       'mrp.workcenter',
@@ -16,7 +18,8 @@ export async function GET() {
     );
     return NextResponse.json({ ok: true, workcenters: wcs });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('GET /api/workcenters error:', err);
+    return NextResponse.json({ ok: false, error: 'Failed to fetch workcenters' }, { status: 500 });
   }
 }

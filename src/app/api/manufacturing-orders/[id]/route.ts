@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, requireRole, AuthError } from '@/lib/auth';
 
 // Walk the wizard chain Odoo returns from button_mark_done. A wizard's
 // confirm method can itself return ANOTHER wizard — e.g. action_close_mo
@@ -142,6 +143,7 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
+    requireAuth();
     const odoo = getOdoo();
     const moId = parseInt(params.id);
 
@@ -242,10 +244,11 @@ export async function GET(
         product_tracking: productTracking,
       },
     });
-  } catch (error: any) {
-    console.error(`GET /api/manufacturing-orders/${params.id} error:`, error);
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('GET /api/manufacturing-orders/[id] error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch MO' },
+      { error: 'Failed to fetch manufacturing order' },
       { status: 500 },
     );
   }
@@ -256,6 +259,7 @@ export async function PATCH(
   { params }: { params: { id: string } },
 ) {
   try {
+    requireRole('manager');
     const odoo = getOdoo();
     const moId = parseInt(params.id);
     const body = await request.json();
@@ -392,10 +396,11 @@ export async function PATCH(
     ]);
 
     return NextResponse.json({ order: updated[0] });
-  } catch (error: any) {
-    console.error(`PATCH /api/manufacturing-orders/${params.id} error:`, error);
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('PATCH /api/manufacturing-orders/[id] error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to update MO' },
+      { error: 'Failed to update manufacturing order' },
       { status: 500 },
     );
   }

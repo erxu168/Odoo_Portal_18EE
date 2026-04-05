@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { getCurrentUser } from '@/lib/auth';
+import { requireAuth, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 
 /**
@@ -12,7 +12,7 @@ import { parseCompanyIds } from '@/lib/db';
  */
 export async function GET() {
   try {
-    const user = getCurrentUser();
+    const user = requireAuth();
     const odoo = getOdoo();
 
     // Fetch companies + warehouses from Odoo in parallel
@@ -40,7 +40,7 @@ export async function GET() {
     });
 
     // Filter by portal user's allowed companies (admin sees all)
-    if (user && user.role !== 'admin') {
+    if (user.role !== 'admin') {
       const allowed = parseCompanyIds(user.allowed_company_ids);
       if (allowed.length > 0) {
         enriched = enriched.filter(c => allowed.includes(c.id));
@@ -56,7 +56,7 @@ export async function GET() {
   } catch (error: any) {
     console.error('GET /api/companies error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch companies' },
+      { error: 'Failed to fetch companies' },
       { status: 500 }
     );
   }

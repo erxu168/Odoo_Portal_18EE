@@ -114,28 +114,41 @@ export async function POST(request: Request) {
       updateReceiptNote(receipt_id, delivery_note_photo);
     }
 
-    confirmReceipt(receipt_id, user.id, close_order !== false);
-
-    // Update stock in Odoo + upload delivery note
+    // Attempt Odoo stock sync BEFORE confirming receipt in SQLite
     const receipt = getReceipt(receipt_id);
+    const syncedLines: number[] = [];
+    const failedLines: { product_id: number; product_name: string; error: string }[] = [];
+    let odooWarning: string | null = null;
+
     if (receipt) {
       try {
         const odoo = getOdoo();
 
-        // 1. Update stock quantities
+        // 1. Update stock quantities — track each line individually
         for (const line of receipt.lines) {
           if (line.received_qty !== null && line.received_qty > 0) {
-            const quants = await odoo.searchRead('stock.quant',
-              [['product_id', '=', line.product_id], ['location_id', '=', receipt.location_id]],
-              ['id', 'quantity'], { limit: 1 });
+            try {
+              const quants = await odoo.searchRead('stock.quant',
+                [['product_id', '=', line.product_id], ['location_id', '=', receipt.location_id]],
+                ['id', 'quantity'], { limit: 1 });
 
-            if (quants && quants.length > 0) {
-              await odoo.write('stock.quant', [quants[0].id], {
-                inventory_quantity: quants[0].quantity + line.received_qty,
-              });
-              await odoo.call('stock.quant', 'action_apply_inventory', [[quants[0].id]]);
+              if (quants && quants.length > 0) {
+                await odoo.write('stock.quant', [quants[0].id], {
+                  inventory_quantity: quants[0].quantity + line.received_qty,
+                });
+                await odoo.call('stock.quant', 'action_apply_inventory', [[quants[0].id]]);
+              }
+              syncedLines.push(line.id);
+            } catch (lineErr: unknown) {
+              const msg = lineErr instanceof Error ? lineErr.message : String(lineErr);
+              console.error(`Odoo stock write failed for product ${line.product_id} (${line.product_name}):`, msg);
+              failedLines.push({ product_id: line.product_id, product_name: line.product_name, error: msg });
             }
           }
+        }
+
+        if (failedLines.length > 0) {
+          odooWarning = `${failedLines.length} line(s) failed to sync to Odoo`;
         }
 
         // 2. Upload delivery note photo to Odoo as log note on purchase.order
@@ -156,9 +169,9 @@ export async function POST(request: Request) {
             });
 
             // Build receipt summary for the log note
-            const receivedLines = receipt.lines.filter((l: any) => l.received_qty !== null && l.received_qty > 0);
-            const issueLines = receipt.lines.filter((l: any) => l.has_issue === 1);
-            const notReceived = receipt.lines.filter((l: any) => l.received_qty === null || l.received_qty === 0);
+            const receivedLines = receipt.lines.filter((l: { received_qty: number | null }) => l.received_qty !== null && l.received_qty > 0);
+            const issueLines = receipt.lines.filter((l: { has_issue: number }) => l.has_issue === 1);
+            const notReceived = receipt.lines.filter((l: { received_qty: number | null }) => l.received_qty === null || l.received_qty === 0);
 
             let noteHtml = `<p><strong>Receipt confirmed by ${user.name}</strong></p>`;
             noteHtml += `<p>${receivedLines.length} items received`;
@@ -197,9 +210,9 @@ export async function POST(request: Request) {
         // 3. Post receipt summary even without photo
         if (order?.odoo_po_id && !delivery_note_photo) {
           try {
-            const receivedLines = receipt.lines.filter((l: any) => l.received_qty !== null && l.received_qty > 0);
-            const issueLines = receipt.lines.filter((l: any) => l.has_issue === 1);
-            const notReceived = receipt.lines.filter((l: any) => l.received_qty === null || l.received_qty === 0);
+            const receivedLines = receipt.lines.filter((l: { received_qty: number | null }) => l.received_qty !== null && l.received_qty > 0);
+            const issueLines = receipt.lines.filter((l: { has_issue: number }) => l.has_issue === 1);
+            const notReceived = receipt.lines.filter((l: { received_qty: number | null }) => l.received_qty === null || l.received_qty === 0);
 
             let noteHtml = `<p><strong>Receipt confirmed by ${user.name}</strong></p>`;
             noteHtml += `<p>${receivedLines.length} items received`;
@@ -228,11 +241,35 @@ export async function POST(request: Request) {
         }
 
       } catch (e) {
-        console.error('Failed to update Odoo stock:', e);
+        console.error('Failed to connect to Odoo for stock update:', e);
+        // Total Odoo failure — do NOT confirm receipt
+        return NextResponse.json({
+          error: 'Odoo connection failed — receipt NOT confirmed',
+          synced_count: syncedLines.length,
+        }, { status: 502 });
       }
     }
 
-    return NextResponse.json({ message: 'Receipt confirmed and stock updated' });
+    // If ALL receivable lines failed, do NOT confirm
+    const receivableLines = receipt?.lines.filter((l: { received_qty: number | null }) => l.received_qty !== null && l.received_qty > 0) || [];
+    if (receivableLines.length > 0 && syncedLines.length === 0) {
+      return NextResponse.json({
+        error: 'All Odoo stock writes failed — receipt NOT confirmed',
+        failed_lines: failedLines,
+      }, { status: 502 });
+    }
+
+    // Confirm receipt in SQLite AFTER Odoo sync (fully or partially)
+    confirmReceipt(receipt_id, user.id, close_order !== false);
+
+    return NextResponse.json({
+      message: odooWarning
+        ? `Receipt confirmed with warnings: ${odooWarning}`
+        : 'Receipt confirmed and stock updated',
+      warning: odooWarning,
+      synced_count: syncedLines.length,
+      failed_lines: failedLines.length > 0 ? failedLines : undefined,
+    });
   }
 
   if (action === 'delivery_note') {

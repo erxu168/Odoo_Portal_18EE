@@ -193,12 +193,20 @@ export function createPrinter(data: CreatePrinterRequest): number {
   return r.lastInsertRowid as number;
 }
 
+const ALLOWED_PRINTER_FIELDS = [
+  'name', 'ip_address', 'port', 'location_id', 'location_name',
+  'dpi', 'default_label_size_id', 'custom_width_mm', 'custom_height_mm',
+  'active', 'updated_at',
+];
+
 export function updatePrinter(id: number, data: Partial<CreatePrinterRequest> & { active?: number }) {
   ensureLabelingTables();
   const sets: string[] = [];
   const vals: unknown[] = [];
   const fields: Record<string, unknown> = { ...data, updated_at: nowISO() };
-  for (const [k, v] of Object.entries(fields)) {
+  // Only allow known column names to prevent SQL injection via key interpolation
+  const safeEntries = Object.entries(fields).filter(([k]) => ALLOWED_PRINTER_FIELDS.includes(k));
+  for (const [k, v] of safeEntries) {
     if (v !== undefined) { sets.push(`${k} = ?`); vals.push(v); }
   }
   if (sets.length === 0) return;
