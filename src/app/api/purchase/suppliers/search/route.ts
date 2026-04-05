@@ -38,8 +38,8 @@ export async function GET(request: Request) {
     const db = getDb();
     const existing = db.prepare(
       'SELECT odoo_partner_id FROM purchase_suppliers WHERE active = 1'
-    ).all() as any[];
-    const existingIds = new Set(existing.map((e: any) => e.odoo_partner_id));
+    ).all() as { odoo_partner_id: number }[];
+    const existingIds = new Set(existing.map((e) => e.odoo_partner_id));
 
     const suppliers = partners.map((p: any) => ({
       odoo_id: p.id,

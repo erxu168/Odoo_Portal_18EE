@@ -158,7 +158,8 @@ export default function BarcodeScanner({
             fps: 15,
             qrbox: { width: 300, height: 150 },
             disableFlip: false,
-            ...(({ experimentalFeatures: { useBarCodeDetectorIfSupported: true } }) as any),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- html5-qrcode experimentalFeatures not in typedefs
+            ...(({ experimentalFeatures: { useBarCodeDetectorIfSupported: true } }) as Record<string, unknown>),
           },
           (decoded: string) => {
             processBarcodeRef.current(decoded);
@@ -174,21 +175,23 @@ export default function BarcodeScanner({
               ? videoEl.srcObject.getVideoTracks()[0]
               : null;
             if (track) {
-              const caps = track.getCapabilities?.() as any;
-              const advConstraints: any[] = [];
-              if (caps?.focusMode?.includes('continuous')) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- MediaTrackCapabilities extended props not in TS typedefs
+              const caps = track.getCapabilities?.() as Record<string, unknown> | undefined;
+              const advConstraints: Record<string, unknown>[] = [];
+              if (caps?.focusMode && Array.isArray(caps.focusMode) && (caps.focusMode as string[]).includes('continuous')) {
                 advConstraints.push({ focusMode: 'continuous' });
               }
-              if (caps?.zoom) {
+              if (caps?.zoom && typeof caps.zoom === 'object') {
                 // slight zoom helps barcode readability
-                advConstraints.push({ zoom: Math.min(caps.zoom.max, 2.0) });
+                const zoomCaps = caps.zoom as { max: number };
+                advConstraints.push({ zoom: Math.min(zoomCaps.max, 2.0) });
               }
               if (advConstraints.length > 0) {
                 await track.applyConstraints({
-                  advanced: advConstraints,
+                  advanced: advConstraints as MediaTrackConstraintSet[],
                   width: { ideal: 1920 },
                   height: { ideal: 1080 },
-                } as any);
+                });
               }
             }
           } catch (_focusErr) {

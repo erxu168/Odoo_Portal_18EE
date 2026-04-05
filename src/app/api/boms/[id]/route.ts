@@ -171,10 +171,10 @@ export async function GET(
       categMap[p.id] = parts[parts.length - 1];
     }
 
-    const components = await resolveBomLines(odoo, bom.bom_line_ids, stockMap);
+    const components: (ComponentAvailability & { category?: string })[] = await resolveBomLines(odoo, bom.bom_line_ids, stockMap);
 
     for (const comp of components) {
-      (comp as any).category = categMap[comp.product_id] || 'Other';
+      comp.category = categMap[comp.product_id] || 'Other';
     }
 
     let canMakeQty = Infinity;

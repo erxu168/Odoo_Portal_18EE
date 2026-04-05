@@ -15,6 +15,66 @@ function db(): Database.Database {
 }
 
 // ============================================================
+// ROW TYPES (SQLite result shapes)
+// ============================================================
+interface SupplierRow {
+  id: number; odoo_partner_id: number; name: string; email: string; phone: string;
+  send_method: string; whatsapp_number: string; min_order_value: number;
+  order_days: string; delivery_days: string; lead_time_days: number;
+  approval_required: number; location_id: number; active: number; created_at: string;
+}
+
+interface GuideRow {
+  id: number; supplier_id: number; location_id: number; name: string; created_at: string;
+}
+
+interface CartRow {
+  id: number; location_id: number; supplier_id: number; status: string;
+  created_by: number; updated_at: string; created_at: string;
+}
+
+interface CartJoinRow extends CartRow {
+  supplier_name: string; send_method: string; min_order_value: number; approval_required: number;
+}
+
+interface CartItemRow {
+  id: number; cart_id: number; product_id: number; product_name: string;
+  product_uom: string; quantity: number; price: number; added_by: number; updated_at: string;
+}
+
+interface OrderRow {
+  id: number; odoo_po_id: number | null; odoo_po_name: string | null;
+  supplier_id: number; location_id: number; status: string; delivery_date: string | null;
+  order_note: string; total_amount: number; ordered_by: number; approved_by: number | null;
+  cancelled_by: number | null; cancelled_at: string | null; sent_at: string | null;
+  created_at: string; supplier_name: string;
+  lines: OrderLineRow[];
+}
+
+interface OrderLineRow {
+  id: number; order_id: number; product_id: number; product_name: string;
+  product_uom: string; quantity: number; price: number; subtotal: number;
+}
+
+interface ReceiptRow {
+  id: number; order_id: number; location_id: number; status: string;
+  received_by: number; confirmed_by: number | null; delivery_note_photo: string | null;
+  notes: string; created_at: string; confirmed_at: string | null;
+  lines: ReceiptLineRow[];
+}
+
+interface ReceiptLineRow {
+  id: number; receipt_id: number; order_line_id: number; product_id: number;
+  product_name: string; product_uom: string; ordered_qty: number;
+  received_qty: number | null; difference: number; has_issue: number;
+  issue_type: string | null; issue_photo: string | null; issue_notes: string | null;
+}
+
+interface CountRow { c: number; }
+
+interface SettingRow { value: string; }
+
+// ============================================================
 // SCHEMA INIT
 // ============================================================
 export function initPurchaseTables() {
@@ -169,17 +229,17 @@ export function initPurchaseTables() {
 // ============================================================
 // SUPPLIERS
 // ============================================================
-export function listSuppliers(locationId?: number) {
+export function listSuppliers(locationId?: number): SupplierRow[] {
   if (locationId) {
     return db().prepare(
       'SELECT * FROM purchase_suppliers WHERE active = 1 AND (location_id = ? OR location_id = 0) ORDER BY name'
-    ).all(locationId);
+    ).all(locationId) as SupplierRow[];
   }
-  return db().prepare('SELECT * FROM purchase_suppliers WHERE active = 1 ORDER BY name').all();
+  return db().prepare('SELECT * FROM purchase_suppliers WHERE active = 1 ORDER BY name').all() as SupplierRow[];
 }
 
-export function getSupplier(id: number) {
-  return db().prepare('SELECT * FROM purchase_suppliers WHERE id = ?').get(id);
+export function getSupplier(id: number): SupplierRow | undefined {
+  return db().prepare('SELECT * FROM purchase_suppliers WHERE id = ?').get(id) as SupplierRow | undefined;
 }
 
 export function createSupplier(data: {
@@ -200,12 +260,12 @@ export function createSupplier(data: {
   return result.lastInsertRowid as number;
 }
 
-export function updateSupplier(id: number, data: Record<string, any>) {
+export function updateSupplier(id: number, data: Record<string, unknown>) {
   const allowed = ['name','email','phone','send_method','whatsapp_number','min_order_value','order_days','delivery_days','lead_time_days','approval_required','location_id','active'];
   const sets: string[] = [];
-  const vals: any[] = [];
+  const vals: (string | number | null)[] = [];
   for (const [k, v] of Object.entries(data)) {
-    if (v !== undefined && allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v); }
+    if (v !== undefined && allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v as string | number | null); }
   }
   if (sets.length === 0) return;
   vals.push(id);
@@ -218,7 +278,7 @@ export function updateSupplier(id: number, data: Record<string, any>) {
 export function getGuide(supplierId: number, locationId: number) {
   return db().prepare(
     'SELECT * FROM purchase_order_guides WHERE supplier_id = ? AND location_id = ?'
-  ).get(supplierId, locationId) as any;
+  ).get(supplierId, locationId) as GuideRow | undefined;
 }
 
 export function getGuideWithItems(supplierId: number, locationId: number) {
@@ -263,35 +323,35 @@ export function updateGuideItemPrice(itemId: number, price: number, source: stri
 export function getOrCreateCart(locationId: number, supplierId: number, userId: number) {
   let cart = db().prepare(
     "SELECT * FROM purchase_carts WHERE location_id = ? AND supplier_id = ? AND status = 'draft'"
-  ).get(locationId, supplierId) as any;
+  ).get(locationId, supplierId) as CartRow | undefined;
   if (!cart) {
     const now = nowISO();
     const result = db().prepare(
       'INSERT INTO purchase_carts (location_id, supplier_id, status, created_by, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?)'
     ).run(locationId, supplierId, 'draft', userId, now, now);
-    cart = db().prepare('SELECT * FROM purchase_carts WHERE id = ?').get(result.lastInsertRowid);
+    cart = db().prepare('SELECT * FROM purchase_carts WHERE id = ?').get(result.lastInsertRowid) as CartRow | undefined;
   }
   return cart;
 }
 
 export function getCartWithItems(cartId: number) {
-  const cart = db().prepare('SELECT * FROM purchase_carts WHERE id = ?').get(cartId) as any;
+  const cart = db().prepare('SELECT * FROM purchase_carts WHERE id = ?').get(cartId) as CartRow | undefined;
   if (!cart) return null;
   const items = db().prepare(
     'SELECT * FROM purchase_cart_items WHERE cart_id = ? AND quantity > 0 ORDER BY product_name'
-  ).all(cartId);
+  ).all(cartId) as CartItemRow[];
   return { ...cart, items };
 }
 
 export function getAllCartsForLocation(locationId: number) {
   const carts = db().prepare(
     "SELECT c.*, s.name as supplier_name, s.send_method, s.min_order_value, s.approval_required FROM purchase_carts c JOIN purchase_suppliers s ON s.id = c.supplier_id WHERE c.location_id = ? AND c.status = 'draft'"
-  ).all(locationId) as any[];
+  ).all(locationId) as CartJoinRow[];
   return carts.map(cart => {
     const items = db().prepare(
       'SELECT * FROM purchase_cart_items WHERE cart_id = ? AND quantity > 0'
-    ).all(cart.id);
-    const total = items.reduce((sum: number, i: any) => sum + (i.quantity * i.price), 0);
+    ).all(cart.id) as CartItemRow[];
+    const total = items.reduce((sum: number, i: CartItemRow) => sum + (i.quantity * i.price), 0);
     return { ...cart, items, item_count: items.length, total };
   });
 }
@@ -302,7 +362,7 @@ export function upsertCartItem(cartId: number, productId: number, quantity: numb
   const now = nowISO();
   const existing = db().prepare(
     'SELECT id FROM purchase_cart_items WHERE cart_id = ? AND product_id = ?'
-  ).get(cartId, productId) as any;
+  ).get(cartId, productId) as { id: number } | undefined;
 
   if (existing) {
     if (quantity <= 0) {
@@ -365,18 +425,18 @@ export function createOrder(data: {
   return createOrderTx();
 }
 
-export function getOrder(id: number) {
+export function getOrder(id: number): OrderRow | null {
   const order = db().prepare(
     'SELECT o.*, s.name as supplier_name FROM purchase_orders o JOIN purchase_suppliers s ON s.id = o.supplier_id WHERE o.id = ?'
-  ).get(id) as any;
+  ).get(id) as OrderRow | undefined;
   if (!order) return null;
-  order.lines = db().prepare('SELECT * FROM purchase_order_lines WHERE order_id = ?').all(id);
+  order.lines = db().prepare('SELECT * FROM purchase_order_lines WHERE order_id = ?').all(id) as OrderLineRow[];
   return order;
 }
 
 export function listOrders(locationId: number, options?: { status?: string; limit?: number }) {
   let sql = 'SELECT o.*, s.name as supplier_name FROM purchase_orders o JOIN purchase_suppliers s ON s.id = o.supplier_id WHERE o.location_id = ?';
-  const params: any[] = [locationId];
+  const params: (string | number)[] = [locationId];
   if (options?.status) { sql += ' AND o.status = ?'; params.push(options.status); }
   sql += ' ORDER BY o.created_at DESC';
   if (options?.limit) { sql += ' LIMIT ?'; params.push(options.limit); }
@@ -385,7 +445,7 @@ export function listOrders(locationId: number, options?: { status?: string; limi
 
 export function updateOrderStatus(id: number, status: string, extra?: { odoo_po_id?: number; odoo_po_name?: string; approved_by?: number; sent_at?: string }) {
   const sets = ['status = ?'];
-  const vals: any[] = [status];
+  const vals: (string | number)[] = [status];
   if (extra?.odoo_po_id !== undefined) { sets.push('odoo_po_id = ?'); vals.push(extra.odoo_po_id); }
   if (extra?.odoo_po_name !== undefined) { sets.push('odoo_po_name = ?'); vals.push(extra.odoo_po_name); }
   if (extra?.approved_by !== undefined) { sets.push('approved_by = ?'); vals.push(extra.approved_by); }
@@ -405,7 +465,7 @@ export function checkDuplicateOrder(supplierId: number, locationId: number): boo
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
   const row = db().prepare(
     "SELECT COUNT(*) as c FROM purchase_orders WHERE supplier_id = ? AND location_id = ? AND status != 'cancelled' AND created_at >= ?"
-  ).get(supplierId, locationId, today + 'T00:00:00') as any;
+  ).get(supplierId, locationId, today + 'T00:00:00') as CountRow | undefined;
   return (row?.c || 0) > 0;
 }
 
@@ -413,9 +473,9 @@ export function countPendingApprovals(locationId?: number) {
   if (locationId) {
     return (db().prepare(
       "SELECT COUNT(*) as c FROM purchase_orders WHERE status = 'pending_approval' AND location_id = ?"
-    ).get(locationId) as any).c;
+    ).get(locationId) as CountRow).c;
   }
-  return (db().prepare("SELECT COUNT(*) as c FROM purchase_orders WHERE status = 'pending_approval'").get() as any).c;
+  return (db().prepare("SELECT COUNT(*) as c FROM purchase_orders WHERE status = 'pending_approval'").get() as CountRow).c;
 }
 
 // ============================================================
@@ -445,19 +505,19 @@ export function createReceipt(orderId: number, receivedBy: number) {
   return createReceiptTx();
 }
 
-export function getReceipt(id: number) {
-  const receipt = db().prepare('SELECT * FROM purchase_receipts WHERE id = ?').get(id) as any;
+export function getReceipt(id: number): ReceiptRow | null {
+  const receipt = db().prepare('SELECT * FROM purchase_receipts WHERE id = ?').get(id) as ReceiptRow | undefined;
   if (!receipt) return null;
-  receipt.lines = db().prepare('SELECT * FROM purchase_receipt_lines WHERE receipt_id = ?').all(id);
+  receipt.lines = db().prepare('SELECT * FROM purchase_receipt_lines WHERE receipt_id = ?').all(id) as ReceiptLineRow[];
   return receipt;
 }
 
 export function getReceiptByOrder(orderId: number) {
   const receipt = db().prepare(
     "SELECT * FROM purchase_receipts WHERE order_id = ? ORDER BY created_at DESC LIMIT 1"
-  ).get(orderId) as any;
+  ).get(orderId) as ReceiptRow | undefined;
   if (!receipt) return null;
-  receipt.lines = db().prepare('SELECT * FROM purchase_receipt_lines WHERE receipt_id = ?').all(receipt.id);
+  receipt.lines = db().prepare('SELECT * FROM purchase_receipt_lines WHERE receipt_id = ?').all(receipt.id) as ReceiptLineRow[];
   return receipt;
 }
 
@@ -466,12 +526,12 @@ export function updateReceiptLine(lineId: number, data: {
   issue_photo?: string; issue_notes?: string;
 }) {
   const sets: string[] = [];
-  const vals: any[] = [];
+  const vals: (string | number | null)[] = [];
   if (data.received_qty !== undefined) { sets.push('received_qty = ?'); vals.push(data.received_qty); }
   if (data.has_issue !== undefined) { sets.push('has_issue = ?'); vals.push(data.has_issue); }
-  if (data.issue_type !== undefined) { sets.push('issue_type = ?'); vals.push(data.issue_type); }
-  if (data.issue_photo !== undefined) { sets.push('issue_photo = ?'); vals.push(data.issue_photo); }
-  if (data.issue_notes !== undefined) { sets.push('issue_notes = ?'); vals.push(data.issue_notes); }
+  if (data.issue_type !== undefined) { sets.push('issue_type = ?'); vals.push(data.issue_type ?? null); }
+  if (data.issue_photo !== undefined) { sets.push('issue_photo = ?'); vals.push(data.issue_photo ?? null); }
+  if (data.issue_notes !== undefined) { sets.push('issue_notes = ?'); vals.push(data.issue_notes ?? null); }
   if (sets.length === 0) return;
   vals.push(lineId);
   db().prepare(`UPDATE purchase_receipt_lines SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
@@ -505,7 +565,7 @@ export function updateReceiptNote(receiptId: number, photo: string) {
 // SETTINGS
 // ============================================================
 export function getSetting(key: string): string {
-  const row = db().prepare('SELECT value FROM purchase_settings WHERE key = ?').get(key) as any;
+  const row = db().prepare('SELECT value FROM purchase_settings WHERE key = ?').get(key) as SettingRow | undefined;
   return row?.value || '';
 }
 

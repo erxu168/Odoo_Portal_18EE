@@ -56,6 +56,20 @@ export default function EditStep({ step, stepIndex, ingredients = [], onSave, on
     e.target.value = '';
   }
 
+  function handleFilePickerPhoto(file: File) {
+    if (file.size > MAX_PHOTO_BYTES) {
+      setToast({ msg: `Photo too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max ${MAX_PHOTO_MB}MB.`, type: 'error' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPhotos(prev => [...prev, reader.result as string]);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+
   // P7: Timer increment helpers
   function addTimerSeconds(sec: number) {
     setTimerSec(prev => Math.max(0, prev + sec));
@@ -161,7 +175,7 @@ export default function EditStep({ step, stepIndex, ingredients = [], onSave, on
                 </button>
               </div>
             ))}
-            <FilePicker onFile={(file, dataUrl) => onFileChange({ target: { files: [file] } } as any)} accept="image/*" size="sm" label="Add photo">
+            <FilePicker onFile={(file) => handleFilePickerPhoto(file)} accept="image/*" size="sm" label="Add photo">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400"><path d="M12 5v14M5 12h14"/></svg>
               <span className="text-[11px] text-gray-400 font-semibold mt-1">Add photo</span>
             </FilePicker>

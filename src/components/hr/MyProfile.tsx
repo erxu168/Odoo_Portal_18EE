@@ -102,7 +102,7 @@ function m2oId(v: unknown): number {
 }
 
 function getFieldValue(emp: EmployeeData, key: string): string {
-  const val = (emp as any)[key];
+  const val = emp[key as keyof EmployeeData];
   if (val === false || val === null || val === undefined) return '';
   if (Array.isArray(val)) return val[1]; // M2O
   return String(val);
@@ -391,8 +391,8 @@ export default function MyProfile({ onBack, onEdit }: Props) {
       <SectionTitle text="Personal" />
       <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200">
         <EditableRow label="Birthday" fieldKey="birthday" value={emp.birthday || ''} type="date" mono />
-        <EditableRow label="Nickname" fieldKey="nick_name" value={(emp as any).nick_name || ''} />
-        <EditableRow label="Birth name" fieldKey="kw_geburtsname" value={(emp as any).kw_geburtsname || ''} />
+        <EditableRow label="Nickname" fieldKey="nick_name" value={emp.nick_name || ''} />
+        <EditableRow label="Birth name" fieldKey="kw_geburtsname" value={emp.kw_geburtsname || ''} />
         <EditableRow label="Gender" fieldKey="gender" value={emp.gender || ''} type="select" options={GENDER_OPTIONS} />
         <EditableRow label="Place of birth" fieldKey="place_of_birth" value={emp.place_of_birth || ''} />
         <EditableRow label="Country of birth" fieldKey="country_of_birth" value={m2oName(emp.country_of_birth)} type="country" countryId={m2oId(emp.country_of_birth)} />
@@ -434,44 +434,44 @@ export default function MyProfile({ onBack, onEdit }: Props) {
       {/* Tax */}
       <SectionTitle text="Tax" />
       <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200">
-        <EditableRow label="Tax ID" fieldKey="kw_steuer_id" value={(emp as any).kw_steuer_id || ''} mono />
-        <EditableRow label="Tax class" fieldKey="kw_steuerklasse" value={TAX_CLASSES[(emp as any).kw_steuerklasse] || ''} type="select" options={TAX_CLASS_OPTIONS} />
-        <EditableRow label="Konfession" fieldKey="kw_konfession" value={KONFESSION_LABELS[(emp as any).kw_konfession] || ''} type="select" options={KONFESSION_OPTIONS} />
-        <EditableRow label="Kinderfreibetrag" fieldKey="kw_kinderfreibetrag" value={String((emp as any).kw_kinderfreibetrag || 0)} type="select" options={KINDER_OPTIONS} />
+        <EditableRow label="Tax ID" fieldKey="kw_steuer_id" value={emp.kw_steuer_id || ''} mono />
+        <EditableRow label="Tax class" fieldKey="kw_steuerklasse" value={TAX_CLASSES[emp.kw_steuerklasse as string] || ''} type="select" options={TAX_CLASS_OPTIONS} />
+        <EditableRow label="Konfession" fieldKey="kw_konfession" value={KONFESSION_LABELS[emp.kw_konfession] || ''} type="select" options={KONFESSION_OPTIONS} />
+        <EditableRow label="Kinderfreibetrag" fieldKey="kw_kinderfreibetrag" value={String(emp.kw_kinderfreibetrag || 0)} type="select" options={KINDER_OPTIONS} />
       </div>
 
       {/* Insurance */}
       <SectionTitle text="Insurance" />
       <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200">
         <EditableRow label="SV-Nr." fieldKey="ssnid" value={emp.ssnid || ''} mono />
-        <EditableRow label="Krankenkasse" fieldKey="kw_krankenkasse_name" value={(emp as any).kw_krankenkasse_name || ''} />
-        <EditableRow label="Insurance type" fieldKey="kw_kv_typ" value={KV_TYPES[(emp as any).kw_kv_typ] || ''} type="select" options={KV_OPTIONS} />
+        <EditableRow label="Krankenkasse" fieldKey="kw_krankenkasse_name" value={emp.kw_krankenkasse_name || ''} />
+        <EditableRow label="Insurance type" fieldKey="kw_kv_typ" value={KV_TYPES[emp.kw_kv_typ as string] || ''} type="select" options={KV_OPTIONS} />
       </div>
 
       {/* Employment (read-only — managed by HR) */}
       <SectionTitle text="Employment" />
       <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200">
-        <EditableRow label="Start date" fieldKey="kw_beschaeftigungsbeginn" value={(emp as any).kw_beschaeftigungsbeginn || ''} type="readonly" mono />
-        <EditableRow label="Weekly hours" fieldKey="kw_wochenarbeitszeit" value={(emp as any).kw_wochenarbeitszeit ? String((emp as any).kw_wochenarbeitszeit) + 'h' : ''} type="readonly" />
-        <EditableRow label="Fixed-term until" fieldKey="kw_befristung_bis" value={(emp as any).kw_befristung_bis || ''} type="readonly" mono />
-        <EditableRow label="Probation until" fieldKey="kw_probezeit_bis" value={(emp as any).kw_probezeit_bis || ''} type="readonly" mono />
+        <EditableRow label="Start date" fieldKey="kw_beschaeftigungsbeginn" value={emp.kw_beschaeftigungsbeginn || ''} type="readonly" mono />
+        <EditableRow label="Weekly hours" fieldKey="kw_wochenarbeitszeit" value={emp.kw_wochenarbeitszeit ? String(emp.kw_wochenarbeitszeit) + 'h' : ''} type="readonly" />
+        <EditableRow label="Fixed-term until" fieldKey="kw_befristung_bis" value={emp.kw_befristung_bis || ''} type="readonly" mono />
+        <EditableRow label="Probation until" fieldKey="kw_probezeit_bis" value={emp.kw_probezeit_bis || ''} type="readonly" mono />
       </div>
 
       {/* Work permit */}
       <SectionTitle text="Work permit & ID" />
       <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200">
-        <EditableRow label="ID number" fieldKey="identification_id" value={(emp as any).identification_id || ''} mono />
-        <EditableRow label="Passport" fieldKey="passport_id" value={(emp as any).passport_id || ''} mono />
-        <EditableRow label="Permit type" fieldKey="kw_aufenthaltstitel_typ" value={(emp as any).kw_aufenthaltstitel_typ || ''} type="readonly" />
+        <EditableRow label="ID number" fieldKey="identification_id" value={emp.identification_id || ''} mono />
+        <EditableRow label="Passport" fieldKey="passport_id" value={emp.passport_id || ''} mono />
+        <EditableRow label="Permit type" fieldKey="kw_aufenthaltstitel_typ" value={emp.kw_aufenthaltstitel_typ || ''} type="readonly" />
         <EditableRow label="Visa expires" fieldKey="visa_expire" value={emp.visa_expire || ''} type="date" mono />
-        <EditableRow label="Work permit expires" fieldKey="work_permit_expiration_date" value={(emp as any).work_permit_expiration_date || ''} type="date" mono />
+        <EditableRow label="Work permit expires" fieldKey="work_permit_expiration_date" value={emp.work_permit_expiration_date || ''} type="date" mono />
       </div>
 
       {/* Health */}
       <SectionTitle text="Health certificate" />
       <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200 mb-6">
-        <EditableRow label="Issued" fieldKey="kw_gesundheitszeugnis_datum" value={(emp as any).kw_gesundheitszeugnis_datum || ''} type="date" mono />
-        <EditableRow label="Expires" fieldKey="kw_gesundheitszeugnis_ablauf" value={(emp as any).kw_gesundheitszeugnis_ablauf || ''} type="date" mono />
+        <EditableRow label="Issued" fieldKey="kw_gesundheitszeugnis_datum" value={emp.kw_gesundheitszeugnis_datum || ''} type="date" mono />
+        <EditableRow label="Expires" fieldKey="kw_gesundheitszeugnis_ablauf" value={emp.kw_gesundheitszeugnis_ablauf || ''} type="date" mono />
       </div>
 
       {/* Toast */}

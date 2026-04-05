@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import InfoButton from "@/components/hr/InfoButton";
-import type { EmployeeData } from "@/types/hr";
+import type { EmployeeData, KVTyp } from "@/types/hr";
 import { FIELD_EXPLAINERS } from "@/types/hr";
 
 interface Props {
@@ -51,7 +51,7 @@ export default function StepInsurance({ employee, onNext, onPrev, saving }: Prop
           <div className="flex items-center gap-1.5 mb-1.5">
             <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">Insurance type</span>
           </div>
-          <select className="form-input" value={kvTyp} onChange={e => setKvTyp(e.target.value as any)}>
+          <select className="form-input" value={kvTyp} onChange={e => setKvTyp(e.target.value as KVTyp | '')}>
             <option value="">Select type...</option>
             <option value="gesetzlich">Public insurance (Gesetzlich / GKV)</option>
             <option value="privat">Private insurance (Privat / PKV)</option>

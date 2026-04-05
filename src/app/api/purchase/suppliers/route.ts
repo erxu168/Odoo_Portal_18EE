@@ -18,10 +18,10 @@ export async function GET(request: Request) {
   // Count guide items per supplier
   const { getDb } = await import('@/lib/db');
   const db = getDb();
-  const enriched = (suppliers as any[]).map(s => {
+  const enriched = suppliers.map(s => {
     const guideCount = db.prepare(
       'SELECT COUNT(*) as c FROM purchase_guide_items gi JOIN purchase_order_guides g ON g.id = gi.guide_id WHERE g.supplier_id = ? AND g.location_id = ?'
-    ).get(s.id, locationId ? parseInt(locationId) : s.location_id) as any;
+    ).get(s.id, locationId ? parseInt(locationId) : s.location_id) as { c: number } | undefined;
     return { ...s, product_count: guideCount?.c || 0 };
   });
 

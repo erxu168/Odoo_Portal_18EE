@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 import { initRecipeTables, getLocalRecipes } from '@/lib/recipe-db';
+import type { RecipeMode } from '@/types/recipe';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -71,8 +72,7 @@ export async function GET(request: Request) {
     // Include locally-created recipes not yet synced
     try {
       initRecipeTables();
-      const localMode = mode as any;
-      result.local_recipes = getLocalRecipes(localMode || undefined);
+      result.local_recipes = getLocalRecipes((mode as RecipeMode) || undefined);
     } catch {
       // SQLite may not be ready
     }

@@ -83,6 +83,14 @@ export function initInventoryTables() {
   migrateInventorySchema(db);
 }
 
+/** Raw DB row shape before JSON fields are parsed into typed arrays */
+interface TemplateDbRow {
+  id: number; name: string; frequency: string; location_id: number;
+  category_ids: string; product_ids: string; assign_type: string | null;
+  assign_id: number | null; active: number; created_by: number;
+  created_at: string; updated_at: string;
+}
+
 function now(): string {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).replace(' ', 'T');
 }
@@ -138,7 +146,7 @@ export function updateTemplate(id: number, data: Partial<{
 }>) {
   const db = getDb();
   const sets: string[] = [];
-  const vals: any[] = [];
+  const vals: (string | number | null)[] = [];
   if (data.name !== undefined) { sets.push('name = ?'); vals.push(data.name); }
   if (data.frequency !== undefined) { sets.push('frequency = ?'); vals.push(data.frequency); }
   if (data.location_id !== undefined) { sets.push('location_id = ?'); vals.push(data.location_id); }
@@ -155,24 +163,26 @@ export function updateTemplate(id: number, data: Partial<{
 
 export function getTemplate(id: number): CountingTemplate | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM counting_templates WHERE id = ?').get(id) as any;
+  const row = db.prepare('SELECT * FROM counting_templates WHERE id = ?').get(id) as TemplateDbRow | undefined;
   return row ? parseTemplate(row) : null;
 }
 
 export function listTemplates(filters?: { location_id?: number; active?: boolean }): CountingTemplate[] {
   const db = getDb();
   const where: string[] = [];
-  const vals: any[] = [];
+  const vals: (string | number)[] = [];
   if (filters?.location_id) { where.push('location_id = ?'); vals.push(filters.location_id); }
   if (filters?.active !== undefined) { where.push('active = ?'); vals.push(filters.active ? 1 : 0); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-  const rows = db.prepare(`SELECT * FROM counting_templates ${clause} ORDER BY updated_at DESC`).all(...vals) as any[];
+  const rows = db.prepare(`SELECT * FROM counting_templates ${clause} ORDER BY updated_at DESC`).all(...vals) as TemplateDbRow[];
   return rows.map(parseTemplate);
 }
 
-function parseTemplate(row: any): CountingTemplate {
+function parseTemplate(row: TemplateDbRow): CountingTemplate {
   return {
     ...row,
+    frequency: row.frequency as Frequency,
+    assign_type: row.assign_type as AssignType,
     category_ids: JSON.parse(row.category_ids || '[]'),
     product_ids: JSON.parse(row.product_ids || '[]'),
     active: !!row.active,
@@ -205,7 +215,7 @@ export function listSessions(filters?: {
 }): CountingSession[] {
   const db = getDb();
   const where: string[] = [];
-  const vals: any[] = [];
+  const vals: (string | number)[] = [];
   if (filters?.status) { where.push('s.status = ?'); vals.push(filters.status); }
   if (filters?.template_id) { where.push('s.template_id = ?'); vals.push(filters.template_id); }
   if (filters?.location_id) { where.push('s.location_id = ?'); vals.push(filters.location_id); }
@@ -386,7 +396,7 @@ export function createQuickCount(data: {
 export function listQuickCounts(filters?: { status?: string; counted_by?: number }): QuickCount[] {
   const db = getDb();
   const where: string[] = [];
-  const vals: any[] = [];
+  const vals: (string | number)[] = [];
   if (filters?.status) { where.push('status = ?'); vals.push(filters.status); }
   if (filters?.counted_by) { where.push('counted_by = ?'); vals.push(filters.counted_by); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';

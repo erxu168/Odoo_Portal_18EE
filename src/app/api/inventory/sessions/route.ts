@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate } from '@/lib/inventory-db';
+import type { SessionStatus } from '@/types/inventory';
 import { logAudit } from '@/lib/db';
 
 
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
-  const status = searchParams.get('status') as any;
+  const status = searchParams.get('status') as SessionStatus | null;
   const templateId = searchParams.get('template_id');
   const locationId = searchParams.get('location_id');
 
@@ -83,7 +84,7 @@ export async function PUT(request: Request) {
     const template = getTemplate(session.template_id);
     if (template) {
       const productIds: number[] = (() => {
-        try { return JSON.parse((template as any).product_ids || '[]'); } catch { return []; }
+        try { return typeof template.product_ids === 'string' ? JSON.parse(template.product_ids) : template.product_ids ?? []; } catch { return []; }
       })();
       const expectedCount = productIds.length > 0 ? productIds.length : 0;
       if (expectedCount > 0 && entries.length < expectedCount) {
