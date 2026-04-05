@@ -88,7 +88,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   // Only managers and admins can assign barcodes
-  const role = (user as any).role || 'staff';
+  const role = user.role || 'staff';
   if (role === 'staff') {
     return NextResponse.json({ error: 'Only managers can assign barcodes' }, { status: 403 });
   }

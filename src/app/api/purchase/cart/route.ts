@@ -44,6 +44,7 @@ export async function POST(request: Request) {
   }
 
   const cart = getOrCreateCart(location_id, supplier_id, user.id);
+  if (!cart) return NextResponse.json({ error: 'Failed to create cart' }, { status: 500 });
   upsertCartItem(cart.id, product_id, quantity, user.id, { product_name, product_uom, price });
 
   const updated = getCartWithItems(cart.id);

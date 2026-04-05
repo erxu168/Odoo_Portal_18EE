@@ -48,7 +48,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
   }
 
-  const supplier = getSupplier(cart.supplier_id) as any;
+  const supplier = getSupplier(cart.supplier_id);
   if (!supplier) return NextResponse.json({ error: 'Supplier not found' }, { status: 404 });
 
   // Check duplicate
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   const needsApproval = supplier.approval_required === 1 && !hasRole(user, 'manager');
   const orderStatus = needsApproval ? 'pending_approval' : 'approved';
 
-  const total = cart.items.reduce((s: number, i: any) => s + (i.quantity * i.price), 0);
+  const total = cart.items.reduce((s: number, i: { quantity: number; price: number }) => s + (i.quantity * i.price), 0);
 
   const orderId = createOrder({
     supplier_id: cart.supplier_id,

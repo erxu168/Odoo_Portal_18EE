@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
   const db = getDb();
-  const qc = db.prepare('SELECT * FROM quick_counts WHERE id = ?').get(id) as any;
+  const qc = db.prepare('SELECT * FROM quick_counts WHERE id = ?').get(id) as { id: number; product_id: number; location_id: number; counted_qty: number; status: string } | undefined;
   if (!qc) return NextResponse.json({ error: 'Quick count not found' }, { status: 404 });
   if (qc.status !== 'pending') {
     return NextResponse.json({ error: 'Already processed' }, { status: 400 });

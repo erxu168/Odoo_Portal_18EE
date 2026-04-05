@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import InfoButton from '@/components/hr/InfoButton';
-import type { EmployeeData } from '@/types/hr';
+import type { EmployeeData, MaritalStatus } from '@/types/hr';
 import PhoneInput from '@/components/ui/PhoneInput';
 import { FIELD_EXPLAINERS } from '@/types/hr';
 
@@ -251,7 +251,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
           </div>
         </Field>
         <Field label="Marital status" labelDe="Familienstand">
-          <select className="form-input" value={marital} onChange={e => setMarital(e.target.value as any)}>
+          <select className="form-input" value={marital} onChange={e => setMarital(e.target.value as MaritalStatus)}>
             <option value="single">Single</option>
             <option value="married">Married</option>
             <option value="divorced">Divorced</option>

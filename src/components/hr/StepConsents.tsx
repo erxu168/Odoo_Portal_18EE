@@ -69,7 +69,7 @@ function loadSavedConsents(empId: number): Record<string, boolean> {
 }
 
 export default function StepConsents({ employee, onNext, onPrev }: Props) {
-  const empId = (employee as any).id || 0;
+  const empId = employee.id || 0;
   const [checked, setChecked] = useState<Record<string, boolean>>(() => {
     const saved = loadSavedConsents(empId);
     const init: Record<string, boolean> = {};

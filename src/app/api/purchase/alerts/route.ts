@@ -9,7 +9,7 @@
  *  - window (optional, default 7 — how many days ahead to check holidays)
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getUpcomingHolidays, computeSupplierDeadline } from '@/lib/purchase-holidays';
+import { getUpcomingHolidays, computeSupplierDeadline } from '@/lib/german-holidays';
 import { listSuppliers } from '@/lib/purchase-db';
 import { requireAuth, AuthError } from '@/lib/auth';
 
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     const holidays = getUpcomingHolidays(today, window);
 
     // 2. Supplier deadline alerts
-    const suppliers = listSuppliers(locationId) as any[];
+    const suppliers = listSuppliers(locationId);
     const deadlines = suppliers
       .map((s) => {
         const deliveryDays = parseDays(s.delivery_days || '[]');
