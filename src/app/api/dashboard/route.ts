@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { countUsersByStatus } from '@/lib/db';
-import { getCurrentUser, hasRole } from '@/lib/auth';
+import { requireAuth, hasRole, AuthError } from '@/lib/auth';
 
 /**
  * GET /api/dashboard
@@ -10,8 +10,8 @@ import { getCurrentUser, hasRole } from '@/lib/auth';
  */
 export async function GET() {
   try {
+    const user = requireAuth();
     const odoo = getOdoo();
-    const user = getCurrentUser();
 
     // ── Live: MO counts from Odoo ──
     let activeMoCount = 0;
@@ -55,7 +55,7 @@ export async function GET() {
 
     // ── Live: pending registration count (admin/manager only) ──
     let pendingRegistrations = 0;
-    if (user && hasRole(user, 'admin')) {
+    if (hasRole(user, 'admin')) {
       try {
         pendingRegistrations = countUsersByStatus('pending');
       } catch (e) {
@@ -80,10 +80,11 @@ export async function GET() {
       tasks: null,
       pendingRegistrations,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('GET /api/dashboard error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to load dashboard' },
+      { error: 'Failed to load dashboard' },
       { status: 500 },
     );
   }

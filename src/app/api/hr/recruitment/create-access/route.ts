@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
-import { OdooClient } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 import { createUser, getUserByApplicantId, getUserByEmail, logAudit } from '@/lib/db';
 import { sendCandidateWelcomeEmail } from '@/lib/email';
 
@@ -42,8 +42,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch applicant from Odoo
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
 
     const applicants = await odoo.searchRead('hr.applicant', [
       ['id', '=', applicant_id],

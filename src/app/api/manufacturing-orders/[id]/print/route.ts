@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, AuthError } from '@/lib/auth';
 
 /**
  * GET /api/manufacturing-orders/:id/print
@@ -11,6 +12,7 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
+    requireAuth();
     const moId = parseInt(params.id);
     const odoo = getOdoo();
 
@@ -184,7 +186,10 @@ export async function GET(
       headers: { 'Content-Type': 'text/html; charset=utf-8' },
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return new NextResponse(`Error: ${message}`, { status: 500 });
+    if (err instanceof AuthError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    console.error('GET /api/manufacturing-orders/[id]/print error:', err);
+    return new NextResponse('Failed to generate print view', { status: 500 });
   }
 }

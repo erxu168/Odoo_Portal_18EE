@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { OdooClient } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 
 /**
  * GET /api/hr/applicant/status
@@ -38,8 +38,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Not a candidate' }, { status: 404 });
     }
 
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
 
     const applicants = await odoo.searchRead('hr.applicant', [
       ['id', '=', user.applicant_id],

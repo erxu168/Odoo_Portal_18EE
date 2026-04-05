@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
-import { OdooClient } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 import { DOCUMENT_TYPES, HR_FOLDER_ID } from '@/types/hr';
 
 export async function GET(req: NextRequest) {
@@ -18,8 +18,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
 
     const docs = await odoo.searchRead('documents.document', [
       ['res_model', '=', 'hr.employee'],
@@ -105,8 +104,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
 
     // Archive existing docs for this type (replace)
     const existing = await odoo.searchRead('documents.document', [

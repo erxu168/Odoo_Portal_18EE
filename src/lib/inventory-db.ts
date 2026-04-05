@@ -77,6 +77,8 @@ export function initInventoryTables() {
     CREATE INDEX IF NOT EXISTS idx_sessions_status ON counting_sessions(status);
     CREATE INDEX IF NOT EXISTS idx_entries_session ON count_entries(session_id);
     CREATE INDEX IF NOT EXISTS idx_quick_status ON quick_counts(status);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_count_entries_unique ON count_entries(session_id, product_id);
   `);
   migrateInventorySchema(db);
 }
@@ -398,3 +400,6 @@ export function approveQuickCount(id: number, reviewed_by: number) {
   db.prepare('UPDATE quick_counts SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
     .run('approved', reviewed_by, now(), id);
 }
+
+// Init on import
+try { initInventoryTables(); } catch (_e) { /* tables may already exist */ }

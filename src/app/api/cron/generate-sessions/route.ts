@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   const token = searchParams.get('token');
   const secret = process.env.CRON_SECRET;
 
-  if (secret && token !== secret) {
+  if (!secret || token !== secret) {
     return NextResponse.json({ error: 'Invalid token' }, { status: 403 });
   }
 

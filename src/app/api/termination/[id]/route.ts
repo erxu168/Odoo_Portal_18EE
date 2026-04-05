@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
 const MODEL = 'kw.termination';
+
+const ALLOWED_FIELDS = [
+  'termination_date', 'reason', 'notice_period', 'last_working_day',
+  'notes', 'state', 'notice_type', 'severance_months',
+];
 
 /**
  * GET /api/termination/:id
@@ -13,6 +19,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    requireRole('manager');
     const { id } = await params;
     const odoo = getOdoo();
     const records = await odoo.read(MODEL, [Number(id)], TERMINATION_DETAIL_FIELDS);
@@ -21,8 +28,8 @@ export async function GET(
     }
     return NextResponse.json({ ok: true, data: records[0] });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -35,17 +42,24 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    requireRole('manager');
     const { id } = await params;
     const odoo = getOdoo();
     const body = await req.json();
 
-    await odoo.write(MODEL, [Number(id)], body);
+    // Field allowlist — only pass safe fields to Odoo
+    const safeBody: Record<string, unknown> = {};
+    for (const key of Object.keys(body)) {
+      if (ALLOWED_FIELDS.includes(key)) safeBody[key] = body[key];
+    }
+
+    await odoo.write(MODEL, [Number(id)], safeBody);
 
     // Read back updated record
     const records = await odoo.read(MODEL, [Number(id)], TERMINATION_DETAIL_FIELDS);
     return NextResponse.json({ ok: true, data: records[0] });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }

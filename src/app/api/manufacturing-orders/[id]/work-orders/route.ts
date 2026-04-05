@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, AuthError } from '@/lib/auth';
 
 /**
  * GET /api/manufacturing-orders/[id]/work-orders
@@ -10,6 +11,7 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
+    requireAuth();
     const odoo = getOdoo();
     const moId = parseInt(params.id);
 
@@ -54,10 +56,11 @@ export async function GET(
     );
 
     return NextResponse.json({ work_orders: enriched });
-  } catch (error: any) {
-    console.error(`GET /api/mo/${params.id}/work-orders error:`, error);
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('GET /api/manufacturing-orders/[id]/work-orders error:', error);
     return NextResponse.json(
-      { error: error.message },
+      { error: 'Failed to fetch work orders' },
       { status: 500 },
     );
   }

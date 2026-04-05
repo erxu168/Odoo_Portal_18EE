@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 import { TERMINATION_DETAIL_FIELDS, TERMINATION_TYPE_LABELS } from '@/types/termination';
 import type { TerminationType } from '@/types/termination';
 
@@ -15,6 +16,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    requireRole('manager');
     const { id } = await params;
     const odoo = getOdoo();
     const numId = Number(id);
@@ -95,8 +97,8 @@ export async function POST(
     const updated = await odoo.read(MODEL, [numId], TERMINATION_DETAIL_FIELDS);
     return NextResponse.json({ ok: true, data: updated[0] });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[termination/send-accountant]', message);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('[termination/send-accountant]', err);
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }

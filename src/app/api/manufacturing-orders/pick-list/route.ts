@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, AuthError } from '@/lib/auth';
 
 /**
  * GET /api/manufacturing-orders/pick-list
@@ -8,6 +9,7 @@ import { getOdoo } from '@/lib/odoo';
  */
 export async function GET(request: Request) {
   try {
+    requireAuth();
     const odoo = getOdoo();
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('company_id');
@@ -107,10 +109,11 @@ export async function GET(request: Request) {
       mo_count: mos.length,
       total_components: items.length,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('GET /api/manufacturing-orders/pick-list error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to build pick list' },
+      { error: 'Failed to build pick list' },
       { status: 500 }
     );
   }

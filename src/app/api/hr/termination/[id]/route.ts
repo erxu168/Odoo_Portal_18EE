@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
 export async function GET(
@@ -11,6 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    requireRole('manager');
     const { id } = await params;
     const recordId = Number(id);
     if (!recordId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
@@ -24,8 +26,9 @@ export async function GET(
 
     return NextResponse.json({ record: records[0] });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('GET /api/hr/termination/[id] error:', err);
+    return NextResponse.json({ error: 'Failed to fetch termination' }, { status: 500 });
   }
 }
 
@@ -34,6 +37,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    requireRole('manager');
     const { id } = await params;
     const recordId = Number(id);
     if (!recordId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
@@ -62,7 +66,8 @@ export async function PATCH(
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('PATCH /api/hr/termination/[id] error:', err);
+    return NextResponse.json({ error: 'Failed to update termination' }, { status: 500 });
   }
 }

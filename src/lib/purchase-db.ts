@@ -151,6 +151,9 @@ export function initPurchaseTables() {
     CREATE INDEX IF NOT EXISTS idx_order_lines ON purchase_order_lines(order_id);
     CREATE INDEX IF NOT EXISTS idx_receipts_order ON purchase_receipts(order_id);
     CREATE INDEX IF NOT EXISTS idx_receipt_lines ON purchase_receipt_lines(receipt_id);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_carts_unique_draft ON purchase_carts(location_id, supplier_id) WHERE status = 'draft';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_cart_items_unique ON purchase_cart_items(cart_id, product_id);
   `);
 
   // Migration: add columns that may not exist on older DBs

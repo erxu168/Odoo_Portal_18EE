@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { OdooClient } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 
 export async function GET(_req: NextRequest) {
   try {
@@ -9,8 +9,7 @@ export async function GET(_req: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
 
     const employees = await odoo.searchRead('hr.employee', [
       ['id', '=', user.employee_id],

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 
 const MODEL = 'kw.termination';
 
@@ -15,6 +16,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    requireRole('manager');
     const { id } = await params;
     const termId = Number(id);
     const body = await req.json();
@@ -67,9 +69,9 @@ export async function POST(
 
     return NextResponse.json({ ok: true, attachment_id: attachId });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('POST /api/termination/[id]/upload-proof error:', message);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('POST /api/termination/[id]/upload-proof error:', err);
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -82,6 +84,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    requireRole('manager');
     const { id } = await params;
     const termId = Number(id);
     const odoo = getOdoo();
@@ -106,7 +109,7 @@ export async function GET(
       name: att.name,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }
