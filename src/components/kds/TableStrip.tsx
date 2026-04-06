@@ -2,10 +2,11 @@
 
 import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier, mostUrgentOrderId } from '@/lib/kds/priority';
+import { SOURCES } from '@/types/kds';
 import Timer from './Timer';
 
 export default function TableStrip() {
-  const { orders, roundState, firedOrderIds, settings, markReady } = useKds();
+  const { orders, roundState, firedOrderIds, settings, markReady, toggleItem } = useKds();
   const boost = settings.takeawayBoost;
   const prep = orders.filter(o => o.status === 'prep').sort((a, b) => effectiveWait(b, boost) - effectiveWait(a, boost));
 
@@ -41,7 +42,7 @@ export default function TableStrip() {
         return (
           <div
             key={o.id}
-            className={`kds-table-chip ${isNext ? 'is-next' : ''} ${isTa ? 'is-takeaway' : ''} ${complete ? 'complete' : ''}`}
+            className={`kds-table-card ${isNext ? 'is-next' : ''} ${isTa ? 'is-takeaway' : ''} ${complete ? 'complete' : ''}`}
           >
             <div className="kds-tc-top">
               <div className="kds-tc-name">
@@ -51,6 +52,36 @@ export default function TableStrip() {
               </div>
               <Timer minutes={o.waitMin} tier={tier} size="sm" />
             </div>
+
+            <div className="kds-tc-items">
+              {o.items.map(item => {
+                const src = SOURCES[item.name];
+                return (
+                  <div
+                    key={item.id}
+                    className={`kds-tc-item ${item.done ? 'done' : ''}`}
+                    onClick={() => toggleItem(item.id, o.id)}
+                  >
+                    <div className={`kds-tc-check ${item.done ? 'checked' : ''}`}>
+                      {item.done && (
+                        <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.5" width="14" height="14">
+                          <path d="M3 8.5l3.5 3.5 6.5-7" />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="kds-tc-item-qty">{item.qty}x</span>
+                    <span className="kds-tc-item-name">{item.name}</span>
+                    {src && (
+                      <span className="kds-s-source" style={{ background: src.bg, color: src.color, fontSize: '9px' }}>
+                        {src.label}
+                      </span>
+                    )}
+                    {item.note && <span className="kds-tc-item-note">{item.note}</span>}
+                  </div>
+                );
+              })}
+            </div>
+
             <div className="kds-tc-bar">
               <div className="kds-tc-bar-fill" style={{ width: `${pct}%` }} />
             </div>
@@ -66,7 +97,7 @@ export default function TableStrip() {
       {queued.map(o => {
         const isTa = o.type === 'Takeaway';
         return (
-          <div key={o.id} className="kds-table-chip queued">
+          <div key={o.id} className="kds-table-card queued">
             <div className="kds-tc-top">
               <div className="kds-tc-name">
                 {o.table}
@@ -74,8 +105,14 @@ export default function TableStrip() {
               </div>
               <span className="kds-tc-queued-tag">NEXT ROUND</span>
             </div>
-            <div className="kds-tc-bar">
-              <div className="kds-tc-bar-fill" style={{ width: '0%' }} />
+            <div className="kds-tc-items">
+              {o.items.map(item => (
+                <div key={item.id} className="kds-tc-item" style={{ opacity: 0.4 }}>
+                  <div className="kds-tc-check" />
+                  <span className="kds-tc-item-qty">{item.qty}x</span>
+                  <span className="kds-tc-item-name">{item.name}</span>
+                </div>
+              ))}
             </div>
           </div>
         );
