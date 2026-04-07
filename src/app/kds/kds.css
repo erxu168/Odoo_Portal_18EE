@@ -213,8 +213,14 @@
   color: var(--text);
   font-size: 14px;
   padding: 6px 8px;
+  animation: kds-row-flash 1.5s ease-in-out infinite;
+}
+@keyframes kds-row-flash {
+  0%, 100% { background: rgba(239,68,68,0.12); }
+  50% { background: rgba(239,68,68,0.25); }
 }
 .kds-serve-item.is-next .kds-s-table { font-size: 16px; }
+.kds-serve-item.is-next .kds-s-qty { font-size: 20px; }
 .kds-s-check {
   width: 22px; height: 22px; border-radius: 50%;
   border: 2px solid #475569;
@@ -224,11 +230,11 @@
 .kds-serve-item.is-next .kds-s-check { width: 24px; height: 24px; border-color: #64748b; }
 .kds-s-check.checked { background: var(--ready); border-color: var(--ready); }
 .kds-s-table { font-weight: 800; color: var(--text); font-size: 14px; }
-.kds-s-qty { opacity: 0.5; font-size: 12px; font-weight: 600; }
+.kds-s-qty { font-size: 18px; font-weight: 900; color: var(--text); font-variant-numeric: tabular-nums; min-width: 30px; }
 .kds-s-note { color: var(--cooking); font-size: 11px; font-weight: 600; }
 .kds-s-takeaway { color: var(--purple); display: inline-flex; align-items: center; flex-shrink: 0; }
 .kds-s-source { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
-.kds-next-tag { background: var(--red); color: white; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; animation: kds-blink 0.8s step-end infinite; }
+/* kds-next-tag removed — most urgent order row flashes instead */
 .kds-also-needs { background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.2); border-radius: 6px; padding: 4px 8px; margin: 3px 0 2px; font-size: 11px; font-weight: 600; color: #fbbf24; }
 .kds-task-progress { height: 3px; background: #1e293b; overflow: hidden; }
 .kds-task-progress-fill { height: 100%; background: var(--ready); transition: width 0.3s; }

@@ -82,10 +82,9 @@ export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardPro
                     </svg>
                   )}
                 </div>
-                {showNext && <span className="kds-next-tag">NEXT</span>}
+                <span className="kds-s-qty">{entry.qty}x</span>
                 <span className="kds-s-table">{entry.table}</span>
                 {isTa && <TakeawayBag />}
-                <span className="kds-s-qty">{entry.qty}x</span>
                 {entry.note && <span className="kds-s-note">{entry.note}</span>}
                 <Timer minutes={entry.waitMin} tier={tier} size="sm" />
               </div>
