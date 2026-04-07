@@ -5,6 +5,7 @@ import { SOURCES } from '@/types/kds';
 import type { TaskGroup } from '@/types/kds';
 import Timer from './Timer';
 import SourceBadge from './SourceBadge';
+import TakeawayBag from './TakeawayBag';
 import { timerTier, getTableRemaining } from '@/lib/kds/priority';
 
 interface TaskCardProps {
@@ -83,7 +84,7 @@ export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardPro
                 </div>
                 {showNext && <span className="kds-next-tag">NEXT</span>}
                 <span className="kds-s-table">{entry.table}</span>
-                {isTa && <span className="kds-s-takeaway">TAKEAWAY</span>}
+                {isTa && <TakeawayBag />}
                 <span className="kds-s-qty">{entry.qty}x</span>
                 {entry.note && <span className="kds-s-note">{entry.note}</span>}
                 <Timer minutes={entry.waitMin} tier={tier} size="sm" />

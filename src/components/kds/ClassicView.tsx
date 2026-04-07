@@ -4,6 +4,7 @@ import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier } from '@/lib/kds/priority';
 import Timer from './Timer';
 import SourceBadge from './SourceBadge';
+import TakeawayBag from './TakeawayBag';
 
 export default function ClassicView() {
   const { orders, settings, toggleItem, markReady } = useKds();
@@ -37,7 +38,7 @@ export default function ClassicView() {
             <div className="kds-sc-head">
               <span>
                 {o.table}
-                {isTa && <> <span className="kds-s-takeaway">TAKEAWAY</span></>}
+                {isTa && <> <TakeawayBag /></>}
               </span>
               <Timer minutes={o.waitMin} tier={tier} size="md" />
             </div>

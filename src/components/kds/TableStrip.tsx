@@ -5,6 +5,7 @@ import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier, mostUrgentOrderId } from '@/lib/kds/priority';
 import { SOURCES } from '@/types/kds';
 import Timer from './Timer';
+import TakeawayBag from './TakeawayBag';
 
 const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, ref) {
   const { orders, roundState, firedOrderIds, settings, markReady, toggleItem } = useKds();
@@ -48,7 +49,7 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
             <div className="kds-tc-top">
               <div className="kds-tc-name">
                 {o.table}
-                {isTa && <span className="kds-tc-ta">TA</span>}
+                {isTa && <TakeawayBag size={16} />}
               </div>
               <Timer minutes={o.waitMin} tier={tier} size="sm" />
             </div>
@@ -78,7 +79,7 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
               <div className="kds-tc-name">
                 {isNext && <div className="kds-tc-next-dot" />}
                 {o.table}
-                {isTa && <span className="kds-tc-ta">TA</span>}
+                {isTa && <TakeawayBag size={16} />}
               </div>
               <Timer minutes={o.waitMin} tier={tier} size="sm" />
             </div>
@@ -123,7 +124,7 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
             <div className="kds-tc-top">
               <div className="kds-tc-name">
                 {o.table}
-                {isTa && <span className="kds-tc-ta">TA</span>}
+                {isTa && <TakeawayBag size={16} />}
               </div>
               <span className="kds-tc-queued-tag">NEXT ROUND</span>
             </div>

@@ -221,7 +221,7 @@
 .kds-s-table { font-weight: 800; color: var(--text); font-size: 14px; }
 .kds-s-qty { opacity: 0.5; font-size: 12px; font-weight: 600; }
 .kds-s-note { color: var(--cooking); font-size: 11px; font-weight: 600; }
-.kds-s-takeaway { background: var(--purple); color: white; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; }
+.kds-s-takeaway { color: var(--purple); display: inline-flex; align-items: center; flex-shrink: 0; }
 .kds-s-source { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
 .kds-next-tag { background: var(--red); color: white; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; animation: kds-blink 0.8s step-end infinite; }
 .kds-also-needs { background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.2); border-radius: 6px; padding: 4px 8px; margin: 3px 0 2px; font-size: 11px; font-weight: 600; color: #fbbf24; }

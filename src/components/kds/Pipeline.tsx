@@ -7,6 +7,7 @@ import { SOURCES } from '@/types/kds';
 import type { KdsOrder } from '@/types/kds';
 import Timer from './Timer';
 import SourceBadge from './SourceBadge';
+import TakeawayBag from './TakeawayBag';
 
 type PipeView = 'orders' | 'summary';
 
@@ -47,7 +48,7 @@ export default function Pipeline() {
                 <div className="kds-pipe-order-head">
                   <div className="kds-pipe-order-left">
                     <span className="kds-pipe-order-table">{o.table}</span>
-                    {isTa ? <span className="kds-s-takeaway">TAKEAWAY</span> : <span className="kds-pipe-order-type">Dine-in</span>}
+                    {isTa ? <TakeawayBag /> : <span className="kds-pipe-order-type">Dine-in</span>}
                     <Timer minutes={o.waitMin} tier={tier} size="md" />
                     {inRound && <span className="kds-pipe-order-status in-round">IN ROUND</span>}
                     {isQueued && <span className="kds-pipe-order-status queued">NEXT ROUND</span>}

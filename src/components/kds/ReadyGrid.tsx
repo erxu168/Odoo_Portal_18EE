@@ -3,6 +3,7 @@
 import { useKds } from '@/lib/kds/state';
 import { timerTier, passMinutes, passTier } from '@/lib/kds/priority';
 import Timer from './Timer';
+import TakeawayBag from './TakeawayBag';
 import { useState, useEffect } from 'react';
 
 export default function ReadyGrid() {
@@ -43,7 +44,7 @@ export default function ReadyGrid() {
             <div className="kds-sc-head">
               <span>
                 {o.table}
-                {isTa && <> <span className="kds-s-takeaway">TAKEAWAY</span></>}
+                {isTa && <> <TakeawayBag /></>}
               </span>
               <Timer minutes={o.waitMin} tier={tier} size="md" />
             </div>
