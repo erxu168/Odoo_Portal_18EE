@@ -40,10 +40,31 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
         const isTa = o.type === 'Takeaway';
         const tier = timerTier(o.waitMin, o.type, settings);
 
-        return (
+        return complete ? (
           <div
             key={o.id}
-            className={`kds-table-card ${isNext ? 'is-next' : ''} ${isTa ? 'is-takeaway' : ''} ${complete ? 'complete' : ''}`}
+            className="kds-table-card complete"
+            onClick={() => markReady(o.id)}
+            style={{ cursor: 'pointer', justifyContent: 'center', alignItems: 'center' }}
+          >
+            <div className="kds-tc-top">
+              <div className="kds-tc-name">
+                {o.table}
+                {isTa && <span className="kds-tc-ta">TA</span>}
+              </div>
+              <Timer minutes={o.waitMin} tier={tier} size="sm" />
+            </div>
+            <button className="kds-tc-ready-btn" onClick={(e) => { e.stopPropagation(); markReady(o.id); }}>
+              {'\u2705'} READY
+            </button>
+            <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
+              {total} items done -- tap to send
+            </div>
+          </div>
+        ) : (
+          <div
+            key={o.id}
+            className={`kds-table-card ${isNext ? 'is-next' : ''} ${isTa ? 'is-takeaway' : ''}`}
           >
             <div className="kds-tc-top">
               <div className="kds-tc-name">
@@ -86,11 +107,6 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
             <div className="kds-tc-bar">
               <div className="kds-tc-bar-fill" style={{ width: `${pct}%` }} />
             </div>
-            {complete && (
-              <button className="kds-tc-ready-btn" onClick={() => markReady(o.id)}>
-                READY
-              </button>
-            )}
           </div>
         );
       })}
