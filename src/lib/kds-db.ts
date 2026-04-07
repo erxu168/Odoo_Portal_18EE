@@ -36,6 +36,7 @@ function ensureTables() {
       snd_round INTEGER DEFAULT 1,
       snd_round_vol REAL DEFAULT 0.6,
       auto_scroll_sec INTEGER DEFAULT 10,
+      pos_config_id INTEGER DEFAULT 0,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(location_id)
     );
@@ -58,6 +59,9 @@ function ensureTables() {
   const cols = db.prepare("PRAGMA table_info('kds_settings')").all() as { name: string }[];
   if (!cols.some(c => c.name === 'auto_scroll_sec')) {
     db.exec('ALTER TABLE kds_settings ADD COLUMN auto_scroll_sec INTEGER DEFAULT 10');
+  }
+  if (!cols.some(c => c.name === 'pos_config_id')) {
+    db.exec('ALTER TABLE kds_settings ADD COLUMN pos_config_id INTEGER DEFAULT 0');
   }
   seedProductConfig(db);
   _initialized = true;
@@ -113,6 +117,7 @@ export function getKdsSettings(locationId: number): KdsSettings {
     sndRound: row.snd_round === 1,
     sndRoundVol: row.snd_round_vol as number,
     autoScrollSec: (row.auto_scroll_sec as number) ?? 10,
+    posConfigId: (row.pos_config_id as number) ?? 0,
   };
 }
 
@@ -120,18 +125,19 @@ export function saveKdsSettings(s: KdsSettings): void {
   ensureTables();
   const db = getDb();
   db.prepare(`
-    INSERT INTO kds_settings (location_id, takeaway_boost, dine_warn, dine_urg, ta_warn, ta_urg, pass_warn, pass_crit, snd_new_order, snd_new_order_mode, snd_new_order_vol, snd_pass, snd_pass_mode, snd_pass_vol, snd_round, snd_round_vol, auto_scroll_sec, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO kds_settings (location_id, takeaway_boost, dine_warn, dine_urg, ta_warn, ta_urg, pass_warn, pass_crit, snd_new_order, snd_new_order_mode, snd_new_order_vol, snd_pass, snd_pass_mode, snd_pass_vol, snd_round, snd_round_vol, auto_scroll_sec, pos_config_id, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(location_id) DO UPDATE SET
       takeaway_boost=excluded.takeaway_boost, dine_warn=excluded.dine_warn, dine_urg=excluded.dine_urg,
       ta_warn=excluded.ta_warn, ta_urg=excluded.ta_urg, pass_warn=excluded.pass_warn, pass_crit=excluded.pass_crit,
       snd_new_order=excluded.snd_new_order, snd_new_order_mode=excluded.snd_new_order_mode, snd_new_order_vol=excluded.snd_new_order_vol,
       snd_pass=excluded.snd_pass, snd_pass_mode=excluded.snd_pass_mode, snd_pass_vol=excluded.snd_pass_vol,
-      snd_round=excluded.snd_round, snd_round_vol=excluded.snd_round_vol, auto_scroll_sec=excluded.auto_scroll_sec, updated_at=excluded.updated_at
+      snd_round=excluded.snd_round, snd_round_vol=excluded.snd_round_vol, auto_scroll_sec=excluded.auto_scroll_sec,
+      pos_config_id=excluded.pos_config_id, updated_at=excluded.updated_at
   `).run(
     s.locationId, s.takeawayBoost, s.dineWarn, s.dineUrg, s.taWarn, s.taUrg,
     s.passWarn, s.passCrit, s.sndNewOrder ? 1 : 0, s.sndNewOrderMode, s.sndNewOrderVol,
     s.sndPass ? 1 : 0, s.sndPassMode, s.sndPassVol, s.sndRound ? 1 : 0, s.sndRoundVol,
-    s.autoScrollSec, nowISO()
+    s.autoScrollSec, s.posConfigId, nowISO()
   );
 }

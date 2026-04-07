@@ -71,6 +71,7 @@ export interface KdsSettings {
   sndRound: boolean;
   sndRoundVol: number;
   autoScrollSec: number; // 0 = disabled, otherwise seconds of inactivity before auto-scroll
+  posConfigId: number;   // Odoo pos.config ID (0 = use mock data)
 }
 
 export const DEFAULT_SETTINGS: KdsSettings = {
@@ -91,6 +92,7 @@ export const DEFAULT_SETTINGS: KdsSettings = {
   sndRound: true,
   sndRoundVol: 0.6,
   autoScrollSec: 10,
+  posConfigId: 0,
 };
 
 // -- UI state types --
