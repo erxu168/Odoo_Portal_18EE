@@ -104,9 +104,6 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
               })}
             </div>
 
-            <div className="kds-tc-bar">
-              <div className="kds-tc-bar-fill" style={{ width: `${pct}%` }} />
-            </div>
           </div>
         );
       })}
