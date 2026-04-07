@@ -122,11 +122,13 @@ export default function KdsPage() {
   return (
     <>
       <KdsTopbar />
-      <KdsTabs />
+      <div className="kds-toolbar">
+        <KdsTabs />
+        {currentTab === 'prep' && mode === 'smart' && <FireBar />}
+      </div>
 
       {currentTab === 'prep' && (
         <>
-          {mode === 'smart' && <FireBar />}
           <div className="kds-main">
             {mode === 'classic' ? (
               <ClassicView />
