@@ -110,11 +110,11 @@
 .kds-fire-btn:active { transform: scale(0.96); }
 .kds-fire-btn.ready-to-fire {
   background: var(--red);
-  animation: kds-fire-pulse 1.5s ease-in-out infinite;
+  animation: kds-fire-breathe 2s ease-in-out infinite;
 }
-@keyframes kds-fire-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+@keyframes kds-fire-breathe {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239,68,68,0.5); transform: scale(1); }
+  50% { opacity: 0.85; box-shadow: 0 0 16px 4px rgba(239,68,68,0.35); transform: scale(1.03); }
 }
 .kds-fire-btn.round-active { background: #334155; color: var(--muted); cursor: default; animation: none; }
 .kds-fire-btn.round-done { background: var(--green); animation: kds-fire-pulse-green 1.5s ease-in-out infinite; }
