@@ -1,18 +1,19 @@
 'use client';
 
+import React from 'react';
 import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier, mostUrgentOrderId } from '@/lib/kds/priority';
 import { SOURCES } from '@/types/kds';
 import Timer from './Timer';
 
-export default function TableStrip() {
+const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, ref) {
   const { orders, roundState, firedOrderIds, settings, markReady, toggleItem } = useKds();
   const boost = settings.takeawayBoost;
   const prep = orders.filter(o => o.status === 'prep').sort((a, b) => effectiveWait(b, boost) - effectiveWait(a, boost));
 
   if (prep.length === 0) {
     return (
-      <div className="kds-table-strip">
+      <div className="kds-table-strip" ref={ref}>
         <span className="kds-table-strip-label">TABLES</span>
       </div>
     );
@@ -27,7 +28,7 @@ export default function TableStrip() {
   const mui = mostUrgentOrderId(fired, boost);
 
   return (
-    <div className="kds-table-strip">
+    <div className="kds-table-strip" ref={ref}>
       <span className="kds-table-strip-label">TABLES</span>
 
       {fired.map(o => {
@@ -119,4 +120,6 @@ export default function TableStrip() {
       })}
     </div>
   );
-}
+});
+
+export default TableStrip;

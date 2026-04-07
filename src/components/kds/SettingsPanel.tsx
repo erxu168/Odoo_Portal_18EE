@@ -37,6 +37,14 @@ export default function SettingsPanel() {
         </div>
 
         <div className="kds-settings-section">
+          <div className="kds-settings-section-title">Display</div>
+          <NumRow label="Auto-scroll after (sec)" value={draft.autoScrollSec} onChange={v => setField('autoScrollSec', v)} />
+          <div style={{ fontSize: 11, color: 'var(--muted)', padding: '0 0 4px' }}>
+            Scrolls back to the most urgent order after inactivity. Set to 0 to disable.
+          </div>
+        </div>
+
+        <div className="kds-settings-section">
           <div className="kds-settings-section-title">Sounds</div>
           <ToggleRow label="New order sound" checked={draft.sndNewOrder} onChange={v => setField('sndNewOrder', v)} />
           {draft.sndNewOrder && (

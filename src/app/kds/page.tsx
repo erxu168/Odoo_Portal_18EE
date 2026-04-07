@@ -22,6 +22,9 @@ export default function KdsPage() {
   const boost = settings.takeawayBoost;
   const prevCountRef = useRef<number>(orders.length);
   const prevRoundDoneRef = useRef(false);
+  const lastActivityRef = useRef<number>(Date.now());
+  const taskStripRef = useRef<HTMLDivElement>(null);
+  const tableStripRef = useRef<HTMLDivElement>(null);
 
   // Unlock audio on first interaction
   const handleInteraction = useCallback(() => {
@@ -75,6 +78,34 @@ export default function KdsPage() {
     return () => clearInterval(interval);
   }, [orders, muted, settings]);
 
+  // Auto-scroll: reset to most urgent order after inactivity
+  useEffect(() => {
+    if (!settings.autoScrollSec || settings.autoScrollSec <= 0) return;
+
+    function resetActivity() {
+      lastActivityRef.current = Date.now();
+    }
+
+    document.addEventListener('touchstart', resetActivity);
+    document.addEventListener('click', resetActivity);
+    document.addEventListener('scroll', resetActivity, true);
+
+    const interval = setInterval(() => {
+      const idle = (Date.now() - lastActivityRef.current) / 1000;
+      if (idle >= settings.autoScrollSec) {
+        taskStripRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
+        tableStripRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
+      }
+    }, 2000);
+
+    return () => {
+      document.removeEventListener('touchstart', resetActivity);
+      document.removeEventListener('click', resetActivity);
+      document.removeEventListener('scroll', resetActivity, true);
+      clearInterval(interval);
+    };
+  }, [settings.autoScrollSec]);
+
   function showToast(msg: string) {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
@@ -107,7 +138,7 @@ export default function KdsPage() {
                 </div>
               </div>
             ) : (
-              <div className="kds-task-strip">
+              <div className="kds-task-strip" ref={taskStripRef}>
                 {tasks.map((task, idx) => (
                   <TaskCard
                     key={task.name}
@@ -118,7 +149,7 @@ export default function KdsPage() {
                 ))}
               </div>
             )}
-            {mode === 'smart' && <TableStrip />}
+            {mode === 'smart' && <TableStrip ref={tableStripRef} />}
           </div>
         </>
       )}

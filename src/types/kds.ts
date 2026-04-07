@@ -70,6 +70,7 @@ export interface KdsSettings {
   sndPassVol: number;
   sndRound: boolean;
   sndRoundVol: number;
+  autoScrollSec: number; // 0 = disabled, otherwise seconds of inactivity before auto-scroll
 }
 
 export const DEFAULT_SETTINGS: KdsSettings = {
@@ -89,6 +90,7 @@ export const DEFAULT_SETTINGS: KdsSettings = {
   sndPassVol: 0.8,
   sndRound: true,
   sndRoundVol: 0.6,
+  autoScrollSec: 10,
 };
 
 // -- UI state types --
