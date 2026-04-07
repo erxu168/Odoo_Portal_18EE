@@ -26,6 +26,14 @@ export default function SettingsPanel() {
         <div className="kds-settings-title">KDS Settings</div>
 
         <div className="kds-settings-section">
+          <div className="kds-settings-section-title">Odoo POS Connection</div>
+          <NumRow label="POS Config ID" value={draft.posConfigId} onChange={v => setField('posConfigId', v)} />
+          <div style={{ fontSize: 11, color: 'var(--muted)', padding: '0 0 4px' }}>
+            Set to the Odoo POS config ID for What a Jerk. Set to 0 for mock data.
+          </div>
+        </div>
+
+        <div className="kds-settings-section">
           <div className="kds-settings-section-title">Timer Thresholds</div>
           <NumRow label="Takeaway boost (min)" value={draft.takeawayBoost} onChange={v => setField('takeawayBoost', v)} />
           <NumRow label="Dine-in warning (min)" value={draft.dineWarn} onChange={v => setField('dineWarn', v)} />

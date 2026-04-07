@@ -44,7 +44,7 @@ export function useKds(): KdsContextType {
 }
 
 export function KdsProvider({ children }: { children: React.ReactNode }) {
-  const [orders, setOrders] = useState<KdsOrder[]>(() => createSeedOrders());
+  const [orders, setOrders] = useState<KdsOrder[]>([]);
   const [roundState, setRoundState] = useState<RoundState>('idle');
   const [firedOrderIds, setFiredOrderIds] = useState<number[]>([]);
   const [currentTab, setCurrentTab] = useState<KdsTab>('prep');
@@ -53,32 +53,83 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
   const [muted, setMuted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const nextIdRef = useRef(8);
+  // Track locally checked items so they survive poll refreshes
+  const checkedItemsRef = useRef<Set<string>>(new Set());
 
   // Load settings from API on mount
   useEffect(() => {
     fetch('/api/kds/settings')
       .then(r => r.json())
-      .then(data => { if (data.locationId) setSettings(data); })
-      .catch(() => {});
+      .then(data => {
+        if (data.locationId) setSettings(data);
+        // If no POS config, load mock data
+        if (!data.posConfigId) setOrders(createSeedOrders());
+      })
+      .catch(() => { setOrders(createSeedOrders()); });
   }, []);
 
-  // Simulate new orders every 25s in development
+  // Poll Odoo for orders when posConfigId is set
   useEffect(() => {
+    if (!settings.posConfigId) return;
+
+    let active = true;
+
+    async function poll() {
+      try {
+        const res = await fetch(`/api/kds/orders?configId=${settings.posConfigId}`);
+        const data = await res.json();
+        if (!active || !data.orders) return;
+
+        const odooOrders: KdsOrder[] = data.orders.map((o: KdsOrder) => ({
+          ...o,
+          items: o.items.map(item => ({
+            ...item,
+            done: checkedItemsRef.current.has(`${o.id}:${item.id}`),
+          })),
+        }));
+
+        setOrders(prev => {
+          // Keep orders locally moved to ready/done (Odoo no longer returns them as paid)
+          const odooIds = new Set(odooOrders.map(o => o.id));
+          const localReadyDone = prev.filter(o =>
+            (o.status === 'ready' || o.status === 'done') && !odooIds.has(o.id)
+          );
+          // Keep orders the cook already moved to ready/done locally (don't overwrite with prep)
+          const localMovedIds = new Set(
+            prev.filter(o => o.status === 'ready' || o.status === 'done').map(o => o.id)
+          );
+          const newPrep = odooOrders.filter(o => !localMovedIds.has(o.id));
+          return [...newPrep, ...localReadyDone];
+        });
+      } catch (err) {
+        console.error('[KDS] poll error:', err);
+      }
+    }
+
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => { active = false; clearInterval(interval); };
+  }, [settings.posConfigId]);
+
+  // Mock: simulate new orders in dev when no POS config
+  useEffect(() => {
+    if (settings.posConfigId) return;
     if (process.env.NODE_ENV !== 'development') return;
     const interval = setInterval(() => {
       const newOrder = generateRandomOrder(nextIdRef.current++);
       setOrders(prev => [...prev, newOrder]);
     }, 25000);
     return () => clearInterval(interval);
-  }, []);
+  }, [settings.posConfigId]);
 
-  // Increment wait times every 30s (simulates real time passing)
+  // Mock: increment wait times when using mock data
   useEffect(() => {
+    if (settings.posConfigId) return;
     const interval = setInterval(() => {
       setOrders(prev => prev.map(o => ({ ...o, waitMin: o.waitMin + 1 })));
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [settings.posConfigId]);
 
   const fireRound = useCallback(() => {
     setOrders(prev => {
@@ -98,7 +149,14 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
   const toggleItem = useCallback((itemId: string, ticketId: number) => {
     setOrders(prev => prev.map(o => {
       if (o.id !== ticketId) return o;
-      return { ...o, items: o.items.map(i => i.id === itemId ? { ...i, done: !i.done } : i) };
+      return { ...o, items: o.items.map(i => {
+        if (i.id !== itemId) return i;
+        const newDone = !i.done;
+        const key = `${ticketId}:${itemId}`;
+        if (newDone) checkedItemsRef.current.add(key);
+        else checkedItemsRef.current.delete(key);
+        return { ...i, done: newDone };
+      })};
     }));
   }, []);
 
@@ -107,7 +165,19 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
       o.id === ticketId ? { ...o, status: 'ready' as const, readyAt: Date.now() } : o
     ));
     setFiredOrderIds(prev => prev.filter(id => id !== ticketId));
-  }, []);
+    // Clear checked items for this order
+    checkedItemsRef.current.forEach(key => {
+      if (key.startsWith(`${ticketId}:`)) checkedItemsRef.current.delete(key);
+    });
+    // Notify Odoo (fire and forget)
+    if (settings.posConfigId) {
+      fetch('/api/kds/orders/done', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: ticketId }),
+      }).catch(err => console.error('[KDS] mark done error:', err));
+    }
+  }, [settings.posConfigId]);
 
   const pickup = useCallback((ticketId: number) => {
     setOrders(prev => prev.map(o =>
@@ -126,6 +196,9 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
         items: o.items.map(i => ({ ...i, done: false })),
       };
     }));
+    checkedItemsRef.current.forEach(key => {
+      if (key.startsWith(`${ticketId}:`)) checkedItemsRef.current.delete(key);
+    });
     setCurrentTab('prep');
   }, []);
 
