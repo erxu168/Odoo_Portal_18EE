@@ -61,10 +61,7 @@ export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardPro
       <div className="kds-serve-queue">
         <div className="kds-serve-label">Plate for</div>
         {task.entries.map((entry) => {
-          const isNext = entry.ticketId === mostUrgentId && !entry.done;
-          const firstUnserved = task.entries.find(e => !e.done);
-          const isFirstUn = !entry.done && entry === firstUnserved;
-          const showNext = isNext || isFirstUn;
+          const showNext = entry.ticketId === mostUrgentId && !entry.done;
           const otherItems = showNext
             ? getTableRemaining(orders, entry.ticketId).filter(i => i.name !== task.name)
             : [];
