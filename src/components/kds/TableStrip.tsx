@@ -44,8 +44,6 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
           <div
             key={o.id}
             className="kds-table-card complete"
-            onClick={() => markReady(o.id)}
-            style={{ cursor: 'pointer', justifyContent: 'center', alignItems: 'center' }}
           >
             <div className="kds-tc-top">
               <div className="kds-tc-name">
@@ -54,12 +52,22 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
               </div>
               <Timer minutes={o.waitMin} tier={tier} size="sm" />
             </div>
-            <button className="kds-tc-ready-btn" onClick={(e) => { e.stopPropagation(); markReady(o.id); }}>
+            <div className="kds-tc-items">
+              {o.items.map(item => (
+                <div key={item.id} className="kds-tc-item done" style={{ pointerEvents: 'none' }}>
+                  <div className="kds-tc-check checked">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.5" width="14" height="14">
+                      <path d="M3 8.5l3.5 3.5 6.5-7" />
+                    </svg>
+                  </div>
+                  <span className="kds-tc-item-qty">{item.qty}x</span>
+                  <span className="kds-tc-item-name">{item.name}</span>
+                </div>
+              ))}
+            </div>
+            <button className="kds-tc-ready-btn" onClick={() => markReady(o.id)}>
               {'\u2705'} READY
             </button>
-            <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center' }}>
-              {total} items done -- tap to send
-            </div>
           </div>
         ) : (
           <div
