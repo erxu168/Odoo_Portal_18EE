@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { updateUserPreferences } from '@/lib/db';
 
 /**
  * GET /api/auth/me
@@ -23,6 +24,9 @@ export async function GET() {
     } catch { /* Odoo unavailable — skip avatar */ }
   }
 
+  let preferences: Record<string, any> = {};
+  try { preferences = JSON.parse(user.preferences || '{}'); } catch { /* ignore */ }
+
   return NextResponse.json({
     user: {
       id: user.id,
@@ -34,6 +38,33 @@ export async function GET() {
       must_change_password: !!user.must_change_password,
       is_candidate: !!user.applicant_id && !user.employee_id,
       avatar,
+      preferences,
     },
   });
+}
+
+/**
+ * PATCH /api/auth/me
+ * Update current user preferences (e.g. dashboard tile order).
+ */
+export async function PATCH(request: Request) {
+  const user = getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const { preferences } = body;
+
+    if (!preferences || typeof preferences !== 'object') {
+      return NextResponse.json({ error: 'preferences object required' }, { status: 400 });
+    }
+
+    updateUserPreferences(user.id, preferences);
+    return NextResponse.json({ success: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

@@ -129,6 +129,9 @@ function migrateSchema(db: Database.Database) {
   if (!colNames.includes('must_change_password')) {
     db.exec('ALTER TABLE portal_users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
   }
+  if (!colNames.includes('preferences')) {
+    db.exec("ALTER TABLE portal_users ADD COLUMN preferences TEXT DEFAULT '{}'");
+  }
 }
 
 function seedAdmin(db: Database.Database) {
@@ -158,6 +161,7 @@ export interface PortalUser {
   login_count: number;
   tour_seen: number;
   allowed_company_ids: string;
+  preferences: string;
   created_at: string;
   last_login: string | null;
 }
@@ -233,6 +237,16 @@ export function updateUser(id: number, updates: { name?: string; role?: string; 
   if (sets.length === 0) return;
   vals.push(id);
   db.prepare(`UPDATE portal_users SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+}
+
+export function updateUserPreferences(id: number, prefs: Record<string, any>) {
+  const db = getDb();
+  // Merge with existing preferences
+  const user = db.prepare('SELECT preferences FROM portal_users WHERE id = ?').get(id) as { preferences: string } | undefined;
+  let existing: Record<string, any> = {};
+  try { existing = JSON.parse(user?.preferences || '{}'); } catch { /* ignore */ }
+  const merged = { ...existing, ...prefs };
+  db.prepare('UPDATE portal_users SET preferences = ? WHERE id = ?').run(JSON.stringify(merged), id);
 }
 
 export function resetPassword(id: number, newPassword: string) {
