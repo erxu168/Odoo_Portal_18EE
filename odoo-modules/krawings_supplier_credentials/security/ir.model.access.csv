@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_supplier_login_manager,krawings.supplier.login manager,model_krawings_supplier_login,purchase.group_purchase_manager,1,1,1,1
+access_supplier_login_admin,krawings.supplier.login admin,model_krawings_supplier_login,base.group_system,1,1,1,1
