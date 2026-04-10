@@ -98,6 +98,8 @@ export interface WorkOrder {
   // Components assigned to this work order step
   move_raw_ids?: number[];
   components?: MoComponent[];
+  // Operation instructions (HTML rich text from Odoo BOM operation)
+  operation_note?: string;
   // Timer state
   is_timer_running?: boolean;
   time_ids?: number[]; // mrp.workcenter.productivity records

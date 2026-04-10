@@ -15,7 +15,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [components, setComponents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'workorders' | 'components'>('components');
+  const [tab, setTab] = useState<'workorders' | 'components' | 'overview'>('components');
   const [producing, setProducing] = useState(false);
   const [produceError, setProduceError] = useState<string | null>(null);
 
@@ -237,8 +237,12 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
             Ingredients ({pickedCount}/{totalComps})
           </button>
           <button onClick={() => setTab('workorders')}
-            className={`flex-1 py-3 rounded-md text-[var(--fs-sm)] font-semibold tracking-wide transition-all ${tab === 'workorders' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
+            className={`flex-1 py-2.5 rounded-md text-sm font-semibold tracking-wide transition-all ${tab === 'workorders' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
             Steps ({workOrders.length})
+          </button>
+          <button onClick={() => setTab('overview')}
+            className={`flex-1 py-2.5 rounded-md text-sm font-semibold tracking-wide transition-all ${tab === 'overview' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
+            Overview
           </button>
         </div>
       </div>
@@ -364,6 +368,47 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
               });
             })()}
             {components.length === 0 && <div className="text-center py-8 text-gray-400 text-[var(--fs-sm)]">No ingredients</div>}
+          </div>
+        )}
+
+        {tab === 'overview' && (
+          <div className="flex flex-col gap-4">
+            {workOrders.length > 0 ? workOrders.map((wo: any, idx: number) => {
+              const hasNote = wo.operation_note && wo.operation_note !== '<p><br></p>' && wo.operation_note.replace(/<[^>]*>/g, '').trim().length > 0;
+              return (
+                <div key={wo.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[var(--fs-xs)] font-extrabold flex-shrink-0 ${woStepColors[wo.state] || 'bg-gray-100 text-gray-400'}`}>
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[var(--fs-md)] font-bold text-gray-900">{wo.name}</div>
+                      <div className="text-[var(--fs-xs)] text-gray-400 font-semibold">{wo.workcenter_id[1]}</div>
+                    </div>
+                  </div>
+                  <div className="px-4 py-3">
+                    {hasNote ? (
+                      <div
+                        className="text-[var(--fs-sm)] text-gray-700 leading-relaxed prose prose-sm max-w-none
+                          [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1
+                          [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1
+                          [&_li]:my-0.5
+                          [&_p]:my-1
+                          [&_strong]:font-bold
+                          [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-2 [&_h1]:mb-1
+                          [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-2 [&_h2]:mb-1
+                          [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-1 [&_h3]:mb-0.5"
+                        dangerouslySetInnerHTML={{ __html: wo.operation_note }}
+                      />
+                    ) : (
+                      <p className="text-[var(--fs-sm)] text-gray-300 italic">No instructions</p>
+                    )}
+                  </div>
+                </div>
+              );
+            }) : (
+              <div className="text-center py-8 text-gray-400 text-[var(--fs-sm)]">No steps for this order</div>
+            )}
           </div>
         )}
       </div>

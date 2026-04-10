@@ -88,7 +88,7 @@ export async function GET(
           [['id', 'in', mo.workorder_ids]],
           ['name', 'workcenter_id', 'state', 'duration_expected', 'duration',
            'date_start', 'date_finished', 'sequence', 'production_id',
-           'move_raw_ids', 'operation_id'],
+           'move_raw_ids', 'operation_id', 'operation_note'],
           { order: 'sequence asc' })
       : [];
 
