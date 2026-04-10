@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_supplier_login_tree" model="ir.ui.view">
+        <field name="name">krawings.supplier.login.tree</field>
+        <field name="model">krawings.supplier.login</field>
+        <field name="arch" type="xml">
+            <list editable="bottom">
+                <field name="partner_id"/>
+                <field name="company_id"/>
+                <field name="username"/>
+                <field name="password" password="True"/>
+                <field name="website_url" optional="show" widget="url"/>
+                <field name="notes" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_supplier_login_form" model="ir.ui.view">
+        <field name="name">krawings.supplier.login.form</field>
+        <field name="model">krawings.supplier.login</field>
+        <field name="arch" type="xml">
+            <form string="Supplier Login">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="partner_id"/>
+                            <field name="company_id"/>
+                        </group>
+                        <group>
+                            <field name="username"/>
+                            <field name="password" password="True"/>
+                            <field name="website_url" widget="url"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="notes"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_supplier_login" model="ir.actions.act_window">
+        <field name="name">Supplier Logins</field>
+        <field name="res_model">krawings.supplier.login</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

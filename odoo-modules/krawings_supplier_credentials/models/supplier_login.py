@@ -1,4 +1,4 @@
-from odoo import models, fields, api
+from odoo import models, fields
 
 
 class KrawingsSupplierLogin(models.Model):
@@ -31,3 +31,13 @@ class KrawingsSupplierLogin(models.Model):
             'A login already exists for this supplier and company.',
         ),
     ]
+
+
+class ResPartner(models.Model):
+    _inherit = 'res.partner'
+
+    supplier_login_ids = fields.One2many(
+        'krawings.supplier.login',
+        'partner_id',
+        string='Portal Logins',
+    )

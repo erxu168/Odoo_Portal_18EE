@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_partner_form_inherit_supplier_logins" model="ir.ui.view">
+        <field name="name">res.partner.form.supplier.logins</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='internal_notes']" position="after">
+                <page string="Portal Logins" name="portal_logins"
+                      invisible="supplier_rank == 0">
+                    <field name="supplier_login_ids">
+                        <list editable="bottom">
+                            <field name="company_id"/>
+                            <field name="username"/>
+                            <field name="password" password="True"/>
+                            <field name="website_url" optional="show" widget="url"/>
+                            <field name="notes" optional="hide"/>
+                        </list>
+                    </field>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>
