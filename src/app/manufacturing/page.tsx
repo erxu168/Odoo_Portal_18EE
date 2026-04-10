@@ -119,10 +119,6 @@ export default function ManufacturingPage() {
               setHistory([{ type: 'dashboard' }, { type: 'mo-list', mode: 'production' }]);
               setScreen({ type: 'mo-detail', moId });
             }}
-            onNavigateToCreate={() => {
-              setHistory(prev => [...prev, screen]);
-              setScreen({ type: 'create' });
-            }}
           />
         );
       case 'pick-list':

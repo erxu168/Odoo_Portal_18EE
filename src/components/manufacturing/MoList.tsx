@@ -31,8 +31,8 @@ const STATE_LABELS: Record<string, string> = {
 
 const PRODUCTION_FILTERS = [
   { id: 'all', label: 'All open' },
-  { id: 'confirmed', label: 'Confirmed' },
   { id: 'draft', label: 'Draft' },
+  { id: 'confirmed', label: 'Confirmed' },
   { id: 'progress', label: 'In Progress' },
   { id: 'to_close', label: 'To Close' },
 ];
