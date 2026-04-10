@@ -18,36 +18,37 @@ export async function GET() {
     let dueMoCount = 0;
     let doneTodayCount = 0;
     try {
-      const activeMos = await odoo.searchRead(
-        'mrp.production',
-        [['state', 'in', ['confirmed', 'progress']]],
-        ['id'],
-        { limit: 200 },
-      );
-      activeMoCount = activeMos.length;
-
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
-      const dueMos = await odoo.searchRead(
-        'mrp.production',
-        [
-          ['state', 'in', ['confirmed', 'progress']],
-          ['date_deadline', '<=', todayStr + ' 23:59:59'],
-        ],
-        ['id'],
-        { limit: 200 },
-      );
-      dueMoCount = dueMos.length;
 
-      const doneMos = await odoo.searchRead(
-        'mrp.production',
-        [
-          ['state', '=', 'done'],
-          ['date_finished', '>=', todayStr + ' 00:00:00'],
-        ],
-        ['id'],
-        { limit: 200 },
-      );
+      const [activeMos, dueMos, doneMos] = await Promise.all([
+        odoo.searchRead(
+          'mrp.production',
+          [['state', 'in', ['confirmed', 'progress']]],
+          ['id'],
+          { limit: 200 },
+        ),
+        odoo.searchRead(
+          'mrp.production',
+          [
+            ['state', 'in', ['confirmed', 'progress']],
+            ['date_deadline', '<=', todayStr + ' 23:59:59'],
+          ],
+          ['id'],
+          { limit: 200 },
+        ),
+        odoo.searchRead(
+          'mrp.production',
+          [
+            ['state', '=', 'done'],
+            ['date_finished', '>=', todayStr + ' 00:00:00'],
+          ],
+          ['id'],
+          { limit: 200 },
+        ),
+      ]);
+      activeMoCount = activeMos.length;
+      dueMoCount = dueMos.length;
       doneTodayCount = doneMos.length;
     } catch (e) {
       console.error('Dashboard: failed to fetch MO counts', e);
@@ -66,7 +67,7 @@ export async function GET() {
     // Shift and tasks not yet wired to Odoo planning module.
     // Return null so the dashboard knows these are unavailable (not mock data).
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       badges: {
         production: activeMoCount,
         contacts: pendingRegistrations,
@@ -80,6 +81,8 @@ export async function GET() {
       tasks: null,
       pendingRegistrations,
     });
+    res.headers.set('Cache-Control', 'private, max-age=30, stale-while-revalidate=60');
+    return res;
   } catch (error: any) {
     console.error('GET /api/dashboard error:', error);
     return NextResponse.json(

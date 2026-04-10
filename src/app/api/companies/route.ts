@@ -15,14 +15,15 @@ export async function GET() {
     const user = getCurrentUser();
     const odoo = getOdoo();
 
-    // Fetch all companies + warehouses from Odoo
-    const companies = await odoo.searchRead('res.company', [], [
-      'id', 'name', 'sequence',
-    ], { limit: 50, order: 'sequence asc, id asc' });
-
-    const warehouses = await odoo.searchRead('stock.warehouse', [], [
-      'id', 'name', 'company_id', 'code', 'lot_stock_id',
-    ], { limit: 50 });
+    // Fetch companies + warehouses from Odoo in parallel
+    const [companies, warehouses] = await Promise.all([
+      odoo.searchRead('res.company', [], [
+        'id', 'name', 'sequence',
+      ], { limit: 50, order: 'sequence asc, id asc' }),
+      odoo.searchRead('stock.warehouse', [], [
+        'id', 'name', 'company_id', 'code', 'lot_stock_id',
+      ], { limit: 50 }),
+    ]);
 
     // Build enriched company list
     let enriched = companies.map((c: any) => {
@@ -49,7 +50,9 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ companies: enriched });
+    const res = NextResponse.json({ companies: enriched });
+    res.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
+    return res;
   } catch (error: any) {
     console.error('GET /api/companies error:', error);
     return NextResponse.json(

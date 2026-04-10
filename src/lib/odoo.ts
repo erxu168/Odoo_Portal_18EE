@@ -46,7 +46,7 @@ export class OdooClient {
   /**
    * Raw JSON-RPC call
    */
-  private async rpc(endpoint: string, params: Record<string, any>): Promise<any> {
+  private async rpc(endpoint: string, params: Record<string, any>, _retried = false): Promise<any> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -75,6 +75,16 @@ export class OdooClient {
     const data: JsonRpcResponse = await response.json();
 
     if (data.error) {
+      // Retry once on session expiry (Odoo returns 100 for SessionExpired)
+      const code = data.error.code;
+      const msg = (data.error.data?.message || '').toLowerCase();
+      if (!_retried && (code === 100 || msg.includes('session') || msg.includes('odoo.http.SessionExpiredException'))) {
+        console.warn('[OdooClient] Session expired, re-authenticating...');
+        this.uid = null;
+        this.sessionId = null;
+        await this.authenticate();
+        return this.rpc(endpoint, params, true);
+      }
       throw new Error(
         `Odoo RPC Error: ${data.error.message} — ${data.error.data?.message || ''}`
       );
