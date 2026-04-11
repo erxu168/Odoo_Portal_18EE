@@ -6,8 +6,7 @@
         <field name="inherit_id" ref="base.view_partner_form"/>
         <field name="arch" type="xml">
             <xpath expr="//page[@name='internal_notes']" position="after">
-                <page string="Portal Logins" name="portal_logins"
-                      invisible="supplier_rank == 0">
+                <page string="Portal Logins" name="portal_logins">
                     <field name="supplier_login_ids">
                         <list editable="bottom">
                             <field name="company_id"/>
