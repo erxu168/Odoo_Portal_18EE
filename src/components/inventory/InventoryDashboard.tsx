@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import SortableTileGrid from '@/components/ui/SortableTileGrid';
 
 interface InventoryDashboardProps {
   userRole: string;
@@ -13,12 +14,19 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [genMsg, setGenMsg] = useState<string | null>(null);
+  const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
 
   const canManage = userRole === 'manager' || userRole === 'admin';
 
   useEffect(() => {
     fetchStats();
   }, [canManage]);
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d.user?.preferences?.inventory_tile_order) setSavedOrder(d.user.preferences.inventory_tile_order);
+    }).catch(() => {});
+  }, []);
 
   async function fetchStats() {
     setLoading(true);
@@ -162,10 +170,14 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
       </div>
 
       <div className="px-4 pt-4">
-        <div className="grid grid-cols-2 gap-3">
-          {tiles.map((tile) => (
-            <button key={tile.id} onClick={() => onNavigate(tile.id)}
-              className={`relative p-4 rounded-2xl border ${(tile as any).color || 'bg-white border-gray-200'} text-left active:scale-[0.97] transition-transform shadow-sm`}>
+        <SortableTileGrid
+          items={tiles}
+          getItemId={(tile) => tile.id}
+          storageKey="inventory_tile_order"
+          savedOrder={savedOrder}
+          renderItem={(tile) => (
+            <button onClick={() => onNavigate(tile.id)}
+              className={`w-full relative p-4 rounded-2xl border ${(tile as any).color || 'bg-white border-gray-200'} text-left active:scale-[0.97] transition-transform shadow-sm`}>
               {tile.badge > 0 && (
                 <span className="absolute top-3 right-3 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-[22px] text-center">
                   {tile.badge}
@@ -177,8 +189,8 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
               <div className="text-[var(--fs-lg)] font-bold text-gray-900">{tile.label}</div>
               <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{tile.sublabel}</div>
             </button>
-          ))}
-        </div>
+          )}
+        />
 
         {canManage && (
           <div className="mt-4">

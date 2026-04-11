@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import SortableTileGrid from '@/components/ui/SortableTileGrid';
 
 interface Props {
   userRole: string;
@@ -73,6 +74,7 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [recipeCount, setRecipeCount] = useState({ cooking: 0, production: 0 });
   const [syncPending, setSyncPending] = useState(0);
+  const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
 
   useEffect(() => {
     async function fetchStats() {
@@ -111,6 +113,12 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
       }
     }
     fetchStats();
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d.user?.preferences?.recipes_tile_order) setSavedOrder(d.user.preferences.recipes_tile_order);
+    }).catch(() => {});
   }, []);
 
   const myLevel = ROLE_LEVEL[userRole] || 1;
@@ -162,12 +170,15 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
       {/* Tile grid */}
       <div className="px-5 pt-5">
         <p className="text-[11px] font-semibold text-gray-400 tracking-widest uppercase mb-3">What are we making?</p>
-        <div className="grid grid-cols-2 gap-3">
-          {visibleTiles.map(tile => (
+        <SortableTileGrid
+          items={visibleTiles}
+          getItemId={(tile) => tile.id}
+          storageKey="recipes_tile_order"
+          savedOrder={savedOrder}
+          renderItem={(tile) => (
             <button
-              key={tile.id}
               onClick={() => onNavigate(tile.id)}
-              className={`relative p-4 rounded-2xl border ${tile.color} text-left active:scale-[0.97] transition-transform shadow-sm`}
+              className={`w-full relative p-4 rounded-2xl border ${tile.color} text-left active:scale-[0.97] transition-transform shadow-sm`}
             >
               {tile.badge && pendingApprovals > 0 && (
                 <span className="absolute top-3 right-3 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold font-mono leading-[22px] text-center">
@@ -180,8 +191,8 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
               <div className="text-[14px] font-bold text-gray-900">{tile.label}</div>
               <div className="text-[11px] text-gray-500 mt-0.5">{getSub(tile)}</div>
             </button>
-          ))}
-        </div>
+          )}
+        />
       </div>
 
       {/* Recent activity placeholder */}

@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import SortableTileGrid from '@/components/ui/SortableTileGrid';
 import PurchaseAlerts from './PurchaseAlerts';
 
 // ─────────────────────────────────────────────
@@ -82,6 +83,17 @@ export default function OrdersDashboard({
   onManage,
   locationName,
 }: OrdersDashboardProps) {
+  const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => {
+        if (d.user?.preferences?.purchase_tile_order) setSavedOrder(d.user.preferences.purchase_tile_order);
+      })
+      .catch(() => {});
+  }, []);
+
   const tiles: TileConfig[] = [
     {
       id: 'order',
@@ -134,13 +146,16 @@ export default function OrdersDashboard({
           </span>
         </div>
 
-        {/* 2×2 grid */}
-        <div className="grid grid-cols-2 gap-3">
-          {tiles.map((tile) => (
+        {/* 2×2 grid — drag-and-drop reorderable */}
+        <SortableTileGrid
+          items={tiles}
+          getItemId={(t) => t.id}
+          storageKey="purchase_tile_order"
+          savedOrder={savedOrder}
+          renderItem={(tile) => (
             <button
-              key={tile.id}
               onClick={() => onNavigate(tile.id)}
-              className={`relative rounded-2xl border ${tile.color} shadow-sm p-4 text-left active:scale-[0.97] transition-transform`}
+              className={`w-full relative rounded-2xl border ${tile.color} shadow-sm p-4 text-left active:scale-[0.97] transition-transform`}
             >
               {tile.badgeCount > 0 && (
                 <span className="absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-5 text-center">
@@ -153,8 +168,8 @@ export default function OrdersDashboard({
               <div className="text-[var(--fs-md)] font-bold text-gray-900">{tile.label}</div>
               <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{tile.sublabel}</div>
             </button>
-          ))}
-        </div>
+          )}
+        />
 
         {/* Manager: Manage guides & settings */}
         {isManager && (

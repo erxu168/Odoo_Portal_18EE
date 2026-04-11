@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useCompany } from '@/lib/company-context';
+import SortableTileGrid from '@/components/ui/SortableTileGrid';
 
 interface MfgDashboardProps {
   onNavigate: (screen: string) => void;
@@ -11,6 +12,11 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
   const { companyId } = useCompany();
   const [stats, setStats] = useState({ active: 0, confirmed: 0, inProgress: 0, done: 0, bomCount: 0, pickListCount: 0 });
   const [loading, setLoading] = useState(true);
+  const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.preferences?.manufacturing_tile_order) setSavedOrder(d.user.preferences.manufacturing_tile_order); }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!companyId) return;
@@ -98,12 +104,15 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
           <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
-          {tiles.map(tile => (
+        <SortableTileGrid
+          items={tiles}
+          getItemId={(t) => t.key}
+          storageKey="manufacturing_tile_order"
+          savedOrder={savedOrder}
+          renderItem={(tile) => (
             <button
-              key={tile.key}
               onClick={() => onNavigate(tile.key)}
-              className={`relative rounded-2xl border ${tile.color} shadow-sm p-4 text-left active:scale-[0.97] transition-transform`}
+              className={`relative rounded-2xl border ${tile.color} shadow-sm p-4 text-left w-full active:scale-[0.97] transition-transform`}
             >
               <div className={`w-11 h-11 rounded-xl ${tile.iconBg} ${tile.iconColor} flex items-center justify-center mb-3`}>
                 {tile.icon}
@@ -116,8 +125,8 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
                 </span>
               )}
             </button>
-          ))}
-        </div>
+          )}
+        />
       )}
     </div>
   );

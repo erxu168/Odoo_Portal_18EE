@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import SortableTileGrid from '@/components/ui/SortableTileGrid';
 import type { EmployeeData } from '@/types/hr';
 import { calculateOnboardingPercent } from '@/types/hr';
 
@@ -10,10 +11,26 @@ interface Props {
   onHome: () => void;
 }
 
+interface TileData {
+  id: string;
+  icon: React.ReactNode;
+  bg: string;
+  border: string;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  sub: string;
+  badge?: string;
+  disabled?: boolean;
+  onClick?: () => void;
+}
+
 export default function HrDashboard({ onNavigate, onHome }: Props) {
   const [employee, setEmployee] = useState<EmployeeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isManager, setIsManager] = useState(false);
+  const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
+  const [savedManagerOrder, setSavedManagerOrder] = useState<string[] | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -33,6 +50,13 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
       }
     }
     load();
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d.user?.preferences?.hr_tile_order) setSavedOrder(d.user.preferences.hr_tile_order);
+      if (d.user?.preferences?.hr_manager_tile_order) setSavedManagerOrder(d.user.preferences.hr_manager_tile_order);
+    }).catch(() => {});
   }, []);
 
   const pct = employee ? calculateOnboardingPercent(employee) : 0;
@@ -71,45 +95,70 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
           )}
 
           {/* Staff tiles */}
-          <div className="grid grid-cols-2 gap-3 p-5">
-            <DashTile
-              icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
-              bg="bg-green-50" border="border-green-200" iconBg="bg-green-100" iconColor="text-green-600"
-              label="My Profile"
-              sub="View & edit your info"
-              onClick={() => onNavigate('profile')}
-            />
-            {!isComplete ? (
-              <DashTile
-                icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>}
-                bg="bg-amber-50" border="border-amber-200" iconBg="bg-amber-100" iconColor="text-amber-600"
-                label="Onboarding"
-                sub={`Step ${getStep(employee)} of 6`}
-                badge="!"
-                onClick={() => onNavigate('onboarding')}
-              />
-            ) : (
-              <DashTile
-                icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>}
-                bg="bg-green-50" border="border-green-200" iconBg="bg-green-100" iconColor="text-green-600"
-                label="Onboarding"
-                sub="Complete"
-                onClick={() => onNavigate('onboarding')}
-              />
-            )}
-            <DashTile
-              icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>}
-              bg="bg-blue-50" border="border-blue-200" iconBg="bg-blue-100" iconColor="text-blue-600"
-              label="My Documents"
-              sub={`${uploadedDocs} of ${requiredDocs} uploaded`}
-              onClick={() => onNavigate('documents')}
-            />
-            <DashTile
-              icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>}
-              bg="bg-gray-50" border="border-gray-200" iconBg="bg-gray-100" iconColor="text-gray-400"
-              label="Help"
-              sub="Coming soon"
-              disabled
+          <div className="p-5">
+            <SortableTileGrid<TileData>
+              items={[
+                {
+                  id: 'profile',
+                  icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+                  bg: 'bg-green-50', border: 'border-green-200', iconBg: 'bg-green-100', iconColor: 'text-green-600',
+                  label: 'My Profile',
+                  sub: 'View & edit your info',
+                  onClick: () => onNavigate('profile'),
+                },
+                !isComplete
+                  ? {
+                      id: 'onboarding',
+                      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg>,
+                      bg: 'bg-amber-50', border: 'border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
+                      label: 'Onboarding',
+                      sub: `Step ${getStep(employee)} of 6`,
+                      badge: '!',
+                      onClick: () => onNavigate('onboarding'),
+                    }
+                  : {
+                      id: 'onboarding',
+                      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>,
+                      bg: 'bg-green-50', border: 'border-green-200', iconBg: 'bg-green-100', iconColor: 'text-green-600',
+                      label: 'Onboarding',
+                      sub: 'Complete',
+                      onClick: () => onNavigate('onboarding'),
+                    },
+                {
+                  id: 'documents',
+                  icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
+                  bg: 'bg-blue-50', border: 'border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
+                  label: 'My Documents',
+                  sub: `${uploadedDocs} of ${requiredDocs} uploaded`,
+                  onClick: () => onNavigate('documents'),
+                },
+                {
+                  id: 'help',
+                  icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+                  bg: 'bg-gray-50', border: 'border-gray-200', iconBg: 'bg-gray-100', iconColor: 'text-gray-400',
+                  label: 'Help',
+                  sub: 'Coming soon',
+                  disabled: true,
+                },
+              ]}
+              getItemId={(tile) => tile.id}
+              storageKey="hr_tile_order"
+              savedOrder={savedOrder}
+              renderItem={(tile) => (
+                <DashTile
+                  icon={tile.icon}
+                  bg={tile.bg}
+                  border={tile.border}
+                  iconBg={tile.iconBg}
+                  iconColor={tile.iconColor}
+                  label={tile.label}
+                  sub={tile.sub}
+                  badge={tile.badge}
+                  disabled={tile.disabled}
+                  onClick={tile.onClick}
+                  className="w-full"
+                />
+              )}
             />
           </div>
 
@@ -121,20 +170,44 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
                   Manager Tools
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 px-5 pb-5">
-                <DashTile
-                  icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>}
-                  bg="bg-blue-50" border="border-blue-200" iconBg="bg-purple-100" iconColor="text-blue-600"
-                  label="Employees"
-                  sub="View all staff"
-                  onClick={() => onNavigate('employees')}
-                />
-                <DashTile
-                  icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>}
-                  bg="bg-gray-50" border="border-gray-200" iconBg="bg-gray-100" iconColor="text-gray-400"
-                  label="DATEV Export"
-                  sub="Coming soon"
-                  disabled
+              <div className="px-5 pb-5">
+                <SortableTileGrid<TileData>
+                  items={[
+                    {
+                      id: 'employees',
+                      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
+                      bg: 'bg-blue-50', border: 'border-blue-200', iconBg: 'bg-purple-100', iconColor: 'text-blue-600',
+                      label: 'Employees',
+                      sub: 'View all staff',
+                      onClick: () => onNavigate('employees'),
+                    },
+                    {
+                      id: 'datev-export',
+                      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+                      bg: 'bg-gray-50', border: 'border-gray-200', iconBg: 'bg-gray-100', iconColor: 'text-gray-400',
+                      label: 'DATEV Export',
+                      sub: 'Coming soon',
+                      disabled: true,
+                    },
+                  ]}
+                  getItemId={(tile) => tile.id}
+                  storageKey="hr_manager_tile_order"
+                  savedOrder={savedManagerOrder}
+                  renderItem={(tile) => (
+                    <DashTile
+                      icon={tile.icon}
+                      bg={tile.bg}
+                      border={tile.border}
+                      iconBg={tile.iconBg}
+                      iconColor={tile.iconColor}
+                      label={tile.label}
+                      sub={tile.sub}
+                      badge={tile.badge}
+                      disabled={tile.disabled}
+                      onClick={tile.onClick}
+                      className="w-full"
+                    />
+                  )}
                 />
               </div>
             </>
@@ -166,15 +239,16 @@ interface TileProps {
   badge?: string;
   disabled?: boolean;
   onClick?: () => void;
+  className?: string;
 }
 
-function DashTile({ icon, bg, border, iconBg, iconColor, label, sub, badge, disabled, onClick }: TileProps) {
+function DashTile({ icon, bg, border, iconBg, iconColor, label, sub, badge, disabled, onClick, className }: TileProps) {
   return (
     <button
       onClick={disabled ? undefined : onClick}
       className={`rounded-2xl p-4 flex flex-col items-start gap-2 border text-left relative shadow-sm active:scale-[0.97] transition-transform ${
         disabled ? 'bg-gray-50 border-gray-200 opacity-50' : `${bg} ${border}`
-      }`}
+      } ${className || ''}`}
     >
       <div
         className={`w-11 h-11 rounded-xl flex items-center justify-center ${

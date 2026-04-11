@@ -1,23 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  TouchSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  useSortable,
-  rectSortingStrategy,
-  arrayMove,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import SortableTileGrid from '@/components/ui/SortableTileGrid';
 
 /**
  * Dashboard — canonical design system (colored semantic tiles, 2-col grid).
@@ -104,58 +89,6 @@ const TASK_STATUS_STYLES: Record<string, { dot: string; pill: string; pillText: 
   done:     { dot: 'bg-green-500', pill: 'bg-green-100', pillText: 'text-green-800' },
 };
 
-/* ------------------------------------------------------------------ */
-/*  Sortable Tile Wrapper                                             */
-/* ------------------------------------------------------------------ */
-function SortableTile({
-  tile, badges, isDragging, router,
-}: {
-  tile: Tile; badges: Record<string, number>; isDragging: boolean; router: ReturnType<typeof useRouter>;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: tile.id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 50 : undefined,
-    opacity: isDragging ? 0.9 : undefined,
-  };
-  const count = badges[tile.id] || 0;
-  const disabled = !tile.href;
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <button
-        onClick={() => {
-          if (!tile.href) return;
-          if (tile.href === '/recipes') sessionStorage.setItem('kw_recipes_reset', '1');
-          router.push(tile.href);
-        }}
-        className={`relative rounded-2xl border p-4 flex flex-col items-center justify-center text-center aspect-square shadow-sm w-full active:scale-[0.97] transition-transform ${
-          disabled
-            ? 'bg-gray-50 border-gray-200 opacity-50'
-            : `${tile.bg} ${tile.border}`
-        }`}
-      >
-        {count > 0 && (
-          <span className="absolute top-2 right-2 min-w-[22px] h-6 px-2 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-6 text-center">{count}</span>
-        )}
-        <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 mb-2 ${
-          disabled ? 'bg-gray-100 text-gray-400' : `${tile.iconBg} ${tile.iconColor}`
-        }`}>
-          {tile.icon}
-        </div>
-        <div className="min-w-0">
-          <div className="text-[var(--fs-md)] font-bold text-gray-900 leading-tight">{tile.label}</div>
-          <div className="text-[var(--fs-xs)] text-gray-500 mt-1 leading-tight">{tile.subtitle}</div>
-        </div>
-      </button>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Main Dashboard                                                    */
-/* ------------------------------------------------------------------ */
 export default function DashboardHome() {
   const router = useRouter();
   const [userName, setUserName] = useState<string>('');
@@ -166,14 +99,7 @@ export default function DashboardHome() {
   const [tasks, setTasks] = useState<any>(null);
   const [now, setNow] = useState(new Date());
   const [isCandidate, setIsCandidate] = useState(false);
-  const [tileOrder, setTileOrder] = useState<string[] | null>(null);
-  const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-  );
+  const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
 
@@ -185,7 +111,7 @@ export default function DashboardHome() {
         if (d.user.avatar) setAvatar(d.user.avatar);
         if (d.user.is_candidate) setIsCandidate(true);
         if (d.user.preferences?.dashboard_tile_order) {
-          setTileOrder(d.user.preferences.dashboard_tile_order);
+          setSavedOrder(d.user.preferences.dashboard_tile_order);
         }
       }
     }).catch(() => {});
@@ -204,17 +130,6 @@ export default function DashboardHome() {
     load();
   }, []);
 
-  const saveTileOrder = useCallback((order: string[]) => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      fetch('/api/auth/me', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ preferences: { dashboard_tile_order: order } }),
-      }).catch(() => {});
-    }, 500);
-  }, []);
-
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -222,32 +137,9 @@ export default function DashboardHome() {
   const dateStr = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
 
   const myLevel = ROLE_LEVEL[userRole] || 1;
-  const filteredTiles = isCandidate
+  const visibleTiles = isCandidate
     ? TILES.filter(t => t.id === 'hr')
     : TILES.filter(t => myLevel >= (ROLE_LEVEL[t.minRole] || 1));
-
-  // Apply saved order: reorder filtered tiles based on saved order, append any new tiles at the end
-  const visibleTiles = tileOrder
-    ? [
-        ...tileOrder.filter(id => filteredTiles.some(t => t.id === id)).map(id => filteredTiles.find(t => t.id === id)!),
-        ...filteredTiles.filter(t => !tileOrder.includes(t.id)),
-      ]
-    : filteredTiles;
-
-  function handleDragEnd(event: DragEndEvent) {
-    setActiveDragId(null);
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const oldIndex = visibleTiles.findIndex(t => t.id === active.id);
-    const newIndex = visibleTiles.findIndex(t => t.id === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-
-    const reordered = arrayMove(visibleTiles, oldIndex, newIndex);
-    const newOrder = reordered.map(t => t.id);
-    setTileOrder(newOrder);
-    saveTileOrder(newOrder);
-  }
 
   const tasksDone = tasks?.done || 0;
   const tasksTotal = tasks?.total || 0;
@@ -332,27 +224,43 @@ export default function DashboardHome() {
       {/* App tiles */}
       <div className="px-5 pt-3">
         <p className="text-[var(--fs-xs)] font-bold text-gray-400 tracking-widest uppercase mb-3">Apps</p>
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={(e) => setActiveDragId(e.active.id as string)}
-          onDragEnd={handleDragEnd}
-          onDragCancel={() => setActiveDragId(null)}
-        >
-          <SortableContext items={visibleTiles.map(t => t.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-2 gap-3">
-              {visibleTiles.map(tile => (
-                <SortableTile
-                  key={tile.id}
-                  tile={tile}
-                  badges={badges}
-                  isDragging={activeDragId === tile.id}
-                  router={router}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
+        <SortableTileGrid
+          items={visibleTiles}
+          getItemId={(t) => t.id}
+          storageKey="dashboard_tile_order"
+          savedOrder={savedOrder}
+          renderItem={(tile) => {
+            const count = badges[tile.id] || 0;
+            const disabled = !tile.href;
+            return (
+              <button
+                onClick={() => {
+                  if (!tile.href) return;
+                  if (tile.href === '/recipes') sessionStorage.setItem('kw_recipes_reset', '1');
+                  router.push(tile.href);
+                }}
+                className={`relative rounded-2xl border p-4 flex flex-col items-center justify-center text-center aspect-square shadow-sm w-full active:scale-[0.97] transition-transform ${
+                  disabled
+                    ? 'bg-gray-50 border-gray-200 opacity-50'
+                    : `${tile.bg} ${tile.border}`
+                }`}
+              >
+                {count > 0 && (
+                  <span className="absolute top-2 right-2 min-w-[22px] h-6 px-2 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-6 text-center">{count}</span>
+                )}
+                <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 mb-2 ${
+                  disabled ? 'bg-gray-100 text-gray-400' : `${tile.iconBg} ${tile.iconColor}`
+                }`}>
+                  {tile.icon}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[var(--fs-md)] font-bold text-gray-900 leading-tight">{tile.label}</div>
+                  <div className="text-[var(--fs-xs)] text-gray-500 mt-1 leading-tight">{tile.subtitle}</div>
+                </div>
+              </button>
+            );
+          }}
+        />
       </div>
 
       <div className="text-center py-6">
