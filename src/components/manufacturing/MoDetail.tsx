@@ -19,7 +19,6 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
   const [producing, setProducing] = useState(false);
   const [produceError, setProduceError] = useState<string | null>(null);
 
-  const [togglingId, setTogglingId] = useState<number | null>(null);
 
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -32,6 +31,8 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
     if (actionError) { const t = setTimeout(() => setActionError(null), 5000); return () => clearTimeout(t); }
   }, [actionError]);
 
+  const pickedKey = `mo-picked-${moId}`;
+
   async function fetchDetail() {
     setLoading(true);
     try {
@@ -39,7 +40,15 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
       const data = await res.json();
       setMo(data.order);
       setWorkOrders(data.order?.work_orders || []);
-      setComponents(data.order?.components || []);
+      const comps = data.order?.components || [];
+      // Restore picked state from localStorage
+      try {
+        const saved: Record<string, boolean> = JSON.parse(localStorage.getItem(pickedKey) || '{}');
+        for (const c of comps) {
+          if (saved[c.id] !== undefined) c.picked = saved[c.id];
+        }
+      } catch {}
+      setComponents(comps);
     } catch (err) {
       console.error('Failed to fetch MO detail:', err);
     } finally {
@@ -104,35 +113,17 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
     }
   }
 
-  async function toggleIngredient(comp: any) {
-    const isPicked = comp.picked === true;
-    const newPicked = !isPicked;
-
-    setComponents(prev => prev.map(c =>
-      c.id === comp.id ? { ...c, picked: newPicked } : c
-    ));
-
-    try {
-      const res = await fetch(`/api/manufacturing-orders/${moId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          component_updates: [{
-            move_id: comp.id,
-            consumed_qty: newPicked ? comp.product_uom_qty : 0,
-          }],
-        }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setComponents(prev => prev.map(c =>
-          c.id === comp.id ? { ...c, picked: isPicked } : c
-        ));
-        throw new Error(data.error);
-      }
-    } catch (err: any) {
-      setActionError(err.message || 'Failed to update ingredient');
-    }
+  function toggleIngredient(comp: any) {
+    setComponents(prev => {
+      const next = prev.map(c =>
+        c.id === comp.id ? { ...c, picked: !c.picked } : c
+      );
+      // Persist picked state to localStorage
+      const saved: Record<string, boolean> = {};
+      for (const c of next) saved[c.id] = !!c.picked;
+      localStorage.setItem(pickedKey, JSON.stringify(saved));
+      return next;
+    });
   }
 
   const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4 }).format(n);
@@ -328,22 +319,19 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
                       {catComps.map((c: any) => {
                         const required = c.product_uom_qty || 0;
                         const isPicked = c.picked === true;
-                        const isToggling = togglingId === c.id;
                         const compUom = c.product_uom?.[1] || 'kg';
                         return (
-                          <button key={c.id} onClick={() => !isToggling && toggleIngredient(c)}
-                            disabled={isToggling}
+                          <button key={c.id} onClick={() => toggleIngredient(c)}
+                            style={{ touchAction: 'manipulation' }}
                             className={`bg-white border rounded-2xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
                               isPicked ? 'border-green-300 bg-green-50/40' : 'border-gray-200'
-                            } ${isToggling ? 'opacity-60' : ''}`}>
+                            }`}>
                             <div className={`w-1.5 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-300'}`} />
                             <div className="flex-1 flex items-center gap-3 px-4 py-4">
                               <div className={`w-11 h-11 rounded-xl border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
                                 isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
                               }`}>
-                                {isToggling ? (
-                                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                ) : isPicked ? (
+                                {isPicked ? (
                                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                                 ) : null}
                               </div>
