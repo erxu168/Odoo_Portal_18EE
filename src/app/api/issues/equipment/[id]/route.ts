@@ -2,7 +2,8 @@
  * /api/issues/equipment/[id]
  *
  * GET — equipment detail (with docs, photos, repair history)
- * PUT — update equipment (manager/admin only)
+ * PUT — update equipment (manager/admin only). Also fires fire-and-forget
+ *        Odoo sync to mirror the update into maintenance.equipment.
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
@@ -10,6 +11,7 @@ import {
   initIssuesTables, getEquipment, updateEquipment,
   getEquipmentDocs, getEquipmentPhotos, getEquipmentRepairHistory,
 } from '@/lib/issues-db';
+import { syncEquipmentToOdoo } from '@/lib/issues-odoo-sync';
 import { logAudit } from '@/lib/db';
 
 initIssuesTables();
@@ -56,6 +58,14 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     target_type: 'equipment',
     detail: `Updated equipment ${equipment.name}: ${Object.keys(body).join(', ')}`,
   });
+
+  // Fire-and-forget Odoo sync with the post-update state
+  const updated = getEquipment(params.id);
+  if (updated) {
+    syncEquipmentToOdoo(updated).catch((err) => {
+      console.warn(`[equipment PUT] Odoo sync failed for ${params.id}:`, err);
+    });
+  }
 
   return NextResponse.json({ message: 'Equipment updated' });
 }
