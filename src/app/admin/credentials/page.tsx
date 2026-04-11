@@ -35,7 +35,7 @@ function LoginRow({
         </div>
         <div className="text-[15px] font-medium text-[#1A1A1A] mt-0.5">{login.username}</div>
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-[14px] text-[#6B7280] font-mono">
+          <span className="text-[14px] text-[#6B7280] font-mono select-all">
             {showPw ? login.password : '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022'}
           </span>
           <button

@@ -12,7 +12,7 @@
                         <list editable="bottom">
                             <field name="company_id"/>
                             <field name="username"/>
-                            <field name="password" password="True"/>
+                            <field name="password" widget="CopyClipboardChar"/>
                             <field name="website_url" optional="show" widget="url"/>
                             <field name="notes" optional="hide"/>
                         </list>
