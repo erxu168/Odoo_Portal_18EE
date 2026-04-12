@@ -76,3 +76,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const db = getRentalsDb();
+    const id = Number(params.id);
+    const now = berlinNow();
+
+    // Release the room before deleting
+    const tenancy = db.prepare(`SELECT room_id, status FROM tenancies WHERE id = ?`).get(id) as { room_id: number; status: string } | undefined;
+    if (tenancy && (tenancy.status === 'active' || tenancy.status === 'ending')) {
+      db.prepare(`UPDATE rooms SET status = 'vacant', updated_at = ? WHERE id = ?`).run(now, tenancy.room_id);
+    }
+
+    // Delete related records
+    db.prepare(`DELETE FROM payments WHERE tenancy_id = ?`).run(id);
+    db.prepare(`DELETE FROM tenancy_rent_steps WHERE tenancy_id = ?`).run(id);
+    db.prepare(`DELETE FROM inspections WHERE tenancy_id = ?`).run(id);
+    const result = db.prepare(`DELETE FROM tenancies WHERE id = ?`).run(id);
+
+    return NextResponse.json({ deleted: result.changes });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

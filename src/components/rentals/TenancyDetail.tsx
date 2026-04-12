@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { Tenancy, Tenant, Room, Property, TenancyRentStep, Payment } from '@/types/rentals';
 
 type TabKey = 'info' | 'payments' | 'rent';
@@ -72,6 +73,61 @@ export default function TenancyDetail() {
   const [inspections, setInspections] = useState<InspectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabKey>('info');
+  const [showEnd, setShowEnd] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleEndTenancy() {
+    if (ending) return;
+    setEnding(true);
+    try {
+      const res = await fetch(`/api/rentals/tenancies/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'ended' }),
+      });
+      if (res.ok) {
+        // Reload data to reflect the new status
+        const data = await fetch(`/api/rentals/tenancies/${id}`).then(r => r.json());
+        setTenancy(data.tenancy || null);
+        setTenant(data.tenant || null);
+        setRoom(data.room || null);
+        setProperty(data.property || null);
+        setRentSteps(data.rentSteps || []);
+        setPayments(data.payments || []);
+        setInspections(data.inspections || []);
+        setShowEnd(false);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to end tenancy');
+      }
+    } catch (err) {
+      console.error('[rentals] end tenancy failed:', err);
+      alert('Network error');
+    } finally {
+      setEnding(false);
+    }
+  }
+
+  async function handleDeleteTenancy() {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/rentals/tenancies/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        router.push('/rentals/tenancies');
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Delete failed');
+        setDeleting(false);
+      }
+    } catch (err) {
+      console.error('[rentals] delete tenancy failed:', err);
+      alert('Network error');
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -194,6 +250,48 @@ export default function TenancyDetail() {
           <RentStepsTab steps={rentSteps} />
         )}
       </div>
+
+      {/* End / Delete tenancy */}
+      <div className="px-4 pb-8 space-y-3">
+        {(tenancy.status === 'active' || tenancy.status === 'ending') && (
+          <button
+            onClick={() => setShowEnd(true)}
+            className="w-full bg-red-50 border border-red-100 text-red-700 font-semibold rounded-xl py-3.5 text-[14px] active:bg-red-100 transition-colors"
+          >
+            End Tenancy
+          </button>
+        )}
+        <button
+          onClick={() => setShowDelete(true)}
+          className="w-full bg-red-50 border border-red-100 text-red-700 font-semibold rounded-xl py-3.5 text-[14px] active:bg-red-100 transition-colors"
+        >
+          Delete Tenancy
+        </button>
+      </div>
+
+      {showEnd && (
+        <ConfirmDialog
+          title="End this tenancy?"
+          message={`This will mark ${tenant.full_name}\u2019s tenancy as ended and set the room to vacant. Are you sure?`}
+          confirmLabel={ending ? 'Ending...' : 'End Tenancy'}
+          cancelLabel="Cancel"
+          variant="danger"
+          onConfirm={handleEndTenancy}
+          onCancel={() => setShowEnd(false)}
+        />
+      )}
+
+      {showDelete && (
+        <ConfirmDialog
+          title="Delete this tenancy?"
+          message={`This will permanently delete ${tenant.full_name}\u2019s tenancy record and all associated payments, rent steps, and inspections. This cannot be undone.`}
+          confirmLabel={deleting ? 'Deleting...' : 'Delete'}
+          cancelLabel="Cancel"
+          variant="danger"
+          onConfirm={handleDeleteTenancy}
+          onCancel={() => setShowDelete(false)}
+        />
+      )}
     </div>
   );
 }

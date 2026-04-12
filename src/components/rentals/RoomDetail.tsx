@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { Room, Tenancy, Tenant, Payment, TenancyRentStep, RoomFurniture } from '@/types/rentals';
 
 function eur(n: number): string {
@@ -46,6 +47,8 @@ export default function RoomDetail() {
   const [loading, setLoading] = useState(true);
   const [newItem, setNewItem] = useState('');
   const [addingItem, setAddingItem] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const loadFurniture = useCallback(() => {
     if (!id) return;
@@ -116,6 +119,25 @@ export default function RoomDetail() {
       console.error('[rentals] add furniture failed:', err);
     } finally {
       setAddingItem(false);
+    }
+  }
+
+  async function handleDeleteRoom() {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/rentals/rooms/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        router.push('/rentals/rooms');
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Delete failed');
+        setDeleting(false);
+      }
+    } catch (err) {
+      console.error('[rentals] delete room failed:', err);
+      alert('Network error');
+      setDeleting(false);
     }
   }
 
@@ -349,7 +371,27 @@ export default function RoomDetail() {
             <p className="text-[13px] text-gray-700 whitespace-pre-wrap">{room.notes}</p>
           </div>
         )}
+
+        {/* Delete room */}
+        <button
+          onClick={() => setShowDelete(true)}
+          className="w-full bg-red-50 border border-red-100 text-red-700 font-semibold rounded-xl py-3.5 text-[14px] active:bg-red-100 transition-colors"
+        >
+          Delete Room
+        </button>
       </div>
+
+      {showDelete && (
+        <ConfirmDialog
+          title="Delete this room?"
+          message={`This will permanently delete "${room.room_name || `Room ${room.room_code}`}" and all associated data. This cannot be undone.`}
+          confirmLabel={deleting ? 'Deleting...' : 'Delete'}
+          cancelLabel="Cancel"
+          variant="danger"
+          onConfirm={handleDeleteRoom}
+          onCancel={() => setShowDelete(false)}
+        />
+      )}
     </div>
   );
 }
