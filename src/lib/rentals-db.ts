@@ -442,6 +442,41 @@ function initSchema(d: Database.Database) {
   if (!roomCols.some(c => c.name === 'furnished')) {
     d.exec("ALTER TABLE rooms ADD COLUMN furnished INTEGER NOT NULL DEFAULT 0");
   }
+
+  // Migration: extend utility_providers with custom_label, frequency, due_date
+  const utilCols = d.prepare("PRAGMA table_info(utility_providers)").all() as { name: string }[];
+  if (!utilCols.some(c => c.name === 'custom_label')) {
+    d.exec("ALTER TABLE utility_providers ADD COLUMN custom_label TEXT");
+  }
+  if (!utilCols.some(c => c.name === 'frequency')) {
+    d.exec("ALTER TABLE utility_providers ADD COLUMN frequency TEXT NOT NULL DEFAULT 'monthly'");
+  }
+  if (!utilCols.some(c => c.name === 'due_date')) {
+    d.exec("ALTER TABLE utility_providers ADD COLUMN due_date TEXT");
+  }
+
+  // Migration: meters table (meter registry)
+  d.exec(`
+    CREATE TABLE IF NOT EXISTS meters (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id INTEGER NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+      meter_type TEXT NOT NULL
+        CHECK (meter_type IN ('electricity','gas','water_cold','water_hot','heating')),
+      meter_no TEXT NOT NULL,
+      location TEXT,
+      notes TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_meters_property ON meters(property_id);
+  `);
+
+  // Migration: add meter_id to meter_readings
+  const readingCols = d.prepare("PRAGMA table_info(meter_readings)").all() as { name: string }[];
+  if (!readingCols.some(c => c.name === 'meter_id')) {
+    d.exec("ALTER TABLE meter_readings ADD COLUMN meter_id INTEGER REFERENCES meters(id) ON DELETE SET NULL");
+  }
 }
 
 export function closeRentalsDb() {

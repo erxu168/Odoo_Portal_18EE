@@ -37,7 +37,7 @@ export default function InspectionsList() {
         onBack={() => router.push('/rentals')}
         action={
           <button
-            onClick={() => {/* TODO: navigate to create inspection */}}
+            onClick={() => router.push('/rentals/inspections/new')}
             className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
@@ -60,7 +60,7 @@ export default function InspectionsList() {
           </div>
           <button
             className="mt-4 bg-green-600 text-white font-semibold rounded-xl px-5 py-2.5 text-[13px] active:bg-green-700 transition-colors"
-            onClick={() => {/* TODO */}}
+            onClick={() => router.push('/rentals/inspections/new')}
           >
             New Inspection
           </button>

@@ -240,14 +240,31 @@ export interface SepaTransaction {
 // Property utilities / meters / recycling / vault
 // ============================================================================
 
+export type CostFrequency = 'monthly' | 'quarterly' | 'annual' | 'one_time';
+
 export interface UtilityProvider {
   id: number;
   property_id: number;
   category: UtilityCategory;
+  custom_label: string | null;
   provider_name: string;
   account_no: string | null;
   monthly_cost: number;
+  frequency: CostFrequency;
+  due_date: string | null;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Meter {
+  id: number;
+  property_id: number;
+  meter_type: MeterType;
+  meter_no: string;
+  location: string | null;
+  notes: string | null;
+  active: 0 | 1;
   created_at: string;
   updated_at: string;
 }
@@ -255,6 +272,7 @@ export interface UtilityProvider {
 export interface MeterReading {
   id: number;
   property_id: number;
+  meter_id: number | null;
   meter_type: MeterType;
   meter_no: string;
   reading_value: number;
