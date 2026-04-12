@@ -456,7 +456,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
               )}
               <button onClick={handleProduce} disabled={producing}
                 className="flex-1 py-4 rounded-xl bg-green-500 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
-                {producing ? 'Finishing...' : 'Produce &amp; close'}
+                {producing ? 'Finishing...' : 'Produce & close'}
               </button>
             </div>
           </div>
