@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { Property, Room, UtilityProvider, MeterReading, RecyclingContainer } from '@/types/rentals';
 
 type TabKey = 'overview' | 'rooms' | 'utilities' | 'meters';
@@ -54,6 +55,27 @@ export default function PropertyDetail() {
   const [recycling, setRecycling] = useState<RecyclingContainer[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabKey>('overview');
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/rentals/properties/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        router.push('/rentals/properties');
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Delete failed');
+        setDeleting(false);
+      }
+    } catch (err) {
+      console.error('[rentals] delete property failed:', err);
+      alert('Network error');
+      setDeleting(false);
+    }
+  }
 
   useEffect(() => {
     if (!id) return;
@@ -166,6 +188,28 @@ export default function PropertyDetail() {
           <MetersTab meters={meters} />
         )}
       </div>
+
+      {/* Delete property */}
+      <div className="px-4 pb-8">
+        <button
+          onClick={() => setShowDelete(true)}
+          className="w-full bg-red-50 border border-red-100 text-red-700 font-semibold rounded-xl py-3.5 text-[14px] active:bg-red-100 transition-colors"
+        >
+          Delete Property
+        </button>
+      </div>
+
+      {showDelete && (
+        <ConfirmDialog
+          title="Delete this property?"
+          message={`This will permanently delete "${property.street}" and all its rooms, tenancies, utilities, and related data. This cannot be undone.`}
+          confirmLabel={deleting ? 'Deleting...' : 'Delete'}
+          cancelLabel="Cancel"
+          variant="danger"
+          onConfirm={handleDelete}
+          onCancel={() => setShowDelete(false)}
+        />
+      )}
     </div>
   );
 }
