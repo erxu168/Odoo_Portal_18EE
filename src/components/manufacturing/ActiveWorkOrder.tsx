@@ -326,12 +326,12 @@ export default function ActiveWorkOrder({
               />
 
               <div className="flex-1 min-w-0">
-                <div className={`text-[var(--fs-xl)] font-bold text-gray-900 ${isPicked ? 'line-through' : ''}`}>
+                <div className={`text-[var(--fs-md)] font-bold text-gray-900 ${isPicked ? 'line-through' : ''}`}>
                   {c.product_id[1]}
                 </div>
-                <div className={`text-[var(--fs-sm)] mt-0.5 ${availColor}`}>
+                <div className={`text-[var(--fs-xs)] mt-0.5 ${availColor}`}>
                   {isWeighMode
-                    ? `Target: ${new Intl.NumberFormat('de-DE').format(targetQty)}${uom}`
+                    ? `Target: ${new Intl.NumberFormat('de-DE').format(targetQty)} ${uom}`
                     : `${new Intl.NumberFormat('de-DE').format(onHand)} ${uom} on hand`}
                 </div>
               </div>
@@ -351,7 +351,7 @@ export default function ActiveWorkOrder({
                       }
                     }}
                     placeholder="0"
-                    className={`w-16 px-2 py-2 text-right text-[var(--fs-xl)] font-bold rounded-lg border ${
+                    className={`w-16 px-2 py-1.5 text-right text-[var(--fs-md)] font-bold rounded-lg border ${
                       isFilled
                         ? 'border-green-400 text-green-600'
                         : 'border-gray-200 text-gray-900'
@@ -360,8 +360,9 @@ export default function ActiveWorkOrder({
                   <span className="text-xs text-gray-500 w-3">{uom}</span>
                 </div>
               ) : (
-                <div className="text-xs text-gray-400 flex-shrink-0">
-                  {new Intl.NumberFormat('de-DE').format(targetQty)}{uom}
+                <div className="flex items-baseline gap-1 flex-shrink-0">
+                  <span className="text-[var(--fs-sm)] font-bold font-mono text-gray-900">{new Intl.NumberFormat('de-DE').format(targetQty)}</span>
+                  <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
                 </div>
               )}
             </div>

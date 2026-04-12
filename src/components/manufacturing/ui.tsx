@@ -27,7 +27,7 @@ export function PickCircle({
   onToggle?: () => void;
   size?: 'sm' | 'md';
 }) {
-  const dims = size === 'sm' ? 'w-8 h-8' : 'w-10 h-10';
+  const dims = size === 'sm' ? 'w-7 h-7' : 'w-8 h-8';
   return (
     <button
       type="button"
