@@ -1,7 +1,12 @@
 'use client';
 
+import { Suspense } from 'react';
 import AddRoom from '@/components/rentals/AddRoom';
 
 export default function AddRoomPage() {
-  return <AddRoom />;
+  return (
+    <Suspense>
+      <AddRoom />
+    </Suspense>
+  );
 }
