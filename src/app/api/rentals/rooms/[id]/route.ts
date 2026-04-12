@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const body = await req.json();
     const now = berlinNow();
 
-    const fields = ['room_code', 'room_name', 'size_sqm', 'base_kaltmiete', 'utility_share', 'status', 'notes'];
+    const fields = ['room_code', 'room_name', 'size_sqm', 'base_kaltmiete', 'utility_share', 'status', 'furnished', 'notes'];
     const updates: string[] = [];
     const values: unknown[] = [];
     for (const f of fields) {

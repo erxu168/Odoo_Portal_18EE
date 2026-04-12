@@ -421,7 +421,27 @@ function initSchema(d: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_alerts_status ON alerts(status);
     CREATE INDEX IF NOT EXISTS idx_alerts_tenancy ON alerts(tenancy_id);
     CREATE INDEX IF NOT EXISTS idx_alerts_due_date ON alerts(due_date);
+
+    CREATE TABLE IF NOT EXISTS room_furniture (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      item_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      condition TEXT CHECK (condition IN ('neuwertig','gut','gebrauchsspuren','beschaedigt')),
+      checked INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      item_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_furniture_room ON room_furniture(room_id);
   `);
+
+  // Migration: add furnished column to rooms
+  const roomCols = d.prepare("PRAGMA table_info(rooms)").all() as { name: string }[];
+  if (!roomCols.some(c => c.name === 'furnished')) {
+    d.exec("ALTER TABLE rooms ADD COLUMN furnished INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 export function closeRentalsDb() {

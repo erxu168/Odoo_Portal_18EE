@@ -100,7 +100,21 @@ export interface Room {
   base_kaltmiete: number;
   utility_share: number;
   status: RoomStatus;
+  furnished: 0 | 1;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RoomFurniture {
+  id: number;
+  room_id: number;
+  item_name: string;
+  quantity: number;
+  condition: ItemCondition | null;
+  checked: 0 | 1;
+  notes: string | null;
+  item_order: number;
   created_at: string;
   updated_at: string;
 }

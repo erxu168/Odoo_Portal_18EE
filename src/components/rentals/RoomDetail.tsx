@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
-import type { Room, Tenancy, Tenant, Payment, TenancyRentStep } from '@/types/rentals';
+import type { Room, Tenancy, Tenant, Payment, TenancyRentStep, RoomFurniture } from '@/types/rentals';
 
 function eur(n: number): string {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(n);
@@ -42,7 +42,18 @@ export default function RoomDetail() {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [nextStep, setNextStep] = useState<TenancyRentStep | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [furniture, setFurniture] = useState<RoomFurniture[]>([]);
   const [loading, setLoading] = useState(true);
+  const [newItem, setNewItem] = useState('');
+  const [addingItem, setAddingItem] = useState(false);
+
+  const loadFurniture = useCallback(() => {
+    if (!id) return;
+    fetch(`/api/rentals/rooms/${id}/furniture`)
+      .then(r => r.json())
+      .then(data => setFurniture(data.furniture || []))
+      .catch(err => console.error('[rentals] furniture load failed:', err));
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -57,7 +68,69 @@ export default function RoomDetail() {
       })
       .catch(err => console.error('[rentals] room detail load failed:', err))
       .finally(() => setLoading(false));
-  }, [id]);
+    loadFurniture();
+  }, [id, loadFurniture]);
+
+  async function toggleFurnished() {
+    if (!room) return;
+    const newVal = room.furnished ? 0 : 1;
+    try {
+      await fetch(`/api/rentals/rooms/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ furnished: newVal }),
+      });
+      setRoom({ ...room, furnished: newVal as 0 | 1 });
+    } catch (err) {
+      console.error('[rentals] toggle furnished failed:', err);
+    }
+  }
+
+  async function toggleChecked(itemId: number, current: 0 | 1) {
+    try {
+      await fetch(`/api/rentals/rooms/${id}/furniture`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ id: itemId, checked: current ? 0 : 1 }] }),
+      });
+      setFurniture(prev => prev.map(f => f.id === itemId ? { ...f, checked: (current ? 0 : 1) as 0 | 1 } : f));
+    } catch (err) {
+      console.error('[rentals] toggle checked failed:', err);
+    }
+  }
+
+  async function addFurnitureItem() {
+    if (!newItem.trim() || addingItem) return;
+    setAddingItem(true);
+    try {
+      const res = await fetch(`/api/rentals/rooms/${id}/furniture`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_name: newItem.trim() }),
+      });
+      if (res.ok) {
+        setNewItem('');
+        loadFurniture();
+      }
+    } catch (err) {
+      console.error('[rentals] add furniture failed:', err);
+    } finally {
+      setAddingItem(false);
+    }
+  }
+
+  async function deleteFurnitureItem(furnitureId: number) {
+    try {
+      await fetch(`/api/rentals/rooms/${id}/furniture`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ furniture_id: furnitureId }),
+      });
+      setFurniture(prev => prev.filter(f => f.id !== furnitureId));
+    } catch (err) {
+      console.error('[rentals] delete furniture failed:', err);
+    }
+  }
 
   if (loading) {
     return (
@@ -117,7 +190,87 @@ export default function RoomDetail() {
               <div className="text-[10px] font-semibold tracking-wider uppercase text-gray-400">Warmmiete</div>
             </div>
           </div>
+
+          {/* Furnished toggle */}
+          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+            <span className="text-[13px] font-semibold text-[#1F2933]">Furnished</span>
+            <button
+              onClick={toggleFurnished}
+              className={`relative w-11 h-[26px] rounded-full transition-colors ${room.furnished ? 'bg-green-500' : 'bg-gray-300'}`}
+            >
+              <div className={`absolute top-[3px] w-5 h-5 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-transform ${room.furnished ? 'left-[23px]' : 'left-[3px]'}`} />
+            </button>
+          </div>
         </div>
+
+        {/* Furniture items */}
+        {room.furnished ? (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-[11px] font-semibold tracking-wider uppercase text-gray-400">
+                Furniture ({furniture.filter(f => f.checked).length}/{furniture.length})
+              </div>
+            </div>
+
+            {furniture.length > 0 && (
+              <div className="space-y-1 mb-3">
+                {furniture.map(item => (
+                  <div key={item.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                    <button
+                      onClick={() => toggleChecked(item.id, item.checked)}
+                      className={`w-6 h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                        item.checked
+                          ? 'bg-green-500 border-green-500'
+                          : 'border-gray-300 bg-white'
+                      }`}
+                    >
+                      {item.checked ? (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      ) : null}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <span className={`text-[13px] ${item.checked ? 'line-through text-gray-400' : 'text-[#1F2933] font-medium'}`}>
+                        {item.item_name}
+                      </span>
+                      {item.quantity > 1 && (
+                        <span className="text-[11px] text-gray-400 ml-1">{'\u00d7'}{item.quantity}</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => deleteFurnitureItem(item.id)}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-gray-300 active:text-red-500 active:bg-red-50 transition-colors"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add item */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newItem}
+                onChange={e => setNewItem(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addFurnitureItem(); }}
+                placeholder="Add furniture item..."
+                className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-[13px] text-gray-900 placeholder-gray-400 outline-none focus:border-green-600 transition-colors"
+              />
+              <button
+                onClick={addFurnitureItem}
+                disabled={!newItem.trim() || addingItem}
+                className={`px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors ${
+                  newItem.trim() && !addingItem
+                    ? 'bg-green-600 text-white active:bg-green-700'
+                    : 'bg-gray-100 text-gray-400'
+                }`}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {/* Current tenant */}
         {tenancy && tenant ? (
