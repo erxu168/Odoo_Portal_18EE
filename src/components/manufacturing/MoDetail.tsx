@@ -240,24 +240,24 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
 
       <div className="px-4 pb-8">
         {tab === 'workorders' && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
             {(() => {
               const wcNames = Array.from(new Set(workOrders.map((wo: any) => wo.workcenter_id[1])));
               return wcNames.map(wc => {
                 const wcWos = workOrders.filter((wo: any) => wo.workcenter_id[1] === wc);
                 const wcDone = wcWos.filter((wo: any) => wo.state === 'done').length;
                 return (
-                  <div key={wc} className="mb-4">
-                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-2 flex justify-between">
+                  <div key={wc} className="mb-3">
+                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-1.5 flex justify-between">
                       <span>{wc}</span>
                       <span className="font-mono text-gray-300">{wcDone}/{wcWos.length}</span>
                     </div>
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1">
                       {wcWos.map((wo: any) => {
                         const globalIdx = workOrders.indexOf(wo);
                         return (
                           <button key={wo.id} onClick={() => onOpenWo(wo.id)}
-                            className={`bg-white border rounded-xl p-4 text-left active:scale-[0.98] transition-all ${wo.state === 'progress' ? 'border-green-200 shadow-sm' : 'border-gray-200'}`}>
+                            className={`bg-white border rounded-xl px-4 py-2.5 text-left active:scale-[0.98] transition-all ${wo.state === 'progress' ? 'border-green-200 shadow-sm' : 'border-gray-200'}`}>
                             <div className="flex items-start gap-3">
                               <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-[var(--fs-sm)] font-extrabold flex-shrink-0 ${woStepColors[wo.state] || 'bg-gray-100 text-gray-400'}`}>
                                 {globalIdx + 1}
@@ -290,7 +290,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
         )}
 
         {tab === 'components' && (
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
             {totalComps > 0 && (
               <div className="flex items-center justify-between mb-1 px-1">
                 <p className="text-[var(--fs-xs)] text-gray-400">Tap to check off each ingredient</p>
@@ -310,12 +310,12 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
               return cats.map(cat => {
                 const catComps = components.filter((c: any) => (c.category || 'Other') === cat);
                 return (
-                  <div key={cat} className="mb-4">
-                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-2 flex justify-between">
+                  <div key={cat} className="mb-3">
+                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-1.5 flex justify-between">
                       <span>{cat}</span>
                       <span className="font-mono text-gray-300">{catComps.filter((c: any) => c.picked).length}/{catComps.length}</span>
                     </div>
-                    <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-col gap-1">
                       {catComps.map((c: any) => {
                         const required = c.product_uom_qty || 0;
                         const isPicked = c.picked === true;
@@ -327,7 +327,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
                               isPicked ? 'border-green-300 bg-green-50/40' : 'border-gray-200'
                             }`}>
                             <div className={`w-1.5 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-300'}`} />
-                            <div className="flex-1 flex items-center gap-3 px-4 py-4">
+                            <div className="flex-1 flex items-center gap-3 px-4 py-2.5">
                               <div className={`w-11 h-11 rounded-xl border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
                                 isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
                               }`}>

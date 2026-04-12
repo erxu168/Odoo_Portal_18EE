@@ -49,7 +49,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   // Edit mode
   const [editing, setEditing] = useState(false);
   const [editLines, setEditLines] = useState<EditLine[]>([]);
-  const [editBomQty, setEditBomQty] = useState('');
+  // editBomQty removed — output qty is now auto-calculated from ingredient sum
   const [removedLineIds, setRemovedLineIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -112,7 +112,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
       const lineIds = data.bom.bom_line_ids || [];
       if (!lineIds.length) {
         setEditLines([]);
-        setEditBomQty(String(data.bom.product_qty));
+
         setEditing(true);
         return;
       }
@@ -130,7 +130,6 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
       }));
 
       setEditLines(lines);
-      setEditBomQty(String(data.bom.product_qty));
       setRemovedLineIds([]);
       // Map operations to EditOp shape
       const ops: EditOp[] = (data.operations || operations).map((op: any) => ({
@@ -250,7 +249,8 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     try {
       const body: any = {};
 
-      const newBomQty = parseFloat(editBomQty);
+      // Always set product_qty to the sum of ingredient quantities
+      const newBomQty = Math.round(editIngredientTotal * 10000) / 10000;
       if (newBomQty > 0 && newBomQty !== bom.product_qty) {
         body.product_qty = newBomQty;
       }
@@ -332,6 +332,15 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
       return next;
     });
   }
+
+  // Computed sum of ingredient quantities (for edit mode auto-total)
+  const editIngredientTotal = editLines.reduce((sum, l) => sum + (l.product_qty || 0), 0);
+
+  // Mismatch detection for read-only mode
+  const ingredientTotal = components.reduce((sum, c) => sum + c.required_qty, 0);
+  const bomQtyNum = bom?.product_qty || 0;
+  const hasMismatch = bomQtyNum > 0 && Math.abs(ingredientTotal - bomQtyNum) > 0.01;
+  const mismatchPct = bomQtyNum > 0 ? ((ingredientTotal / bomQtyNum) * 100).toFixed(1) : '0';
 
   const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4 }).format(n);
 
@@ -482,16 +491,13 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
       {/* Edit mode */}
       {editing ? (
         <div className="px-4 pb-8">
-          {/* BOM output qty */}
+          {/* BOM output qty — auto-calculated from ingredients */}
           <div className="mb-4">
             <label className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 block mb-1.5">Output quantity ({uom})</label>
-            <input
-              type="number"
-              inputMode="decimal"
-              value={editBomQty}
-              onChange={e => setEditBomQty(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-[var(--fs-xxl)] font-bold text-gray-900 outline-none focus:border-green-600"
-            />
+            <div className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50">
+              <span className="text-[var(--fs-xxl)] font-bold text-gray-900 font-mono">{fmt(editIngredientTotal)}</span>
+              <span className="text-[var(--fs-xs)] text-gray-400 ml-2">sum of ingredients</span>
+            </div>
           </div>
 
           {/* Editable ingredient list */}
@@ -499,9 +505,9 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
             Ingredients ({editLines.length})
           </div>
 
-          <div className="flex flex-col gap-2 mb-4">
+          <div className="flex flex-col gap-1 mb-4">
             {editLines.map(line => (
-              <div key={line.line_id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
+              <div key={line.line_id} className="bg-white border border-gray-200 rounded-xl px-4 py-2 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{line.product_name}</div>
                   <div className="text-[var(--fs-xs)] text-gray-400">{line.uom}</div>
@@ -577,14 +583,14 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
           <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2 mt-4">
             Work order steps ({editOps.length})
           </div>
-          <div className="flex flex-col gap-2 mb-4">
+          <div className="flex flex-col gap-1 mb-4">
             {editOps.map((op, i) => {
               const isExpanded = editingOpId === op.id;
               return (
                 <div key={op.id} className={`bg-white border rounded-xl overflow-hidden ${isExpanded ? 'border-amber-300' : 'border-gray-200'}`}>
                   {/* Collapsed header \u2014 tap to expand */}
                   <div
-                    className="px-4 py-3 flex items-center gap-3 cursor-pointer active:bg-gray-50"
+                    className="px-4 py-2 flex items-center gap-3 cursor-pointer active:bg-gray-50"
                     onClick={() => setEditingOpId(isExpanded ? null : op.id)}
                   >
                     <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700 flex-shrink-0">{i + 1}</div>
@@ -673,6 +679,21 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         </div>
       ) : (
         <>
+          {/* Mismatch warning */}
+          {hasMismatch && (
+            <div className="mx-4 mb-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-600 flex-shrink-0 mt-0.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              <div>
+                <div className="text-[var(--fs-sm)] font-bold text-amber-800">Ingredient mismatch</div>
+                <div className="text-[var(--fs-xs)] text-amber-700 mt-0.5">
+                  Ingredients total {fmt(ingredientTotal)} {uom} but output is set to {fmt(bomQtyNum)} {uom} ({mismatchPct}%). Edit the recipe to fix — output will auto-update to match ingredients.
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Output quantity (read-only) */}
           <div className="px-4 pb-2">
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-1.5">Output quantity ({uom})</div>
@@ -686,7 +707,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
             <p className="text-[var(--fs-xs)] font-bold text-gray-400 tracking-widest uppercase">Ingredients</p>
           </div>
 
-          <div className="px-4 pb-8 flex flex-col gap-1.5">
+          <div className="px-4 pb-8 flex flex-col gap-1">
             {(() => {
               const cats = Array.from(new Set(components.map((c: any) => c.category || 'Other')));
               return cats.map(cat => {
@@ -701,7 +722,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                       <React.Fragment key={comp.product_id}>
                         <button
                           onClick={() => comp.is_sub_bom && toggleSubBom(comp.product_id)}
-                          className={`bg-white border rounded-xl px-4 py-3 flex justify-between items-center text-left w-full mb-1.5 ${
+                          className={`bg-white border rounded-xl px-4 py-2 flex justify-between items-center text-left w-full mb-1 ${
                             comp.is_sub_bom ? 'border-green-200 active:scale-[0.98] transition-transform' : 'border-gray-200'
                           }`}>
                           <div className="flex items-center gap-2.5 min-w-0">
@@ -726,7 +747,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                         </button>
 
                         {comp.is_sub_bom && expandedSubBoms.has(comp.product_id) && comp.sub_bom_lines && (
-                          <div className="ml-5 border-l-2 border-green-200 mb-1.5">
+                          <div className="ml-5 border-l-2 border-green-200 mb-1">
                             <div className="ml-3 bg-white border border-green-200 rounded-xl overflow-hidden">
                               <div className="divide-y divide-gray-100">
                                 {comp.sub_bom_lines.map((sub) => (
@@ -757,9 +778,9 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
               <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
                 Work order steps ({operations.length})
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1">
                 {operations.map((op, i) => (
-                  <div key={op.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                  <div key={op.id} className="bg-white border border-gray-200 rounded-xl px-4 py-2 flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700 flex-shrink-0">{i + 1}</div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[var(--fs-sm)] font-bold text-gray-900">{op.name}</div>

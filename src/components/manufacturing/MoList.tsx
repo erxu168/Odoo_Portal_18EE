@@ -160,7 +160,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                 <div className="text-[var(--fs-xs)] text-gray-400">No orders found</div>
               </div>
             ) : (
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
                 {filtered.map((mo: any) => {
                   const woDone = mo.work_order_done || 0;
                   const woTotal = mo.work_order_count || 0;
@@ -173,7 +173,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
 
                   return (
                     <button key={mo.id} onClick={() => onSelect(mo.id)}
-                      className={`bg-white border rounded-2xl p-4 text-left active:scale-[0.98] transition-all ${
+                      className={`bg-white border rounded-2xl px-4 py-2.5 text-left active:scale-[0.98] transition-all ${
                         mo.state === 'progress' ? 'border-green-200 shadow-sm' : 'border-gray-200'
                       }`}>
                       <div className="flex items-center justify-between mb-1.5">

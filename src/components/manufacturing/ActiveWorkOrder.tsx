@@ -84,7 +84,7 @@ export default function ActiveWorkOrder({
       const qtys: Record<number, string> = {};
       for (const c of data.work_order?.components || []) {
         if (c.quantity > 0) {
-          qtys[c.id] = String(Math.round(c.quantity * 1000) / 1000);
+          qtys[c.id] = String(Math.round(c.quantity * 10000) / 10000);
         }
       }
       setConsumedQtys(qtys);
@@ -295,12 +295,12 @@ export default function ActiveWorkOrder({
       </SectionTitle>
 
       {/* Component list */}
-      <div className="px-4 pb-4 flex flex-col gap-1.5">
+      <div className="px-4 pb-4 flex flex-col gap-1">
         {components.map((c: any) => {
           const isPicked = pickedIds.has(c.id);
           const consumed = consumedQtys[c.id] || '';
           const isFilled = consumed && parseFloat(consumed) > 0;
-          const targetQty = Math.round(c.product_uom_qty * 1000) / 1000;
+          const targetQty = Math.round(c.product_uom_qty * 10000) / 10000;
           const uom = c.product_uom?.[1] || 'kg';
           const onHand = c.on_hand_qty || 0;
           const availColor =
@@ -313,7 +313,7 @@ export default function ActiveWorkOrder({
           return (
             <div
               key={c.id}
-              className={`bg-white border border-gray-200 rounded-lg px-3.5 py-3 flex items-center gap-3 transition-opacity ${
+              className={`bg-white border border-gray-200 rounded-lg px-3.5 py-2 flex items-center gap-3 transition-opacity ${
                 isPicked || isFilled ? 'opacity-45' : ''
               }`}
             >
