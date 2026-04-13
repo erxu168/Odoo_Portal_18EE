@@ -180,18 +180,18 @@ export default function TenancyDetail() {
         supertitle="TENANCY"
         showBack
         onBack={() => router.push('/rentals/tenancies')}
-        action={tenancy.status === 'active' ? (
+        action={
           <button
-            onClick={() => router.push(`/rentals/rent-increase?tenancy_id=${tenancy.id}`)}
+            onClick={() => router.push(`/rentals/tenancies/${id}/edit`)}
             className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
-            title="Rent Increase"
+            title="Edit Tenancy"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
-              <polyline points="17 6 23 6 23 12"/>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
             </svg>
           </button>
-        ) : undefined}
+        }
       />
 
       {/* Summary card */}

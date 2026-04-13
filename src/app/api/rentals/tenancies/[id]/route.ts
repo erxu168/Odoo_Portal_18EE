@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const body = await req.json();
     const now = berlinNow();
 
-    const fields = ['end_date', 'kaltmiete', 'nebenkosten', 'kaution', 'kaution_received',
+    const fields = ['start_date', 'end_date', 'contract_type', 'kaltmiete', 'nebenkosten', 'kaution', 'kaution_received',
                     'status', 'contract_pdf_path', 'signed_at', 'notes'];
     const updates: string[] = [];
     const values: unknown[] = [];

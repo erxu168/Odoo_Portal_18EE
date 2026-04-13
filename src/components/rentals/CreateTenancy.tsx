@@ -87,7 +87,7 @@ export default function CreateTenancy() {
 
   const warmmiete = (Number(kaltmiete) || 0) + (Number(nebenkosten) || 0);
 
-  const tenantValid = fullName.trim() && email.trim();
+  const tenantValid = fullName.trim();
   const termsValid = roomId && startDate && kaltmiete;
 
   async function handleSubmit() {
@@ -190,7 +190,7 @@ export default function CreateTenancy() {
               <input className={inputCls} value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Max Mustermann" />
             </div>
             <div>
-              <label className={labelCls}>Email *</label>
+              <label className={labelCls}>Email</label>
               <input className={inputCls} value={email} onChange={e => setEmail(e.target.value)} placeholder="max@example.com" type="email" />
             </div>
             <div>
