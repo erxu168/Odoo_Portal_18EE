@@ -227,13 +227,13 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
             className={`flex-1 py-2.5 rounded-md text-sm font-semibold tracking-wide transition-all ${tab === 'components' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
             Ingredients ({pickedCount}/{totalComps})
           </button>
-          <button onClick={() => setTab('workorders')}
-            className={`flex-1 py-2.5 rounded-md text-sm font-semibold tracking-wide transition-all ${tab === 'workorders' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
-            Steps ({workOrders.length})
-          </button>
           <button onClick={() => setTab('overview')}
             className={`flex-1 py-2.5 rounded-md text-sm font-semibold tracking-wide transition-all ${tab === 'overview' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
             Overview
+          </button>
+          <button onClick={() => setTab('workorders')}
+            className={`flex-1 py-2.5 rounded-md text-sm font-semibold tracking-wide transition-all ${tab === 'workorders' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
+            Steps ({workOrders.length})
           </button>
         </div>
       </div>
