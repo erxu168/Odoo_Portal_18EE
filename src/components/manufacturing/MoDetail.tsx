@@ -15,7 +15,6 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
   const [workOrders, setWorkOrders] = useState<any[]>([]);
   const [components, setComponents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'workorders' | 'components' | 'overview'>('components');
   const [producing, setProducing] = useState(false);
   const [produceError, setProduceError] = useState<string | null>(null);
 
@@ -221,184 +220,131 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
         </div>
       </div>
 
-      <div className="px-4 mb-3">
-        <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
-          <button onClick={() => setTab('components')}
-            className={`flex-1 py-2.5 rounded-md text-sm font-semibold tracking-wide transition-all ${tab === 'components' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
-            Ingredients ({pickedCount}/{totalComps})
-          </button>
-          <button onClick={() => setTab('overview')}
-            className={`flex-1 py-2.5 rounded-md text-sm font-semibold tracking-wide transition-all ${tab === 'overview' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
-            Overview
-          </button>
-          <button onClick={() => setTab('workorders')}
-            className={`flex-1 py-2.5 rounded-md text-sm font-semibold tracking-wide transition-all ${tab === 'workorders' ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500'}`}>
-            Steps ({workOrders.length})
-          </button>
-        </div>
-      </div>
-
       <div className="px-4 pb-8">
-        {tab === 'workorders' && (
-          <div className="flex flex-col gap-1">
-            {(() => {
-              const wcNames = Array.from(new Set(workOrders.map((wo: any) => wo.workcenter_id[1])));
-              return wcNames.map(wc => {
-                const wcWos = workOrders.filter((wo: any) => wo.workcenter_id[1] === wc);
-                const wcDone = wcWos.filter((wo: any) => wo.state === 'done').length;
-                return (
-                  <div key={wc} className="mb-3">
-                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-1.5 flex justify-between">
-                      <span>{wc}</span>
-                      <span className="font-mono text-gray-300">{wcDone}/{wcWos.length}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      {wcWos.map((wo: any) => {
-                        const globalIdx = workOrders.indexOf(wo);
-                        return (
-                          <button key={wo.id} onClick={() => onOpenWo(wo.id)}
-                            className={`bg-white border rounded-xl px-4 py-2.5 text-left active:scale-[0.98] transition-all ${wo.state === 'progress' ? 'border-green-200 shadow-sm' : 'border-gray-200'}`}>
-                            <div className="flex items-start gap-3">
-                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-[var(--fs-sm)] font-extrabold flex-shrink-0 ${woStepColors[wo.state] || 'bg-gray-100 text-gray-400'}`}>
-                                {globalIdx + 1}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-[var(--fs-md)] font-bold text-gray-900">{wo.name}</div>
-                              </div>
-                              <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-semibold flex-shrink-0 ${woStateColors[wo.state] || 'bg-gray-100 text-gray-500'}`}>
-                                {woStateLabels[wo.state] || wo.state}
-                              </span>
-                            </div>
-                            {(wo.duration > 0 || wo.duration_expected > 0) && (
-                              <div className="flex items-center gap-2 mt-2 pl-11 text-[var(--fs-xs)] text-gray-400">
-                                {wo.duration > 0 && (
-                                  <span className={`font-semibold ${wo.state === 'done' ? 'text-green-600' : 'text-green-700'}`}>{Math.floor(wo.duration)}m</span>
-                                )}
-                                {wo.duration_expected > 0 && <span>/ {Math.round(wo.duration_expected)}m expected</span>}
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-            {workOrders.length === 0 && <div className="text-center py-8 text-gray-400 text-[var(--fs-sm)]">No steps for this order</div>}
+        <div className="flex flex-col gap-1 mb-6">
+          <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-500 pb-1.5 flex justify-between items-baseline">
+            <span>Ingredients</span>
+            <span className="font-mono text-gray-400">{pickedCount}/{totalComps}</span>
           </div>
-        )}
-
-        {tab === 'components' && (
-          <div className="flex flex-col gap-1">
-            {totalComps > 0 && (
-              <div className="flex items-center justify-between mb-1 px-1">
-                <p className="text-[var(--fs-xs)] text-gray-400">Tap to check off each ingredient</p>
-                {pickedCount === totalComps && totalComps > 0 && (
-                  <span className="text-[var(--fs-xs)] font-semibold text-green-600">All picked</span>
-                )}
-              </div>
-            )}
-            {totalComps > 0 && (
-              <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden mb-2">
-                <div className="h-full bg-green-500 rounded-full transition-all duration-500"
-                  style={{ width: `${totalComps > 0 ? (pickedCount / totalComps) * 100 : 0}%` }} />
-              </div>
-            )}
-            {(() => {
-              const cats = Array.from(new Set(components.map((c: any) => c.category || 'Other')));
-              return cats.map(cat => {
-                const catComps = components.filter((c: any) => (c.category || 'Other') === cat);
-                return (
-                  <div key={cat} className="mb-3">
-                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-1.5 flex justify-between">
-                      <span>{cat}</span>
-                      <span className="font-mono text-gray-300">{catComps.filter((c: any) => c.picked).length}/{catComps.length}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      {catComps.map((c: any) => {
-                        const required = c.product_uom_qty || 0;
-                        const isPicked = c.picked === true;
-                        const compUom = c.product_uom?.[1] || 'kg';
-                        return (
-                          <button key={c.id} onClick={() => toggleIngredient(c)}
-                            style={{ touchAction: 'manipulation' }}
-                            className={`bg-white border rounded-2xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
-                              isPicked ? 'border-green-300 bg-green-50/40' : 'border-gray-200'
-                            }`}>
-                            <div className={`w-1.5 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-300'}`} />
-                            <div className="flex-1 flex items-center gap-2.5 px-3 py-1.5">
-                              <div className={`w-8 h-8 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                                isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
-                              }`}>
-                                {isPicked ? (
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                                ) : null}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className={`text-[var(--fs-md)] font-bold ${isPicked ? 'text-green-700 line-through decoration-green-400/60' : 'text-gray-900'}`}>
-                                  {c.product_id[1]}
-                                </div>
-                              </div>
-                              <div className="flex items-baseline gap-1 flex-shrink-0 pl-2">
-                                <span className={`text-[var(--fs-lg)] font-extrabold tabular-nums font-mono ${isPicked ? 'text-green-600' : 'text-gray-900'}`}>
-                                  {fmt(required)}
-                                </span>
-                                <span className={`text-[var(--fs-xs)] font-semibold ${isPicked ? 'text-green-500' : 'text-gray-400'}`}>{compUom}</span>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              });
-            })()}
-            {components.length === 0 && <div className="text-center py-8 text-gray-400 text-[var(--fs-sm)]">No ingredients</div>}
-          </div>
-        )}
-
-        {tab === 'overview' && (
-          <div className="flex flex-col gap-4">
-            {workOrders.length > 0 ? workOrders.map((wo: any, idx: number) => {
-              const hasNote = wo.operation_note && wo.operation_note !== '<p><br></p>' && wo.operation_note.replace(/<[^>]*>/g, '').trim().length > 0;
+          {totalComps > 0 && (
+            <div className="flex items-center justify-between mb-1 px-1">
+              <p className="text-[var(--fs-xs)] text-gray-400">Tap to check off each ingredient</p>
+              {pickedCount === totalComps && totalComps > 0 && (
+                <span className="text-[var(--fs-xs)] font-semibold text-green-600">All picked</span>
+              )}
+            </div>
+          )}
+          {totalComps > 0 && (
+            <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden mb-2">
+              <div className="h-full bg-green-500 rounded-full transition-all duration-500"
+                style={{ width: `${totalComps > 0 ? (pickedCount / totalComps) * 100 : 0}%` }} />
+            </div>
+          )}
+          {(() => {
+            const cats = Array.from(new Set(components.map((c: any) => c.category || 'Other')));
+            return cats.map(cat => {
+              const catComps = components.filter((c: any) => (c.category || 'Other') === cat);
               return (
-                <div key={wo.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                  <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[var(--fs-xs)] font-extrabold flex-shrink-0 ${woStepColors[wo.state] || 'bg-gray-100 text-gray-400'}`}>
-                      {idx + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[var(--fs-md)] font-bold text-gray-900">{wo.name}</div>
-                      <div className="text-[var(--fs-xs)] text-gray-400 font-semibold">{wo.workcenter_id[1]}</div>
-                    </div>
+                <div key={cat} className="mb-3">
+                  <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-1.5 flex justify-between">
+                    <span>{cat}</span>
+                    <span className="font-mono text-gray-300">{catComps.filter((c: any) => c.picked).length}/{catComps.length}</span>
                   </div>
-                  <div className="px-4 py-3">
-                    {hasNote ? (
-                      <div
-                        className="text-[var(--fs-sm)] text-gray-700 leading-relaxed prose prose-sm max-w-none
-                          [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1
-                          [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1
-                          [&_li]:my-0.5
-                          [&_p]:my-1
-                          [&_strong]:font-bold
-                          [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-2 [&_h1]:mb-1
-                          [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-2 [&_h2]:mb-1
-                          [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-1 [&_h3]:mb-0.5"
-                        dangerouslySetInnerHTML={{ __html: wo.operation_note }}
-                      />
-                    ) : (
-                      <p className="text-[var(--fs-sm)] text-gray-300 italic">No instructions</p>
-                    )}
+                  <div className="flex flex-col gap-1">
+                    {catComps.map((c: any) => {
+                      const required = c.product_uom_qty || 0;
+                      const isPicked = c.picked === true;
+                      const compUom = c.product_uom?.[1] || 'kg';
+                      return (
+                        <button key={c.id} onClick={() => toggleIngredient(c)}
+                          style={{ touchAction: 'manipulation' }}
+                          className={`bg-white border rounded-2xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
+                            isPicked ? 'border-green-300 bg-green-50/40' : 'border-gray-200'
+                          }`}>
+                          <div className={`w-1.5 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-300'}`} />
+                          <div className="flex-1 flex items-center gap-2.5 px-3 py-1.5">
+                            <div className={`w-8 h-8 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                              isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
+                            }`}>
+                              {isPicked ? (
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                              ) : null}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className={`text-[var(--fs-md)] font-bold ${isPicked ? 'text-green-700 line-through decoration-green-400/60' : 'text-gray-900'}`}>
+                                {c.product_id[1]}
+                              </div>
+                            </div>
+                            <div className="flex items-baseline gap-1 flex-shrink-0 pl-2">
+                              <span className={`text-[var(--fs-lg)] font-extrabold tabular-nums font-mono ${isPicked ? 'text-green-600' : 'text-gray-900'}`}>
+                                {fmt(required)}
+                              </span>
+                              <span className={`text-[var(--fs-xs)] font-semibold ${isPicked ? 'text-green-500' : 'text-gray-400'}`}>{compUom}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               );
-            }) : (
-              <div className="text-center py-8 text-gray-400 text-[var(--fs-sm)]">No steps for this order</div>
-            )}
+            });
+          })()}
+          {components.length === 0 && <div className="text-center py-6 text-gray-400 text-[var(--fs-sm)]">No ingredients</div>}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-500 pb-1.5 flex justify-between items-baseline">
+            <span>Steps</span>
+            <span className="font-mono text-gray-400">{workOrders.filter((wo: any) => wo.state === 'done').length}/{workOrders.length}</span>
           </div>
-        )}
+          {workOrders.length > 0 ? workOrders.map((wo: any, idx: number) => {
+            const hasNote = wo.operation_note && wo.operation_note !== '<p><br></p>' && wo.operation_note.replace(/<[^>]*>/g, '').trim().length > 0;
+            return (
+              <button key={wo.id} onClick={() => onOpenWo(wo.id)}
+                className={`bg-white border rounded-xl overflow-hidden text-left active:scale-[0.98] transition-all ${wo.state === 'progress' ? 'border-green-200 shadow-sm' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[var(--fs-xs)] font-extrabold flex-shrink-0 ${woStepColors[wo.state] || 'bg-gray-100 text-gray-400'}`}>
+                    {idx + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[var(--fs-md)] font-bold text-gray-900">{wo.name}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-400 font-semibold flex items-center gap-2">
+                      <span>{wo.workcenter_id[1]}</span>
+                      {wo.duration > 0 && (
+                        <span className={`font-semibold ${wo.state === 'done' ? 'text-green-600' : 'text-green-700'}`}>{Math.floor(wo.duration)}m</span>
+                      )}
+                      {wo.duration_expected > 0 && <span>/ {Math.round(wo.duration_expected)}m</span>}
+                    </div>
+                  </div>
+                  <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-semibold flex-shrink-0 ${woStateColors[wo.state] || 'bg-gray-100 text-gray-500'}`}>
+                    {woStateLabels[wo.state] || wo.state}
+                  </span>
+                </div>
+                <div className="px-4 py-3">
+                  {hasNote ? (
+                    <div
+                      className="text-[var(--fs-sm)] text-gray-700 leading-relaxed prose prose-sm max-w-none
+                        [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1
+                        [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1
+                        [&_li]:my-0.5
+                        [&_p]:my-1
+                        [&_strong]:font-bold
+                        [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-2 [&_h1]:mb-1
+                        [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-2 [&_h2]:mb-1
+                        [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-1 [&_h3]:mb-0.5"
+                      dangerouslySetInnerHTML={{ __html: wo.operation_note }}
+                    />
+                  ) : (
+                    <p className="text-[var(--fs-sm)] text-gray-300 italic">No instructions</p>
+                  )}
+                </div>
+              </button>
+            );
+          }) : (
+            <div className="text-center py-6 text-gray-400 text-[var(--fs-sm)]">No steps for this order</div>
+          )}
+        </div>
       </div>
 
       {produceError && (
