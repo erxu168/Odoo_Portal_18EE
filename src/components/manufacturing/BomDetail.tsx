@@ -74,6 +74,12 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   // BOM line IDs (fetched separately for editing)
   const [rawLines, setRawLines] = useState<any[]>([]);
 
+  // Line ↔ operation mapping (lineId → opId | null). Current edit state + original for diff.
+  const [lineOpMap, setLineOpMap] = useState<Record<number, number | null>>({});
+  const [origLineOpMap, setOrigLineOpMap] = useState<Record<number, number | null>>({});
+  // Picker: which op is currently showing its "add ingredient" list
+  const [pickerOpId, setPickerOpId] = useState<number | null>(null);
+
   useEffect(() => { fetchBomDetail(); }, [bomId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchBomDetail() {
@@ -131,6 +137,14 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
 
       setEditLines(lines);
       setRemovedLineIds([]);
+      // Build line → operation map from GET response
+      const initMap: Record<number, number | null> = {};
+      for (const lo of (data.line_operations || [])) {
+        initMap[lo.line_id] = lo.operation_id || null;
+      }
+      setLineOpMap(initMap);
+      setOrigLineOpMap(initMap);
+      setPickerOpId(null);
       // Map operations to EditOp shape
       const ops: EditOp[] = (data.operations || operations).map((op: any) => ({
         id: op.id,
@@ -158,6 +172,9 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     setRemovedLineIds([]);
     setEditOps([]);
     setRemovedOpIds([]);
+    setLineOpMap({});
+    setOrigLineOpMap({});
+    setPickerOpId(null);
     setEditingOpId(null);
     setSaveError(null);
     setShowAddSearch(false);
@@ -307,6 +324,20 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
 
       if (removedOpIds.length) body.remove_operations = removedOpIds;
 
+      // Diff line ↔ operation links (only for lines that still exist and are persisted)
+      const lineOpChanges: Array<{ line_id: number; operation_id: number | null }> = [];
+      for (const line of editLines) {
+        if (line.line_id <= 0) continue; // new lines get linked via a follow-up run after save
+        const current = lineOpMap[line.line_id] ?? null;
+        const original = origLineOpMap[line.line_id] ?? null;
+        if (current !== original) {
+          // Don't send if the target op is a not-yet-saved new op (id < 0)
+          if (current != null && current < 0) continue;
+          lineOpChanges.push({ line_id: line.line_id, operation_id: current });
+        }
+      }
+      if (lineOpChanges.length) body.update_line_operations = lineOpChanges;
+
       const res = await fetch(`/api/boms/${bomId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -380,6 +411,54 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
           <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Instructions</label>
           <textarea value={op.note?.replace(/<[^>]*>/g, '') || ''} onChange={e => onChange({ note: e.target.value })} placeholder="Step-by-step instructions..."
             rows={3} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600 resize-none" />
+        </div>
+        {/* Ingredients used in this step */}
+        <div className="mb-3">
+          <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Ingredients in this step</label>
+          {op.id < 0 ? (
+            <p className="text-[var(--fs-xs)] text-gray-400 italic">Save the BOM first, then re-open edit to link ingredients.</p>
+          ) : (() => {
+            const linked = editLines.filter(l => l.line_id > 0 && lineOpMap[l.line_id] === op.id);
+            const candidates = editLines.filter(l => l.line_id > 0 && lineOpMap[l.line_id] !== op.id);
+            const isPicking = pickerOpId === op.id;
+            return (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {linked.map(l => (
+                    <span key={l.line_id} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full bg-green-50 border border-green-200 text-green-700 text-[var(--fs-xs)] font-semibold">
+                      {l.product_name}
+                      <button type="button" onClick={() => setLineOpMap(prev => ({ ...prev, [l.line_id]: null }))}
+                        className="w-5 h-5 rounded-full hover:bg-green-100 flex items-center justify-center text-green-600 text-[11px]" aria-label="Remove">×</button>
+                    </span>
+                  ))}
+                  <button type="button" onClick={() => setPickerOpId(isPicking ? null : op.id)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-gray-300 text-gray-500 text-[var(--fs-xs)] font-semibold active:bg-gray-50">
+                    {isPicking ? 'Done' : '+ Add ingredient'}
+                  </button>
+                </div>
+                {isPicking && (
+                  <div className="mt-2 border border-gray-200 rounded-lg bg-gray-50 max-h-60 overflow-y-auto">
+                    {candidates.length === 0 ? (
+                      <p className="px-3 py-3 text-[var(--fs-xs)] text-gray-400">All ingredients are already in this step.</p>
+                    ) : candidates.map(l => {
+                      const existing = lineOpMap[l.line_id];
+                      const otherOp = existing ? editOps.find(o => o.id === existing) : null;
+                      return (
+                        <button key={l.line_id} type="button"
+                          onClick={() => setLineOpMap(prev => ({ ...prev, [l.line_id]: op.id }))}
+                          className="w-full px-3 py-2 text-left text-[var(--fs-sm)] active:bg-gray-100 border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-2">
+                          <span className="text-gray-900 font-semibold">{l.product_name}</span>
+                          {otherOp && (
+                            <span className="text-[var(--fs-xs)] text-gray-400">in: {otherOp.name}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
         {/* Worksheet type */}
         <div className="mb-3">
