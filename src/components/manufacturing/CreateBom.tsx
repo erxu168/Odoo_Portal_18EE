@@ -26,8 +26,10 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // BOM config
-  const [bomQty, setBomQty] = useState('10');
   const [lines, setLines] = useState<NewLine[]>([]);
+  // Output qty is always the sum of ingredient quantities
+  const bomQtyNum = lines.reduce((sum, l) => sum + (l.product_qty || 0), 0);
+  const bomQty = String(Math.round(bomQtyNum * 10000) / 10000);
 
   // Add ingredient search
   const [showIngSearch, setShowIngSearch] = useState(false);
@@ -193,22 +195,21 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
         {selectedProduct && (
           <>
             <label className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 block mb-1.5">Output quantity ({selectedProduct.uom_name})</label>
-            <input
-              type="number"
-              inputMode="decimal"
-              value={bomQty}
-              onChange={e => setBomQty(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-[var(--fs-xxl)] font-bold text-gray-900 outline-none focus:border-green-600 mb-4"
-            />
+            <div className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 mb-4">
+              <span className="text-[var(--fs-xxl)] font-bold text-gray-900 font-mono">
+                {new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4 }).format(bomQtyNum)}
+              </span>
+              <span className="text-[var(--fs-xs)] text-gray-400 ml-2">{lines.length > 0 ? 'sum of ingredients' : 'add ingredients below'}</span>
+            </div>
 
             {/* Step 3: Ingredients */}
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
               Ingredients ({lines.length})
             </div>
 
-            <div className="flex flex-col gap-2 mb-4">
+            <div className="flex flex-col gap-1 mb-4">
               {lines.map(line => (
-                <div key={line.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div key={line.id} className="bg-white border border-gray-200 rounded-xl px-4 py-2 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{line.product_name}</div>
                     <div className="text-[var(--fs-xs)] text-gray-400">{line.uom_name}</div>
@@ -274,9 +275,9 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
               Work order steps ({operations.length})
             </div>
 
-            <div className="flex flex-col gap-2 mb-4">
+            <div className="flex flex-col gap-1 mb-4">
               {operations.map((op, i) => (
-                <div key={op.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <div key={op.id} className="bg-white border border-gray-200 rounded-xl px-4 py-2 flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700 flex-shrink-0">
                     {i + 1}
                   </div>

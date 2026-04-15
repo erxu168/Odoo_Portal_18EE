@@ -114,10 +114,10 @@ export default function BomList({ onSelect, onBack, onCreate }: BomListProps) {
         ))}
       </div>
 
-      <div className="px-4 pb-24 flex flex-col gap-2">
+      <div className="px-4 pb-24 flex flex-col gap-1">
         {filtered.map((bom) => (
           <button key={bom.id} onClick={() => onSelect(bom)}
-            className="bg-white border border-gray-200 rounded-xl px-4 py-3.5 flex justify-between items-center text-left w-full active:scale-[0.98] transition-transform">
+            className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 flex justify-between items-center text-left w-full active:scale-[0.98] transition-transform">
             <div className="min-w-0 flex-1">
               <div className="text-[var(--fs-lg)] font-bold text-gray-900 truncate">{bom.product_tmpl_id[1]}</div>
               <div className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
@@ -129,7 +129,7 @@ export default function BomList({ onSelect, onBack, onCreate }: BomListProps) {
             <div className="flex items-center gap-2 ml-3 flex-shrink-0">
               <div className="text-right">
                 <div className="text-[var(--fs-md)] font-bold text-green-600 tabular-nums font-mono">
-                  {new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(bom.product_qty)}
+                  {new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 4 }).format(bom.product_qty)}
                   <span className="text-gray-400 font-normal text-[12px] ml-0.5">{bom.product_uom_id[1]}</span>
                 </div>
                 <div className="text-[var(--fs-xs)] text-gray-400">per batch</div>

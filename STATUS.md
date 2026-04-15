@@ -1,9 +1,9 @@
 # Krawings Portal — STATUS
 
-_Last updated: 2026-04-11_
+_Last updated: 2026-04-12_
 
 ## Current focus
-Issues & Requests module — universal staff reporting hub (repairs, purchase requests, injuries, security, food safety, hazards, suggestions).
+Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with real data from seeded SQLite.
 
 ## Module status
 
@@ -26,6 +26,53 @@ Issues & Requests module — universal staff reporting hub (repairs, purchase re
 | Music (Krawings Auto) | 📋 mock done | Locked-down kiosk PWA, YouTube IFrame Player API. 9-screen mock. |
 | Staffing optimization | 📋 designed | Prophet+XGBoost → rules engine → OR-Tools constraint scheduling. 10–14 week build. |
 | **Issues & Requests** | 🟢 **backend shipped** | See below. Frontend not started. |
+| **Rentals** | 🟢 **frontend v2 shipped** | See below. 16 pages, 16 components, 25 API routes, seeded SQLite. |
+
+## Rentals (Properties & Tenancies) — detail
+
+### Shipped (2026-04-12)
+
+**Frontend pages** — 16 route pages under `src/app/rentals/`, 16 components under `src/components/rentals/`:
+
+| Screen | Route | Component | Status |
+|---|---|---|---|
+| Module dashboard | `/rentals` | `RentalsDashboard.tsx` | ✅ Real data (properties, tenancies, alerts stats) |
+| Properties list | `/rentals/properties` | `PropertiesList.tsx` | ✅ Search, type badges, stats per card |
+| Property detail (4 tabs) | `/rentals/properties/[id]` | `PropertyDetail.tsx` | ✅ Overview, Rooms, Utilities, Meters tabs |
+| Add property form | `/rentals/properties/new` | `AddProperty.tsx` | ✅ Validation, confirm-on-discard |
+| Room detail | `/rentals/rooms/[id]` | `RoomDetail.tsx` | ✅ Tenant, payments, next rent step |
+| Add room form | `/rentals/rooms/new` | `AddRoom.tsx` | ✅ Property select, pre-fill from query param |
+| Tenancies list | `/rentals/tenancies` | `TenanciesList.tsx` | ✅ Search, filter pills (All/Active/Ending/Past) |
+| Tenancy detail (3 tabs) | `/rentals/tenancies/[id]` | `TenancyDetail.tsx` | ✅ Contract, Payments, Rent Steps tabs, Kaution bar, rent increase action |
+| Create tenancy wizard | `/rentals/tenancies/new` | `CreateTenancy.tsx` | ✅ 3-step (Tenant → Terms → Review), Staffelmiete steps, confirm |
+| Alerts | `/rentals/alerts` | `AlertsList.tsx` | ✅ Filter by status, dismiss, refresh engine |
+| Payments & SEPA | `/rentals/payments` | `PaymentsDashboard.tsx` | ✅ Summary grid, SEPA upload, auto-reconciliation |
+| SEPA reconciliation | `/rentals/sepa` | `SepaReconciliation.tsx` | ✅ Month nav, payment list, unmatched tx, manual matching |
+| Rent increase wizard | `/rentals/rent-increase` | `RentIncreaseWizard.tsx` | ✅ Legal analysis, Kappungsgrenze/Mietpreisbremse, propose + confirm |
+| Credential vault | `/rentals/vault` | `VaultList.tsx` | ✅ Reveal/hide credentials, audit logging |
+| Inspections list | `/rentals/inspections` | `InspectionsList.tsx` | ✅ List with status badges |
+| Inspection detail | `/rentals/inspections/[id]` | `InspectionDetail.tsx` | ✅ Category accordion, item-by-item condition, progress bar, sign & finalize |
+
+**Dashboard tile** added to main portal home grid (`DashboardHome.tsx`), admin-only.
+
+### Backend (already shipped — previous session)
+
+- 25 API routes under `src/app/api/rentals/`
+- Types in `src/types/rentals.ts`
+- DB lib in `src/lib/rentals-db.ts` (19-table schema)
+- Seed script `scripts/seed-rentals.ts` (3 properties, 11 rooms, 5 tenancies, 9 alerts)
+- Supporting libs: `alerts-engine.ts`, `contract-templates.ts`, `inspection-pdf.ts`, `mieterhoehung.ts`, `pdf-generator.ts`, `sepa-matcher.ts`, `sepa-parsers.ts`, `vault.ts`
+
+### Still to build
+
+- [ ] Inspection creation wizard (select tenancy → type → date)
+- [ ] Photo capture in inspection items
+- [ ] Tenant self-service invitation flow (public link → form → signature)
+- [ ] Utility cost detail / editing forms
+- [ ] Meter reading manual entry form
+- [ ] Room edit form
+- [ ] Role-based visibility enforcement (vault = admin only)
+- [ ] Rent increase: send to tenant, track response
 
 ## Issues & Requests — detail
 

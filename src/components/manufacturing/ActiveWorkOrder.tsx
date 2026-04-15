@@ -84,7 +84,7 @@ export default function ActiveWorkOrder({
       const qtys: Record<number, string> = {};
       for (const c of data.work_order?.components || []) {
         if (c.quantity > 0) {
-          qtys[c.id] = String(Math.round(c.quantity * 1000) / 1000);
+          qtys[c.id] = String(Math.round(c.quantity * 10000) / 10000);
         }
       }
       setConsumedQtys(qtys);
@@ -295,12 +295,12 @@ export default function ActiveWorkOrder({
       </SectionTitle>
 
       {/* Component list */}
-      <div className="px-4 pb-4 flex flex-col gap-1.5">
+      <div className="px-4 pb-4 flex flex-col gap-1">
         {components.map((c: any) => {
           const isPicked = pickedIds.has(c.id);
           const consumed = consumedQtys[c.id] || '';
           const isFilled = consumed && parseFloat(consumed) > 0;
-          const targetQty = Math.round(c.product_uom_qty * 1000) / 1000;
+          const targetQty = Math.round(c.product_uom_qty * 10000) / 10000;
           const uom = c.product_uom?.[1] || 'kg';
           const onHand = c.on_hand_qty || 0;
           const availColor =
@@ -313,7 +313,7 @@ export default function ActiveWorkOrder({
           return (
             <div
               key={c.id}
-              className={`bg-white border border-gray-200 rounded-lg px-3.5 py-3 flex items-center gap-3 transition-opacity ${
+              className={`bg-white border border-gray-200 rounded-lg px-3.5 py-2 flex items-center gap-3 transition-opacity ${
                 isPicked || isFilled ? 'opacity-45' : ''
               }`}
             >
@@ -326,12 +326,12 @@ export default function ActiveWorkOrder({
               />
 
               <div className="flex-1 min-w-0">
-                <div className={`text-[var(--fs-xl)] font-bold text-gray-900 ${isPicked ? 'line-through' : ''}`}>
+                <div className={`text-[var(--fs-md)] font-bold text-gray-900 ${isPicked ? 'line-through' : ''}`}>
                   {c.product_id[1]}
                 </div>
-                <div className={`text-[var(--fs-sm)] mt-0.5 ${availColor}`}>
+                <div className={`text-[var(--fs-xs)] mt-0.5 ${availColor}`}>
                   {isWeighMode
-                    ? `Target: ${new Intl.NumberFormat('de-DE').format(targetQty)}${uom}`
+                    ? `Target: ${new Intl.NumberFormat('de-DE').format(targetQty)} ${uom}`
                     : `${new Intl.NumberFormat('de-DE').format(onHand)} ${uom} on hand`}
                 </div>
               </div>
@@ -351,7 +351,7 @@ export default function ActiveWorkOrder({
                       }
                     }}
                     placeholder="0"
-                    className={`w-16 px-2 py-2 text-right text-[var(--fs-xl)] font-bold rounded-lg border ${
+                    className={`w-16 px-2 py-1.5 text-right text-[var(--fs-md)] font-bold rounded-lg border ${
                       isFilled
                         ? 'border-green-400 text-green-600'
                         : 'border-gray-200 text-gray-900'
@@ -360,8 +360,9 @@ export default function ActiveWorkOrder({
                   <span className="text-xs text-gray-500 w-3">{uom}</span>
                 </div>
               ) : (
-                <div className="text-xs text-gray-400 flex-shrink-0">
-                  {new Intl.NumberFormat('de-DE').format(targetQty)}{uom}
+                <div className="flex items-baseline gap-1 flex-shrink-0">
+                  <span className="text-[var(--fs-sm)] font-bold font-mono text-gray-900">{new Intl.NumberFormat('de-DE').format(targetQty)}</span>
+                  <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
                 </div>
               )}
             </div>

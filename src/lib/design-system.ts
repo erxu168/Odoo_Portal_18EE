@@ -105,7 +105,7 @@ export const ds = {
   sectionLabel: 'text-[11px] font-semibold tracking-wider uppercase text-gray-400 dark:text-gray-500',
 
   // ── List rows ──
-  listRow:   'flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 last:border-0 active:bg-gray-50 dark:active:bg-gray-800 cursor-pointer',
+  listRow:   'flex items-center gap-3 px-4 py-2 border-b border-gray-100 dark:border-gray-800 last:border-0 active:bg-gray-50 dark:active:bg-gray-800 cursor-pointer',
   listTitle: 'text-[13px] font-semibold text-[#1F2933] dark:text-white',
   listSub:   'text-[11px] text-gray-500 mt-0.5',
 

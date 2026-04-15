@@ -283,17 +283,17 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                     isPicked ? 'border-green-300 bg-green-50/40' : 'border-gray-200'
                   }`}>
                   <div className={`w-1.5 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-300'}`} />
-                  <div className="flex-1 flex items-center gap-3 px-4 py-4">
-                    <div className={`w-11 h-11 rounded-xl border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                  <div className="flex-1 flex items-center gap-2.5 px-3 py-1.5">
+                    <div className={`w-8 h-8 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
                       isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
                     }`}>
-                      {isPicked && <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                      {isPicked && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className={`text-[var(--fs-xl)] font-bold ${isPicked ? 'text-green-700 line-through decoration-green-400/60' : 'text-gray-900'}`}>
+                      <div className={`text-[var(--fs-md)] font-bold ${isPicked ? 'text-green-700 line-through decoration-green-400/60' : 'text-gray-900'}`}>
                         {c.product_id[1]}
                       </div>
-                      <div className={`text-[var(--fs-sm)] mt-0.5 ${isPicked ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
+                      <div className={`text-[var(--fs-xs)] mt-0.5 ${isPicked ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
                         {isPicked
                           ? `${fmt(consumed)} / ${fmt(required)} ${compUom}`
                           : `Need ${fmt(required)} ${compUom}`
@@ -309,13 +309,13 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                         </div>
                       )}
                     </div>
-                    <div className="text-right flex-shrink-0 pl-2">
-                      <div className={`text-[var(--fs-xxl)] font-extrabold tabular-nums font-mono leading-tight ${isPicked ? 'text-green-600' : 'text-gray-900'}`}>
+                    <div className="flex items-baseline gap-1 flex-shrink-0 pl-2">
+                      <span className={`text-[var(--fs-lg)] font-extrabold tabular-nums font-mono ${isPicked ? 'text-green-600' : 'text-gray-900'}`}>
                         {isPicked ? fmt(consumed) : fmt(required)}
-                      </div>
-                      <div className={`text-[var(--fs-sm)] font-semibold ${isPicked ? 'text-green-500' : 'text-gray-400'}`}>
-                        {isPicked ? `/ ${fmt(required)} ${compUom}` : compUom}
-                      </div>
+                      </span>
+                      <span className={`text-[var(--fs-xs)] font-semibold ${isPicked ? 'text-green-500' : 'text-gray-400'}`}>
+                        {isPicked ? `/${fmt(required)} ${compUom}` : compUom}
+                      </span>
                     </div>
                   </div>
                 </button>

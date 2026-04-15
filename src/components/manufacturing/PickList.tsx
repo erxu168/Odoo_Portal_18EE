@@ -78,7 +78,7 @@ export default function PickList({ onBack, onHome }: PickListProps) {
   const collectedCount = collected.size;
   const totalCount = items.length;
 
-  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 10 }).format(n);
+  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4 }).format(n);
 
   const HomeIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
 
@@ -162,28 +162,28 @@ export default function PickList({ onBack, onHome }: PickListProps) {
                         <button
                           key={item.product_id}
                           onClick={() => toggleCollected(item.product_id)}
-                          className={`w-full flex items-center gap-3 py-3 border-b border-gray-100 last:border-0 text-left active:bg-gray-50 transition-colors ${
+                          className={`w-full flex items-center gap-3 py-2 border-b border-gray-100 last:border-0 text-left active:bg-gray-50 transition-colors ${
                             isCollected ? 'opacity-60' : ''
                           }`}
                         >
-                          <div className={`w-11 h-11 rounded-xl border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                          <div className={`w-8 h-8 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
                             isCollected ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
                           }`}>
-                            {isCollected && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                            {isCollected && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className={`text-[var(--fs-xl)] font-bold ${isCollected ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                            <div className={`text-[var(--fs-md)] font-bold ${isCollected ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
                               {item.product_name}
                             </div>
                             <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
                               {item.mo_count} order{item.mo_count !== 1 ? 's' : ''}: {item.mo_names.join(', ')}
                             </div>
                           </div>
-                          <div className="text-right flex-shrink-0">
-                            <div className={`text-[var(--fs-xxl)] font-extrabold font-mono ${isCollected ? 'text-green-500' : 'text-gray-900'}`}>
+                          <div className="flex items-baseline gap-1 flex-shrink-0">
+                            <span className={`text-[var(--fs-lg)] font-extrabold font-mono ${isCollected ? 'text-green-500' : 'text-gray-900'}`}>
                               {fmt(item.remaining > 0 ? item.remaining : item.total_demand)}
-                            </div>
-                            <div className="text-[var(--fs-sm)] text-gray-400">{item.uom}</div>
+                            </span>
+                            <span className="text-[var(--fs-xs)] text-gray-400">{item.uom}</span>
                           </div>
                         </button>
                       );

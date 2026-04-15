@@ -281,6 +281,20 @@ Always use CSS var syntax in Tailwind arbitrary values:
 | Dashboard tile subtitle | `text-[var(--fs-xs)] text-gray-500` | fs-xs |
 | List card primary text | `text-[var(--fs-xxl)] font-bold` | fs-xxl |
 | List card meta | `text-[var(--fs-sm)] text-gray-500` | fs-sm |
+
+### Compact List Spacing (MANDATORY)
+
+All lists must use compact spacing to minimize scrolling:
+
+| Element | Class | Value |
+|---------|-------|-------|
+| List container gap | `gap-1` | 4px between items |
+| List item vertical padding | `py-2` (edit/view rows) or `py-2.5` (cards with more content) | 8–10px |
+| Category section margin | `mb-2` to `mb-3` | 8–12px below each category |
+| Category header padding-bottom | `pb-1` to `pb-1.5` | 4–6px |
+| Between-item margin (when not using gap) | `mb-1` | 4px |
+
+Do NOT use `gap-2`, `gap-3`, `py-3`, or `py-4` on list items — these create excessive scroll distance.
 | Section overline | `text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400` | fs-xs |
 | Filter pill (active) | `px-4 py-3 rounded-full text-[var(--fs-sm)] font-bold bg-green-600 text-white` | fs-sm |
 | Filter pill (inactive) | `px-4 py-3 rounded-full text-[var(--fs-sm)] font-bold border bg-white text-gray-500` | fs-sm |
@@ -312,5 +326,6 @@ Before committing any component change:
 - [ ] Font weights follow the hierarchy (800/700/600/500/400)
 - [ ] Buttons use `py-3.5` minimum and `font-bold`
 - [ ] Filter pills use `px-4 py-3` (44px+ touch target)
-- [ ] List cards use `rounded-2xl p-4`
+- [ ] List cards use `rounded-2xl` with compact padding (`py-2` to `py-2.5`, not `py-3` or `py-4`)
+- [ ] List container gaps use `gap-1` (not `gap-2` or `gap-1.5`)
 - [ ] Section headers use `text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400`

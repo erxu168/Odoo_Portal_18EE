@@ -137,8 +137,8 @@ function migrateSchema(db: Database.Database) {
 function seedAdmin(db: Database.Database) {
   const row = db.prepare('SELECT COUNT(*) as c FROM portal_users').get() as { c: number };
   if (row.c === 0) {
-    const email = process.env.ODOO_USER || 'admin@krawings.de';
-    const hash = bcrypt.hashSync('krawings2026', 10);
+    const email = process.env.ODOO_USER || 'biz@krawings.de';
+    const hash = bcrypt.hashSync('test1234', 10);
     db.prepare(
       "INSERT INTO portal_users (name, email, password_hash, role, status, allowed_company_ids, created_at) VALUES (?, ?, ?, ?, 'active', '[]', ?)"
     ).run('Admin', email, hash, 'admin', nowISO());

@@ -143,7 +143,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
     if (sqcEnabled && drivingComp) {
       const manualQty = parseFloat(drivingCompQty);
       if (!isNaN(manualQty) && manualQty > 0 && drivingComp.required_qty > 0) {
-        setQty(String(Math.round((manualQty / drivingComp.required_qty) * baseQty * 1000000) / 1000000));
+        setQty(String(Math.round((manualQty / drivingComp.required_qty) * baseQty * 10000) / 10000));
       }
     }
   }, [sqcEnabled, drivingComp, drivingCompQty, baseQty]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -371,10 +371,10 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
           ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-gray-400 text-[var(--fs-sm)]">No recipes found</div>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1">
               {filtered.map((bom: any) => (
                 <button key={bom.id} onClick={() => selectProduct(bom)}
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3.5 flex justify-between items-center text-left w-full active:scale-[0.98] transition-transform">
+                  className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 flex justify-between items-center text-left w-full active:scale-[0.98] transition-transform">
                   <div className="min-w-0 flex-1">
                     <div className="text-[var(--fs-lg)] font-bold text-gray-900 truncate">{bom.product_tmpl_id[1]}</div>
                     <div className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
@@ -497,21 +497,21 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
             </div>
           )}
 
-          <div className="flex flex-col gap-1.5 mb-4">
+          <div className="flex flex-col gap-1 mb-4">
             {(() => {
               const cats = Array.from(new Set(scaledComps.map((c: any) => c.category || 'Other')));
               return cats.map(cat => {
                 const catItems = scaledComps.filter((c: any) => (c.category || 'Other') === cat);
                 return (
-                  <div key={cat} className="mb-3">
-                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-1.5 flex justify-between">
+                  <div key={cat} className="mb-2">
+                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-1 flex justify-between">
                       <span>{cat}</span>
                       <span className="font-mono text-gray-300">{catItems.length}</span>
                     </div>
                     {catItems.map((c: any) => {
               const pct = c.scaled_qty > 0 ? Math.min(100, Math.round(c.on_hand_qty / c.scaled_qty * 100)) : 100;
               return (
-                <div key={c.product_id} className={`bg-white border rounded-xl px-3.5 py-3 mb-1.5 ${c.is_short ? 'border-red-200' : 'border-gray-200'}`}>
+                <div key={c.product_id} className={`bg-white border rounded-xl px-3.5 py-2 mb-1 ${c.is_short ? 'border-red-200' : 'border-gray-200'}`}>
                   <div className="flex justify-between items-center mb-1.5">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className={`text-[var(--fs-base)] font-bold truncate ${c.is_short ? 'text-red-700' : 'text-gray-900'}`}>{c.product_name}</span>
