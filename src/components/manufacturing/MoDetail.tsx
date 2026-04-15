@@ -173,8 +173,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        title={mo.product_id[1]}
-        subtitle={mo.name}
+        title={mo.name}
         showBack
         onBack={onBack}
         action={
@@ -202,6 +201,10 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
           <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-[var(--fs-xs)]">{actionError}</div>
         </div>
       )}
+
+      <div className="px-4 pt-3">
+        <h1 className="text-[var(--fs-xl)] font-extrabold text-gray-900 leading-tight">{mo.product_id[1]}</h1>
+      </div>
 
       <div className="px-4 py-3">
         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">

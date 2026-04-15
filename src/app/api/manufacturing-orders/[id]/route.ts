@@ -199,30 +199,40 @@ export async function PATCH(
             }
           }
 
-          // mark_done can return a chain of wizards (consumption warning,
-          // then backorder). Handle each in a short loop.
+          // mark_done can return a chain of wizards. Odoo requires context
+          // flags (skip_consumption, skip_backorder) to be carried through —
+          // otherwise the chain loops forever. We accumulate flags across
+          // steps and pass the merged context to every wizard call.
+          const skipFlags: Record<string, unknown> = {};
           let action: any = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
-          for (let step = 0; step < 4; step++) {
+          for (let step = 0; step < 6; step++) {
             if (!action || typeof action !== 'object' || !action.res_model) break;
             try {
               const wizModel = action.res_model;
-              const ctx = { ...(action.context || {}), active_id: moId, active_ids: [moId] };
+              const returnedCtx = action.context || {};
+              for (const key of Object.keys(returnedCtx)) {
+                if (key.startsWith('skip_')) skipFlags[key] = returnedCtx[key];
+              }
+              const ctx = {
+                ...returnedCtx,
+                ...skipFlags,
+                active_id: moId,
+                active_ids: [moId],
+              };
               const wizId = await odoo.create(wizModel, {}, { context: ctx });
               const wizIds = Array.isArray(wizId) ? wizId : [wizId];
               if (wizModel === 'mrp.consumption.warning') {
-                action = await odoo.call(wizModel, 'action_confirm', [wizIds]);
+                skipFlags.skip_consumption = true;
+                action = await odoo.call(wizModel, 'action_confirm', [wizIds], { context: ctx });
               } else if (wizModel === 'mrp.production.backorder') {
-                // User's intent is "close this MO now". Close without creating
-                // a backorder for the remaining qty.
+                skipFlags.skip_backorder = true;
                 try {
-                  action = await odoo.call(wizModel, 'action_close_mo', [wizIds]);
+                  action = await odoo.call(wizModel, 'action_close_mo', [wizIds], { context: ctx });
                 } catch {
-                  action = await odoo.call(wizModel, 'process', [wizIds]);
+                  action = await odoo.call(wizModel, 'process', [wizIds], { context: ctx });
                 }
-              } else if (wizModel === 'mrp.immediate.production') {
-                action = await odoo.call(wizModel, 'process', [wizIds]);
               } else {
-                action = await odoo.call(wizModel, 'process', [wizIds]);
+                action = await odoo.call(wizModel, 'process', [wizIds], { context: ctx });
               }
             } catch (wizErr: any) {
               console.error(`Wizard error at step ${step}:`, wizErr.message);
