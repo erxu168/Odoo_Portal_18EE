@@ -199,27 +199,34 @@ export async function PATCH(
             }
           }
 
-          const result = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
-          if (result && typeof result === 'object' && result.res_model) {
+          // mark_done can return a chain of wizards (consumption warning,
+          // then backorder). Handle each in a short loop.
+          let action: any = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
+          for (let step = 0; step < 4; step++) {
+            if (!action || typeof action !== 'object' || !action.res_model) break;
             try {
-              const wizModel = result.res_model;
-              const wizCtx = result.context || {};
-              const ctx = { ...wizCtx, active_id: moId, active_ids: [moId] };
+              const wizModel = action.res_model;
+              const ctx = { ...(action.context || {}), active_id: moId, active_ids: [moId] };
               const wizId = await odoo.create(wizModel, {}, { context: ctx });
               const wizIds = Array.isArray(wizId) ? wizId : [wizId];
-              if (wizModel === 'mrp.immediate.production') {
-                await odoo.call(wizModel, 'process', [wizIds]);
+              if (wizModel === 'mrp.consumption.warning') {
+                action = await odoo.call(wizModel, 'action_confirm', [wizIds]);
               } else if (wizModel === 'mrp.production.backorder') {
+                // User's intent is "close this MO now". Close without creating
+                // a backorder for the remaining qty.
                 try {
-                  await odoo.call(wizModel, 'action_close_mo', [wizIds]);
+                  action = await odoo.call(wizModel, 'action_close_mo', [wizIds]);
                 } catch {
-                  await odoo.call(wizModel, 'process', [wizIds]);
+                  action = await odoo.call(wizModel, 'process', [wizIds]);
                 }
+              } else if (wizModel === 'mrp.immediate.production') {
+                action = await odoo.call(wizModel, 'process', [wizIds]);
               } else {
-                await odoo.call(wizModel, 'process', [wizIds]);
+                action = await odoo.call(wizModel, 'process', [wizIds]);
               }
             } catch (wizErr: any) {
-              console.error('Wizard error:', wizErr.message);
+              console.error(`Wizard error at step ${step}:`, wizErr.message);
+              break;
             }
           }
           break;
