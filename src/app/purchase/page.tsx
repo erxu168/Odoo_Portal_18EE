@@ -204,11 +204,11 @@ export default function PurchasePage() {
 
   async function removeGuideItemAction(itemId: number) { await fetch(`/api/purchase/guides?item_id=${itemId}`, { method: 'DELETE' }); setGuideItems(prev => prev.filter(i => i.id !== itemId)); fetchSuppliers(); }
 
-  async function deleteOrderGuide(supplier: Supplier) {
+  async function deleteSupplier(supplier: Supplier) {
     try {
-      await fetch(`/api/purchase/guides?supplier_id=${supplier.id}&location_id=${locationId}`, { method: 'DELETE' });
+      await fetch(`/api/purchase/suppliers?id=${supplier.id}`, { method: 'DELETE' });
       fetchSuppliers();
-    } catch (e) { console.error('[purchase] deleteOrderGuide failed', e); }
+    } catch (e) { console.error('[purchase] deleteSupplier failed', e); }
   }
 
   async function saveSupplierConfig() {
@@ -487,21 +487,21 @@ export default function PurchasePage() {
         <div className="flex-1 min-w-0"><div className="text-[13px] font-bold text-gray-900 truncate">{s.name}</div><div className="text-[11px] text-gray-500">{s.product_count} products &bull; Tap to edit</div></div>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>
       </button>
-      {s.product_count > 0 && (
-        <button
-          onClick={() => setConfirmDialog({
-            title: 'Delete this order guide?',
-            message: `This will remove all ${s.product_count} products from ${s.name}'s order guide. The supplier stays; you can add products again later. This cannot be undone.`,
-            confirmLabel: 'Yes, delete guide',
-            variant: 'danger',
-            onConfirm: () => { setConfirmDialog(null); deleteOrderGuide(s); },
-          })}
-          aria-label={`Delete order guide for ${s.name}`}
-          className="w-11 h-11 flex-shrink-0 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 active:bg-red-100 transition-colors"
-        >
-          <TrashIcon />
-        </button>
-      )}
+      <button
+        onClick={() => setConfirmDialog({
+          title: `Delete ${s.name}?`,
+          message: s.product_count > 0
+            ? `This removes ${s.name} and their order guide (${s.product_count} products) from your list. Past orders stay in history. This cannot be undone.`
+            : `This removes ${s.name} from your list. You can seed suppliers from Odoo again later to restore. This cannot be undone.`,
+          confirmLabel: 'Yes, delete',
+          variant: 'danger',
+          onConfirm: () => { setConfirmDialog(null); deleteSupplier(s); },
+        })}
+        aria-label={`Delete ${s.name}`}
+        className="w-11 h-11 flex-shrink-0 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 active:bg-red-100 transition-colors"
+      >
+        <TrashIcon />
+      </button>
     </div>
   )))}</div>);
 

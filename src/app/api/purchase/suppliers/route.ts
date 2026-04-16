@@ -1,11 +1,14 @@
 /**
  * /api/purchase/suppliers
- * GET  - list suppliers for a location
- * POST - create a new supplier (admin only)
+ * GET    - list suppliers for a location
+ * POST   - create a new supplier (admin only)
+ * PATCH  - update supplier (manager+)
+ * DELETE - soft-delete supplier + cleanup its order guide (manager+)
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { listSuppliers, createSupplier, updateSupplier, getSupplier } from '@/lib/purchase-db';
+import { getDb } from '@/lib/db';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -63,4 +66,35 @@ export async function PATCH(request: Request) {
 
   updateSupplier(id, updates);
   return NextResponse.json({ message: 'Supplier updated' });
+}
+
+export async function DELETE(request: Request) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  const { searchParams } = new URL(request.url);
+  const id = parseInt(searchParams.get('id') || '0');
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+  const existing = getSupplier(id);
+  if (!existing) return NextResponse.json({ error: 'Supplier not found' }, { status: 404 });
+
+  const db = getDb();
+
+  const guides = db.prepare('SELECT id FROM purchase_order_guides WHERE supplier_id = ?').all(id) as { id: number }[];
+  let itemsDeleted = 0;
+  for (const g of guides) {
+    const r = db.prepare('DELETE FROM purchase_guide_items WHERE guide_id = ?').run(g.id);
+    itemsDeleted += r.changes;
+  }
+  const guidesDeleted = db.prepare('DELETE FROM purchase_order_guides WHERE supplier_id = ?').run(id).changes;
+
+  // Soft-delete: keeps referential integrity with purchase_orders / purchase_carts
+  updateSupplier(id, { active: 0 });
+
+  return NextResponse.json({
+    message: 'Supplier removed',
+    debug: { guides_deleted: guidesDeleted, items_deleted: itemsDeleted },
+  });
 }
