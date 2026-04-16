@@ -34,7 +34,9 @@ export async function POST(req: NextRequest) {
     }
 
     const odoo = getOdoo();
-    const id = await odoo.create('mrp.workcenter', { name });
+    const vals: Record<string, unknown> = { name };
+    if (body.company_id) vals.company_id = body.company_id;
+    const id = await odoo.create('mrp.workcenter', vals);
     return NextResponse.json({ ok: true, workcenter: { id, name } });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

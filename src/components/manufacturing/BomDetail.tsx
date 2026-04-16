@@ -261,10 +261,11 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     if (!name) return;
     setSavingWc(true);
     try {
+      const companyId = bom?.company_id ? (Array.isArray(bom.company_id) ? bom.company_id[0] : bom.company_id) : undefined;
       const res = await fetch('/api/workcenters', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, company_id: companyId }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Failed to create station');
