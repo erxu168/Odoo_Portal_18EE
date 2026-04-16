@@ -256,6 +256,20 @@ export default function PurchasePage() {
 
   const locDropdown = <LocationDropdown locations={LOCATIONS} selectedId={locationId} onChange={setLocationId} variant="dark" />;
 
+  const manageIconBtn = (
+    <button
+      onClick={() => setScreen('manage')}
+      title="Manage guides & settings"
+      aria-label="Manage guides & settings"
+      className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center text-white/80 active:bg-white/20 transition-colors"
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+      </svg>
+    </button>
+  );
+
   const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) => (<div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-green-500 transition-colors mb-3"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="flex-1 bg-transparent outline-none text-[var(--fs-base)] text-gray-900 placeholder-gray-400" />{value && <button onClick={() => onChange('')} className="text-gray-400 text-[18px]">&times;</button>}</div>);
   const StatusBadge = ({ status }: { status: string }) => { const m: Record<string, [string, string]> = { pending_approval: ['bg-amber-100 text-amber-800', 'Awaiting approval'], approved: ['bg-blue-100 text-blue-800', 'Approved'], sent: ['bg-blue-100 text-blue-800', 'Sent'], received: ['bg-green-100 text-green-800', 'Delivered'], partial: ['bg-amber-100 text-amber-800', 'Partial'], cancelled: ['bg-red-100 text-red-800', 'Cancelled'], draft: ['bg-gray-100 text-gray-700', 'Draft'] }; const [cls, label] = m[status] || ['bg-gray-100 text-gray-700', status]; return <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold ${cls}`}>{label}</span>; };
 
@@ -519,9 +533,9 @@ export default function PurchasePage() {
       ) : screen === 'cart' ? (<><Header title="Cart" subtitle={`${locName} \u2022 ${cartTotal.items} items`} showBack onBack={() => setScreen('dashboard')} /><CartView /></>
       ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><ReceiveList /></>
       ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><HistoryView /></>
-      ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={locDropdown} />
+      ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={<div className="flex items-center gap-2">{isManager && manageIconBtn}{locDropdown}</div>} />
         <PurchaseAlerts suppliers={suppliers} />
-        <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} onNavigate={changeTab} isManager={isManager} onManage={() => setScreen('manage')} locationName={locName} locationId={locationId} />
+        <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} onNavigate={changeTab} locationId={locationId} />
       </>)}
       <Numpad open={numpadOpen} value={numpadValue} onChange={setNumpadValue} label={numpadProduct?.product_name} sublabel={numpadProduct?.product_uom} onConfirm={handleNumpadConfirm} onClose={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }} />
       {confirmDialog && <ConfirmDialog title={confirmDialog.title} message={confirmDialog.message} confirmLabel={confirmDialog.confirmLabel} cancelLabel={confirmDialog.cancelLabel} variant={confirmDialog.variant} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
