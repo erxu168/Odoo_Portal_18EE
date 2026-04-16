@@ -41,8 +41,8 @@ export async function POST(request: Request) {
   if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
-  let { odoo_partner_id, name, email, phone } = body;
-  const { create_in_odoo, send_method, min_order_value, order_days, lead_time_days, approval_required, location_id } = body;
+  let odoo_partner_id = body.odoo_partner_id;
+  const { name, email, phone, create_in_odoo, send_method, min_order_value, order_days, lead_time_days, approval_required, location_id } = body;
 
   if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 });
 
