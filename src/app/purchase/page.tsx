@@ -17,11 +17,18 @@ interface ReceiptLine { id: number; product_id: number; product_name: string; pr
 interface OdooProduct { id: number; name: string; uom: string; category_name: string; price: number; }
 
 type Tab = 'order' | 'cart' | 'receive' | 'history';
-type Screen = 'dashboard' | 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide' | 'add-supplier' | 'catalog';
+type Screen = 'dashboard' | 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide' | 'add-supplier' | 'catalog' | 'insights';
 
 interface OdooPartnerResult { odoo_id: number; name: string; email: string; phone: string; already_added: boolean; }
 interface CatalogOption { item_id: number; product_id: number; product_name: string; product_uom: string; price: number; category_name: string; supplier_id: number; supplier_name: string; }
 interface CatalogGroup { product_id: number; product_name: string; product_uom: string; category_name: string; options: CatalogOption[]; }
+interface AnalyticsPayload {
+  month: string; prev_month: string;
+  month_total: number; month_orders: number; prev_month_total: number;
+  delta_abs: number; delta_pct: number | null;
+  top_suppliers: { supplier_id: number; supplier_name: string; total: number; orders: number }[];
+  top_categories: { category_name: string; total: number }[];
+}
 
 const LOCATIONS = [
   { id: 32, name: 'SSAM', key: 'SSAM' },
@@ -282,6 +289,37 @@ export default function PurchasePage() {
       } catch (e) { console.error('[purchase] searchCatalog failed', e); setCatGroups([]); }
       finally { setCatSearching(false); }
     }, 250);
+  }
+
+  // ── Insights state ──────────────────────────────────────────
+  const [insightsMonth, setInsightsMonth] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [insights, setInsights] = useState<AnalyticsPayload | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
+  const fetchInsights = useCallback(async (month: string) => {
+    setInsightsLoading(true);
+    try {
+      const r = await fetch(`/api/purchase/analytics?location_id=${locationId}&month=${month}`);
+      const d = await r.json();
+      if (r.ok) setInsights(d); else setInsights(null);
+    } catch (e) { console.error('[purchase] fetchInsights failed', e); setInsights(null); }
+    finally { setInsightsLoading(false); }
+  }, [locationId]);
+
+  useEffect(() => { if (screen === 'insights') fetchInsights(insightsMonth); }, [screen, insightsMonth, fetchInsights]);
+
+  function shiftInsightsMonth(delta: number) {
+    const [y, m] = insightsMonth.split('-').map(Number);
+    const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+    setInsightsMonth(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+  }
+
+  function formatMonth(ym: string) {
+    const [y, m] = ym.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
   }
 
   async function addCatalogOptionToCart(opt: CatalogOption) {
@@ -597,10 +635,16 @@ export default function PurchasePage() {
   };
 
   const ManageScreen = () => (<div className="px-4 py-3">
-    <button onClick={() => { resetAddForm(); setScreen('add-supplier'); }} className="w-full flex items-center justify-center gap-2 py-3 mb-3 rounded-xl bg-[#2563EB] text-white text-[14px] font-bold shadow-sm active:scale-[0.98] transition-transform">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      Add supplier
-    </button>
+    <div className="flex gap-2 mb-3">
+      <button onClick={() => { resetAddForm(); setScreen('add-supplier'); }} className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-[#2563EB] text-white text-[13px] font-bold shadow-sm active:scale-[0.98] transition-transform">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add supplier
+      </button>
+      <button onClick={() => setScreen('insights')} className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-bold active:bg-gray-50 transition-colors">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Insights
+      </button>
+    </div>
     <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Edit order guides</div>{suppliers.length === 0 ? (<div className="text-center py-12"><div className="text-[var(--fs-sm)] text-gray-500 mb-4">No suppliers yet. Tap <span className="font-semibold text-blue-600">Add supplier</span> above, or seed from Odoo.</div>{isAdmin && <button onClick={runSeed} className="py-3 px-6 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30">Seed suppliers from Odoo</button>}{seedMsg && <p className="text-[12px] text-gray-500 mt-3">{seedMsg}</p>}</div>) : (suppliers.map(s => (
     <div key={s.id} className="flex items-center gap-2 mb-2.5">
       <button onClick={() => openManageGuide(s)} className="flex-1 flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:scale-[0.98] transition-transform text-left min-w-0">
@@ -721,6 +765,87 @@ export default function PurchasePage() {
             <button onClick={createNewSupplierInOdoo} disabled={addSaving || !newName.trim()} className="w-full py-3.5 rounded-xl bg-[#2563EB] text-white text-[14px] font-bold shadow-sm active:bg-blue-700 disabled:opacity-50">
               {addSaving ? 'Creating in Odoo...' : 'Create supplier'}
             </button>
+          </>)}
+        </div>
+      </>
+      ) : screen === 'insights' ? (<><Header title="Insights" subtitle={`${locName} \u2022 spend & trends`} showBack onBack={() => setScreen('manage')} />
+        <div className="px-4 py-3 pb-20">
+          <div className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-3 py-2 mb-3">
+            <button onClick={() => shiftInsightsMonth(-1)} aria-label="Previous month" className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <div className="text-[14px] font-bold text-gray-900">{formatMonth(insightsMonth)}</div>
+            <button onClick={() => shiftInsightsMonth(1)} aria-label="Next month" className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
+
+          {insightsLoading && <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin" /></div>}
+
+          {!insightsLoading && insights && (<>
+            {/* Total spend card */}
+            <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Total spend</div>
+              <div className="text-[28px] font-extrabold font-mono text-gray-900">&euro;{insights.month_total.toFixed(2)}</div>
+              <div className="text-[12px] text-gray-500 mt-1">{insights.month_orders} order{insights.month_orders === 1 ? '' : 's'}</div>
+              {insights.prev_month_total > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                  <div>
+                    <div className="text-[11px] text-gray-500">vs {formatMonth(insights.prev_month)}</div>
+                    <div className="text-[12px] text-gray-400 font-mono">&euro;{insights.prev_month_total.toFixed(2)}</div>
+                  </div>
+                  <div className={`text-[13px] font-bold ${insights.delta_abs > 0 ? 'text-red-600' : insights.delta_abs < 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                    {insights.delta_abs > 0 ? '\u25B2' : insights.delta_abs < 0 ? '\u25BC' : '\u2014'} {insights.delta_pct !== null ? `${Math.abs(insights.delta_pct).toFixed(1)}%` : ''}
+                  </div>
+                </div>
+              )}
+              {insights.prev_month_total === 0 && insights.month_total > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-400">No spend recorded for {formatMonth(insights.prev_month)}.</div>
+              )}
+            </div>
+
+            {/* Top suppliers */}
+            <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">Top suppliers</div>
+              {insights.top_suppliers.length === 0 ? (
+                <div className="text-[12px] text-gray-400 py-2">No orders this month.</div>
+              ) : (() => {
+                const max = Math.max(...insights.top_suppliers.map(s => s.total)) || 1;
+                return insights.top_suppliers.map(s => (
+                  <div key={s.supplier_id} className="mb-2.5 last:mb-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-[13px] font-semibold text-gray-900 truncate flex-1 mr-2">{s.supplier_name}</div>
+                      <div className="text-[12px] font-mono font-bold text-gray-900">&euro;{s.total.toFixed(2)}</div>
+                    </div>
+                    <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="absolute inset-y-0 left-0 bg-[#2563EB] rounded-full" style={{ width: `${(s.total / max) * 100}%` }} />
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">{s.orders} order{s.orders === 1 ? '' : 's'}</div>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            {/* Top categories */}
+            <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">Top categories</div>
+              {insights.top_categories.length === 0 ? (
+                <div className="text-[12px] text-gray-400 py-2">No line data this month.</div>
+              ) : (() => {
+                const max = Math.max(...insights.top_categories.map(c => c.total)) || 1;
+                return insights.top_categories.map(c => (
+                  <div key={c.category_name} className="mb-2.5 last:mb-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-[13px] font-semibold text-gray-900 truncate flex-1 mr-2">{c.category_name}</div>
+                      <div className="text-[12px] font-mono font-bold text-gray-900">&euro;{c.total.toFixed(2)}</div>
+                    </div>
+                    <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="absolute inset-y-0 left-0 bg-green-500 rounded-full" style={{ width: `${(c.total / max) * 100}%` }} />
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
           </>)}
         </div>
       </>
