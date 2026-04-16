@@ -533,7 +533,7 @@ export default function PurchasePage() {
       ) : screen === 'cart' ? (<><Header title="Cart" subtitle={`${locName} \u2022 ${cartTotal.items} items`} showBack onBack={() => setScreen('dashboard')} /><CartView /></>
       ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><ReceiveList /></>
       ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><HistoryView /></>
-      ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={<div className="flex items-center gap-2">{isManager && manageIconBtn}{locDropdown}</div>} />
+      ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={isManager ? manageIconBtn : undefined} />
         <PurchaseAlerts suppliers={suppliers} />
         <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} onNavigate={changeTab} locationId={locationId} />
       </>)}
