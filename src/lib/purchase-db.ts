@@ -364,6 +364,13 @@ export function getOrder(id: number) {
   ).get(id) as any;
   if (!order) return null;
   order.lines = db().prepare('SELECT * FROM purchase_order_lines WHERE order_id = ?').all(id);
+  // Attach latest-receipt timestamps so the UI can build a delivery timeline without a second fetch.
+  const receipt = db().prepare(
+    'SELECT status, created_at, confirmed_at FROM purchase_receipts WHERE order_id = ? ORDER BY created_at DESC LIMIT 1'
+  ).get(id) as { status?: string; created_at?: string; confirmed_at?: string } | undefined;
+  order.receipt_status = receipt?.status || null;
+  order.receipt_created_at = receipt?.created_at || null;
+  order.receipt_confirmed_at = receipt?.confirmed_at || null;
   return order;
 }
 

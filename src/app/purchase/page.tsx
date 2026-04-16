@@ -12,7 +12,7 @@ import PurchaseAlerts from '@/components/purchase/PurchaseAlerts';
 interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number; send_method: string; }
 interface GuideItem { id: number; product_id: number; product_name: string; product_uom: string; price: number; price_source: string; category_name: string; }
 interface CartSummary { id: number; supplier_id: number; supplier_name: string; item_count: number; total: number; items: any[]; send_method: string; min_order_value: number; approval_required: number; }
-interface Order { id: number; supplier_id: number; supplier_name: string; odoo_po_name: string | null; status: string; total_amount: number; created_at: string; lines?: any[]; delivery_date: string | null; order_note: string; location_id: number; }
+interface Order { id: number; supplier_id: number; supplier_name: string; odoo_po_name: string | null; status: string; total_amount: number; created_at: string; lines?: any[]; delivery_date: string | null; order_note: string; location_id: number; sent_at?: string | null; cancelled_at?: string | null; receipt_status?: string | null; receipt_created_at?: string | null; receipt_confirmed_at?: string | null; approved_by?: number | null; }
 interface ReceiptLine { id: number; product_id: number; product_name: string; product_uom: string; ordered_qty: number; received_qty: number | null; difference: number; has_issue: number; issue_type: string | null; issue_notes: string | null; price?: number; subtotal?: number; issue_photo?: string | null; }
 interface OdooProduct { id: number; name: string; uom: string; category_name: string; price: number; }
 
@@ -660,7 +660,77 @@ export default function PurchasePage() {
 
   const HistoryView = () => { const fm: Record<string, string[]> = { all: [], sent: ['sent'], delivered: ['received'], approval: ['pending_approval'], issues: ['partial'] }; const filtered = historyFilter === 'all' ? orders : orders.filter(o => fm[historyFilter]?.includes(o.status)); return (<div className="px-4 py-3"><div className="flex gap-1.5 overflow-x-auto pb-3">{['all', 'sent', 'delivered', 'approval', 'issues'].map(f => (<button key={f} onClick={() => setHistoryFilter(f)} className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold whitespace-nowrap flex-shrink-0 capitalize ${historyFilter === f ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{f}</button>))}</div>{filtered.length === 0 ? (<div className="text-center py-16"><div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">No orders yet</div></div>) : (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">{filtered.map(order => (<button key={order.id} onClick={() => openOrderDetail(order)} className="w-full flex items-center gap-3 py-3 border-b border-gray-100 last:border-0 text-left active:bg-gray-50"><div className="flex-1 min-w-0"><div className="text-[13px] font-bold text-gray-900">{order.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{order.odoo_po_name || `#${order.id}`} &bull; {new Date(order.created_at).toLocaleDateString('de-DE')}</div></div><div className="text-right flex-shrink-0"><div className="text-[13px] font-bold font-mono text-gray-900">&euro;{order.total_amount.toFixed(2)}</div><StatusBadge status={order.status} /></div></button>))}</div>)}</div>); };
 
-  const OrderDetail = () => { if (!selectedOrder) return null; const canCancel = ['draft', 'pending_approval', 'approved'].includes(selectedOrder.status); return (<div className="px-4 py-3"><div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3"><div className="flex justify-between items-start mb-3"><div><div className="text-[16px] font-bold text-gray-900">{selectedOrder.supplier_name}</div><div className="text-[12px] text-gray-500 font-mono mt-1">{selectedOrder.odoo_po_name || `#${selectedOrder.id}`}</div></div><StatusBadge status={selectedOrder.status} /></div><div className="text-[12px] text-gray-500 mb-1">Ordered: {new Date(selectedOrder.created_at).toLocaleString('de-DE')}</div>{selectedOrder.delivery_date && <div className="text-[12px] text-gray-500">Delivery: {selectedOrder.delivery_date}</div>}{selectedOrder.order_note && <div className="text-[12px] text-gray-500 mt-1">Note: {selectedOrder.order_note}</div>}</div>{selectedOrder.lines && selectedOrder.lines.length > 0 && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-3">{selectedOrder.lines.map((line: any) => (<div key={line.id} className="flex justify-between py-2.5 border-b border-gray-100 last:border-0 text-[13px]"><div className="text-gray-900">{line.product_name}</div><div className="font-mono text-gray-500">{line.quantity} {line.product_uom} &bull; &euro;{line.subtotal.toFixed(2)}</div></div>))}</div>)}<div className="text-right text-[16px] font-bold font-mono text-gray-900 mb-4">&euro;{selectedOrder.total_amount.toFixed(2)}</div>{selectedOrder.lines && selectedOrder.lines.length > 0 && (<button onClick={() => setConfirmDialog({ title: 'Reorder these items?', message: `This adds all ${selectedOrder.lines!.length} items to your ${selectedOrder.supplier_name} cart at the original quantities. Items already in your cart will have their quantity updated to match this order.`, confirmLabel: reordering ? 'Adding...' : 'Yes, add to cart', variant: 'primary', onConfirm: () => { setConfirmDialog(null); reorderPastOrder(selectedOrder); } })} disabled={reordering} className="w-full py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold shadow-sm active:bg-green-700 disabled:opacity-50 mb-2">{reordering ? 'Adding to cart...' : 'Reorder these items'}</button>)}{canCancel && <button onClick={() => setConfirmDialog({ title: 'Cancel this order?', message: `Are you sure you want to cancel this order to ${selectedOrder.supplier_name}? This cannot be undone.`, confirmLabel: 'Yes, cancel order', variant: 'danger', onConfirm: () => { setConfirmDialog(null); cancelSelectedOrder(); } })} className="w-full py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100">Cancel order</button>}</div>); };
+  const OrderDetail = () => {
+    if (!selectedOrder) return null;
+    const canCancel = ['draft', 'pending_approval', 'approved'].includes(selectedOrder.status);
+
+    // Build the delivery timeline from available order + receipt timestamps.
+    // Each step: { key, label, at (ISO string or null), state: 'done' | 'current' | 'pending' | 'skipped' }
+    type StepState = 'done' | 'current' | 'pending' | 'skipped';
+    const isCancelled = selectedOrder.status === 'cancelled';
+    const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
+    const steps: { key: string; label: string; at: string | null; state: StepState; tint?: 'danger' }[] = [];
+    steps.push({ key: 'ordered', label: 'Ordered', at: fmt(selectedOrder.created_at), state: 'done' });
+    if (selectedOrder.status === 'pending_approval') {
+      steps.push({ key: 'approval', label: 'Awaiting approval', at: null, state: 'current' });
+    } else if (selectedOrder.approved_by || ['approved', 'sent', 'received', 'partial'].includes(selectedOrder.status)) {
+      steps.push({ key: 'approved', label: 'Approved', at: null, state: 'done' });
+    }
+    steps.push({
+      key: 'sent',
+      label: 'Sent to supplier',
+      at: fmt(selectedOrder.sent_at),
+      state: selectedOrder.sent_at ? 'done' : (isCancelled ? 'skipped' : selectedOrder.status === 'approved' ? 'current' : 'pending'),
+    });
+    const deliveredAt = selectedOrder.receipt_confirmed_at || (['received', 'partial'].includes(selectedOrder.status) ? selectedOrder.receipt_created_at : null);
+    const deliveredState: StepState = selectedOrder.receipt_confirmed_at || ['received', 'partial'].includes(selectedOrder.status)
+      ? 'done'
+      : isCancelled ? 'skipped'
+      : selectedOrder.sent_at ? 'current'
+      : 'pending';
+    const deliveredLabel = selectedOrder.status === 'partial' ? 'Partially delivered' : 'Delivered';
+    steps.push({ key: 'delivered', label: deliveredLabel, at: fmt(deliveredAt), state: deliveredState });
+    if (isCancelled) {
+      steps.push({ key: 'cancelled', label: 'Cancelled', at: fmt(selectedOrder.cancelled_at), state: 'done', tint: 'danger' });
+    }
+
+    return (<div className="px-4 py-3"><div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3"><div className="flex justify-between items-start mb-3"><div><div className="text-[16px] font-bold text-gray-900">{selectedOrder.supplier_name}</div><div className="text-[12px] text-gray-500 font-mono mt-1">{selectedOrder.odoo_po_name || `#${selectedOrder.id}`}</div></div><StatusBadge status={selectedOrder.status} /></div><div className="text-[12px] text-gray-500 mb-1">Ordered: {new Date(selectedOrder.created_at).toLocaleString('de-DE')}</div>{selectedOrder.delivery_date && <div className="text-[12px] text-gray-500">Delivery: {selectedOrder.delivery_date}</div>}{selectedOrder.order_note && <div className="text-[12px] text-gray-500 mt-1">Note: {selectedOrder.order_note}</div>}</div>
+      {/* Timeline */}
+      <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
+        <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">Delivery timeline</div>
+        <div className="relative">
+          {steps.map((step, idx) => {
+            const isLast = idx === steps.length - 1;
+            const dotCls = step.tint === 'danger'
+              ? 'bg-red-500 border-red-500 text-white'
+              : step.state === 'done'
+                ? 'bg-green-500 border-green-500 text-white'
+                : step.state === 'current'
+                  ? 'bg-white border-blue-500 text-blue-500 ring-4 ring-blue-100'
+                  : step.state === 'skipped'
+                    ? 'bg-gray-100 border-gray-200 text-gray-300'
+                    : 'bg-white border-gray-300 text-gray-300';
+            const connectorCls = step.state === 'done' ? 'bg-green-300' : step.state === 'skipped' ? 'bg-gray-100' : 'bg-gray-200';
+            return (
+              <div key={step.key} className="flex gap-3 relative">
+                <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
+                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${dotCls}`}>
+                    {step.state === 'done' && step.tint !== 'danger' && (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>)}
+                    {step.tint === 'danger' && (<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>)}
+                    {step.state === 'current' && (<div className="w-2 h-2 bg-blue-500 rounded-full" />)}
+                  </div>
+                  {!isLast && <div className={`w-0.5 flex-1 min-h-[22px] ${connectorCls}`} />}
+                </div>
+                <div className={`flex-1 pb-4 ${isLast ? 'pb-0' : ''}`}>
+                  <div className={`text-[13px] font-semibold ${step.state === 'skipped' ? 'text-gray-300 line-through' : step.tint === 'danger' ? 'text-red-700' : step.state === 'pending' ? 'text-gray-400' : 'text-gray-900'}`}>{step.label}</div>
+                  <div className="text-[11px] text-gray-500 font-mono">{step.at || (step.state === 'current' ? 'In progress' : step.state === 'skipped' ? '—' : 'Pending')}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {selectedOrder.lines && selectedOrder.lines.length > 0 && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-3">{selectedOrder.lines.map((line: any) => (<div key={line.id} className="flex justify-between py-2.5 border-b border-gray-100 last:border-0 text-[13px]"><div className="text-gray-900">{line.product_name}</div><div className="font-mono text-gray-500">{line.quantity} {line.product_uom} &bull; &euro;{line.subtotal.toFixed(2)}</div></div>))}</div>)}<div className="text-right text-[16px] font-bold font-mono text-gray-900 mb-4">&euro;{selectedOrder.total_amount.toFixed(2)}</div>{selectedOrder.lines && selectedOrder.lines.length > 0 && (<button onClick={() => setConfirmDialog({ title: 'Reorder these items?', message: `This adds all ${selectedOrder.lines!.length} items to your ${selectedOrder.supplier_name} cart at the original quantities. Items already in your cart will have their quantity updated to match this order.`, confirmLabel: reordering ? 'Adding...' : 'Yes, add to cart', variant: 'primary', onConfirm: () => { setConfirmDialog(null); reorderPastOrder(selectedOrder); } })} disabled={reordering} className="w-full py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold shadow-sm active:bg-green-700 disabled:opacity-50 mb-2">{reordering ? 'Adding to cart...' : 'Reorder these items'}</button>)}{canCancel && <button onClick={() => setConfirmDialog({ title: 'Cancel this order?', message: `Are you sure you want to cancel this order to ${selectedOrder.supplier_name}? This cannot be undone.`, confirmLabel: 'Yes, cancel order', variant: 'danger', onConfirm: () => { setConfirmDialog(null); cancelSelectedOrder(); } })} className="w-full py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100">Cancel order</button>}</div>); };
 
   const ReceiveList = () => (<div className="px-4 py-3"><div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Pending deliveries</div>{pendingDeliveries.length === 0 ? (<div className="text-center py-16"><div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">No pending deliveries</div><div className="text-[var(--fs-sm)] text-gray-500">Sent orders will appear here.</div></div>) : (pendingDeliveries.map(order => (<button key={order.id} onClick={() => openReceiveCheck(order)} className="w-full flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-2.5 active:scale-[0.98] transition-transform text-left"><div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-[14px] font-bold text-blue-600 flex-shrink-0">{(order.supplier_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2)}</div><div className="flex-1 min-w-0"><div className="text-[14px] font-bold text-gray-900">{order.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{order.odoo_po_name || `#${order.id}`}</div></div><span className="text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold bg-amber-100 text-amber-800">{order.status === 'partial' ? 'Partial' : 'Pending'}</span></button>)))}</div>);
 
