@@ -22,6 +22,17 @@ type Screen = 'dashboard' | 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' |
 interface OdooPartnerResult { odoo_id: number; name: string; email: string; phone: string; already_added: boolean; }
 interface CatalogOption { item_id: number; product_id: number; product_name: string; product_uom: string; price: number; category_name: string; supplier_id: number; supplier_name: string; }
 interface CatalogGroup { product_id: number; product_name: string; product_uom: string; category_name: string; options: CatalogOption[]; }
+interface ScanMatched { line_id: number; product_name: string; received_qty: number; ocr_description: string; ocr_price: number | null; confidence: 'high' | 'medium' | 'low'; price_flag: boolean; }
+interface ScanResult {
+  ocr_mode: 'mock' | 'azure';
+  ocr_error: string | null;
+  attachment_id: number | null;
+  supplier_name?: string;
+  invoice_total?: number;
+  matched: ScanMatched[];
+  unmatched_ocr: { description: string; quantity: number | null; unit_price: number | null }[];
+  missing_ordered: { line_id: number; product_name: string; ordered_qty: number }[];
+}
 interface AnalyticsPayload {
   month: string; prev_month: string;
   month_total: number; month_orders: number; prev_month_total: number;
@@ -289,6 +300,46 @@ export default function PurchasePage() {
       } catch (e) { console.error('[purchase] searchCatalog failed', e); setCatGroups([]); }
       finally { setCatSearching(false); }
     }, 250);
+  }
+
+  // ── Scan delivery note state ────────────────────────────────
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [scanErr, setScanErr] = useState<string>('');
+
+  async function scanDeliveryNote(file: File) {
+    if (!recvOrder?.id) { setScanErr('Open an order first.'); return; }
+    setScanning(true); setScanErr(''); setScanResult(null);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      const r = await fetch('/api/purchase/receive/scan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: recvOrder.id, image_data_url: dataUrl }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Scan failed');
+      setScanResult(d);
+      // Prefill received_qty for every matched line. UI keeps Issue buttons so the user can still flag problems.
+      if (d.matched?.length) {
+        for (const m of d.matched as ScanMatched[]) {
+          try {
+            await fetch('/api/purchase/receive', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'update_line', line_id: m.line_id, received_qty: m.received_qty }),
+            });
+          } catch (e) { void e; }
+        }
+        const rr = await fetch(`/api/purchase/receive?order_id=${recvOrder.id}`);
+        const rd = await rr.json();
+        setReceiptLines(rd.receipt?.lines || []);
+      }
+    } catch (e: any) { setScanErr(e.message || 'Scan failed'); }
+    finally { setScanning(false); }
   }
 
   // ── Insights state ──────────────────────────────────────────
@@ -593,6 +644,58 @@ export default function PurchasePage() {
     const openRecvNumpad = (line: ReceiptLine) => { setRecvNumpadLineId(line.id); setCartNumpadItem(null); setNumpadProduct({ id: 0, product_id: line.product_id, product_name: line.product_name, product_uom: line.product_uom, price: line.price || 0, price_source: '', category_name: '' }); setNumpadValue(line.received_qty !== null ? String(line.received_qty) : ''); setNumpadOpen(true); };
     return (<div className="px-4 py-3 pb-56">
       {recvOrder && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3"><div className="flex justify-between items-start mb-2"><div><div className="text-[14px] font-bold text-gray-900">{recvOrder.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{recvOrder.odoo_po_name || `#${recvOrder.id}`}</div></div><StatusBadge status={recvOrder.status} /></div><div className="text-[11px] text-gray-500">Ordered by <span className="font-semibold text-gray-900">{recvOrder.ordered_by_name}</span></div><div className="text-[11px] text-gray-500">{new Date(recvOrder.created_at).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>{recvOrder.delivery_date && <div className="text-[11px] text-gray-500">Delivery: {recvOrder.delivery_date}</div>}{recvOrder.order_note && <div className="text-[11px] text-gray-500 mt-1 italic">{recvOrder.order_note}</div>}<div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100"><span className="text-[11px] text-gray-400">{receiptLines.length} items</span><span className="text-[14px] font-bold font-mono text-gray-900">&euro;{orderTotal.toFixed(2)}</span></div></div>)}
+      {isManager && (
+        <div className="mb-3">
+          <FilePicker
+            onFile={(file) => scanDeliveryNote(file)}
+            accept="image/*"
+            variant="button"
+            icon="\u{1F4F7}"
+            loading={scanning}
+            disabled={scanning}
+            label={scanning ? 'Scanning delivery note...' : 'Scan delivery note'}
+            className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[13px] font-bold shadow-sm transition-colors ${scanning ? 'bg-gray-200 text-gray-500' : 'bg-[#2563EB] text-white active:bg-blue-700'}`}
+          />
+          {scanErr && <div className="mt-2 text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{scanErr}</div>}
+          {scanResult && !scanning && (
+            <div className="mt-2 px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-100">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px]">&#128196;</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-bold text-blue-900">Scan complete {scanResult.ocr_mode === 'mock' && <span className="ml-1 text-[10px] font-semibold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">MOCK</span>}</div>
+                  <div className="text-[11px] text-blue-800">{scanResult.matched.length} matched{scanResult.unmatched_ocr.length > 0 ? ` \u2022 ${scanResult.unmatched_ocr.length} unmatched` : ''}{scanResult.missing_ordered.length > 0 ? ` \u2022 ${scanResult.missing_ordered.length} not on note` : ''}</div>
+                </div>
+                <button onClick={() => setScanResult(null)} className="text-blue-400 text-[16px] flex-shrink-0" aria-label="Dismiss">&times;</button>
+              </div>
+              {scanResult.unmatched_ocr.length > 0 && (
+                <details className="mt-2">
+                  <summary className="text-[11px] font-semibold text-blue-700 cursor-pointer">Lines on the note that didn&rsquo;t match</summary>
+                  <ul className="mt-1.5 text-[11px] text-gray-700 space-y-1">
+                    {scanResult.unmatched_ocr.map((u, i) => (
+                      <li key={i} className="font-mono">&bull; {u.description || '(no description)'} {u.quantity != null && `\u00d7 ${u.quantity}`} {u.unit_price != null && `@ \u20ac${u.unit_price.toFixed(2)}`}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {scanResult.missing_ordered.length > 0 && (
+                <details className="mt-2">
+                  <summary className="text-[11px] font-semibold text-amber-700 cursor-pointer">Ordered items not on the note</summary>
+                  <ul className="mt-1.5 text-[11px] text-gray-700 space-y-1">
+                    {scanResult.missing_ordered.map((m) => (
+                      <li key={m.line_id}>&bull; {m.product_name} (ordered {m.ordered_qty})</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {scanResult.matched.some(m => m.price_flag) && (
+                <div className="mt-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
+                  <strong>Price mismatch:</strong> {scanResult.matched.filter(m => m.price_flag).map(m => m.product_name).join(', ')}. Please verify.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       <p className="text-[12px] text-gray-500 mb-3">Enter the quantity you actually received. Leave blank if not delivered yet.</p>
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
         {receiptLines.map(line => { const qty = line.received_qty; const linePrice = line.price || 0; return (
