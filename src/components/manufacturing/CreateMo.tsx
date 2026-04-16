@@ -402,11 +402,14 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader
-          title={selectedBom.product_tmpl_id[1]}
-          subtitle="Set quantity"
+          title="Set Quantity"
           showBack
           onBack={() => { setStep('select'); setSelectedBom(null); setComponents([]); }}
         />
+
+        <div className="px-4 pt-5 pb-2">
+          <h1 className="text-2xl font-extrabold text-gray-900 leading-tight">{selectedBom.product_tmpl_id[1]}</h1>
+        </div>
 
         {/* Progress */}
         <div className="flex gap-1 px-4 py-2.5">

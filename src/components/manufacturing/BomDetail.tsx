@@ -619,7 +619,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        title={productName}
+        title="Recipe"
         subtitle={`${fmt(bom.product_qty)} ${uom} per batch`}
         showBack
         onBack={onBack}
@@ -634,6 +634,10 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
           ) : undefined
         }
       />
+
+      <div className="px-4 pt-5 pb-2">
+        <h1 className="text-2xl font-extrabold text-gray-900 leading-tight">{productName}</h1>
+      </div>
 
       {/* Stats */}
       <div className="px-4 py-3">
