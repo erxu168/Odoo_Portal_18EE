@@ -281,6 +281,16 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     }
   }
 
+  function moveOp(index: number, direction: 'up' | 'down') {
+    setEditOps(prev => {
+      const next = [...prev];
+      const swapIdx = direction === 'up' ? index - 1 : index + 1;
+      if (swapIdx < 0 || swapIdx >= next.length) return prev;
+      [next[index], next[swapIdx]] = [next[swapIdx], next[index]];
+      return next;
+    });
+  }
+
   function addNewOp() {
     if (!newOp.name || !newOp.workcenter_id) return;
     const wcId = typeof newOp.workcenter_id === 'number' ? newOp.workcenter_id : (newOp.workcenter_id as [number, string])[0];
@@ -317,14 +327,15 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
 
       if (removedLineIds.length) body.remove_lines = removedLineIds;
 
-      // Update existing operations (id > 0)
-      const opUpdates = editOps.filter(op => op.id > 0).map(op => {
+      // Update existing operations (id > 0) — sequence derived from array position
+      const opUpdates = editOps.filter(op => op.id > 0).map((op, idx) => {
         const wcId = Array.isArray(op.workcenter_id) ? op.workcenter_id[0] : op.workcenter_id;
         const result: any = {
           operation_id: op.id,
           name: op.name,
           workcenter_id: wcId,
           time_cycle_manual: op.time_cycle_manual,
+          sequence: (idx + 1) * 10,
           note: op.note || '',
           worksheet_type: op.worksheet_type || false,
           worksheet_google_slide: op.worksheet_google_slide || false,
@@ -737,18 +748,37 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
               const isExpanded = editingOpId === op.id;
               return (
                 <div key={op.id} className={`bg-white border rounded-xl overflow-hidden ${isExpanded ? 'border-amber-300' : 'border-gray-200'}`}>
-                  {/* Collapsed header \u2014 tap to expand */}
+                  {/* Collapsed header — tap to expand */}
                   <div
-                    className="px-4 py-2 flex items-center gap-3 cursor-pointer active:bg-gray-50"
+                    className="px-4 py-2 flex items-center gap-2 cursor-pointer active:bg-gray-50"
                     onClick={() => setEditingOpId(isExpanded ? null : op.id)}
                   >
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700 flex-shrink-0">{i + 1}</div>
+                    {/* Reorder arrows + step number */}
+                    <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveOp(i, 'up'); }}
+                        disabled={i === 0}
+                        className="w-7 h-5 flex items-center justify-center rounded text-gray-400 active:bg-gray-100 disabled:opacity-20"
+                        aria-label="Move up"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="18 15 12 9 6 15" /></svg>
+                      </button>
+                      <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700">{i + 1}</div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveOp(i, 'down'); }}
+                        disabled={i === editOps.length - 1}
+                        className="w-7 h-5 flex items-center justify-center rounded text-gray-400 active:bg-gray-100 disabled:opacity-20"
+                        aria-label="Move down"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9" /></svg>
+                      </button>
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{op.name || '(untitled)'}</div>
                       <div className="text-[var(--fs-xs)] text-gray-400">
                         {wcName(op.workcenter_id)}
-                        {op.time_cycle_manual > 0 ? ` \u00b7 ${op.time_cycle_manual} min` : ''}
-                        {op.worksheet_type ? ` \u00b7 ${op.worksheet_type === 'pdf' ? 'PDF' : op.worksheet_type === 'google_slide' ? 'Slides' : ''}` : ''}
+                        {op.time_cycle_manual > 0 ? ` · ${op.time_cycle_manual} min` : ''}
+                        {op.worksheet_type ? ` · ${op.worksheet_type === 'pdf' ? 'PDF' : op.worksheet_type === 'google_slide' ? 'Slides' : ''}` : ''}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">
