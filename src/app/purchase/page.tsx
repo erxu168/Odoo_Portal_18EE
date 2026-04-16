@@ -17,7 +17,9 @@ interface ReceiptLine { id: number; product_id: number; product_name: string; pr
 interface OdooProduct { id: number; name: string; uom: string; category_name: string; price: number; }
 
 type Tab = 'order' | 'cart' | 'receive' | 'history';
-type Screen = 'dashboard' | 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide';
+type Screen = 'dashboard' | 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide' | 'add-supplier';
+
+interface OdooPartnerResult { odoo_id: number; name: string; email: string; phone: string; already_added: boolean; }
 
 const LOCATIONS = [
   { id: 32, name: 'SSAM', key: 'SSAM' },
@@ -208,6 +210,71 @@ export default function PurchasePage() {
       await fetch(`/api/purchase/suppliers?id=${supplier.id}`, { method: 'DELETE' });
       fetchSuppliers();
     } catch (e) { console.error('[purchase] deleteSupplier failed', e); }
+  }
+
+  // ── Add Supplier state ─────────────────────────────────────
+  const [addMode, setAddMode] = useState<'odoo' | 'new'>('odoo');
+  const [addSearch, setAddSearch] = useState('');
+  const [addResults, setAddResults] = useState<OdooPartnerResult[]>([]);
+  const [addSearching, setAddSearching] = useState(false);
+  const [addSaving, setAddSaving] = useState(false);
+  const [addErr, setAddErr] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const addSearchRef = useRef<NodeJS.Timeout | null>(null);
+
+  function resetAddForm() {
+    setAddMode('odoo'); setAddSearch(''); setAddResults([]); setAddSearching(false);
+    setAddSaving(false); setAddErr(''); setNewName(''); setNewEmail(''); setNewPhone('');
+  }
+
+  function searchOdooPartners(q: string) {
+    setAddSearch(q);
+    if (addSearchRef.current) clearTimeout(addSearchRef.current);
+    if (q.trim().length < 2) { setAddResults([]); setAddSearching(false); return; }
+    setAddSearching(true);
+    addSearchRef.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/purchase/suppliers/search?q=${encodeURIComponent(q)}&limit=20`);
+        const d = await r.json();
+        setAddResults(d.suppliers || []);
+      } catch (e) { console.error('[purchase] searchOdooPartners failed', e); setAddResults([]); }
+      finally { setAddSearching(false); }
+    }, 300);
+  }
+
+  async function linkOdooPartner(p: OdooPartnerResult) {
+    setAddSaving(true); setAddErr('');
+    try {
+      const r = await fetch('/api/purchase/suppliers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ odoo_partner_id: p.odoo_id, name: p.name, email: p.email, phone: p.phone, location_id: locationId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed to add supplier');
+      await fetchSuppliers();
+      resetAddForm();
+      setScreen('manage');
+    } catch (e: any) { setAddErr(e.message || 'Failed'); }
+    finally { setAddSaving(false); }
+  }
+
+  async function createNewSupplierInOdoo() {
+    if (!newName.trim()) { setAddErr('Name is required'); return; }
+    setAddSaving(true); setAddErr('');
+    try {
+      const r = await fetch('/api/purchase/suppliers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ create_in_odoo: true, name: newName.trim(), email: newEmail.trim(), phone: newPhone.trim(), location_id: locationId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed to create supplier');
+      await fetchSuppliers();
+      resetAddForm();
+      setScreen('manage');
+    } catch (e: any) { setAddErr(e.message || 'Failed'); }
+    finally { setAddSaving(false); }
   }
 
   async function saveSupplierConfig() {
@@ -477,7 +544,12 @@ export default function PurchasePage() {
     </div>);
   };
 
-  const ManageScreen = () => (<div className="px-4 py-3"><div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Edit order guides</div>{suppliers.length === 0 ? (<div className="text-center py-12"><div className="text-[var(--fs-sm)] text-gray-500 mb-4">No suppliers yet. Seed from Odoo first.</div>{isAdmin && <button onClick={runSeed} className="py-3 px-6 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30">Seed suppliers from Odoo</button>}{seedMsg && <p className="text-[12px] text-gray-500 mt-3">{seedMsg}</p>}</div>) : (suppliers.map(s => (
+  const ManageScreen = () => (<div className="px-4 py-3">
+    <button onClick={() => { resetAddForm(); setScreen('add-supplier'); }} className="w-full flex items-center justify-center gap-2 py-3 mb-3 rounded-xl bg-[#2563EB] text-white text-[14px] font-bold shadow-sm active:scale-[0.98] transition-transform">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Add supplier
+    </button>
+    <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Edit order guides</div>{suppliers.length === 0 ? (<div className="text-center py-12"><div className="text-[var(--fs-sm)] text-gray-500 mb-4">No suppliers yet. Tap <span className="font-semibold text-blue-600">Add supplier</span> above, or seed from Odoo.</div>{isAdmin && <button onClick={runSeed} className="py-3 px-6 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30">Seed suppliers from Odoo</button>}{seedMsg && <p className="text-[12px] text-gray-500 mt-3">{seedMsg}</p>}</div>) : (suppliers.map(s => (
     <div key={s.id} className="flex items-center gap-2 mb-2.5">
       <button onClick={() => openManageGuide(s)} className="flex-1 flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:scale-[0.98] transition-transform text-left min-w-0">
         <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-[14px] font-bold text-blue-600 flex-shrink-0">{s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
@@ -550,6 +622,56 @@ export default function PurchasePage() {
     <div className="min-h-screen bg-gray-50">
       {screen === 'guide' ? (<><Header title={guideSupplierName} subtitle={`${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('dashboard')} /><OrderGuide /></>
       ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => setScreen('dashboard')} /><ManageScreen /></>
+      ) : screen === 'add-supplier' ? (<><Header title="Add supplier" subtitle="Link from Odoo or create new" showBack onBack={() => { resetAddForm(); setScreen('manage'); }} />
+        <div className="px-4 py-3">
+          <div className="flex gap-1.5 mb-3">
+            <button onClick={() => { setAddMode('odoo'); setAddErr(''); }} className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors ${addMode === 'odoo' ? 'bg-[#2563EB] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>Pick from Odoo</button>
+            <button onClick={() => { setAddMode('new'); setAddErr(''); }} className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors ${addMode === 'new' ? 'bg-[#2563EB] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>Create new</button>
+          </div>
+          {addErr && <div className="text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-xl px-3.5 py-2.5 mb-3">{addErr}</div>}
+          {addMode === 'odoo' ? (<>
+            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-blue-500 transition-colors mb-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" value={addSearch} onChange={e => searchOdooPartners(e.target.value)} placeholder="Search Odoo suppliers..." autoFocus className="flex-1 bg-transparent outline-none text-[14px] text-gray-900 placeholder-gray-400" />
+              {addSearch && <button onClick={() => searchOdooPartners('')} className="text-gray-400 text-[18px]">&times;</button>}
+            </div>
+            <p className="text-[11px] text-gray-400 mb-3">Searches Odoo partners where <span className="font-mono">supplier_rank &gt; 0</span>. Type at least 2 characters.</p>
+            {addSearching && <div className="flex justify-center py-6"><div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin" /></div>}
+            {!addSearching && addResults.length > 0 && (
+              <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
+                {addResults.map(p => (
+                  <div key={p.odoo_id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center text-[12px] font-bold text-blue-600 flex-shrink-0">{p.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] font-semibold text-gray-900 truncate">{p.name}</div>
+                      <div className="text-[11px] text-gray-500 truncate">{p.email || p.phone || `Odoo #${p.odoo_id}`}</div>
+                    </div>
+                    {p.already_added ? (
+                      <span className="text-[11px] font-semibold text-gray-400 px-2.5 py-1 rounded-md bg-gray-50 border border-gray-100">Already added</span>
+                    ) : (
+                      <button onClick={() => linkOdooPartner(p)} disabled={addSaving} className="h-9 px-3 rounded-lg bg-[#2563EB] text-white text-[12px] font-bold active:bg-blue-700 disabled:opacity-50">Add</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {!addSearching && addSearch.trim().length >= 2 && addResults.length === 0 && (
+              <div className="text-[12px] text-gray-500 text-center py-6">No suppliers found in Odoo. Switch to <span className="font-semibold">Create new</span> to add one.</div>
+            )}
+          </>) : (<>
+            <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Supplier name <span className="text-red-500">*</span></label>
+            <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Metro Cash &amp; Carry" className="w-full mb-3 bg-white border border-gray-200 rounded-xl px-3.5 h-11 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500" />
+            <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Email</label>
+            <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="orders@supplier.com" className="w-full mb-3 bg-white border border-gray-200 rounded-xl px-3.5 h-11 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500" />
+            <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Phone</label>
+            <input type="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="+49 30 ..." className="w-full mb-4 bg-white border border-gray-200 rounded-xl px-3.5 h-11 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500" />
+            <p className="text-[11px] text-gray-400 mb-4">A matching <span className="font-mono">res.partner</span> will be created in Odoo with <span className="font-mono">supplier_rank = 1</span>, then linked here.</p>
+            <button onClick={createNewSupplierInOdoo} disabled={addSaving || !newName.trim()} className="w-full py-3.5 rounded-xl bg-[#2563EB] text-white text-[14px] font-bold shadow-sm active:bg-blue-700 disabled:opacity-50">
+              {addSaving ? 'Creating in Odoo...' : 'Create supplier'}
+            </button>
+          </>)}
+        </div>
+      </>
       ) : screen === 'manage-guide' ? (<><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('manage')} /><ManageGuideScreen /></>
       ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); }} /><ReviewOrder /></>
       ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSent /></>
