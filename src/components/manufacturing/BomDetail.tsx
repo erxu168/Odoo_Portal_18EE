@@ -64,6 +64,14 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   const [showAddOp, setShowAddOp] = useState(false);
   const [newOp, setNewOp] = useState<EditOp>({ id: 0, name: '', workcenter_id: 0, time_cycle_manual: 0, sequence: 0, note: '', worksheet_type: false, worksheet_google_slide: '' });
 
+  // Inline workcenter creation
+  const [creatingWc, setCreatingWc] = useState(false);
+  const [newWcName, setNewWcName] = useState('');
+  const [savingWc, setSavingWc] = useState(false);
+  const newWcInputRef = useRef<HTMLInputElement>(null);
+  /** Pending callback: after creating a WC, auto-select it on this op */
+  const wcCreatedCallbackRef = useRef<((wcId: number) => void) | null>(null);
+
   // Add ingredient
   const [showAddSearch, setShowAddSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -248,6 +256,31 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     setShowAddOp(false);
   }
 
+  async function createWorkcenter(callback: (wcId: number) => void) {
+    const name = newWcName.trim();
+    if (!name) return;
+    setSavingWc(true);
+    try {
+      const res = await fetch('/api/workcenters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Failed to create station');
+      const wc = data.workcenter as { id: number; name: string };
+      setWorkcenters(prev => [...prev, wc].sort((a, b) => a.name.localeCompare(b.name)));
+      setCreatingWc(false);
+      setNewWcName('');
+      callback(wc.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[manufacturing] create workcenter failed:', msg);
+    } finally {
+      setSavingWc(false);
+    }
+  }
+
   function addNewOp() {
     if (!newOp.name || !newOp.workcenter_id) return;
     const wcId = typeof newOp.workcenter_id === 'number' ? newOp.workcenter_id : (newOp.workcenter_id as [number, string])[0];
@@ -396,11 +429,48 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         </div>
         <div className="mb-3">
           <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Workcenter</label>
-          <select value={wcNumId(op.workcenter_id)} onChange={e => onChange({ workcenter_id: parseInt(e.target.value) })}
+          <select value={wcNumId(op.workcenter_id)} onChange={e => {
+            const val = e.target.value;
+            if (val === '__new__') {
+              wcCreatedCallbackRef.current = (wcId) => onChange({ workcenter_id: wcId });
+              setCreatingWc(true);
+              setNewWcName('');
+              setTimeout(() => newWcInputRef.current?.focus(), 50);
+            } else {
+              onChange({ workcenter_id: parseInt(val) });
+            }
+          }}
             className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600 appearance-none bg-white">
             <option value={0}>Select workcenter...</option>
             {workcenters.map(wc => <option key={wc.id} value={wc.id}>{wc.name}</option>)}
+            <option value="__new__">+ Add new station</option>
           </select>
+          {creatingWc && (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                ref={newWcInputRef}
+                type="text"
+                value={newWcName}
+                onChange={e => setNewWcName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && newWcName.trim() && wcCreatedCallbackRef.current) createWorkcenter(wcCreatedCallbackRef.current); }}
+                placeholder="Station name..."
+                className="flex-1 px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600"
+              />
+              <button
+                onClick={() => { if (wcCreatedCallbackRef.current) createWorkcenter(wcCreatedCallbackRef.current); }}
+                disabled={!newWcName.trim() || savingWc}
+                className="px-4 py-2.5 rounded-lg bg-green-600 text-white text-[var(--fs-xs)] font-bold active:bg-green-700 disabled:opacity-50"
+              >
+                {savingWc ? '...' : 'Add'}
+              </button>
+              <button
+                onClick={() => { setCreatingWc(false); setNewWcName(''); }}
+                className="px-3 py-2.5 rounded-lg text-gray-500 text-[var(--fs-xs)] font-semibold active:bg-gray-100"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
         <div className="mb-3">
           <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Duration (minutes)</label>
