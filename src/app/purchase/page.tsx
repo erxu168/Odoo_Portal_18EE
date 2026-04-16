@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Numpad from '@/components/ui/Numpad';
-import LocationDropdown from '@/components/ui/LocationDropdown';
 import OrdersDashboard from '@/components/purchase/OrdersDashboard';
 import FilePicker from "@/components/ui/FilePicker";
 import PurchaseAlerts from '@/components/purchase/PurchaseAlerts';
@@ -260,8 +259,6 @@ export default function PurchasePage() {
       </div>
     </div>
   );
-
-  const locDropdown = <LocationDropdown locations={LOCATIONS} selectedId={locationId} onChange={setLocationId} variant="dark" />;
 
   const manageIconBtn = (
     <button
@@ -552,7 +549,7 @@ export default function PurchasePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {screen === 'guide' ? (<><Header title={guideSupplierName} subtitle={`${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('dashboard')} /><OrderGuide /></>
-      ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => setScreen('dashboard')} rightElement={locDropdown} /><ManageScreen /></>
+      ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => setScreen('dashboard')} /><ManageScreen /></>
       ) : screen === 'manage-guide' ? (<><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('manage')} /><ManageGuideScreen /></>
       ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); }} /><ReviewOrder /></>
       ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSent /></>
