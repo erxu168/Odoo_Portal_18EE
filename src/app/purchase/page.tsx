@@ -7,6 +7,9 @@ import Numpad from '@/components/ui/Numpad';
 import OrdersDashboard from '@/components/purchase/OrdersDashboard';
 import FilePicker from "@/components/ui/FilePicker";
 import PurchaseAlerts from '@/components/purchase/PurchaseAlerts';
+import StatusBadge from '@/components/purchase/StatusBadge';
+import OrderSentScreen from '@/components/purchase/OrderSentScreen';
+import OrderHistoryScreen from '@/components/purchase/OrderHistoryScreen';
 
 // Types
 interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number; send_method: string; }
@@ -201,7 +204,7 @@ export default function PurchasePage() {
     fetchPending(); setScreen('receive-list');
   }
 
-  async function openOrderDetail(order: Order) { try { const r = await fetch(`/api/purchase/orders?id=${order.id}`); const d = await r.json(); setSelectedOrder(d.order); setScreen('order-detail'); } catch (e) { void e; } }
+  async function openOrderDetail(order: { id: number }) { try { const r = await fetch(`/api/purchase/orders?id=${order.id}`); const d = await r.json(); setSelectedOrder(d.order); setScreen('order-detail'); } catch (e) { void e; } }
 
   async function cancelSelectedOrder() {
     if (!selectedOrder) return;
@@ -512,7 +515,6 @@ export default function PurchasePage() {
   );
 
   const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) => (<div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-green-500 transition-colors mb-3"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="flex-1 bg-transparent outline-none text-[var(--fs-base)] text-gray-900 placeholder-gray-400" />{value && <button onClick={() => onChange('')} className="text-gray-400 text-[18px]">&times;</button>}</div>);
-  const StatusBadge = ({ status }: { status: string }) => { const m: Record<string, [string, string]> = { pending_approval: ['bg-amber-100 text-amber-800', 'Awaiting approval'], approved: ['bg-blue-100 text-blue-800', 'Approved'], sent: ['bg-blue-100 text-blue-800', 'Sent'], received: ['bg-green-100 text-green-800', 'Delivered'], partial: ['bg-amber-100 text-amber-800', 'Partial'], cancelled: ['bg-red-100 text-red-800', 'Cancelled'], draft: ['bg-gray-100 text-gray-700', 'Draft'] }; const [cls, label] = m[status] || ['bg-gray-100 text-gray-700', status]; return <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold ${cls}`}>{label}</span>; };
 
   // ============== SUPPLIER LIST ==============
   const SupplierList = () => {
@@ -667,10 +669,6 @@ export default function PurchasePage() {
       </div>
     </div>);
   };
-
-  const OrderSent = () => (<div className="px-4 py-3 flex flex-col items-center pt-16"><div className="w-16 h-16 rounded-[18px] bg-green-100 flex items-center justify-center mb-4"><svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg></div><div className="text-[18px] font-bold text-gray-900 mb-2">Order sent!</div><div className="text-[13px] text-gray-500 text-center max-w-[280px] leading-relaxed mb-6">Your order has been submitted.</div><button onClick={() => changeTab('order')} className="w-full max-w-[300px] py-3.5 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30 mb-3">Place another order</button><button onClick={() => changeTab('history')} className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold mb-3">View order history</button><button onClick={goHome} className="w-full max-w-[300px] py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold">Back to dashboard</button></div>);
-
-  const HistoryView = () => { const fm: Record<string, string[]> = { all: [], sent: ['sent'], delivered: ['received'], approval: ['pending_approval'], issues: ['partial'] }; const filtered = historyFilter === 'all' ? orders : orders.filter(o => fm[historyFilter]?.includes(o.status)); return (<div className="px-4 py-3"><div className="flex gap-1.5 overflow-x-auto pb-3">{['all', 'sent', 'delivered', 'approval', 'issues'].map(f => (<button key={f} onClick={() => setHistoryFilter(f)} className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold whitespace-nowrap flex-shrink-0 capitalize ${historyFilter === f ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{f}</button>))}</div>{filtered.length === 0 ? (<div className="text-center py-16"><div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">No orders yet</div></div>) : (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">{filtered.map(order => (<button key={order.id} onClick={() => openOrderDetail(order)} className="w-full flex items-center gap-3 py-3 border-b border-gray-100 last:border-0 text-left active:bg-gray-50"><div className="flex-1 min-w-0"><div className="text-[13px] font-bold text-gray-900">{order.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{order.odoo_po_name || `#${order.id}`} &bull; {new Date(order.created_at).toLocaleDateString('de-DE')}</div></div><div className="text-right flex-shrink-0"><div className="text-[13px] font-bold font-mono text-gray-900">&euro;{order.total_amount.toFixed(2)}</div><StatusBadge status={order.status} /></div></button>))}</div>)}</div>); };
 
   const OrderDetail = () => {
     if (!selectedOrder) return null;
@@ -1125,14 +1123,14 @@ export default function PurchasePage() {
       </>
       ) : screen === 'manage-guide' ? (<><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('manage')} /><ManageGuideScreen /></>
       ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); }} /><ReviewOrder /></>
-      ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSent /></>
+      ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSentScreen onPlaceAnother={() => changeTab('order')} onHistory={() => changeTab('history')} onHome={goHome} /></>
       ) : screen === 'order-detail' ? (<><Header title="Order details" showBack onBack={() => { setScreen('history'); }} /><OrderDetail /></>
       ) : screen === 'receive-check' ? (<><Header title={selectedOrder?.supplier_name || 'Receive'} subtitle={selectedOrder?.odoo_po_name || ''} showBack onBack={() => { setScreen('receive-list'); }} /><ReceiveCheck /></>
       ) : screen === 'receive-issue' ? (<><Header title="Report issue" showBack onBack={() => setScreen('receive-check')} /><ReceiveIssue /></>
       ) : screen === 'suppliers' ? (<><Header title="Place Order" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><SupplierList /></>
       ) : screen === 'cart' ? (<><Header title="Cart" subtitle={`${locName} \u2022 ${cartTotal.items} items`} showBack onBack={() => setScreen('dashboard')} /><CartView /></>
       ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><ReceiveList /></>
-      ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><HistoryView /></>
+      ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><OrderHistoryScreen orders={orders} filter={historyFilter} onFilterChange={setHistoryFilter} onOpen={openOrderDetail} /></>
       ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={isManager ? manageIconBtn : undefined} />
         <PurchaseAlerts suppliers={suppliers} />
         <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} onNavigate={changeTab} locationId={locationId} />
