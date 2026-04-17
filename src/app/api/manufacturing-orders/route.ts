@@ -106,8 +106,6 @@ export async function POST(request: Request) {
 
     const moId = await odoo.create('mrp.production', vals, {
       context: {
-        lang: 'de_DE',
-        tz: 'Europe/Berlin',
         ...(body.company_id
           ? {
               allowed_company_ids: [body.company_id],
