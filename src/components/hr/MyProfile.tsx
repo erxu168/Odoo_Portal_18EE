@@ -108,6 +108,8 @@ function getFieldValue(emp: EmployeeData, key: string): string {
   return String(val);
 }
 
+type PortalLang = 'en_US' | 'de_DE';
+
 export default function MyProfile({ onBack, onEdit }: Props) {
   const [emp, setEmp] = useState<EmployeeData | null>(null);
   const [iban, setIban] = useState<string | null>(null);
@@ -117,6 +119,8 @@ export default function MyProfile({ onBack, onEdit }: Props) {
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
+  const [lang, setLang] = useState<PortalLang>('en_US');
+  const [savingLang, setSavingLang] = useState(false);
 
   // Country autocomplete state
   const [countrySuggestions, setCountrySuggestions] = useState<{ id: number; name: string }[]>([]);
@@ -126,6 +130,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
 
   useEffect(() => {
     loadProfile();
+    loadLang();
   }, []);
 
   function loadProfile() {
@@ -136,6 +141,34 @@ export default function MyProfile({ onBack, onEdit }: Props) {
       setEmp(employee);
       setIban(bankIban);
     }).catch(() => {}).finally(() => setLoading(false));
+  }
+
+  function loadLang() {
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => {
+        const saved = d?.user?.preferences?.lang;
+        if (saved === 'de_DE' || saved === 'en_US') setLang(saved);
+      })
+      .catch(() => {});
+  }
+
+  async function changeLang(next: PortalLang) {
+    if (next === lang || savingLang) return;
+    setSavingLang(true);
+    try {
+      const res = await fetch('/api/auth/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferences: { lang: next } }),
+      });
+      if (!res.ok) throw new Error('save failed');
+      setLang(next);
+      window.location.reload();
+    } catch {
+      showToast('Failed to change language');
+      setSavingLang(false);
+    }
   }
 
   function showToast(msg: string) {
@@ -385,6 +418,35 @@ export default function MyProfile({ onBack, onEdit }: Props) {
           )}
         </div>
         <div className="text-[var(--fs-xs)] text-gray-400 mt-2">Tap any field to edit</div>
+      </div>
+
+      {/* Language */}
+      <SectionTitle text="Language" />
+      <div className="mx-5 bg-white rounded-2xl p-2 border border-gray-200">
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+          <button
+            type="button"
+            onClick={() => changeLang('en_US')}
+            disabled={savingLang}
+            className={
+              'flex-1 py-2.5 text-[var(--fs-sm)] font-semibold rounded-lg transition-colors ' +
+              (lang === 'en_US' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 active:bg-gray-200')
+            }
+          >
+            English
+          </button>
+          <button
+            type="button"
+            onClick={() => changeLang('de_DE')}
+            disabled={savingLang}
+            className={
+              'flex-1 py-2.5 text-[var(--fs-sm)] font-semibold rounded-lg transition-colors ' +
+              (lang === 'de_DE' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 active:bg-gray-200')
+            }
+          >
+            Deutsch
+          </button>
+        </div>
       </div>
 
       {/* Personal */}
