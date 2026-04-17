@@ -16,6 +16,8 @@ import ManageGuideScreen from '@/components/purchase/ManageGuideScreen';
 import ReceiveListScreen from '@/components/purchase/ReceiveListScreen';
 import ReceiveCheckScreen from '@/components/purchase/ReceiveCheckScreen';
 import ReceiveIssueScreen from '@/components/purchase/ReceiveIssueScreen';
+import CartViewScreen from '@/components/purchase/CartViewScreen';
+import ReviewOrderScreen from '@/components/purchase/ReviewOrderScreen';
 
 // Types
 interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number; send_method: string; }
@@ -178,6 +180,21 @@ export default function PurchasePage() {
   async function sendOrder(cart: CartSummary) {
     setSending(true);
     try { await fetch('/api/purchase/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cart_id: cart.id, delivery_date: deliveryDate || null, order_note: orderNote }) }); await fetchCart(); setDeliveryDate(''); setOrderNote(''); setReviewCart(null); setScreen('sent'); } catch (e) { void e; } finally { setSending(false); }
+  }
+
+  // Wraps sendOrder with the confirm-dialog copy the Review screen used to own.
+  function requestSendOrder(cart: CartSummary) {
+    const { net, gross } = calcCartTax(cart);
+    const belowMin = cart.min_order_value > 0 && net < cart.min_order_value;
+    setConfirmDialog({
+      title: belowMin ? 'Below minimum order' : 'Send order?',
+      message: belowMin
+        ? `This order (\u20ac${net.toFixed(2)} net) is below the minimum of \u20ac${cart.min_order_value.toFixed(2)}. Send anyway to ${cart.supplier_name}?`
+        : `Send ${cart.item_count} items (\u20ac${gross.toFixed(2)} incl. tax) to ${cart.supplier_name}?`,
+      confirmLabel: belowMin ? 'Send anyway' : 'Yes, send order',
+      variant: 'primary',
+      onConfirm: () => { setConfirmDialog(null); sendOrder(cart); },
+    });
   }
 
   async function removeCartItem(cartId: number, productId: number) {
@@ -558,102 +575,6 @@ export default function PurchasePage() {
     try { return JSON.parse(supplier?.order_days || '[]'); } catch { return []; }
   }
 
-  // ============== CART ==============
-  const CartView = () => {
-    return (
-    <div className="px-4 py-3 pb-20">
-      {carts.length === 0 ? (<div className="text-center py-16"><div className="text-4xl mb-3">&#128722;</div><div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">Cart is empty</div><div className="text-[var(--fs-sm)] text-gray-500">Go to a supplier and add products.</div></div>
-      ) : (<>
-        <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-2"><div className="flex items-center gap-3"><span className="text-[16px]">&#128197;</span><div className="flex-1"><div className="text-[var(--fs-base)] font-semibold text-gray-900">Delivery date</div></div><input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} className="text-[var(--fs-sm)] text-gray-600 border border-gray-200 rounded-lg px-2 py-1" /></div></div>
-        <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3"><div className="text-[13px] font-semibold text-gray-900 mb-1">Order note</div><textarea value={orderNote} onChange={e => setOrderNote(e.target.value)} placeholder="Add a note for this order..." rows={2} className="w-full text-[var(--fs-sm)] text-gray-600 border border-gray-200 rounded-lg px-3 py-2 resize-none outline-none focus:border-green-500" /></div>
-        {carts.map(cart => {
-          const { net, taxByRate, gross } = calcCartTax(cart);
-          const belowMin = cart.min_order_value > 0 && net < cart.min_order_value;
-          return (<div key={cart.id} className="mb-4">
-          <div className="flex justify-between items-center py-2"><span className="text-[11px] font-bold tracking-wide uppercase text-gray-400">{cart.supplier_name}</span><div className="flex gap-1.5"><span className="text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold bg-blue-100 text-blue-800">{cart.send_method === 'whatsapp' ? 'WhatsApp' : 'Email'}</span>{cart.approval_required === 1 && <span className="text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold bg-amber-100 text-amber-800">Approval required</span>}</div></div>
-          {belowMin && (<div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 mb-2 text-[11px] text-amber-800"><span>&#9888;&#65039;</span> Min. order: &euro;{cart.min_order_value.toFixed(2)}. You need &euro;{(cart.min_order_value - net).toFixed(2)} more.</div>)}
-          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
-            {cart.items.map((item: any) => (
-              <div key={item.id} className="py-2.5 border-b border-gray-100 last:border-0">
-                <div className="flex items-start gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{item.product_name}</div>
-                    <div className="text-[11px] text-gray-500 font-mono">&euro;{item.price.toFixed(2)}/{item.product_uom}</div>
-                  </div>
-                  <div className="text-right flex-shrink-0"><div className="text-[13px] font-bold font-mono text-gray-900">&euro;{(item.quantity * item.price).toFixed(2)}</div></div>
-                </div>
-                <div className="flex items-center justify-between mt-1.5">
-                  <div className="flex items-center">
-                    <button onClick={() => { if (item.quantity <= 1) { removeCartItem(cart.id, item.product_id); } else { updateCartQty({ product_id: item.product_id, product_name: item.product_name, product_uom: item.product_uom, price: item.price }, item.quantity - 1, cart.supplier_id); } }} className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100">-</button>
-                    <button onClick={() => openCartNumpad(item, cart.supplier_id)} className="w-10 h-8 flex items-center justify-center text-[14px] font-bold font-mono text-gray-900">{item.quantity}</button>
-                    <button onClick={() => updateCartQty({ product_id: item.product_id, product_name: item.product_name, product_uom: item.product_uom, price: item.price }, item.quantity + 1, cart.supplier_id)} className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100">+</button>
-                  </div>
-                  <button onClick={() => removeCartItem(cart.id, item.product_id)} className="w-8 h-8 rounded-lg bg-red-50 border border-red-100 flex items-center justify-center text-red-400 active:bg-red-100"><TrashIcon /></button>
-                </div>
-              </div>))}
-          </div>
-          <div className="flex justify-between items-center px-3.5 py-2 mt-2 bg-gray-50 rounded-xl border border-gray-100">
-            <span className="text-[12px] text-gray-500">{cart.item_count} items</span>
-            <span className="text-[14px] font-bold font-mono text-gray-900">&euro;{net.toFixed(2)}</span>
-          </div>
-          <button onClick={() => { setReviewCart(cart); setScreen('review'); }} className="w-full mt-2 py-3.5 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">
-            Review order &rarr;
-          </button>
-        </div>); })}
-      </>)}
-    </div>);
-  };
-
-  // ============== REVIEW ORDER ==============
-  const ReviewOrder = () => {
-    if (!reviewCart) return null;
-    const cart = reviewCart;
-    const { net, taxByRate, gross } = calcCartTax(cart);
-    const belowMin = cart.min_order_value > 0 && net < cart.min_order_value;
-
-    return (<div className="px-4 py-3 pb-44">
-      <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3">
-        <div className="flex justify-between items-start mb-2">
-          <div className="text-[15px] font-bold text-gray-900">{cart.supplier_name}</div>
-          <span className="text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold bg-blue-100 text-blue-800">{cart.send_method === 'whatsapp' ? 'WhatsApp' : 'Email'}</span>
-        </div>
-        {deliveryDate && <div className="text-[12px] text-gray-500">Delivery: {deliveryDate}</div>}
-        {orderNote && <div className="text-[12px] text-gray-500 mt-1 italic">{orderNote}</div>}
-        <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100">
-          <span className="text-[11px] text-gray-400">{cart.item_count} items &bull; {locName}</span>
-          {cart.approval_required === 1 && <span className="text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold bg-amber-100 text-amber-800">Approval required</span>}
-        </div>
-      </div>
-      {belowMin && (<div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 mb-3 text-[11px] text-amber-800"><span>&#9888;&#65039;</span> Min. order: &euro;{cart.min_order_value.toFixed(2)}. You need &euro;{(cart.min_order_value - net).toFixed(2)} more.</div>)}
-      <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
-        {cart.items.map((item: any) => (
-          <div key={item.id} className="flex justify-between items-start py-3 border-b border-gray-100 last:border-0">
-            <div className="flex-1 min-w-0 pr-3">
-              <div className="text-[13px] font-semibold text-gray-900">{item.product_name}</div>
-              <div className="text-[11px] text-gray-500 font-mono mt-0.5">{item.quantity} {item.product_uom} &times; &euro;{item.price.toFixed(2)}</div>
-            </div>
-            <div className="text-[13px] font-bold font-mono text-gray-900 flex-shrink-0">&euro;{(item.quantity * item.price).toFixed(2)}</div>
-          </div>
-        ))}
-      </div>
-      <div className="bg-gray-50 rounded-xl px-3.5 py-2.5 mt-2 border border-gray-100">
-        <div className="flex justify-between text-[12px] text-gray-500"><span>Subtotal (net)</span><span className="font-mono">&euro;{net.toFixed(2)}</span></div>
-        {Object.entries(taxByRate).sort(([a],[b]) => Number(a)-Number(b)).map(([r, amt]) => (<div key={r} className="flex justify-between text-[11px] text-gray-400"><span>{r}% MwSt</span><span className="font-mono">&euro;{(amt as number).toFixed(2)}</span></div>))}
-        <div className="flex justify-between text-[14px] font-bold text-gray-900 pt-1 border-t border-gray-200 mt-1"><span>Total (gross)</span><span className="font-mono">&euro;{gross.toFixed(2)}</span></div>
-      </div>
-      <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
-        <button onClick={() => {
-          const msg = belowMin
-            ? `This order (\u20ac${net.toFixed(2)} net) is below the minimum of \u20ac${cart.min_order_value.toFixed(2)}. Send anyway to ${cart.supplier_name}?`
-            : `Send ${cart.item_count} items (\u20ac${gross.toFixed(2)} incl. tax) to ${cart.supplier_name}?`;
-          setConfirmDialog({ title: belowMin ? 'Below minimum order' : 'Send order?', message: msg, confirmLabel: belowMin ? 'Send anyway' : 'Yes, send order', variant: 'primary', onConfirm: () => { setConfirmDialog(null); sendOrder(cart); } });
-        }} disabled={sending} className="w-full py-3.5 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 disabled:opacity-50 active:scale-[0.975] transition-all">
-          {sending ? 'Sending...' : `Send to ${cart.supplier_name.split(' ')[0]} \u2192`}
-        </button>
-        {cart.approval_required === 1 && <p className="text-[11px] text-amber-600 text-center mt-1.5">This order requires manager approval before sending.</p>}
-      </div>
-    </div>);
-  };
 
   const OrderDetail = () => {
     if (!selectedOrder) return null;
@@ -1003,7 +924,18 @@ export default function PurchasePage() {
           onAddProduct={addProductToGuide}
           onRemoveItem={removeGuideItemAction}
         /></>
-      ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); }} /><ReviewOrder /></>
+      ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); }} />
+        {reviewCart && (
+          <ReviewOrderScreen
+            cart={reviewCart}
+            deliveryDate={deliveryDate}
+            orderNote={orderNote}
+            locationName={locName}
+            calcTax={calcCartTax}
+            sending={sending}
+            onSend={requestSendOrder}
+          />
+        )}</>
       ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSentScreen onPlaceAnother={() => changeTab('order')} onHistory={() => changeTab('history')} onHome={goHome} /></>
       ) : screen === 'order-detail' ? (<><Header title="Order details" showBack onBack={() => { setScreen('history'); }} /><OrderDetail /></>
       ) : screen === 'receive-check' ? (<><Header title={recvOrder?.supplier_name || 'Receive'} subtitle={recvOrder?.odoo_po_name || ''} showBack onBack={() => { setScreen('receive-list'); }} />
@@ -1025,7 +957,19 @@ export default function PurchasePage() {
       ) : screen === 'receive-issue' ? (<><Header title="Report issue" showBack onBack={() => setScreen('receive-check')} />
         <ReceiveIssueScreen line={issueLine} onSubmit={submitIssue} /></>
       ) : screen === 'suppliers' ? (<><Header title="Place Order" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><SupplierList /></>
-      ) : screen === 'cart' ? (<><Header title="Cart" subtitle={`${locName} \u2022 ${cartTotal.items} items`} showBack onBack={() => setScreen('dashboard')} /><CartView /></>
+      ) : screen === 'cart' ? (<><Header title="Cart" subtitle={`${locName} \u2022 ${cartTotal.items} items`} showBack onBack={() => setScreen('dashboard')} />
+        <CartViewScreen
+          carts={carts}
+          deliveryDate={deliveryDate}
+          orderNote={orderNote}
+          onDeliveryDateChange={setDeliveryDate}
+          onOrderNoteChange={setOrderNote}
+          calcTax={calcCartTax}
+          onUpdateQty={(product, qty, supplierId) => updateCartQty(product, qty, supplierId)}
+          onOpenNumpad={openCartNumpad}
+          onRemoveItem={removeCartItem}
+          onReview={(cart) => { setReviewCart(cart); setScreen('review'); }}
+        /></>
       ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} />
         <ReceiveListScreen orders={pendingDeliveries} onOpen={openReceiveCheck} /></>
       ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><OrderHistoryScreen orders={orders} filter={historyFilter} onFilterChange={setHistoryFilter} onOpen={openOrderDetail} /></>
