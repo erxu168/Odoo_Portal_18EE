@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { getUserByEmail, createSession, logAudit } from '@/lib/db';
-import { getOdoo } from '@/lib/odoo';
+import { getOdoo, PORTAL_LANG_COOKIE } from '@/lib/odoo';
 import { COOKIE_NAME } from '@/lib/auth';
 
 /**
@@ -105,6 +105,19 @@ export async function POST(request: Request) {
       sameSite: 'lax',
       path: '/',
       maxAge: 30 * 24 * 60 * 60, // 30 days
+    });
+
+    // Propagate the user's saved language preference so Odoo RPC calls
+    // return translated product names. Default to en_US if unset.
+    let lang: 'en_US' | 'de_DE' = 'en_US';
+    try {
+      const prefs = JSON.parse(user.preferences || '{}');
+      if (prefs.lang === 'de_DE' || prefs.lang === 'en_US') lang = prefs.lang;
+    } catch { /* ignore malformed preferences */ }
+    response.cookies.set(PORTAL_LANG_COOKIE, lang, {
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 30 * 24 * 60 * 60,
     });
 
     return response;
