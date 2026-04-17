@@ -402,7 +402,10 @@ export function cancelOrder(id: number, userId: number) {
 }
 
 export function checkDuplicateOrder(supplierId: number, locationId: number): boolean {
-  const today = new Date().toISOString().split('T')[0];
+  // Use Berlin calendar date (en-CA returns YYYY-MM-DD). The previous UTC-based
+  // comparison flipped "today" 1-2 hours before Berlin midnight and incorrectly
+  // flagged orders from the prior Berlin calendar day as same-day duplicates.
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });
   const row = db().prepare(
     "SELECT COUNT(*) as c FROM purchase_orders WHERE supplier_id = ? AND location_id = ? AND status != 'cancelled' AND created_at >= ?"
   ).get(supplierId, locationId, today + 'T00:00:00') as any;

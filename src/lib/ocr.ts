@@ -89,6 +89,7 @@ class AzureOcr implements OcrAdapter {
         'Content-Type': 'application/octet-stream',
       },
       body: new Uint8Array(bytes),
+      signal: AbortSignal.timeout(15_000),
     });
     if (start.status !== 202) {
       const body = await start.text().catch(() => '');
@@ -101,7 +102,7 @@ class AzureOcr implements OcrAdapter {
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1500));
-      const pollRes = await fetch(opLoc, { headers: { 'Ocp-Apim-Subscription-Key': this.key } });
+      const pollRes = await fetch(opLoc, { headers: { 'Ocp-Apim-Subscription-Key': this.key }, signal: AbortSignal.timeout(10_000) });
       if (!pollRes.ok) throw new Error(`Azure poll failed: ${pollRes.status}`);
       const data = (await pollRes.json()) as any;
       if (data.status === 'failed') throw new Error(`Azure analysis failed: ${JSON.stringify(data.error || {}).slice(0, 300)}`);

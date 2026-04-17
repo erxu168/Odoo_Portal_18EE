@@ -122,6 +122,18 @@ export default function PurchasePage() {
 
   useEffect(() => { fetchSuppliers(); fetchCart(); fetchPending(); }, [fetchSuppliers, fetchCart, fetchPending]);
   useEffect(() => { if (tab === 'history') fetchOrders(); if (tab === 'receive') fetchPending(); }, [locationId, tab, fetchOrders, fetchPending]);
+
+  // Clear per-location caches when the location changes so stale products
+  // from the previous location don't bleed into search results / tax totals.
+  useEffect(() => {
+    setTaxRates({});
+    setAddResults([]);
+    setMgResults([]);
+    setCatGroups([]);
+    setAddSearch('');
+    setMgSearch('');
+    setCatSearch('');
+  }, [locationId]);
   useEffect(() => { if ((tab === 'cart' || screen === 'review') && carts.length > 0) { const ids = carts.flatMap(c => c.items.map((i: any) => i.product_id)); if (ids.length > 0) fetchTaxRates(ids); } }, [tab, screen, carts, fetchTaxRates]);
 
   function goHome() { router.push('/'); }
