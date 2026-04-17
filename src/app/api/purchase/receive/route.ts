@@ -137,24 +137,44 @@ export async function POST(request: Request) {
 
     confirmReceipt(receipt_id, user.id, close_order !== false);
 
+    // Track per-line stock-update issues so the UI can warn the user instead
+    // of silently accepting a receipt whose stock never made it to Odoo.
+    const stockWarnings: { product_name: string; product_id: number; reason: string }[] = [];
+
     // Update stock in Odoo + upload delivery note
     const receipt = getReceipt(receipt_id);
     if (receipt) {
       try {
         const odoo = getOdoo();
 
-        // 1. Update stock quantities
+        // 1. Update stock quantities — each line in its own try so one Odoo
+        //    failure doesn't abort the rest of the flow (attachments, log note).
         for (const line of receipt.lines) {
           if (line.received_qty !== null && line.received_qty > 0) {
-            const quants = await odoo.searchRead('stock.quant',
-              [['product_id', '=', line.product_id], ['location_id', '=', receipt.location_id]],
-              ['id', 'quantity'], { limit: 1 });
+            try {
+              const quants = await odoo.searchRead('stock.quant',
+                [['product_id', '=', line.product_id], ['location_id', '=', receipt.location_id]],
+                ['id', 'quantity'], { limit: 1 });
 
-            if (quants && quants.length > 0) {
-              await odoo.write('stock.quant', [quants[0].id], {
-                inventory_quantity: quants[0].quantity + line.received_qty,
+              if (quants && quants.length > 0) {
+                await odoo.write('stock.quant', [quants[0].id], {
+                  inventory_quantity: quants[0].quantity + line.received_qty,
+                });
+                await odoo.call('stock.quant', 'action_apply_inventory', [[quants[0].id]]);
+              } else {
+                stockWarnings.push({
+                  product_name: line.product_name,
+                  product_id: line.product_id,
+                  reason: 'No stock.quant for this product at this location — stock not updated in Odoo',
+                });
+              }
+            } catch (lineErr: any) {
+              console.error(`[receive/confirm] stock update failed for line ${line.product_name}:`, lineErr);
+              stockWarnings.push({
+                product_name: line.product_name,
+                product_id: line.product_id,
+                reason: lineErr?.message || 'Odoo write failed',
               });
-              await odoo.call('stock.quant', 'action_apply_inventory', [[quants[0].id]]);
             }
           }
         }
@@ -253,7 +273,12 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ message: 'Receipt confirmed and stock updated' });
+    return NextResponse.json({
+      message: stockWarnings.length > 0
+        ? `Receipt confirmed — ${stockWarnings.length} item(s) could not be updated in Odoo`
+        : 'Receipt confirmed and stock updated',
+      stock_warnings: stockWarnings,
+    });
   }
 
   if (action === 'delivery_note') {

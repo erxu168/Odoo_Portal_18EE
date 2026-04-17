@@ -196,12 +196,43 @@ export function createSupplier(data: {
   return result.lastInsertRowid as number;
 }
 
+// Per-field type coercion so callers can't slip a non-number into min_order_value
+// or drop an object into name. Each allowed field runs through its coercer;
+// anything that can't be cleanly coerced is dropped (not rejected loudly — the
+// caller gets a silent skip for that single field). Unknown fields stay skipped
+// by the allowlist check.
+const SUPPLIER_FIELD_COERCERS: Record<string, (v: unknown) => unknown | undefined> = {
+  name: (v) => typeof v === 'string' ? v.slice(0, 200) : undefined,
+  email: (v) => typeof v === 'string' ? v.slice(0, 200) : undefined,
+  phone: (v) => typeof v === 'string' ? v.slice(0, 50) : undefined,
+  send_method: (v) => typeof v === 'string' && ['email', 'whatsapp', 'manual'].includes(v) ? v : undefined,
+  whatsapp_number: (v) => typeof v === 'string' ? v.slice(0, 50) : undefined,
+  min_order_value: (v) => typeof v === 'number' && isFinite(v) && v >= 0 ? v : undefined,
+  order_days: (v) => typeof v === 'string' ? v.slice(0, 200) : undefined,
+  delivery_days: (v) => typeof v === 'string' ? v.slice(0, 200) : undefined,
+  lead_time_days: (v) => {
+    const n = typeof v === 'number' ? v : parseInt(String(v));
+    return Number.isInteger(n) && n >= 0 && n <= 365 ? n : undefined;
+  },
+  approval_required: (v) => (v === 0 || v === 1 || v === false || v === true) ? (v ? 1 : 0) : undefined,
+  location_id: (v) => {
+    const n = typeof v === 'number' ? v : parseInt(String(v));
+    return Number.isInteger(n) && n >= 0 ? n : undefined;
+  },
+  active: (v) => (v === 0 || v === 1 || v === false || v === true) ? (v ? 1 : 0) : undefined,
+};
+
 export function updateSupplier(id: number, data: Record<string, any>) {
-  const allowed = ['name','email','phone','send_method','whatsapp_number','min_order_value','order_days','delivery_days','lead_time_days','approval_required','location_id','active'];
   const sets: string[] = [];
   const vals: any[] = [];
   for (const [k, v] of Object.entries(data)) {
-    if (v !== undefined && allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v); }
+    if (v === undefined) continue;
+    const coerce = SUPPLIER_FIELD_COERCERS[k];
+    if (!coerce) continue;
+    const coerced = coerce(v);
+    if (coerced === undefined) continue;
+    sets.push(`${k} = ?`);
+    vals.push(coerced);
   }
   if (sets.length === 0) return;
   vals.push(id);
@@ -227,9 +258,16 @@ export function getGuideWithItems(supplierId: number, locationId: number) {
 }
 
 export function createGuide(supplierId: number, locationId: number, name: string) {
+  // Fall back to the supplier's name so the guide never renders as "untitled"
+  // in the UI. Callers historically pass '' when they don't have a better name.
+  let resolvedName = (name || '').trim();
+  if (!resolvedName) {
+    const supplier = getSupplier(supplierId) as { name?: string } | undefined;
+    resolvedName = supplier?.name || `Guide ${supplierId}`;
+  }
   const result = db().prepare(
     'INSERT INTO purchase_order_guides (supplier_id, location_id, name, created_at) VALUES (?, ?, ?, ?)'
-  ).run(supplierId, locationId, name, nowISO());
+  ).run(supplierId, locationId, resolvedName, nowISO());
   return result.lastInsertRowid as number;
 }
 
