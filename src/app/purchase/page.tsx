@@ -18,6 +18,12 @@ import ReceiveCheckScreen from '@/components/purchase/ReceiveCheckScreen';
 import ReceiveIssueScreen from '@/components/purchase/ReceiveIssueScreen';
 import CartViewScreen from '@/components/purchase/CartViewScreen';
 import ReviewOrderScreen from '@/components/purchase/ReviewOrderScreen';
+import SupplierListScreen from '@/components/purchase/SupplierListScreen';
+import OrderDetailScreen from '@/components/purchase/OrderDetailScreen';
+import ManagePurchasesScreen from '@/components/purchase/ManagePurchasesScreen';
+import AddSupplierScreen from '@/components/purchase/AddSupplierScreen';
+import CatalogScreen from '@/components/purchase/CatalogScreen';
+import InsightsScreen from '@/components/purchase/InsightsScreen';
 
 // Types
 interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number; send_method: string; }
@@ -148,6 +154,13 @@ export default function PurchasePage() {
 
   function goHome() { router.push('/'); }
 
+  // Parse a supplier's stored order_days JSON. Kept at parent scope so the
+  // extracted OrderGuideScreen stays supplier-type-agnostic.
+  function parseSupplierOrderDays(supplierId: number): string[] {
+    const supplier = suppliers.find((s) => s.id === supplierId);
+    try { return JSON.parse(supplier?.order_days || '[]'); } catch { return []; }
+  }
+
   async function openGuide(supplier: Supplier) {
     setGuideSupplierId(supplier.id); setGuideSupplierName(supplier.name); setGuideSearch(''); setGuideCategory('All'); setScreen('guide');
     try { const r = await fetch(`/api/purchase/guides?supplier_id=${supplier.id}&location_id=${locationId}`); const d = await r.json(); setGuideItems(d.guide?.items || []); const cr = await fetch(`/api/purchase/cart?location_id=${locationId}`); const cd = await cr.json(); const sc = (cd.carts || []).find((c: any) => c.supplier_id === supplier.id); const q: Record<number, number> = {}; if (sc) for (const i of sc.items) q[i.product_id] = i.quantity; setQuantities(q); } catch (e) { void e; setGuideItems([]); }
@@ -275,6 +288,41 @@ export default function PurchasePage() {
       await fetch(`/api/purchase/suppliers?id=${supplier.id}`, { method: 'DELETE' });
       fetchSuppliers();
     } catch (e) { console.error('[purchase] deleteSupplier failed', e); }
+  }
+
+  // Confirm-dialog wrappers the screens call — kept in parent so dialog copy
+  // stays with the rest of the router-level state.
+  function requestDeleteSupplier(s: Supplier) {
+    setConfirmDialog({
+      title: `Delete ${s.name}?`,
+      message: s.product_count > 0
+        ? `This removes ${s.name} and their order guide (${s.product_count} products) from your list. Past orders stay in history. This cannot be undone.`
+        : `This removes ${s.name} from your list. You can seed suppliers from Odoo again later to restore. This cannot be undone.`,
+      confirmLabel: 'Yes, delete',
+      variant: 'danger',
+      onConfirm: () => { setConfirmDialog(null); deleteSupplier(s); },
+    });
+  }
+
+  function requestReorder(order: Order) {
+    if (!order.lines || order.lines.length === 0) return;
+    setConfirmDialog({
+      title: 'Reorder these items?',
+      message: `This adds all ${order.lines.length} items to your ${order.supplier_name} cart at the original quantities. Items already in your cart will have their quantity updated to match this order.`,
+      confirmLabel: reordering ? 'Adding...' : 'Yes, add to cart',
+      variant: 'primary',
+      onConfirm: () => { setConfirmDialog(null); reorderPastOrder(order); },
+    });
+  }
+
+  function requestCancelOrder(order: Order) {
+    setConfirmDialog({
+      title: 'Cancel this order?',
+      message: `Are you sure you want to cancel this order to ${order.supplier_name}? This cannot be undone.`,
+      confirmLabel: 'Yes, cancel order',
+      variant: 'danger',
+      onConfirm: () => { setConfirmDialog(null); cancelSelectedOrder(); },
+    });
   }
 
   // ── Add Supplier state ─────────────────────────────────────
@@ -515,8 +563,6 @@ export default function PurchasePage() {
 
   const HomeIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
   const BackIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 19l-7-7 7-7"/></svg>;
-  const WarningIcon = ({ color = '#D97706' }: { color?: string }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>;
-  const TrashIcon = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>;
 
   const Header = ({ title, subtitle, showBack, onBack, rightElement }: { title: string; subtitle?: string; showBack?: boolean; onBack?: () => void; rightElement?: React.ReactNode }) => (
     <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
@@ -545,146 +591,6 @@ export default function PurchasePage() {
   );
 
 
-  // ============== SUPPLIER LIST ==============
-  const SupplierList = () => {
-    const filtered = suppliers.filter(s => !supplierSearch || s.name.toLowerCase().includes(supplierSearch.toLowerCase()));
-    return (<div className="px-4 py-3">
-      <button onClick={() => { setCatSearch(''); setCatGroups([]); setScreen('catalog'); }} className="w-full flex items-center gap-2.5 px-3.5 py-3 mb-3 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#1E40AF] text-white shadow-sm active:scale-[0.98] transition-transform">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <div className="text-left flex-1"><div className="text-[13px] font-bold">Browse catalog</div><div className="text-[11px] text-white/70">Search products across all suppliers</div></div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>
-      </button>
-      <SearchInput value={supplierSearch} onChange={setSupplierSearch} placeholder="Search suppliers..." />
-      {loading ? (<div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" /></div>
-      ) : filtered.length === 0 && suppliers.length === 0 ? (
-        <div className="text-center py-12"><div className="text-4xl mb-3">&#128722;</div><div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">No suppliers yet</div><div className="text-[var(--fs-sm)] text-gray-500 mb-4">Set up suppliers and order guides first.</div>{isAdmin && <><button onClick={runSeed} className="w-full max-w-[300px] py-3.5 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30 mb-3">Seed suppliers from Odoo</button>{seedMsg && <p className="text-[12px] text-gray-500">{seedMsg}</p>}</>}</div>
-      ) : (<>
-        {filtered.map(s => { const days = (() => { try { return JSON.parse(s.order_days); } catch { return []; } })(); const dayStr = days.length > 0 ? days.map((d: string) => d.charAt(0).toUpperCase() + d.slice(1, 3)).join(' & ') : ''; return (
-          <button key={s.id} onClick={() => openGuide(s)} className="w-full flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] mb-2.5 active:scale-[0.98] transition-transform text-left">
-            <div className="w-14 h-14 rounded-[14px] bg-gray-100 flex items-center justify-center text-[var(--fs-lg)] font-bold text-blue-600 flex-shrink-0">{s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
-            <div className="flex-1 min-w-0"><div className="text-[var(--fs-lg)] font-bold text-gray-900 truncate">{s.name}</div><div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{s.product_count} products in guide</div>{dayStr && <div className="text-[var(--fs-xs)] font-semibold text-blue-600 mt-1">Orders: {dayStr}</div>}</div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>
-          </button>); })}
-      </>)}
-    </div>);
-  };
-
-  // Helper: parse a supplier's stored order_days JSON string into a string[].
-  function parseSupplierOrderDays(supplierId: number): string[] {
-    const supplier = suppliers.find((s) => s.id === supplierId);
-    try { return JSON.parse(supplier?.order_days || '[]'); } catch { return []; }
-  }
-
-
-  const OrderDetail = () => {
-    if (!selectedOrder) return null;
-    const canCancel = ['draft', 'pending_approval', 'approved'].includes(selectedOrder.status);
-
-    // Build the delivery timeline from available order + receipt timestamps.
-    // Each step: { key, label, at (ISO string or null), state: 'done' | 'current' | 'pending' | 'skipped' }
-    type StepState = 'done' | 'current' | 'pending' | 'skipped';
-    const isCancelled = selectedOrder.status === 'cancelled';
-    const fmt = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
-    const steps: { key: string; label: string; at: string | null; state: StepState; tint?: 'danger' }[] = [];
-    steps.push({ key: 'ordered', label: 'Ordered', at: fmt(selectedOrder.created_at), state: 'done' });
-    if (selectedOrder.status === 'pending_approval') {
-      steps.push({ key: 'approval', label: 'Awaiting approval', at: null, state: 'current' });
-    } else if (selectedOrder.approved_by || ['approved', 'sent', 'received', 'partial'].includes(selectedOrder.status)) {
-      steps.push({ key: 'approved', label: 'Approved', at: null, state: 'done' });
-    }
-    steps.push({
-      key: 'sent',
-      label: 'Sent to supplier',
-      at: fmt(selectedOrder.sent_at),
-      state: selectedOrder.sent_at ? 'done' : (isCancelled ? 'skipped' : selectedOrder.status === 'approved' ? 'current' : 'pending'),
-    });
-    const deliveredAt = selectedOrder.receipt_confirmed_at || (['received', 'partial'].includes(selectedOrder.status) ? selectedOrder.receipt_created_at : null);
-    const deliveredState: StepState = selectedOrder.receipt_confirmed_at || ['received', 'partial'].includes(selectedOrder.status)
-      ? 'done'
-      : isCancelled ? 'skipped'
-      : selectedOrder.sent_at ? 'current'
-      : 'pending';
-    const deliveredLabel = selectedOrder.status === 'partial' ? 'Partially delivered' : 'Delivered';
-    steps.push({ key: 'delivered', label: deliveredLabel, at: fmt(deliveredAt), state: deliveredState });
-    if (isCancelled) {
-      steps.push({ key: 'cancelled', label: 'Cancelled', at: fmt(selectedOrder.cancelled_at), state: 'done', tint: 'danger' });
-    }
-
-    return (<div className="px-4 py-3"><div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3"><div className="flex justify-between items-start mb-3"><div><div className="text-[16px] font-bold text-gray-900">{selectedOrder.supplier_name}</div><div className="text-[12px] text-gray-500 font-mono mt-1">{selectedOrder.odoo_po_name || `#${selectedOrder.id}`}</div></div><StatusBadge status={selectedOrder.status} /></div><div className="text-[12px] text-gray-500 mb-1">Ordered: {new Date(selectedOrder.created_at).toLocaleString('de-DE')}</div>{selectedOrder.delivery_date && <div className="text-[12px] text-gray-500">Delivery: {selectedOrder.delivery_date}</div>}{selectedOrder.order_note && <div className="text-[12px] text-gray-500 mt-1">Note: {selectedOrder.order_note}</div>}</div>
-      {/* Timeline */}
-      <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
-        <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">Delivery timeline</div>
-        <div className="relative">
-          {steps.map((step, idx) => {
-            const isLast = idx === steps.length - 1;
-            const dotCls = step.tint === 'danger'
-              ? 'bg-red-500 border-red-500 text-white'
-              : step.state === 'done'
-                ? 'bg-green-500 border-green-500 text-white'
-                : step.state === 'current'
-                  ? 'bg-white border-blue-500 text-blue-500 ring-4 ring-blue-100'
-                  : step.state === 'skipped'
-                    ? 'bg-gray-100 border-gray-200 text-gray-300'
-                    : 'bg-white border-gray-300 text-gray-300';
-            const connectorCls = step.state === 'done' ? 'bg-green-300' : step.state === 'skipped' ? 'bg-gray-100' : 'bg-gray-200';
-            return (
-              <div key={step.key} className="flex gap-3 relative">
-                <div className="flex flex-col items-center flex-shrink-0 pt-0.5">
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${dotCls}`}>
-                    {step.state === 'done' && step.tint !== 'danger' && (<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>)}
-                    {step.tint === 'danger' && (<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>)}
-                    {step.state === 'current' && (<div className="w-2 h-2 bg-blue-500 rounded-full" />)}
-                  </div>
-                  {!isLast && <div className={`w-0.5 flex-1 min-h-[22px] ${connectorCls}`} />}
-                </div>
-                <div className={`flex-1 pb-4 ${isLast ? 'pb-0' : ''}`}>
-                  <div className={`text-[13px] font-semibold ${step.state === 'skipped' ? 'text-gray-300 line-through' : step.tint === 'danger' ? 'text-red-700' : step.state === 'pending' ? 'text-gray-400' : 'text-gray-900'}`}>{step.label}</div>
-                  <div className="text-[11px] text-gray-500 font-mono">{step.at || (step.state === 'current' ? 'In progress' : step.state === 'skipped' ? '—' : 'Pending')}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {selectedOrder.lines && selectedOrder.lines.length > 0 && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-3">{selectedOrder.lines.map((line: any) => (<div key={line.id} className="flex justify-between py-2.5 border-b border-gray-100 last:border-0 text-[13px]"><div className="text-gray-900">{line.product_name}</div><div className="font-mono text-gray-500">{line.quantity} {line.product_uom} &bull; &euro;{line.subtotal.toFixed(2)}</div></div>))}</div>)}<div className="text-right text-[16px] font-bold font-mono text-gray-900 mb-4">&euro;{selectedOrder.total_amount.toFixed(2)}</div>{selectedOrder.lines && selectedOrder.lines.length > 0 && (<button onClick={() => setConfirmDialog({ title: 'Reorder these items?', message: `This adds all ${selectedOrder.lines!.length} items to your ${selectedOrder.supplier_name} cart at the original quantities. Items already in your cart will have their quantity updated to match this order.`, confirmLabel: reordering ? 'Adding...' : 'Yes, add to cart', variant: 'primary', onConfirm: () => { setConfirmDialog(null); reorderPastOrder(selectedOrder); } })} disabled={reordering} className="w-full py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold shadow-sm active:bg-green-700 disabled:opacity-50 mb-2">{reordering ? 'Adding to cart...' : 'Reorder these items'}</button>)}{canCancel && <button onClick={() => setConfirmDialog({ title: 'Cancel this order?', message: `Are you sure you want to cancel this order to ${selectedOrder.supplier_name}? This cannot be undone.`, confirmLabel: 'Yes, cancel order', variant: 'danger', onConfirm: () => { setConfirmDialog(null); cancelSelectedOrder(); } })} className="w-full py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100">Cancel order</button>}</div>); };
-
-
-  const ManageScreen = () => (<div className="px-4 py-3">
-    <div className="flex gap-2 mb-3">
-      <button onClick={() => { resetAddForm(); setScreen('add-supplier'); }} className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-[#2563EB] text-white text-[13px] font-bold shadow-sm active:scale-[0.98] transition-transform">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add supplier
-      </button>
-      <button onClick={() => setScreen('insights')} className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-bold active:bg-gray-50 transition-colors">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        Insights
-      </button>
-    </div>
-    <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Edit order guides</div>{suppliers.length === 0 ? (<div className="text-center py-12"><div className="text-[var(--fs-sm)] text-gray-500 mb-4">No suppliers yet. Tap <span className="font-semibold text-blue-600">Add supplier</span> above, or seed from Odoo.</div>{isAdmin && <button onClick={runSeed} className="py-3 px-6 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30">Seed suppliers from Odoo</button>}{seedMsg && <p className="text-[12px] text-gray-500 mt-3">{seedMsg}</p>}</div>) : (suppliers.map(s => (
-    <div key={s.id} className="flex items-center gap-2 mb-2.5">
-      <button onClick={() => openManageGuide(s)} className="flex-1 flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:scale-[0.98] transition-transform text-left min-w-0">
-        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-[14px] font-bold text-blue-600 flex-shrink-0">{s.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
-        <div className="flex-1 min-w-0"><div className="text-[13px] font-bold text-gray-900 truncate">{s.name}</div><div className="text-[11px] text-gray-500">{s.product_count} products &bull; Tap to edit</div></div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>
-      </button>
-      <button
-        onClick={() => setConfirmDialog({
-          title: `Delete ${s.name}?`,
-          message: s.product_count > 0
-            ? `This removes ${s.name} and their order guide (${s.product_count} products) from your list. Past orders stay in history. This cannot be undone.`
-            : `This removes ${s.name} from your list. You can seed suppliers from Odoo again later to restore. This cannot be undone.`,
-          confirmLabel: 'Yes, delete',
-          variant: 'danger',
-          onConfirm: () => { setConfirmDialog(null); deleteSupplier(s); },
-        })}
-        aria-label={`Delete ${s.name}`}
-        className="w-11 h-11 flex-shrink-0 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 active:bg-red-100 transition-colors"
-      >
-        <TrashIcon />
-      </button>
-    </div>
-  )))}</div>);
-
 
   // ============== RENDER ==============
   return (
@@ -703,202 +609,54 @@ export default function PurchasePage() {
           onOpenNumpad={openNumpad}
           onViewCart={() => changeTab('cart')}
         /></>
-      ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => setScreen('dashboard')} /><ManageScreen /></>
+      ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => setScreen('dashboard')} />
+        <ManagePurchasesScreen
+          suppliers={suppliers}
+          isAdmin={isAdmin}
+          seedMsg={seedMsg}
+          onAddSupplier={() => { resetAddForm(); setScreen('add-supplier'); }}
+          onInsights={() => setScreen('insights')}
+          onOpenGuide={openManageGuide}
+          onRequestDelete={requestDeleteSupplier}
+          onSeed={runSeed}
+        /></>
       ) : screen === 'add-supplier' ? (<><Header title="Add supplier" subtitle="Link from Odoo or create new" showBack onBack={() => { resetAddForm(); setScreen('manage'); }} />
-        <div className="px-4 py-3">
-          <div className="flex gap-1.5 mb-3">
-            <button onClick={() => { setAddMode('odoo'); setAddErr(''); }} className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors ${addMode === 'odoo' ? 'bg-[#2563EB] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>Pick from Odoo</button>
-            <button onClick={() => { setAddMode('new'); setAddErr(''); }} className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors ${addMode === 'new' ? 'bg-[#2563EB] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>Create new</button>
-          </div>
-          {addErr && <div className="text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-xl px-3.5 py-2.5 mb-3">{addErr}</div>}
-          {addMode === 'odoo' ? (<>
-            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-blue-500 transition-colors mb-2">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" value={addSearch} onChange={e => searchOdooPartners(e.target.value)} placeholder="Search Odoo suppliers..." autoFocus className="flex-1 bg-transparent outline-none text-[14px] text-gray-900 placeholder-gray-400" />
-              {addSearch && <button onClick={() => searchOdooPartners('')} className="text-gray-400 text-[18px]">&times;</button>}
-            </div>
-            <p className="text-[11px] text-gray-400 mb-3">Searches Odoo partners where <span className="font-mono">supplier_rank &gt; 0</span>. Type at least 2 characters.</p>
-            {addSearching && <div className="flex justify-center py-6"><div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin" /></div>}
-            {!addSearching && addResults.length > 0 && (
-              <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
-                {addResults.map(p => (
-                  <div key={p.odoo_id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
-                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center text-[12px] font-bold text-blue-600 flex-shrink-0">{p.name.split(' ').map(w => w[0]).join('').slice(0, 2)}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[13px] font-semibold text-gray-900 truncate">{p.name}</div>
-                      <div className="text-[11px] text-gray-500 truncate">{p.email || p.phone || `Odoo #${p.odoo_id}`}</div>
-                    </div>
-                    {p.already_added ? (
-                      <span className="text-[11px] font-semibold text-gray-400 px-2.5 py-1 rounded-md bg-gray-50 border border-gray-100">Already added</span>
-                    ) : (
-                      <button onClick={() => linkOdooPartner(p)} disabled={addSaving} className="h-9 px-3 rounded-lg bg-[#2563EB] text-white text-[12px] font-bold active:bg-blue-700 disabled:opacity-50">Add</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-            {!addSearching && addSearch.trim().length >= 2 && addResults.length === 0 && (
-              <div className="text-[12px] text-gray-500 text-center py-6">No suppliers found in Odoo. Switch to <span className="font-semibold">Create new</span> to add one.</div>
-            )}
-          </>) : (<>
-            <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Supplier name <span className="text-red-500">*</span></label>
-            <input type="text" value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Metro Cash &amp; Carry" className="w-full mb-3 bg-white border border-gray-200 rounded-xl px-3.5 h-11 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500" />
-            <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Email</label>
-            <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="orders@supplier.com" className="w-full mb-3 bg-white border border-gray-200 rounded-xl px-3.5 h-11 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500" />
-            <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Phone</label>
-            <input type="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="+49 30 ..." className="w-full mb-4 bg-white border border-gray-200 rounded-xl px-3.5 h-11 text-[14px] text-gray-900 placeholder-gray-400 outline-none focus:border-blue-500" />
-            <p className="text-[11px] text-gray-400 mb-4">A matching <span className="font-mono">res.partner</span> will be created in Odoo with <span className="font-mono">supplier_rank = 1</span>, then linked here.</p>
-            <button onClick={createNewSupplierInOdoo} disabled={addSaving || !newName.trim()} className="w-full py-3.5 rounded-xl bg-[#2563EB] text-white text-[14px] font-bold shadow-sm active:bg-blue-700 disabled:opacity-50">
-              {addSaving ? 'Creating in Odoo...' : 'Create supplier'}
-            </button>
-          </>)}
-        </div>
-      </>
+        <AddSupplierScreen
+          mode={addMode}
+          onModeChange={(m) => { setAddMode(m); setAddErr(''); }}
+          errorMsg={addErr}
+          search={addSearch}
+          results={addResults}
+          searching={addSearching}
+          saving={addSaving}
+          onSearchChange={searchOdooPartners}
+          onLinkPartner={linkOdooPartner}
+          newName={newName}
+          newEmail={newEmail}
+          newPhone={newPhone}
+          onNewNameChange={setNewName}
+          onNewEmailChange={setNewEmail}
+          onNewPhoneChange={setNewPhone}
+          onCreateNew={createNewSupplierInOdoo}
+        /></>
       ) : screen === 'insights' ? (<><Header title="Insights" subtitle={`${locName} \u2022 spend & trends`} showBack onBack={() => setScreen('manage')} />
-        <div className="px-4 py-3 pb-20">
-          <div className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-3 py-2 mb-3">
-            <button onClick={() => shiftInsightsMonth(-1)} aria-label="Previous month" className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
-            </button>
-            <div className="text-[14px] font-bold text-gray-900">{formatMonth(insightsMonth)}</div>
-            <button onClick={() => shiftInsightsMonth(1)} aria-label="Next month" className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
-            </button>
-          </div>
-
-          {insightsLoading && <div className="flex justify-center py-12"><div className="w-7 h-7 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin" /></div>}
-
-          {!insightsLoading && insights && (<>
-            {/* Total spend card */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Total spend</div>
-              <div className="text-[28px] font-extrabold font-mono text-gray-900">&euro;{insights.month_total.toFixed(2)}</div>
-              <div className="text-[12px] text-gray-500 mt-1">{insights.month_orders} order{insights.month_orders === 1 ? '' : 's'}</div>
-              {insights.prev_month_total > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-                  <div>
-                    <div className="text-[11px] text-gray-500">vs {formatMonth(insights.prev_month)}</div>
-                    <div className="text-[12px] text-gray-400 font-mono">&euro;{insights.prev_month_total.toFixed(2)}</div>
-                  </div>
-                  <div className={`text-[13px] font-bold ${insights.delta_abs > 0 ? 'text-red-600' : insights.delta_abs < 0 ? 'text-green-600' : 'text-gray-500'}`}>
-                    {insights.delta_abs > 0 ? '\u25B2' : insights.delta_abs < 0 ? '\u25BC' : '\u2014'} {insights.delta_pct !== null ? `${Math.abs(insights.delta_pct).toFixed(1)}%` : ''}
-                  </div>
-                </div>
-              )}
-              {insights.prev_month_total === 0 && insights.month_total > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-400">No spend recorded for {formatMonth(insights.prev_month)}.</div>
-              )}
-            </div>
-
-            {/* Top suppliers */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">Top suppliers</div>
-              {insights.top_suppliers.length === 0 ? (
-                <div className="text-[12px] text-gray-400 py-2">No orders this month.</div>
-              ) : (() => {
-                const max = Math.max(...insights.top_suppliers.map(s => s.total)) || 1;
-                return insights.top_suppliers.map(s => (
-                  <div key={s.supplier_id} className="mb-2.5 last:mb-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="text-[13px] font-semibold text-gray-900 truncate flex-1 mr-2">{s.supplier_name}</div>
-                      <div className="text-[12px] font-mono font-bold text-gray-900">&euro;{s.total.toFixed(2)}</div>
-                    </div>
-                    <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="absolute inset-y-0 left-0 bg-[#2563EB] rounded-full" style={{ width: `${(s.total / max) * 100}%` }} />
-                    </div>
-                    <div className="text-[10px] text-gray-400 mt-0.5">{s.orders} order{s.orders === 1 ? '' : 's'}</div>
-                  </div>
-                ));
-              })()}
-            </div>
-
-            {/* Top categories */}
-            <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4">
-              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-3">Top categories</div>
-              {insights.top_categories.length === 0 ? (
-                <div className="text-[12px] text-gray-400 py-2">No line data this month.</div>
-              ) : (() => {
-                const max = Math.max(...insights.top_categories.map(c => c.total)) || 1;
-                return insights.top_categories.map(c => (
-                  <div key={c.category_name} className="mb-2.5 last:mb-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="text-[13px] font-semibold text-gray-900 truncate flex-1 mr-2">{c.category_name}</div>
-                      <div className="text-[12px] font-mono font-bold text-gray-900">&euro;{c.total.toFixed(2)}</div>
-                    </div>
-                    <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="absolute inset-y-0 left-0 bg-green-500 rounded-full" style={{ width: `${(c.total / max) * 100}%` }} />
-                    </div>
-                  </div>
-                ));
-              })()}
-            </div>
-          </>)}
-        </div>
-      </>
+        <InsightsScreen
+          month={insightsMonth}
+          data={insights}
+          loading={insightsLoading}
+          onShiftMonth={shiftInsightsMonth}
+          formatMonth={formatMonth}
+        /></>
       ) : screen === 'catalog' ? (<><Header title="Catalog" subtitle={`${locName} \u2022 across all suppliers`} showBack onBack={() => setScreen('suppliers')} />
-        <div className="px-4 py-3 pb-20">
-          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-blue-500 transition-colors mb-3">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" value={catSearch} onChange={e => searchCatalog(e.target.value)} placeholder="Search products across all suppliers..." autoFocus className="flex-1 bg-transparent outline-none text-[14px] text-gray-900 placeholder-gray-400" />
-            {catSearch && <button onClick={() => searchCatalog('')} className="text-gray-400 text-[18px]">&times;</button>}
-          </div>
-
-          {catSearching && <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin" /></div>}
-
-          {!catSearching && catSearch.trim().length < 2 && (
-            <div className="text-center py-12">
-              <div className="text-4xl mb-3">&#128269;</div>
-              <div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">Type to search</div>
-              <div className="text-[var(--fs-sm)] text-gray-500 px-8">Find the same product across every supplier &mdash; compare prices before adding to cart.</div>
-            </div>
-          )}
-
-          {!catSearching && catSearch.trim().length >= 2 && catGroups.length === 0 && (
-            <div className="text-center py-12">
-              <div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">No matches</div>
-              <div className="text-[var(--fs-sm)] text-gray-500">No supplier carries a product matching &ldquo;{catSearch}&rdquo; at {locName}.</div>
-            </div>
-          )}
-
-          {!catSearching && catGroups.map(g => {
-            const cheapest = g.options[0]?.price ?? 0;
-            return (
-              <div key={g.product_id} className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-3 overflow-hidden">
-                <div className="flex items-center gap-2.5 px-3.5 py-3 border-b border-gray-100">
-                  <div className="w-11 h-11 rounded-lg bg-gray-100 flex items-center justify-center text-[var(--fs-lg)] flex-shrink-0 overflow-hidden relative">
-                    <span className="absolute inset-0 flex items-center justify-center" aria-hidden>&#128230;</span>
-                    <img src={`/api/purchase/products/image?product_id=${g.product_id}`} alt="" loading="lazy" className="w-full h-full object-cover relative z-10" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[var(--fs-xs)] text-gray-400 font-semibold uppercase tracking-wide">{g.product_uom} &bull; {g.category_name || 'Other'}</div>
-                    <div className="text-[var(--fs-base)] font-bold text-gray-900 truncate">{g.product_name}</div>
-                    <div className="text-[11px] text-gray-500 mt-0.5">{g.options.length} supplier{g.options.length === 1 ? '' : 's'} &bull; from <span className="font-mono font-semibold text-gray-900">&euro;{cheapest.toFixed(2)}</span></div>
-                  </div>
-                </div>
-                <div className="px-3.5">
-                  {g.options.map((opt, idx) => {
-                    const isCheapest = opt.price === cheapest && g.options.length > 1;
-                    return (
-                      <div key={opt.item_id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <div className="text-[13px] font-semibold text-gray-900 truncate">{opt.supplier_name}</div>
-                            {isCheapest && <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-100 px-1.5 py-0.5 rounded-md flex-shrink-0">Cheapest</span>}
-                          </div>
-                          <div className="text-[11px] text-gray-500 font-mono">&euro;{opt.price.toFixed(2)}/{opt.product_uom}{idx > 0 && ` \u2022 +\u20ac${(opt.price - cheapest).toFixed(2)}`}</div>
-                        </div>
-                        <button onClick={() => addCatalogOptionToCart(opt)} disabled={catAddingId === opt.item_id} className="h-9 px-3 rounded-lg bg-green-600 text-white text-[12px] font-bold active:bg-green-700 disabled:opacity-50 flex-shrink-0">
-                          {catAddingId === opt.item_id ? '...' : 'Add to cart'}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </>
+        <CatalogScreen
+          search={catSearch}
+          groups={catGroups}
+          searching={catSearching}
+          addingId={catAddingId}
+          locationName={locName}
+          onSearchChange={searchCatalog}
+          onAddToCart={addCatalogOptionToCart}
+        /></>
       ) : screen === 'manage-guide' ? (<><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('manage')} />
         <ManageGuideScreen
           items={guideItems}
@@ -937,7 +695,13 @@ export default function PurchasePage() {
           />
         )}</>
       ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSentScreen onPlaceAnother={() => changeTab('order')} onHistory={() => changeTab('history')} onHome={goHome} /></>
-      ) : screen === 'order-detail' ? (<><Header title="Order details" showBack onBack={() => { setScreen('history'); }} /><OrderDetail /></>
+      ) : screen === 'order-detail' ? (<><Header title="Order details" showBack onBack={() => { setScreen('history'); }} />
+        <OrderDetailScreen
+          order={selectedOrder}
+          reordering={reordering}
+          onReorder={requestReorder}
+          onCancel={requestCancelOrder}
+        /></>
       ) : screen === 'receive-check' ? (<><Header title={recvOrder?.supplier_name || 'Receive'} subtitle={recvOrder?.odoo_po_name || ''} showBack onBack={() => { setScreen('receive-list'); }} />
         <ReceiveCheckScreen
           order={recvOrder}
@@ -956,7 +720,18 @@ export default function PurchasePage() {
         /></>
       ) : screen === 'receive-issue' ? (<><Header title="Report issue" showBack onBack={() => setScreen('receive-check')} />
         <ReceiveIssueScreen line={issueLine} onSubmit={submitIssue} /></>
-      ) : screen === 'suppliers' ? (<><Header title="Place Order" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><SupplierList /></>
+      ) : screen === 'suppliers' ? (<><Header title="Place Order" subtitle={locName} showBack onBack={() => setScreen('dashboard')} />
+        <SupplierListScreen
+          suppliers={suppliers}
+          search={supplierSearch}
+          loading={loading}
+          isAdmin={isAdmin}
+          seedMsg={seedMsg}
+          onSearchChange={setSupplierSearch}
+          onBrowseCatalog={() => { setCatSearch(''); setCatGroups([]); setScreen('catalog'); }}
+          onOpen={openGuide}
+          onSeed={runSeed}
+        /></>
       ) : screen === 'cart' ? (<><Header title="Cart" subtitle={`${locName} \u2022 ${cartTotal.items} items`} showBack onBack={() => setScreen('dashboard')} />
         <CartViewScreen
           carts={carts}
