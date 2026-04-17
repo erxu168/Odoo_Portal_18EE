@@ -10,6 +10,9 @@ import PurchaseAlerts from '@/components/purchase/PurchaseAlerts';
 import StatusBadge from '@/components/purchase/StatusBadge';
 import OrderSentScreen from '@/components/purchase/OrderSentScreen';
 import OrderHistoryScreen from '@/components/purchase/OrderHistoryScreen';
+import SearchInput from '@/components/purchase/SearchInput';
+import OrderGuideScreen from '@/components/purchase/OrderGuideScreen';
+import ManageGuideScreen from '@/components/purchase/ManageGuideScreen';
 
 // Types
 interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number; send_method: string; }
@@ -514,7 +517,6 @@ export default function PurchasePage() {
     </button>
   );
 
-  const SearchInput = ({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) => (<div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-green-500 transition-colors mb-3"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="flex-1 bg-transparent outline-none text-[var(--fs-base)] text-gray-900 placeholder-gray-400" />{value && <button onClick={() => onChange('')} className="text-gray-400 text-[18px]">&times;</button>}</div>);
 
   // ============== SUPPLIER LIST ==============
   const SupplierList = () => {
@@ -540,38 +542,11 @@ export default function PurchasePage() {
     </div>);
   };
 
-  // ============== ORDER GUIDE ==============
-  const OrderGuide = () => {
-    const allCategories = ['All', ...Array.from(new Set(guideItems.map(i => i.category_name || 'Other')))];
-    const filtered = guideItems.filter(i => { if (guideSearch && !i.product_name.toLowerCase().includes(guideSearch.toLowerCase())) return false; if (guideCategory !== 'All' && (i.category_name || 'Other') !== guideCategory) return false; return true; });
-    const categories = Array.from(new Set(filtered.map(i => i.category_name || 'Other')));
-    const cartItemCount = Object.values(quantities).filter(q => q > 0).length;
-    const cartAmount = guideItems.reduce((sum, i) => sum + (quantities[i.product_id] || 0) * i.price, 0);
-    return (<>
-      <div className="px-4 py-3 pb-44">
-        {(() => { const supplier = suppliers.find(s => s.id === guideSupplierId); const days = (() => { try { return JSON.parse(supplier?.order_days || '[]'); } catch { return []; } })(); if (days.length === 0) return null; const dayStr = days.map((d: string) => d.charAt(0).toUpperCase() + d.slice(1)).join(' & '); return <div className="flex items-start gap-2 px-3.5 py-2.5 rounded-xl bg-blue-50 border border-blue-200 mb-3 text-[var(--fs-sm)] text-blue-800"><span className="text-[14px] mt-0.5">&#128197;</span><span>Order days: <strong>{dayStr}</strong></span></div>; })()}
-        <SearchInput value={guideSearch} onChange={setGuideSearch} placeholder="Search products..." />
-        <div className="flex gap-1.5 overflow-x-auto pb-3 -mx-1 px-1">{allCategories.map(cat => (<button key={cat} onClick={() => setGuideCategory(cat)} className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold whitespace-nowrap flex-shrink-0 ${guideCategory === cat ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{cat}</button>))}</div>
-        {filtered.length === 0 && <div className="text-center py-12"><div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">No products found</div></div>}
-        {categories.map(cat => (<div key={cat}>
-          <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pt-3 pb-2 flex justify-between"><span>{cat}</span><span className="font-mono text-gray-300">{filtered.filter(i => (i.category_name || 'Other') === cat).length}</span></div>
-          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
-            {filtered.filter(i => (i.category_name || 'Other') === cat).map(item => { const qty = quantities[item.product_id] || 0; return (
-              <div key={item.id} className={`flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0 ${qty > 0 ? 'bg-green-50 -mx-3.5 px-3.5 rounded-lg mb-1' : ''}`}>
-                <div className="w-11 h-11 rounded-lg bg-gray-100 flex items-center justify-center text-[var(--fs-lg)] flex-shrink-0 overflow-hidden relative">
-                  <span className="absolute inset-0 flex items-center justify-center" aria-hidden>&#128230;</span>
-                  <img src={`/api/purchase/products/image?product_id=${item.product_id}`} alt="" loading="lazy" className="w-full h-full object-cover relative z-10" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                </div>
-                <div className="flex-1 min-w-0"><div className="text-[var(--fs-xs)] text-gray-400 font-semibold uppercase tracking-wide">{item.product_uom}</div><div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{item.product_name}</div><div className="text-[var(--fs-sm)] text-gray-500 font-mono">&euro;{item.price.toFixed(2)}/{item.product_uom}</div></div>
-                {qty > 0 ? (<div className="flex items-center flex-shrink-0"><button onClick={() => updateCartQty(item, Math.max(0, qty - 1))} className="w-11 h-11 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[var(--fs-xl)] text-gray-600 active:bg-gray-100">-</button><button onClick={() => openNumpad(item)} className="w-11 h-11 flex items-center justify-center text-[var(--fs-lg)] font-bold font-mono text-gray-900">{qty}</button><button onClick={() => updateCartQty(item, qty + 1)} className="w-11 h-11 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[var(--fs-xl)] text-gray-600 active:bg-gray-100">+</button></div>
-                ) : (<button onClick={() => updateCartQty(item, 1)} className="w-11 h-11 rounded-lg bg-green-600 flex items-center justify-center text-white text-[var(--fs-xl)] font-bold shadow-sm active:bg-green-700 flex-shrink-0">+</button>)}
-              </div>); })}
-          </div>
-        </div>))}
-      </div>
-      {cartItemCount > 0 && (<div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50"><div className="flex justify-between items-center mb-2"><div><div className="text-[18px] font-extrabold font-mono text-gray-900">&euro;{cartAmount.toFixed(2)}</div><div className="text-[var(--fs-xs)] text-gray-500">{cartItemCount} items &bull; shared cart ({locName})</div></div></div><button onClick={() => changeTab('cart')} className="w-full py-3.5 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">View cart &rarr;</button></div>)}
-    </>);
-  };
+  // Helper: parse a supplier's stored order_days JSON string into a string[].
+  function parseSupplierOrderDays(supplierId: number): string[] {
+    const supplier = suppliers.find((s) => s.id === supplierId);
+    try { return JSON.parse(supplier?.order_days || '[]'); } catch { return []; }
+  }
 
   // ============== CART ==============
   const CartView = () => {
@@ -878,53 +853,24 @@ export default function PurchasePage() {
     </div>
   )))}</div>);
 
-  const ManageGuideScreen = () => {
-    const guideProductIds = new Set(guideItems.map(i => i.product_id)); const searchResults = mgResults.filter(p => !guideProductIds.has(p.id)); const guideCats = Array.from(new Set(guideItems.map(i => i.category_name || 'Other'))); const allFilterCats = ['All', ...mgCategories.slice(0, 10)];
-    return (<div className="px-4 py-3">
-      {/* Delivery Settings — collapsible */}
-      <button onClick={() => setMgConfigOpen(!mgConfigOpen)} className="w-full flex items-center justify-between px-3.5 py-3 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-3 active:bg-gray-50">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2" strokeLinecap="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
-          <div><div className="text-[var(--fs-sm)] font-bold text-gray-900">Delivery Settings</div><div className="text-[var(--fs-xs)] text-gray-400">{mgOrderDays.length > 0 ? `Order: ${mgOrderDays.map(d => d.charAt(0).toUpperCase() + d.slice(1,3)).join(', ')}` : 'Not configured'}{mgDeliveryDays.length > 0 ? ` \u2022 Deliver: ${mgDeliveryDays.map(d => d.charAt(0).toUpperCase() + d.slice(1,3)).join(', ')}` : ''}{mgLeadTime > 1 ? ` \u2022 ${mgLeadTime}d lead` : ''}</div></div>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" style={{ transform: mgConfigOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-      {mgConfigOpen && (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 py-3 mb-3 -mt-1">
-          <div className="mb-3">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Order days <span className="normal-case font-normal">(when staff must place orders)</span></label>
-            <div className="flex gap-1.5 flex-wrap">{['mon','tue','wed','thu','fri','sat'].map(d => { const active = mgOrderDays.includes(d); return (<button key={d} onClick={() => setMgOrderDays(prev => active ? prev.filter(x => x !== d) : [...prev, d])} className={`px-3.5 py-2 rounded-lg text-[var(--fs-xs)] font-semibold ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}>{d.charAt(0).toUpperCase() + d.slice(1)}</button>); })}</div>
-          </div>
-          <div className="mb-3">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Delivery days <span className="normal-case font-normal">(when this supplier delivers)</span></label>
-            <div className="flex gap-1.5 flex-wrap">{['mon','tue','wed','thu','fri','sat'].map(d => { const active = mgDeliveryDays.includes(d); return (<button key={d} onClick={() => setMgDeliveryDays(prev => active ? prev.filter(x => x !== d) : [...prev, d])} className={`px-3.5 py-2 rounded-lg text-[var(--fs-xs)] font-semibold ${active ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}>{d.charAt(0).toUpperCase() + d.slice(1)}</button>); })}</div>
-          </div>
-          <div className="mb-3">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Lead time <span className="normal-case font-normal">(min. days advance notice)</span></label>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setMgLeadTime(prev => Math.max(0, prev - 1))} className="w-10 h-10 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[18px] text-gray-600 active:bg-gray-100">-</button>
-              <span className="w-12 text-center text-[var(--fs-lg)] font-bold font-mono text-gray-900">{mgLeadTime}</span>
-              <button onClick={() => setMgLeadTime(prev => prev + 1)} className="w-10 h-10 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[18px] text-gray-600 active:bg-gray-100">+</button>
-              <span className="text-[var(--fs-xs)] text-gray-400 ml-1">{mgLeadTime === 1 ? 'day' : 'days'}</span>
-            </div>
-          </div>
-          <button onClick={saveSupplierConfig} disabled={mgConfigSaving} className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-[var(--fs-sm)] font-bold active:bg-blue-700 disabled:opacity-50 transition-colors">
-            {mgConfigSaving ? 'Saving...' : 'Save delivery settings'}
-          </button>
-        </div>
-      )}
-      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-green-500 transition-colors mb-2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" value={mgSearch} onChange={e => searchProducts(e.target.value, mgCategory)} placeholder="Search Odoo products to add..." className="flex-1 bg-transparent outline-none text-[var(--fs-base)] text-gray-900 placeholder-gray-400" />{mgSearch && <button onClick={() => { setMgSearch(''); setMgResults([]); }} className="text-gray-400 text-[18px]">&times;</button>}</div>
-      <div className="flex gap-1.5 overflow-x-auto pb-3 -mx-1 px-1">{allFilterCats.map(cat => (<button key={cat} onClick={() => handleMgCategoryChange(cat)} className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold whitespace-nowrap flex-shrink-0 ${mgCategory === cat ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{cat}</button>))}</div>
-      {(mgSearch || mgCategory !== 'All') && (<div className="mb-4"><div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">{mgSearching ? 'Searching...' : `${searchResults.length} results`}{searchResults.length > 0 && ' \u2014 tap + to add'}</div>{mgSearching && <div className="flex justify-center py-4"><div className="w-6 h-6 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" /></div>}{!mgSearching && searchResults.length > 0 && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">{searchResults.map(product => (<div key={product.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0"><div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center text-[12px] flex-shrink-0">&#128230;</div><div className="flex-1 min-w-0"><div className="text-[13px] font-semibold text-gray-900 truncate">{product.name}</div><div className="text-[11px] text-gray-500 font-mono">{product.uom} &bull; &euro;{product.price.toFixed(2)} &bull; {product.category_name}</div></div><button onClick={() => addProductToGuide(product)} disabled={mgAdding === product.id} className="w-9 h-9 rounded-lg bg-green-500 flex items-center justify-center text-white text-[18px] font-bold shadow-sm active:bg-green-600 flex-shrink-0 disabled:opacity-50">{mgAdding === product.id ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '+'}</button></div>))}</div>)}{!mgSearching && searchResults.length === 0 && mgResults.length > 0 && (<div className="text-[12px] text-gray-500 text-center py-4">All matching products are already in the guide.</div>)}{!mgSearching && mgResults.length === 0 && (mgSearch || mgCategory !== 'All') && (<div className="text-[12px] text-gray-500 text-center py-4">No products found. Try a different search.</div>)}</div>)}
-      <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">In guide ({guideItems.length})</div>
-      {guideItems.length === 0 ? (<div className="bg-white border border-gray-200 rounded-xl p-6 text-center"><div className="text-[var(--fs-sm)] text-gray-500">No products yet. Search above to add products from Odoo.</div></div>) : (guideCats.map(cat => (<div key={cat}><div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide pt-2 pb-1">{cat}</div><div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-2">{guideItems.filter(i => (i.category_name || 'Other') === cat).map(item => (<div key={item.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0"><div className="flex-1 min-w-0"><div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{item.product_name}</div><div className="text-[11px] text-gray-500 font-mono">&euro;{item.price.toFixed(2)}/{item.product_uom}</div></div><button onClick={() => removeGuideItemAction(item.id)} className="text-[11px] font-semibold text-red-600 px-3 py-1.5 rounded-lg bg-red-50 border border-red-100 active:bg-red-100 flex-shrink-0">Remove</button></div>))}</div></div>)))}
-    </div>);
-  };
 
   // ============== RENDER ==============
   return (
     <div className="min-h-screen bg-gray-50">
-      {screen === 'guide' ? (<><Header title={guideSupplierName} subtitle={`${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('dashboard')} /><OrderGuide /></>
+      {screen === 'guide' ? (<><Header title={guideSupplierName} subtitle={`${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('dashboard')} />
+        <OrderGuideScreen
+          items={guideItems}
+          search={guideSearch}
+          category={guideCategory}
+          quantities={quantities}
+          supplierOrderDays={parseSupplierOrderDays(guideSupplierId)}
+          locationName={locName}
+          onSearchChange={setGuideSearch}
+          onCategoryChange={setGuideCategory}
+          onUpdateQty={(item, qty) => updateCartQty(item, qty)}
+          onOpenNumpad={openNumpad}
+          onViewCart={() => changeTab('cart')}
+        /></>
       ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => setScreen('dashboard')} /><ManageScreen /></>
       ) : screen === 'add-supplier' ? (<><Header title="Add supplier" subtitle="Link from Odoo or create new" showBack onBack={() => { resetAddForm(); setScreen('manage'); }} />
         <div className="px-4 py-3">
@@ -1121,7 +1067,31 @@ export default function PurchasePage() {
           })}
         </div>
       </>
-      ) : screen === 'manage-guide' ? (<><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('manage')} /><ManageGuideScreen /></>
+      ) : screen === 'manage-guide' ? (<><Header title={guideSupplierName} subtitle={`Edit guide \u2022 ${locName} \u2022 ${guideItems.length} products`} showBack onBack={() => setScreen('manage')} />
+        <ManageGuideScreen
+          items={guideItems}
+          configOpen={mgConfigOpen}
+          orderDays={mgOrderDays}
+          deliveryDays={mgDeliveryDays}
+          leadTime={mgLeadTime}
+          configSaving={mgConfigSaving}
+          onToggleConfig={() => setMgConfigOpen(!mgConfigOpen)}
+          onOrderDaysChange={setMgOrderDays}
+          onDeliveryDaysChange={setMgDeliveryDays}
+          onLeadTimeChange={setMgLeadTime}
+          onSaveConfig={saveSupplierConfig}
+          search={mgSearch}
+          category={mgCategory}
+          searching={mgSearching}
+          addingId={mgAdding}
+          results={mgResults}
+          categories={mgCategories}
+          onSearchChange={(q) => searchProducts(q, mgCategory)}
+          onCategoryChange={handleMgCategoryChange}
+          onClearSearch={() => { setMgSearch(''); setMgResults([]); }}
+          onAddProduct={addProductToGuide}
+          onRemoveItem={removeGuideItemAction}
+        /></>
       ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); }} /><ReviewOrder /></>
       ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSentScreen onPlaceAnother={() => changeTab('order')} onHistory={() => changeTab('history')} onHome={goHome} /></>
       ) : screen === 'order-detail' ? (<><Header title="Order details" showBack onBack={() => { setScreen('history'); }} /><OrderDetail /></>
