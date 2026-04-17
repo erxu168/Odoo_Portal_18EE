@@ -13,16 +13,28 @@ import { getDb } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { getOcr, matchOcrToOrder, type MatcherOrderLine } from '@/lib/ocr';
 
+// ~15MB base64 data URL ≈ 11MB decoded. Plenty for a phone photo, caps OOM risk.
+const MAX_IMAGE_DATA_URL_BYTES = 15 * 1024 * 1024;
+
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  // Fail fast on grossly oversized bodies before parsing JSON.
+  const contentLength = parseInt(request.headers.get('content-length') || '0');
+  if (contentLength > MAX_IMAGE_DATA_URL_BYTES + 1024) {
+    return NextResponse.json({ error: 'Image too large (max ~11MB). Retake or compress.' }, { status: 413 });
+  }
 
   const body = await request.json();
   const orderId = parseInt(body.order_id || '0');
   const imageDataUrl: string = body.image_data_url || '';
   if (!orderId) return NextResponse.json({ error: 'order_id required' }, { status: 400 });
   if (!imageDataUrl.startsWith('data:image/')) return NextResponse.json({ error: 'image_data_url must be a data URL' }, { status: 400 });
+  if (imageDataUrl.length > MAX_IMAGE_DATA_URL_BYTES) {
+    return NextResponse.json({ error: 'Image too large (max ~11MB). Retake or compress.' }, { status: 413 });
+  }
 
   const db = getDb();
   const order = db.prepare(

@@ -9,6 +9,19 @@ import { listOrders, createReceipt, getReceipt, getReceiptByOrder, updateReceipt
 import { getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 
+// Minimum cap on delivery-note payloads (data URL string length). ~15MB b64 ≈ 11MB decoded.
+const MAX_IMAGE_DATA_URL_BYTES = 15 * 1024 * 1024;
+
+// HTML-escape untrusted strings before interpolating into Odoo message_post bodies.
+function esc(s: unknown): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -96,6 +109,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: 'Line updated' });
   }
 
+  // Reject oversize delivery-note photos before they reach Odoo or the DB.
+  if (typeof body?.delivery_note_photo === 'string' && body.delivery_note_photo.length > MAX_IMAGE_DATA_URL_BYTES) {
+    return NextResponse.json({ error: 'Delivery note photo too large (max ~11MB decoded). Retake or compress.' }, { status: 413 });
+  }
+  if (typeof body?.issue_photo === 'string' && body.issue_photo.length > MAX_IMAGE_DATA_URL_BYTES) {
+    return NextResponse.json({ error: 'Issue photo too large (max ~11MB decoded). Retake or compress.' }, { status: 413 });
+  }
+
   if (action === 'confirm') {
     if (!hasRole(user, 'manager')) {
       return NextResponse.json({ error: 'Manager must confirm receipts' }, { status: 403 });
@@ -160,7 +181,7 @@ export async function POST(request: Request) {
             const issueLines = receipt.lines.filter((l: any) => l.has_issue === 1);
             const notReceived = receipt.lines.filter((l: any) => l.received_qty === null || l.received_qty === 0);
 
-            let noteHtml = `<p><strong>Receipt confirmed by ${user.name}</strong></p>`;
+            let noteHtml = `<p><strong>Receipt confirmed by ${esc(user.name)}</strong></p>`;
             noteHtml += `<p>${receivedLines.length} items received`;
             if (notReceived.length > 0) noteHtml += `, ${notReceived.length} not delivered`;
             if (issueLines.length > 0) noteHtml += `, <span style="color:red">${issueLines.length} with issues</span>`;
@@ -170,8 +191,8 @@ export async function POST(request: Request) {
             if (issueLines.length > 0) {
               noteHtml += '<ul>';
               for (const il of issueLines) {
-                noteHtml += `<li><strong>${il.product_name}</strong>: ${il.issue_type || 'Issue'}`;
-                if (il.issue_notes) noteHtml += ` - ${il.issue_notes}`;
+                noteHtml += `<li><strong>${esc(il.product_name)}</strong>: ${esc(il.issue_type || 'Issue')}`;
+                if (il.issue_notes) noteHtml += ` - ${esc(il.issue_notes)}`;
                 noteHtml += `</li>`;
               }
               noteHtml += '</ul>';
@@ -201,7 +222,7 @@ export async function POST(request: Request) {
             const issueLines = receipt.lines.filter((l: any) => l.has_issue === 1);
             const notReceived = receipt.lines.filter((l: any) => l.received_qty === null || l.received_qty === 0);
 
-            let noteHtml = `<p><strong>Receipt confirmed by ${user.name}</strong></p>`;
+            let noteHtml = `<p><strong>Receipt confirmed by ${esc(user.name)}</strong></p>`;
             noteHtml += `<p>${receivedLines.length} items received`;
             if (notReceived.length > 0) noteHtml += `, ${notReceived.length} not delivered`;
             if (issueLines.length > 0) noteHtml += `, <span style="color:red">${issueLines.length} with issues</span>`;
@@ -210,8 +231,8 @@ export async function POST(request: Request) {
             if (issueLines.length > 0) {
               noteHtml += '<ul>';
               for (const il of issueLines) {
-                noteHtml += `<li><strong>${il.product_name}</strong>: ${il.issue_type || 'Issue'}`;
-                if (il.issue_notes) noteHtml += ` - ${il.issue_notes}`;
+                noteHtml += `<li><strong>${esc(il.product_name)}</strong>: ${esc(il.issue_type || 'Issue')}`;
+                if (il.issue_notes) noteHtml += ` - ${esc(il.issue_notes)}`;
                 noteHtml += `</li>`;
               }
               noteHtml += '</ul>';
