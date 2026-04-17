@@ -13,6 +13,9 @@ import OrderHistoryScreen from '@/components/purchase/OrderHistoryScreen';
 import SearchInput from '@/components/purchase/SearchInput';
 import OrderGuideScreen from '@/components/purchase/OrderGuideScreen';
 import ManageGuideScreen from '@/components/purchase/ManageGuideScreen';
+import ReceiveListScreen from '@/components/purchase/ReceiveListScreen';
+import ReceiveCheckScreen from '@/components/purchase/ReceiveCheckScreen';
+import ReceiveIssueScreen from '@/components/purchase/ReceiveIssueScreen';
 
 // Types
 interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number; send_method: string; }
@@ -76,7 +79,6 @@ export default function PurchasePage() {
   const [issueLine, setIssueLine] = useState<ReceiptLine | null>(null);
   const [recvOrder, setRecvOrder] = useState<any>(null);
   const [recvNumpadLineId, setRecvNumpadLineId] = useState<number>(0);
-  const [issuePhoto, setIssuePhoto] = useState<string>('');
   const [quantities, setQuantities] = useState<Record<number, number>>({});
   const [seedMsg, setSeedMsg] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; confirmLabel: string; cancelLabel?: string; variant: 'primary' | 'danger'; onConfirm: () => void; onCancel?: () => void } | null>(null);
@@ -183,8 +185,8 @@ export default function PurchasePage() {
     fetchCart();
   }
 
-  async function openReceiveCheck(order: Order) {
-    setSelectedOrder(order); setScreen('receive-check');
+  async function openReceiveCheck(order: { id: number }) {
+    setScreen('receive-check');
     try { const r = await fetch(`/api/purchase/receive?order_id=${order.id}`); const d = await r.json(); setReceipt(d.receipt); setReceiptLines(d.receipt?.lines || []); setRecvOrder(d.order || null); } catch (e) { void e; }
   }
 
@@ -193,12 +195,20 @@ export default function PurchasePage() {
     await fetch('/api/purchase/receive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'update_line', line_id: lineId, received_qty: qty }) });
   }
 
-  function openIssueReport(line: ReceiptLine) { setIssueLine(line); setIssueLineId(line.id); setIssuePhoto(''); setScreen('receive-issue'); }
+  function openIssueReport(line: ReceiptLine) { setIssueLine(line); setIssueLineId(line.id); setScreen('receive-issue'); }
+
+  function openRecvNumpadForLine(line: ReceiptLine) {
+    setRecvNumpadLineId(line.id);
+    setCartNumpadItem(null);
+    setNumpadProduct({ id: 0, product_id: line.product_id, product_name: line.product_name, product_uom: line.product_uom, price: line.price || 0, price_source: '', category_name: '' });
+    setNumpadValue(line.received_qty !== null ? String(line.received_qty) : '');
+    setNumpadOpen(true);
+  }
 
   async function submitIssue(issueType: string, notes: string, photo?: string) {
     await fetch('/api/purchase/receive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'update_line', line_id: issueLineId, has_issue: 1, issue_type: issueType, issue_notes: notes, issue_photo: photo || null }) });
     setReceiptLines(prev => prev.map(l => l.id === issueLineId ? { ...l, has_issue: 1, issue_type: issueType, issue_notes: notes } : l));
-    setIssuePhoto(''); setScreen('receive-check');
+    setScreen('receive-check');
   }
 
   async function confirmReceiptAction(closeOrder: boolean) {
@@ -717,105 +727,6 @@ export default function PurchasePage() {
       </div>
       {selectedOrder.lines && selectedOrder.lines.length > 0 && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-3">{selectedOrder.lines.map((line: any) => (<div key={line.id} className="flex justify-between py-2.5 border-b border-gray-100 last:border-0 text-[13px]"><div className="text-gray-900">{line.product_name}</div><div className="font-mono text-gray-500">{line.quantity} {line.product_uom} &bull; &euro;{line.subtotal.toFixed(2)}</div></div>))}</div>)}<div className="text-right text-[16px] font-bold font-mono text-gray-900 mb-4">&euro;{selectedOrder.total_amount.toFixed(2)}</div>{selectedOrder.lines && selectedOrder.lines.length > 0 && (<button onClick={() => setConfirmDialog({ title: 'Reorder these items?', message: `This adds all ${selectedOrder.lines!.length} items to your ${selectedOrder.supplier_name} cart at the original quantities. Items already in your cart will have their quantity updated to match this order.`, confirmLabel: reordering ? 'Adding...' : 'Yes, add to cart', variant: 'primary', onConfirm: () => { setConfirmDialog(null); reorderPastOrder(selectedOrder); } })} disabled={reordering} className="w-full py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold shadow-sm active:bg-green-700 disabled:opacity-50 mb-2">{reordering ? 'Adding to cart...' : 'Reorder these items'}</button>)}{canCancel && <button onClick={() => setConfirmDialog({ title: 'Cancel this order?', message: `Are you sure you want to cancel this order to ${selectedOrder.supplier_name}? This cannot be undone.`, confirmLabel: 'Yes, cancel order', variant: 'danger', onConfirm: () => { setConfirmDialog(null); cancelSelectedOrder(); } })} className="w-full py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100">Cancel order</button>}</div>); };
 
-  const ReceiveList = () => (<div className="px-4 py-3"><div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Pending deliveries</div>{pendingDeliveries.length === 0 ? (<div className="text-center py-16"><div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">No pending deliveries</div><div className="text-[var(--fs-sm)] text-gray-500">Sent orders will appear here.</div></div>) : (pendingDeliveries.map(order => (<button key={order.id} onClick={() => openReceiveCheck(order)} className="w-full flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-2.5 active:scale-[0.98] transition-transform text-left"><div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-[14px] font-bold text-blue-600 flex-shrink-0">{(order.supplier_name || '??').split(' ').map(w => w[0]).join('').slice(0, 2)}</div><div className="flex-1 min-w-0"><div className="text-[14px] font-bold text-gray-900">{order.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{order.odoo_po_name || `#${order.id}`}</div></div><span className="text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold bg-amber-100 text-amber-800">{order.status === 'partial' ? 'Partial' : 'Pending'}</span></button>)))}</div>);
-
-  const ReceiveCheck = () => {
-    const orderTotal = recvOrder?.total_amount || 0;
-    const openRecvNumpad = (line: ReceiptLine) => { setRecvNumpadLineId(line.id); setCartNumpadItem(null); setNumpadProduct({ id: 0, product_id: line.product_id, product_name: line.product_name, product_uom: line.product_uom, price: line.price || 0, price_source: '', category_name: '' }); setNumpadValue(line.received_qty !== null ? String(line.received_qty) : ''); setNumpadOpen(true); };
-    return (<div className="px-4 py-3 pb-56">
-      {recvOrder && (<div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-3.5 mb-3"><div className="flex justify-between items-start mb-2"><div><div className="text-[14px] font-bold text-gray-900">{recvOrder.supplier_name}</div><div className="text-[11px] text-gray-500 font-mono mt-0.5">{recvOrder.odoo_po_name || `#${recvOrder.id}`}</div></div><StatusBadge status={recvOrder.status} /></div><div className="text-[11px] text-gray-500">Ordered by <span className="font-semibold text-gray-900">{recvOrder.ordered_by_name}</span></div><div className="text-[11px] text-gray-500">{new Date(recvOrder.created_at).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>{recvOrder.delivery_date && <div className="text-[11px] text-gray-500">Delivery: {recvOrder.delivery_date}</div>}{recvOrder.order_note && <div className="text-[11px] text-gray-500 mt-1 italic">{recvOrder.order_note}</div>}<div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-100"><span className="text-[11px] text-gray-400">{receiptLines.length} items</span><span className="text-[14px] font-bold font-mono text-gray-900">&euro;{orderTotal.toFixed(2)}</span></div></div>)}
-      {isManager && (
-        <div className="mb-3">
-          <FilePicker
-            onFile={(file) => scanDeliveryNote(file)}
-            accept="image/*"
-            variant="button"
-            icon="\u{1F4F7}"
-            loading={scanning}
-            disabled={scanning}
-            label={scanning ? 'Scanning delivery note...' : 'Scan delivery note'}
-            className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[13px] font-bold shadow-sm transition-colors ${scanning ? 'bg-gray-200 text-gray-500' : 'bg-[#2563EB] text-white active:bg-blue-700'}`}
-          />
-          {scanErr && <div className="mt-2 text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{scanErr}</div>}
-          {scanResult && !scanning && (
-            <div className="mt-2 px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-100">
-              <div className="flex items-center gap-2">
-                <span className="text-[14px]">&#128196;</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-bold text-blue-900">Scan complete {scanResult.ocr_mode === 'mock' && <span className="ml-1 text-[10px] font-semibold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">MOCK</span>}</div>
-                  <div className="text-[11px] text-blue-800">{scanResult.matched.length} matched{scanResult.unmatched_ocr.length > 0 ? ` \u2022 ${scanResult.unmatched_ocr.length} unmatched` : ''}{scanResult.missing_ordered.length > 0 ? ` \u2022 ${scanResult.missing_ordered.length} not on note` : ''}</div>
-                </div>
-                <button onClick={() => setScanResult(null)} className="text-blue-400 text-[16px] flex-shrink-0" aria-label="Dismiss">&times;</button>
-              </div>
-              {scanResult.unmatched_ocr.length > 0 && (
-                <details className="mt-2">
-                  <summary className="text-[11px] font-semibold text-blue-700 cursor-pointer">Lines on the note that didn&rsquo;t match</summary>
-                  <ul className="mt-1.5 text-[11px] text-gray-700 space-y-1">
-                    {scanResult.unmatched_ocr.map((u, i) => (
-                      <li key={i} className="font-mono">&bull; {u.description || '(no description)'} {u.quantity != null && `\u00d7 ${u.quantity}`} {u.unit_price != null && `@ \u20ac${u.unit_price.toFixed(2)}`}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              {scanResult.missing_ordered.length > 0 && (
-                <details className="mt-2">
-                  <summary className="text-[11px] font-semibold text-amber-700 cursor-pointer">Ordered items not on the note</summary>
-                  <ul className="mt-1.5 text-[11px] text-gray-700 space-y-1">
-                    {scanResult.missing_ordered.map((m) => (
-                      <li key={m.line_id}>&bull; {m.product_name} (ordered {m.ordered_qty})</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              {scanResult.matched.some(m => m.price_flag) && (
-                <div className="mt-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
-                  <strong>Price mismatch:</strong> {scanResult.matched.filter(m => m.price_flag).map(m => m.product_name).join(', ')}. Please verify.
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-      <p className="text-[12px] text-gray-500 mb-3">Enter the quantity you actually received. Leave blank if not delivered yet.</p>
-      <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
-        {receiptLines.map(line => { const qty = line.received_qty; const linePrice = line.price || 0; return (
-          <div key={line.id} className="py-3 border-b border-gray-100 last:border-0"><div className="flex items-center gap-2.5">
-            <div className="flex-1 min-w-0"><div className="text-[13px] font-semibold text-gray-900">{line.product_name}</div><div className="text-[11px] text-gray-500 font-mono">Ordered: {line.ordered_qty} {line.product_uom}{linePrice > 0 ? ` \u00b7 \u20ac${linePrice.toFixed(2)}/${line.product_uom}` : ''}</div>{linePrice > 0 && <div className="text-[10px] text-gray-400 font-mono">Subtotal: &euro;{(line.ordered_qty * linePrice).toFixed(2)}</div>}{line.has_issue === 1 && <span className="text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold bg-red-100 text-red-800 mt-1 inline-block">{line.issue_type || 'Issue'}</span>}</div>
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              {qty !== null && qty > 0 ? (<div className="flex items-center"><button onClick={() => updateRecvQty(line.id, Math.max(0, (qty || 0) - 1))} className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100">-</button><button onClick={() => openRecvNumpad(line)} className="w-10 h-8 flex items-center justify-center text-[14px] font-bold font-mono text-gray-900">{qty}</button><button onClick={() => updateRecvQty(line.id, (qty || 0) + 1)} className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100">+</button></div>
-              ) : (<button onClick={() => openRecvNumpad(line)} className="h-8 px-3 rounded-lg border border-gray-200 bg-white text-[12px] font-semibold text-gray-500 active:bg-gray-100 font-mono">{qty === null ? 'Enter qty' : '0'}</button>)}
-              {qty !== null && qty === line.ordered_qty && <span className="text-green-500 text-[15px]">&#10003;</span>}
-              {qty !== null && qty !== line.ordered_qty && qty < line.ordered_qty && <span className="text-red-600 text-[11px] font-bold font-mono">{line.difference}</span>}
-              <button onClick={() => openIssueReport(line)} className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 active:bg-red-100 ${line.has_issue ? 'bg-red-100' : 'bg-amber-50'}`}><WarningIcon color={line.has_issue ? '#DC2626' : '#D97706'} /></button>
-            </div>
-          </div></div>); })}
-      </div>
-      <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
-        {isManager ? (<><div className="flex gap-2 mb-2"><button onClick={() => setConfirmDialog({ title: 'Confirm receipt?', message: 'This will update stock quantities in Odoo and close this order. This cannot be undone.', confirmLabel: 'Yes, confirm & close', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(true); } })} className="flex-1 py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700">Confirm &amp; close</button><button onClick={() => setConfirmDialog({ title: 'Keep as backorder?', message: 'Received quantities will be updated in Odoo. The remaining items will stay open for a future delivery.', confirmLabel: 'Yes, keep backorder', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(false); } })} className="flex-1 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold active:bg-gray-50">Keep as backorder</button></div><p className="text-[11px] text-gray-400 text-center">Confirming will update stock in Odoo.</p></>
-        ) : (<p className="text-[12px] text-gray-500 text-center py-2">A manager must confirm receipt to update stock.</p>)}
-      </div>
-    </div>);
-  };
-
-  const ReceiveIssue = () => {
-    const [issueType, setIssueType] = useState(issueLine?.issue_type || 'Damaged');
-    const [notes, setNotes] = useState(issueLine?.issue_notes || '');
-    const [localPhoto, setLocalPhoto] = useState(issuePhoto);
-    const types = ['Damaged', 'Wrong item', 'Short delivery', 'Expired', 'Quality', 'Other'];
-    function handleCameraCapture(e: React.ChangeEvent<HTMLInputElement>) { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => { const base64 = reader.result as string; setLocalPhoto(base64); setIssuePhoto(base64); }; reader.readAsDataURL(file); }
-    return (<div className="px-4 py-3">
-      <div className="text-[15px] font-bold text-gray-900 mb-1">{issueLine?.product_name}</div>
-      <div className="text-[12px] text-gray-500 mb-4">Ordered: {issueLine?.ordered_qty} {issueLine?.product_uom}</div>
-      <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Photo evidence</label>
-      {localPhoto ? (<div className="mb-4 relative"><img src={localPhoto} alt="Issue photo" className="w-full h-48 object-cover rounded-xl border border-gray-200" /><button onClick={() => { setLocalPhoto(''); setIssuePhoto(''); }} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center text-white text-[14px]">&times;</button><div className="mt-2 text-center"><FilePicker onFile={(file, dataUrl) => handleCameraCapture({ target: { files: [file] } } as any)} accept="image/*" variant="button" label="Retake photo" icon="" className="text-[12px] font-semibold text-green-700 active:opacity-70" /></div></div>
-      ) : (<FilePicker onFile={(file, dataUrl) => handleCameraCapture({ target: { files: [file] } } as any)} accept="image/*" label="Tap to take photo" className="w-full mb-4 border-2 border-dashed border-gray-300 rounded-xl p-6 text-center active:bg-gray-50 bg-white" />)}
-      <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Issue type</label>
-      <div className="flex gap-1.5 flex-wrap mb-4">{types.map(t => (<button key={t} onClick={() => setIssueType(t)} className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold ${issueType === t ? 'bg-red-500 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{t}</button>))}</div>
-      <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">Notes</label>
-      <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Describe the issue..." rows={3} className="w-full text-[13px] border border-gray-200 rounded-xl px-3 py-2 resize-none outline-none focus:border-green-500 mb-4" />
-      <button onClick={() => submitIssue(issueType, notes, localPhoto)} className="w-full py-3.5 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30">Submit report</button>
-    </div>);
-  };
 
   const ManageScreen = () => (<div className="px-4 py-3">
     <div className="flex gap-2 mb-3">
@@ -1095,11 +1006,28 @@ export default function PurchasePage() {
       ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); }} /><ReviewOrder /></>
       ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSentScreen onPlaceAnother={() => changeTab('order')} onHistory={() => changeTab('history')} onHome={goHome} /></>
       ) : screen === 'order-detail' ? (<><Header title="Order details" showBack onBack={() => { setScreen('history'); }} /><OrderDetail /></>
-      ) : screen === 'receive-check' ? (<><Header title={selectedOrder?.supplier_name || 'Receive'} subtitle={selectedOrder?.odoo_po_name || ''} showBack onBack={() => { setScreen('receive-list'); }} /><ReceiveCheck /></>
-      ) : screen === 'receive-issue' ? (<><Header title="Report issue" showBack onBack={() => setScreen('receive-check')} /><ReceiveIssue /></>
+      ) : screen === 'receive-check' ? (<><Header title={recvOrder?.supplier_name || 'Receive'} subtitle={recvOrder?.odoo_po_name || ''} showBack onBack={() => { setScreen('receive-list'); }} />
+        <ReceiveCheckScreen
+          order={recvOrder}
+          lines={receiptLines}
+          isManager={isManager}
+          scanning={scanning}
+          scanResult={scanResult}
+          scanErr={scanErr}
+          onScanFile={scanDeliveryNote}
+          onDismissScan={() => setScanResult(null)}
+          onUpdateQty={updateRecvQty}
+          onOpenNumpad={openRecvNumpadForLine}
+          onReportIssue={openIssueReport}
+          onConfirmClose={() => setConfirmDialog({ title: 'Confirm receipt?', message: 'This will update stock quantities in Odoo and close this order. This cannot be undone.', confirmLabel: 'Yes, confirm & close', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(true); } })}
+          onKeepBackorder={() => setConfirmDialog({ title: 'Keep as backorder?', message: 'Received quantities will be updated in Odoo. The remaining items will stay open for a future delivery.', confirmLabel: 'Yes, keep backorder', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(false); } })}
+        /></>
+      ) : screen === 'receive-issue' ? (<><Header title="Report issue" showBack onBack={() => setScreen('receive-check')} />
+        <ReceiveIssueScreen line={issueLine} onSubmit={submitIssue} /></>
       ) : screen === 'suppliers' ? (<><Header title="Place Order" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><SupplierList /></>
       ) : screen === 'cart' ? (<><Header title="Cart" subtitle={`${locName} \u2022 ${cartTotal.items} items`} showBack onBack={() => setScreen('dashboard')} /><CartView /></>
-      ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><ReceiveList /></>
+      ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} />
+        <ReceiveListScreen orders={pendingDeliveries} onOpen={openReceiveCheck} /></>
       ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><OrderHistoryScreen orders={orders} filter={historyFilter} onFilterChange={setHistoryFilter} onOpen={openOrderDetail} /></>
       ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={isManager ? manageIconBtn : undefined} />
         <PurchaseAlerts suppliers={suppliers} />
