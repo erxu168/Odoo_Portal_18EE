@@ -1,6 +1,6 @@
 # Krawings Portal — STATUS
 
-_Last updated: 2026-04-12_
+_Last updated: 2026-04-19_
 
 ## Current focus
 Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with real data from seeded SQLite.
@@ -22,11 +22,74 @@ Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with r
 | Contract scanner | ✅ shipped | Claude Vision API. ANTHROPIC_API_KEY in .env.local. |
 | Invoice scanner | 📋 scoped | 8-screen mock. Vision + Graph API + WhatsApp + SEPA XML + DATEV. Not built. |
 | KDS | 📋 v8 designed | What a Jerk task-first auto-batch. Not built. |
-| Prep Planner | 📋 algo designed | EWMA + weather + holidays + DOW. 3 mockups built. Two-tablet setup. Waiting on POS portion decomposition answers. |
+| Prep Planner | 🟡 **Phase 1 backend shipped** | EWMA engine, Open-Meteo weather, cron job. Forecasts writing to prep_forecasts for company_id=3 (Ssam). WAJ waits on POS data on staging. Frontend + portion mapping = Phase 2. |
 | Music (Krawings Auto) | 📋 mock done | Locked-down kiosk PWA, YouTube IFrame Player API. 9-screen mock. |
 | Staffing optimization | 📋 designed | Prophet+XGBoost → rules engine → OR-Tools constraint scheduling. 10–14 week build. |
 | **Issues & Requests** | 🟢 **backend shipped** | See below. Frontend not started. |
 | **Rentals** | 🟢 **frontend v2 shipped** | See below. 16 pages, 16 components, 25 API routes, seeded SQLite. |
+
+## Prep Planner — detail
+
+### Phase 1 shipped (2026-04-19)
+
+**Backend pipeline** — commit `96c34ef` on main:
+
+| File | Purpose |
+|---|---|
+| `src/lib/weather.ts` | Open-Meteo client (archive + forecast), Berlin 52.52°N/13.405°E, weather buckets (nice/heat/rain/cold/snow/normal) |
+| `src/lib/prep-planner-db.ts` | 4 tables: `prep_demand_history`, `prep_weather_daily`, `prep_forecasts`, `prep_forecast_runs` + full CRUD |
+| `src/lib/prep-planner-engine.ts` | `backfillDemandHistory`, `backfillWeather`, `backfillForecastWeather`, `computeForecasts`, `runForecastJob` |
+| `src/app/api/cron/prep-forecast/route.ts` | Token-protected GET, defaults to company_id=3 (Ssam Kottbusser) |
+| `src/app/api/prep-planner/forecasts/route.ts` | Read endpoint for future UI (no writes) |
+
+### Algorithm (per algorithm design doc, Sections 4.1–4.4)
+
+- **Baseline** = EWMA α=0.85 over last 12 weeks of same-DOW-hour samples (heavy on recent)
+- **Seasonal multiplier** = recent 4 weeks avg / same 4 weeks last year (capped 0.3–3.0)
+- **Holiday multiplier** = 0 on Berlin public holidays, else 1
+- **Weather multiplier** = 1.0 (Phase 1 stores the tag but doesn't apply; Phase 2 will compute per-bucket ratios)
+- **DOW multiplier** = 1.0 (already baked into per-DOW-hour baseline)
+- **Safety buffer** stored at 15% but NOT applied to `forecast_qty` — the UI decides whether to add it
+
+### Deploy
+
+```bash
+# On staging server 89.167.124.0 (SSH)
+cd /opt/krawings-portal
+git pull
+npm run build
+sudo systemctl restart krawings-portal
+
+# Set CRON_SECRET in .env.local if not already set
+echo "CRON_SECRET=$(openssl rand -hex 24)" >> /opt/krawings-portal/.env.local
+sudo systemctl restart krawings-portal
+
+# Add crontab entry for the odoo/krawings user
+crontab -e
+# 0 4 * * * curl -s "http://localhost:3000/api/cron/prep-forecast?token=YOUR_CRON_SECRET" > /var/log/prep-forecast.log 2>&1
+```
+
+### First manual run (validation)
+
+```bash
+# Default: company_id=3 (Ssam), 84d lookback, 7d horizon
+curl "http://localhost:3000/api/cron/prep-forecast?token=$CRON_SECRET" | jq
+
+# Expected shape:
+# { "runId": 1, "status": "success", "demandRowsPulled": ~50000,
+#   "weatherRowsPulled": ~91, "forecastRowsWritten": ~X, "durationMs": N }
+```
+
+### Still to build (Phase 2+)
+
+- [ ] Portion mapping layer: Odoo BOM introspection for combo → prep item portions
+- [ ] Weather multiplier computation: per-bucket ratio from tagged history (needs ~90 days of tagged data)
+- [ ] DOW multiplier computation as explicit ratio (for reporting, not forecast math)
+- [ ] Intra-day dynamic adjustment: compare morning actual vs forecast, scale remaining windows
+- [ ] Staff confirmation UI: start-of-shift overlay on KDS
+- [ ] Manager/admin dashboard: forecast vs actual variance, accuracy metrics
+- [ ] Add What a Jerk (company_id=5) to `DEFAULT_COMPANY_IDS` once POS lives on staging
+- [ ] `prune_old_forecasts` cron companion (call `pruneOldForecasts(30)` weekly)
 
 ## Rentals (Properties & Tenancies) — detail
 
@@ -126,6 +189,23 @@ cd /opt/krawings-portal
 git pull
 npm run build
 sudo systemctl restart krawings-portal
+```
+
+### Prep Planner cron (one-time setup)
+```bash
+# On staging server 89.167.124.0 (SSH)
+# 1. Set CRON_SECRET if not already set
+grep -q '^CRON_SECRET=' /opt/krawings-portal/.env.local || \
+  echo "CRON_SECRET=$(openssl rand -hex 24)" >> /opt/krawings-portal/.env.local
+sudo systemctl restart krawings-portal
+
+# 2. Add crontab entry
+crontab -e
+# Add this line:
+# 0 4 * * * curl -s "http://localhost:3000/api/cron/prep-forecast?token=YOUR_CRON_SECRET" > /var/log/prep-forecast.log 2>&1
+
+# 3. First manual run (validates against Ssam Kottbusser POS history)
+curl "http://localhost:3000/api/cron/prep-forecast?token=$CRON_SECRET" | jq
 ```
 
 ### Odoo krawings_issues addon (one-time install)
