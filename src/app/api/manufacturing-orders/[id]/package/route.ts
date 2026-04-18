@@ -15,7 +15,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/db';
 import { cookies } from 'next/headers';
-import { odooRPC } from '@/lib/odoo';
+import { odooRPC, getOdoo } from '@/lib/odoo';
+import { ensureTrackedComponentLots } from '@/lib/manufacturing-lots';
 import {
   createSplit, confirmSplit, getSplitByMo, getContainers, updateContainerLot,
 } from '@/lib/labeling-db';
@@ -124,7 +125,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         lot_producing_id: lotId,
       }]);
 
-      // 4. Produce
+      // 4. Auto-assign lots for any tracked raw-material components
+      await ensureTrackedComponentLots(getOdoo(), currentMoId);
+
+      // 5. Produce
       if (isLast) {
         await odooRPC('mrp.production', 'button_mark_done', [[currentMoId]]);
       } else {
@@ -147,7 +151,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         }
       }
 
-      // 5. Update container with lot info
+      // 6. Update container with lot info
       updateContainerLot(containerId, lotName, lotId as number);
 
     } catch (err: unknown) {

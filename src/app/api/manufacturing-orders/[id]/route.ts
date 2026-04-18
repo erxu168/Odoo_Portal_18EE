@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { ensureTrackedComponentLots } from '@/lib/manufacturing-lots';
 
 export async function GET(
   request: Request,
@@ -198,6 +199,11 @@ export async function PATCH(
               console.log(`[MO ${moId}] Auto-created lot ${lotName} (id=${lotId}) for tracked product`);
             }
           }
+
+          // Tracked components (raw materials with lot/serial tracking) need a
+          // lot assigned to their consumed quantity, otherwise Odoo errors with
+          // "You need to supply Lot/Serial Number for products and 'consume' them".
+          await ensureTrackedComponentLots(odoo, moId);
 
           // mark_done can return a chain of wizards. Odoo requires context
           // flags (skip_consumption, skip_backorder) to be carried through —
