@@ -226,16 +226,13 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
             <span>Ingredients</span>
             <span className="font-mono text-gray-400">{pickedCount}/{totalComps}</span>
           </div>
-          {totalComps > 0 && (
-            <div className="flex items-center justify-between mb-1 px-1">
-              <p className="text-[var(--fs-xs)] text-gray-400">Tap to check off each ingredient</p>
-              {pickedCount === totalComps && totalComps > 0 && (
-                <span className="text-[var(--fs-xs)] font-semibold text-green-600">All picked</span>
-              )}
+          {pickedCount === totalComps && totalComps > 0 && (
+            <div className="flex justify-end mb-0.5 px-1">
+              <span className="text-[var(--fs-xs)] font-semibold text-green-600">All picked</span>
             </div>
           )}
           {totalComps > 0 && (
-            <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden mb-2">
+            <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-1.5">
               <div className="h-full bg-green-500 rounded-full transition-all duration-500"
                 style={{ width: `${totalComps > 0 ? (pickedCount / totalComps) * 100 : 0}%` }} />
             </div>
@@ -245,12 +242,12 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
             return cats.map(cat => {
               const catComps = components.filter((c: any) => (c.category || 'Other') === cat);
               return (
-                <div key={cat} className="mb-3">
-                  <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-1.5 flex justify-between">
+                <div key={cat} className="mb-2">
+                  <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-1 flex justify-between">
                     <span>{cat}</span>
                     <span className="font-mono text-gray-300">{catComps.filter((c: any) => c.picked).length}/{catComps.length}</span>
                   </div>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-0.5">
                     {catComps.map((c: any) => {
                       const required = c.product_uom_qty || 0;
                       const isPicked = c.picked === true;
@@ -258,25 +255,25 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
                       return (
                         <button key={c.id} onClick={() => toggleIngredient(c)}
                           style={{ touchAction: 'manipulation' }}
-                          className={`bg-white border rounded-2xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
+                          className={`bg-white border rounded-xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
                             isPicked ? 'border-green-300 bg-green-50/40' : 'border-gray-200'
                           }`}>
-                          <div className={`w-1.5 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-300'}`} />
-                          <div className="flex-1 flex items-center gap-2.5 px-3 py-1.5">
-                            <div className={`w-8 h-8 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                          <div className={`w-1 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-300'}`} />
+                          <div className="flex-1 flex items-center gap-2 px-2.5 py-1">
+                            <div className={`w-7 h-7 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
                               isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
                             }`}>
                               {isPicked ? (
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                               ) : null}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className={`text-[var(--fs-md)] font-bold ${isPicked ? 'text-green-700 line-through decoration-green-400/60' : 'text-gray-900'}`}>
+                              <div className={`text-[var(--fs-sm)] font-bold leading-tight ${isPicked ? 'text-green-700 line-through decoration-green-400/60' : 'text-gray-900'}`}>
                                 {c.product_id[1]}
                               </div>
                             </div>
                             <div className="flex items-baseline gap-1 flex-shrink-0 pl-2">
-                              <span className={`text-[var(--fs-lg)] font-extrabold tabular-nums font-mono ${isPicked ? 'text-green-600' : 'text-gray-900'}`}>
+                              <span className={`text-[var(--fs-md)] font-extrabold tabular-nums font-mono ${isPicked ? 'text-green-600' : 'text-gray-900'}`}>
                                 {fmt(required)}
                               </span>
                               <span className={`text-[var(--fs-xs)] font-semibold ${isPicked ? 'text-green-500' : 'text-gray-400'}`}>{compUom}</span>
