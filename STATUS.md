@@ -22,7 +22,7 @@ Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with r
 | Contract scanner | ✅ shipped | Claude Vision API. ANTHROPIC_API_KEY in .env.local. |
 | Invoice scanner | 📋 scoped | 8-screen mock. Vision + Graph API + WhatsApp + SEPA XML + DATEV. Not built. |
 | KDS | 📋 v8 designed | What a Jerk task-first auto-batch. Not built. |
-| Prep Planner | 🟡 **Phase 1 backend shipped** | EWMA engine, Open-Meteo weather, cron job. Forecasts writing to prep_forecasts for company_id=3 (Ssam). WAJ waits on POS data on staging. Frontend + portion mapping = Phase 2. |
+| Prep Planner | 🟡 **Phase 2 backend shipped** | EWMA engine + Open-Meteo + nightly cron (Phase 1) + prep items, POS↔prep mapping, item-level forecasts (Phase 2). 21/21 smoke tests pass. Seed data + frontend = Phase 3. |
 | Music (Krawings Auto) | 📋 mock done | Locked-down kiosk PWA, YouTube IFrame Player API. 9-screen mock. |
 | Staffing optimization | 📋 designed | Prophet+XGBoost → rules engine → OR-Tools constraint scheduling. 10–14 week build. |
 | **Issues & Requests** | 🟢 **backend shipped** | See below. Frontend not started. |
@@ -30,9 +30,9 @@ Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with r
 
 ## Prep Planner — detail
 
-### Phase 1 shipped (2026-04-19)
+### Phase 1 shipped (2026-04-19, commit `96c34ef`)
 
-**Backend pipeline** — commit `96c34ef` on main:
+**Backend pipeline**:
 
 | File | Purpose |
 |---|---|
@@ -42,12 +42,35 @@ Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with r
 | `src/app/api/cron/prep-forecast/route.ts` | Token-protected GET, defaults to company_id=3 (Ssam Kottbusser) |
 | `src/app/api/prep-planner/forecasts/route.ts` | Read endpoint for future UI (no writes) |
 
+### Phase 2 shipped (2026-04-19, commit `7115d67`)
+
+**Problem**: cooks don't think in POS SKUs — they think in prep items ("make N portions of Rice"). One prep item often aggregates demand from multiple POS products (Extra Rice + rice that ships inside set menus) with different portions-per-sale multipliers.
+
+**New files**:
+
+| File | Purpose |
+|---|---|
+| `src/lib/prep-planner-mapping-db.ts` | 3 tables: `prep_items`, `prep_pos_link`, `prep_item_forecasts` + CRUD + projection |
+| `src/lib/prep-planner-engine.ts` | **Patched**: `runForecastJob` now calls `computePrepItemForecasts` as step 3b |
+| `src/app/api/prep-planner/items/route.ts` | GET list / POST create (with `UNIQUE(company_id, name)` → 409 Conflict) |
+| `src/app/api/prep-planner/items/[id]/route.ts` | GET detail+links / PATCH update / DELETE (cascade) |
+| `src/app/api/prep-planner/links/route.ts` | GET list / POST upsert / DELETE (with `portions_per_sale > 0` guard) |
+| `src/app/api/prep-planner/forecasts-by-item/route.ts` | Read latest item-level forecasts joined with `prep_items` metadata |
+
+**Key design choices**:
+- `prep_items` is conceptually a superset of `kds_product_config` — when KDS is next touched, it can migrate to read from `prep_items`. This commit does NOT modify KDS.
+- `computePrepItemForecasts` reads `prep_forecasts` (Phase 1 output) and projects via `prep_pos_link`. **Silent no-op for companies with no configured prep items**, so Ssam's existing cron keeps working unchanged.
+- `forecast_run_id` is the shared linkage between POS-level and item-level forecasts.
+- `source_products_json` stores the breakdown of which POS products contributed how many portions — debuggable in the UI later.
+
+**Validation**: 21/21 runtime smoke tests pass (in-memory SQLite, real `better-sqlite3`): CRUD, UNIQUE constraints, upsert semantics, projection math (10 × 1.2 + 3 × 4 = 24), source attribution preservation, idempotent reruns via `ON CONFLICT DO UPDATE`, cascade deletes.
+
 ### Algorithm (per algorithm design doc, Sections 4.1–4.4)
 
 - **Baseline** = EWMA α=0.85 over last 12 weeks of same-DOW-hour samples (heavy on recent)
 - **Seasonal multiplier** = recent 4 weeks avg / same 4 weeks last year (capped 0.3–3.0)
 - **Holiday multiplier** = 0 on Berlin public holidays, else 1
-- **Weather multiplier** = 1.0 (Phase 1 stores the tag but doesn't apply; Phase 2 will compute per-bucket ratios)
+- **Weather multiplier** = 1.0 (Phase 1 stores the tag but doesn't apply; Phase 3 will compute per-bucket ratios)
 - **DOW multiplier** = 1.0 (already baked into per-DOW-hour baseline)
 - **Safety buffer** stored at 15% but NOT applied to `forecast_qty` — the UI decides whether to add it
 
@@ -76,18 +99,50 @@ crontab -e
 curl "http://localhost:3000/api/cron/prep-forecast?token=$CRON_SECRET" | jq
 
 # Expected shape:
-# { "runId": 1, "status": "success", "demandRowsPulled": ~50000,
-#   "weatherRowsPulled": ~91, "forecastRowsWritten": ~X, "durationMs": N }
+# { "runId": 1, "status": "success", "demandRowsPulled": ~3400,
+#   "weatherRowsPulled": ~91, "forecastRowsWritten": ~1400,
+#   "prepItemRowsWritten": 0, "durationMs": N }
+# prepItemRowsWritten stays 0 until you create prep_items + prep_pos_link rows
 ```
 
-### Still to build (Phase 2+)
+### Using the Phase 2 admin API
 
-- [ ] Portion mapping layer: Odoo BOM introspection for combo → prep item portions
-- [ ] Weather multiplier computation: per-bucket ratio from tagged history (needs ~90 days of tagged data)
-- [ ] DOW multiplier computation as explicit ratio (for reporting, not forecast math)
-- [ ] Intra-day dynamic adjustment: compare morning actual vs forecast, scale remaining windows
-- [ ] Staff confirmation UI: start-of-shift overlay on KDS
-- [ ] Manager/admin dashboard: forecast vs actual variance, accuracy metrics
+```bash
+# Create a prep item
+curl -X POST http://localhost:3000/api/prep-planner/items \
+  -H "Content-Type: application/json" \
+  -d '{"company_id": 3, "name": "Rice", "station": "pot", "prep_type": "batch",
+       "prep_time_min": 40, "max_holding_min": 60, "batch_size": 20, "unit": "portion"}'
+# → { "id": 1 }
+
+# Link POS products to it (portions_per_sale tunes the multiplier)
+curl -X POST http://localhost:3000/api/prep-planner/links \
+  -H "Content-Type: application/json" \
+  -d '{"prep_item_id": 1, "pos_product_id": 400, "pos_product_name": "[400] Extra Rice",
+       "portions_per_sale": 1}'
+
+curl -X POST http://localhost:3000/api/prep-planner/links \
+  -H "Content-Type: application/json" \
+  -d '{"prep_item_id": 1, "pos_product_id": 300, "pos_product_name": "[300] All About Beef",
+       "portions_per_sale": 4, "notes": "set menu for 4 people"}'
+
+# Re-run the cron (it will recompute item-level forecasts)
+curl "http://localhost:3000/api/cron/prep-forecast?token=$CRON_SECRET" | jq
+
+# Read item-level forecasts for tomorrow
+curl "http://localhost:3000/api/prep-planner/forecasts-by-item?companyId=3&date=$(date -d tomorrow +%F)" | jq
+```
+
+### Still to build (Phase 3+)
+
+- [ ] **Seed script for Ssam** — pre-create prep items (Rice, Kimchi, Bulgogi Marinade, etc.) and link to top-N POS products. Optional but removes friction for first-run validation.
+- [ ] **Weather multiplier computation**: per-bucket ratio from tagged history (needs ~90 days of tagged data)
+- [ ] **DOW multiplier computation** as explicit ratio (for reporting, not forecast math)
+- [ ] **Intra-day dynamic adjustment**: compare morning actual vs forecast, scale remaining windows
+- [ ] **Frontend pages** — `/prep-planner` route: 2×2 dashboard, prep items admin (list/edit), link management, forecast view
+- [ ] **Cook-facing view**: start-of-shift overlay ("make N portions of X by T") with confirm/adjust/reject
+- [ ] **Manager/admin dashboard**: forecast vs actual variance, accuracy metrics per prep item
+- [ ] **Migrate `kds_product_config` → `prep_items`**: unify the two tables next time KDS is touched
 - [ ] Add What a Jerk (company_id=5) to `DEFAULT_COMPANY_IDS` once POS lives on staging
 - [ ] `prune_old_forecasts` cron companion (call `pruneOldForecasts(30)` weekly)
 
