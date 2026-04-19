@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import RichTextEditor from '@/components/ui/RichTextEditor';
 import { StatusDot } from './ui';
 import type { ComponentAvailability } from '@/types/manufacturing';
 
@@ -378,8 +379,11 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         </div>
         <div className="mb-3">
           <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Instructions</label>
-          <textarea value={op.note?.replace(/<[^>]*>/g, '') || ''} onChange={e => onChange({ note: e.target.value })} placeholder="Step-by-step instructions..."
-            rows={3} className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600 resize-none" />
+          <RichTextEditor
+            value={op.note || ''}
+            onChange={html => onChange({ note: html })}
+            placeholder="Step-by-step instructions..."
+          />
         </div>
         {/* Worksheet type */}
         <div className="mb-3">
