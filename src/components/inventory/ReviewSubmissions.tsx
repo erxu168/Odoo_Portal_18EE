@@ -297,7 +297,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     const countedProducts = reviewProducts.filter(p => entryMap[p.id] !== undefined);
     const uncountedProducts = reviewProducts.filter(p => entryMap[p.id] === undefined);
     const isSubmitted = reviewSession.status === 'submitted';
-    const hasUnresolvedDrafts = countedProducts.some((p: any) => p.active === false && !draftDecisions[p.id]);
+    const hasUnresolvedDrafts = countedProducts.some((p: any) => p.is_draft && !draftDecisions[p.id]);
 
     return (
       <div className="flex flex-col min-h-0 flex-1">
@@ -354,7 +354,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   const diff = hasSysQty ? val - sysQty : null;
                   const diffPct = hasSysQty && sysQty > 0 ? Math.round((diff! / sysQty) * 100) : null;
                   const isVariance = diffPct !== null && Math.abs(diffPct) > 10;
-                  const isDraft = p.active === false;
+                  const isDraft = p.is_draft === true;
                   const decision = draftDecisions[p.id];
                   return (
                     <div key={p.id}>

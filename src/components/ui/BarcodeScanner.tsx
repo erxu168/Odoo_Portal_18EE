@@ -136,7 +136,7 @@ export default function BarcodeScanner({
     if (product) {
       const currentQty = ents[product.id];
       setQty(currentQty !== undefined ? currentQty + 1 : 1);
-      setScanResult({ kind: 'found', product, isDraft: product.active === false });
+      setScanResult({ kind: 'found', product, isDraft: product.is_draft === true });
       try { navigator.vibrate(100); } catch (_e) { /* ignore */ }
       return;
     }

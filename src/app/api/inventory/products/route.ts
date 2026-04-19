@@ -20,7 +20,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
-import { registerDraftProduct } from '@/lib/inventory-db';
+import { registerDraftProduct, isDraftProduct } from '@/lib/inventory-db';
 
 // Process-level cache for the default category and UOM IDs.
 let _defaultCategId: number | null = null;
@@ -93,7 +93,14 @@ export async function GET(request: Request) {
       { limit, order: 'categ_id, name', context: { active_test: false } }
     );
 
-    return NextResponse.json({ products });
+    // Tag products that are portal-created drafts so the UI can flag them
+    // without confusing any archived product for a pending review.
+    const tagged = products.map((p: any) => ({
+      ...p,
+      is_draft: p.active === false && isDraftProduct(p.id),
+    }));
+
+    return NextResponse.json({ products: tagged });
   } catch (err: any) {
     console.error('Inventory products error:', err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
