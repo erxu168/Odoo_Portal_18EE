@@ -9,6 +9,7 @@ import QuickCount from '@/components/inventory/QuickCount';
 import ManageTemplates from '@/components/inventory/ManageTemplates';
 import ReviewSubmissions from '@/components/inventory/ReviewSubmissions';
 import MoIngredients from '@/components/inventory/MoIngredients';
+import ProductSettings from '@/components/inventory/ProductSettings';
 
 type Screen =
   | { type: 'dashboard' }
@@ -17,6 +18,7 @@ type Screen =
   | { type: 'manage' }
   | { type: 'review' }
   | { type: 'mo-ingredients' }
+  | { type: 'product-settings' }
   | { type: 'session'; sessionId: number };
 
 export default function InventoryPage() {
@@ -134,6 +136,14 @@ export default function InventoryPage() {
           </div>
         </div>
         <ManageTemplates onBack={goDashboard} />
+      </div>
+    );
+  }
+
+  if (screen.type === 'product-settings' && canManage) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <ProductSettings onBack={goDashboard} />
       </div>
     );
   }
