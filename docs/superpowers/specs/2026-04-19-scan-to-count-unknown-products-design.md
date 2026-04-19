@@ -25,6 +25,23 @@ quality gate before the product becomes real in Odoo.
 - No pollution of the live Odoo product catalog before manager approval
 - No new Odoo module required — uses standard `active` field
 
+## Scope constraint: POS products excluded
+
+The inventory module counts raw stock only. Products flagged
+`available_in_pos=True` on their template are sellable items (menu
+dishes) that belong to the POS / recipe-config workflow, not the
+inventory-counting workflow.
+
+Every product query in the inventory module filters them out:
+- Barcode lookup — scanning a POS barcode returns "not found"
+- Product list queries — POS items don't appear in Quick Count or review
+- Link-to-existing search — managers can't link a draft to a POS product
+- Draft creation — the 409 barcode-collision check still covers POS
+  items, so staff can't unknowingly duplicate a POS barcode
+
+This is a tightening of the previous inventory-module behavior (which
+returned all consumables including POS items).
+
 ## Non-goals (v1)
 
 - Photo capture of scanned items

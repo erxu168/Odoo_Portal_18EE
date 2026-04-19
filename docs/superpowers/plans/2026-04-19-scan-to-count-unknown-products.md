@@ -27,6 +27,23 @@ lines referencing draft products already work with existing tables —
 `quick_counts.product_id` and `count_entries.product_id` just point to
 Odoo IDs regardless of `active` state.
 
+## POS products are excluded everywhere
+
+**Scope addition:** the inventory module counts raw stock only — not items
+that are sellable on the POS. Every product query in the inventory module
+excludes POS products via `['available_in_pos', '=', False]`. This applies
+to:
+
+- Barcode lookup (so scanning a POS barcode returns "not found")
+- Product list queries (so POS items don't appear in Quick Count / review)
+- Link-to-existing search (managers can't link a draft to a POS product)
+
+This is a tightening of the existing behavior — previously the inventory
+module's `GET /api/inventory/products` returned all consumables including
+POS items. We're narrowing that now. If a user was relying on POS items
+appearing in inventory counts, they'll need to either unset
+`available_in_pos` on those products in Odoo or revisit this filter.
+
 ## File structure
 
 **Modified:**
@@ -74,10 +91,15 @@ findable.
 Edit `src/app/api/inventory/barcode-lookup/route.ts` lines 24-34:
 
 ```typescript
-    // 1. Direct match on product.product — include inactive drafts
+    // 1. Direct match on product.product — include inactive drafts,
+    //    exclude POS products (we only count raw stock in this module)
     const products = await odoo.searchRead(
       'product.product',
-      [['barcode', '=', barcode], ['type', '=', 'consu']],
+      [
+        ['barcode', '=', barcode],
+        ['type', '=', 'consu'],
+        ['available_in_pos', '=', false],
+      ],
       ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode', 'active'],
       { limit: 1, context: { active_test: false } },
     );
@@ -138,7 +160,8 @@ the product.packaging lookup path to also fetch `active` and report
 `is_draft`:
 
 ```typescript
-    // 2. Check product.packaging (alternate barcodes)
+    // 2. Check product.packaging (alternate barcodes) — only match if the
+    //    underlying product is non-POS
     const packagings = await odoo.searchRead(
       'product.packaging',
       [['barcode', '=', barcode]],
@@ -149,7 +172,10 @@ the product.packaging lookup path to also fetch `active` and report
       const prodId = packagings[0].product_id[0];
       const prods = await odoo.searchRead(
         'product.product',
-        [['id', '=', prodId]],
+        [
+          ['id', '=', prodId],
+          ['available_in_pos', '=', false],
+        ],
         ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode', 'active'],
         { limit: 1, context: { active_test: false } },
       );
@@ -273,16 +299,19 @@ export async function POST(request: Request) {
 
     const odoo = getOdoo();
 
-    // Reject if barcode already exists (active or inactive)
+    // Reject if the barcode already exists on any product — active or
+    // inactive, POS or non-POS. We don't want to orphan a POS product's
+    // barcode by creating a duplicate.
     const existing = await odoo.searchRead(
       'product.product',
       [['barcode', '=', barcode]],
-      ['id', 'name', 'active'],
+      ['id', 'name', 'active', 'available_in_pos'],
       { limit: 1, context: { active_test: false } },
     );
     if (existing.length > 0) {
+      const hint = existing[0].available_in_pos ? ' (POS item)' : '';
       return NextResponse.json(
-        { error: `Barcode already exists on product: ${existing[0].name}` },
+        { error: `Barcode already exists on product: ${existing[0].name}${hint}` },
         { status: 409 },
       );
     }
@@ -317,25 +346,47 @@ export async function POST(request: Request) {
 }
 ```
 
-- [ ] **Step 3: Update GET to include inactive products when `ids=` is used**
+- [ ] **Step 3: Update GET to exclude POS and include inactive products**
 
-Inactive drafts must appear in review-time product lookups. Edit the GET
-handler in `src/app/api/inventory/products/route.ts` lines 20-40. In the
-`searchRead` call, add `context: { active_test: false }`:
+Two changes in the existing GET handler
+(`src/app/api/inventory/products/route.ts` lines 20-40):
+
+1. Exclude POS products from the base domain (scope addition — applies to
+   the whole inventory module, not just this feature)
+2. Include inactive products in results (so draft products show up during
+   review)
+
+Edit the domain and the searchRead call:
 
 ```typescript
+    const odoo = getOdoo();
+    const domain: any[] = [
+      ['type', '=', 'consu'],
+      ['available_in_pos', '=', false],
+    ];
+
+    // Filter by explicit product IDs (from counting template)
+    if (ids) {
+      const idList = ids.split(',').map(Number).filter(n => !isNaN(n) && n > 0);
+      if (idList.length > 0) {
+        domain.push(['id', 'in', idList]);
+      }
+    }
+
+    if (categoryId) domain.push(['categ_id', '=', parseInt(categoryId)]);
+    if (search) domain.push(['name', 'ilike', search]);
+
     const products = await odoo.searchRead('product.product', domain,
-      ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode', 'active'],
+      ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode', 'active', 'available_in_pos'],
       { limit, order: 'categ_id, name', context: { active_test: false } }
     );
 ```
 
-Note: this means normal product lists will now include archived products
-too. This is acceptable here because draft products are the only common
-source of inactive `type='consu'` products in this DB. If archived
-products start appearing in Quick Count lists as clutter, add an
-explicit `['active', '=', true]` to the domain for non-review use cases.
-For now, keep it simple.
+Note: `active_test: false` means archived products will also appear. The
+only common source of inactive non-POS consumables in this DB is draft
+products from this feature, so acceptable. If cruft accumulates, add an
+explicit `['active', '=', true]` to the domain for non-review callers
+and keep the inactive-inclusive lookup scoped to the review path.
 
 - [ ] **Step 4: Build check**
 
@@ -573,17 +624,23 @@ export async function POST(
       return NextResponse.json({ error: 'Draft has no barcode' }, { status: 400 });
     }
 
-    // Load target product (must exist, must be active)
+    // Load target product (must exist, must be active, must NOT be POS)
     const targets = await odoo.searchRead(
       'product.product',
       [['id', '=', targetId]],
-      ['id', 'name', 'barcode', 'active'],
+      ['id', 'name', 'barcode', 'active', 'available_in_pos'],
       { limit: 1 },
     );
     if (targets.length === 0) {
       return NextResponse.json({ error: 'Target product not found' }, { status: 404 });
     }
     const target = targets[0];
+    if (target.available_in_pos === true) {
+      return NextResponse.json(
+        { error: 'Cannot link to a POS product — inventory counts only apply to non-POS stock' },
+        { status: 400 },
+      );
+    }
     if (target.barcode && target.barcode !== draft.barcode) {
       return NextResponse.json(
         { error: `Target product already has barcode: ${target.barcode}` },
@@ -1564,8 +1621,18 @@ ssh root@89.167.124.0 "cd /opt/krawings-portal && git checkout main && \
 
 ## Regression checklist
 
-- [ ] Quick Count still works for known barcodes (no regression)
-- [ ] CountingSession barcode scanning still works for known barcodes
+- [ ] Quick Count still works for known non-POS barcodes (no regression)
+- [ ] CountingSession barcode scanning still works for non-POS products
 - [ ] Normal review submission approval still works when no draft products involved
 - [ ] Desktop-only views unaffected (no desktop CSS touched)
 - [ ] No hardcoded `blue` — all new UI uses `#F5800A` per design guide
+
+## Intended behavior changes (not regressions)
+
+- [ ] Scanning a POS product's barcode now returns "unknown" instead of
+  matching the POS product. Staff will see the new-product creation
+  sheet. If they create a draft with that barcode, the API rejects with
+  409 because the barcode already exists on the POS item. Tell the team
+  POS items are not countable via this flow — they belong to the POS /
+  recipe workflow.
+- [ ] Quick Count product list no longer shows POS items.
