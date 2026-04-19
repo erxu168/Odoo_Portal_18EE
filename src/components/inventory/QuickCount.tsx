@@ -5,12 +5,14 @@ import { FilterBar, FilterPill, SearchBar, Stepper, Spinner, EmptyState } from '
 import NumpadModal from './NumpadModal';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
+import { useCompany } from '@/lib/company-context';
 
 interface QuickCountProps {
   userRole: string;
 }
 
 export default function QuickCount({ userRole }: QuickCountProps) {
+  const { companyId } = useCompany();
   const [products, setProducts] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,22 +40,25 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   });
 
   const fetchData = useCallback(async () => {
+    if (!companyId) return;
     setLoading(true);
     try {
       const [prodRes, locRes] = await Promise.all([
         fetch('/api/inventory/products').then((r) => r.json()),
-        fetch('/api/inventory/locations').then((r) => r.json()),
+        fetch(`/api/inventory/locations?company_id=${companyId}`).then((r) => r.json()),
       ]);
       setProducts((prodRes.products || []).filter((p: any) => p.active !== false));
       const locs = locRes.locations || [];
       setLocations(locs);
-      if (locs.length > 0 && !locFilter) setLocFilter(locs[0].id);
+      // Always reset to the first location of the active company —
+      // previous selection belongs to a different company.
+      setLocFilter(locs.length > 0 ? locs[0].id : null);
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
       setLoading(false);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [companyId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -132,15 +137,18 @@ export default function QuickCount({ userRole }: QuickCountProps) {
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      {/* Location pills */}
-      <FilterBar>
-        {locations.map((loc) => (
-          <FilterPill key={loc.id}
-            active={locFilter === loc.id}
-            label={loc.complete_name?.split('/')[0] || loc.name}
-            onClick={() => setLocFilter(loc.id)} />
-        ))}
-      </FilterBar>
+      {/* Location pills — only shown when the active company has multiple
+          internal locations. Company scope comes from the top-bar selector. */}
+      {locations.length > 1 && (
+        <FilterBar>
+          {locations.map((loc) => (
+            <FilterPill key={loc.id}
+              active={locFilter === loc.id}
+              label={loc.complete_name?.split('/').slice(-1)[0] || loc.name}
+              onClick={() => setLocFilter(loc.id)} />
+          ))}
+        </FilterBar>
+      )}
 
       <SearchBar value={search} onChange={setSearch} placeholder="Type product name..." />
 
