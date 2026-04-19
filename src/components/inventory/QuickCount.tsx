@@ -44,7 +44,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
         fetch('/api/inventory/products').then((r) => r.json()),
         fetch('/api/inventory/locations').then((r) => r.json()),
       ]);
-      setProducts(prodRes.products || []);
+      setProducts((prodRes.products || []).filter((p: any) => p.active !== false));
       const locs = locRes.locations || [];
       setLocations(locs);
       if (locs.length > 0 && !locFilter) setLocFilter(locs[0].id);

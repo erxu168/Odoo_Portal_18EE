@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { isDraftProduct } from '@/lib/inventory-db';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
         found: true,
         product: p,
         source: 'product',
-        is_draft: p.active === false,
+        is_draft: p.active === false && isDraftProduct(p.id),
       });
     }
 
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
           found: true,
           product: p,
           source: 'packaging',
-          is_draft: p.active === false,
+          is_draft: p.active === false && isDraftProduct(p.id),
         });
       }
     }

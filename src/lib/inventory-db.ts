@@ -79,8 +79,37 @@ export function initInventoryTables() {
     CREATE INDEX IF NOT EXISTS idx_sessions_date ON counting_sessions(scheduled_date);
     CREATE INDEX IF NOT EXISTS idx_entries_session ON count_entries(session_id);
     CREATE INDEX IF NOT EXISTS idx_quick_status ON quick_counts(status);
+
+    CREATE TABLE IF NOT EXISTS product_drafts (
+      odoo_product_id INTEGER PRIMARY KEY,
+      barcode TEXT NOT NULL,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
   migrateInventorySchema(db);
+}
+
+// ===
+// PRODUCT DRAFTS (scan-to-create tracking)
+// ===
+// A product is considered a "pending draft awaiting manager review" only if
+// it was created via the portal's scan-to-count flow AND is still inactive in
+// Odoo. Without this table, barcode-lookup would mistake any archived-with-
+// barcode product for a draft.
+
+export function registerDraftProduct(odooProductId: number, barcode: string, createdBy: number) {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR IGNORE INTO product_drafts (odoo_product_id, barcode, created_by, created_at)
+    VALUES (?, ?, ?, ?)
+  `).run(odooProductId, barcode, createdBy, now());
+}
+
+export function isDraftProduct(odooProductId: number): boolean {
+  const db = getDb();
+  const row = db.prepare(`SELECT 1 FROM product_drafts WHERE odoo_product_id = ?`).get(odooProductId);
+  return !!row;
 }
 
 function now(): string {

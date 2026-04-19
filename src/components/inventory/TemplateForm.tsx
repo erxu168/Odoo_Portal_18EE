@@ -66,7 +66,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
           fetch('/api/admin/users'),
         ]);
         const prodData = await prodRes.json();
-        setAllProducts(prodData.products || []);
+        setAllProducts((prodData.products || []).filter((p: any) => p.active !== false));
         try {
           const userData = await userRes.json();
           setPortalUsers((userData.users || []).filter((u: any) => u.employee_id));

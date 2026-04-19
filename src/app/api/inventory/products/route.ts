@@ -20,6 +20,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { registerDraftProduct } from '@/lib/inventory-db';
 
 // Process-level cache for the default category and UOM IDs.
 let _defaultCategId: number | null = null;
@@ -146,6 +147,8 @@ export async function POST(request: Request) {
       type: 'consu',
       active: false,
     });
+
+    registerDraftProduct(newId, barcode, (user as any).id);
 
     // Re-read to return a consistent shape with GET response
     const rows = await odoo.searchRead(
