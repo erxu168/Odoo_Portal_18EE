@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
 import StandardFilter from '@/components/ui/StandardFilter';
+import PhotoLightbox from './PhotoLightbox';
 
 interface ReviewSubmissionsProps {
   onViewSession: (sessionId: number) => void;
@@ -26,6 +27,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [qcProduct, setQcProduct] = useState<any>(null);
   const [qcConfirm, setQcConfirm] = useState<'approve' | 'reject' | null>(null);
   const [draftDecisions, setDraftDecisions] = useState<Record<number, 'approved' | 'linked' | 'rejected'>>({});
+  const [lightbox, setLightbox] = useState<{ open: boolean; photos: string[]; index: number }>({ open: false, photos: [], index: 0 });
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -386,6 +388,25 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                                 System: {sysQty} {uom} {diff !== null && `(${diff > 0 ? '+' : ''}${diff})`}
                               </span>
                             )}
+                            {(() => {
+                              const entry = reviewEntries.find((e: any) => e.product_id === p.id);
+                              const entryPhotos: string[] = (entry?.photos || []) as string[];
+                              if (entryPhotos.length === 0) return null;
+                              return (
+                                <div className="flex items-center gap-1.5 mt-1.5">
+                                  {entryPhotos.map((src: string, i: number) => (
+                                    <button
+                                      key={i}
+                                      onClick={(ev) => { ev.stopPropagation(); setLightbox({ open: true, photos: entryPhotos, index: i }); }}
+                                      className="w-8 h-8 rounded-md overflow-hidden border border-gray-200 bg-gray-100 active:opacity-70"
+                                      aria-label={`View photo ${i + 1}`}
+                                    >
+                                      <img src={src} alt="" className="w-full h-full object-cover" />
+                                    </button>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                         <span className="text-[14px] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3">{val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></span>
@@ -549,6 +570,12 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
           )}
         </>)}
       </div>
+      <PhotoLightbox
+        open={lightbox.open}
+        photos={lightbox.photos}
+        initialIndex={lightbox.index}
+        onClose={() => setLightbox({ open: false, photos: [], index: 0 })}
+      />
     </div>
   );
 }
