@@ -458,3 +458,34 @@ export function approveQuickCount(id: number, reviewed_by: number) {
   db.prepare('UPDATE quick_counts SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
     .run('approved', reviewed_by, now(), id);
 }
+
+/**
+ * Reassign every count line (quick_counts + count_entries) that points to
+ * `fromProductId` so it points to `toProductId` instead. Used when a
+ * manager links a draft product to an existing product during review.
+ *
+ * Returns the total number of rows changed.
+ */
+export function reassignCountsForProduct(fromProductId: number, toProductId: number): number {
+  const db = getDb();
+  let changed = 0;
+  changed += db.prepare('UPDATE quick_counts SET product_id = ? WHERE product_id = ?')
+    .run(toProductId, fromProductId).changes;
+  changed += db.prepare('UPDATE count_entries SET product_id = ? WHERE product_id = ?')
+    .run(toProductId, fromProductId).changes;
+  return changed;
+}
+
+/**
+ * Delete every count line (quick_counts + count_entries) that points to
+ * `productId`. Used when a manager rejects a draft product during review.
+ *
+ * Returns the total number of rows deleted.
+ */
+export function deleteCountsForProduct(productId: number): number {
+  const db = getDb();
+  let deleted = 0;
+  deleted += db.prepare('DELETE FROM quick_counts WHERE product_id = ?').run(productId).changes;
+  deleted += db.prepare('DELETE FROM count_entries WHERE product_id = ?').run(productId).changes;
+  return deleted;
+}
