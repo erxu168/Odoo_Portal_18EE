@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, SearchBar, Stepper, Spinner, EmptyState } from './ui';
 import NumpadModal from './NumpadModal';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
+import PhotoCaptureStrip from './PhotoCaptureStrip';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useCompany } from '@/lib/company-context';
 
@@ -23,6 +24,9 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   const [numpad, setNumpad] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [flags, setFlags] = useState<Record<number, boolean>>({});
+  const [photos, setPhotos] = useState<Record<number, string[]>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // ── Barcode scanner ──
   const [showScanner, setShowScanner] = useState(false);
@@ -43,16 +47,18 @@ export default function QuickCount({ userRole }: QuickCountProps) {
     if (!companyId) return;
     setLoading(true);
     try {
-      const [prodRes, locRes] = await Promise.all([
+      const [prodRes, locRes, flagRes] = await Promise.all([
         fetch('/api/inventory/products').then((r) => r.json()),
         fetch(`/api/inventory/locations?company_id=${companyId}`).then((r) => r.json()),
+        fetch('/api/inventory/product-flags').then((r) => r.json()),
       ]);
       setProducts((prodRes.products || []).filter((p: any) => p.active !== false));
       const locs = locRes.locations || [];
       setLocations(locs);
-      // Always reset to the first location of the active company —
-      // previous selection belongs to a different company.
       setLocFilter(locs.length > 0 ? locs[0].id : null);
+      const flagMap: Record<number, boolean> = {};
+      (flagRes.flags || []).forEach((f: any) => { flagMap[f.odoo_product_id] = !!f.requires_photo; });
+      setFlags(flagMap);
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
@@ -112,22 +118,44 @@ export default function QuickCount({ userRole }: QuickCountProps) {
 
   async function handleSubmit() {
     if (!locFilter || countedN === 0) return;
+    const missingPhotos = Object.entries(counts).filter(([pid, qty]) => {
+      const productId = Number(pid);
+      return flags[productId] && qty > 0 && (photos[productId]?.length || 0) === 0;
+    });
+    if (missingPhotos.length > 0) {
+      setSubmitError(`${missingPhotos.length} item${missingPhotos.length !== 1 ? 's' : ''} still need a photo.`);
+      return;
+    }
+    setSubmitError(null);
     setSubmitting(true);
     try {
       const entries = Object.entries(counts).map(([pid, qty]) => {
-        const p = products.find((pr) => pr.id === Number(pid));
-        return { product_id: Number(pid), counted_qty: qty, uom: p?.uom_id?.[1] || 'Units' };
+        const productId = Number(pid);
+        const p = products.find((pr) => pr.id === productId);
+        return {
+          product_id: productId,
+          counted_qty: qty,
+          uom: p?.uom_id?.[1] || 'Units',
+          photos: photos[productId] || [],
+        };
       });
-      await fetch('/api/inventory/quick-count', {
+      const res = await fetch('/api/inventory/quick-count', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries, location_id: locFilter }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        setSubmitError(data.error || 'Submit failed');
+        return;
+      }
       setCounts({});
+      setPhotos({});
       setSubmitted(true);
       setTimeout(() => setSubmitted(false), 3000);
     } catch (err) {
       console.error('Quick count submit failed:', err);
+      setSubmitError('Network error. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -184,16 +212,35 @@ export default function QuickCount({ userRole }: QuickCountProps) {
               const val = counts[p.id] ?? null;
               const uom = p.uom_id?.[1] || 'Units';
               const catName = p.categ_id?.[1] || '';
+              const flagged = !!flags[p.id];
+              const prodPhotos = photos[p.id] || [];
               return (
-                <div key={p.id} className="flex items-center gap-3 py-3 border-b border-gray-100">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
-                    <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{catName}</div>
+                <div key={p.id} className="py-3 border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</span>
+                        {flagged && (
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0">
+                            Photo required
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{catName}</div>
+                    </div>
+                    <Stepper value={val} uom={uom}
+                      onMinus={() => stepQty(p.id, -1)}
+                      onPlus={() => stepQty(p.id, 1)}
+                      onTap={() => openNumpad(p)} />
                   </div>
-                  <Stepper value={val} uom={uom}
-                    onMinus={() => stepQty(p.id, -1)}
-                    onPlus={() => stepQty(p.id, 1)}
-                    onTap={() => openNumpad(p)} />
+                  {flagged && (val ?? 0) > 0 && (
+                    <div className="mt-2">
+                      <PhotoCaptureStrip
+                        photos={prodPhotos}
+                        onChange={(next) => setPhotos(prev => ({ ...prev, [p.id]: next }))}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -204,6 +251,11 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       {/* Submit bar */}
       {countedN > 0 && (
         <div className="px-4 py-3">
+          {submitError && (
+            <div className="mb-2 bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+              <span className="text-[var(--fs-sm)] font-semibold text-red-700">{submitError}</span>
+            </div>
+          )}
           <button onClick={handleSubmit} disabled={submitting}
             className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
             {submitting ? 'Submitting...' : `Submit ${countedN} quick count${countedN !== 1 ? 's' : ''}`}
