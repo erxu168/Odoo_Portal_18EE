@@ -22,18 +22,30 @@ export async function GET(request: Request) {
   try {
     const odoo = getOdoo();
 
-    // 1. Direct match on product.product
+    // 1. Direct match on product.product — include inactive drafts,
+    //    exclude POS products (we only count raw stock in this module)
     const products = await odoo.searchRead(
       'product.product',
-      [['barcode', '=', barcode], ['type', '=', 'consu']],
-      ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode'],
-      { limit: 1 },
+      [
+        ['barcode', '=', barcode],
+        ['type', '=', 'consu'],
+        ['available_in_pos', '=', false],
+      ],
+      ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode', 'active'],
+      { limit: 1, context: { active_test: false } },
     );
     if (products.length > 0) {
-      return NextResponse.json({ found: true, product: products[0], source: 'product' });
+      const p = products[0];
+      return NextResponse.json({
+        found: true,
+        product: p,
+        source: 'product',
+        is_draft: p.active === false,
+      });
     }
 
-    // 2. Check product.packaging (alternate barcodes)
+    // 2. Check product.packaging (alternate barcodes) — only match if the
+    //    underlying product is non-POS
     const packagings = await odoo.searchRead(
       'product.packaging',
       [['barcode', '=', barcode]],
@@ -44,12 +56,21 @@ export async function GET(request: Request) {
       const prodId = packagings[0].product_id[0];
       const prods = await odoo.searchRead(
         'product.product',
-        [['id', '=', prodId]],
-        ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode'],
-        { limit: 1 },
+        [
+          ['id', '=', prodId],
+          ['available_in_pos', '=', false],
+        ],
+        ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode', 'active'],
+        { limit: 1, context: { active_test: false } },
       );
       if (prods.length > 0) {
-        return NextResponse.json({ found: true, product: prods[0], source: 'packaging' });
+        const p = prods[0];
+        return NextResponse.json({
+          found: true,
+          product: p,
+          source: 'packaging',
+          is_draft: p.active === false,
+        });
       }
     }
 
