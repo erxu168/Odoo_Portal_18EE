@@ -244,10 +244,12 @@ export default function CredentialsPage() {
       const suppData = await suppRes.json();
       const compData = await compRes.json();
       setAllSuppliers(
-        (suppData.suppliers || suppData || []).map((s: any) => ({
-          id: s.id || s.odoo_partner_id,
-          name: s.name,
-        })),
+        (suppData.suppliers || suppData || [])
+          .map((s: any) => ({
+            id: s.odoo_partner_id ?? s.odoo_id ?? s.id,
+            name: s.name,
+          }))
+          .filter((s: { id: number | null; name: string }) => !!s.id && !!s.name),
       );
       setCompanies(
         (compData.companies || compData || []).map((c: any) => ({ id: c.id, name: c.name })),
