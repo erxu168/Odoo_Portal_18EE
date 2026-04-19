@@ -1130,7 +1130,7 @@ At the bottom of `src/components/inventory/ReviewSubmissions.tsx`
 interface DraftReviewPanelProps {
   product: any;
   onApproved: () => void;
-  onLinked: (targetProduct: any) => void;
+  onLinked: () => void;
   onRejected: () => void;
 }
 
@@ -1193,7 +1193,7 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Link failed'); setSubmitting(false); return; }
-      onLinked(target);
+      onLinked();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Network error');
       setSubmitting(false);
@@ -1682,10 +1682,11 @@ Since the real BT scanner isn't available yet, simulate via browser
 console while Quick Count is open. In DevTools:
 
 ```javascript
-// Simulate a BT HID scanner firing keystrokes:
+// Simulate a BT HID scanner firing keystrokes. The hook listens on
+// `window` with capture phase, so dispatch on window directly.
 ['9', '9', '9', '9', '8', '8', '8', '8', 'Enter'].forEach((k, i) => {
   setTimeout(() => {
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
   }, i * 20);
 });
 ```
