@@ -1492,7 +1492,179 @@ git commit -m "[ADD] inventory: review panel for pending products (approve/link/
 
 ---
 
-## Task 8: Manual verification
+## Task 8: Similar-product warning in review panel
+
+Goal: When manager taps "Confirm as new", check Odoo for existing
+products with similar names and show a warning so obvious duplicates
+don't get created ("Chicken Breast" vs "Chicken breast", "Pork belly"
+vs "Pork Belly Fresh"). Manager can still approve anyway or switch to
+link mode with one tap.
+
+This catches: typos, case differences, plural/singular, and near-miss
+names that would otherwise produce duplicate products.
+
+**Files:**
+- Create: `src/app/api/inventory/products/similar/route.ts`
+- Modify: `src/components/inventory/ReviewSubmissions.tsx`
+  (the `DraftReviewPanel` component added in Task 7)
+
+- [ ] **Step 1: Create the similar-products endpoint**
+
+Create `src/app/api/inventory/products/similar/route.ts`:
+
+```typescript
+export const dynamic = 'force-dynamic';
+/**
+ * GET /api/inventory/products/similar?name=<draft name>&exclude_id=<draft id>
+ *
+ * Returns up to 10 existing ACTIVE non-POS products whose names share
+ * any word (>= 3 chars) with the draft name. Used to warn managers
+ * about probable duplicates before they approve a draft.
+ */
+import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
+import { getOdoo } from '@/lib/odoo';
+
+export async function GET(request: Request) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { searchParams } = new URL(request.url);
+  const name = (searchParams.get('name') || '').trim();
+  const excludeId = parseInt(searchParams.get('exclude_id') || '0', 10);
+
+  if (name.length < 2) return NextResponse.json({ matches: [] });
+
+  // Tokenize: split on whitespace, keep words >= 3 chars, lowercase
+  const tokens = name.toLowerCase().split(/\s+/).filter(t => t.length >= 3);
+
+  // If nothing long enough, fall back to the whole name
+  const searchTokens = tokens.length > 0 ? tokens : [name.toLowerCase()];
+
+  try {
+    const odoo = getOdoo();
+    // Build domain: (name ilike token1) OR (name ilike token2) ...
+    // Odoo domain OR syntax: '|' prefixes two operands, so for N operands
+    // we need (N-1) '|' prefixes.
+    const domain: any[] = [
+      ['type', '=', 'consu'],
+      ['available_in_pos', '=', false],
+      ['active', '=', true],
+    ];
+    if (excludeId) domain.push(['id', '!=', excludeId]);
+
+    if (searchTokens.length === 1) {
+      domain.push(['name', 'ilike', searchTokens[0]]);
+    } else {
+      for (let i = 0; i < searchTokens.length - 1; i++) domain.push('|');
+      for (const tok of searchTokens) domain.push(['name', 'ilike', tok]);
+    }
+
+    const matches = await odoo.searchRead(
+      'product.product',
+      domain,
+      ['id', 'name', 'categ_id', 'uom_id', 'barcode'],
+      { limit: 10, order: 'name' },
+    );
+
+    return NextResponse.json({ matches });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[products/similar GET]', msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+```
+
+- [ ] **Step 2: Fetch similar matches when entering approve mode**
+
+Edit the `DraftReviewPanel` component in
+`src/components/inventory/ReviewSubmissions.tsx`. Add state and a fetch
+effect for similar-match warnings. Find the existing state block in the
+component (the one with `const [mode, setMode] = useState<...>`) and
+add alongside it:
+
+```typescript
+  const [similarMatches, setSimilarMatches] = useState<any[]>([]);
+```
+
+Find the existing `useEffect` that fetches categories/uoms when
+`mode === 'approve'`. Add a second effect right below it:
+
+```typescript
+  useEffect(() => {
+    if (mode !== 'approve') { setSimilarMatches([]); return; }
+    const trimmed = name.trim();
+    if (trimmed.length < 2) { setSimilarMatches([]); return; }
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      fetch(`/api/inventory/products/similar?name=${encodeURIComponent(trimmed)}&exclude_id=${product.id}`, { signal: controller.signal })
+        .then(r => r.json())
+        .then(d => setSimilarMatches(d.matches || []))
+        .catch(() => {});
+    }, 300);
+    return () => { clearTimeout(t); controller.abort(); };
+  }, [mode, name, product.id]);
+```
+
+- [ ] **Step 3: Render warning panel above the approve form**
+
+In the `DraftReviewPanel` render, find the `{mode === 'approve' && (`
+block (added in Task 7 Step 3). Insert the warning panel right after
+the opening `<div className="space-y-2">`, before the name input:
+
+```tsx
+          {similarMatches.length > 0 && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-300">
+              <div className="flex items-start gap-2 mb-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" className="flex-shrink-0 mt-0.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <p className="text-[12px] font-semibold text-amber-800">
+                  {similarMatches.length} similar product{similarMatches.length !== 1 ? 's' : ''} already exist. Duplicate?
+                </p>
+              </div>
+              <div className="flex flex-col gap-1">
+                {similarMatches.map((m: any) => (
+                  <button
+                    key={m.id}
+                    onClick={() => handleLink(m)}
+                    disabled={submitting}
+                    className="text-left px-2.5 py-1.5 rounded-lg bg-white border border-amber-200 text-[13px] active:bg-amber-50 disabled:opacity-50"
+                  >
+                    <span className="font-semibold text-gray-900">{m.name}</span>
+                    <span className="text-gray-500 text-[11px] ml-2">{m.categ_id?.[1] || ''}</span>
+                    <span className="text-amber-700 text-[11px] ml-2 font-semibold">Link to this →</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+```
+
+One-tap "Link to this" shortcut — clicks reuse the existing
+`handleLink(target)` function from Task 7.
+
+- [ ] **Step 4: Build check**
+
+```bash
+cd /Users/ethan/Odoo_Portal_18EE && npm run build
+```
+
+Expected: exit 0.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/app/api/inventory/products/similar/route.ts \
+        src/components/inventory/ReviewSubmissions.tsx
+git commit -m "[ADD] inventory: warn manager about similar products during draft approve"
+```
+
+---
+
+## Task 9: Manual verification
 
 No automated tests exist — verify manually per CLAUDE.md convention.
 
@@ -1567,7 +1739,7 @@ required here if no files changed).
 
 ---
 
-## Task 9: Deploy & final verification
+## Task 10: Deploy & final verification
 
 - [ ] **Step 1: Push branch**
 
