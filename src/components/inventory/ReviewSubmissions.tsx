@@ -571,6 +571,7 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
   const [uomId, setUomId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [similarMatches, setSimilarMatches] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -579,6 +580,20 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
     fetch('/api/inventory/categories').then(r => r.json()).then(d => setCategories(d.categories || [])).catch(() => {});
     fetch('/api/inventory/uoms').then(r => r.json()).then(d => setUoms(d.uoms || [])).catch(() => {});
   }, [mode]);
+
+  useEffect(() => {
+    if (mode !== 'approve') { setSimilarMatches([]); return; }
+    const trimmed = name.trim();
+    if (trimmed.length < 2) { setSimilarMatches([]); return; }
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      fetch(`/api/inventory/products/similar?name=${encodeURIComponent(trimmed)}&exclude_id=${product.id}`, { signal: controller.signal })
+        .then(r => r.json())
+        .then(d => setSimilarMatches(d.matches || []))
+        .catch(() => {});
+    }, 300);
+    return () => { clearTimeout(t); controller.abort(); };
+  }, [mode, name, product.id]);
 
   useEffect(() => {
     if (mode !== 'link' || search.length < 2) { setSearchResults([]); return; }
@@ -654,6 +669,33 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
 
       {mode === 'approve' && (
         <div className="space-y-2">
+          {similarMatches.length > 0 && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-300">
+              <div className="flex items-start gap-2 mb-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" className="flex-shrink-0 mt-0.5">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <p className="text-[12px] font-semibold text-amber-800">
+                  {similarMatches.length} similar product{similarMatches.length !== 1 ? 's' : ''} already exist. Duplicate?
+                </p>
+              </div>
+              <div className="flex flex-col gap-1">
+                {similarMatches.map((m: any) => (
+                  <button
+                    key={m.id}
+                    onClick={() => handleLink(m)}
+                    disabled={submitting}
+                    className="text-left px-2.5 py-1.5 rounded-lg bg-white border border-amber-200 text-[13px] active:bg-amber-50 disabled:opacity-50"
+                  >
+                    <span className="font-semibold text-gray-900">{m.name}</span>
+                    <span className="text-gray-500 text-[11px] ml-2">{m.categ_id?.[1] || ''}</span>
+                    <span className="text-amber-700 text-[11px] ml-2 font-semibold">Link to this →</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Product name"
             className="w-full px-3 py-2 rounded-lg border border-gray-300 text-[14px]" />
           <select value={categId ?? ''} onChange={(e) => setCategId(Number(e.target.value) || null)}
