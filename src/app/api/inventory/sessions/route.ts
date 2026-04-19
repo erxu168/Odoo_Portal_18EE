@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate } from '@/lib/inventory-db';
+import { createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap } from '@/lib/inventory-db';
 import { logAudit } from '@/lib/db';
 
 
@@ -95,6 +95,25 @@ export async function PUT(request: Request) {
         return NextResponse.json({
           error: `Please count all items before submitting. ${entries.length}/${expectedCount} counted.`,
           code: 'INCOMPLETE_COUNT',
+        }, { status: 400 });
+      }
+    }
+
+    // Enforce photo requirement: for any flagged product with qty > 0,
+    // there must be at least one photo attached.
+    {
+      const productIds = entries.map((e: any) => e.product_id);
+      const flagRows = getProductFlags(productIds);
+      const flagMap: Record<number, boolean> = {};
+      flagRows.forEach((f: any) => { flagMap[f.odoo_product_id] = !!f.requires_photo; });
+      const photoMap = getCountPhotosMap('count_entries', entries.map((e: any) => e.id));
+      const missing = entries.filter((e: any) =>
+        flagMap[e.product_id] && e.counted_qty > 0 && (photoMap[e.id]?.length || 0) === 0
+      );
+      if (missing.length > 0) {
+        return NextResponse.json({
+          error: `${missing.length} item${missing.length !== 1 ? 's' : ''} still need a photo`,
+          code: 'PHOTO_REQUIRED',
         }, { status: 400 });
       }
     }

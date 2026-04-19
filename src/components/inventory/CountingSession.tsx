@@ -5,6 +5,7 @@ import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, S
 import NumpadModal from './NumpadModal';
 import FilePicker from "@/components/ui/FilePicker";
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
+import PhotoCaptureStrip from './PhotoCaptureStrip';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 
 interface CountingSessionProps {
@@ -31,6 +32,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [showConfirm, setShowConfirm] = useState(false);
   const [proofPhoto, setProofPhoto] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [flags, setFlags] = useState<Record<number, boolean>>({});
+  const [rowPhotos, setRowPhotos] = useState<Record<number, string[]>>({});
 
   // -- Barcode scanner --
   const [showScanner, setShowScanner] = useState(false);
@@ -63,10 +66,15 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setSession(sess);
 
       const entryMap: Record<number, number> = {};
+      const photoMap: Record<number, string[]> = {};
       for (const e of (countRes.entries || [])) {
         entryMap[e.product_id] = e.counted_qty;
+        if (Array.isArray(e.photos) && e.photos.length > 0) {
+          photoMap[e.product_id] = e.photos;
+        }
       }
       setEntries(entryMap);
+      setRowPhotos(photoMap);
       setSystemQtys(countRes.system_qtys || {});
 
       let productIds: number[] = [];
@@ -101,6 +109,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   }, [sessionId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    fetch('/api/inventory/product-flags').then(r => r.json()).then(d => {
+      const map: Record<number, boolean> = {};
+      (d.flags || []).forEach((f: any) => { map[f.odoo_product_id] = !!f.requires_photo; });
+      setFlags(map);
+    }).catch(() => {});
+  }, []);
 
   // Build categories using LEAF names only
   const categories = React.useMemo(() => {
@@ -251,20 +267,52 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   function ProductRow({ p }: { p: any }) {
     const val = entries[p.id] ?? null;
     const uom = p.uom_id?.[1] || 'Units';
+    const flagged = !!flags[p.id];
+    const prodPhotos = rowPhotos[p.id] || [];
     return (
-      <div className="flex items-center gap-3 py-3 border-b border-gray-100">
-        <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
-          <span className="text-[var(--fs-xxl)] font-semibold text-gray-900 truncate">{p.name}</span>
-          <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">{uom}</span>
+      <div className="py-3 border-b border-gray-100">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className="text-[var(--fs-xxl)] font-semibold text-gray-900 truncate">{p.name}</span>
+              <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">{uom}</span>
+              {flagged && (
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0">
+                  Photo required
+                </span>
+              )}
+            </div>
+          </div>
+          {!isReadOnly ? (
+            <Stepper value={val} uom={uom}
+              onMinus={() => stepQty(p, -1)}
+              onPlus={() => stepQty(p, 1)}
+              onTap={() => openNumpad(p)} />
+          ) : (
+            <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700">
+              {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
+            </div>
+          )}
         </div>
-        {!isReadOnly ? (
-          <Stepper value={val} uom={uom}
-            onMinus={() => stepQty(p, -1)}
-            onPlus={() => stepQty(p, 1)}
-            onTap={() => openNumpad(p)} />
-        ) : (
-          <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700">
-            {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
+        {flagged && !isReadOnly && (val ?? 0) > 0 && (
+          <div className="mt-2">
+            <PhotoCaptureStrip
+              photos={prodPhotos}
+              onChange={(next) => {
+                setRowPhotos(prev => ({ ...prev, [p.id]: next }));
+                fetch('/api/inventory/counts', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    session_id: sessionId,
+                    product_id: p.id,
+                    counted_qty: val,
+                    uom,
+                    photos: next,
+                  }),
+                });
+              }}
+            />
           </div>
         )}
       </div>
