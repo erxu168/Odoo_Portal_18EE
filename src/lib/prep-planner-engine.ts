@@ -1,20 +1,25 @@
 /**
- * Prep Planner forecast engine — Phase 1.
+ * Prep Planner forecast engine.
  *
  * Pipeline:
- *   1. backfillDemandHistory  — pull POS order lines from Odoo,
- *                               aggregate to (company, product, date, hour)
- *                               in Berlin local tz, upsert to prep_demand_history.
- *   2. backfillWeather        — pull Berlin historical daily weather via
- *                               Open-Meteo, upsert to prep_weather_daily.
- *                               Also fetch forecast weather for the horizon.
- *   3. computeForecasts       — for each product, compute per-hour forecasts
- *                               for the next N days using EWMA of same-DOW-hour
- *                               samples, tagged with holiday + seasonal + weather
- *                               multipliers.
+ *   1. backfillDemandHistory    — pull POS order lines from Odoo,
+ *                                 aggregate to (company, product, date, hour)
+ *                                 in Berlin local tz, upsert to prep_demand_history.
+ *   2. backfillWeather          — pull Berlin historical daily weather via
+ *                                 Open-Meteo, upsert to prep_weather_daily.
+ *                                 Also fetch forecast weather for the horizon.
+ *   3. computeForecasts         — per product, compute per-hour forecasts for
+ *                                 the next N days using EWMA of same-DOW-hour
+ *                                 samples, tagged with holiday + seasonal +
+ *                                 weather multipliers. Writes prep_forecasts
+ *                                 (POS-product level).
+ *   3b. computePrepItemForecasts — Phase 2: project POS-product forecasts onto
+ *                                  cook-facing prep_items via prep_pos_link.
+ *                                  Writes prep_item_forecasts. No-op for
+ *                                  companies with no configured prep_items.
  *
  * Phase 1 computes baseline + seasonal + holiday multipliers.
- * Weather + dow multipliers are stored as 1.0 for now — Phase 2 will replace
+ * Weather + dow multipliers are stored as 1.0 for now — Phase 2+ will replace
  * them with per-bucket and per-DOW ratios once enough tagged history exists.
  *
  * Algorithm source: Prep Planner Algorithm Design doc, Sections 4.1–4.4.
@@ -44,6 +49,7 @@ import {
   type DemandRow,
   type ForecastRow,
 } from './prep-planner-db';
+import { computePrepItemForecasts } from './prep-planner-mapping-db';
 
 // ── Constants ──────────────────────────────────────────
 
@@ -251,7 +257,7 @@ export async function backfillDemandHistory(
   }
 
   const rows: DemandRow[] = [];
-  for (const b of Array.from(buckets.values())) {
+  for (const b of buckets.values()) {
     const dateObj = new Date(b.sale_date + 'T12:00:00+01:00');
     const holiday = isHoliday(dateObj) !== null;
     rows.push({
@@ -373,7 +379,7 @@ export async function computeForecasts(
       }
       arr.push({ date: h.sale_date, qty: h.qty });
     }
-    for (const arr of Array.from(bucket.values())) {
+    for (const arr of bucket.values()) {
       arr.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     }
 
@@ -474,6 +480,7 @@ export interface ForecastJobResult {
   demandRowsPulled: number;
   weatherRowsPulled: number;
   forecastRowsWritten: number;
+  prepItemRowsWritten: number;
   durationMs: number;
   error?: string;
 }
@@ -493,6 +500,7 @@ export async function runForecastJob(
   let demandRowsPulled = 0;
   let weatherRowsPulled = 0;
   let forecastRowsWritten = 0;
+  let prepItemRowsWritten = 0;
 
   try {
     const today = berlinToday();
@@ -514,7 +522,7 @@ export async function runForecastJob(
       weatherRowsPulled += await backfillForecastWeather(horizonDays);
     }
 
-    // 3. Forecast computation per company
+    // 3. Forecast computation per company (POS-product level)
     for (const companyId of opts.companyIds) {
       const n = await computeForecasts(
         companyId,
@@ -523,6 +531,12 @@ export async function runForecastJob(
         lookbackDays,
       );
       forecastRowsWritten += n;
+    }
+
+    // 3b. Phase 2 projection: POS-product forecasts → prep-item forecasts.
+    //     Silent no-op for companies with no prep_items / prep_pos_link set.
+    for (const companyId of opts.companyIds) {
+      prepItemRowsWritten += computePrepItemForecasts(companyId, runId);
     }
 
     finishForecastRun(runId, {
@@ -538,6 +552,7 @@ export async function runForecastJob(
       demandRowsPulled,
       weatherRowsPulled,
       forecastRowsWritten,
+      prepItemRowsWritten,
       durationMs: Date.now() - startedAt,
     };
   } catch (err) {
@@ -555,6 +570,7 @@ export async function runForecastJob(
       demandRowsPulled,
       weatherRowsPulled,
       forecastRowsWritten,
+      prepItemRowsWritten,
       durationMs: Date.now() - startedAt,
       error: msg,
     };
