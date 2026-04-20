@@ -596,6 +596,10 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
   const [uoms, setUoms] = useState<any[]>([]);
   const [categId, setCategId] = useState<number | null>(null);
   const [uomId, setUomId] = useState<number | null>(null);
+  const [cost, setCost] = useState<string>('');
+  const [vendorSearch, setVendorSearch] = useState('');
+  const [vendors, setVendors] = useState<any[]>([]);
+  const [vendor, setVendor] = useState<{ id: number; name: string } | null>(null);
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [similarMatches, setSimilarMatches] = useState<any[]>([]);
@@ -622,6 +626,24 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
     return () => { clearTimeout(t); controller.abort(); };
   }, [mode, name, product.id]);
 
+  // Vendor search (only while approving and user is typing)
+  useEffect(() => {
+    if (mode !== 'approve') return;
+    if (vendor) return; // vendor picked — don't search
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      const q = vendorSearch.trim();
+      const url = q.length >= 1
+        ? `/api/inventory/vendors?search=${encodeURIComponent(q)}`
+        : '/api/inventory/vendors';
+      fetch(url, { signal: controller.signal })
+        .then(r => r.json())
+        .then(d => setVendors(d.vendors || []))
+        .catch(() => {});
+    }, 250);
+    return () => { clearTimeout(t); controller.abort(); };
+  }, [mode, vendorSearch, vendor]);
+
   useEffect(() => {
     if (mode !== 'link' || search.length < 2) { setSearchResults([]); return; }
     const t = setTimeout(() => {
@@ -635,13 +657,24 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
 
   async function handleApprove() {
     if (!name.trim() || !categId || !uomId) return;
+    const costNum = cost.trim() === '' ? null : parseFloat(cost.replace(',', '.'));
+    if (costNum !== null && (isNaN(costNum) || costNum < 0)) {
+      setError('Cost must be a positive number');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       const res = await fetch(`/api/inventory/products/${product.id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), categ_id: categId, uom_id: uomId }),
+        body: JSON.stringify({
+          name: name.trim(),
+          categ_id: categId,
+          uom_id: uomId,
+          cost: costNum,
+          vendor_id: vendor?.id ?? null,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Approve failed'); setSubmitting(false); return; }
@@ -732,9 +765,50 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
           </select>
           <select value={uomId ?? ''} onChange={(e) => setUomId(Number(e.target.value) || null)}
             className="w-full px-3 py-2 rounded-lg border border-gray-300 text-[14px]">
-            <option value="">Select UOM…</option>
+            <option value="">Select unit of measure…</option>
             {uoms.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={cost}
+            onChange={(e) => setCost(e.target.value)}
+            placeholder="Cost per unit (optional)"
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 text-[14px]"
+          />
+          {vendor ? (
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-white border border-gray-200 text-[14px]">
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold text-gray-500 uppercase">Vendor</p>
+                <p className="text-[14px] text-gray-900 truncate">{vendor.name}</p>
+              </div>
+              <button
+                onClick={() => setVendor(null)}
+                className="text-[12px] text-[#F5800A] font-semibold ml-2"
+              >Change</button>
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                value={vendorSearch}
+                onChange={(e) => setVendorSearch(e.target.value)}
+                placeholder="Search vendor (optional)"
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 text-[14px]"
+              />
+              {vendors.length > 0 && (
+                <div className="max-h-32 overflow-y-auto flex flex-col gap-1 bg-white border border-gray-200 rounded-lg">
+                  {vendors.map((v: any) => (
+                    <button
+                      key={v.id}
+                      onClick={() => { setVendor({ id: v.id, name: v.name }); setVendorSearch(''); }}
+                      className="text-left px-3 py-2 text-[13px] active:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                    >{v.name}</button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
           {error && <p className="text-[12px] text-red-600">{error}</p>}
           <div className="flex gap-2">
             <button onClick={() => setMode('idle')} disabled={submitting} className="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-[13px] font-semibold">Back</button>
