@@ -10,22 +10,17 @@ interface ScannerSinkProps {
 }
 
 /**
- * Hidden focusable input that captures Bluetooth HID scanner keystrokes
- * on Android native WebView.
+ * Focus-trap input that captures Bluetooth HID scanner keystrokes on
+ * Android native WebView.
  *
- * Why this exists: Android WebView does not forward physical keyboard
- * events to the DOM unless an input element has focus. A window-level
- * `keydown` listener (our useHardwareScanner hook) sees nothing until a
- * visible input is tapped. Desktop browsers dispatch window-level events
- * just fine, so the hook alone was enough there.
+ * Why this exists: Android WebView only dispatches physical keyboard
+ * events to the DOM when a focusable input has focus. A window-level
+ * `keydown` listener sees nothing otherwise. Desktop browsers don't
+ * have this limitation.
  *
- * Placement: render once per screen where scanning is allowed. The input
- * stays focused whenever no other input or button has focus — pointer
- * taps on buttons/lists fall through to the body, and we refocus here.
- *
- * User-visible input (search, numpad) steals focus normally; while they
- * are focused, this sink is dormant, so typing into the search box still
- * works.
+ * Approach: render a readOnly input (suppresses soft keyboard when
+ * tapped), keep it focused by refocusing on every blur, and buffer
+ * keystrokes until Enter to fire onScan.
  */
 export default function ScannerSink({ onScan, enabled, minLength = 4, maxGap = 120 }: ScannerSinkProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -33,32 +28,11 @@ export default function ScannerSink({ onScan, enabled, minLength = 4, maxGap = 1
   const lastKeyTimeRef = useRef<number>(0);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Refocus the sink whenever nothing else is focused (after a tap on a
-  // non-input element, the active element becomes document.body — we
-  // reclaim focus so the next scan is captured).
+  // Take focus on mount + keep taking it if enabled changes.
   useEffect(() => {
     if (!enabled) return;
-
-    function ensureFocus() {
-      const active = document.activeElement as HTMLElement | null;
-      if (!active || active === document.body) {
-        inputRef.current?.focus();
-      }
-    }
-
-    // Initial focus
-    const initialTimer = setTimeout(ensureFocus, 50);
-
-    // Refocus whenever the window regains focus
-    window.addEventListener('focus', ensureFocus);
-    // Refocus after taps — pointer events land before click handlers run
-    document.addEventListener('pointerup', ensureFocus);
-
-    return () => {
-      clearTimeout(initialTimer);
-      window.removeEventListener('focus', ensureFocus);
-      document.removeEventListener('pointerup', ensureFocus);
-    };
+    const t = setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 50);
+    return () => clearTimeout(t);
   }, [enabled]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -86,38 +60,51 @@ export default function ScannerSink({ onScan, enabled, minLength = 4, maxGap = 1
       bufferRef.current += e.key;
     }
 
-    clearTimerRef.current = setTimeout(() => { bufferRef.current = ''; }, 250);
+    clearTimerRef.current = setTimeout(() => { bufferRef.current = ''; }, 300);
   }
 
-  // Keep the underlying <input> value empty so nothing accumulates.
-  function handleInput(e: React.FormEvent<HTMLInputElement>) {
-    (e.target as HTMLInputElement).value = '';
+  // Keep focus — whenever we lose it, grab it back on the next tick so
+  // another focusable element has a chance to claim it if the user
+  // actually tapped there. If nothing else wants focus, we reclaim.
+  function handleBlur() {
+    if (!enabled) return;
+    setTimeout(() => {
+      const active = document.activeElement as HTMLElement | null;
+      if (!active || active === document.body) {
+        inputRef.current?.focus({ preventScroll: true });
+      }
+    }, 0);
   }
+
+  if (!enabled) return null;
 
   return (
     <input
       ref={inputRef}
       type="text"
+      readOnly
+      autoFocus
+      aria-hidden="true"
+      tabIndex={-1}
       inputMode="none"
       autoCapitalize="off"
       autoCorrect="off"
       spellCheck={false}
-      aria-hidden="true"
-      tabIndex={-1}
       onKeyDown={handleKeyDown}
-      onInput={handleInput}
+      onBlur={handleBlur}
       style={{
         position: 'fixed',
-        top: 0,
-        left: 0,
-        opacity: 0,
+        bottom: 0,
+        right: 0,
         width: 1,
         height: 1,
-        pointerEvents: 'none',
+        opacity: 0.01,
         border: 'none',
         outline: 'none',
+        padding: 0,
+        margin: 0,
+        background: 'transparent',
         caretColor: 'transparent',
-        zIndex: -1,
       }}
     />
   );
