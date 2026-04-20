@@ -18,7 +18,10 @@ interface UseHardwareScannerOptions {
   onScan: (barcode: string) => void;
   /** Minimum barcode length to accept (default 4). */
   minLength?: number;
-  /** Max ms between keystrokes to consider as scanner input (default 55). */
+  /** Max ms between keystrokes to consider as scanner input (default 120).
+   *  Bluetooth HID scanners are slower than USB — USB is often 5-15ms per
+   *  char, BT typically 30-80ms and spikes higher on Android. 120ms gives
+   *  us margin without catching human typing (150ms+). */
   maxGap?: number;
 }
 
@@ -26,7 +29,7 @@ export function useHardwareScanner({
   enabled = true,
   onScan,
   minLength = 4,
-  maxGap = 55,
+  maxGap = 120,
 }: UseHardwareScannerOptions) {
   // Use a ref so the effect doesn't re-run when onScan identity changes
   const onScanRef = useRef(onScan);
