@@ -78,9 +78,23 @@ export function useHardwareScanner({
       clearTimer = setTimeout(() => { buffer = ''; }, 200);
     }
 
+    // Native Android bridge path: MainActivity.dispatchKeyEvent() captures
+    // HID scanner input before the WebView swallows it and dispatches a
+    // CustomEvent('nativeHidScan', { detail: { barcode } }) on Enter.
+    // This bypasses Android WebView's focus requirement entirely.
+    function handleNativeScan(e: Event) {
+      const detail = (e as CustomEvent).detail || {};
+      const barcode: string = detail.barcode;
+      if (typeof barcode === 'string' && barcode.length >= minLength) {
+        onScanRef.current(barcode);
+      }
+    }
+
     window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('nativeHidScan', handleNativeScan as EventListener);
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('nativeHidScan', handleNativeScan as EventListener);
       if (clearTimer) clearTimeout(clearTimer);
     };
   }, [enabled, minLength, maxGap]);

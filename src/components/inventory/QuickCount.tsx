@@ -5,7 +5,6 @@ import { FilterBar, FilterPill, SearchBar, Stepper, Spinner, EmptyState } from '
 import NumpadModal from './NumpadModal';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
-import ScannerSink from './ScannerSink';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useCompany } from '@/lib/company-context';
 
@@ -180,10 +179,6 @@ export default function QuickCount({ userRole }: QuickCountProps) {
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      <ScannerSink
-        enabled={!numpad.open && !showScanner}
-        onScan={handleHardwareScan}
-      />
       {/* Location pills — only shown when the active company has multiple
           internal locations. Company scope comes from the top-bar selector. */}
       {locations.length > 1 && (
