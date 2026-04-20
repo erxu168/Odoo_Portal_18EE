@@ -13,7 +13,7 @@ interface QuickCountProps {
 }
 
 export default function QuickCount({ userRole }: QuickCountProps) {
-  const { companyId } = useCompany();
+  const { companyId, loading: companyLoading } = useCompany();
   const [products, setProducts] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +44,10 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   });
 
   const fetchData = useCallback(async () => {
-    if (!companyId) return;
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [prodRes, locRes, flagRes] = await Promise.all([
@@ -161,7 +164,18 @@ export default function QuickCount({ userRole }: QuickCountProps) {
     }
   }
 
-  if (loading) return <Spinner />;
+  if (loading || companyLoading) return <Spinner />;
+
+  if (!companyId) {
+    return (
+      <div className="flex flex-col min-h-0 flex-1 px-4 pt-6">
+        <EmptyState
+          title="No company selected"
+          body="Pick a company in the top-right selector to start counting. If nothing appears there, ask an admin to assign a company to your account."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
