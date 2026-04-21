@@ -307,6 +307,25 @@ export async function PATCH(
                 } catch {
                   await odoo.call(wizModel, 'process', [wizIds]);
                 }
+              } else if (wizModel === 'mrp.consumption.warning') {
+                // Confirm consumption even when quantities differ from expected
+                const cwResult = await odoo.call(wizModel, 'action_confirm', [wizIds]);
+                // action_confirm may return another wizard (e.g. backorder)
+                if (cwResult && typeof cwResult === 'object' && cwResult.res_model) {
+                  const nextModel = cwResult.res_model;
+                  const nextCtx = { ...(cwResult.context || {}), active_id: moId, active_ids: [moId] };
+                  const nextId = await odoo.create(nextModel, {}, { context: nextCtx });
+                  const nextIds = Array.isArray(nextId) ? nextId : [nextId];
+                  if (nextModel === 'mrp.production.backorder') {
+                    try {
+                      await odoo.call(nextModel, 'action_close_mo', [nextIds]);
+                    } catch {
+                      await odoo.call(nextModel, 'process', [nextIds]);
+                    }
+                  } else {
+                    await odoo.call(nextModel, 'process', [nextIds]);
+                  }
+                }
               } else {
                 await odoo.call(wizModel, 'process', [wizIds]);
               }
