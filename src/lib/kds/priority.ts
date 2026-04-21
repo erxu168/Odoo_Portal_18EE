@@ -2,7 +2,8 @@
  * KDS priority, timer tiers, and task grouping utilities.
  * Pure functions — no side effects, no state.
  */
-import type { KdsOrder, KdsSettings, TimerTier, TaskGroup, OrderType } from '@/types/kds';
+import type { KdsOrder, KdsSettings, TimerTier, TaskGroup, OrderType, ProductConfig, FireLane, FireTask, PrepType, SourceStation } from '@/types/kds';
+import { SOURCES, PREP_TYPE_ORDER, PREP_TYPE_META } from '@/types/kds';
 
 export function effectiveWait(order: KdsOrder, boost: number): number {
   return order.waitMin + (order.type === 'Takeaway' ? boost : 0);
@@ -90,4 +91,101 @@ export function getTableRemaining(orders: KdsOrder[], ticketId: number): { name:
   const order = orders.find(o => o.id === ticketId);
   if (!order) return [];
   return order.items.filter(i => !i.done).map(i => ({ name: i.name, qty: i.qty }));
+}
+
+/**
+ * Build a fire plan: items grouped by prep priority, batched by station,
+ * identical items consolidated across orders.
+ *
+ * Priority order: ondemand (bottleneck, start first) -> batch -> advance (just plate)
+ * Within each lane: sorted by urgency (longest wait first)
+ * Identical items across orders consolidated into one task
+ */
+export function buildFirePlan(
+  orders: KdsOrder[],
+  boost: number,
+  productConfig: ProductConfig[],
+): FireLane[] {
+  const configMap = new Map<string, { sourceStation: SourceStation; prepType: PrepType }>();
+  for (const pc of productConfig) {
+    configMap.set(pc.productName, {
+      sourceStation: pc.sourceStation as SourceStation,
+      prepType: pc.prepType as PrepType,
+    });
+  }
+
+  function getConfig(itemName: string): { sourceStation: SourceStation; prepType: PrepType } {
+    const fromDb = configMap.get(itemName);
+    if (fromDb) return fromDb;
+    const fromSources = SOURCES[itemName];
+    return {
+      sourceStation: fromSources?.source || 'cold',
+      prepType: 'ondemand',
+    };
+  }
+
+  const taskMap: Record<string, FireTask> = {};
+
+  for (const order of orders) {
+    for (const item of order.items) {
+      const cfg = getConfig(item.name);
+      if (!taskMap[item.name]) {
+        taskMap[item.name] = {
+          name: item.name,
+          totalQty: 0,
+          doneQty: 0,
+          tables: [],
+          entries: [],
+          sourceStation: cfg.sourceStation,
+          prepType: cfg.prepType,
+        };
+      }
+      const task = taskMap[item.name];
+      task.totalQty += item.qty;
+      if (item.done) task.doneQty += item.qty;
+      if (!task.tables.includes(order.table)) task.tables.push(order.table);
+      task.entries.push({
+        ticketId: order.id,
+        itemId: item.id,
+        qty: item.qty,
+        table: order.table,
+        type: order.type,
+        note: item.note || null,
+        done: item.done,
+        waitMin: order.waitMin,
+        effectiveWait: effectiveWait(order, boost),
+      });
+    }
+  }
+
+  const tasks = Object.values(taskMap);
+  for (const task of tasks) {
+    task.entries.sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      return b.effectiveWait - a.effectiveWait;
+    });
+  }
+
+  const lanes: FireLane[] = [];
+  for (const prepType of PREP_TYPE_ORDER) {
+    const meta = PREP_TYPE_META[prepType];
+    const laneTasks = tasks
+      .filter(t => t.prepType === prepType && t.totalQty > t.doneQty)
+      .sort((a, b) => {
+        const aMax = Math.max(...a.entries.filter(e => !e.done).map(e => e.effectiveWait), 0);
+        const bMax = Math.max(...b.entries.filter(e => !e.done).map(e => e.effectiveWait), 0);
+        return bMax - aMax;
+      });
+
+    if (laneTasks.length > 0) {
+      lanes.push({
+        prepType,
+        label: meta.label,
+        emoji: meta.emoji,
+        tasks: laneTasks,
+      });
+    }
+  }
+
+  return lanes;
 }
