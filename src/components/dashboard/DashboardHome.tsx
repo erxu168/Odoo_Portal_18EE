@@ -1,8 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import SortableTileGrid from '@/components/ui/SortableTileGrid';
+import CookPlanModal, { type CookPlanItem } from '@/components/prep-planner/CookPlanModal';
+import { DEFAULT_COMPANY_ID } from '@/components/prep-planner/companies';
+
+function berlinToday(): string {
+  return new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
+}
 
 /**
  * Dashboard — canonical design system (colored semantic tiles, 2-col grid).
@@ -110,6 +116,10 @@ export default function DashboardHome() {
   const [now, setNow] = useState(new Date());
   const [isCandidate, setIsCandidate] = useState(false);
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
+  const [cookPlanItems, setCookPlanItems] = useState<CookPlanItem[] | null>(null);
+  const [cookPlanOpen, setCookPlanOpen] = useState(false);
+  const cookPlanDate = berlinToday();
+  const cookPlanCompanyId = DEFAULT_COMPANY_ID;
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
 
@@ -139,6 +149,42 @@ export default function DashboardHome() {
     }
     load();
   }, []);
+
+  const loadCookPlan = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/prep-planner/cook-plan?companyId=${cookPlanCompanyId}&date=${cookPlanDate}`);
+      if (!res.ok) { setCookPlanItems([]); return; }
+      const data = await res.json();
+      setCookPlanItems(data.items || []);
+      return data.items as CookPlanItem[];
+    } catch {
+      setCookPlanItems([]);
+    }
+  }, [cookPlanCompanyId, cookPlanDate]);
+
+  // Fetch cook plan after we know the role
+  useEffect(() => {
+    if (!userRole) return;
+    if (isCandidate) return;
+    loadCookPlan().then(items => {
+      if (!items || items.length === 0) return;
+      const pending = items.filter(i => !i.my_ack).length;
+      // Auto-open for staff once per day (dismissable, sessionStorage-gated)
+      if (userRole === 'staff' && pending > 0) {
+        const seenKey = `cook_plan_seen_${cookPlanDate}`;
+        try {
+          if (!sessionStorage.getItem(seenKey)) {
+            setCookPlanOpen(true);
+          }
+        } catch { /* storage disabled, skip auto-open */ }
+      }
+    });
+  }, [userRole, isCandidate, loadCookPlan, cookPlanDate]);
+
+  function closeCookPlan() {
+    setCookPlanOpen(false);
+    try { sessionStorage.setItem(`cook_plan_seen_${cookPlanDate}`, '1'); } catch { /* ignore */ }
+  }
 
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -231,6 +277,48 @@ export default function DashboardHome() {
         </div>
       )}
 
+      {/* Today's prep callout */}
+      {cookPlanItems && cookPlanItems.length > 0 && (() => {
+        const pending = cookPlanItems.filter(i => !i.my_ack).length;
+        const total = cookPlanItems.length;
+        const allDone = pending === 0;
+        const totalQty = cookPlanItems.reduce((s, i) => s + (i.my_ack?.planned_qty ?? i.forecast_qty), 0);
+        return (
+          <div className="px-5 pt-4">
+            <button
+              onClick={() => setCookPlanOpen(true)}
+              className={`w-full rounded-2xl border p-4 flex items-center gap-3 text-left shadow-sm active:scale-[0.98] transition-transform ${
+                allDone ? 'bg-green-50 border-green-200' : 'bg-cyan-50 border-cyan-200'
+              }`}
+            >
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                allDone ? 'bg-green-100 text-green-600' : 'bg-cyan-100 text-cyan-600'
+              }`}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+                </svg>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[var(--fs-md)] font-bold text-gray-900">Today&rsquo;s prep</div>
+                <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">
+                  {allDone
+                    ? `${total} item${total === 1 ? '' : 's'} · ${Math.round(totalQty)} portions planned`
+                    : `${pending} of ${total} pending · ${Math.round(totalQty)} portions`}
+                </div>
+              </div>
+              {!allDone && (
+                <span className="min-w-[22px] h-6 px-2 rounded-full bg-cyan-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-6 text-center">
+                  {pending}
+                </span>
+              )}
+              {allDone && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+              )}
+            </button>
+          </div>
+        );
+      })()}
+
       {/* App tiles */}
       <div className="px-5 pt-3">
         <p className="text-[var(--fs-xs)] font-bold text-gray-400 tracking-widest uppercase mb-3">Apps</p>
@@ -278,6 +366,16 @@ export default function DashboardHome() {
           <span className="text-green-600 font-semibold">KRAWINGS</span> SSAM &middot; Staff Portal
         </span>
       </div>
+
+      {cookPlanOpen && cookPlanItems && (
+        <CookPlanModal
+          date={cookPlanDate}
+          companyId={cookPlanCompanyId}
+          items={cookPlanItems}
+          onClose={closeCookPlan}
+          onAckChange={loadCookPlan}
+        />
+      )}
     </div>
   );
 }
