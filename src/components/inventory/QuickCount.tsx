@@ -76,10 +76,15 @@ export default function QuickCount({ userRole }: QuickCountProps) {
     try { navigator.vibrate([60, 30, 60]); } catch { /* ignore */ }
   }
 
-  function handleUnknownCreated(product: any, qtyValue: number) {
-    // Add to local product list + record count locally
+  function handleUnknownCreated(product: any, qtyValue: number, pkgPhotos: string[]) {
+    // Add to local product list + record count locally. Attach the
+    // front + back package photos to this line so the manager sees
+    // them next to the count during review.
     setProducts((prev) => prev.find((p) => p.id === product.id) ? prev : [...prev, product]);
     setCounts((prev) => ({ ...prev, [product.id]: qtyValue }));
+    if (pkgPhotos.length > 0) {
+      setPhotos((prev) => ({ ...prev, [product.id]: pkgPhotos }));
+    }
     setUnknownBarcode(null);
     const uom = product.uom_id?.[1] || 'Units';
     showScanToast(`${product.name} added · ${qtyValue} ${uom}`, 'ok');

@@ -2,7 +2,7 @@
 
 import React, { useRef, useState } from 'react';
 
-const MAX_PHOTOS = 3;
+const DEFAULT_MAX_PHOTOS = 3;
 const MAX_DIMENSION = 1280;
 const JPEG_QUALITY = 0.7;
 
@@ -10,14 +10,17 @@ interface PhotoCaptureStripProps {
   photos: string[];
   onChange: (photos: string[]) => void;
   disabled?: boolean;
+  /** Cap on how many photos can be attached. Defaults to 3. */
+  max?: number;
 }
 
 /**
- * Capture up to 3 photos inline. Stores each photo as a JPEG base64
- * dataURL, compressed to max 1280px on the long edge at 0.7 quality.
- * Caller owns the photos state; this component just renders + emits.
+ * Capture up to `max` photos inline (default 3). Stores each photo as
+ * a JPEG base64 dataURL, compressed to max 1280px on the long edge at
+ * 0.7 quality. Caller owns the photos state; this component just
+ * renders + emits.
  */
-export default function PhotoCaptureStrip({ photos, onChange, disabled }: PhotoCaptureStripProps) {
+export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DEFAULT_MAX_PHOTOS }: PhotoCaptureStripProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
 
@@ -40,7 +43,7 @@ export default function PhotoCaptureStrip({ photos, onChange, disabled }: PhotoC
     onChange(next);
   }
 
-  const atMax = photos.length >= MAX_PHOTOS;
+  const atMax = photos.length >= max;
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
