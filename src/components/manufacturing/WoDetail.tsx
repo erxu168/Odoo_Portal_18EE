@@ -8,7 +8,7 @@ interface WoDetailProps {
   moId: number;
   woId: number;
   onBack: () => void;
-  onDone: () => void;
+  onDone: (nextWoId?: number) => void;
 }
 
 export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) {
@@ -126,7 +126,13 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
   async function handleDoneConfirmed() {
     setShowConfirm(false);
-    try { await callWoAction('done'); setRunning(false); onDone(); } catch (e) { void e; }
+    try {
+      await callWoAction('done');
+      setRunning(false);
+      const idx = allWos.findIndex((w: any) => w.id === woId);
+      const nextPending = allWos.slice(idx + 1).find((w: any) => w.state !== 'done');
+      onDone(nextPending?.id);
+    } catch (e) { void e; }
   }
 
   async function handleNumpadConfirm(value: number) {
