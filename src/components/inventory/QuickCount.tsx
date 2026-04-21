@@ -5,6 +5,7 @@ import { FilterBar, FilterPill, SearchBar, Stepper, Spinner, EmptyState } from '
 import NumpadModal from './NumpadModal';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
+import UnknownBarcodeSheet from './UnknownBarcodeSheet';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useCompany } from '@/lib/company-context';
 
@@ -31,15 +32,61 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   // ── Barcode scanner ──
   const [showScanner, setShowScanner] = useState(false);
   const [hwBarcode, setHwBarcode] = useState<string | undefined>();
+  const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
+  const [scanToast, setScanToast] = useState<{ msg: string; kind: 'ok' | 'warn' } | null>(null);
 
-  // Hardware scanner — opens scanner overlay with product card
-  function handleHardwareScan(barcode: string) {
-    setHwBarcode(barcode);
-    setShowScanner(true);
+  function showScanToast(msg: string, kind: 'ok' | 'warn' = 'ok') {
+    setScanToast({ msg, kind });
+    setTimeout(() => setScanToast(null), 2500);
+  }
+
+  // Hardware scanner — process silently (no camera overlay)
+  async function handleHardwareScan(barcode: string) {
+    if (unknownBarcode) return; // a sheet is already open
+
+    // 1. Match against products already in the counting list
+    const local = products.find((p) => p.barcode && p.barcode === barcode);
+    if (local) {
+      const uom = local.uom_id?.[1] || 'Units';
+      setCounts((prev) => ({ ...prev, [local.id]: (prev[local.id] ?? 0) + 1 }));
+      showScanToast(`${local.name} +1 ${uom}`, 'ok');
+      try { navigator.vibrate(60); } catch { /* ignore */ }
+      return;
+    }
+
+    // 2. Look it up in Odoo
+    try {
+      const res = await fetch(`/api/inventory/barcode-lookup?barcode=${encodeURIComponent(barcode)}`);
+      const data = await res.json();
+      if (data.found && data.product) {
+        const prod = data.product;
+        // Add to local list so the stepper row appears + count it
+        setProducts((prev) => prev.find((p) => p.id === prod.id) ? prev : [...prev, prod]);
+        setCounts((prev) => ({ ...prev, [prod.id]: (prev[prod.id] ?? 0) + 1 }));
+        const uom = prod.uom_id?.[1] || 'Units';
+        const tag = data.is_draft ? ' (pending review)' : '';
+        showScanToast(`${prod.name} +1 ${uom}${tag}`, data.is_draft ? 'warn' : 'ok');
+        try { navigator.vibrate(60); } catch { /* ignore */ }
+        return;
+      }
+    } catch (_err) { /* fall through to unknown */ }
+
+    // 3. Unknown → open the create-new-product sheet
+    setUnknownBarcode(barcode);
+    try { navigator.vibrate([60, 30, 60]); } catch { /* ignore */ }
+  }
+
+  function handleUnknownCreated(product: any, qtyValue: number) {
+    // Add to local product list + record count locally
+    setProducts((prev) => prev.find((p) => p.id === product.id) ? prev : [...prev, product]);
+    setCounts((prev) => ({ ...prev, [product.id]: qtyValue }));
+    setUnknownBarcode(null);
+    const uom = product.uom_id?.[1] || 'Units';
+    showScanToast(`${product.name} added · ${qtyValue} ${uom}`, 'ok');
   }
 
   useHardwareScanner({
-    enabled: !numpad.open && !showScanner && !loading,
+    enabled: !numpad.open && !showScanner && !unknownBarcode && !loading,
     onScan: handleHardwareScan,
   });
 
@@ -194,6 +241,22 @@ export default function QuickCount({ userRole }: QuickCountProps) {
 
       <SearchBar value={search} onChange={setSearch} placeholder="Type product name..." />
 
+      {/* Camera scan — secondary option; the Bluetooth scanner is the
+          primary input so this stays small and unobtrusive. */}
+      <div className="px-4 pb-2">
+        <button
+          type="button"
+          onClick={() => setShowScanner(true)}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-[13px] font-semibold active:bg-gray-50"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <rect x="3" y="5" width="18" height="14" rx="2"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          Camera scan
+        </button>
+      </div>
+
       {/* Category pills */}
       {categories.length > 1 && (
         <FilterBar>
@@ -277,26 +340,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
         </div>
       )}
 
-      {/* Scan FAB */}
-      <button
-        onClick={() => setShowScanner(true)}
-        className="fixed bottom-28 right-5 z-[30] w-14 h-14 rounded-full bg-[#2563EB] text-white shadow-lg shadow-blue-600/40 flex items-center justify-center active:scale-95 active:bg-blue-700 transition-transform"
-        aria-label="Scan barcode"
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-          <path d="M3 7V5a2 2 0 012-2h2"/>
-          <path d="M17 3h2a2 2 0 012 2v2"/>
-          <path d="M21 17v2a2 2 0 01-2 2h-2"/>
-          <path d="M7 21H5a2 2 0 01-2-2v-2"/>
-          <line x1="7" y1="12" x2="17" y2="12"/>
-          <line x1="7" y1="8" x2="10" y2="8"/>
-          <line x1="14" y1="8" x2="17" y2="8"/>
-          <line x1="7" y1="16" x2="10" y2="16"/>
-          <line x1="14" y1="16" x2="17" y2="16"/>
-        </svg>
-      </button>
-
-      {/* Barcode scanner overlay — persistent, never unmounts */}
+      {/* Camera scanner — only opens when user taps the "Camera scan" button above */}
       <BarcodeScanner
         open={showScanner}
         onClose={() => { setShowScanner(false); setHwBarcode(undefined); }}
@@ -307,9 +351,30 @@ export default function QuickCount({ userRole }: QuickCountProps) {
         onCount={handleScanCount}
         userRole={userRole}
         title="Scan product"
-        pendingBarcode={hwBarcode}
-        onPendingConsumed={() => setHwBarcode(undefined)}
       />
+
+      {/* Hardware scanner — silent scan toast at the bottom */}
+      {scanToast && (
+        <div className="fixed bottom-24 left-4 right-4 z-[60] flex justify-center pointer-events-none">
+          <div className={`px-4 py-2.5 rounded-xl shadow-lg pointer-events-auto ${
+            scanToast.kind === 'warn'
+              ? 'bg-amber-500 text-white'
+              : 'bg-green-600 text-white'
+          }`}>
+            <span className="text-[14px] font-semibold">{scanToast.msg}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Hardware scanner — create new product sheet (no camera) */}
+      {unknownBarcode && (
+        <UnknownBarcodeSheet
+          barcode={unknownBarcode}
+          onCancel={() => setUnknownBarcode(null)}
+          onCreated={handleUnknownCreated}
+          standalone
+        />
+      )}
 
       {/* Numpad */}
       <NumpadModal
