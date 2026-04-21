@@ -241,22 +241,6 @@ export default function QuickCount({ userRole }: QuickCountProps) {
 
       <SearchBar value={search} onChange={setSearch} placeholder="Type product name..." />
 
-      {/* Camera scan — secondary option; the Bluetooth scanner is the
-          primary input so this stays small and unobtrusive. */}
-      <div className="px-4 pb-2">
-        <button
-          type="button"
-          onClick={() => setShowScanner(true)}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-600 text-[13px] font-semibold active:bg-gray-50"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <rect x="3" y="5" width="18" height="14" rx="2"/>
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
-          Camera scan
-        </button>
-      </div>
-
       {/* Category pills */}
       {categories.length > 1 && (
         <FilterBar>
@@ -340,7 +324,27 @@ export default function QuickCount({ userRole }: QuickCountProps) {
         </div>
       )}
 
-      {/* Camera scanner — only opens when user taps the "Camera scan" button above */}
+      {/* Camera scan FAB — only opens the camera; BT scans are processed
+          silently and never open this overlay */}
+      <button
+        onClick={() => setShowScanner(true)}
+        className="fixed bottom-28 right-5 z-[30] w-14 h-14 rounded-full bg-[#2563EB] text-white shadow-lg shadow-blue-600/40 flex items-center justify-center active:scale-95 active:bg-blue-700 transition-transform"
+        aria-label="Camera scan"
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <path d="M3 7V5a2 2 0 012-2h2"/>
+          <path d="M17 3h2a2 2 0 012 2v2"/>
+          <path d="M21 17v2a2 2 0 01-2 2h-2"/>
+          <path d="M7 21H5a2 2 0 01-2-2v-2"/>
+          <line x1="7" y1="12" x2="17" y2="12"/>
+          <line x1="7" y1="8" x2="10" y2="8"/>
+          <line x1="14" y1="8" x2="17" y2="8"/>
+          <line x1="7" y1="16" x2="10" y2="16"/>
+          <line x1="14" y1="16" x2="17" y2="16"/>
+        </svg>
+      </button>
+
+      {/* Camera scanner overlay — only opens via the FAB above */}
       <BarcodeScanner
         open={showScanner}
         onClose={() => { setShowScanner(false); setHwBarcode(undefined); }}
