@@ -1,6 +1,6 @@
 # Krawings Portal — STATUS
 
-_Last updated: 2026-04-19_
+_Last updated: 2026-04-22_
 
 ## Current focus
 Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with real data from seeded SQLite.
@@ -12,7 +12,7 @@ Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with r
 | Auth / Login | ✅ shipped | cookie `kw_session`, hasRole() hierarchy staff/manager/admin |
 | Admin | ✅ shipped | user management, role editing |
 | Dashboard | ✅ shipped | 2×2 tile grid entry pattern |
-| Manufacturing | ⚠️ regression | "Produce" button on sub-assembly component rows is non-functional — no network call, no state change. Under investigation by Claude Code on staging. |
+| Manufacturing | ✅ shipped | Create MO (with inline sub-BOM creation), MO detail, WO detail, BOM list/detail, auto-advance WOs, FIFO component lot auto-assign, consumption wizard on close. |
 | Purchase | ✅ shipped | 5 tabs, 11 screens; Choco replacement. Receive flow rebuild pending (stock.picking validation + backorder wizard). |
 | Inventory | ⚠️ backend only | 4 tables, 7 API routes, Odoo stock.quant write via action_apply_inventory. Frontend page.tsx NOT built. |
 | Recipes | ✅ shipped | Concurrent cook sessions, absolute timestamps, Kitchen Board dashboard, global timer banner. 22-issue audit done. |
