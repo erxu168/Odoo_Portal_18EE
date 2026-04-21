@@ -165,7 +165,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
   const isCancelled = mo.state === 'cancel';
   const isToClose = mo.state === 'to_close';
   const canCancel = !isDone && !isCancelled;
-  const showProduce = !isDraft && !isDone && !isCancelled && (allWosDone || workOrders.length === 0);
+  const showProduce = !isDraft && !isDone && !isCancelled && (isToClose || allWosDone || workOrders.length === 0);
 
   const pickedCount = components.filter((c: any) => c.picked === true).length;
   const totalComps = components.length;
@@ -399,7 +399,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
               )}
               <button onClick={handleProduce} disabled={producing}
                 className="flex-1 py-4 rounded-xl bg-green-500 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
-                {producing ? 'Finishing...' : 'Produce & close'}
+                {producing ? 'Finishing...' : isToClose ? 'Close order' : 'Produce & close'}
               </button>
             </div>
           </div>
