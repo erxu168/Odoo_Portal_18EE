@@ -342,13 +342,14 @@ export async function computeForecasts(
   runId: number,
   horizonDays: number,
   lookbackDays: number,
+  minRows: number = 20,
 ): Promise<number> {
   initPrepPlannerTables();
   const today = berlinToday();
   const fromDate = addDays(today, -lookbackDays);
   const yesterday = addDays(today, -1);
 
-  const products = listProductsWithHistory(companyId, fromDate, yesterday, 20);
+  const products = listProductsWithHistory(companyId, fromDate, yesterday, minRows);
   if (products.length === 0) return 0;
 
   // Weather cache for the horizon (to attach a bucket to each target date).
@@ -472,6 +473,12 @@ export interface ForecastJobOptions {
   horizonDays?: number;
   skipDemandBackfill?: boolean;
   skipWeather?: boolean;
+  /**
+   * Minimum number of demand-history rows a product needs to be forecasted.
+   * Default 20 (conservative for production). Lower (e.g. 5) for staging
+   * environments with sparse POS history.
+   */
+  minRows?: number;
 }
 
 export interface ForecastJobResult {
@@ -529,6 +536,7 @@ export async function runForecastJob(
         runId,
         horizonDays,
         lookbackDays,
+        opts.minRows,
       );
       forecastRowsWritten += n;
     }

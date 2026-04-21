@@ -28,6 +28,9 @@ export async function POST(request: Request) {
 
   const lookbackDays = parseInt(searchParams.get('lookback') || '84', 10);
   const horizonDays = parseInt(searchParams.get('horizon') || '7', 10);
+  const minRowsRaw = searchParams.get('minRows');
+  const minRows = minRowsRaw ? parseInt(minRowsRaw, 10) : undefined;
+  const skipDemand = searchParams.get('skipDemand') === '1';
 
   try {
     const result = await runForecastJob({
@@ -35,7 +38,8 @@ export async function POST(request: Request) {
       lookbackDays,
       horizonDays,
       skipWeather: false,
-      skipDemandBackfill: false,
+      skipDemandBackfill: skipDemand,
+      minRows: Number.isFinite(minRows) ? minRows : undefined,
     });
 
     logAudit({

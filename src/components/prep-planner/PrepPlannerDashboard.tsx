@@ -124,6 +124,20 @@ export default function PrepPlannerDashboard() {
         </svg>
       ),
     },
+    {
+      key: 'variance',
+      label: 'Accuracy',
+      sublabel: 'Forecast vs actual',
+      href: '/prep-planner/variance',
+      color: 'bg-violet-50 border-violet-200',
+      iconBg: 'bg-violet-100',
+      iconColor: 'text-violet-600',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+      ),
+    },
   ];
 
   const runLabel = stats.lastRunAt
