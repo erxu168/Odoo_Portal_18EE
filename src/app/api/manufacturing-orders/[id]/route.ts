@@ -1,6 +1,94 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 
+// Auto-assign component lots using FIFO (oldest in_date first) on every
+// lot-tracked raw move before closing the MO. Avoids Odoo prompting the
+// user for a lot each time a lot-tracked component is consumed.
+async function autoAssignComponentLotsFifo(
+  odoo: ReturnType<typeof getOdoo>,
+  moId: number,
+): Promise<void> {
+  const mos = await odoo.read('mrp.production', [moId], ['move_raw_ids']);
+  const rawMoveIds: number[] = mos[0]?.move_raw_ids || [];
+  if (!rawMoveIds.length) return;
+
+  const moves = await odoo.read('stock.move', rawMoveIds, [
+    'id', 'product_id', 'product_uom', 'quantity', 'state',
+    'move_line_ids', 'location_id', 'location_dest_id', 'name',
+  ]);
+
+  for (const move of moves) {
+    if (move.state === 'done' || move.state === 'cancel') continue;
+
+    const prod = await odoo.read('product.product', [move.product_id[0]], [
+      'tracking', 'display_name',
+    ]);
+    const tracking = prod[0]?.tracking || 'none';
+    if (tracking === 'none') continue;
+
+    const consumedQty: number = move.quantity || 0;
+    if (consumedQty <= 0) continue;
+
+    const existingLineIds: number[] = move.move_line_ids || [];
+    let linesWithLot: Array<{ id: number; lot_id: [number, string] | false; quantity: number }> = [];
+    let linesWithoutLot: Array<{ id: number; lot_id: [number, string] | false; quantity: number }> = [];
+    if (existingLineIds.length) {
+      const lines = await odoo.read('stock.move.line', existingLineIds, [
+        'id', 'lot_id', 'quantity',
+      ]);
+      linesWithLot = lines.filter((l: { lot_id: [number, string] | false }) => !!l.lot_id);
+      linesWithoutLot = lines.filter((l: { lot_id: [number, string] | false }) => !l.lot_id);
+    }
+
+    const qtyAlreadyAssigned = linesWithLot.reduce((s, l) => s + (l.quantity || 0), 0);
+    let remaining = consumedQty - qtyAlreadyAssigned;
+    if (remaining <= 0.0001) continue;
+
+    if (linesWithoutLot.length) {
+      await odoo.unlink('stock.move.line', linesWithoutLot.map((l) => l.id));
+    }
+
+    const srcLocId = move.location_id[0];
+    const quants = await odoo.searchRead(
+      'stock.quant',
+      [
+        ['product_id', '=', move.product_id[0]],
+        ['location_id', 'child_of', srcLocId],
+        ['lot_id', '!=', false],
+        ['quantity', '>', 0],
+      ],
+      ['lot_id', 'quantity', 'reserved_quantity', 'in_date', 'location_id'],
+      { order: 'in_date asc, id asc', limit: 50 },
+    );
+
+    for (const q of quants) {
+      if (remaining <= 0.0001) break;
+      const available = (q.quantity || 0) - (q.reserved_quantity || 0);
+      if (available <= 0.0001) continue;
+      const take = Math.min(remaining, available);
+      await odoo.create('stock.move.line', {
+        move_id: move.id,
+        product_id: move.product_id[0],
+        product_uom_id: move.product_uom[0],
+        lot_id: q.lot_id[0],
+        location_id: q.location_id[0],
+        location_dest_id: move.location_dest_id[0],
+        quantity: take,
+      });
+      remaining -= take;
+    }
+
+    if (remaining > 0.0001) {
+      const name = prod[0]?.display_name || `product ${move.product_id[0]}`;
+      throw new Error(
+        `Not enough stock in a single batch of ${name} to cover ${consumedQty}. ` +
+        `Please assign the lot manually in Odoo for this component.`,
+      );
+    }
+    console.log(`[MO ${moId}] FIFO-assigned lots for raw move ${move.id} (${move.name})`);
+  }
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } },
@@ -131,6 +219,10 @@ export async function PATCH(
           await odoo.buttonCall('mrp.production', 'action_confirm', [moId]);
           break;
         case 'mark_done': {
+          // Auto-assign lots for lot-tracked components (FIFO by in_date)
+          // so Odoo doesn't reject the close with a "supply Lot/Serial" error.
+          await autoAssignComponentLotsFifo(odoo, moId);
+
           // Before marking done, ensure lot is set if product requires tracking
           const moData = await odoo.read('mrp.production', [moId], [
             'name', 'product_id', 'lot_producing_id', 'company_id',
