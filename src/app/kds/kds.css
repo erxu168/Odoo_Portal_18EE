@@ -464,3 +464,44 @@
 /* EMPTY STATE */
 .kds-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--muted); gap: 6px; }
 .kds-empty-icon { font-size: 36px; opacity: 0.3; }
+
+/* ── Fire Plan ── */
+.kds-fire-plan { display: flex; flex-direction: column; gap: 12px; padding: 8px; overflow-y: auto; height: 100%; }
+
+.kds-fp-lane { background: var(--surface); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
+.kds-fp-lane--ondemand { border-left: 4px solid #ef4444; }
+.kds-fp-lane--batch    { border-left: 4px solid #eab308; }
+.kds-fp-lane--advance  { border-left: 4px solid #22c55e; }
+
+.kds-fp-lane-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.kds-fp-lane-emoji { font-size: 16px; }
+.kds-fp-lane-label { font-size: 13px; font-weight: 800; letter-spacing: 0.08em; color: var(--text); }
+
+.kds-fp-tasks { display: flex; flex-direction: column; }
+
+.kds-fp-task { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.kds-fp-task.all-done { opacity: 0.4; }
+.kds-fp-task-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.kds-fp-task-qty { font-size: 16px; font-weight: 800; color: var(--text); min-width: 30px; }
+.kds-fp-task-name { font-size: 14px; font-weight: 700; color: var(--text); }
+
+.kds-fp-task-tables { display: flex; flex-wrap: wrap; gap: 4px; margin-left: 30px; }
+
+.kds-fp-entry { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; background: rgba(255,255,255,0.04); cursor: pointer; transition: background 0.15s; }
+.kds-fp-entry:active { background: rgba(255,255,255,0.08); transform: scale(0.97); }
+.kds-fp-entry.done { opacity: 0.4; }
+
+.kds-fp-check { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.kds-fp-check.checked { background: var(--ready); border-color: var(--ready); }
+
+.kds-fp-entry-qty { font-size: 12px; font-weight: 700; color: var(--muted); }
+.kds-fp-entry-table { font-size: 13px; font-weight: 700; color: var(--text); }
+
+/* Pass readiness */
+.kds-fp-pass { background: var(--surface); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
+.kds-fp-pass-header { padding: 8px 12px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--border); }
+.kds-fp-pass-row { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.kds-fp-pass-row.ready { background: rgba(34,197,94,0.08); }
+.kds-fp-pass-table { font-size: 14px; font-weight: 800; color: var(--text); min-width: 50px; }
+.kds-fp-pass-status { font-size: 12px; font-weight: 600; color: var(--muted); }
+.kds-fp-pass-row.ready .kds-fp-pass-status { color: var(--green); }

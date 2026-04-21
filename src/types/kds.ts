@@ -126,6 +126,41 @@ export interface TaskGroup {
   priority: number;
 }
 
+// -- Fire plan types --
+
+export type PrepType = 'ondemand' | 'batch' | 'advance';
+
+export interface ProductConfig {
+  productName: string;
+  sourceStation: SourceStation;
+  prepType: PrepType;
+}
+
+export interface FireTask {
+  name: string;
+  totalQty: number;
+  doneQty: number;
+  tables: string[];
+  entries: TaskEntry[];
+  sourceStation: SourceStation;
+  prepType: PrepType;
+}
+
+export interface FireLane {
+  prepType: PrepType;
+  label: string;
+  emoji: string;
+  tasks: FireTask[];
+}
+
+export const PREP_TYPE_ORDER: PrepType[] = ['ondemand', 'batch', 'advance'];
+
+export const PREP_TYPE_META: Record<PrepType, { label: string; emoji: string; description: string }> = {
+  ondemand: { label: 'START NOW', emoji: '\u{1F534}', description: 'Cook fresh \u2014 bottleneck' },
+  batch:    { label: 'BATCH',     emoji: '\u{1F7E1}', description: 'Cook together in groups' },
+  advance:  { label: 'PLATE',     emoji: '\u{1F7E2}', description: 'Already prepped \u2014 just plate' },
+};
+
 // -- Constants --
 
 export const KDS_LOCATION_ID = 99; // Placeholder for Phase 1

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import type { KdsOrder, KdsTab, RoundState, KdsSettings, KdsMode } from '@/types/kds';
+import type { KdsOrder, KdsTab, RoundState, KdsSettings, KdsMode, ProductConfig } from '@/types/kds';
 import { DEFAULT_SETTINGS } from '@/types/kds';
 import { createSeedOrders, generateRandomOrder } from './mockData';
 
@@ -15,6 +15,7 @@ interface KdsState {
   muted: boolean;
   settingsOpen: boolean;
   nextId: number;
+  productConfig: ProductConfig[];
 }
 
 interface KdsActions {
@@ -52,11 +53,12 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<KdsSettings>(DEFAULT_SETTINGS);
   const [muted, setMuted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [productConfig, setProductConfig] = useState<ProductConfig[]>([]);
   const nextIdRef = useRef(8);
   // Track locally checked items so they survive poll refreshes
   const checkedItemsRef = useRef<Set<string>>(new Set());
 
-  // Load settings from API on mount
+  // Load settings and product config from API on mount
   useEffect(() => {
     fetch('/api/kds/settings')
       .then(r => r.json())
@@ -66,6 +68,13 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
         if (!data.posConfigId) setOrders(createSeedOrders());
       })
       .catch(() => { setOrders(createSeedOrders()); });
+
+    fetch('/api/kds/product-config')
+      .then(r => r.json())
+      .then(data => {
+        if (data.config) setProductConfig(data.config);
+      })
+      .catch(() => {});
   }, []);
 
   // Poll Odoo for orders when posConfigId is set
@@ -221,7 +230,7 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
 
   const value: KdsContextType = {
     orders, roundState, firedOrderIds, currentTab, mode, settings, muted, settingsOpen,
-    nextId: nextIdRef.current,
+    nextId: nextIdRef.current, productConfig,
     fireRound, nextRound, toggleItem, markReady, pickup, recall,
     setTab, toggleMute, openSettings, closeSettings, updateSettings, addOrder, setMode,
   };
