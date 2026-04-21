@@ -13,6 +13,7 @@ import ReadyGrid from '@/components/kds/ReadyGrid';
 import DoneGrid from '@/components/kds/DoneGrid';
 import Pipeline from '@/components/kds/Pipeline';
 import ClassicView from '@/components/kds/ClassicView';
+import FirePlanView from '@/components/kds/FirePlanView';
 import SettingsPanel from '@/components/kds/SettingsPanel';
 
 export default function KdsPage() {
@@ -132,11 +133,13 @@ export default function KdsPage() {
           <div className="kds-main">
             {mode === 'classic' ? (
               <ClassicView />
+            ) : roundState === 'active' ? (
+              <FirePlanView />
             ) : tasks.length === 0 ? (
               <div className="kds-task-strip">
                 <div className="kds-empty">
-                  <div className="kds-empty-icon">{roundState === 'active' ? '\u2705' : '\u{1F389}'}</div>
-                  <div>{roundState === 'active' ? 'Round complete -- mark tables Ready then tap Next Round' : 'All orders served!'}</div>
+                  <div className="kds-empty-icon">{'\u{1F389}'}</div>
+                  <div>All orders served!</div>
                 </div>
               </div>
             ) : (
@@ -151,7 +154,7 @@ export default function KdsPage() {
                 ))}
               </div>
             )}
-            {mode === 'smart' && <TableStrip ref={tableStripRef} />}
+            {mode === 'smart' && roundState !== 'active' && <TableStrip ref={tableStripRef} />}
           </div>
         </>
       )}
