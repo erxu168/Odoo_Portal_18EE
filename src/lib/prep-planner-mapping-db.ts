@@ -359,7 +359,7 @@ export function computePrepItemForecasts(
     FROM prep_forecasts
     WHERE company_id = ? AND forecast_run_id = ?
       AND product_id IN (${Array.from(linksByPos.keys()).map(() => '?').join(',')})
-  `).all(companyId, runId, ...linksByPos.keys()) as {
+  `).all(companyId, runId, ...Array.from(linksByPos.keys())) as {
     product_id: number;
     product_name: string;
     target_date: string;
@@ -409,7 +409,7 @@ export function computePrepItemForecasts(
   `);
   const tx = db.transaction(() => {
     let n = 0;
-    for (const [key, a] of agg.entries()) {
+    for (const [key, a] of Array.from(agg.entries())) {
       const [prepItemId, date, hourStr] = key.split('|');
       stmt.run(
         parseInt(prepItemId, 10),
