@@ -4,13 +4,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, SearchBar, Stepper, Spinner, EmptyState } from './ui';
 import NumpadModal from './NumpadModal';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
+import PhotoCaptureStrip from './PhotoCaptureStrip';
+import UnknownBarcodeSheet from './UnknownBarcodeSheet';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
+import { useCompany } from '@/lib/company-context';
 
 interface QuickCountProps {
   userRole: string;
 }
 
 export default function QuickCount({ userRole }: QuickCountProps) {
+  const { companyId, loading: companyLoading } = useCompany();
   const [products, setProducts] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,39 +25,101 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   const [numpad, setNumpad] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [flags, setFlags] = useState<Record<number, boolean>>({});
+  const [photos, setPhotos] = useState<Record<number, string[]>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // ── Barcode scanner ──
   const [showScanner, setShowScanner] = useState(false);
   const [hwBarcode, setHwBarcode] = useState<string | undefined>();
+  const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
+  const [scanToast, setScanToast] = useState<{ msg: string; kind: 'ok' | 'warn' } | null>(null);
 
-  // Hardware scanner — opens scanner overlay with product card
-  function handleHardwareScan(barcode: string) {
-    setHwBarcode(barcode);
-    setShowScanner(true);
+  function showScanToast(msg: string, kind: 'ok' | 'warn' = 'ok') {
+    setScanToast({ msg, kind });
+    setTimeout(() => setScanToast(null), 2500);
+  }
+
+  // Hardware scanner — process silently (no camera overlay)
+  async function handleHardwareScan(barcode: string) {
+    if (unknownBarcode) return; // a sheet is already open
+
+    // 1. Match against products already in the counting list
+    const local = products.find((p) => p.barcode && p.barcode === barcode);
+    if (local) {
+      const uom = local.uom_id?.[1] || 'Units';
+      setCounts((prev) => ({ ...prev, [local.id]: (prev[local.id] ?? 0) + 1 }));
+      showScanToast(`${local.name} +1 ${uom}`, 'ok');
+      try { navigator.vibrate(60); } catch { /* ignore */ }
+      return;
+    }
+
+    // 2. Look it up in Odoo
+    try {
+      const res = await fetch(`/api/inventory/barcode-lookup?barcode=${encodeURIComponent(barcode)}`);
+      const data = await res.json();
+      if (data.found && data.product) {
+        const prod = data.product;
+        // Add to local list so the stepper row appears + count it
+        setProducts((prev) => prev.find((p) => p.id === prod.id) ? prev : [...prev, prod]);
+        setCounts((prev) => ({ ...prev, [prod.id]: (prev[prod.id] ?? 0) + 1 }));
+        const uom = prod.uom_id?.[1] || 'Units';
+        const tag = data.is_draft ? ' (pending review)' : '';
+        showScanToast(`${prod.name} +1 ${uom}${tag}`, data.is_draft ? 'warn' : 'ok');
+        try { navigator.vibrate(60); } catch { /* ignore */ }
+        return;
+      }
+    } catch (_err) { /* fall through to unknown */ }
+
+    // 3. Unknown → open the create-new-product sheet
+    setUnknownBarcode(barcode);
+    try { navigator.vibrate([60, 30, 60]); } catch { /* ignore */ }
+  }
+
+  function handleUnknownCreated(product: any, qtyValue: number, pkgPhotos: string[]) {
+    // Add to local product list + record count locally. Attach the
+    // front + back package photos to this line so the manager sees
+    // them next to the count during review.
+    setProducts((prev) => prev.find((p) => p.id === product.id) ? prev : [...prev, product]);
+    setCounts((prev) => ({ ...prev, [product.id]: qtyValue }));
+    if (pkgPhotos.length > 0) {
+      setPhotos((prev) => ({ ...prev, [product.id]: pkgPhotos }));
+    }
+    setUnknownBarcode(null);
+    const uom = product.uom_id?.[1] || 'Units';
+    showScanToast(`${product.name} added · ${qtyValue} ${uom}`, 'ok');
   }
 
   useHardwareScanner({
-    enabled: !numpad.open && !showScanner && !loading,
+    enabled: !numpad.open && !showScanner && !unknownBarcode && !loading,
     onScan: handleHardwareScan,
   });
 
   const fetchData = useCallback(async () => {
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const [prodRes, locRes] = await Promise.all([
+      const [prodRes, locRes, flagRes] = await Promise.all([
         fetch('/api/inventory/products').then((r) => r.json()),
-        fetch('/api/inventory/locations').then((r) => r.json()),
+        fetch(`/api/inventory/locations?company_id=${companyId}`).then((r) => r.json()),
+        fetch('/api/inventory/product-flags').then((r) => r.json()),
       ]);
-      setProducts(prodRes.products || []);
+      setProducts((prodRes.products || []).filter((p: any) => p.active !== false));
       const locs = locRes.locations || [];
       setLocations(locs);
-      if (locs.length > 0 && !locFilter) setLocFilter(locs[0].id);
+      setLocFilter(locs.length > 0 ? locs[0].id : null);
+      const flagMap: Record<number, boolean> = {};
+      (flagRes.flags || []).forEach((f: any) => { flagMap[f.odoo_product_id] = !!f.requires_photo; });
+      setFlags(flagMap);
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
       setLoading(false);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [companyId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -107,40 +173,76 @@ export default function QuickCount({ userRole }: QuickCountProps) {
 
   async function handleSubmit() {
     if (!locFilter || countedN === 0) return;
+    const missingPhotos = Object.entries(counts).filter(([pid, qty]) => {
+      const productId = Number(pid);
+      return flags[productId] && qty > 0 && (photos[productId]?.length || 0) === 0;
+    });
+    if (missingPhotos.length > 0) {
+      setSubmitError(`${missingPhotos.length} item${missingPhotos.length !== 1 ? 's' : ''} still need a photo.`);
+      return;
+    }
+    setSubmitError(null);
     setSubmitting(true);
     try {
       const entries = Object.entries(counts).map(([pid, qty]) => {
-        const p = products.find((pr) => pr.id === Number(pid));
-        return { product_id: Number(pid), counted_qty: qty, uom: p?.uom_id?.[1] || 'Units' };
+        const productId = Number(pid);
+        const p = products.find((pr) => pr.id === productId);
+        return {
+          product_id: productId,
+          counted_qty: qty,
+          uom: p?.uom_id?.[1] || 'Units',
+          photos: photos[productId] || [],
+        };
       });
-      await fetch('/api/inventory/quick-count', {
+      const res = await fetch('/api/inventory/quick-count', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries, location_id: locFilter }),
       });
+      const data = await res.json();
+      if (!res.ok) {
+        setSubmitError(data.error || 'Submit failed');
+        return;
+      }
       setCounts({});
+      setPhotos({});
       setSubmitted(true);
       setTimeout(() => setSubmitted(false), 3000);
     } catch (err) {
       console.error('Quick count submit failed:', err);
+      setSubmitError('Network error. Please try again.');
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (loading) return <Spinner />;
+  if (loading || companyLoading) return <Spinner />;
+
+  if (!companyId) {
+    return (
+      <div className="flex flex-col min-h-0 flex-1 px-4 pt-6">
+        <EmptyState
+          title="No company selected"
+          body="Pick a company in the top-right selector to start counting. If nothing appears there, ask an admin to assign a company to your account."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      {/* Location pills */}
-      <FilterBar>
-        {locations.map((loc) => (
-          <FilterPill key={loc.id}
-            active={locFilter === loc.id}
-            label={loc.complete_name?.split('/')[0] || loc.name}
-            onClick={() => setLocFilter(loc.id)} />
-        ))}
-      </FilterBar>
+      {/* Location pills — only shown when the active company has multiple
+          internal locations. Company scope comes from the top-bar selector. */}
+      {locations.length > 1 && (
+        <FilterBar>
+          {locations.map((loc) => (
+            <FilterPill key={loc.id}
+              active={locFilter === loc.id}
+              label={loc.complete_name?.split('/').slice(-1)[0] || loc.name}
+              onClick={() => setLocFilter(loc.id)} />
+          ))}
+        </FilterBar>
+      )}
 
       <SearchBar value={search} onChange={setSearch} placeholder="Type product name..." />
 
@@ -176,16 +278,35 @@ export default function QuickCount({ userRole }: QuickCountProps) {
               const val = counts[p.id] ?? null;
               const uom = p.uom_id?.[1] || 'Units';
               const catName = p.categ_id?.[1] || '';
+              const flagged = !!flags[p.id];
+              const prodPhotos = photos[p.id] || [];
               return (
-                <div key={p.id} className="flex items-center gap-3 py-3 border-b border-gray-100">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
-                    <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{catName}</div>
+                <div key={p.id} className="py-3 border-b border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</span>
+                        {flagged && (
+                          <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0">
+                            Photo required
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{catName}</div>
+                    </div>
+                    <Stepper value={val} uom={uom}
+                      onMinus={() => stepQty(p.id, -1)}
+                      onPlus={() => stepQty(p.id, 1)}
+                      onTap={() => openNumpad(p)} />
                   </div>
-                  <Stepper value={val} uom={uom}
-                    onMinus={() => stepQty(p.id, -1)}
-                    onPlus={() => stepQty(p.id, 1)}
-                    onTap={() => openNumpad(p)} />
+                  {flagged && (val ?? 0) > 0 && (
+                    <div className="mt-2">
+                      <PhotoCaptureStrip
+                        photos={prodPhotos}
+                        onChange={(next) => setPhotos(prev => ({ ...prev, [p.id]: next }))}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -196,6 +317,11 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       {/* Submit bar */}
       {countedN > 0 && (
         <div className="px-4 py-3">
+          {submitError && (
+            <div className="mb-2 bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+              <span className="text-[var(--fs-sm)] font-semibold text-red-700">{submitError}</span>
+            </div>
+          )}
           <button onClick={handleSubmit} disabled={submitting}
             className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
             {submitting ? 'Submitting...' : `Submit ${countedN} quick count${countedN !== 1 ? 's' : ''}`}
@@ -203,11 +329,12 @@ export default function QuickCount({ userRole }: QuickCountProps) {
         </div>
       )}
 
-      {/* Scan FAB */}
+      {/* Camera scan FAB — only opens the camera; BT scans are processed
+          silently and never open this overlay */}
       <button
         onClick={() => setShowScanner(true)}
         className="fixed bottom-28 right-5 z-[30] w-14 h-14 rounded-full bg-[#2563EB] text-white shadow-lg shadow-blue-600/40 flex items-center justify-center active:scale-95 active:bg-blue-700 transition-transform"
-        aria-label="Scan barcode"
+        aria-label="Camera scan"
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M3 7V5a2 2 0 012-2h2"/>
@@ -222,7 +349,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
         </svg>
       </button>
 
-      {/* Barcode scanner overlay — persistent, never unmounts */}
+      {/* Camera scanner overlay — only opens via the FAB above */}
       <BarcodeScanner
         open={showScanner}
         onClose={() => { setShowScanner(false); setHwBarcode(undefined); }}
@@ -233,9 +360,30 @@ export default function QuickCount({ userRole }: QuickCountProps) {
         onCount={handleScanCount}
         userRole={userRole}
         title="Scan product"
-        pendingBarcode={hwBarcode}
-        onPendingConsumed={() => setHwBarcode(undefined)}
       />
+
+      {/* Hardware scanner — silent scan toast at the bottom */}
+      {scanToast && (
+        <div className="fixed bottom-24 left-4 right-4 z-[60] flex justify-center pointer-events-none">
+          <div className={`px-4 py-2.5 rounded-xl shadow-lg pointer-events-auto ${
+            scanToast.kind === 'warn'
+              ? 'bg-amber-500 text-white'
+              : 'bg-green-600 text-white'
+          }`}>
+            <span className="text-[14px] font-semibold">{scanToast.msg}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Hardware scanner — create new product sheet (no camera) */}
+      {unknownBarcode && (
+        <UnknownBarcodeSheet
+          barcode={unknownBarcode}
+          onCancel={() => setUnknownBarcode(null)}
+          onCreated={handleUnknownCreated}
+          standalone
+        />
+      )}
 
       {/* Numpad */}
       <NumpadModal

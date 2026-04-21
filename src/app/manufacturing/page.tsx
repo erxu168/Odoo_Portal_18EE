@@ -108,7 +108,13 @@ export default function ManufacturingPage() {
             moId={screen.moId}
             woId={screen.woId}
             onBack={goBack}
-            onDone={goBack}
+            onDone={(nextWoId) => {
+              if (nextWoId) {
+                setScreen({ type: 'wo-detail', moId: screen.moId, woId: nextWoId });
+              } else {
+                goBack();
+              }
+            }}
           />
         );
       case 'create':

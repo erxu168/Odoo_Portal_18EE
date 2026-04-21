@@ -244,10 +244,12 @@ export default function CredentialsPage() {
       const suppData = await suppRes.json();
       const compData = await compRes.json();
       setAllSuppliers(
-        (suppData.suppliers || suppData || []).map((s: any) => ({
-          id: s.id || s.odoo_partner_id,
-          name: s.name,
-        })),
+        (suppData.suppliers || suppData || [])
+          .map((s: any) => ({
+            id: s.odoo_partner_id ?? s.odoo_id ?? s.id,
+            name: s.name,
+          }))
+          .filter((s: { id: number | null; name: string }) => !!s.id && !!s.name),
       );
       setCompanies(
         (compData.companies || compData || []).map((c: any) => ({ id: c.id, name: c.name })),
@@ -444,7 +446,7 @@ export default function CredentialsPage() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowModal(false)} />
-          <div className="relative bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8 animate-slide-up max-h-[85vh] overflow-y-auto">
+          <div className="relative bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8 animate-slide-up max-h-[85vh] overflow-y-auto mb-[calc(4rem+env(safe-area-inset-bottom))]">
             <h2 className="text-[18px] font-bold text-[#1A1A1A] mb-4">
               {editingLogin ? 'Edit Credential' : 'Add Credential'}
             </h2>

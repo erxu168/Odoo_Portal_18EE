@@ -5,10 +5,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 type ScanResult =
   | { kind: 'scanning' }
-  | { kind: 'found'; product: any }
+  | { kind: 'found'; product: any; isDraft?: boolean }
   | { kind: 'looking_up'; barcode: string }
-  | { kind: 'not_in_list'; barcode: string; productName: string }
+  | { kind: 'not_in_list'; barcode: string; productName: string; isDraft?: boolean }
   | { kind: 'unknown'; barcode: string }
+  | { kind: 'creating'; barcode: string; name: string }
   | { kind: 'manual' };
 
 interface BarcodeScannerProps {
@@ -135,7 +136,7 @@ export default function BarcodeScanner({
     if (product) {
       const currentQty = ents[product.id];
       setQty(currentQty !== undefined ? currentQty + 1 : 1);
-      setScanResult({ kind: 'found', product });
+      setScanResult({ kind: 'found', product, isDraft: product.is_draft === true });
       try { navigator.vibrate(100); } catch (_e) { /* ignore */ }
       return;
     }
@@ -147,6 +148,14 @@ export default function BarcodeScanner({
       const res = await fetch(`/api/inventory/barcode-lookup?barcode=${encodeURIComponent(barcode)}`);
       const data = await res.json();
       if (data.found && data.product) {
+        // Draft product hit → treat as "found" with a Pending badge so staff
+        // can add qty immediately (dedupe of rescan during walk-around).
+        if (data.is_draft) {
+          const currentQty = ents[data.product.id];
+          setQty(currentQty !== undefined ? currentQty + 1 : 1);
+          setScanResult({ kind: 'found', product: data.product, isDraft: true });
+          return;
+        }
         setScanResult({ kind: 'not_in_list', barcode, productName: data.product.name });
       } else {
         setScanResult({ kind: 'unknown', barcode });
@@ -269,6 +278,16 @@ export default function BarcodeScanner({
     const uom = product.uom_id?.[1] || 'Units';
     onCount(product.id, qty, uom);
     showToast(`${product.name} \u2192 ${qty} ${uom}`);
+    setScanResult({ kind: 'scanning' });
+  }
+
+  async function handleDraftCreated(product: any, qtyValue: number) {
+    // Merge into local products cache so an immediate rescan matches locally
+    productsRef.current = [...productsRef.current, product];
+
+    const uom = product.uom_id?.[1] || 'Units';
+    onCount(product.id, qtyValue, uom);
+    showToast(`${product.name} \u2192 ${qtyValue} ${uom}`, 'success');
     setScanResult({ kind: 'scanning' });
   }
 
@@ -419,9 +438,16 @@ export default function BarcodeScanner({
         <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-5 pb-8 z-[71] animate-slideUp">
           <div className="flex items-start justify-between mb-3">
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mb-1">
-                {scanResult.product.categ_id?.[1] || ''}
-              </p>
+              <div className="flex items-center gap-2 mb-1">
+                <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400">
+                  {scanResult.product.categ_id?.[1] || ''}
+                </p>
+                {scanResult.isDraft && (
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+                    Pending review
+                  </span>
+                )}
+              </div>
               <h3 className="text-[18px] font-bold text-gray-900 leading-tight">
                 {scanResult.product.name}
               </h3>
@@ -506,29 +532,133 @@ export default function BarcodeScanner({
         </div>
       )}
 
-      {/* ── Unknown barcode ── */}
+      {/* ── Unknown barcode — create draft + count ── */}
       {scanResult.kind === 'unknown' && (
+        <UnknownBarcodeSheet
+          barcode={scanResult.barcode}
+          onCancel={handleDismissResult}
+          onCreated={handleDraftCreated}
+        />
+      )}
+
+      {/* ── Creating draft (API in flight) ── */}
+      {scanResult.kind === 'creating' && (
         <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-5 pb-8 z-[71] animate-slideUp">
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
-            <div className="flex items-start gap-2.5">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" className="flex-shrink-0 mt-0.5">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              <div>
-                <p className="text-[15px] font-semibold text-red-800">Unknown barcode</p>
-                <p className="text-[12px] text-red-600/70 mt-0.5 font-mono">{scanResult.barcode}</p>
-                {userRole !== 'staff' && (
-                  <p className="text-[13px] text-red-700 mt-2">Assign to a product from the product list.</p>
-                )}
-              </div>
-            </div>
+          <div className="flex items-center justify-center gap-3 py-6">
+            <div className="w-5 h-5 border-2 border-gray-300 border-t-[#F5800A] rounded-full animate-spin" />
+            <span className="text-[15px] text-gray-600">Creating &quot;{scanResult.name}&quot;...</span>
           </div>
-          <button onClick={handleDismissResult}
-            className="w-full py-3.5 rounded-xl bg-gray-100 text-gray-700 text-[15px] font-semibold active:bg-gray-200">
-            Scan next
-          </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ───── UnknownBarcodeSheet ───── */
+
+interface UnknownBarcodeSheetProps {
+  barcode: string;
+  onCancel: () => void;
+  onCreated: (product: any, qty: number) => void;
+}
+
+function UnknownBarcodeSheet({ barcode, onCancel, onCreated }: UnknownBarcodeSheetProps) {
+  const [name, setName] = useState('');
+  const [qtyValue, setQtyValue] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 150);
+    return () => clearTimeout(t);
+  }, []);
+
+  async function handleCreate() {
+    const trimmed = name.trim();
+    if (trimmed.length < 2) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/inventory/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode, name: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to create');
+        setSubmitting(false);
+        return;
+      }
+      onCreated(data.product, qtyValue);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error');
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl p-5 pb-8 z-[71] animate-slideUp">
+      <div className="mb-3">
+        <p className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mb-1">New product</p>
+        <p className="text-[12px] text-gray-500 font-mono">{barcode}</p>
+      </div>
+
+      <label className="text-[13px] font-semibold text-gray-600 mb-2 block">What is this item?</label>
+      <input
+        ref={inputRef}
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && name.trim().length >= 2) handleCreate(); }}
+        placeholder="e.g. Pork belly"
+        className="w-full px-4 py-3 rounded-xl bg-gray-50 border-2 border-gray-200 text-[16px] text-gray-900 focus:outline-none focus:border-[#F5800A] mb-4"
+        disabled={submitting}
+      />
+
+      <div className="flex items-center justify-center gap-4 mb-5">
+        <button
+          onClick={() => setQtyValue((q) => Math.max(0, q - 1))}
+          className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-[22px] font-bold text-gray-600 active:bg-gray-200 select-none"
+          disabled={submitting}
+        >&minus;</button>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={qtyValue}
+          onChange={(e) => {
+            const v = e.target.value.replace(/[^0-9.]/g, '');
+            if (v === '' || v === '.') { setQtyValue(0); return; }
+            const n = parseFloat(v);
+            if (!isNaN(n)) setQtyValue(n);
+          }}
+          className="w-24 h-14 text-center text-[32px] font-mono font-bold text-gray-900 bg-gray-50 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-[#F5800A]"
+          disabled={submitting}
+        />
+        <button
+          onClick={() => setQtyValue((q) => q + 1)}
+          className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-[22px] font-bold text-gray-600 active:bg-gray-200 select-none"
+          disabled={submitting}
+        >+</button>
+      </div>
+
+      {error && (
+        <div className="mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-[13px] text-red-700">{error}</div>
+      )}
+
+      <div className="flex gap-2">
+        <button
+          onClick={onCancel}
+          disabled={submitting}
+          className="flex-1 py-3.5 rounded-xl bg-gray-100 text-gray-700 text-[15px] font-semibold active:bg-gray-200 disabled:opacity-50"
+        >Cancel</button>
+        <button
+          onClick={handleCreate}
+          disabled={submitting || name.trim().length < 2}
+          className="flex-[2] py-3.5 rounded-xl bg-[#F5800A] text-white text-[15px] font-bold shadow-md shadow-[#F5800A]/30 active:bg-[#E86000] active:scale-[0.975] transition-all disabled:opacity-40"
+        >{submitting ? 'Creating...' : 'Create and count'}</button>
+      </div>
     </div>
   );
 }

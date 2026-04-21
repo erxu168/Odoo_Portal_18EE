@@ -182,6 +182,7 @@ export class OdooClient {
       limit?: number;
       offset?: number;
       order?: string;
+      context?: Record<string, any>;
     } = {},
   ): Promise<any[]> {
     await this.ensureAuth();
@@ -194,7 +195,7 @@ export class OdooClient {
         limit: options.limit || 200,
         offset: options.offset || 0,
         order: options.order || '',
-        context: this.getContext(),
+        context: this.getContext(options.context || {}),
       },
     });
   }

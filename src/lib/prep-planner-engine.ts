@@ -257,7 +257,7 @@ export async function backfillDemandHistory(
   }
 
   const rows: DemandRow[] = [];
-  for (const b of buckets.values()) {
+  for (const b of Array.from(buckets.values())) {
     const dateObj = new Date(b.sale_date + 'T12:00:00+01:00');
     const holiday = isHoliday(dateObj) !== null;
     rows.push({
@@ -379,7 +379,7 @@ export async function computeForecasts(
       }
       arr.push({ date: h.sale_date, qty: h.qty });
     }
-    for (const arr of bucket.values()) {
+    for (const arr of Array.from(bucket.values())) {
       arr.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     }
 

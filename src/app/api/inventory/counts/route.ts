@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession } from '@/lib/inventory-db';
+import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, setCountPhotos, getCountPhotosMap } from '@/lib/inventory-db';
 import { getOdoo } from '@/lib/odoo';
 
 
@@ -21,6 +21,8 @@ export async function GET(request: Request) {
   if (!sessionId) return NextResponse.json({ error: 'session_id required' }, { status: 400 });
 
   const entries = getSessionEntries(parseInt(sessionId));
+  const photoMap = getCountPhotosMap('count_entries', entries.map((e: any) => e.id));
+  const hydrated = entries.map((e: any) => ({ ...e, photos: photoMap[e.id] || [] }));
 
   // Fetch system quantities from Odoo stock.quant for this session's location
   const systemQtys: Record<number, number> = {};
@@ -44,15 +46,16 @@ export async function GET(request: Request) {
     console.error('Failed to fetch system quantities from Odoo:', e);
   }
 
-  return NextResponse.json({ entries, system_qtys: systemQtys });
+  return NextResponse.json({ entries: hydrated, system_qtys: systemQtys });
 }
 
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  initInventoryTables();
   const body = await request.json();
-  const { session_id, product_id, counted_qty, system_qty, uom, notes } = body;
+  const { session_id, product_id, counted_qty, system_qty, uom, notes, photos } = body;
 
   if (!session_id || !product_id || counted_qty === undefined) {
     return NextResponse.json({ error: 'session_id, product_id, counted_qty required' }, { status: 400 });
@@ -65,6 +68,12 @@ export async function POST(request: Request) {
     notes,
     counted_by: user.id,
   });
+
+  if (Array.isArray(photos)) {
+    const entries = getSessionEntries(session_id);
+    const entry = entries.find((e: any) => e.product_id === product_id);
+    if (entry) setCountPhotos('count_entries', entry.id, photos);
+  }
 
   return NextResponse.json({ message: 'Count saved' });
 }

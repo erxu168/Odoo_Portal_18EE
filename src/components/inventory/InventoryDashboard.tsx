@@ -12,8 +12,6 @@ interface InventoryDashboardProps {
 export default function InventoryDashboard({ userRole, onNavigate, onHome }: InventoryDashboardProps) {
   const [stats, setStats] = useState({ pending: 0, submitted: 0, quickPending: 0, templates: 0 });
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [genMsg, setGenMsg] = useState<string | null>(null);
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
 
   const canManage = userRole === 'manager' || userRole === 'admin';
@@ -58,26 +56,6 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
       console.error('Failed to load inventory stats:', err);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleGenerate() {
-    setGenerating(true);
-    setGenMsg(null);
-    try {
-      const res = await fetch('/api/inventory/sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'generate_today' }),
-      });
-      const data = await res.json();
-      setGenMsg(data.message || `Created ${data.created} sessions`);
-      setTimeout(() => setGenMsg(null), 4000);
-      fetchStats();
-    } catch {
-      setGenMsg('Failed to generate sessions');
-    } finally {
-      setGenerating(false);
     }
   }
 
@@ -149,6 +127,19 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     }] : []),
+    ...(canManage ? [{
+      id: 'product-settings',
+      label: 'Product settings',
+      color: 'bg-white border-gray-200', iconBg: 'bg-blue-50', iconColor: 'text-blue-600',
+      sublabel: 'Photo rules, per product',
+      badge: 0,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+      ),
+    }] : []),
   ];
 
   return (
@@ -192,24 +183,6 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
           )}
         />
 
-        {canManage && (
-          <div className="mt-4">
-            {genMsg && (
-              <div className="mb-2 px-4 py-2.5 bg-green-50 border border-green-200 rounded-xl text-green-700 text-[var(--fs-sm)] font-semibold">
-                {genMsg}
-              </div>
-            )}
-            <button onClick={handleGenerate} disabled={generating}
-              className="w-full py-3 rounded-xl bg-green-600 text-white text-[var(--fs-base)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2">
-              {generating ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" strokeLinecap="round"/></svg>
-              )}
-              {generating ? 'Generating...' : "Generate today's sessions"}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

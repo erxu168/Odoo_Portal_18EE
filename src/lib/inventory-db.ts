@@ -79,8 +79,54 @@ export function initInventoryTables() {
     CREATE INDEX IF NOT EXISTS idx_sessions_date ON counting_sessions(scheduled_date);
     CREATE INDEX IF NOT EXISTS idx_entries_session ON count_entries(session_id);
     CREATE INDEX IF NOT EXISTS idx_quick_status ON quick_counts(status);
+
+    CREATE TABLE IF NOT EXISTS product_drafts (
+      odoo_product_id INTEGER PRIMARY KEY,
+      barcode TEXT NOT NULL,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS product_flags (
+      odoo_product_id INTEGER PRIMARY KEY,
+      requires_photo  INTEGER NOT NULL DEFAULT 0,
+      updated_by      INTEGER,
+      updated_at      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS count_photos (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_table TEXT NOT NULL,
+      source_id    INTEGER NOT NULL,
+      photo        TEXT NOT NULL,
+      created_at   TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_count_photos_source ON count_photos(source_table, source_id);
   `);
   migrateInventorySchema(db);
+}
+
+// ===
+// PRODUCT DRAFTS (scan-to-create tracking)
+// ===
+// A product is considered a "pending draft awaiting manager review" only if
+// it was created via the portal's scan-to-count flow AND is still inactive in
+// Odoo. Without this table, barcode-lookup would mistake any archived-with-
+// barcode product for a draft.
+
+export function registerDraftProduct(odooProductId: number, barcode: string, createdBy: number) {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR IGNORE INTO product_drafts (odoo_product_id, barcode, created_by, created_at)
+    VALUES (?, ?, ?, ?)
+  `).run(odooProductId, barcode, createdBy, now());
+}
+
+export function isDraftProduct(odooProductId: number): boolean {
+  const db = getDb();
+  const row = db.prepare(`SELECT 1 FROM product_drafts WHERE odoo_product_id = ?`).get(odooProductId);
+  return !!row;
 }
 
 function now(): string {
@@ -416,7 +462,13 @@ export function upsertCountEntry(data: {
 
 export function deleteCountEntry(session_id: number, product_id: number) {
   const db = getDb();
-  db.prepare('DELETE FROM count_entries WHERE session_id = ? AND product_id = ?').run(session_id, product_id);
+  // Find the entry ids first so we can delete their photos
+  const rows = db.prepare(
+    'SELECT id FROM count_entries WHERE session_id = ? AND product_id = ?'
+  ).all(session_id, product_id) as { id: number }[];
+  for (const r of rows) deleteCountPhotos('count_entries', r.id);
+  db.prepare('DELETE FROM count_entries WHERE session_id = ? AND product_id = ?')
+    .run(session_id, product_id);
 }
 
 export function getSessionEntries(session_id: number): CountEntry[] {
@@ -457,4 +509,151 @@ export function approveQuickCount(id: number, reviewed_by: number) {
   const db = getDb();
   db.prepare('UPDATE quick_counts SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
     .run('approved', reviewed_by, now(), id);
+}
+
+/**
+ * Reassign every count line (quick_counts + count_entries) that points to
+ * `fromProductId` so it points to `toProductId` instead. Used when a
+ * manager links a draft product to an existing product during review.
+ *
+ * Returns the total number of rows changed.
+ */
+export function reassignCountsForProduct(fromProductId: number, toProductId: number): number {
+  const db = getDb();
+  let changed = 0;
+  changed += db.prepare('UPDATE quick_counts SET product_id = ? WHERE product_id = ?')
+    .run(toProductId, fromProductId).changes;
+  changed += db.prepare('UPDATE count_entries SET product_id = ? WHERE product_id = ?')
+    .run(toProductId, fromProductId).changes;
+  return changed;
+}
+
+/**
+ * Delete every count line (quick_counts + count_entries) that points to
+ * `productId`. Used when a manager rejects a draft product during review.
+ *
+ * Returns the total number of rows deleted.
+ */
+export function deleteCountsForProduct(productId: number): number {
+  const db = getDb();
+
+  const quickRows = db.prepare(
+    'SELECT id FROM quick_counts WHERE product_id = ?'
+  ).all(productId) as { id: number }[];
+  for (const r of quickRows) deleteCountPhotos('quick_counts', r.id);
+
+  const entryRows = db.prepare(
+    'SELECT id FROM count_entries WHERE product_id = ?'
+  ).all(productId) as { id: number }[];
+  for (const r of entryRows) deleteCountPhotos('count_entries', r.id);
+
+  let deleted = 0;
+  deleted += db.prepare('DELETE FROM quick_counts WHERE product_id = ?').run(productId).changes;
+  deleted += db.prepare('DELETE FROM count_entries WHERE product_id = ?').run(productId).changes;
+  return deleted;
+}
+
+// ===
+// PRODUCT FLAGS (per-product counting requirements)
+// ===
+
+export interface ProductFlag {
+  odoo_product_id: number;
+  requires_photo: boolean;
+  updated_by: number | null;
+  updated_at: string | null;
+}
+
+export function getProductFlags(ids?: number[]): ProductFlag[] {
+  const db = getDb();
+  let rows: any[];
+  if (ids && ids.length > 0) {
+    const placeholders = ids.map(() => '?').join(',');
+    rows = db.prepare(
+      `SELECT * FROM product_flags WHERE odoo_product_id IN (${placeholders})`
+    ).all(...ids);
+  } else {
+    rows = db.prepare('SELECT * FROM product_flags').all();
+  }
+  return rows.map(r => ({
+    odoo_product_id: r.odoo_product_id,
+    requires_photo: !!r.requires_photo,
+    updated_by: r.updated_by,
+    updated_at: r.updated_at,
+  }));
+}
+
+export function setProductFlag(
+  productId: number,
+  requiresPhoto: boolean,
+  userId: number,
+) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO product_flags (odoo_product_id, requires_photo, updated_by, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(odoo_product_id) DO UPDATE SET
+      requires_photo = excluded.requires_photo,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(productId, requiresPhoto ? 1 : 0, userId, now());
+}
+
+// ===
+// COUNT PHOTOS (per-line photo proof)
+// ===
+
+export type PhotoSource = 'count_entries' | 'quick_counts';
+
+/**
+ * Replace the full set of photos for a given count line. Deletes any
+ * existing photos then inserts the provided set. Pass an empty array
+ * to clear photos for a line.
+ */
+export function setCountPhotos(source: PhotoSource, sourceId: number, photos: string[]) {
+  const db = getDb();
+  const ts = now();
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM count_photos WHERE source_table = ? AND source_id = ?')
+      .run(source, sourceId);
+    const insert = db.prepare(
+      'INSERT INTO count_photos (source_table, source_id, photo, created_at) VALUES (?, ?, ?, ?)'
+    );
+    for (const p of photos) insert.run(source, sourceId, p, ts);
+  });
+  tx();
+}
+
+/**
+ * Get all photos for a single count line.
+ */
+export function getCountPhotos(source: PhotoSource, sourceId: number): string[] {
+  const db = getDb();
+  return (db.prepare(
+    'SELECT photo FROM count_photos WHERE source_table = ? AND source_id = ? ORDER BY id'
+  ).all(source, sourceId) as { photo: string }[]).map(r => r.photo);
+}
+
+/**
+ * Bulk fetch: returns { sourceId → string[] } for the given line IDs.
+ */
+export function getCountPhotosMap(source: PhotoSource, sourceIds: number[]): Record<number, string[]> {
+  if (sourceIds.length === 0) return {};
+  const db = getDb();
+  const placeholders = sourceIds.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT source_id, photo FROM count_photos WHERE source_table = ? AND source_id IN (${placeholders}) ORDER BY id`
+  ).all(source, ...sourceIds) as { source_id: number; photo: string }[];
+  const map: Record<number, string[]> = {};
+  for (const r of rows) {
+    if (!map[r.source_id]) map[r.source_id] = [];
+    map[r.source_id].push(r.photo);
+  }
+  return map;
+}
+
+export function deleteCountPhotos(source: PhotoSource, sourceId: number) {
+  const db = getDb();
+  db.prepare('DELETE FROM count_photos WHERE source_table = ? AND source_id = ?')
+    .run(source, sourceId);
 }
