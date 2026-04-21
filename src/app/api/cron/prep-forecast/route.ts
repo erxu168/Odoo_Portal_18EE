@@ -46,6 +46,8 @@ export async function GET(request: Request) {
   const horizonDays = parseInt(searchParams.get('horizon') || '7', 10);
   const skipWeather = searchParams.get('skipWeather') === '1';
   const skipDemandBackfill = searchParams.get('skipDemand') === '1';
+  const minRowsRaw = searchParams.get('minRows');
+  const minRows = minRowsRaw ? parseInt(minRowsRaw, 10) : undefined;
 
   if (companyIds.length === 0) {
     return NextResponse.json({ error: 'No valid company IDs' }, { status: 400 });
@@ -64,6 +66,7 @@ export async function GET(request: Request) {
       horizonDays,
       skipWeather,
       skipDemandBackfill,
+      minRows: Number.isFinite(minRows) ? minRows : undefined,
     });
 
     logAudit({
