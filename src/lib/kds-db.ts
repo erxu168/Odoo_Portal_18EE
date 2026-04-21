@@ -121,6 +121,22 @@ export function getKdsSettings(locationId: number): KdsSettings {
   };
 }
 
+// -- Product config read --
+
+export interface ProductConfigRow {
+  product_name: string;
+  source_station: string;
+  prep_type: string;
+}
+
+export function getProductConfig(locationId: number): ProductConfigRow[] {
+  ensureTables();
+  const db = getDb();
+  return db.prepare(
+    'SELECT product_name, source_station, prep_type FROM kds_product_config WHERE location_id = ?'
+  ).all(locationId) as ProductConfigRow[];
+}
+
 export function saveKdsSettings(s: KdsSettings): void {
   ensureTables();
   const db = getDb();
