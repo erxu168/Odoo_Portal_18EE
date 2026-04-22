@@ -75,7 +75,52 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   // BOM line IDs (fetched separately for editing)
   const [rawLines, setRawLines] = useState<any[]>([]);
 
+  // Role (for Archive button visibility)
+  const [userRole, setUserRole] = useState<string>('staff');
+
+  // Archive flow
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const [archiveToast, setArchiveToast] = useState<string | null>(null);
+
   useEffect(() => { fetchBomDetail(); }, [bomId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d?.user?.role) setUserRole(d.user.role);
+    }).catch(() => {});
+  }, []);
+
+  const canArchive = userRole === 'manager' || userRole === 'admin';
+
+  async function handleArchiveToggle(nextActive: boolean) {
+    setArchiving(true);
+    setArchiveError(null);
+    try {
+      const res = await fetch(`/api/boms/${bomId}/archive`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: nextActive }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      setShowArchiveModal(false);
+      setArchiveToast(nextActive ? 'Recipe restored' : 'Recipe archived');
+      // Wait briefly so the toast is visible, then go back to the list
+      setTimeout(() => {
+        setArchiveToast(null);
+        onBack();
+      }, 900);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setArchiveError(msg);
+    } finally {
+      setArchiving(false);
+    }
+  }
 
   async function fetchBomDetail() {
     setLoading(true);
@@ -826,13 +871,87 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
           )}
 
           {/* Bottom actions */}
-          <div className="px-4 pb-8">
+          <div className="px-4 pb-4">
             <button onClick={() => onCreateMo(bomId)}
               className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform">
               Create manufacturing order
             </button>
           </div>
+
+          {/* Archive / Unarchive (manager+ only) */}
+          {canArchive && bom && (
+            <div className="px-4 pb-8">
+              {bom.active === false ? (
+                <button
+                  type="button"
+                  onClick={() => handleArchiveToggle(true)}
+                  disabled={archiving}
+                  className="w-full py-3 rounded-xl border border-gray-200 bg-white text-[var(--fs-sm)] font-semibold text-[#F5800A] active:bg-orange-50 disabled:opacity-50"
+                >
+                  {archiving ? 'Restoring…' : 'Unarchive recipe'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setArchiveError(null); setShowArchiveModal(true); }}
+                  disabled={archiving}
+                  className="w-full py-3 rounded-xl border border-gray-200 bg-white text-[var(--fs-sm)] font-semibold text-[#EF4444] active:bg-red-50 disabled:opacity-50"
+                >
+                  Archive recipe
+                </button>
+              )}
+              {archiveError && !showArchiveModal && (
+                <div className="mt-2 text-[var(--fs-xs)] text-[#EF4444]">{archiveError}</div>
+              )}
+            </div>
+          )}
         </>
+      )}
+
+      {/* Archive confirmation modal */}
+      {showArchiveModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4 pb-[calc(4rem+env(safe-area-inset-bottom))]"
+          onClick={() => { if (!archiving) setShowArchiveModal(false); }}
+        >
+          <div
+            className="w-full max-w-sm bg-white rounded-2xl p-5 shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="text-[var(--fs-md)] font-bold text-gray-900 mb-1">Archive this recipe?</div>
+            <div className="text-[var(--fs-sm)] text-gray-600 mb-4">
+              <span className="font-semibold">{bom?.product_tmpl_id?.[1] || 'This recipe'}</span> will be hidden from the list. You can restore it later via <span className="font-semibold">Show archived</span>.
+            </div>
+            {archiveError && (
+              <div className="mb-3 text-[var(--fs-xs)] text-[#EF4444]">{archiveError}</div>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowArchiveModal(false)}
+                disabled={archiving}
+                className="flex-1 py-3 rounded-xl border border-gray-200 bg-white text-[var(--fs-sm)] font-semibold text-gray-600 active:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleArchiveToggle(false)}
+                disabled={archiving}
+                className="flex-1 py-3 rounded-xl bg-[#EF4444] text-white text-[var(--fs-sm)] font-bold active:bg-red-700 disabled:opacity-50"
+              >
+                {archiving ? 'Archiving…' : 'Archive'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {archiveToast && (
+        <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-[var(--fs-sm)] font-semibold px-4 py-2.5 rounded-xl shadow-lg">
+          {archiveToast}
+        </div>
       )}
     </div>
   );
