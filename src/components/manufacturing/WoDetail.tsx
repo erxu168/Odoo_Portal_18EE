@@ -20,7 +20,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const [tab, setTab] = useState<'components' | 'instructions'>('components');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [timerSec, setTimerSec] = useState(0);
   const [running, setRunning] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -122,10 +121,8 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   async function handleStart() { try { await callWoAction('start'); setRunning(true); } catch (e) { void e; } }
   async function handlePause() { try { await callWoAction('pause'); setRunning(false); } catch (e) { void e; } }
   function handleToggle() { if (running) { handlePause(); } else { handleStart(); } }
-  function handleDoneRequest() { setShowConfirm(true); }
 
-  async function handleDoneConfirmed() {
-    setShowConfirm(false);
+  async function handleDone() {
     try {
       await callWoAction('done');
       setRunning(false);
@@ -226,7 +223,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
                     <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 3l14 9-14 9V3z"/></svg>{timerSec > 0 ? 'Resume' : 'Start'}</>
                   )}
                 </button>
-                <button onClick={handleDoneRequest} disabled={!!actionLoading}
+                <button onClick={handleDone} disabled={!!actionLoading}
                   className="px-6 py-3 rounded-xl bg-green-500 text-white font-bold text-[var(--fs-sm)] flex items-center gap-2 active:scale-95 transition-transform disabled:opacity-50">
                   {actionLoading === 'done' ? (
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -399,7 +396,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
       {wo.state !== 'done' && (
         <div className="px-4 pb-6">
-          <button onClick={handleDoneRequest} disabled={!!actionLoading}
+          <button onClick={handleDone} disabled={!!actionLoading}
             className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-md)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
             {actionLoading === 'done' ? 'Finishing...' : nextWo && nextWo.state !== 'done' ? `Done ${arrow} ${nextWo.name}` : 'Mark step done'}
           </button>
@@ -419,32 +416,9 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         />
       )}
 
-      {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowConfirm(false)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-24" onClick={(e) => e.stopPropagation()} style={{animation: 'slideUp .25s ease-out'}}>
-            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
-            <div className="text-center mb-6">
-              <h3 className="text-lg font-bold text-gray-900">Finished this step?</h3>
-              <p className="text-sm text-gray-500 mt-2">
-                Marking <strong>{wo.name}</strong> as done{productName !== 'this product' && <> for <strong>{productName}</strong></>}.
-                {running && <><br />Timer stops at <strong>{mm}:{ss}</strong>.</>}
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setShowConfirm(false)} className="flex-1 py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-[var(--fs-sm)] active:bg-gray-50">Not yet</button>
-              <button onClick={handleDoneConfirmed} disabled={!!actionLoading}
-                className="flex-1 py-3.5 rounded-xl bg-green-500 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50 flex items-center justify-center gap-2">
-                {actionLoading === 'done' ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Yes, done'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {showPdf && hasPdf && (
         <PdfViewer fileData={worksheetPdf} fileName="worksheet.pdf" onClose={() => setShowPdf(false)} />
       )}
-      <style jsx>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
     </div>
   );
 }
