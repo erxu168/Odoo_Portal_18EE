@@ -293,28 +293,32 @@ export async function PATCH(
             console.log(`[MO ${moId}] Auto-created lot ${lotName} (id=${lotId}) for tracked product`);
           }
 
-          // Call button_mark_done. When Odoo returns a wizard action it
-          // already created the wizard record — use its res_id rather
-          // than creating a new empty one. Errors from wizard handling
-          // are surfaced to the UI so the user knows close didn't finish.
+          // Call button_mark_done. Odoo can return two kinds of wizard:
+          //   * mrp.production.backorder — pre-created, comes with res_id;
+          //     we call action_close_mo on it to close without backorder.
+          //   * mrp.consumption.warning — opened fresh with defaults in
+          //     context (no res_id); we create it, confirm, and chain to
+          //     a backorder wizard if action_confirm returns one.
+          // Errors bubble up so the user knows close didn't finish.
           const result = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
           if (result && typeof result === 'object' && result.res_model) {
             const wizModel = result.res_model;
-            const wizId = result.res_id;
-            if (!wizId) {
-              return NextResponse.json(
-                { error: `Odoo returned ${wizModel} without a record id; close incomplete.` },
-                { status: 409 },
-              );
-            }
-            if (wizModel === 'mrp.production.backorder') {
-              // "Produce & close" means close without backorder.
-              await odoo.call(wizModel, 'action_close_mo', [[wizId]]);
-            } else if (wizModel === 'mrp.consumption.warning') {
+
+            if (wizModel === 'mrp.consumption.warning') {
+              const wizCtx = { ...(result.context || {}), active_id: moId, active_ids: [moId] };
+              const wizId = await odoo.create(wizModel, {}, { context: wizCtx });
               const cwResult = await odoo.call(wizModel, 'action_confirm', [[wizId]]);
               if (cwResult && typeof cwResult === 'object' && cwResult.res_model === 'mrp.production.backorder' && cwResult.res_id) {
                 await odoo.call('mrp.production.backorder', 'action_close_mo', [[cwResult.res_id]]);
               }
+            } else if (wizModel === 'mrp.production.backorder') {
+              if (!result.res_id) {
+                return NextResponse.json(
+                  { error: 'Odoo returned mrp.production.backorder without a record id; close incomplete.' },
+                  { status: 409 },
+                );
+              }
+              await odoo.call(wizModel, 'action_close_mo', [[result.res_id]]);
             } else {
               return NextResponse.json(
                 { error: `Cannot auto-handle ${wizModel} wizard. Please close the MO in Odoo.` },
