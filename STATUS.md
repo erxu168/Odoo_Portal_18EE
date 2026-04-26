@@ -1,6 +1,23 @@
 # Krawings Portal — STATUS
 
-_Last updated: 2026-04-22_
+_Last updated: 2026-04-26_
+
+## 2026-04-26 session — WAJ Boston Bay Jerk BOMs deployed
+
+Deployed traditional Boston Bay-style jerk paste recipe to Odoo 18 EE staging (company id=5, What a Jerk). Two-level BOM structure for higher productivity:
+
+- **Dry mix sub-assembly** (BOM id 166, code `WAJ-BB-DRY-MIX-v2.0`): 10 kg yield, 4 components (toasted/ground pimento + black peppercorns, brown sugar, salt at 57%), 4 work order operations with HTML notes. Yields ~7-8 wet paste batches; 8-week shelf life chiller.
+- **Wet paste finished product** (BOM id 167, code `WAJ-BB-JERK-PASTE-v2.0`): 10.69 kg yield, 10 components including dry mix sub-assembly, 4 operations. Scallion-dominant, vinegar-based, no soy/cloves/nutmeg/browning/lager/OJ. 6.9% salt = 15.2g salt/kg chicken at 220g paste/kg application.
+
+Recipe sources: Chris Aguilar (Jamaica-No-Problem) Maroon-lineage tradition, Stush Kitchen authentic Jamaican-born recipe.
+
+Deploy script and README at `scripts/deploy_waj_boston_bay_boms.py` and `scripts/README.md`. Credentials read from `.env.local` (gitignored), never committed.
+
+**Coexists with v1.0 commercial-style BOMs** (different product names with cloves/nutmeg/soy/browning/lager/OJ) for side-by-side production testing. Whichever style wins on customer taste tests becomes the locked production recipe; the loser gets archived in Odoo UI.
+
+Bug fix discovered during deploy: in Odoo 18 EE multi-company setups, `mrp.workcenter.create` without `resource_calendar_id` defaults to a calendar from a different company, raising "Incompatible companies on records". Fixed in script by looking up WAJ-specific calendar (id=8 on staging) before creating work centre.
+
+New raw material products created on staging: 1567 (Pimento berries, whole), 1568 (Black peppercorns, whole), 1569 (Brown sugar), 1570 (Water). All in RAW MATERIALS category, kg UoM, WAJ company. Need supplier prices set before BOM cost rollup is meaningful.
 
 ## Current focus
 Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with real data from seeded SQLite.
@@ -27,6 +44,7 @@ Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with r
 | Staffing optimization | 📋 designed | Prophet+XGBoost → rules engine → OR-Tools constraint scheduling. 10–14 week build. |
 | **Issues & Requests** | 🟢 **backend shipped** | See below. Frontend not started. |
 | **Rentals** | 🟢 **frontend v2 shipped** | See below. 16 pages, 16 components, 25 API routes, seeded SQLite. |
+| **WAJ Jerk BOMs** | 🟢 **deployed to staging** | Boston Bay v2.0 (id 166, 167) + commercial v1.0 coexist. Side-by-side production test pending. |
 
 ## Prep Planner — detail
 
@@ -275,6 +293,15 @@ sudo -u odoo /opt/odoo/18.0/odoo-18.0/venv/bin/python3 \
   -d krawings -i krawings_issues --stop-after-init
 
 sudo systemctl restart odoo-18
+```
+
+### WAJ Boston Bay Jerk BOMs (one-off, already deployed 2026-04-26)
+```bash
+# Run from anywhere with HTTPS access to test18ee.krawings.de
+cd scripts/
+echo "ODOO_PASSWORD=your-password" > .env.local
+python3 deploy_waj_boston_bay_boms.py             # dry-run
+python3 deploy_waj_boston_bay_boms.py --execute   # deploy
 ```
 
 ## Environments
