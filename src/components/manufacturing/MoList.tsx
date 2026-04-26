@@ -188,7 +188,15 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                 {filtered.map((mo: any) => {
                   const woDone = mo.work_order_done || 0;
                   const woTotal = mo.work_order_count || 0;
-                  const pct = woTotal > 0 ? Math.round((woDone / woTotal) * 100) : (mo.product_qty > 0 ? Math.round((mo.qty_producing / mo.product_qty) * 100) : 0);
+                  // Prefer WO-based progress when steps exist. For step-less MOs
+                  // qty_producing stays 0 until close, so fall back to state-based
+                  // progress: confirmed = 0%, in-progress = 50%, to_close/done = 100%.
+                  const stateProgress = mo.state === 'done' || mo.state === 'to_close' ? 100
+                    : mo.state === 'progress' ? 50
+                    : 0;
+                  const pct = woTotal > 0
+                    ? Math.round((woDone / woTotal) * 100)
+                    : stateProgress;
                   const deadlineStr = mo.date_deadline
                     ? new Date(mo.date_deadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
                     : null;
