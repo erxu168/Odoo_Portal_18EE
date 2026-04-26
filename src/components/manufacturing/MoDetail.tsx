@@ -105,9 +105,12 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      onBack();
+      // Stay on the detail screen and refresh so the user sees the
+      // "Order completed" banner — auto-leaving used to mask close failures.
+      await fetchDetail();
     } catch (err: any) {
       setProduceError(err.message || 'Failed to produce');
+    } finally {
       setProducing(false);
     }
   }
