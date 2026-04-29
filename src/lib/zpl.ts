@@ -54,11 +54,11 @@ export function generateZPL(data: LabelData, opts: {
   const gap = Math.max(4, Math.round(hDots * 0.012));
 
   // Responsive fonts — percentages of label height
-  const title = font(hDots * 0.093);   // ~56 dots on 75mm
-  const body  = font(hDots * 0.055);   // ~33 dots on 75mm (produced)
-  const qty   = font(hDots * 0.09);    // ~54 dots on 75mm
-  const exp   = font(hDots * 0.18);    // ~108 dots on 75mm — 2x bigger!
-  const meta  = font(hDots * 0.035);   // ~21 dots on 75mm
+  const title = font(hDots * 0.121);   // product name (was 0.093, +30%)
+  const body  = font(hDots * 0.0715);  // produced date (was 0.055, +30%)
+  const qty   = font(hDots * 0.09);
+  const exp   = font(hDots * 0.144);   // expiry (was 0.18, -20%)
+  const meta  = font(hDots * 0.035);
   const sepH  = Math.max(2, Math.round(hDots * 0.005));
 
   // Product name: max 3 lines
