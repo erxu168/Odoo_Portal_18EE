@@ -134,6 +134,7 @@ async function syncCreateRecipe(odoo: any, localId: number): Promise<void> {
         const newTmplId = await odoo.create('product.template', {
           name: ing.name,
           type: 'consu',
+          tracking: 'lot',
         });
         const newVariants = await odoo.searchRead(
           'product.product',
