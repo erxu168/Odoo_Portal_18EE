@@ -41,3 +41,6 @@ next-env.d.ts
 # Capacitor native projects (not committed — rebuild from capacitor.config.ts)
 /android/
 /ios/
+
+# worktrees (Claude isolated workspaces)
+.worktrees/
