@@ -154,7 +154,53 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     return { fullPacks, size, remainder, hasRemainder, totalContainers };
   }, [packSize, totalQty]);
 
-  function applyAutoSplit() {
+  async function submitSplit(rows: ContainerRow[]) {
+    if (!mo) return;
+    const sum = rows.reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
+    const balanced = totalQty > 0 && Math.abs(totalQty - sum) < totalQty * 0.001;
+    const allFilledRows = rows.every(c => parseFloat(c.qty) > 0 && c.expiryDate);
+    if (!balanced || !allFilledRows || rows.length === 0) {
+      setError("Containers don't add up to the total. Adjust pack size or fix rows below.");
+      return;
+    }
+    setSplitLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/manufacturing-orders/${moId}/package`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mo_id: moId, mo_name: mo.name,
+          product_id: mo.product_id[0], product_name: mo.product_id[1],
+          total_qty: totalQty, uom,
+          containers: rows.map(c => ({ qty: parseFloat(c.qty), expiry_date: c.expiryDate })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || data.message || `Server error (${res.status})`);
+        setSplitLoading(false);
+        return;
+      }
+      if (data.errors && Array.isArray(data.errors)) {
+        setError(data.errors.join('\n'));
+      }
+      if (data.split) {
+        setExistingSplit(data.split);
+        setExistingContainers(data.containers || []);
+        setSplitDone(true);
+        setStep('preview');
+      } else if (!data.error && !data.errors) {
+        setError('Unexpected response from server. Please try again.');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to package. Check your connection.');
+    } finally {
+      setSplitLoading(false);
+    }
+  }
+
+  async function applyAutoSplit() {
     if (!autoSplitPreview) return;
     const { fullPacks, size, remainder, hasRemainder } = autoSplitPreview;
     const defaultExpiry = calcExpiryDate(shelfLifeDays);
@@ -166,6 +212,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
       rows.push({ qty: remainder.toFixed(2), expiryDate: defaultExpiry, type: packType });
     }
     setContainers(rows);
+    await submitSplit(rows);
   }
 
   async function handleConfirmSplit() {
@@ -429,9 +476,14 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
                 className="px-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-bold text-gray-700 outline-none focus:border-green-600">
                 {CONTAINER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
-              <button onClick={applyAutoSplit} disabled={!autoSplitPreview}
+              <button onClick={applyAutoSplit} disabled={!autoSplitPreview || splitLoading}
                 className="px-5 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] active:scale-[0.975] disabled:opacity-40 disabled:bg-gray-200 disabled:text-gray-400">
-                Apply
+                {splitLoading ? (
+                  <span className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Producing
+                  </span>
+                ) : 'Split & Produce'}
               </button>
             </div>
             {autoSplitPreview && (
