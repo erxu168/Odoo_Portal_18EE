@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const {
-    productName, qty, uom, productionDate, expiryDate, lotName,
+    productName, productReference, qty, uom, productionDate, expiryDate, lotName,
     containerNumber, totalContainers, barcodeValue,
     labelSizeId, widthMm: bodyWidth, heightMm: bodyHeight,
   } = body;
@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
 
   const labelData: LabelData = {
     productName,
+    productReference: productReference || undefined,
     productionDate,
     qty,
     uom,

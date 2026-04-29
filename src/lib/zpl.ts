@@ -55,6 +55,7 @@ export function generateZPL(data: LabelData, opts: {
 
   // Responsive fonts — percentages of label height
   const title = font(hDots * 0.121);   // product name (was 0.093, +30%)
+  const ref   = font(hDots * 0.0605);  // product reference — half of title
   const body  = font(hDots * 0.0715);  // produced date (was 0.055, +30%)
   const qty   = font(hDots * 0.09);
   const exp   = font(hDots * 0.144);   // expiry (was 0.18, -20%)
@@ -78,6 +79,13 @@ export function generateZPL(data: LabelData, opts: {
   lines.push(`^A0N,${title.h},${title.w}`);
   lines.push(`^FO${margin},${y}^FB${printW},${nameLines},0,L^FD${escapeZPL(data.productName)}^FS`);
   y += title.h * nameLines + gap;
+
+  // ── Product reference (half title size, optional) ──
+  if (data.productReference && data.productReference.trim()) {
+    lines.push(`^A0N,${ref.h},${ref.w}`);
+    lines.push(`^FO${margin},${y}^FD${escapeZPL(data.productReference)}^FS`);
+    y += ref.h + gap;
+  }
 
   // ── Separator ──
   lines.push(`^FO${margin},${y}^GB${printW},${sepH},${sepH}^FS`);

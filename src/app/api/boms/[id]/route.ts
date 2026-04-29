@@ -196,13 +196,15 @@ export async function GET(
     );
 
     let shelfLifeDays = 0;
+    let productDefaultCode: string | null = null;
     if (bom.product_tmpl_id?.[0]) {
       const tmpl = await odoo.read('product.template', [bom.product_tmpl_id[0]], [
-        'use_expiration_date', 'expiration_time',
+        'use_expiration_date', 'expiration_time', 'default_code',
       ]);
       if (tmpl[0]?.use_expiration_date) {
         shelfLifeDays = tmpl[0].expiration_time || 0;
       }
+      productDefaultCode = tmpl[0]?.default_code || null;
     }
 
     return NextResponse.json({
@@ -212,6 +214,7 @@ export async function GET(
         component_count: components.length,
         last_produced: lastMo[0]?.date_finished || null,
         shelf_life_days: shelfLifeDays,
+        product_default_code: productDefaultCode,
       },
       components,
       can_make_qty: Math.floor(canMakeQty * 100) / 100,

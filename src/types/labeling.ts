@@ -128,6 +128,7 @@ export interface PrintJob {
 
 export interface LabelData {
   productName: string;
+  productReference?: string;
   productionDate: string;
   qty: number;
   uom: string;

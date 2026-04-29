@@ -49,6 +49,7 @@ export default function AdHocLabelPrint({ bomId, onBack, onDone }: AdHocLabelPri
   const [error, setError] = useState<string | null>(null);
 
   const [productName, setProductName] = useState('');
+  const [productReference, setProductReference] = useState('');
   const [uom, setUom] = useState('kg');
   const [defaultQty, setDefaultQty] = useState(0);
   const [shelfLifeDays, setShelfLifeDays] = useState(0);
@@ -97,6 +98,7 @@ export default function AdHocLabelPrint({ bomId, onBack, onDone }: AdHocLabelPri
         const qty = bom.product_qty || 0;
         const shelf = bom.shelf_life_days || 0;
         setProductName(name);
+        setProductReference(bom.product_default_code || '');
         setUom(u);
         setDefaultQty(qty);
         setShelfLifeDays(shelf);
@@ -183,6 +185,7 @@ export default function AdHocLabelPrint({ bomId, onBack, onDone }: AdHocLabelPri
     const c = containers[idx];
     const body = {
       productName,
+      productReference: productReference || undefined,
       qty: parseFloat(c.qty),
       uom,
       productionDate: fmtDate(new Date().toISOString().slice(0, 10)),
@@ -485,6 +488,7 @@ export default function AdHocLabelPrint({ bomId, onBack, onDone }: AdHocLabelPri
             <div className="flex justify-center py-2 bg-gray-50 rounded-lg">
               <LabelPreview
                 productName={productName}
+                productReference={productReference || undefined}
                 productionDate={fmtDate(new Date().toISOString().slice(0, 10))}
                 qty={parseFloat(previewContainer?.qty || '0') || 0}
                 uom={uom}

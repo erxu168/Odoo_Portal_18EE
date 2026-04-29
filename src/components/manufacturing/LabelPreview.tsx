@@ -9,6 +9,7 @@ import React from 'react';
 
 interface LabelPreviewProps {
   productName: string;
+  productReference?: string;
   productionDate: string;
   qty: number;
   uom: string;
@@ -22,7 +23,7 @@ interface LabelPreviewProps {
 }
 
 export default function LabelPreview({
-  productName, productionDate, qty, uom, expiryDate,
+  productName, productReference, productionDate, qty, uom, expiryDate,
   lotName, moName, containerNumber, totalContainers,
   widthMm, heightMm,
 }: LabelPreviewProps) {
@@ -33,10 +34,11 @@ export default function LabelPreview({
   const gap = h * 0.012;
 
   // Same percentages as zpl.ts
-  const titlePx = h * 0.093;
-  const bodyPx = h * 0.055;
+  const titlePx = h * 0.121;
+  const refPx = h * 0.0605;   // half of title
+  const bodyPx = h * 0.0715;
   const qtyPx = h * 0.09;
-  const expPx = h * 0.18;   // 2x emphasis!
+  const expPx = h * 0.144;
   const metaPx = h * 0.035;
   const sepH = Math.max(1, h * 0.005);
 
@@ -76,6 +78,19 @@ export default function LabelPreview({
         }}>
           {productName}
         </div>
+
+        {/* Product reference — half the title size */}
+        {productReference && productReference.trim() && (
+          <div style={{
+            fontSize: refPx,
+            color: '#1a1a1a',
+            lineHeight: 1.2,
+            marginBottom: gap,
+            wordBreak: 'break-word',
+          }}>
+            {productReference}
+          </div>
+        )}
 
         {/* Separator */}
         <div style={{
