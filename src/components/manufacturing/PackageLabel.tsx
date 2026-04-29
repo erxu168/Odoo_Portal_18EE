@@ -131,7 +131,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const uom = mo?.product_uom_id?.[1] || 'kg';
   const sumQty = containers.reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
   const remaining = totalQty - sumQty;
-  const isBalanced = Math.abs(remaining) < totalQty * 0.001;
+  const isBalanced = Math.abs(remaining) < Math.max(0.005, totalQty * 0.001);
   const allFilled = containers.every(c => parseFloat(c.qty) > 0 && c.expiryDate);
   const canConfirm = isBalanced && allFilled && containers.length > 0;
 
@@ -157,7 +157,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   async function submitSplit(rows: ContainerRow[]) {
     if (!mo) return;
     const sum = rows.reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
-    const balanced = totalQty > 0 && Math.abs(totalQty - sum) < totalQty * 0.001;
+    const balanced = totalQty > 0 && Math.abs(totalQty - sum) < Math.max(0.005, totalQty * 0.001);
     const allFilledRows = rows.every(c => parseFloat(c.qty) > 0 && c.expiryDate);
     if (!balanced || !allFilledRows || rows.length === 0) {
       setError("Containers don't add up to the total. Adjust pack size or fix rows below.");

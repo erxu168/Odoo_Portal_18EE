@@ -60,7 +60,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   // Validate totals
   const sumQty = body.containers.reduce((s, c) => s + c.qty, 0);
-  const tolerance = body.total_qty * 0.001;
+  const tolerance = Math.max(0.005, body.total_qty * 0.001);
   if (Math.abs(sumQty - body.total_qty) > tolerance) {
     return NextResponse.json(
       { error: `Container total (${sumQty}) does not match MO qty (${body.total_qty})` },
