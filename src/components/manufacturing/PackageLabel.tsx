@@ -47,6 +47,9 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const [existingSplit, setExistingSplit] = useState<any>(null);
   const [existingContainers, setExistingContainers] = useState<any[]>([]);
 
+  const [packSize, setPackSize] = useState('');
+  const [packType, setPackType] = useState<typeof CONTAINER_TYPES[number]>('Barrel');
+
   const [selectedSize, setSelectedSize] = useState('55x75');
   const [customWidth, setCustomWidth] = useState('55');
   const [customHeight, setCustomHeight] = useState('75');
@@ -138,6 +141,31 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     const otherSum = containers.slice(0, -1).reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
     const rem = totalQty - otherSum;
     if (rem > 0) updateContainer(lastIdx, 'qty', rem.toFixed(2));
+  }
+
+  const autoSplitPreview = useMemo(() => {
+    const size = parseFloat(packSize);
+    if (!(size > 0) || !(totalQty > 0)) return null;
+    const fullPacks = Math.floor(totalQty / size);
+    const remainder = +(totalQty - fullPacks * size).toFixed(3);
+    const hasRemainder = remainder > 0.001;
+    const totalContainers = fullPacks + (hasRemainder ? 1 : 0);
+    if (totalContainers === 0) return null;
+    return { fullPacks, size, remainder, hasRemainder, totalContainers };
+  }, [packSize, totalQty]);
+
+  function applyAutoSplit() {
+    if (!autoSplitPreview) return;
+    const { fullPacks, size, remainder, hasRemainder } = autoSplitPreview;
+    const defaultExpiry = calcExpiryDate(shelfLifeDays);
+    const rows: ContainerRow[] = [];
+    for (let i = 0; i < fullPacks; i++) {
+      rows.push({ qty: size.toFixed(2), expiryDate: defaultExpiry, type: packType });
+    }
+    if (hasRemainder) {
+      rows.push({ qty: remainder.toFixed(2), expiryDate: defaultExpiry, type: packType });
+    }
+    setContainers(rows);
   }
 
   async function handleConfirmSplit() {
@@ -381,6 +409,41 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
               </span>
             </div>
           )}
+
+          {/* Quick auto-split by pack size */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">Pack Size</div>
+              <div className="text-[var(--fs-xs)] text-gray-400">Splits the total automatically</div>
+            </div>
+            <div className="flex gap-2 items-stretch">
+              <div className="flex-1">
+                <input type="number" inputMode="decimal" step="0.01" min="0"
+                  value={packSize}
+                  onChange={e => setPackSize(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && autoSplitPreview) { e.preventDefault(); applyAutoSplit(); } }}
+                  placeholder={`e.g. 2 ${uom}`}
+                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
+              </div>
+              <select value={packType} onChange={e => setPackType(e.target.value as typeof CONTAINER_TYPES[number])}
+                className="px-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-bold text-gray-700 outline-none focus:border-green-600">
+                {CONTAINER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <button onClick={applyAutoSplit} disabled={!autoSplitPreview}
+                className="px-5 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] active:scale-[0.975] disabled:opacity-40 disabled:bg-gray-200 disabled:text-gray-400">
+                Apply
+              </button>
+            </div>
+            {autoSplitPreview && (
+              <div className="mt-2.5 text-[var(--fs-xs)] font-semibold text-gray-600">
+                {'→ '}
+                {autoSplitPreview.fullPacks > 0 && `${autoSplitPreview.fullPacks} × ${fmt(autoSplitPreview.size)} ${uom}`}
+                {autoSplitPreview.fullPacks > 0 && autoSplitPreview.hasRemainder && ' + '}
+                {autoSplitPreview.hasRemainder && `1 × ${fmt(autoSplitPreview.remainder)} ${uom}`}
+                {' '}({autoSplitPreview.totalContainers} {autoSplitPreview.totalContainers === 1 ? 'container' : 'containers'})
+              </div>
+            )}
+          </div>
 
           {containers.map((c, idx) => (
             <div key={idx} className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
