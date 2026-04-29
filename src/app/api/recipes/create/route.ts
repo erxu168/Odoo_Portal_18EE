@@ -43,11 +43,13 @@ export async function POST(request: Request) {
 
     } else {
       // Production guide: create product.template + mrp.bom
+      // Lot tracking is on by default so MO labels can be printed.
       const productVals: Record<string, unknown> = {
         name: name.trim(),
         type: 'consu',
         sale_ok: false,
         purchase_ok: false,
+        tracking: 'lot',
       };
       const productTmplId = await odoo.create('product.template', productVals);
 
