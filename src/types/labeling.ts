@@ -77,6 +77,7 @@ export interface ContainerSplit {
   created_by: number;
   created_at: string;
   confirmed_at: string | null;
+  storage_mode: 'chilled' | 'frozen' | null;
 }
 
 export interface Container {

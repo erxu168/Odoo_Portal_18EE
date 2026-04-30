@@ -135,6 +135,12 @@ export function ensureLabelingTables() {
     console.log('Labeling: seeded 2 test printers (update IPs in admin settings)');
   }
 
+  try {
+    db.exec("ALTER TABLE container_splits ADD COLUMN storage_mode TEXT");
+  } catch (_e) {
+    /* column already exists */
+  }
+
   _initialized = true;
 }
 
@@ -214,15 +220,19 @@ export function getContainers(splitId: number): Container[] {
   ).all(splitId) as Container[];
 }
 
-export function createSplit(data: CreateSplitRequest, userId: number): { splitId: number; containerIds: number[] } {
+export function createSplit(
+  data: CreateSplitRequest,
+  userId: number,
+  storageMode: 'chilled' | 'frozen' = 'chilled',
+): { splitId: number; containerIds: number[] } {
   ensureLabelingTables();
   const db = getDb();
   const now = nowISO();
 
   const sr = db.prepare(`
-    INSERT INTO container_splits (mo_id, mo_name, product_id, product_name, total_qty, uom, status, created_by, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)
-  `).run(data.mo_id, data.mo_name, data.product_id, data.product_name, data.total_qty, data.uom, userId, now);
+    INSERT INTO container_splits (mo_id, mo_name, product_id, product_name, total_qty, uom, status, created_by, created_at, storage_mode)
+    VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
+  `).run(data.mo_id, data.mo_name, data.product_id, data.product_name, data.total_qty, data.uom, userId, now, storageMode);
   const splitId = sr.lastInsertRowid as number;
 
   const containerIds: number[] = [];
