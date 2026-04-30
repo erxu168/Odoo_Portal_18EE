@@ -110,10 +110,10 @@ export async function GET(
 
     const mo = mos[0];
 
-    // Fetch finished product expiration settings + tracking
+    // Fetch finished product shelf-life settings + tracking
     // These fields live on product.template, so we need to go through the variant
-    let expirationTimeDays = 0;
-    let useExpirationDate = false;
+    let shelfLifeChilledDays = 0;
+    let shelfLifeFrozenDays = 0;
     let productTracking = 'none';
     try {
       // Step 1: get product_tmpl_id and tracking from product.product
@@ -126,22 +126,21 @@ export async function GET(
         productTracking = variants[0].tracking || 'none';
         if (variants[0].product_tmpl_id) {
           const tmplId = variants[0].product_tmpl_id[0];
-          // Step 2: read expiration fields from product.template
+          // Step 2: read shelf-life fields from product.template
           const templates = await odoo.read(
             'product.template',
             [tmplId],
-            ['use_expiration_date', 'expiration_time'],
+            ['x_shelf_life_chilled_days', 'x_shelf_life_frozen_days'],
           );
           if (templates.length > 0) {
-            useExpirationDate = !!templates[0].use_expiration_date;
-            // expiration_time is stored in days (float)
-            expirationTimeDays = templates[0].expiration_time || 0;
+            shelfLifeChilledDays = templates[0]?.x_shelf_life_chilled_days || 0;
+            shelfLifeFrozenDays  = templates[0]?.x_shelf_life_frozen_days  || 0;
           }
         }
       }
     } catch (err) {
       // Non-fatal: if fields don't exist, default to 0
-      console.warn('Could not fetch product expiration fields:', err);
+      console.warn('Could not fetch product shelf-life fields:', err);
     }
 
     const components = mo.move_raw_ids?.length
@@ -189,9 +188,9 @@ export async function GET(
         components: enrichedComponents,
         work_orders: workOrders,
         progress_percent: totalWos > 0 ? Math.round((doneWos / totalWos) * 100) : 0,
-        // Expiration settings from finished product template
-        use_expiration_date: useExpirationDate,
-        expiration_time_days: expirationTimeDays,
+        // Shelf-life settings from finished product template
+        shelf_life_chilled_days: shelfLifeChilledDays,
+        shelf_life_frozen_days:  shelfLifeFrozenDays,
         product_tracking: productTracking,
       },
     });
