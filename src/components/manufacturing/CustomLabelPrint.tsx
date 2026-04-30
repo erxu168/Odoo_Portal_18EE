@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import LabelPreview from '@/components/manufacturing/LabelPreview';
 import LabelSizeSelector from '@/components/manufacturing/LabelSizeSelector';
@@ -14,6 +14,14 @@ interface CustomLabelPrintProps {
 
 interface LabelRow {
   lotName: string;
+}
+
+interface Template {
+  id: number;
+  product_name: string;
+  qty: number | null;
+  uom: string | null;
+  label_count: number | null;
 }
 
 type Step = 'config' | 'print';
@@ -54,6 +62,10 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
   const [printingSeq, setPrintingSeq] = useState<number | null>(null);
   const [copiedSeq, setCopiedSeq] = useState<string | null>(null);
 
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+
   const ble = useZebraBluetooth();
 
   const labelDims = useMemo(() => ({
@@ -70,6 +82,73 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
   const qtyNum = parseFloat(qty) || 0;
   const countNum = Math.max(1, parseInt(labelCount, 10) || 1);
   const canGenerate = productName.trim().length > 0;
+
+  const loadTemplates = useCallback(async () => {
+    if (!companyId) return;
+    try {
+      const res = await fetch(`/api/labels/templates?companyId=${companyId}`);
+      const data = await res.json();
+      if (res.ok && data.templates) setTemplates(data.templates);
+    } catch { /* silent */ }
+  }, [companyId]);
+
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
+  function applyTemplate(t: Template) {
+    setProductName(t.product_name);
+    setQty(t.qty != null ? String(t.qty) : '');
+    setUom(t.uom || '');
+    setLabelCount(t.label_count != null ? String(t.label_count) : '1');
+  }
+
+  async function saveTemplate() {
+    if (!canGenerate || !companyId) return;
+    setSavingTemplate(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/labels/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save',
+          companyId,
+          productName: productName.trim(),
+          qty: qty ? qtyNum : null,
+          uom: uom || null,
+          labelCount: labelCount ? countNum : null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || `Save failed (${res.status})`);
+      } else {
+        setSavedFlash(true);
+        setTimeout(() => setSavedFlash(false), 1500);
+        await loadTemplates();
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function deleteTemplate(id: number) {
+    if (!companyId) return;
+    if (!confirm('Delete this saved template?')) return;
+    try {
+      const res = await fetch('/api/labels/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', companyId, id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) setError(data.error || 'Delete failed');
+      else await loadTemplates();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
 
   const fmtDate = (d: string) => {
     if (!d) return '';
@@ -256,6 +335,31 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
 
       {step === 'config' && (
         <div className="px-4 pt-3 pb-24">
+          {templates.length > 0 && (
+            <div className="mb-3">
+              <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2 px-1">Saved templates</div>
+              <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style={{ scrollbarWidth: 'thin' }}>
+                {templates.map(t => (
+                  <div key={t.id} className="flex-shrink-0 bg-white border border-gray-200 rounded-xl shadow-sm flex items-stretch overflow-hidden">
+                    <button onClick={() => applyTemplate(t)}
+                      className="px-3 py-2 text-left active:bg-pink-50">
+                      <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate max-w-[160px]">{t.product_name}</div>
+                      <div className="text-[var(--fs-xs)] text-gray-400 truncate">
+                        {t.qty != null ? `${t.qty}${t.uom ? ' ' + t.uom : ''}` : '—'}
+                        {t.label_count != null ? ` · ${t.label_count}×` : ''}
+                      </div>
+                    </button>
+                    <button onClick={() => deleteTemplate(t.id)}
+                      className="px-2 border-l border-gray-200 text-gray-300 active:text-red-500 active:bg-red-50"
+                      aria-label="Delete template">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
               Product name <span className="text-pink-500">*</span>
@@ -302,12 +406,20 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
             </div>
           </div>
 
-          <button onClick={handleGenerate} disabled={!canGenerate}
-            className={`w-full py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
-              canGenerate ? 'bg-pink-600 text-white shadow-pink-600/30' : 'bg-gray-200 text-gray-400 shadow-none'
-            }`}>
-            Generate Labels{countNum > 0 ? ` (${countNum})` : ''}
-          </button>
+          <div className="flex gap-2">
+            <button onClick={saveTemplate} disabled={!canGenerate || savingTemplate}
+              className={`px-5 py-4 rounded-xl border-2 font-bold text-[var(--fs-sm)] transition-all active:scale-[0.975] disabled:opacity-40 ${
+                savedFlash ? 'border-green-500 bg-green-50 text-green-700' : 'border-pink-200 bg-white text-pink-700 active:bg-pink-50'
+              }`}>
+              {savedFlash ? '✓ Saved' : savingTemplate ? '…' : 'Save'}
+            </button>
+            <button onClick={handleGenerate} disabled={!canGenerate}
+              className={`flex-1 py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
+                canGenerate ? 'bg-pink-600 text-white shadow-pink-600/30' : 'bg-gray-200 text-gray-400 shadow-none'
+              }`}>
+              Generate Labels{countNum > 0 ? ` (${countNum})` : ''}
+            </button>
+          </div>
         </div>
       )}
 
