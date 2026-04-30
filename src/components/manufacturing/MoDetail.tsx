@@ -205,7 +205,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
         </div>
       )}
 
-      <div className="px-4 pt-3">
+      <div className="px-4 pt-5">
         <h2 className="text-xl font-bold text-gray-900 leading-tight">{mo.product_id[1]}</h2>
       </div>
 
