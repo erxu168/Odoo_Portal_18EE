@@ -176,8 +176,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        title={mo.product_id[1]}
-        subtitle={mo.name}
+        title={mo.name}
         showBack
         onBack={onBack}
         action={
@@ -206,11 +205,15 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
         </div>
       )}
 
+      <div className="px-4 pt-3">
+        <h2 className="text-xl font-bold text-gray-900 leading-tight">{mo.product_id[1]}</h2>
+      </div>
+
       <div className="px-4 py-3">
         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex-1 text-center py-3 border-r border-gray-100">
             <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">QUANTITY</div>
-            <div className="text-lg font-bold text-green-600 mt-0.5 font-mono">{mo.qty_producing} / {mo.product_qty}</div>
+            <div className="text-lg font-bold text-green-600 mt-0.5 font-mono">{mo.qty_producing} / {mo.product_qty} <span className="text-sm font-normal text-gray-500">{mo.product_uom_id?.[1] || ''}</span></div>
           </div>
           <div className="flex-1 text-center py-3 border-r border-gray-100">
             <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">STEPS</div>
