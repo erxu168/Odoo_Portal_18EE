@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
-import ProductStrip from '@/components/manufacturing/ProductStrip';
 
 interface CreateMoProps {
   onBack: () => void;
@@ -408,7 +407,6 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
           showBack
           onBack={() => { setStep('select'); setSelectedBom(null); setComponents([]); }}
         />
-        <ProductStrip label={selectedBom?.product_tmpl_id?.[1] || 'New Manufacturing Order'} />
 
         {/* Progress */}
         <div className="flex gap-1 px-4 py-2.5">

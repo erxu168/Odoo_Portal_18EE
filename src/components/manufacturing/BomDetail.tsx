@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
-import ProductStrip from '@/components/manufacturing/ProductStrip';
 import RichTextEditor from '@/components/ui/RichTextEditor';
 import { StatusDot } from './ui';
 import ShelfLifeCard from '@/components/manufacturing/ShelfLifeCard';
@@ -487,7 +486,6 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
           ) : undefined
         }
       />
-      <ProductStrip label={bom?.product_tmpl_id?.[1] || 'Bill of Materials'} />
 
       {/* Stats */}
       <div className="px-4 py-3">
