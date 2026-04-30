@@ -93,9 +93,16 @@ export function generateZPL(data: LabelData, opts: {
   lines.push(`^FO${margin},${y}^FDQty: ${data.qty} ${data.uom}^FS`);
   y += qty.h + gap;
 
+  // ── Storage Mode (small, informational) ──
+  const storeLabel = `STORE: ${data.storageMode.toUpperCase()}`;
+  lines.push(`^A0N,${body.h},${body.w}`);
+  lines.push(`^FO${margin},${y}^FB${printW},1,0,L^FD${escapeZPL(storeLabel)}^FS`);
+  y += body.h + gap;
+
   // ── Expiry Date (HUGE — 2x emphasis) ──
+  const expText = data.expiryDate ? `Exp: ${data.expiryDate}` : 'Exp:';
   lines.push(`^A0N,${exp.h},${exp.w}`);
-  lines.push(`^FO${margin},${y}^FDExp: ${data.expiryDate}^FS`);
+  lines.push(`^FO${margin},${y}^FB${printW},1,0,L^FD${escapeZPL(expText)}^FS`);
   y += exp.h + gap;
 
   // ── MO + Container (small meta) ──
