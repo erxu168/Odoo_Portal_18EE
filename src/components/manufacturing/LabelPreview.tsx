@@ -13,6 +13,7 @@ interface LabelPreviewProps {
   qty: number;
   uom: string;
   expiryDate: string;
+  storageMode: 'chilled' | 'frozen';
   lotName?: string;
   moName?: string;
   containerNumber?: number;
@@ -22,7 +23,7 @@ interface LabelPreviewProps {
 }
 
 export default function LabelPreview({
-  productName, productionDate, qty, uom, expiryDate,
+  productName, productionDate, qty, uom, expiryDate, storageMode,
   lotName, moName, containerNumber, totalContainers,
   widthMm, heightMm,
 }: LabelPreviewProps) {
@@ -106,7 +107,7 @@ export default function LabelPreview({
           Qty: {qty} {uom}
         </div>
 
-        {/* Expiry — HUGE 2x emphasis */}
+        {/* Storage mode — same weight as Expiry for visual pairing */}
         <div style={{
           fontSize: expPx,
           fontWeight: 800,
@@ -114,7 +115,18 @@ export default function LabelPreview({
           lineHeight: 1.1,
           marginBottom: gap,
         }}>
-          Exp: {expiryDate}
+          STORE: {storageMode.toUpperCase()}
+        </div>
+
+        {/* Expiry — HUGE 2x emphasis; renders label even when date is blank */}
+        <div style={{
+          fontSize: expPx,
+          fontWeight: 800,
+          color: '#1a1a1a',
+          lineHeight: 1.1,
+          marginBottom: gap,
+        }}>
+          Exp: {expiryDate || ''}
         </div>
 
         {/* MO + Container — small meta */}

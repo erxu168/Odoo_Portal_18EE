@@ -492,6 +492,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
                 qty={previewContainer?.qty || totalQty}
                 uom={existingSplit?.uom || uom}
                 expiryDate={fmtDate(previewContainer?.expiry_date)}
+                storageMode={storageMode}
                 lotName={previewContainer?.lot_name}
                 moName={existingSplit?.mo_name || mo.name}
                 containerNumber={1}

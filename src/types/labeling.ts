@@ -134,6 +134,7 @@ export interface LabelData {
   qty: number;
   uom: string;
   expiryDate: string;
+  storageMode: 'chilled' | 'frozen';
   lotName?: string;
   moName: string;
   containerNumber: number;
