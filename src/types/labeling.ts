@@ -105,6 +105,7 @@ export interface CreateSplitRequest {
   total_qty: number;
   uom: string;
   containers: ContainerInput[];
+  storage_mode: 'chilled' | 'frozen';
 }
 
 // --- Print Job ---

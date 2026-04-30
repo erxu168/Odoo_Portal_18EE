@@ -71,6 +71,11 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'At least one container required' }, { status: 400 });
   }
 
+  const storageMode = body.storage_mode;
+  if (storageMode !== 'chilled' && storageMode !== 'frozen') {
+    return NextResponse.json({ error: 'storage_mode must be "chilled" or "frozen"' }, { status: 400 });
+  }
+
   // Check MO state
   const [mo] = await odooRPC('mrp.production', 'read', [[moId], ['state', 'product_id', 'product_qty', 'product_uom_id']]) as any[];
   if (!mo) return NextResponse.json({ error: 'MO not found in Odoo' }, { status: 404 });
@@ -88,7 +93,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   // Create split record in SQLite
-  const { splitId, containerIds } = createSplit(body, user.id);
+  const { splitId, containerIds } = createSplit(body, user.id, storageMode);
 
   // Track current MO ID (changes with backorders)
   let currentMoId = moId;
