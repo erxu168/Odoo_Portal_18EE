@@ -42,11 +42,8 @@ export async function POST(req: NextRequest) {
     labelSizeId, widthMm: bodyWidth, heightMm: bodyHeight,
   } = body;
 
-  if (!productName || typeof qty !== 'number' || !uom || !productionDate || !expiryDate) {
-    return NextResponse.json(
-      { error: 'productName, qty, uom, productionDate, expiryDate are required' },
-      { status: 400 },
-    );
+  if (!productName) {
+    return NextResponse.json({ error: 'productName is required' }, { status: 400 });
   }
 
   const { widthMm, heightMm } = resolveLabelSize(
@@ -58,10 +55,10 @@ export async function POST(req: NextRequest) {
   const labelData: LabelData = {
     productName,
     productReference: productReference || undefined,
-    productionDate,
-    qty,
-    uom,
-    expiryDate,
+    productionDate: productionDate || '',
+    qty: typeof qty === 'number' ? qty : 0,
+    uom: uom || '',
+    expiryDate: expiryDate || '',
     lotName: lotName || undefined,
     moName: lotName || productName,
     containerNumber: containerNumber ?? 1,
