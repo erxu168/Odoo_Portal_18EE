@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import RichTextEditor from '@/components/ui/RichTextEditor';
 import { StatusDot } from './ui';
+import ShelfLifeCard from '@/components/manufacturing/ShelfLifeCard';
 import type { ComponentAvailability } from '@/types/manufacturing';
 
 interface BomDetailProps {
@@ -43,6 +44,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedSubBoms, setExpandedSubBoms] = useState<Set<number>>(new Set());
+  const [canEdit, setCanEdit] = useState(false);
 
   // Operations
   const [operations, setOperations] = useState<any[]>([]);
@@ -76,6 +78,13 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   const [rawLines, setRawLines] = useState<any[]>([]);
 
   useEffect(() => { fetchBomDetail(); }, [bomId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => r.json())
+      .then(d => setCanEdit(d.user?.role === 'manager' || d.user?.role === 'admin'))
+      .catch(() => setCanEdit(false));
+  }, []);
 
   async function fetchBomDetail() {
     setLoading(true);
@@ -705,6 +714,13 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
               <span className="text-[var(--fs-xxl)] font-bold text-gray-900 font-mono">{fmt(bom.product_qty)}</span>
             </div>
           </div>
+
+          {/* Shelf life */}
+          {bom?.product_tmpl_id?.[0] && (
+            <div className="px-4 pb-2">
+              <ShelfLifeCard productTmplId={bom.product_tmpl_id[0]} canEdit={canEdit} />
+            </div>
+          )}
 
           {/* Read-only ingredient list */}
           <div className="px-5 pt-3 pb-2">
