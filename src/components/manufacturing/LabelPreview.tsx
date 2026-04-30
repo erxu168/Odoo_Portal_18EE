@@ -42,8 +42,20 @@ export default function LabelPreview({
   const metaPx = h * 0.035;
   const sepH = Math.max(1, h * 0.005);
 
-  // Barcode space estimate
-  const textH = titlePx * 2.5 + sepH + gap * 8 + bodyPx + qtyPx + expPx + metaPx * 2 + margin * 2;
+  const hasProductionDate = !!(productionDate && productionDate.trim());
+  const hasQty = qty !== 0 || !!(uom && uom.trim());
+  const hasExpiry = !!(expiryDate && expiryDate.trim());
+  const hasMeta = !!moName && containerNumber != null && totalContainers != null;
+  const hasLot = !!lotName;
+
+  // Barcode space estimate (only count rows that will render)
+  const renderedRows =
+    (hasProductionDate ? bodyPx : 0) +
+    (hasQty ? qtyPx : 0) +
+    (hasExpiry ? expPx : 0) +
+    (hasMeta ? metaPx : 0) +
+    (hasLot ? metaPx : 0);
+  const textH = titlePx * 2.5 + sepH + gap * 6 + renderedRows + margin * 2;
   const barcodeH = Math.max(0, h - textH - margin);
   const showBarcode = barcodeH > (8 * px);
 
@@ -101,39 +113,45 @@ export default function LabelPreview({
         }} />
 
         {/* Production Date — normal */}
-        <div style={{
-          fontSize: bodyPx,
-          color: '#1a1a1a',
-          lineHeight: 1.2,
-          marginBottom: gap,
-        }}>
-          Produced: {productionDate}
-        </div>
+        {hasProductionDate && (
+          <div style={{
+            fontSize: bodyPx,
+            color: '#1a1a1a',
+            lineHeight: 1.2,
+            marginBottom: gap,
+          }}>
+            Produced: {productionDate}
+          </div>
+        )}
 
         {/* Quantity — emphasized */}
-        <div style={{
-          fontSize: qtyPx,
-          fontWeight: 700,
-          color: '#1a1a1a',
-          lineHeight: 1.2,
-          marginBottom: gap,
-        }}>
-          Qty: {qty} {uom}
-        </div>
+        {hasQty && (
+          <div style={{
+            fontSize: qtyPx,
+            fontWeight: 700,
+            color: '#1a1a1a',
+            lineHeight: 1.2,
+            marginBottom: gap,
+          }}>
+            Qty: {qty}{uom ? ` ${uom}` : ''}
+          </div>
+        )}
 
         {/* Expiry — HUGE 2x emphasis */}
-        <div style={{
-          fontSize: expPx,
-          fontWeight: 800,
-          color: '#1a1a1a',
-          lineHeight: 1.1,
-          marginBottom: gap,
-        }}>
-          Exp: {expiryDate}
-        </div>
+        {hasExpiry && (
+          <div style={{
+            fontSize: expPx,
+            fontWeight: 800,
+            color: '#1a1a1a',
+            lineHeight: 1.1,
+            marginBottom: gap,
+          }}>
+            Exp: {expiryDate}
+          </div>
+        )}
 
         {/* MO + Container — small meta */}
-        {moName && containerNumber != null && totalContainers != null && (
+        {hasMeta && (
           <div style={{
             fontSize: metaPx,
             color: '#1a1a1a',
@@ -145,7 +163,7 @@ export default function LabelPreview({
         )}
 
         {/* Lot — small meta */}
-        {lotName && (
+        {hasLot && (
           <div style={{
             fontSize: metaPx,
             color: '#1a1a1a',
@@ -163,10 +181,10 @@ export default function LabelPreview({
         {showBarcode && (
           <div style={{
             height: Math.min(barcodeH, 12 * px),
-            background: `repeating-linear-gradient(90deg, 
-              #1a1a1a 0px, #1a1a1a 1.5px, 
-              transparent 1.5px, transparent 3px, 
-              #1a1a1a 3px, #1a1a1a 4px, 
+            background: `repeating-linear-gradient(90deg,
+              #1a1a1a 0px, #1a1a1a 1.5px,
+              transparent 1.5px, transparent 3px,
+              #1a1a1a 3px, #1a1a1a 4px,
               transparent 4px, transparent 5.5px,
               #1a1a1a 5.5px, #1a1a1a 6px,
               transparent 6px, transparent 9px)`,

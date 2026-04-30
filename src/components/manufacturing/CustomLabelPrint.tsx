@@ -429,7 +429,7 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-3">Label Preview</div>
             <div className="flex justify-center py-2 bg-gray-50 rounded-lg">
               <LabelPreview
-                productName={productName || ' '}
+                productName={productName}
                 productionDate={fmtDate(productionDate)}
                 qty={qtyNum}
                 uom={uom}

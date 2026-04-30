@@ -91,28 +91,44 @@ export function generateZPL(data: LabelData, opts: {
   lines.push(`^FO${margin},${y}^GB${printW},${sepH},${sepH}^FS`);
   y += sepH + gap;
 
+  const hasProductionDate = !!(data.productionDate && String(data.productionDate).trim());
+  const hasUom = !!(data.uom && String(data.uom).trim());
+  const hasQty = data.qty !== 0 || hasUom;
+  const hasExpiry = !!(data.expiryDate && String(data.expiryDate).trim());
+  const hasMeta = !!data.moName && data.containerNumber != null && data.totalContainers != null;
+
   // ── Production Date (normal) ──
-  lines.push(`^A0N,${body.h},${body.w}`);
-  lines.push(`^FO${margin},${y}^FDProduced: ${data.productionDate}^FS`);
-  y += body.h + gap;
+  if (hasProductionDate) {
+    lines.push(`^A0N,${body.h},${body.w}`);
+    lines.push(`^FO${margin},${y}^FDProduced: ${data.productionDate}^FS`);
+    y += body.h + gap;
+  }
 
   // ── Quantity (emphasized) ──
-  lines.push(`^A0N,${qty.h},${qty.w}`);
-  lines.push(`^FO${margin},${y}^FDQty: ${data.qty} ${data.uom}^FS`);
-  y += qty.h + gap;
+  if (hasQty) {
+    lines.push(`^A0N,${qty.h},${qty.w}`);
+    const qtyText = hasUom ? `Qty: ${data.qty} ${data.uom}` : `Qty: ${data.qty}`;
+    lines.push(`^FO${margin},${y}^FD${qtyText}^FS`);
+    y += qty.h + gap;
+  }
 
   // ── Expiry Date (HUGE — 2x emphasis) ──
-  lines.push(`^A0N,${exp.h},${exp.w}`);
-  lines.push(`^FO${margin},${y}^FDExp: ${data.expiryDate}^FS`);
-  y += exp.h + gap;
+  if (hasExpiry) {
+    lines.push(`^A0N,${exp.h},${exp.w}`);
+    lines.push(`^FO${margin},${y}^FDExp: ${data.expiryDate}^FS`);
+    y += exp.h + gap;
+  }
 
   // ── MO + Container (small meta) ──
-  lines.push(`^A0N,${meta.h},${meta.w}`);
-  lines.push(`^FO${margin},${y}^FD${escapeZPL(data.moName)} | ${data.containerNumber}/${data.totalContainers}^FS`);
-  y += meta.h + gap;
+  if (hasMeta) {
+    lines.push(`^A0N,${meta.h},${meta.w}`);
+    lines.push(`^FO${margin},${y}^FD${escapeZPL(data.moName)} | ${data.containerNumber}/${data.totalContainers}^FS`);
+    y += meta.h + gap;
+  }
 
   // ── Lot (small meta) ──
   if (data.lotName) {
+    lines.push(`^A0N,${meta.h},${meta.w}`);
     lines.push(`^FO${margin},${y}^FDLot: ${escapeZPL(data.lotName)}^FS`);
     y += meta.h + gap;
   }
