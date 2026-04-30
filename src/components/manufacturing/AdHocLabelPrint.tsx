@@ -16,11 +16,8 @@ interface AdHocLabelPrintProps {
 interface ContainerRow {
   qty: string;
   expiryDate: string;
-  type: string;
   lotName: string;
 }
-
-const CONTAINER_TYPES = ['Barrel', 'Bucket', 'Bin', 'Cambro', 'Bottle', 'Other'] as const;
 
 type Step = 'config' | 'print';
 
@@ -51,13 +48,12 @@ export default function AdHocLabelPrint({ bomId, onBack, onDone }: AdHocLabelPri
   const [productName, setProductName] = useState('');
   const [productReference, setProductReference] = useState('');
   const [uom, setUom] = useState('kg');
-  const [defaultQty, setDefaultQty] = useState(0);
   const [shelfLifeDays, setShelfLifeDays] = useState(0);
 
-  const [totalQty, setTotalQty] = useState('');
+  const [qtyPerContainer, setQtyPerContainer] = useState('');
+  const [labelCount, setLabelCount] = useState('1');
+  const [expiryDate, setExpiryDate] = useState('');
   const [containers, setContainers] = useState<ContainerRow[]>([]);
-  const [packSize, setPackSize] = useState('');
-  const [packType, setPackType] = useState<typeof CONTAINER_TYPES[number]>('Barrel');
 
   const [selectedSize, setSelectedSize] = useState('55x75');
   const [customWidth, setCustomWidth] = useState('55');
@@ -95,14 +91,12 @@ export default function AdHocLabelPrint({ bomId, onBack, onDone }: AdHocLabelPri
         const bom = data.bom;
         const name = bom.product_tmpl_id?.[1] || 'Unknown';
         const u = bom.product_uom_id?.[1] || 'kg';
-        const qty = bom.product_qty || 0;
         const shelf = bom.shelf_life_days || 0;
         setProductName(name);
         setProductReference(bom.product_default_code || '');
         setUom(u);
-        setDefaultQty(qty);
         setShelfLifeDays(shelf);
-        setTotalQty(qty ? String(qty) : '');
+        setExpiryDate(calcExpiryDate(shelf));
       } catch (err: unknown) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load recipe');
       } finally {
@@ -112,64 +106,22 @@ export default function AdHocLabelPrint({ bomId, onBack, onDone }: AdHocLabelPri
     return () => { cancelled = true; };
   }, [bomId]);
 
-  const total = parseFloat(totalQty) || 0;
-  const sumQty = containers.reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
-  const remaining = total - sumQty;
-  const isBalanced = total > 0 && Math.abs(remaining) < Math.max(0.005, total * 0.001);
-  const allFilled = containers.length > 0 && containers.every(c => parseFloat(c.qty) > 0 && c.expiryDate);
-  const canGenerate = total > 0 && isBalanced && allFilled;
-
-  const autoSplitPreview = useMemo(() => {
-    const size = parseFloat(packSize);
-    if (!(size > 0) || !(total > 0)) return null;
-    const fullPacks = Math.floor(total / size);
-    const remainder = +(total - fullPacks * size).toFixed(3);
-    const hasRemainder = remainder > 0.001;
-    const totalContainers = fullPacks + (hasRemainder ? 1 : 0);
-    if (totalContainers === 0) return null;
-    return { fullPacks, size, remainder, hasRemainder, totalContainers };
-  }, [packSize, total]);
-
-  function applyAutoSplit() {
-    if (!autoSplitPreview) return;
-    const { fullPacks, size, remainder, hasRemainder } = autoSplitPreview;
-    const expiry = calcExpiryDate(shelfLifeDays);
-    const rows: ContainerRow[] = [];
-    let seq = 1;
-    for (let i = 0; i < fullPacks; i++) {
-      rows.push({ qty: size.toFixed(2), expiryDate: expiry, type: packType, lotName: generateLotName(seq++) });
-    }
-    if (hasRemainder) {
-      rows.push({ qty: remainder.toFixed(2), expiryDate: expiry, type: packType, lotName: generateLotName(seq++) });
-    }
-    setContainers(rows);
-  }
-
-  function addContainer() {
-    const expiry = calcExpiryDate(shelfLifeDays);
-    setContainers(prev => [...prev, {
-      qty: '', expiryDate: expiry, type: 'Barrel',
-      lotName: generateLotName(prev.length + 1),
-    }]);
-  }
-  function removeContainer(idx: number) {
-    setContainers(prev => prev.filter((_, i) => i !== idx));
-  }
-  function updateContainer(idx: number, field: keyof ContainerRow, value: string) {
-    setContainers(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c));
-  }
-
-  function autoFillLast() {
-    if (containers.length < 2) return;
-    const lastIdx = containers.length - 1;
-    const otherSum = containers.slice(0, -1).reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
-    const rem = total - otherSum;
-    if (rem > 0) updateContainer(lastIdx, 'qty', rem.toFixed(2));
-  }
+  const qtyNum = parseFloat(qtyPerContainer) || 0;
+  const countNum = parseInt(labelCount, 10) || 0;
+  const canGenerate = qtyNum > 0 && countNum > 0 && countNum <= 100 && !!expiryDate;
 
   function handleGenerate() {
     if (!canGenerate) return;
     setError(null);
+    const rows: ContainerRow[] = [];
+    for (let i = 0; i < countNum; i++) {
+      rows.push({
+        qty: qtyNum.toFixed(2),
+        expiryDate,
+        lotName: generateLotName(i + 1),
+      });
+    }
+    setContainers(rows);
     setPrintedSeqs(new Set());
     setStep('print');
   }
@@ -361,114 +313,40 @@ export default function AdHocLabelPrint({ bomId, onBack, onDone }: AdHocLabelPri
       {step === 'config' && (
         <div className="px-4 pt-3 pb-24">
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
-            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Total quantity</div>
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Quantity per container</div>
             <div className="flex gap-2 items-center">
               <input type="number" inputMode="decimal" step="0.01" min="0"
-                value={totalQty} onChange={e => setTotalQty(e.target.value)}
-                placeholder={defaultQty ? String(defaultQty) : '0'}
+                value={qtyPerContainer} onChange={e => setQtyPerContainer(e.target.value)}
+                placeholder="0"
                 className="flex-1 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-purple-600 focus:ring-2 focus:ring-purple-100 outline-none" />
               <span className="text-[var(--fs-sm)] font-bold text-gray-500 w-10">{uom}</span>
             </div>
-            {shelfLifeDays > 0 && (
-              <div className="mt-2.5 text-[var(--fs-xs)] text-gray-500">
-                Shelf life: {shelfLifeDays} days &mdash; expiry will default to {fmtDate(calcExpiryDate(shelfLifeDays))}
-              </div>
-            )}
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">Pack Size</div>
-              <div className="text-[var(--fs-xs)] text-gray-400">Splits the total automatically</div>
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Number of labels</div>
+            <div className="flex gap-2 items-center">
+              <input type="number" inputMode="numeric" step="1" min="1" max="100"
+                value={labelCount} onChange={e => setLabelCount(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="1"
+                className="flex-1 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-purple-600 focus:ring-2 focus:ring-purple-100 outline-none" />
+              <span className="text-[var(--fs-sm)] font-bold text-gray-500 w-16">labels</span>
             </div>
-            <div className="flex gap-2 items-stretch">
-              <div className="flex-1">
-                <input type="number" inputMode="decimal" step="0.01" min="0"
-                  value={packSize}
-                  onChange={e => setPackSize(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && autoSplitPreview) { e.preventDefault(); applyAutoSplit(); } }}
-                  placeholder={`e.g. 2 ${uom}`}
-                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-purple-600 focus:ring-2 focus:ring-purple-100 outline-none" />
-              </div>
-              <select value={packType} onChange={e => setPackType(e.target.value as typeof CONTAINER_TYPES[number])}
-                className="px-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-bold text-gray-700 outline-none focus:border-purple-600">
-                {CONTAINER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <button onClick={applyAutoSplit} disabled={!autoSplitPreview}
-                className="px-5 rounded-xl bg-purple-600 text-white font-bold text-[var(--fs-sm)] active:scale-[0.975] disabled:opacity-40 disabled:bg-gray-200 disabled:text-gray-400">
-                Split
-              </button>
-            </div>
-            {autoSplitPreview && (
-              <div className="mt-2.5 text-[var(--fs-xs)] font-semibold text-gray-600">
-                {'→ '}
-                {autoSplitPreview.fullPacks > 0 && `${autoSplitPreview.fullPacks} × ${fmt(autoSplitPreview.size)} ${uom}`}
-                {autoSplitPreview.fullPacks > 0 && autoSplitPreview.hasRemainder && ' + '}
-                {autoSplitPreview.hasRemainder && `1 × ${fmt(autoSplitPreview.remainder)} ${uom}`}
-                {' '}({autoSplitPreview.totalContainers} {autoSplitPreview.totalContainers === 1 ? 'container' : 'containers'})
+            {qtyNum > 0 && countNum > 0 && (
+              <div className="mt-2.5 text-[var(--fs-xs)] text-gray-500">
+                Total: {fmt(qtyNum * countNum)} {uom}
               </div>
             )}
           </div>
 
-          {containers.length > 0 && total > 0 && (
-            <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
-              <div className="flex justify-between items-center">
-                <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">Total &middot; Sum</div>
-                <div className={`text-right ${isBalanced ? 'text-green-600' : remaining > 0 ? 'text-amber-600' : 'text-red-600'}`}>
-                  <div className="text-[var(--fs-xs)] font-bold">REMAINING</div>
-                  <div className="text-[var(--fs-lg)] font-extrabold font-mono">{fmt(remaining)}</div>
-                </div>
+          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-6">
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Expiry date</div>
+            <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
+              className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-purple-600 focus:ring-2 focus:ring-purple-100 outline-none" />
+            {shelfLifeDays > 0 && (
+              <div className="mt-2.5 text-[var(--fs-xs)] text-gray-500">
+                Shelf life: {shelfLifeDays} days
               </div>
-              <div className="h-2 bg-gray-200 rounded-full mt-2 overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-300 ${isBalanced ? 'bg-green-500' : sumQty > total ? 'bg-red-500' : 'bg-amber-500'}`}
-                  style={{ width: `${Math.min((sumQty / total) * 100, 100)}%` }} />
-              </div>
-            </div>
-          )}
-
-          {containers.map((c, idx) => (
-            <div key={idx} className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-extrabold text-[var(--fs-sm)]">{idx + 1}</div>
-                  <select value={c.type} onChange={e => updateContainer(idx, 'type', e.target.value)}
-                    className="text-[var(--fs-sm)] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-purple-500">
-                    {CONTAINER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <button onClick={() => removeContainer(idx)}
-                  className="w-8 h-8 rounded-lg bg-red-50 text-red-400 flex items-center justify-center active:bg-red-100">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
-              </div>
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-1.5 block">Qty ({uom})</label>
-                  <input type="number" inputMode="decimal" step="0.01" min="0"
-                    value={c.qty} onChange={e => updateContainer(idx, 'qty', e.target.value)} placeholder="0.00"
-                    className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-purple-600 focus:ring-2 focus:ring-purple-100 outline-none" />
-                </div>
-                <div className="flex-1">
-                  <label className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-1.5 block">Expiry</label>
-                  <input type="date" value={c.expiryDate} onChange={e => updateContainer(idx, 'expiryDate', e.target.value)}
-                    className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-purple-600 focus:ring-2 focus:ring-purple-100 outline-none" />
-                </div>
-              </div>
-              <div className="mt-2 text-[var(--fs-xs)] text-gray-400 font-mono truncate">Lot: {c.lotName}</div>
-            </div>
-          ))}
-
-          <div className="flex gap-2 mb-6">
-            <button onClick={addContainer}
-              className="flex-1 py-3.5 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 font-semibold text-[var(--fs-sm)] active:bg-gray-50 flex items-center justify-center gap-1">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-              Add Container
-            </button>
-            {containers.length >= 2 && remaining > 0 && (
-              <button onClick={autoFillLast}
-                className="py-3.5 px-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 font-semibold text-[var(--fs-sm)] active:bg-amber-100">
-                Auto-fill last ({fmt(remaining)})
-              </button>
             )}
           </div>
 
@@ -476,7 +354,7 @@ export default function AdHocLabelPrint({ bomId, onBack, onDone }: AdHocLabelPri
             className={`w-full py-4 rounded-xl font-bold text-[var(--fs-sm)] shadow-lg transition-all active:scale-[0.975] disabled:opacity-50 ${
               canGenerate ? 'bg-purple-600 text-white shadow-purple-600/30' : 'bg-gray-200 text-gray-400 shadow-none'
             }`}>
-            Generate Labels ({containers.length || 0})
+            Generate Labels{countNum > 0 ? ` (${countNum})` : ''}
           </button>
         </div>
       )}
