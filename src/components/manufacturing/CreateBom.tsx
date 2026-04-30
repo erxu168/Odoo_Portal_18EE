@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import ProductStrip from '@/components/manufacturing/ProductStrip';
 
 interface CreateBomProps {
   onBack: () => void;
@@ -154,6 +155,7 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="New Recipe" subtitle="Create a bill of materials" showBack onBack={onBack} />
+      <ProductStrip label={selectedProduct?.name || 'New BOM'} />
 
       <div className="px-4 pt-4 pb-8">
         {/* Step 1: Select output product */}

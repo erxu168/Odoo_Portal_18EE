@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import ProductStrip from '@/components/manufacturing/ProductStrip';
 
 interface MoDetailProps {
   moId: number;
@@ -196,6 +197,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
           </div>
         }
       />
+      <ProductStrip label={mo?.product_id?.[1] || 'Manufacturing Order'} subtitle={mo?.name} />
 
       {actionError && (
         <div className="px-4 pt-3">

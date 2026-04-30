@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import ProductStrip from '@/components/manufacturing/ProductStrip';
 import LabelPreview from '@/components/manufacturing/LabelPreview';
 import LabelSizeSelector from '@/components/manufacturing/LabelSizeSelector';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
@@ -291,6 +292,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     return (
       <div className="min-h-screen bg-[#F6F7F9]">
         <AppHeader title="Package & Label" showBack onBack={onBack} />
+        <ProductStrip label="Package & Label" />
         <div className="p-4 text-center text-[var(--fs-sm)] text-gray-500">Manufacturing order not found</div>
       </div>
     );
@@ -306,6 +308,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         showBack
         onBack={onBack}
       />
+      <ProductStrip label={mo?.product_id?.[1] || 'Package & Label'} subtitle={mo?.name} />
 
       {/* Step indicator */}
       <div className="px-4 pt-3 pb-1">
