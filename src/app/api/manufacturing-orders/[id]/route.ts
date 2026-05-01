@@ -222,114 +222,107 @@ export async function PATCH(
           // so Odoo doesn't reject the close with a "supply Lot/Serial" error.
           await autoAssignComponentLotsFifo(odoo, moId);
 
-          // Before marking done, ensure lot is set if product requires tracking
           const moData = await odoo.read('mrp.production', [moId], [
             'name', 'product_id', 'lot_producing_id', 'company_id',
+            'qty_producing', 'product_qty',
           ]);
-          if (moData.length > 0) {
-            const currentMo = moData[0];
-            const productId = currentMo.product_id[0];
+          if (moData.length === 0) {
+            return NextResponse.json({ error: 'MO not found' }, { status: 404 });
+          }
+          const currentMo = moData[0];
+          const productId = currentMo.product_id[0];
 
-            // Check product tracking setting
-            const prodData = await odoo.read('product.product', [productId], [
-              'tracking', 'product_tmpl_id',
-            ]);
-            const tracking = prodData[0]?.tracking || 'none';
-
-            if (tracking !== 'none' && !currentMo.lot_producing_id) {
-              // Auto-create a lot using the MO name as lot name
-              const lotName = currentMo.name;
-              const companyId = currentMo.company_id?.[0] || false;
-
-              // Check if lot already exists with this name for this product
-              const existingLots = await odoo.searchRead('stock.lot',
-                [['name', '=', lotName], ['product_id', '=', productId]],
-                ['id'],
-                { limit: 1 },
-              );
-
-              let lotId: number;
-              if (existingLots.length > 0) {
-                lotId = existingLots[0].id;
-              } else {
-                // Build lot vals
-                const lotVals: Record<string, any> = {
-                  name: lotName,
-                  product_id: productId,
-                };
-                if (companyId) lotVals.company_id = companyId;
-
-                // Set expiration date if product uses it
-                try {
-                  const tmplId = prodData[0]?.product_tmpl_id?.[0];
-                  if (tmplId) {
-                    const tmplData = await odoo.read('product.template', [tmplId], [
-                      'use_expiration_date', 'expiration_time',
-                    ]);
-                    if (tmplData[0]?.use_expiration_date && tmplData[0]?.expiration_time) {
-                      const days = tmplData[0].expiration_time;
-                      const expDate = new Date();
-                      expDate.setDate(expDate.getDate() + Math.floor(days));
-                      // Odoo expects datetime as 'YYYY-MM-DD HH:MM:SS'
-                      const pad = (n: number) => String(n).padStart(2, '0');
-                      lotVals.expiration_date = `${expDate.getFullYear()}-${pad(expDate.getMonth() + 1)}-${pad(expDate.getDate())} 23:59:59`;
-                    }
-                  }
-                } catch (expErr) {
-                  console.warn('Could not set expiration date on lot:', expErr);
-                }
-
-                lotId = await odoo.create('stock.lot', lotVals);
-              }
-
-              // Set lot_producing_id on the MO
-              await odoo.write('mrp.production', [moId], {
-                lot_producing_id: lotId,
-              });
-              console.log(`[MO ${moId}] Auto-created lot ${lotName} (id=${lotId}) for tracked product`);
-            }
+          // Default qty_producing to product_qty when zero. Odoo 18's
+          // button_mark_done expects a non-zero value; without this the
+          // close either no-ops or pops a wizard and the user is stuck.
+          if (!currentMo.qty_producing || currentMo.qty_producing <= 0) {
+            await odoo.write('mrp.production', [moId], {
+              qty_producing: currentMo.product_qty,
+            });
           }
 
-          const result = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
-          if (result && typeof result === 'object' && result.res_model) {
-            try {
-              const wizModel = result.res_model;
-              const wizCtx = result.context || {};
-              const ctx = { ...wizCtx, active_id: moId, active_ids: [moId] };
-              const wizId = await odoo.create(wizModel, {}, { context: ctx });
-              const wizIds = Array.isArray(wizId) ? wizId : [wizId];
-              if (wizModel === 'mrp.immediate.production') {
-                await odoo.call(wizModel, 'process', [wizIds]);
-              } else if (wizModel === 'mrp.production.backorder') {
-                try {
-                  await odoo.call(wizModel, 'action_close_mo', [wizIds]);
-                } catch {
-                  await odoo.call(wizModel, 'process', [wizIds]);
-                }
-              } else if (wizModel === 'mrp.consumption.warning') {
-                // Confirm consumption even when quantities differ from expected
-                const cwResult = await odoo.call(wizModel, 'action_confirm', [wizIds]);
-                // action_confirm may return another wizard (e.g. backorder)
-                if (cwResult && typeof cwResult === 'object' && cwResult.res_model) {
-                  const nextModel = cwResult.res_model;
-                  const nextCtx = { ...(cwResult.context || {}), active_id: moId, active_ids: [moId] };
-                  const nextId = await odoo.create(nextModel, {}, { context: nextCtx });
-                  const nextIds = Array.isArray(nextId) ? nextId : [nextId];
-                  if (nextModel === 'mrp.production.backorder') {
-                    try {
-                      await odoo.call(nextModel, 'action_close_mo', [nextIds]);
-                    } catch {
-                      await odoo.call(nextModel, 'process', [nextIds]);
-                    }
-                  } else {
-                    await odoo.call(nextModel, 'process', [nextIds]);
+          // Auto-create a lot for tracked products when none assigned.
+          const prodData = await odoo.read('product.product', [productId], [
+            'tracking', 'product_tmpl_id',
+          ]);
+          const tracking = prodData[0]?.tracking || 'none';
+
+          if (tracking !== 'none' && !currentMo.lot_producing_id) {
+            const lotName = currentMo.name;
+            const companyId = currentMo.company_id?.[0] || false;
+
+            const existingLots = await odoo.searchRead('stock.lot',
+              [['name', '=', lotName], ['product_id', '=', productId]],
+              ['id'],
+              { limit: 1 },
+            );
+
+            let lotId: number;
+            if (existingLots.length > 0) {
+              lotId = existingLots[0].id;
+            } else {
+              const lotVals: Record<string, any> = {
+                name: lotName,
+                product_id: productId,
+              };
+              if (companyId) lotVals.company_id = companyId;
+
+              try {
+                const tmplId = prodData[0]?.product_tmpl_id?.[0];
+                if (tmplId) {
+                  const tmplData = await odoo.read('product.template', [tmplId], [
+                    'use_expiration_date', 'expiration_time',
+                  ]);
+                  if (tmplData[0]?.use_expiration_date && tmplData[0]?.expiration_time) {
+                    const days = tmplData[0].expiration_time;
+                    const expDate = new Date();
+                    expDate.setDate(expDate.getDate() + Math.floor(days));
+                    const pad = (n: number) => String(n).padStart(2, '0');
+                    lotVals.expiration_date = `${expDate.getFullYear()}-${pad(expDate.getMonth() + 1)}-${pad(expDate.getDate())} 23:59:59`;
                   }
                 }
-              } else {
-                await odoo.call(wizModel, 'process', [wizIds]);
+              } catch (expErr) {
+                console.warn('Could not set expiration date on lot:', expErr);
               }
-            } catch (wizErr: any) {
-              console.error('Wizard error:', wizErr.message);
+
+              lotId = await odoo.create('stock.lot', lotVals);
+            }
+
+            await odoo.write('mrp.production', [moId], { lot_producing_id: lotId });
+            console.log(`[MO ${moId}] Auto-created lot ${lotName} (id=${lotId}) for tracked product`);
+          }
+
+          // Call button_mark_done. Odoo can return two kinds of wizard:
+          //   * mrp.production.backorder — pre-created, comes with res_id;
+          //     we call action_close_mo on it to close without backorder.
+          //   * mrp.consumption.warning — opened fresh with defaults in
+          //     context (no res_id); we create it, confirm, and chain to
+          //     a backorder wizard if action_confirm returns one.
+          // Errors bubble up so the user knows close didn't finish.
+          const result = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
+          if (result && typeof result === 'object' && result.res_model) {
+            const wizModel = result.res_model;
+
+            if (wizModel === 'mrp.consumption.warning') {
+              const wizCtx = { ...(result.context || {}), active_id: moId, active_ids: [moId] };
+              const wizId = await odoo.create(wizModel, {}, { context: wizCtx });
+              const cwResult = await odoo.call(wizModel, 'action_confirm', [[wizId]]);
+              if (cwResult && typeof cwResult === 'object' && cwResult.res_model === 'mrp.production.backorder' && cwResult.res_id) {
+                await odoo.call('mrp.production.backorder', 'action_close_mo', [[cwResult.res_id]]);
+              }
+            } else if (wizModel === 'mrp.production.backorder') {
+              if (!result.res_id) {
+                return NextResponse.json(
+                  { error: 'Odoo returned mrp.production.backorder without a record id; close incomplete.' },
+                  { status: 409 },
+                );
+              }
+              await odoo.call(wizModel, 'action_close_mo', [[result.res_id]]);
+            } else {
+              return NextResponse.json(
+                { error: `Cannot auto-handle ${wizModel} wizard. Please close the MO in Odoo.` },
+                { status: 409 },
+              );
             }
           }
           break;

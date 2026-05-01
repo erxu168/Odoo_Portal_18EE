@@ -21,7 +21,19 @@ import {
   updatePrintJobStatus, markContainerPrinted, markSplitPrinted,
 } from '@/lib/labeling-db';
 import { generateZPL, resolveLabelSize, sendToZebra } from '@/lib/zpl';
+import { getOdoo } from '@/lib/odoo';
 import type { LabelData } from '@/types/labeling';
+
+async function fetchProductReference(productId: number | null | undefined): Promise<string | undefined> {
+  if (!productId) return undefined;
+  try {
+    const odoo = getOdoo();
+    const rows = await odoo.read('product.product', [productId], ['default_code']);
+    return rows[0]?.default_code || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 interface RouteParams { params: Promise<{ id: string }> }
 
@@ -64,9 +76,12 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     ? containers.filter(c => c.id === parseInt(containerIdParam, 10))
     : containers;
 
+  const productReference = await fetchProductReference(split.product_id);
+
   const previews = target.map(c => {
     const labelData: LabelData = {
       productName: split.product_name,
+      productReference,
       productionDate: formatDateDE(split.confirmed_at ?? split.created_at),
       qty: c.qty,
       uom: split.uom,
@@ -131,9 +146,12 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const results: { container_id: number; jobId: number; success: boolean; error?: string }[] = [];
 
+  const productReference = await fetchProductReference(split.product_id);
+
   for (const c of targets) {
     const labelData: LabelData = {
       productName: split.product_name,
+      productReference,
       productionDate: formatDateDE(split.confirmed_at ?? split.created_at),
       qty: c.qty,
       uom: split.uom,

@@ -47,6 +47,9 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const [existingSplit, setExistingSplit] = useState<any>(null);
   const [existingContainers, setExistingContainers] = useState<any[]>([]);
 
+  const [packSize, setPackSize] = useState('');
+  const [packType, setPackType] = useState<typeof CONTAINER_TYPES[number]>('Barrel');
+
   const [selectedSize, setSelectedSize] = useState('55x75');
   const [customWidth, setCustomWidth] = useState('55');
   const [customHeight, setCustomHeight] = useState('75');
@@ -142,7 +145,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const uom = mo?.product_uom_id?.[1] || 'kg';
   const sumQty = containers.reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
   const remaining = totalQty - sumQty;
-  const isBalanced = Math.abs(remaining) < totalQty * 0.001;
+  const isBalanced = Math.abs(remaining) < Math.max(0.005, totalQty * 0.001);
   const allFilled = containers.every(c => parseFloat(c.qty) > 0);
   const canConfirm = isBalanced && allFilled && containers.length > 0;
 
@@ -152,6 +155,78 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     const otherSum = containers.slice(0, -1).reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
     const rem = totalQty - otherSum;
     if (rem > 0) updateContainer(lastIdx, 'qty', rem.toFixed(2));
+  }
+
+  const autoSplitPreview = useMemo(() => {
+    const size = parseFloat(packSize);
+    if (!(size > 0) || !(totalQty > 0)) return null;
+    const fullPacks = Math.floor(totalQty / size);
+    const remainder = +(totalQty - fullPacks * size).toFixed(3);
+    const hasRemainder = remainder > 0.001;
+    const totalContainers = fullPacks + (hasRemainder ? 1 : 0);
+    if (totalContainers === 0) return null;
+    return { fullPacks, size, remainder, hasRemainder, totalContainers };
+  }, [packSize, totalQty]);
+
+  async function submitSplit(rows: ContainerRow[]) {
+    if (!mo) return;
+    const sum = rows.reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
+    const balanced = totalQty > 0 && Math.abs(totalQty - sum) < Math.max(0.005, totalQty * 0.001);
+    const allFilledRows = rows.every(c => parseFloat(c.qty) > 0 && c.expiryDate);
+    if (!balanced || !allFilledRows || rows.length === 0) {
+      setError("Containers don't add up to the total. Adjust pack size or fix rows below.");
+      return;
+    }
+    setSplitLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/manufacturing-orders/${moId}/package`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mo_id: moId, mo_name: mo.name,
+          product_id: mo.product_id[0], product_name: mo.product_id[1],
+          total_qty: totalQty, uom,
+          containers: rows.map(c => ({ qty: parseFloat(c.qty), expiry_date: c.expiryDate })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || data.message || `Server error (${res.status})`);
+        setSplitLoading(false);
+        return;
+      }
+      if (data.errors && Array.isArray(data.errors)) {
+        setError(data.errors.join('\n'));
+      }
+      if (data.split) {
+        setExistingSplit(data.split);
+        setExistingContainers(data.containers || []);
+        setSplitDone(true);
+        setStep('preview');
+      } else if (!data.error && !data.errors) {
+        setError('Unexpected response from server. Please try again.');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to package. Check your connection.');
+    } finally {
+      setSplitLoading(false);
+    }
+  }
+
+  async function applyAutoSplit() {
+    if (!autoSplitPreview) return;
+    const { fullPacks, size, remainder, hasRemainder } = autoSplitPreview;
+    const defaultExpiry = calcExpiryDate(activeShelfLifeDays);
+    const rows: ContainerRow[] = [];
+    for (let i = 0; i < fullPacks; i++) {
+      rows.push({ qty: size.toFixed(2), expiryDate: defaultExpiry, type: packType });
+    }
+    if (hasRemainder) {
+      rows.push({ qty: remainder.toFixed(2), expiryDate: defaultExpiry, type: packType });
+    }
+    setContainers(rows);
+    await submitSplit(rows);
   }
 
   async function handleConfirmSplit() {
@@ -415,6 +490,46 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
                 ? `Expiry: ${new Date(Date.now() + activeShelfLifeDays * 86400000).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}`
                 : 'Expiry: not set — label will print without an expiry date.'}
             </div>
+          </div>
+
+          {/* Quick auto-split by pack size */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">Pack Size</div>
+              <div className="text-[var(--fs-xs)] text-gray-400">Splits the total automatically</div>
+            </div>
+            <div className="flex gap-2 items-stretch">
+              <div className="flex-1">
+                <input type="number" inputMode="decimal" step="0.01" min="0"
+                  value={packSize}
+                  onChange={e => setPackSize(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && autoSplitPreview) { e.preventDefault(); applyAutoSplit(); } }}
+                  placeholder={`e.g. 2 ${uom}`}
+                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
+              </div>
+              <select value={packType} onChange={e => setPackType(e.target.value as typeof CONTAINER_TYPES[number])}
+                className="px-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-bold text-gray-700 outline-none focus:border-green-600">
+                {CONTAINER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <button onClick={applyAutoSplit} disabled={!autoSplitPreview || splitLoading}
+                className="px-5 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] active:scale-[0.975] disabled:opacity-40 disabled:bg-gray-200 disabled:text-gray-400">
+                {splitLoading ? (
+                  <span className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Producing
+                  </span>
+                ) : 'Split & Produce'}
+              </button>
+            </div>
+            {autoSplitPreview && (
+              <div className="mt-2.5 text-[var(--fs-xs)] font-semibold text-gray-600">
+                {'→ '}
+                {autoSplitPreview.fullPacks > 0 && `${autoSplitPreview.fullPacks} × ${fmt(autoSplitPreview.size)} ${uom}`}
+                {autoSplitPreview.fullPacks > 0 && autoSplitPreview.hasRemainder && ' + '}
+                {autoSplitPreview.hasRemainder && `1 × ${fmt(autoSplitPreview.remainder)} ${uom}`}
+                {' '}({autoSplitPreview.totalContainers} {autoSplitPreview.totalContainers === 1 ? 'container' : 'containers'})
+              </div>
+            )}
           </div>
 
           {containers.map((c, idx) => (

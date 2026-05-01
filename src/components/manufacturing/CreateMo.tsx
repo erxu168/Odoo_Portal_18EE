@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { useCompany } from '@/lib/company-context';
 
 interface CreateMoProps {
   onBack: () => void;
@@ -9,6 +10,7 @@ interface CreateMoProps {
 }
 
 export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
+  const { companyId } = useCompany();
   // Step: 'select' (pick product) | 'configure' (qty + options) | 'review'
   const [step, setStep] = useState<'select' | 'configure' | 'review'>('select');
 
@@ -40,11 +42,14 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
   const [createdSubMos, setCreatedSubMos] = useState<Record<number, { moId: number; moName: string }>>({});
   const [subMoError, setSubMoError] = useState<string | null>(null);
 
-  // Fetch all BOMs on mount
+  // Fetch BOMs for the selected company. Without the filter, users would
+  // see recipes from other companies and accidentally create cross-company MOs.
   useEffect(() => {
+    if (!companyId) return;
     async function loadBoms() {
+      setBomsLoading(true);
       try {
-        const res = await fetch('/api/boms');
+        const res = await fetch(`/api/boms?company_id=${companyId}`);
         const data = await res.json();
         setBoms(data.boms || []);
       } catch (e) {
@@ -54,7 +59,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
       }
     }
     loadBoms();
-  }, []);
+  }, [companyId]);
 
   // Categories from BOMs — deduplicated, "All" only once at the front
   const categories = useMemo(() => {

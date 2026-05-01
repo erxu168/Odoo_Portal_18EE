@@ -60,7 +60,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   // Validate totals
   const sumQty = body.containers.reduce((s, c) => s + c.qty, 0);
-  const tolerance = body.total_qty * 0.001;
+  const tolerance = Math.max(0.005, body.total_qty * 0.001);
   if (Math.abs(sumQty - body.total_qty) > tolerance) {
     return NextResponse.json(
       { error: `Container total (${sumQty}) does not match MO qty (${body.total_qty})` },
@@ -83,13 +83,13 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: `MO is in state "${mo.state}", must be confirmed, in progress, or to close` }, { status: 400 });
   }
 
-  // Check product has lot tracking
-  const [product] = await odooRPC('product.product', 'read', [[mo.product_id[0]], ['tracking']]) as any[];
-  if (!product || product.tracking === 'none') {
-    return NextResponse.json(
-      { error: 'Product must have lot tracking enabled. Enable it in Odoo: Product > Inventory tab > Tracking = By Lots.' },
-      { status: 400 }
-    );
+  // Auto-enable lot tracking if missing (default for portal-produced goods)
+  const [product] = await odooRPC('product.product', 'read', [[mo.product_id[0]], ['tracking', 'product_tmpl_id']]) as any[];
+  if (!product) {
+    return NextResponse.json({ error: 'Product not found in Odoo' }, { status: 400 });
+  }
+  if (product.tracking === 'none') {
+    await odooRPC('product.template', 'write', [[product.product_tmpl_id[0]], { tracking: 'lot' }]);
   }
 
   // Create split record in SQLite

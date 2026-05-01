@@ -106,6 +106,20 @@ export function ensureLabelingTables() {
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(user_id, company_id)
     );
+
+    CREATE TABLE IF NOT EXISTS custom_label_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_name TEXT NOT NULL,
+      qty REAL,
+      uom TEXT,
+      label_count INTEGER,
+      company_id INTEGER NOT NULL,
+      created_by INTEGER NOT NULL,
+      created_by_name TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(product_name, company_id)
+    );
   `);
 
   // Seed a test printer if none exist
@@ -395,4 +409,62 @@ export function setLabelSizePreference(
       updated_at = datetime('now')
   `).run(userId, companyId, sizeType, presetId, savedSizeId, customWidthMm, customHeightMm);
   return getLabelSizePreference(userId, companyId)!;
+}
+
+// =============================================================================
+// Custom Label Templates (saved presets for the Custom Labels screen)
+// Dates are intentionally NOT saved — they're always re-entered at print time.
+// =============================================================================
+
+export interface CustomLabelTemplate {
+  id: number;
+  product_name: string;
+  qty: number | null;
+  uom: string | null;
+  label_count: number | null;
+  company_id: number;
+  created_by: number;
+  created_by_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getCustomLabelTemplates(companyId: number): CustomLabelTemplate[] {
+  ensureLabelingTables();
+  return getDb().prepare(
+    'SELECT * FROM custom_label_templates WHERE company_id = ? ORDER BY updated_at DESC'
+  ).all(companyId) as CustomLabelTemplate[];
+}
+
+export function upsertCustomLabelTemplate(
+  productName: string,
+  qty: number | null,
+  uom: string | null,
+  labelCount: number | null,
+  companyId: number,
+  userId: number,
+  userName: string,
+): CustomLabelTemplate {
+  ensureLabelingTables();
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO custom_label_templates (product_name, qty, uom, label_count, company_id, created_by, created_by_name)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(product_name, company_id) DO UPDATE SET
+      qty = excluded.qty,
+      uom = excluded.uom,
+      label_count = excluded.label_count,
+      updated_at = datetime('now')
+  `).run(productName, qty, uom, labelCount, companyId, userId, userName);
+  return db.prepare(
+    'SELECT * FROM custom_label_templates WHERE product_name = ? AND company_id = ?'
+  ).get(productName, companyId) as CustomLabelTemplate;
+}
+
+export function deleteCustomLabelTemplate(id: number, companyId: number): boolean {
+  ensureLabelingTables();
+  const info = getDb().prepare(
+    'DELETE FROM custom_label_templates WHERE id = ? AND company_id = ?'
+  ).run(id, companyId);
+  return info.changes > 0;
 }

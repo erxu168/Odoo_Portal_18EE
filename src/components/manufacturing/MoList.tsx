@@ -54,6 +54,7 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
   const [statusFilter, setStatusFilter] = useState(mode === 'completed' ? 'done' : 'all');
   const [datePreset, setDatePreset] = useState('all');
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
+  const [search, setSearch] = useState('');
 
   useEffect(() => { if (companyId) fetchOrders(); }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -82,10 +83,18 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
     return mo.state === statusFilter;
   });
 
-  const filtered = statusFiltered.filter(mo => {
+  const dateFiltered = statusFiltered.filter(mo => {
     if (!dateRange) return true;
     const dateField = mode === 'completed' ? (mo.date_finished || mo.create_date) : (mo.date_start || mo.create_date);
     return isInRange(dateField, dateRange);
+  });
+
+  const filtered = dateFiltered.filter(mo => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    const moName = (mo.name || '').toLowerCase();
+    const productName = (mo.product_id?.[1] || '').toLowerCase();
+    return moName.includes(q) || productName.includes(q);
   });
 
   const statusTabs = mode === 'completed' ? COMPLETED_FILTERS : PRODUCTION_FILTERS;
@@ -142,6 +151,21 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
             </div>
           )}
 
+          <div className="px-4 pt-3">
+            <div className="relative">
+              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search by reference or product..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-10 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-[var(--fs-base)] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
+              />
+            </div>
+          </div>
+
           <div className="px-4 pt-2 pb-3">
             <DateFilter value={datePreset} onChange={handleDateChange} />
           </div>
@@ -164,7 +188,15 @@ export default function MoList({ onSelect, onCreate, onHome, mode = 'production'
                 {filtered.map((mo: any) => {
                   const woDone = mo.work_order_done || 0;
                   const woTotal = mo.work_order_count || 0;
-                  const pct = woTotal > 0 ? Math.round((woDone / woTotal) * 100) : (mo.product_qty > 0 ? Math.round((mo.qty_producing / mo.product_qty) * 100) : 0);
+                  // Prefer WO-based progress when steps exist. For step-less MOs
+                  // qty_producing stays 0 until close, so fall back to state-based
+                  // progress: confirmed = 0%, in-progress = 50%, to_close/done = 100%.
+                  const stateProgress = mo.state === 'done' || mo.state === 'to_close' ? 100
+                    : mo.state === 'progress' ? 50
+                    : 0;
+                  const pct = woTotal > 0
+                    ? Math.round((woDone / woTotal) * 100)
+                    : stateProgress;
                   const deadlineStr = mo.date_deadline
                     ? new Date(mo.date_deadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
                     : null;
