@@ -23,6 +23,11 @@
 # ==============================================================================
 set -euo pipefail
 
+if [ "$(id -u)" -ne 0 ]; then
+    echo "ERROR: this script must run as root."
+    exit 1
+fi
+
 REPO_URL="https://github.com/erxu168/Odoo_Portal_18EE.git"
 ADDONS_TREE=/opt/krawings-odoo-addons
 ODOO_ADDONS_DIR=/opt/odoo/18.0/custom-addons
@@ -42,6 +47,10 @@ chown odoo:odoo "$BACKUP_DIR"
 if [ ! -d "$ADDONS_TREE/.git" ]; then
     echo
     echo "[1/4] Cloning $REPO_URL to $ADDONS_TREE ..."
+    # /opt is owned by root. Create the dir as root first, hand it to odoo,
+    # then have odoo do the clone (so the working tree files land with the
+    # right ownership for the cron-pull step below).
+    install -d -o odoo -g odoo -m 0755 "$ADDONS_TREE"
     sudo -u odoo git clone "$REPO_URL" "$ADDONS_TREE"
 else
     echo
@@ -52,7 +61,7 @@ else
 fi
 
 cd "$ADDONS_TREE"
-echo "Current commit: $(git rev-parse --short HEAD) - $(git log -1 --format=%s)"
+echo "Current commit: $(sudo -u odoo git rev-parse --short HEAD) - $(sudo -u odoo git log -1 --format=%s)"
 
 # ----- 2. Symlink each addon folder -----
 echo
