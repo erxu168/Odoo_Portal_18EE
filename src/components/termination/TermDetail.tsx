@@ -427,27 +427,6 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
                 emptyLabel="Upload courier confirmation"
               />
             </div>
-
-            {/* PLZ for courier website lookup */}
-            {rec.employee_zip && (
-              <div className="mt-2 pt-2 border-t border-gray-100">
-                <button
-                  onClick={handleCopyPlz}
-                  className="flex items-center gap-2 py-1.5 px-2 -mx-2 rounded-lg active:bg-gray-50 transition-colors"
-                >
-                  <span className="text-[12px] text-gray-400 font-medium">PLZ:</span>
-                  <span className="text-[13px] text-gray-900 font-bold font-mono tracking-wide">{rec.employee_zip}</span>
-                  {plzCopied ? (
-                    <span className="text-[11px] text-green-600 font-semibold">Copied!</span>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-                    </svg>
-                  )}
-                </button>
-              </div>
-            )}
           </div>
         )}
 

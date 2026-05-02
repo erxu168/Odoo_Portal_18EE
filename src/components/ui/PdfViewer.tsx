@@ -52,14 +52,6 @@ export default function PdfViewer({
   const [zoom, setZoom] = useState(1.0);
   const [rendering, setRendering] = useState(false);
 
-  // Zoom ref to avoid stale closures in pinch handlers
-  const zoomRef = useRef(1.0);
-  const updateZoom = useCallback((newZoom: number) => {
-    const clamped = Math.max(0.5, Math.min(5.0, newZoom));
-    zoomRef.current = clamped;
-    setZoom(clamped);
-  }, []);
-
   // Pinch state
   const pinchRef = useRef({ active: false, initialDist: 0, initialZoom: 1.0 });
 
@@ -145,26 +137,14 @@ export default function PdfViewer({
   function nextPage() { setCurrentPage(p => Math.min(totalPages, p + 1)); }
 
   // Pinch-to-zoom via native gesturechange (Safari) or touch events
-  // Uses zoomRef to avoid stale closures; empty dependency array so listeners
-  // are attached once and never torn down during a pinch gesture.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
 
     // Safari gesture events (more reliable on iOS)
-    function onGestureStart(e: any) {
-      e.preventDefault();
-      pinchRef.current = { active: true, initialDist: 0, initialZoom: zoomRef.current };
-    }
-    function onGestureChange(e: any) {
-      e.preventDefault();
-      const newZoom = pinchRef.current.initialZoom * e.scale;
-      updateZoom(newZoom);
-    }
-    function onGestureEnd(e: any) {
-      e.preventDefault();
-      pinchRef.current.active = false;
-    }
+    function onGestureStart(e: any) { e.preventDefault(); pinchRef.current = { active: true, initialDist: 0, initialZoom: zoom }; }
+    function onGestureChange(e: any) { e.preventDefault(); const newZoom = Math.max(0.5, Math.min(5.0, pinchRef.current.initialZoom * e.scale)); setZoom(newZoom); }
+    function onGestureEnd(e: any) { e.preventDefault(); pinchRef.current.active = false; }
 
     // Touch events fallback (Android)
     function onTouchStart(e: TouchEvent) {
@@ -172,7 +152,7 @@ export default function PdfViewer({
         e.preventDefault();
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
-        pinchRef.current = { active: true, initialDist: Math.hypot(dx, dy), initialZoom: zoomRef.current };
+        pinchRef.current = { active: true, initialDist: Math.hypot(dx, dy), initialZoom: zoom };
       }
     }
     function onTouchMove(e: TouchEvent) {
@@ -182,8 +162,8 @@ export default function PdfViewer({
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.hypot(dx, dy);
         const scale = dist / pinchRef.current.initialDist;
-        const newZoom = pinchRef.current.initialZoom * scale;
-        updateZoom(newZoom);
+        const newZoom = Math.max(0.5, Math.min(5.0, pinchRef.current.initialZoom * scale));
+        setZoom(newZoom);
       }
     }
     function onTouchEnd(e: TouchEvent) {
@@ -205,7 +185,7 @@ export default function PdfViewer({
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
     };
-  }, []);
+  }, [zoom]);
 
   return (
     <div className="fixed inset-0 z-[200] bg-black/95 flex flex-col">
@@ -224,45 +204,28 @@ export default function PdfViewer({
             className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 active:bg-white/10 disabled:opacity-30">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5l7 7-7 7"/></svg>
           </button>
-
-          {/* Zoom controls */}
-          <div className="flex items-center gap-1 ml-2 border-l border-white/20 pl-3">
-            <button onClick={() => updateZoom(zoom - 0.25)} disabled={zoom <= 0.5}
-              className="w-7 h-7 rounded-full flex items-center justify-center text-white/70 active:bg-white/10 disabled:opacity-30">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14"/></svg>
-            </button>
-            <span className="text-white/80 text-[12px] font-mono font-semibold min-w-[40px] text-center">
-              {Math.round(zoom * 100)}%
-            </span>
-            <button onClick={() => updateZoom(zoom + 0.25)} disabled={zoom >= 5.0}
-              className="w-7 h-7 rounded-full flex items-center justify-center text-white/70 active:bg-white/10 disabled:opacity-30">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-            </button>
-          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* File name */}
-          {fileName && (
-            <span className="text-white/50 text-[11px] font-mono truncate max-w-[120px]">{fileName}</span>
-          )}
+        {/* File name */}
+        {fileName && (
+          <span className="text-white/50 text-[11px] font-mono truncate max-w-[120px]">{fileName}</span>
+        )}
 
-          {/* Close button */}
-          <button onClick={onClose}
-            className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20 transition-colors">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
+        {/* Close button */}
+        <button onClick={onClose}
+          className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20 transition-colors">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
       </div>
 
-      {/* Reset zoom button — only visible when zoomed */}
-      {Math.round(zoom * 100) !== 100 && (
+      {/* Zoom indicator */}
+      {zoom !== 1.0 && (
         <div className="flex-shrink-0 flex justify-center py-1">
-          <button onClick={() => updateZoom(1.0)}
-            className="px-3 py-1 rounded-full bg-white/10 text-white/60 text-[11px] font-mono active:bg-white/20 transition-colors">
-            Reset to 100%
+          <button onClick={() => setZoom(1.0)}
+            className="px-3 py-1 rounded-full bg-white/10 text-white/80 text-[11px] font-mono font-bold active:bg-white/20">
+            {Math.round(zoom * 100)}% — tap to reset
           </button>
         </div>
       )}
@@ -283,12 +246,13 @@ export default function PdfViewer({
         <div
           ref={scrollRef}
           className="flex-1 overflow-auto overscroll-contain"
-          style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x pan-y' }}
+          style={{ WebkitOverflowScrolling: 'touch' }}
         >
           <div className="inline-block min-w-full min-h-full p-2">
             <canvas
               ref={canvasRef}
               className="block bg-white shadow-2xl mx-auto"
+              style={{ touchAction: 'pan-x pan-y' }}
             />
           </div>
           {rendering && (
