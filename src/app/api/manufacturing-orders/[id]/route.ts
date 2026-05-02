@@ -1,6 +1,54 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 
+// Walk the wizard chain Odoo returns from button_mark_done. A wizard's
+// confirm method can itself return ANOTHER wizard — e.g. action_close_mo
+// re-runs button_mark_done with skip_backorder=True, which can pop a
+// fresh consumption warning. Without recursion the chained wizard is
+// dropped on the floor and the MO silently stays open. Errors bubble so
+// the route handler can surface them.
+const MAX_WIZARD_DEPTH = 5;
+async function processWizardReturn(
+  odoo: ReturnType<typeof getOdoo>,
+  moId: number,
+  ret: unknown,
+  depth = 0,
+): Promise<void> {
+  if (!ret || typeof ret !== 'object') return;
+  const a = ret as { res_model?: string; res_id?: number; context?: Record<string, unknown> };
+  if (!a.res_model) return;
+  if (depth > MAX_WIZARD_DEPTH) {
+    throw new Error(`Could not close MO ${moId}: wizard chain exceeded ${MAX_WIZARD_DEPTH} steps`);
+  }
+
+  const wizModel = a.res_model;
+  let wizIds: number[];
+  if (a.res_id) {
+    // Odoo pre-created the wizard (e.g. backorder) — reuse it instead of
+    // creating a new blank record that loses default field values.
+    wizIds = [a.res_id];
+  } else {
+    const wizCtx = { ...(a.context || {}), active_id: moId, active_ids: [moId] };
+    const wizId = await odoo.create(wizModel, {}, { context: wizCtx });
+    wizIds = Array.isArray(wizId) ? wizId : [wizId];
+  }
+
+  let next: unknown;
+  if (wizModel === 'mrp.consumption.warning') {
+    next = await odoo.call(wizModel, 'action_confirm', [wizIds]);
+  } else if (wizModel === 'mrp.production.backorder') {
+    // action_close_mo finishes the MO without splitting off a backorder.
+    // action_backorder would split + close — not what "Close order" means.
+    next = await odoo.call(wizModel, 'action_close_mo', [wizIds]);
+  } else if (wizModel === 'mrp.immediate.production') {
+    next = await odoo.call(wizModel, 'process', [wizIds]);
+  } else {
+    throw new Error(`Cannot auto-handle ${wizModel} wizard while closing MO ${moId}. Please close it in Odoo.`);
+  }
+
+  await processWizardReturn(odoo, moId, next, depth + 1);
+}
+
 // Auto-assign component lots using FIFO (oldest in_date first) on every
 // lot-tracked raw move before closing the MO. Avoids Odoo prompting the
 // user for a lot each time a lot-tracked component is consumed.
@@ -292,38 +340,26 @@ export async function PATCH(
             console.log(`[MO ${moId}] Auto-created lot ${lotName} (id=${lotId}) for tracked product`);
           }
 
-          // Call button_mark_done. Odoo can return two kinds of wizard:
-          //   * mrp.production.backorder — pre-created, comes with res_id;
-          //     we call action_close_mo on it to close without backorder.
-          //   * mrp.consumption.warning — opened fresh with defaults in
-          //     context (no res_id); we create it, confirm, and chain to
-          //     a backorder wizard if action_confirm returns one.
-          // Errors bubble up so the user knows close didn't finish.
+          // button_mark_done can return a wizard (consumption warning,
+          // backorder…) and that wizard's confirm method can itself return
+          // ANOTHER wizard. processWizardReturn follows the whole chain.
           const result = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
-          if (result && typeof result === 'object' && result.res_model) {
-            const wizModel = result.res_model;
+          await processWizardReturn(odoo, moId, result);
 
-            if (wizModel === 'mrp.consumption.warning') {
-              const wizCtx = { ...(result.context || {}), active_id: moId, active_ids: [moId] };
-              const wizId = await odoo.create(wizModel, {}, { context: wizCtx });
-              const cwResult = await odoo.call(wizModel, 'action_confirm', [[wizId]]);
-              if (cwResult && typeof cwResult === 'object' && cwResult.res_model === 'mrp.production.backorder' && cwResult.res_id) {
-                await odoo.call('mrp.production.backorder', 'action_close_mo', [[cwResult.res_id]]);
-              }
-            } else if (wizModel === 'mrp.production.backorder') {
-              if (!result.res_id) {
-                return NextResponse.json(
-                  { error: 'Odoo returned mrp.production.backorder without a record id; close incomplete.' },
-                  { status: 409 },
-                );
-              }
-              await odoo.call(wizModel, 'action_close_mo', [[result.res_id]]);
-            } else {
-              return NextResponse.json(
-                { error: `Cannot auto-handle ${wizModel} wizard. Please close the MO in Odoo.` },
-                { status: 409 },
-              );
-            }
+          // Final state check: if the MO didn't actually transition to a
+          // closed state, surface that to the UI instead of pretending it
+          // closed. Without this the user sees a green "done" but the MO
+          // stays in to_close / progress and they hit the same dead end
+          // next time.
+          const after = await odoo.read('mrp.production', [moId], ['state', 'name']);
+          const finalState = after[0]?.state;
+          if (finalState !== 'done' && finalState !== 'cancel') {
+            return NextResponse.json(
+              {
+                error: `Could not close ${after[0]?.name || 'manufacturing order'}: it is still in state "${finalState}". Open it in Odoo to see what's blocking — usually a missing lot, insufficient stock, or an incomplete work order.`,
+              },
+              { status: 409 },
+            );
           }
           break;
         }
