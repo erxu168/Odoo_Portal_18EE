@@ -1,6 +1,20 @@
 # Krawings Portal — Claude Code Instructions
-# Last updated: 27 March 2026
+# Last updated: 2 May 2026
 # Claude Code: READ THIS FILE + PORTAL.md + DESIGN_GUIDE.md at the start of every session.
+
+---
+
+## Single-Branch Rule (non-negotiable)
+
+**`main` is the only branch.** Always edit, commit, push, and deploy from `main`.
+
+- Staging tracks `main`. Period.
+- Do NOT create `feat/*`, `fix/*`, or any other side branch unless the user explicitly asks for one. Even then, merge it back to `main` and delete it the same session.
+- Before starting work: `git checkout main && git pull --ff-only`. Confirm `git branch --show-current` says `main`.
+- Before deploying: confirm staging is on `main` (`ssh root@89.167.124.0 'cd /opt/krawings-portal && git branch --show-current'`).
+- If you see a branch named `feat/*` or `fix/*` still around, that's tech debt — flag it to the user, don't silently work on it.
+
+This rule exists because past branch fragmentation caused fixes to land on the wrong branch and never reach staging.
 
 ---
 
@@ -23,7 +37,7 @@
 - Portal service: `systemctl restart krawings-portal`
 - Odoo service: `systemctl restart odoo-18`
 - Portal path: `/opt/krawings-portal`
-- Repo: `erxu168/Odoo_Portal_18EE` (main branch)
+- Repo: `erxu168/Odoo_Portal_18EE` — single branch: `main`
 
 ## Deploy Process
 
