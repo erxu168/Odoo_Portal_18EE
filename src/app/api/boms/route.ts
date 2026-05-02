@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { getCurrentUser, hasRole } from '@/lib/auth';
+import { getCurrentUser, hasRole, requireAuth, requireRole, AuthError } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
