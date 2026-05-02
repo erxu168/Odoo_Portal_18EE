@@ -51,7 +51,7 @@ export async function GET() {
     }
 
     const res = NextResponse.json({ companies: enriched });
-    res.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=120');
+    res.headers.set('Cache-Control', 'private, no-store');
     return res;
   } catch (error: any) {
     console.error('GET /api/companies error:', error);

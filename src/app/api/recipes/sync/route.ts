@@ -95,9 +95,11 @@ async function syncCreateRecipe(odoo: any, localId: number): Promise<void> {
     markRecipeSynced(recipe.id, odooId);
 
   } else if (recipe.mode === 'production_guide') {
+    // Lot tracking is on by default so MO labels can be printed.
     const productId = await odoo.create('product.template', {
       name: recipe.name,
       type: 'consu',
+      tracking: 'lot',
     });
 
     const variants = await odoo.searchRead(
@@ -132,6 +134,7 @@ async function syncCreateRecipe(odoo: any, localId: number): Promise<void> {
         const newTmplId = await odoo.create('product.template', {
           name: ing.name,
           type: 'consu',
+          tracking: 'lot',
         });
         const newVariants = await odoo.searchRead(
           'product.product',

@@ -25,12 +25,12 @@ type Step = 'split' | 'preview' | 'print';
 
 /**
  * Calculate expiry date string (YYYY-MM-DD) from today + days.
- * Falls back to 14 days if shelfLifeDays is 0 or not provided.
+ * Returns '' (empty) when shelfLifeDays is 0 — caller treats this as "no expiry".
  */
 function calcExpiryDate(shelfLifeDays: number): string {
-  const days = shelfLifeDays > 0 ? shelfLifeDays : 14;
+  if (!(shelfLifeDays > 0)) return '';
   const d = new Date();
-  d.setDate(d.getDate() + days);
+  d.setDate(d.getDate() + shelfLifeDays);
   return d.toISOString().slice(0, 10);
 }
 
@@ -47,6 +47,9 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const [existingSplit, setExistingSplit] = useState<any>(null);
   const [existingContainers, setExistingContainers] = useState<any[]>([]);
 
+  const [packSize, setPackSize] = useState('');
+  const [packType, setPackType] = useState<typeof CONTAINER_TYPES[number]>('Barrel');
+
   const [selectedSize, setSelectedSize] = useState('55x75');
   const [customWidth, setCustomWidth] = useState('55');
   const [customHeight, setCustomHeight] = useState('75');
@@ -57,9 +60,10 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
 
   const ble = useZebraBluetooth();
 
-  // Shelf life from Odoo product settings (days)
-  const shelfLifeDays = mo?.expiration_time_days || 0;
-  const hasShelfLife = shelfLifeDays > 0;
+  const chilledDays: number = mo?.shelf_life_chilled_days || 0;
+  const frozenDays: number = mo?.shelf_life_frozen_days || 0;
+  const [storageMode, setStorageMode] = useState<'chilled' | 'frozen'>('chilled');
+  const activeShelfLifeDays = storageMode === 'chilled' ? chilledDays : frozenDays;
 
   const labelDims = useMemo(() => {
     if (selectedSize === 'custom' || selectedSize?.startsWith('saved-')) {
@@ -88,8 +92,8 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
         const order = moData.order;
         setMo(order);
 
-        // Initialize first container with auto-calculated expiry from product shelf life
-        const defaultExpiry = calcExpiryDate(order?.expiration_time_days || 0);
+        // Initialize first container with auto-calculated expiry from product shelf life (chilled default)
+        const defaultExpiry = calcExpiryDate(order?.shelf_life_chilled_days || 0);
         setContainers([{ qty: '', expiryDate: defaultExpiry, type: 'Barrel' }]);
 
         if (splitData.split && splitData.split.status !== 'draft') {
@@ -97,6 +101,10 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
           setExistingContainers(splitData.containers || []);
           setSplitDone(true);
           setStep('preview');
+          if (splitData.split.storage_mode === 'frozen' || splitData.split.storage_mode === 'chilled') {
+            setStorageMode(splitData.split.storage_mode);
+          }
+          // NULL (legacy splits before this migration) defaults to 'chilled' which is the initial state.
           const alreadyPrinted = new Set<number>();
           for (const c of (splitData.containers || [])) {
             if (c.label_printed) alreadyPrinted.add(c.id);
@@ -112,8 +120,17 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     load();
   }, [moId]);
 
+  useEffect(() => {
+    // When storage mode changes, recompute expiry on every container row.
+    // Only runs after the initial load (when mo is set).
+    if (!mo) return;
+    const newExpiry = calcExpiryDate(activeShelfLifeDays);
+    setContainers(prev => prev.map(c => ({ ...c, expiryDate: newExpiry })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageMode, mo]); // intentional: reruns when mode flips or MO loads
+
   function addContainer() {
-    const defaultExpiry = calcExpiryDate(shelfLifeDays);
+    const defaultExpiry = calcExpiryDate(activeShelfLifeDays);
     setContainers(prev => [...prev, { qty: '', expiryDate: defaultExpiry, type: 'Barrel' }]);
   }
   function removeContainer(idx: number) {
@@ -128,8 +145,8 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
   const uom = mo?.product_uom_id?.[1] || 'kg';
   const sumQty = containers.reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
   const remaining = totalQty - sumQty;
-  const isBalanced = Math.abs(remaining) < totalQty * 0.001;
-  const allFilled = containers.every(c => parseFloat(c.qty) > 0 && c.expiryDate);
+  const isBalanced = Math.abs(remaining) < Math.max(0.005, totalQty * 0.001);
+  const allFilled = containers.every(c => parseFloat(c.qty) > 0);
   const canConfirm = isBalanced && allFilled && containers.length > 0;
 
   function autoFillLast() {
@@ -138,6 +155,78 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
     const otherSum = containers.slice(0, -1).reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
     const rem = totalQty - otherSum;
     if (rem > 0) updateContainer(lastIdx, 'qty', rem.toFixed(2));
+  }
+
+  const autoSplitPreview = useMemo(() => {
+    const size = parseFloat(packSize);
+    if (!(size > 0) || !(totalQty > 0)) return null;
+    const fullPacks = Math.floor(totalQty / size);
+    const remainder = +(totalQty - fullPacks * size).toFixed(3);
+    const hasRemainder = remainder > 0.001;
+    const totalContainers = fullPacks + (hasRemainder ? 1 : 0);
+    if (totalContainers === 0) return null;
+    return { fullPacks, size, remainder, hasRemainder, totalContainers };
+  }, [packSize, totalQty]);
+
+  async function submitSplit(rows: ContainerRow[]) {
+    if (!mo) return;
+    const sum = rows.reduce((s, c) => s + (parseFloat(c.qty) || 0), 0);
+    const balanced = totalQty > 0 && Math.abs(totalQty - sum) < Math.max(0.005, totalQty * 0.001);
+    const allFilledRows = rows.every(c => parseFloat(c.qty) > 0 && c.expiryDate);
+    if (!balanced || !allFilledRows || rows.length === 0) {
+      setError("Containers don't add up to the total. Adjust pack size or fix rows below.");
+      return;
+    }
+    setSplitLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/manufacturing-orders/${moId}/package`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mo_id: moId, mo_name: mo.name,
+          product_id: mo.product_id[0], product_name: mo.product_id[1],
+          total_qty: totalQty, uom,
+          containers: rows.map(c => ({ qty: parseFloat(c.qty), expiry_date: c.expiryDate })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || data.message || `Server error (${res.status})`);
+        setSplitLoading(false);
+        return;
+      }
+      if (data.errors && Array.isArray(data.errors)) {
+        setError(data.errors.join('\n'));
+      }
+      if (data.split) {
+        setExistingSplit(data.split);
+        setExistingContainers(data.containers || []);
+        setSplitDone(true);
+        setStep('preview');
+      } else if (!data.error && !data.errors) {
+        setError('Unexpected response from server. Please try again.');
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to package. Check your connection.');
+    } finally {
+      setSplitLoading(false);
+    }
+  }
+
+  async function applyAutoSplit() {
+    if (!autoSplitPreview) return;
+    const { fullPacks, size, remainder, hasRemainder } = autoSplitPreview;
+    const defaultExpiry = calcExpiryDate(activeShelfLifeDays);
+    const rows: ContainerRow[] = [];
+    for (let i = 0; i < fullPacks; i++) {
+      rows.push({ qty: size.toFixed(2), expiryDate: defaultExpiry, type: packType });
+    }
+    if (hasRemainder) {
+      rows.push({ qty: remainder.toFixed(2), expiryDate: defaultExpiry, type: packType });
+    }
+    setContainers(rows);
+    await submitSplit(rows);
   }
 
   async function handleConfirmSplit() {
@@ -152,7 +241,8 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
           mo_id: moId, mo_name: mo.name,
           product_id: mo.product_id[0], product_name: mo.product_id[1],
           total_qty: totalQty, uom,
-          containers: containers.map(c => ({ qty: parseFloat(c.qty), expiry_date: c.expiryDate })),
+          storage_mode: storageMode,
+          containers: containers.map(c => ({ qty: parseFloat(c.qty), expiry_date: c.expiryDate || null })),
         }),
       });
       const data = await res.json();
@@ -370,17 +460,77 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             </div>
           </div>
 
-          {/* Shelf life info banner */}
-          {hasShelfLife && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-3 flex items-center gap-2">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500 flex-shrink-0">
-                <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-              </svg>
-              <span className="text-[var(--fs-xs)] text-blue-700 font-semibold">
-                Shelf life: {shelfLifeDays} days &mdash; expiry auto-set to {fmtDate(calcExpiryDate(shelfLifeDays))}
-              </span>
+          {/* Storage mode toggle */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-4">
+            <div className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mb-3">
+              Storage
             </div>
-          )}
+            <div className="flex gap-2">
+              {(['chilled', 'frozen'] as const).map(mode => {
+                const days = mode === 'chilled' ? chilledDays : frozenDays;
+                const isActive = storageMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => setStorageMode(mode)}
+                    className={`flex-1 h-16 rounded-xl border-2 font-semibold text-sm transition active:scale-[0.97] ${
+                      isActive
+                        ? 'bg-orange-50 border-orange-500 text-orange-600'
+                        : 'bg-white border-gray-200 text-gray-500'
+                    }`}
+                  >
+                    <div className="uppercase text-xs tracking-wider">{mode === 'chilled' ? 'Chilled' : 'Frozen'}</div>
+                    <div className="text-base mt-1">{days > 0 ? `${days} days` : '— days'}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-sm text-gray-500 mt-3">
+              {activeShelfLifeDays > 0
+                ? `Expiry: ${new Date(Date.now() + activeShelfLifeDays * 86400000).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}`
+                : 'Expiry: not set — label will print without an expiry date.'}
+            </div>
+          </div>
+
+          {/* Quick auto-split by pack size */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">Pack Size</div>
+              <div className="text-[var(--fs-xs)] text-gray-400">Splits the total automatically</div>
+            </div>
+            <div className="flex gap-2 items-stretch">
+              <div className="flex-1">
+                <input type="number" inputMode="decimal" step="0.01" min="0"
+                  value={packSize}
+                  onChange={e => setPackSize(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && autoSplitPreview) { e.preventDefault(); applyAutoSplit(); } }}
+                  placeholder={`e.g. 2 ${uom}`}
+                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none" />
+              </div>
+              <select value={packType} onChange={e => setPackType(e.target.value as typeof CONTAINER_TYPES[number])}
+                className="px-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-bold text-gray-700 outline-none focus:border-green-600">
+                {CONTAINER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <button onClick={applyAutoSplit} disabled={!autoSplitPreview || splitLoading}
+                className="px-5 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] active:scale-[0.975] disabled:opacity-40 disabled:bg-gray-200 disabled:text-gray-400">
+                {splitLoading ? (
+                  <span className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Producing
+                  </span>
+                ) : 'Split & Produce'}
+              </button>
+            </div>
+            {autoSplitPreview && (
+              <div className="mt-2.5 text-[var(--fs-xs)] font-semibold text-gray-600">
+                {'→ '}
+                {autoSplitPreview.fullPacks > 0 && `${autoSplitPreview.fullPacks} × ${fmt(autoSplitPreview.size)} ${uom}`}
+                {autoSplitPreview.fullPacks > 0 && autoSplitPreview.hasRemainder && ' + '}
+                {autoSplitPreview.hasRemainder && `1 × ${fmt(autoSplitPreview.remainder)} ${uom}`}
+                {' '}({autoSplitPreview.totalContainers} {autoSplitPreview.totalContainers === 1 ? 'container' : 'containers'})
+              </div>
+            )}
+          </div>
 
           {containers.map((c, idx) => (
             <div key={idx} className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
@@ -457,6 +607,7 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
                 qty={previewContainer?.qty || totalQty}
                 uom={existingSplit?.uom || uom}
                 expiryDate={fmtDate(previewContainer?.expiry_date)}
+                storageMode={storageMode}
                 lotName={previewContainer?.lot_name}
                 moName={existingSplit?.mo_name || mo.name}
                 containerNumber={1}

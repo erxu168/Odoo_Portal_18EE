@@ -8,9 +8,12 @@ interface BomListProps {
   onSelect: (bom: Bom) => void;
   onBack?: () => void;
   onCreate?: () => void;
+  title?: string;
+  subtitlePattern?: (count: number) => string;
+  searchPlaceholder?: string;
 }
 
-export default function BomList({ onSelect, onBack, onCreate }: BomListProps) {
+export default function BomList({ onSelect, onBack, onCreate, title, subtitlePattern, searchPlaceholder }: BomListProps) {
   const { companyId } = useCompany();
   const [boms, setBoms] = useState<Bom[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,8 +84,10 @@ export default function BomList({ onSelect, onBack, onCreate }: BomListProps) {
             </button>
           )}
           <div className="flex-1">
-            <h1 className="text-[var(--fs-xl)] font-bold text-white">Recipes</h1>
-            <p className="text-[var(--fs-xs)] text-white/45 mt-0.5">{filtered.length} active recipes</p>
+            <h1 className="text-[var(--fs-xl)] font-bold text-white">{title ?? 'Recipes'}</h1>
+            <p className="text-[var(--fs-xs)] text-white/45 mt-0.5">
+              {subtitlePattern ? subtitlePattern(filtered.length) : `${filtered.length} active recipes`}
+            </p>
           </div>
           {onCreate && (
             <button onClick={onCreate} className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-green-600 flex items-center justify-center active:bg-green-700 shadow-lg shadow-green-600/30">
@@ -98,7 +103,7 @@ export default function BomList({ onSelect, onBack, onCreate }: BomListProps) {
             <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
           </svg>
           <input
-            type="text" placeholder="Search recipes..." value={search}
+            type="text" placeholder={searchPlaceholder ?? 'Search recipes...'} value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-3 py-3 rounded-xl border border-gray-200 bg-white text-[var(--fs-base)] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500"
           />

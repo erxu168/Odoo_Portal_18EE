@@ -95,6 +95,33 @@ export default function MfgDashboard({ onNavigate }: MfgDashboardProps) {
       ),
       badge: stats.done > 0 ? stats.done : null,
     },
+    {
+      key: 'label-print',
+      label: 'Label Print',
+      sublabel: 'Print without producing',
+      color: 'bg-purple-50 border-purple-200', iconBg: 'bg-purple-100', iconColor: 'text-purple-600',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="6 9 6 2 18 2 18 9"/>
+          <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+          <rect x="6" y="14" width="12" height="8"/>
+        </svg>
+      ),
+      badge: null,
+    },
+    {
+      key: 'custom-labels',
+      label: 'Custom Labels',
+      sublabel: 'Print any one-off label',
+      color: 'bg-pink-50 border-pink-200', iconBg: 'bg-pink-100', iconColor: 'text-pink-600',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/>
+          <line x1="7" y1="7" x2="7.01" y2="7"/>
+        </svg>
+      ),
+      badge: null,
+    },
   ];
 
   return (
