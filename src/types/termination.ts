@@ -69,6 +69,8 @@ export interface TerminationRecord {
   // Accountant
   sent_to_accountant: boolean;
   sent_to_accountant_date: string | false;
+  // Archive
+  archive_scheduled?: boolean;
   display_name: string;
 }
 

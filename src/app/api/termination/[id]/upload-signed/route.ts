@@ -5,6 +5,7 @@ import { writeFileSync, readFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
+import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
 const WKHTMLTOPDF = '/usr/local/bin/wkhtmltopdf';
 
@@ -98,8 +99,19 @@ export async function POST(
       pdfBase64 = pdfBuffer.toString('base64');
     }
 
-    // Create ir.attachment in Odoo
+    // Read old pdf_attachment_id before creating the new one
     const odoo = getOdoo();
+    let oldPdfAttachId: number | null = null;
+    try {
+      const current = await odoo.read('kw.termination', [termId], ['pdf_attachment_id']);
+      if (current?.[0]?.pdf_attachment_id) {
+        oldPdfAttachId = Array.isArray(current[0].pdf_attachment_id)
+          ? current[0].pdf_attachment_id[0]
+          : current[0].pdf_attachment_id;
+      }
+    } catch (_e) {}
+
+    // Create ir.attachment in Odoo
     const attachFilename = filename || `Kuendigung_unterschrieben_${termId}.pdf`;
 
     const attachId = await odoo.create('ir.attachment', {
@@ -117,6 +129,15 @@ export async function POST(
       signed_pdf_attachment_id: attachId,
     });
 
+    // Delete old unsigned PDF attachment if different from the new signed one
+    if (oldPdfAttachId && oldPdfAttachId !== attachId) {
+      try {
+        await odoo.call('ir.attachment', 'unlink', [[oldPdfAttachId]]);
+      } catch (_e) {
+        // Non-critical — orphaned attachment is harmless
+      }
+    }
+
     // Post to chatter
     try {
       await odoo.call('kw.termination', 'message_post', [[termId]], {
@@ -127,7 +148,9 @@ export async function POST(
       });
     } catch {}
 
-    return NextResponse.json({ ok: true, attachment_id: attachId });
+    // Return full updated record for the frontend to consume
+    const updatedRecords = await odoo.read('kw.termination', [termId], TERMINATION_DETAIL_FIELDS);
+    return NextResponse.json({ ok: true, data: updatedRecords[0] });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('POST /api/termination/[id]/upload-signed error:', message);
