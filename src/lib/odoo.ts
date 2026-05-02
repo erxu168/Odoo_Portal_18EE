@@ -1,19 +1,24 @@
 /**
  * Odoo 18 EE JSON-RPC Client
- * 
+ *
  * All communication with Odoo happens through this class.
  * Uses JSON-RPC over HTTP — no custom modules needed on Odoo.
- * 
+ *
  * Usage:
  *   const odoo = new OdooClient();
  *   await odoo.authenticate();
  *   const boms = await odoo.searchRead('mrp.bom', [], ['product_tmpl_id', 'product_qty']);
  */
 
+import { cookies } from 'next/headers';
+
 const ODOO_URL = process.env.ODOO_URL || 'http://89.167.124.0:15069';
 const ODOO_DB = process.env.ODOO_DB || 'krawings';
 const ODOO_USER = process.env.ODOO_USER || 'biz@krawings.de';
 const ODOO_PASSWORD = process.env.ODOO_PASSWORD || '';
+
+export const PORTAL_LANG_COOKIE = 'portal_lang';
+export type PortalLang = 'en_US' | 'de_DE';
 
 interface JsonRpcResponse {
   jsonrpc: string;
@@ -139,11 +144,20 @@ export class OdooClient {
   }
 
   /**
-   * Build default context with company access
+   * Build default context with company access.
+   * Reads `portal_lang` cookie so product names (and other translated fields)
+   * come back in the current user's language. Falls back to en_US when the
+   * cookie is absent or cookies() is unavailable (e.g. background jobs).
    */
   private getContext(extra: Record<string, any> = {}): Record<string, any> {
+    let lang = 'en_US';
+    try {
+      const value = cookies().get(PORTAL_LANG_COOKIE)?.value;
+      if (value === 'de_DE' || value === 'en_US') lang = value;
+    } catch { /* outside request scope — keep default */ }
+
     return {
-      lang: 'en_US',
+      lang,
       tz: 'Europe/Berlin',
       ...(this.allowedCompanyIds.length > 0 ? { allowed_company_ids: this.allowedCompanyIds } : {}),
       ...extra,
