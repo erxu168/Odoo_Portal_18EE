@@ -67,6 +67,14 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   const [showAddOp, setShowAddOp] = useState(false);
   const [newOp, setNewOp] = useState<EditOp>({ id: 0, name: '', workcenter_id: 0, time_cycle_manual: 0, sequence: 0, note: '', worksheet_type: false, worksheet_google_slide: '' });
 
+  // Inline workcenter creation
+  const [creatingWc, setCreatingWc] = useState(false);
+  const [newWcName, setNewWcName] = useState('');
+  const [savingWc, setSavingWc] = useState(false);
+  const newWcInputRef = useRef<HTMLInputElement>(null);
+  /** Pending callback: after creating a WC, auto-select it on this op */
+  const wcCreatedCallbackRef = useRef<((wcId: number) => void) | null>(null);
+
   // Add ingredient
   const [showAddSearch, setShowAddSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,6 +84,12 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
 
   // BOM line IDs (fetched separately for editing)
   const [rawLines, setRawLines] = useState<any[]>([]);
+
+  // Line ↔ operation mapping (lineId → opId | null). Current edit state + original for diff.
+  const [lineOpMap, setLineOpMap] = useState<Record<number, number | null>>({});
+  const [origLineOpMap, setOrigLineOpMap] = useState<Record<number, number | null>>({});
+  // Picker: which op is currently showing its "add ingredient" list
+  const [pickerOpId, setPickerOpId] = useState<number | null>(null);
 
   useEffect(() => { fetchBomDetail(); }, [bomId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -141,6 +155,14 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
 
       setEditLines(lines);
       setRemovedLineIds([]);
+      // Build line → operation map from GET response
+      const initMap: Record<number, number | null> = {};
+      for (const lo of (data.line_operations || [])) {
+        initMap[lo.line_id] = lo.operation_id || null;
+      }
+      setLineOpMap(initMap);
+      setOrigLineOpMap(initMap);
+      setPickerOpId(null);
       // Map operations to EditOp shape
       const ops: EditOp[] = (data.operations || operations).map((op: any) => ({
         id: op.id,
@@ -168,6 +190,9 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     setRemovedLineIds([]);
     setEditOps([]);
     setRemovedOpIds([]);
+    setLineOpMap({});
+    setOrigLineOpMap({});
+    setPickerOpId(null);
     setEditingOpId(null);
     setSaveError(null);
     setShowAddSearch(false);
@@ -241,6 +266,42 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     setShowAddOp(false);
   }
 
+  async function createWorkcenter(callback: (wcId: number) => void) {
+    const name = newWcName.trim();
+    if (!name) return;
+    setSavingWc(true);
+    try {
+      const companyId = bom?.company_id ? (Array.isArray(bom.company_id) ? bom.company_id[0] : bom.company_id) : undefined;
+      const res = await fetch('/api/workcenters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, company_id: companyId }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Failed to create station');
+      const wc = data.workcenter as { id: number; name: string };
+      setWorkcenters(prev => [...prev, wc].sort((a, b) => a.name.localeCompare(b.name)));
+      setCreatingWc(false);
+      setNewWcName('');
+      callback(wc.id);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[manufacturing] create workcenter failed:', msg);
+    } finally {
+      setSavingWc(false);
+    }
+  }
+
+  function moveOp(index: number, direction: 'up' | 'down') {
+    setEditOps(prev => {
+      const next = [...prev];
+      const swapIdx = direction === 'up' ? index - 1 : index + 1;
+      if (swapIdx < 0 || swapIdx >= next.length) return prev;
+      [next[index], next[swapIdx]] = [next[swapIdx], next[index]];
+      return next;
+    });
+  }
+
   function addNewOp() {
     if (!newOp.name || !newOp.workcenter_id) return;
     const wcId = typeof newOp.workcenter_id === 'number' ? newOp.workcenter_id : (newOp.workcenter_id as [number, string])[0];
@@ -277,14 +338,15 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
 
       if (removedLineIds.length) body.remove_lines = removedLineIds;
 
-      // Update existing operations (id > 0)
-      const opUpdates = editOps.filter(op => op.id > 0).map(op => {
+      // Update existing operations (id > 0) — sequence derived from array position
+      const opUpdates = editOps.filter(op => op.id > 0).map((op, idx) => {
         const wcId = Array.isArray(op.workcenter_id) ? op.workcenter_id[0] : op.workcenter_id;
         const result: any = {
           operation_id: op.id,
           name: op.name,
           workcenter_id: wcId,
           time_cycle_manual: op.time_cycle_manual,
+          sequence: (idx + 1) * 10,
           note: op.note || '',
           worksheet_type: op.worksheet_type || false,
           worksheet_google_slide: op.worksheet_google_slide || false,
@@ -316,6 +378,20 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
       if (newOps.length) body.add_operations = newOps;
 
       if (removedOpIds.length) body.remove_operations = removedOpIds;
+
+      // Diff line ↔ operation links (only for lines that still exist and are persisted)
+      const lineOpChanges: Array<{ line_id: number; operation_id: number | null }> = [];
+      for (const line of editLines) {
+        if (line.line_id <= 0) continue; // new lines get linked via a follow-up run after save
+        const current = lineOpMap[line.line_id] ?? null;
+        const original = origLineOpMap[line.line_id] ?? null;
+        if (current !== original) {
+          // Don't send if the target op is a not-yet-saved new op (id < 0)
+          if (current != null && current < 0) continue;
+          lineOpChanges.push({ line_id: line.line_id, operation_id: current });
+        }
+      }
+      if (lineOpChanges.length) body.update_line_operations = lineOpChanges;
 
       const res = await fetch(`/api/boms/${bomId}`, {
         method: 'PATCH',
@@ -375,11 +451,48 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         </div>
         <div className="mb-3">
           <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Workcenter</label>
-          <select value={wcNumId(op.workcenter_id)} onChange={e => onChange({ workcenter_id: parseInt(e.target.value) })}
+          <select value={wcNumId(op.workcenter_id)} onChange={e => {
+            const val = e.target.value;
+            if (val === '__new__') {
+              wcCreatedCallbackRef.current = (wcId) => onChange({ workcenter_id: wcId });
+              setCreatingWc(true);
+              setNewWcName('');
+              setTimeout(() => newWcInputRef.current?.focus(), 50);
+            } else {
+              onChange({ workcenter_id: parseInt(val) });
+            }
+          }}
             className="w-full px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600 appearance-none bg-white">
             <option value={0}>Select workcenter...</option>
             {workcenters.map(wc => <option key={wc.id} value={wc.id}>{wc.name}</option>)}
+            <option value="__new__">+ Add new station</option>
           </select>
+          {creatingWc && (
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                ref={newWcInputRef}
+                type="text"
+                value={newWcName}
+                onChange={e => setNewWcName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && newWcName.trim() && wcCreatedCallbackRef.current) createWorkcenter(wcCreatedCallbackRef.current); }}
+                placeholder="Station name..."
+                className="flex-1 px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-green-600"
+              />
+              <button
+                onClick={() => { if (wcCreatedCallbackRef.current) createWorkcenter(wcCreatedCallbackRef.current); }}
+                disabled={!newWcName.trim() || savingWc}
+                className="px-4 py-2.5 rounded-lg bg-green-600 text-white text-[var(--fs-xs)] font-bold active:bg-green-700 disabled:opacity-50"
+              >
+                {savingWc ? '...' : 'Add'}
+              </button>
+              <button
+                onClick={() => { setCreatingWc(false); setNewWcName(''); }}
+                className="px-3 py-2.5 rounded-lg text-gray-500 text-[var(--fs-xs)] font-semibold active:bg-gray-100"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
         <div className="mb-3">
           <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Duration (minutes)</label>
@@ -393,6 +506,54 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
             onChange={html => onChange({ note: html })}
             placeholder="Step-by-step instructions..."
           />
+        </div>
+        {/* Ingredients used in this step */}
+        <div className="mb-3">
+          <label className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 block mb-1">Ingredients in this step</label>
+          {op.id < 0 ? (
+            <p className="text-[var(--fs-xs)] text-gray-400 italic">Save the BOM first, then re-open edit to link ingredients.</p>
+          ) : (() => {
+            const linked = editLines.filter(l => l.line_id > 0 && lineOpMap[l.line_id] === op.id);
+            const candidates = editLines.filter(l => l.line_id > 0 && lineOpMap[l.line_id] !== op.id);
+            const isPicking = pickerOpId === op.id;
+            return (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {linked.map(l => (
+                    <span key={l.line_id} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 rounded-full bg-green-50 border border-green-200 text-green-700 text-[var(--fs-xs)] font-semibold">
+                      {l.product_name}
+                      <button type="button" onClick={() => setLineOpMap(prev => ({ ...prev, [l.line_id]: null }))}
+                        className="w-5 h-5 rounded-full hover:bg-green-100 flex items-center justify-center text-green-600 text-[11px]" aria-label="Remove">×</button>
+                    </span>
+                  ))}
+                  <button type="button" onClick={() => setPickerOpId(isPicking ? null : op.id)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-gray-300 text-gray-500 text-[var(--fs-xs)] font-semibold active:bg-gray-50">
+                    {isPicking ? 'Done' : '+ Add ingredient'}
+                  </button>
+                </div>
+                {isPicking && (
+                  <div className="mt-2 border border-gray-200 rounded-lg bg-gray-50 max-h-60 overflow-y-auto">
+                    {candidates.length === 0 ? (
+                      <p className="px-3 py-3 text-[var(--fs-xs)] text-gray-400">All ingredients are already in this step.</p>
+                    ) : candidates.map(l => {
+                      const existing = lineOpMap[l.line_id];
+                      const otherOp = existing ? editOps.find(o => o.id === existing) : null;
+                      return (
+                        <button key={l.line_id} type="button"
+                          onClick={() => setLineOpMap(prev => ({ ...prev, [l.line_id]: op.id }))}
+                          className="w-full px-3 py-2 text-left text-[var(--fs-sm)] active:bg-gray-100 border-b border-gray-100 last:border-b-0 flex items-center justify-between gap-2">
+                          <span className="text-gray-900 font-semibold">{l.product_name}</span>
+                          {otherOp && (
+                            <span className="text-[var(--fs-xs)] text-gray-400">in: {otherOp.name}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
         {/* Worksheet type */}
         <div className="mb-3">
@@ -471,7 +632,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        title={productName}
+        title="Recipe"
         subtitle={`${fmt(bom.product_qty)} ${uom} per batch`}
         showBack
         onBack={onBack}
@@ -486,6 +647,10 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
           ) : undefined
         }
       />
+
+      <div className="px-4 pt-5 pb-2">
+        <h1 className="text-2xl font-extrabold text-gray-900 leading-tight">{productName}</h1>
+      </div>
 
       {/* Stats */}
       <div className="px-4 py-3">
@@ -601,18 +766,37 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
               const isExpanded = editingOpId === op.id;
               return (
                 <div key={op.id} className={`bg-white border rounded-xl overflow-hidden ${isExpanded ? 'border-amber-300' : 'border-gray-200'}`}>
-                  {/* Collapsed header \u2014 tap to expand */}
+                  {/* Collapsed header — tap to expand */}
                   <div
                     className="px-4 py-2 flex items-center gap-3 cursor-pointer active:bg-gray-50"
                     onClick={() => setEditingOpId(isExpanded ? null : op.id)}
                   >
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700 flex-shrink-0">{i + 1}</div>
+                    {/* Reorder arrows + step number */}
+                    <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveOp(i, 'up'); }}
+                        disabled={i === 0}
+                        className="w-7 h-5 flex items-center justify-center rounded text-gray-400 active:bg-gray-100 disabled:opacity-20"
+                        aria-label="Move up"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="18 15 12 9 6 15" /></svg>
+                      </button>
+                      <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700">{i + 1}</div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); moveOp(i, 'down'); }}
+                        disabled={i === editOps.length - 1}
+                        className="w-7 h-5 flex items-center justify-center rounded text-gray-400 active:bg-gray-100 disabled:opacity-20"
+                        aria-label="Move down"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9" /></svg>
+                      </button>
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{op.name || '(untitled)'}</div>
                       <div className="text-[var(--fs-xs)] text-gray-400">
                         {wcName(op.workcenter_id)}
-                        {op.time_cycle_manual > 0 ? ` \u00b7 ${op.time_cycle_manual} min` : ''}
-                        {op.worksheet_type ? ` \u00b7 ${op.worksheet_type === 'pdf' ? 'PDF' : op.worksheet_type === 'google_slide' ? 'Slides' : ''}` : ''}
+                        {op.time_cycle_manual > 0 ? ` · ${op.time_cycle_manual} min` : ''}
+                        {op.worksheet_type ? ` · ${op.worksheet_type === 'pdf' ? 'PDF' : op.worksheet_type === 'google_slide' ? 'Slides' : ''}` : ''}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 flex-shrink-0">

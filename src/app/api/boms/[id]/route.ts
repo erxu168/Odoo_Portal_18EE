@@ -121,7 +121,13 @@ export async function GET(
       'product_qty',
       'product_uom_id',
       'child_bom_id',
+      'operation_id',
     ]);
+
+    const lineOperations = lines.map((l: any) => ({
+      line_id: l.id,
+      operation_id: Array.isArray(l.operation_id) ? l.operation_id[0] : null,
+    }));
 
     const allProductIds = new Set<number>();
     const collectProductIds = async (lineIds: number[]) => {
@@ -221,6 +227,7 @@ export async function GET(
       components,
       can_make_qty: Math.floor(canMakeQty * 100) / 100,
       operations: operations.sort((a: any, b: any) => (a.sequence || 0) - (b.sequence || 0)),
+      line_operations: lineOperations,
     });
   } catch (error: unknown) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
@@ -269,6 +276,15 @@ export async function PATCH(
           product_id: line.product_id,
           product_qty: line.product_qty,
           product_uom_id: line.product_uom_id,
+        });
+      }
+    }
+
+    // Assign / unassign line → operation links
+    if (body.update_line_operations?.length) {
+      for (const link of body.update_line_operations) {
+        await odoo.write('mrp.bom.line', [link.line_id], {
+          operation_id: link.operation_id || false,
         });
       }
     }

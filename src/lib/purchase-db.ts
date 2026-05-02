@@ -199,12 +199,43 @@ export function createSupplier(data: {
   return result.lastInsertRowid as number;
 }
 
+// Per-field type coercion so callers can't slip a non-number into min_order_value
+// or drop an object into name. Each allowed field runs through its coercer;
+// anything that can't be cleanly coerced is dropped (not rejected loudly — the
+// caller gets a silent skip for that single field). Unknown fields stay skipped
+// by the allowlist check.
+const SUPPLIER_FIELD_COERCERS: Record<string, (v: unknown) => unknown | undefined> = {
+  name: (v) => typeof v === 'string' ? v.slice(0, 200) : undefined,
+  email: (v) => typeof v === 'string' ? v.slice(0, 200) : undefined,
+  phone: (v) => typeof v === 'string' ? v.slice(0, 50) : undefined,
+  send_method: (v) => typeof v === 'string' && ['email', 'whatsapp', 'manual'].includes(v) ? v : undefined,
+  whatsapp_number: (v) => typeof v === 'string' ? v.slice(0, 50) : undefined,
+  min_order_value: (v) => typeof v === 'number' && isFinite(v) && v >= 0 ? v : undefined,
+  order_days: (v) => typeof v === 'string' ? v.slice(0, 200) : undefined,
+  delivery_days: (v) => typeof v === 'string' ? v.slice(0, 200) : undefined,
+  lead_time_days: (v) => {
+    const n = typeof v === 'number' ? v : parseInt(String(v));
+    return Number.isInteger(n) && n >= 0 && n <= 365 ? n : undefined;
+  },
+  approval_required: (v) => (v === 0 || v === 1 || v === false || v === true) ? (v ? 1 : 0) : undefined,
+  location_id: (v) => {
+    const n = typeof v === 'number' ? v : parseInt(String(v));
+    return Number.isInteger(n) && n >= 0 ? n : undefined;
+  },
+  active: (v) => (v === 0 || v === 1 || v === false || v === true) ? (v ? 1 : 0) : undefined,
+};
+
 export function updateSupplier(id: number, data: Record<string, any>) {
-  const allowed = ['name','email','phone','send_method','whatsapp_number','min_order_value','order_days','delivery_days','lead_time_days','approval_required','location_id','active'];
   const sets: string[] = [];
   const vals: any[] = [];
   for (const [k, v] of Object.entries(data)) {
-    if (v !== undefined && allowed.includes(k)) { sets.push(`${k} = ?`); vals.push(v); }
+    if (v === undefined) continue;
+    const coerce = SUPPLIER_FIELD_COERCERS[k];
+    if (!coerce) continue;
+    const coerced = coerce(v);
+    if (coerced === undefined) continue;
+    sets.push(`${k} = ?`);
+    vals.push(coerced);
   }
   if (sets.length === 0) return;
   vals.push(id);
@@ -230,9 +261,16 @@ export function getGuideWithItems(supplierId: number, locationId: number) {
 }
 
 export function createGuide(supplierId: number, locationId: number, name: string) {
+  // Fall back to the supplier's name so the guide never renders as "untitled"
+  // in the UI. Callers historically pass '' when they don't have a better name.
+  let resolvedName = (name || '').trim();
+  if (!resolvedName) {
+    const supplier = getSupplier(supplierId) as { name?: string } | undefined;
+    resolvedName = supplier?.name || `Guide ${supplierId}`;
+  }
   const result = db().prepare(
     'INSERT INTO purchase_order_guides (supplier_id, location_id, name, created_at) VALUES (?, ?, ?, ?)'
-  ).run(supplierId, locationId, name, nowISO());
+  ).run(supplierId, locationId, resolvedName, nowISO());
   return result.lastInsertRowid as number;
 }
 
@@ -367,6 +405,13 @@ export function getOrder(id: number) {
   ).get(id) as any;
   if (!order) return null;
   order.lines = db().prepare('SELECT * FROM purchase_order_lines WHERE order_id = ?').all(id);
+  // Attach latest-receipt timestamps so the UI can build a delivery timeline without a second fetch.
+  const receipt = db().prepare(
+    'SELECT status, created_at, confirmed_at FROM purchase_receipts WHERE order_id = ? ORDER BY created_at DESC LIMIT 1'
+  ).get(id) as { status?: string; created_at?: string; confirmed_at?: string } | undefined;
+  order.receipt_status = receipt?.status || null;
+  order.receipt_created_at = receipt?.created_at || null;
+  order.receipt_confirmed_at = receipt?.confirmed_at || null;
   return order;
 }
 
@@ -398,7 +443,10 @@ export function cancelOrder(id: number, userId: number) {
 }
 
 export function checkDuplicateOrder(supplierId: number, locationId: number): boolean {
-  const today = new Date().toISOString().split('T')[0];
+  // Use Berlin calendar date (en-CA returns YYYY-MM-DD). The previous UTC-based
+  // comparison flipped "today" 1-2 hours before Berlin midnight and incorrectly
+  // flagged orders from the prior Berlin calendar day as same-day duplicates.
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' });
   const row = db().prepare(
     "SELECT COUNT(*) as c FROM purchase_orders WHERE supplier_id = ? AND location_id = ? AND status != 'cancelled' AND created_at >= ?"
   ).get(supplierId, locationId, today + 'T00:00:00') as any;
