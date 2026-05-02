@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import InfoButton from '@/components/hr/InfoButton';
-import type { EmployeeData, Konfession, Steuerklasse } from '@/types/hr';
+import type { EmployeeData } from '@/types/hr';
 import { FIELD_EXPLAINERS } from '@/types/hr';
 
 interface Props {
@@ -55,7 +55,7 @@ export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
             <span className="text-[var(--fs-xs)] text-gray-400">(Steuerklasse)</span>
             <InfoButton title={ex.kw_steuerklasse.title} text={ex.kw_steuerklasse.text} url={ex.kw_steuerklasse.url} urlLabel={ex.kw_steuerklasse.urlLabel} />
           </div>
-          <select className="form-input" value={steuerklasse} onChange={e => setSteuerklasse(e.target.value as Steuerklasse | '')}>
+          <select className="form-input" value={steuerklasse} onChange={e => setSteuerklasse(e.target.value as any)}>
             <option value="">Select your tax class...</option>
             <option value="1">I - Single / Divorced / Widowed</option>
             <option value="2">II - Single parent</option>
@@ -71,7 +71,7 @@ export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
             <span className="text-[var(--fs-xs)] text-gray-400">(Konfession)</span>
             <InfoButton title={ex.kw_konfession.title} text={ex.kw_konfession.text} url={ex.kw_konfession.url} urlLabel={ex.kw_konfession.urlLabel} />
           </div>
-          <select className="form-input" value={konfession} onChange={e => setKonfession(e.target.value as Konfession)}>
+          <select className="form-input" value={konfession} onChange={e => setKonfession(e.target.value as any)}>
             <option value="--">None (no church tax)</option>
             <option value="ev">Protestant (Evangelisch)</option>
             <option value="rk">Roman Catholic (Roemisch-katholisch)</option>

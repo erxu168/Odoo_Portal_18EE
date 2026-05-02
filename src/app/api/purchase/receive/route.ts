@@ -30,24 +30,25 @@ export async function GET(request: Request) {
 
     const orderer = getUserById(order.ordered_by);
 
-    const orderLineMap: Record<number, { price: number; subtotal: number; product_uom: string }> = {};
+    const orderLineMap: Record<number, any> = {};
     for (const ol of order.lines) {
       orderLineMap[ol.id] = ol;
     }
-    // Enrich receipt lines with price/subtotal from order lines for display
-    const enrichedLines = (receipt?.lines ?? []).map(rl => {
-      const ol = orderLineMap[rl.order_line_id];
-      return {
-        ...rl,
-        price: ol?.price ?? 0,
-        subtotal: ol?.subtotal ?? 0,
-        product_uom: (!rl.product_uom || rl.product_uom === 'Units') ? (ol?.product_uom || 'Units') : rl.product_uom,
-      };
-    });
-    const enrichedReceipt = receipt ? { ...receipt, lines: enrichedLines } : null;
+    if (receipt?.lines) {
+      for (const rl of receipt.lines) {
+        const ol = orderLineMap[rl.order_line_id];
+        if (ol) {
+          rl.price = ol.price;
+          rl.subtotal = ol.subtotal;
+          if (!rl.product_uom || rl.product_uom === 'Units') {
+            rl.product_uom = ol.product_uom || 'Units';
+          }
+        }
+      }
+    }
 
     return NextResponse.json({
-      receipt: enrichedReceipt,
+      receipt,
       order: {
         id: order.id,
         supplier_name: order.supplier_name,

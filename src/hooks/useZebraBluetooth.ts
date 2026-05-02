@@ -185,7 +185,7 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
     try {
       setStatus('scanning');
       setError(null);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Web Bluetooth API not in standard TS typedefs
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const nav = navigator as any;
       let device: BleAny = null;
       try {

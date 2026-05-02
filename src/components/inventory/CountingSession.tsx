@@ -211,10 +211,6 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   function handlePhotoCapture(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    handleFilePickerPhoto(file);
-  }
-
-  function handleFilePickerPhoto(file: File) {
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
@@ -420,7 +416,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 </div>
               ) : (
                 <FilePicker
-                  onFile={(file) => handleFilePickerPhoto(file)}
+                  onFile={(file) => handlePhotoCapture({ target: { files: [file] } } as any)}
                   accept="image/*"
                   label="Take a photo of the shelf"
                   className="w-full py-4 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 text-[var(--fs-base)] font-semibold flex items-center justify-center gap-2 active:bg-gray-50"

@@ -146,7 +146,7 @@ export default function EmployeeOverview({ onBack, onSelect }: Props) {
           const initials = emp.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
           const deptFull = emp.department_id ? (emp.department_id as [number, string])[1] : '';
           const dept = deptFull.includes(' / ') ? deptFull.split(' / ').pop()! : deptFull;
-          const company = emp.company_id ? (emp.company_id as [number, string])[1] : '';
+          const company = (emp as any).company_id ? ((emp as any).company_id as [number, string])[1] : '';
           const visaDays = emp.visa_expire ? Math.round((new Date(emp.visa_expire).getTime() - Date.now()) / 86400000) : null;
           const pctColor = pct === 100 ? 'text-green-600' : pct > 0 ? 'text-amber-600' : 'text-red-500';
 

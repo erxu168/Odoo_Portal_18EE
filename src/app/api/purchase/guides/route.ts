@@ -38,15 +38,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'supplier_id, location_id, product_id required' }, { status: 400 });
   }
 
-  const guide = getGuide(supplier_id, location_id);
-  let guideId: number;
+  let guide = getGuide(supplier_id, location_id);
   if (!guide) {
-    guideId = createGuide(supplier_id, location_id, '');
-  } else {
-    guideId = guide.id;
+    const guideId = createGuide(supplier_id, location_id, '');
+    guide = { id: guideId };
   }
 
-  const itemId = addGuideItem(guideId, {
+  const itemId = addGuideItem(guide.id, {
     product_id, product_name: product_name || '', product_uom: product_uom || 'Units',
     price: price || 0, price_source: price_source || 'manual', category_name: category_name || '',
   });
@@ -90,9 +88,9 @@ export async function DELETE(request: Request) {
       locationId
         ? 'SELECT id FROM purchase_order_guides WHERE supplier_id = ? AND location_id = ?'
         : 'SELECT id FROM purchase_order_guides WHERE supplier_id = ?'
-    ).all(...(locationId ? [supplierId, locationId] : [supplierId])) as { id: number }[];
+    ).all(...(locationId ? [supplierId, locationId] : [supplierId])) as any[];
 
-    const guideIds = guides.map((g) => g.id);
+    const guideIds = guides.map((g: any) => g.id);
     let itemsDeleted = 0;
     let guidesDeleted = 0;
 

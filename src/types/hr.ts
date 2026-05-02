@@ -28,8 +28,6 @@ export interface EmployeeData {
   id: number;
   name: string;
   nick_name: string | false;
-  image_1920: string | false;
-  company_id: [number, string] | false;
   department_id: [number, string] | false;
   job_title: string | false;
   work_email: string | false;

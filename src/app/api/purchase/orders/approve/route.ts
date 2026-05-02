@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   }
 
   if (action === 'approve') {
-    const supplier = getSupplier(order.supplier_id);
+    const supplier = getSupplier(order.supplier_id) as any;
     if (!supplier) return NextResponse.json({ error: 'Supplier not found' }, { status: 404 });
 
     // Create Odoo PO
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       const locKey = order.location_id === 32 ? 'SSAM' : 'GBM38';
       const loc = LOCATIONS[locKey as keyof typeof LOCATIONS];
 
-      const orderLines = order.lines.map((line: { product_id: number; quantity: number; price: number; product_name: string }) => [
+      const orderLines = order.lines.map((line: any) => [
         0, 0, {
           product_id: line.product_id,
           product_qty: line.quantity,

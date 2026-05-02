@@ -24,8 +24,8 @@ export async function POST(request: Request) {
   if (!hasRole(user, 'admin')) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
 
   const existing = listSuppliers();
-  if (existing.length > 0) {
-    return NextResponse.json({ message: `Already seeded (${existing.length} suppliers exist). Delete manually to re-seed.` });
+  if ((existing as any[]).length > 0) {
+    return NextResponse.json({ message: `Already seeded (${(existing as any[]).length} suppliers exist). Delete manually to re-seed.` });
   }
 
   const results: string[] = [];
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
 
     if (products && products.length > 0) {
       // Get the Feddersen supplier id (first one created)
-      const allSuppliers = listSuppliers();
+      const allSuppliers = listSuppliers() as any[];
       const feddersen = allSuppliers.find(s => s.name.includes('Feddersen'));
       const fresco = allSuppliers.find(s => s.name.includes('Fresco'));
       const frucht = allSuppliers.find(s => s.name.includes('Frucht'));

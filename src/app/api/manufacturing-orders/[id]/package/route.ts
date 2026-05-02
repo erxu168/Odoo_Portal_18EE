@@ -77,7 +77,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   // Check MO state
-  const [mo] = await odooRPC('mrp.production', 'read', [[moId], ['state', 'product_id', 'product_qty', 'product_uom_id']]) as { state: string; product_id: [number, string]; product_qty: number; product_uom_id: [number, string] }[];
+  const [mo] = await odooRPC('mrp.production', 'read', [[moId], ['state', 'product_id', 'product_qty', 'product_uom_id']]) as any[];
   if (!mo) return NextResponse.json({ error: 'MO not found in Odoo' }, { status: 404 });
   if (!ALLOWED_STATES.includes(mo.state)) {
     return NextResponse.json({ error: `MO is in state "${mo.state}", must be confirmed, in progress, or to close` }, { status: 400 });
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       const lotVals: Record<string, unknown> = {
         name: lotName,
         product_id: mo.product_id[0],
-        company_id: (await odooRPC('mrp.production', 'read', [[currentMoId], ['company_id']]) as { company_id: [number, string] }[])[0]?.company_id?.[0] ?? 2,
+        company_id: (await odooRPC('mrp.production', 'read', [[currentMoId], ['company_id']]) as any[])[0]?.company_id?.[0] ?? 2,
       };
       if (c.expiry_date) {
         lotVals.expiration_date = c.expiry_date.includes('T')
@@ -135,17 +135,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       } else {
         const result = await odooRPC('mrp.production', 'button_mark_done', [[currentMoId]]);
         // Handle backorder wizard
-        const wizardResult = result as { res_model?: string; res_id?: number } | undefined;
-        if (wizardResult && typeof wizardResult === 'object' && 'res_model' in wizardResult) {
-          const wizardModel = wizardResult.res_model!;
-          const wizardId = wizardResult.res_id!;
+        if (result && typeof result === 'object' && 'res_model' in (result as any)) {
+          const wizardModel = (result as any).res_model;
+          const wizardId = (result as any).res_id;
           if (wizardModel === 'mrp.production.backorder') {
             await odooRPC(wizardModel, 'action_backorder', [[wizardId]]);
             // Find the backorder MO for next iteration
             const backorders = await odooRPC('mrp.production', 'search_read', [
               [['backorder_id', '=', currentMoId], ['state', 'in', ALLOWED_STATES]],
               ['id', 'name'],
-            ]) as { id: number; name: string }[];
+            ]) as any[];
             if (backorders.length > 0) {
               currentMoId = backorders[0].id;
             }

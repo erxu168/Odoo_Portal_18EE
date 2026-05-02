@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import RichTextEditor from '@/components/ui/RichTextEditor';
 import { StatusDot } from './ui';
@@ -11,6 +11,30 @@ interface BomDetailProps {
   bomId: number;
   onBack: () => void;
   onCreateMo: (bomId: number) => void;
+}
+
+interface EditLine {
+  line_id: number;
+  product_id: number;
+  product_name: string;
+  product_qty: number;
+  uom: string;
+  uom_id: number;
+}
+
+interface EditOp {
+  id: number;
+  name: string;
+  workcenter_id: number | [number, string];
+  time_cycle_manual: number;
+  sequence: number;
+  note: string;
+  worksheet_type: string | false;
+  worksheet_google_slide: string;
+  /** base64 PDF data \u2014 only set when user uploads a new file */
+  _newPdfBase64?: string;
+  /** true if the op already had a PDF worksheet in Odoo */
+  _hadPdf?: boolean;
 }
 
 export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps) {
@@ -429,33 +453,32 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
     );
   }
 
-  // ── Error ──
-  if (h.error || !h.bom) {
+  if (error || !bom) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6">
         <div className="text-center">
           <p className="text-[var(--fs-lg)] text-gray-900 font-bold mb-1">Could not load recipe</p>
-          <p className="text-[var(--fs-xs)] text-gray-500 mb-5">{h.error || 'Recipe not found'}</p>
-          <button onClick={h.fetchBomDetail} className="px-6 py-3 bg-green-600 text-white text-[var(--fs-sm)] font-bold rounded-xl">Retry</button>
+          <p className="text-[var(--fs-xs)] text-gray-500 mb-5">{error || 'Recipe not found'}</p>
+          <button onClick={fetchBomDetail} className="px-6 py-3 bg-green-600 text-white text-[var(--fs-sm)] font-bold rounded-xl">Retry</button>
         </div>
       </div>
     );
   }
 
-  const productName = h.bom.product_tmpl_id[1];
-  const uom = h.bom.product_uom_id[1];
+  const productName = bom.product_tmpl_id[1];
+  const uom = bom.product_uom_id[1];
 
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
         title={productName}
-        subtitle={`${h.fmt(h.bom.product_qty)} ${uom} per batch`}
+        subtitle={`${fmt(bom.product_qty)} ${uom} per batch`}
         showBack
         onBack={onBack}
         action={
-          !h.editing ? (
+          !editing ? (
             <button
-              onClick={h.startEditing}
+              onClick={startEditing}
               className="px-3 py-1.5 rounded-lg bg-white/15 border border-white/20 text-white text-[var(--fs-xs)] font-bold active:bg-white/25"
             >
               Edit
@@ -469,11 +492,11 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
         <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex-1 text-center py-3 border-r border-gray-100">
             <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">INGREDIENTS</div>
-            <div className="text-lg font-bold text-green-600 mt-0.5 font-mono">{h.components.length}</div>
+            <div className="text-lg font-bold text-green-600 mt-0.5 font-mono">{components.length}</div>
           </div>
           <div className="flex-1 text-center py-3">
             <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">CAN MAKE</div>
-            <div className="text-lg font-bold text-green-500 mt-0.5 font-mono">{h.fmt(h.canMakeQty)} {uom}</div>
+            <div className="text-lg font-bold text-green-500 mt-0.5 font-mono">{fmt(canMakeQty)} {uom}</div>
           </div>
         </div>
       </div>
