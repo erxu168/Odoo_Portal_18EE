@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="mrp_bom_form_view_qty_locked" model="ir.ui.view">
+        <field name="name">mrp.bom.form.krawings.qty.locked</field>
+        <field name="model">mrp.bom</field>
+        <field name="inherit_id" ref="mrp.mrp_bom_form_view"/>
+        <field name="arch" type="xml">
+            <field name="product_qty" position="attributes">
+                <attribute name="readonly">company_id == 5</attribute>
+                <attribute name="help">For What a Jerk recipes, the output quantity is calculated automatically from the sum of ingredient weights. Edit the ingredient list to change the output.</attribute>
+            </field>
+        </field>
+    </record>
+</odoo>
