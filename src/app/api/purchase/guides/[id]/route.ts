@@ -52,7 +52,7 @@ export async function GET(
 
     // Get product names + default codes in one call
     const productIds = lines.map((l: any) => l.product_id[0]);
-    let productMap: Record<number, any> = {};
+    const productMap: Record<number, any> = {};
     if (productIds.length > 0) {
       const products = await odoo.read('product.product', productIds, [
         'name', 'default_code', 'uom_id', 'standard_price'
