@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { getCurrentUser, hasRole } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,12 +10,8 @@ export async function GET(request: Request) {
     const category = searchParams.get('category');
     const search = searchParams.get('search');
     const companyId = searchParams.get('company_id');
-    const includeArchivedParam = searchParams.get('include_archived') === '1';
 
-    const user = getCurrentUser();
-    const canSeeArchived = includeArchivedParam && user != null && hasRole(user, 'manager');
-
-    const domain: any[] = canSeeArchived ? [] : [['active', '=', true]];
+    const domain: any[] = [['active', '=', true]];
     if (search) {
       domain.push(['product_tmpl_id.name', 'ilike', search]);
     }
@@ -35,11 +30,7 @@ export async function GET(request: Request) {
       'type',
       'code',
       'company_id',
-      'active',
-    ], {
-      order: 'product_tmpl_id asc',
-      ...(canSeeArchived ? { context: { active_test: false } } : {}),
-    });
+    ], { order: 'product_tmpl_id asc' });
 
     const allLineIds: number[] = [];
     for (const bom of boms) {

@@ -24,7 +24,6 @@ export interface Bom {
   bom_line_ids: number[];
   type: 'normal' | 'phantom' | 'subcontract';
   code?: string;
-  active?: boolean;
   // Enriched fields (calculated by API)
   lines?: BomLine[];
   component_count?: number;
