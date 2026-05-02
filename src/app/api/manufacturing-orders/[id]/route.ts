@@ -1,6 +1,49 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 
+// Recursively process an Odoo action dict returned from button_mark_done
+// or from a wizard's own confirm method. Each MRP wizard type uses a
+// different button to commit, and a wizard's button can itself return
+// another wizard (e.g. consumption warning -> backorder -> close). We
+// follow the chain up to MAX_WIZARD_DEPTH and let exceptions bubble so
+// the caller can surface real failures instead of swallowing them.
+const MAX_WIZARD_DEPTH = 5;
+async function processWizardAction(
+  odoo: ReturnType<typeof getOdoo>,
+  moId: number,
+  action: unknown,
+  depth = 0,
+): Promise<void> {
+  if (!action || typeof action !== 'object') return;
+  const a = action as { res_model?: string; context?: Record<string, unknown> };
+  if (!a.res_model) return;
+  if (depth > MAX_WIZARD_DEPTH) {
+    throw new Error(`Could not close MO ${moId}: wizard chain exceeded ${MAX_WIZARD_DEPTH} steps`);
+  }
+
+  const wizModel = a.res_model;
+  const ctx = { ...(a.context || {}), active_id: moId, active_ids: [moId] };
+  const wizId = await odoo.create(wizModel, {}, { context: ctx });
+  const wizIds = Array.isArray(wizId) ? wizId : [wizId];
+
+  let next: unknown;
+  if (wizModel === 'mrp.immediate.production') {
+    next = await odoo.call(wizModel, 'process', [wizIds]);
+  } else if (wizModel === 'mrp.production.backorder') {
+    // action_close_mo finishes the MO without creating a backorder for the
+    // unproduced quantity. action_backorder would split + close — not what
+    // the "Close order" button means.
+    next = await odoo.call(wizModel, 'action_close_mo', [wizIds]);
+  } else if (wizModel === 'mrp.consumption.warning') {
+    next = await odoo.call(wizModel, 'action_confirm', [wizIds]);
+  } else {
+    // Unknown wizard — try the most common confirm method.
+    next = await odoo.call(wizModel, 'process', [wizIds]);
+  }
+
+  await processWizardAction(odoo, moId, next, depth + 1);
+}
+
 // Auto-assign component lots using FIFO (oldest in_date first) on every
 // lot-tracked raw move before closing the MO. Avoids Odoo prompting the
 // user for a lot each time a lot-tracked component is consumed.
@@ -292,46 +335,21 @@ export async function PATCH(
           }
 
           const result = await odoo.buttonCall('mrp.production', 'button_mark_done', [moId]);
-          if (result && typeof result === 'object' && result.res_model) {
-            try {
-              const wizModel = result.res_model;
-              const wizCtx = result.context || {};
-              const ctx = { ...wizCtx, active_id: moId, active_ids: [moId] };
-              const wizId = await odoo.create(wizModel, {}, { context: ctx });
-              const wizIds = Array.isArray(wizId) ? wizId : [wizId];
-              if (wizModel === 'mrp.immediate.production') {
-                await odoo.call(wizModel, 'process', [wizIds]);
-              } else if (wizModel === 'mrp.production.backorder') {
-                try {
-                  await odoo.call(wizModel, 'action_close_mo', [wizIds]);
-                } catch {
-                  await odoo.call(wizModel, 'process', [wizIds]);
-                }
-              } else if (wizModel === 'mrp.consumption.warning') {
-                // Confirm consumption even when quantities differ from expected
-                const cwResult = await odoo.call(wizModel, 'action_confirm', [wizIds]);
-                // action_confirm may return another wizard (e.g. backorder)
-                if (cwResult && typeof cwResult === 'object' && cwResult.res_model) {
-                  const nextModel = cwResult.res_model;
-                  const nextCtx = { ...(cwResult.context || {}), active_id: moId, active_ids: [moId] };
-                  const nextId = await odoo.create(nextModel, {}, { context: nextCtx });
-                  const nextIds = Array.isArray(nextId) ? nextId : [nextId];
-                  if (nextModel === 'mrp.production.backorder') {
-                    try {
-                      await odoo.call(nextModel, 'action_close_mo', [nextIds]);
-                    } catch {
-                      await odoo.call(nextModel, 'process', [nextIds]);
-                    }
-                  } else {
-                    await odoo.call(nextModel, 'process', [nextIds]);
-                  }
-                }
-              } else {
-                await odoo.call(wizModel, 'process', [wizIds]);
-              }
-            } catch (wizErr: any) {
-              console.error('Wizard error:', wizErr.message);
-            }
+          await processWizardAction(odoo, moId, result);
+
+          // Verify the MO actually transitioned to a closed state. If a wizard
+          // chain bailed out silently (e.g. missing stock, deeper wizard not
+          // recognised) the state will still be progress/to_close — surface
+          // that to the UI instead of pretending it closed.
+          const after = await odoo.read('mrp.production', [moId], ['state', 'name']);
+          const finalState = after[0]?.state;
+          if (finalState !== 'done' && finalState !== 'cancel') {
+            return NextResponse.json(
+              {
+                error: `Could not close ${after[0]?.name || 'manufacturing order'}: it is still in state "${finalState}". Open it in Odoo to see what's blocking — usually a missing lot, insufficient stock, or an incomplete work order.`,
+              },
+              { status: 409 },
+            );
           }
           break;
         }
