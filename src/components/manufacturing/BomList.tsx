@@ -20,25 +20,14 @@ export default function BomList({ onSelect, onBack, onCreate, title, subtitlePat
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
-  const [showArchived, setShowArchived] = useState(false);
-  const [userRole, setUserRole] = useState<string>('staff');
-  const canSeeArchived = userRole === 'manager' || userRole === 'admin';
 
-  useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(d => {
-      if (d?.user?.role) setUserRole(d.user.role);
-    }).catch(() => {});
-  }, []);
-
-  useEffect(() => { if (companyId) fetchBoms(); }, [companyId, showArchived]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (companyId) fetchBoms(); }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchBoms() {
     setLoading(true);
     setError(null);
     try {
-      const qs = new URLSearchParams({ company_id: String(companyId) });
-      if (showArchived && canSeeArchived) qs.set('include_archived', '1');
-      const res = await fetch(`/api/boms?${qs.toString()}`);
+      const res = await fetch(`/api/boms?company_id=${companyId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -130,38 +119,12 @@ export default function BomList({ onSelect, onBack, onCreate, title, subtitlePat
         ))}
       </div>
 
-      {canSeeArchived && (
-        <div className="px-4 pb-2 flex items-center justify-end">
-          <button
-            type="button"
-            onClick={() => setShowArchived(v => !v)}
-            aria-pressed={showArchived}
-            className={`px-3 py-1.5 rounded-full text-[var(--fs-xs)] font-bold border transition-colors ${
-              showArchived
-                ? 'bg-[#FFF4E6] text-[#F5800A] border-[#F5800A]'
-                : 'bg-white text-gray-500 border-gray-200'
-            }`}
-          >
-            {showArchived ? '✓ Showing archived' : 'Show archived'}
-          </button>
-        </div>
-      )}
-
       <div className="px-4 pb-24 flex flex-col gap-1">
-        {filtered.map((bom) => {
-          const isArchived = bom.active === false;
-          return (
+        {filtered.map((bom) => (
           <button key={bom.id} onClick={() => onSelect(bom)}
-            className={`bg-white border border-gray-200 rounded-xl px-4 py-2.5 flex justify-between items-center text-left w-full active:scale-[0.98] transition-transform ${isArchived ? 'opacity-60' : ''}`}>
+            className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 flex justify-between items-center text-left w-full active:scale-[0.98] transition-transform">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <div className="text-[var(--fs-lg)] font-bold text-gray-900 truncate">{bom.product_tmpl_id[1]}</div>
-                {isArchived && (
-                  <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 border border-gray-300 rounded-full px-2 py-0.5">
-                    Archived
-                  </span>
-                )}
-              </div>
+              <div className="text-[var(--fs-lg)] font-bold text-gray-900 truncate">{bom.product_tmpl_id[1]}</div>
               <div className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
                 {bom.category !== 'All' ? bom.category : ''}
                 {bom.category !== 'All' && bom.component_count ? ' \u00b7 ' : ''}
@@ -179,8 +142,7 @@ export default function BomList({ onSelect, onBack, onCreate, title, subtitlePat
               <svg className="w-4 h-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M9 5l7 7-7 7" /></svg>
             </div>
           </button>
-          );
-        })}
+        ))}
         {filtered.length === 0 && <div className="text-center py-12 text-gray-400 text-[var(--fs-sm)]">No recipes found</div>}
       </div>
     </div>
