@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="product_template_shelf_life_form" model="ir.ui.view">
+        <field name="name">product.template.shelf.life.form</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='inventory']" position="inside">
+                <group string="Shelf Life (Krawings)" name="krawings_shelf_life">
+                    <field name="x_shelf_life_chilled_days"/>
+                    <field name="x_shelf_life_frozen_days"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

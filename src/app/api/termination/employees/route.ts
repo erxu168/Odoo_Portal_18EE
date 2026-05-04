@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 
 /**
  * GET /api/termination/employees?company_id=5
@@ -7,6 +8,7 @@ import { getOdoo } from '@/lib/odoo';
  */
 export async function GET(req: NextRequest) {
   try {
+    requireRole('manager');
     const odoo = getOdoo();
     const { searchParams } = new URL(req.url);
 
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
     );
     return NextResponse.json({ ok: true, data: employees });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }

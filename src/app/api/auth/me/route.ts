@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getOdoo } from '@/lib/odoo';
+import { getOdoo, PORTAL_LANG_COOKIE } from '@/lib/odoo';
 import { updateUserPreferences } from '@/lib/db';
 
 /**
@@ -62,7 +62,20 @@ export async function PATCH(request: Request) {
     }
 
     updateUserPreferences(user.id, preferences);
-    return NextResponse.json({ success: true });
+
+    const response = NextResponse.json({ success: true });
+
+    // Keep portal_lang cookie in sync with the saved preference so Odoo RPC
+    // calls immediately pick up the new language without a re-login.
+    if (preferences.lang === 'de_DE' || preferences.lang === 'en_US') {
+      response.cookies.set(PORTAL_LANG_COOKIE, preferences.lang, {
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60,
+      });
+    }
+
+    return response;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

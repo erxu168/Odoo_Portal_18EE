@@ -1,11 +1,12 @@
 /**
  * GET /api/products/[id]/expiry-debug
- * 
- * Diagnostic endpoint — NO AUTH required (temporary).
+ *
+ * Diagnostic endpoint — admin only.
  * Returns all expiration-related fields from product.template.
  */
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,7 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
+    requireRole('admin');
     const odoo = getOdoo();
     const inputId = parseInt(params.id);
 
@@ -89,9 +91,11 @@ export async function GET(
       expiry_field_definitions: expiryFields,
       expiry_field_values: fieldValues,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('GET /api/products/expiry-debug error:', error);
     return NextResponse.json(
-      { error: error.message, stack: error.stack?.split('\n').slice(0, 5) },
+      { error: 'Failed to fetch expiry debug data' },
       { status: 500 },
     );
   }

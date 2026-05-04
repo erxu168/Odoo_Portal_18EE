@@ -105,7 +105,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
     ...(canManage ? [{
       id: 'manage',
       label: 'Manage Lists',
-      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-purple-100', iconColor: 'text-blue-600',
+      color: 'bg-purple-50 border-purple-200', iconBg: 'bg-purple-100', iconColor: 'text-purple-600',
       sublabel: stats.templates > 0 ? `${stats.templates} templates` : 'Create templates',
       badge: 0,
       icon: (

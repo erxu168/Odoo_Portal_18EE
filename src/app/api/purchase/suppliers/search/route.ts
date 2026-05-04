@@ -5,7 +5,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { OdooClient } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -21,8 +21,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
 
     const domain = [
       ['supplier_rank', '>', 0],

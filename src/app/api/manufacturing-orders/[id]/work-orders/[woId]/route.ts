@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, requireRole, AuthError } from '@/lib/auth';
 
 export async function GET(
   request: Request,
   { params }: { params: { id: string; woId: string } },
 ) {
   try {
+    requireAuth();
     const odoo = getOdoo();
     const woId = parseInt(params.woId);
 
@@ -64,9 +66,10 @@ export async function GET(
     return NextResponse.json({
       work_order: { ...wo, components },
     });
-  } catch (error: any) {
-    console.error(`GET work order ${params.woId} error:`, error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('GET /api/manufacturing-orders/[id]/work-orders/[woId] error:', error);
+    return NextResponse.json({ error: 'Failed to fetch work order' }, { status: 500 });
   }
 }
 
@@ -75,6 +78,7 @@ export async function PATCH(
   { params }: { params: { id: string; woId: string } },
 ) {
   try {
+    requireRole('manager');
     const odoo = getOdoo();
     const woId = parseInt(params.woId);
     const body = await request.json();
@@ -119,8 +123,9 @@ export async function PATCH(
     ]);
 
     return NextResponse.json({ work_order: updated[0] });
-  } catch (error: any) {
-    console.error(`PATCH work order ${params.woId} error:`, error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('PATCH /api/manufacturing-orders/[id]/work-orders/[woId] error:', error);
+    return NextResponse.json({ error: 'Failed to update work order' }, { status: 500 });
   }
 }

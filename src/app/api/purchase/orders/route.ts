@@ -76,7 +76,11 @@ export async function POST(request: Request) {
     })),
   });
 
-  // If approved, create Odoo PO
+  // If approved, create Odoo PO. Track outcome separately so the API response
+  // tells the truth — previously a silent Odoo failure still returned "Order sent"
+  // while the order sat stuck in 'approved' with no PO in Odoo.
+  let poCreated = false;
+  let odooError: string | null = null;
   if (orderStatus === 'approved') {
     try {
       const poResult = await createOdooPO(orderId, cart, supplier);
@@ -86,20 +90,31 @@ export async function POST(request: Request) {
           odoo_po_name: poResult.name,
           sent_at: new Date().toISOString(),
         });
+        poCreated = true;
+      } else {
+        odooError = 'Odoo returned no purchase order';
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to create Odoo PO:', e);
+      odooError = e?.message || 'Odoo sync failed';
     }
   }
 
   clearCart(cart_id);
 
   const order = getOrder(orderId);
+  const message = needsApproval
+    ? 'Order queued for approval'
+    : poCreated
+      ? 'Order sent'
+      : 'Order saved locally, but Odoo sync failed — contact admin to retry';
   return NextResponse.json({
     order,
-    message: needsApproval ? 'Order queued for approval' : 'Order sent',
+    message,
     duplicate_warning: isDuplicate,
-  }, { status: 201 });
+    odoo_sync_failed: orderStatus === 'approved' && !poCreated,
+    odoo_error: odooError,
+  }, { status: orderStatus === 'approved' && !poCreated ? 502 : 201 });
 }
 
 async function createOdooPO(orderId: number, cart: any, supplier: any) {

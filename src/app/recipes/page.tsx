@@ -135,7 +135,7 @@ export default function RecipesPage() {
 
       setScreen({ type: 'dashboard' });
     }
-  });
+  }, []);
 
   // Unlock Web Audio on first user interaction (required by iOS/Android)
   useEffect(() => {

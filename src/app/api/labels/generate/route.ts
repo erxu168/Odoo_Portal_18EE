@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     productName, productReference, qty, uom, productionDate, expiryDate, lotName,
     containerNumber, totalContainers, barcodeValue,
     labelSizeId, widthMm: bodyWidth, heightMm: bodyHeight,
+    storageMode,
   } = body;
 
   if (!productName) {
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
     qty: typeof qty === 'number' ? qty : 0,
     uom: uom || '',
     expiryDate: expiryDate || '',
+    storageMode: storageMode === 'frozen' ? 'frozen' : 'chilled',
     lotName: lotName || undefined,
     moName: lotName || productName,
     containerNumber: containerNumber ?? 1,

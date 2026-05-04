@@ -77,6 +77,7 @@ export interface ContainerSplit {
   created_by: number;
   created_at: string;
   confirmed_at: string | null;
+  storage_mode: 'chilled' | 'frozen' | null;
 }
 
 export interface Container {
@@ -104,6 +105,7 @@ export interface CreateSplitRequest {
   total_qty: number;
   uom: string;
   containers: ContainerInput[];
+  storage_mode: 'chilled' | 'frozen';
 }
 
 // --- Print Job ---
@@ -133,6 +135,7 @@ export interface LabelData {
   qty: number;
   uom: string;
   expiryDate: string;
+  storageMode: 'chilled' | 'frozen';
   lotName?: string;
   moName: string;
   containerNumber: number;

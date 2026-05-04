@@ -149,6 +149,12 @@ export function ensureLabelingTables() {
     console.log('Labeling: seeded 2 test printers (update IPs in admin settings)');
   }
 
+  try {
+    db.exec("ALTER TABLE container_splits ADD COLUMN storage_mode TEXT");
+  } catch (_e) {
+    /* column already exists */
+  }
+
   _initialized = true;
 }
 
@@ -187,12 +193,20 @@ export function createPrinter(data: CreatePrinterRequest): number {
   return r.lastInsertRowid as number;
 }
 
+const ALLOWED_PRINTER_FIELDS = [
+  'name', 'ip_address', 'port', 'location_id', 'location_name',
+  'dpi', 'default_label_size_id', 'custom_width_mm', 'custom_height_mm',
+  'active', 'updated_at',
+];
+
 export function updatePrinter(id: number, data: Partial<CreatePrinterRequest> & { active?: number }) {
   ensureLabelingTables();
   const sets: string[] = [];
   const vals: unknown[] = [];
   const fields: Record<string, unknown> = { ...data, updated_at: nowISO() };
-  for (const [k, v] of Object.entries(fields)) {
+  // Only allow known column names to prevent SQL injection via key interpolation
+  const safeEntries = Object.entries(fields).filter(([k]) => ALLOWED_PRINTER_FIELDS.includes(k));
+  for (const [k, v] of safeEntries) {
     if (v !== undefined) { sets.push(`${k} = ?`); vals.push(v); }
   }
   if (sets.length === 0) return;
@@ -228,15 +242,19 @@ export function getContainers(splitId: number): Container[] {
   ).all(splitId) as Container[];
 }
 
-export function createSplit(data: CreateSplitRequest, userId: number): { splitId: number; containerIds: number[] } {
+export function createSplit(
+  data: CreateSplitRequest,
+  userId: number,
+  storageMode: 'chilled' | 'frozen' = 'chilled',
+): { splitId: number; containerIds: number[] } {
   ensureLabelingTables();
   const db = getDb();
   const now = nowISO();
 
   const sr = db.prepare(`
-    INSERT INTO container_splits (mo_id, mo_name, product_id, product_name, total_qty, uom, status, created_by, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?)
-  `).run(data.mo_id, data.mo_name, data.product_id, data.product_name, data.total_qty, data.uom, userId, now);
+    INSERT INTO container_splits (mo_id, mo_name, product_id, product_name, total_qty, uom, status, created_by, created_at, storage_mode)
+    VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)
+  `).run(data.mo_id, data.mo_name, data.product_id, data.product_name, data.total_qty, data.uom, userId, now, storageMode);
   const splitId = sr.lastInsertRowid as number;
 
   const containerIds: number[] = [];

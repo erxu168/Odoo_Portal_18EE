@@ -3,9 +3,11 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 
 export async function GET(req: NextRequest) {
   try {
+    requireRole('manager');
     const url = new URL(req.url);
     const companyId = Number(url.searchParams.get('company_id') || 0);
     const search = url.searchParams.get('search') || '';
@@ -25,7 +27,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ employees: records });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('GET /api/hr/employees error:', err);
+    return NextResponse.json({ error: 'Failed to fetch employees' }, { status: 500 });
   }
 }

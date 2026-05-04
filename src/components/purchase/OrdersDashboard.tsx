@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import SortableTileGrid from '@/components/ui/SortableTileGrid';
-import PurchaseAlerts from './PurchaseAlerts';
 
 // ─────────────────────────────────────────────
 // OrdersDashboard — 2×2 tile grid for Purchase landing
@@ -15,9 +14,6 @@ interface OrdersDashboardProps {
   cartItemCount: number;
   pendingDeliveryCount: number;
   onNavigate: (tab: Tab) => void;
-  isManager: boolean;
-  onManage: () => void;
-  locationName: string;
   locationId: number;
 }
 
@@ -56,13 +52,6 @@ const HistoryIcon = () => (
   </svg>
 );
 
-const SettingsIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
-  </svg>
-);
-
 interface TileConfig {
   id: Tab;
   label: string;
@@ -79,9 +68,6 @@ export default function OrdersDashboard({
   cartItemCount,
   pendingDeliveryCount,
   onNavigate,
-  isManager,
-  onManage,
-  locationName,
 }: OrdersDashboardProps) {
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
 
@@ -135,17 +121,7 @@ export default function OrdersDashboard({
 
   return (
     <div>
-      {/* Order Alerts — holidays + supplier deadlines (TODO: wire up suppliers) */}
-      <PurchaseAlerts suppliers={[]} />
-
       <div className="px-4 py-4">
-        {/* Location context pill */}
-        <div className="flex items-center justify-center mb-4">
-          <span className="text-[var(--fs-xs)] font-semibold text-gray-400 tracking-wider uppercase">
-            Ordering for {locationName}
-          </span>
-        </div>
-
         {/* 2×2 grid — drag-and-drop reorderable */}
         <SortableTileGrid
           items={tiles}
@@ -171,18 +147,6 @@ export default function OrdersDashboard({
           )}
         />
 
-        {/* Manager: Manage guides & settings */}
-        {isManager && (
-          <div className="text-center mt-5">
-            <button
-              onClick={onManage}
-              className="inline-flex items-center gap-1.5 text-[var(--fs-xs)] font-semibold text-green-700 px-4 py-2.5 rounded-xl bg-green-50 border border-green-100 active:bg-green-100 transition-colors"
-            >
-              <SettingsIcon />
-              Manage guides &amp; settings
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

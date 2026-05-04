@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { OdooClient } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 import { EMPLOYEE_READ_FIELDS } from '@/types/hr';
 
 export async function GET(req: NextRequest) {
@@ -10,8 +10,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
 
     // Country search for autocomplete
     const { searchParams } = new URL(req.url);
@@ -85,8 +84,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
     await odoo.write('hr.employee', [user.employee_id], safeFields);
 
     return NextResponse.json({ success: true, updated: Object.keys(safeFields) });

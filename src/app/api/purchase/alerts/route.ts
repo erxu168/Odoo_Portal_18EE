@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUpcomingHolidays, computeSupplierDeadline } from '@/lib/purchase-holidays';
 import { listSuppliers } from '@/lib/purchase-db';
+import { requireAuth, AuthError } from '@/lib/auth';
 
 function parseDays(json: string): string[] {
   try {
@@ -21,41 +22,48 @@ function parseDays(json: string): string[] {
 }
 
 export async function GET(req: NextRequest) {
-  const sp = req.nextUrl.searchParams;
-  const locationId = sp.get('location_id') ? Number(sp.get('location_id')) : undefined;
-  const window = sp.get('window') ? Number(sp.get('window')) : 7;
+  try {
+    requireAuth();
+    const sp = req.nextUrl.searchParams;
+    const locationId = sp.get('location_id') ? Number(sp.get('location_id')) : undefined;
+    const window = sp.get('window') ? Number(sp.get('window')) : 7;
 
-  // Use Berlin timezone for "today"
-  const nowBerlin = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }));
-  // Zero out time
-  const today = new Date(nowBerlin.getFullYear(), nowBerlin.getMonth(), nowBerlin.getDate());
+    // Use Berlin timezone for "today"
+    const nowBerlin = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Berlin' }));
+    // Zero out time
+    const today = new Date(nowBerlin.getFullYear(), nowBerlin.getMonth(), nowBerlin.getDate());
 
-  // 1. Upcoming holidays
-  const holidays = getUpcomingHolidays(today, window);
+    // 1. Upcoming holidays
+    const holidays = getUpcomingHolidays(today, window);
 
-  // 2. Supplier deadline alerts
-  const suppliers = listSuppliers(locationId) as any[];
-  const deadlines = suppliers
-    .map((s) => {
-      const deliveryDays = parseDays(s.delivery_days || '[]');
-      const orderDays = parseDays(s.order_days || '[]');
-      if (deliveryDays.length === 0) return null; // local/daily suppliers — no deadline
-      return computeSupplierDeadline(
-        s.id,
-        s.name,
-        deliveryDays,
-        orderDays,
-        s.lead_time_days || 1,
-        today,
-      );
-    })
-    .filter(Boolean)
-    // Sort: most urgent first
-    .sort((a: any, b: any) => a.daysUntilDeadline - b.daysUntilDeadline);
+    // 2. Supplier deadline alerts
+    const suppliers = listSuppliers(locationId) as any[];
+    const deadlines = suppliers
+      .map((s) => {
+        const deliveryDays = parseDays(s.delivery_days || '[]');
+        const orderDays = parseDays(s.order_days || '[]');
+        if (deliveryDays.length === 0) return null; // local/daily suppliers — no deadline
+        return computeSupplierDeadline(
+          s.id,
+          s.name,
+          deliveryDays,
+          orderDays,
+          s.lead_time_days || 1,
+          today,
+        );
+      })
+      .filter(Boolean)
+      // Sort: most urgent first
+      .sort((a: any, b: any) => a.daysUntilDeadline - b.daysUntilDeadline);
 
-  return NextResponse.json({
-    today: today.toISOString().split('T')[0],
-    holidays,
-    deadlines,
-  });
+    return NextResponse.json({
+      today: today.toISOString().split('T')[0],
+      holidays,
+      deadlines,
+    });
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('GET /api/purchase/alerts error:', error);
+    return NextResponse.json({ error: 'Failed to fetch purchase alerts' }, { status: 500 });
+  }
 }

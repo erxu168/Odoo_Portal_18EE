@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth, AuthError } from '@/lib/auth';
 
 /**
  * GET /api/address-autocomplete?q=...
@@ -6,14 +7,15 @@ import { NextRequest, NextResponse } from 'next/server';
  * Free, no API key, excellent German coverage.
  */
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const query = searchParams.get('q') || '';
-
-  if (query.length < 3) {
-    return NextResponse.json({ results: [] });
-  }
-
   try {
+    requireAuth();
+    const { searchParams } = new URL(req.url);
+    const query = searchParams.get('q') || '';
+
+    if (query.length < 3) {
+      return NextResponse.json({ results: [] });
+    }
+
     const res = await fetch(
       `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&lang=de&limit=5&osm_tag=place:house&lat=52.52&lon=13.405`,
       { headers: { 'User-Agent': 'KrawingsPortal/1.0' } }
@@ -44,8 +46,9 @@ export async function GET(req: NextRequest) {
       });
 
     return NextResponse.json({ results });
-  } catch (err) {
-    console.error('Address autocomplete error:', err);
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('Address autocomplete error:', error);
     return NextResponse.json({ results: [] });
   }
 }

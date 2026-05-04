@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 import {
   TERMINATION_LIST_FIELDS,
   TERMINATION_DETAIL_FIELDS,
@@ -14,6 +15,7 @@ const MODEL = 'kw.termination';
  */
 export async function GET(req: NextRequest) {
   try {
+    requireRole('manager');
     const odoo = getOdoo();
     const { searchParams } = new URL(req.url);
 
@@ -50,8 +52,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, data: enriched });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -62,6 +64,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    requireRole('manager');
     const odoo = getOdoo();
     const body: TerminationCreateValues = await req.json();
 
@@ -79,7 +82,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, data: records[0] });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }

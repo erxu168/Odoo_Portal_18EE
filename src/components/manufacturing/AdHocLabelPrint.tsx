@@ -371,6 +371,7 @@ export default function AdHocLabelPrint({ bomId, onBack, onDone }: AdHocLabelPri
                 qty={parseFloat(previewContainer?.qty || '0') || 0}
                 uom={uom}
                 expiryDate={fmtDate(previewContainer?.expiryDate || '')}
+                storageMode="chilled"
                 lotName={previewContainer?.lotName}
                 moName={previewContainer?.lotName}
                 containerNumber={1}

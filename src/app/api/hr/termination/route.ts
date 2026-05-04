@@ -4,10 +4,12 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 import { TERMINATION_LIST_FIELDS } from '@/types/termination';
 
 export async function GET(req: NextRequest) {
   try {
+    requireRole('manager');
     const url = new URL(req.url);
     const companyId = Number(url.searchParams.get('company_id') || 0);
     const state = url.searchParams.get('state');
@@ -32,13 +34,15 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ records, total });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('GET /api/hr/termination error:', err);
+    return NextResponse.json({ error: 'Failed to fetch terminations' }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
+    requireRole('manager');
     const body = await req.json();
 
     const requiredFields = ['employee_id', 'company_id', 'termination_type', 'letter_date', 'calc_method'];
@@ -70,7 +74,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id, success: true });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('POST /api/hr/termination error:', err);
+    return NextResponse.json({ error: 'Failed to create termination' }, { status: 500 });
   }
 }

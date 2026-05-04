@@ -434,6 +434,7 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
                 qty={qtyNum}
                 uom={uom}
                 expiryDate={fmtDate(expiryDate)}
+                storageMode="chilled"
                 lotName={labels[0]?.lotName}
                 moName={labels[0]?.lotName}
                 containerNumber={1}

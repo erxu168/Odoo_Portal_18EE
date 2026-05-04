@@ -3,6 +3,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 
 const REPORT_MAP: Record<string, string> = {
   ordentlich: 'krawings_termination.report_ordentliche_kuendigung',
@@ -17,6 +18,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    requireRole('manager');
     const { id } = await params;
     const recordId = Number(id);
     if (!recordId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
@@ -72,7 +74,8 @@ export async function GET(
       },
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('GET /api/hr/termination/[id]/pdf error:', err);
+    return NextResponse.json({ error: 'Failed to generate PDF' }, { status: 500 });
   }
 }

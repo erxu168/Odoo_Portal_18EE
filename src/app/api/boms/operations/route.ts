@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, requireRole, AuthError } from '@/lib/auth';
 
 /**
  * GET /api/boms/operations?id=X
@@ -7,6 +8,7 @@ import { getOdoo } from '@/lib/odoo';
  */
 export async function GET(req: NextRequest) {
   try {
+    requireAuth();
     const opId = parseInt(req.nextUrl.searchParams.get('id') || '0');
     if (!opId) return NextResponse.json({ ok: false, error: 'Missing id' }, { status: 400 });
 
@@ -23,8 +25,9 @@ export async function GET(req: NextRequest) {
       name: `${ops[0].name || 'worksheet'}.pdf`,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('GET /api/boms/operations error:', err);
+    return NextResponse.json({ ok: false, error: 'Failed to fetch worksheet' }, { status: 500 });
   }
 }
 
@@ -35,6 +38,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    requireRole('manager');
     const opId = parseInt(req.nextUrl.searchParams.get('id') || '0');
     if (!opId) return NextResponse.json({ ok: false, error: 'Missing id' }, { status: 400 });
 
@@ -54,7 +58,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('POST /api/boms/operations error:', err);
+    return NextResponse.json({ ok: false, error: 'Failed to upload worksheet' }, { status: 500 });
   }
 }

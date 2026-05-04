@@ -34,8 +34,26 @@ export function getActiveLocations(): LocationInfo[] {
 // ── DATE HELPERS ────────────────────────────────────────
 
 export function berlinToUtc(dateStr: string, endOfDay = false): string {
-  const d = new Date(dateStr + (endOfDay ? 'T23:59:59' : 'T00:00:00') + '+01:00');
-  return d.toISOString().replace('T', ' ').substring(0, 19);
+  // Build a date string in Berlin time
+  const timeStr = endOfDay ? '23:59:59' : '00:00:00';
+  const localStr = `${dateStr}T${timeStr}`;
+
+  // Use Intl to get the actual Berlin offset (handles DST: +1 in winter, +2 in summer)
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Berlin',
+    timeZoneName: 'shortOffset',
+  });
+  const testDate = new Date(localStr + 'Z'); // approximate date for offset lookup
+  const parts = formatter.formatToParts(testDate);
+  const tzPart = parts.find(p => p.type === 'timeZoneName');
+  // tzPart.value is like "GMT+1" or "GMT+2"
+  const match = tzPart?.value?.match(/GMT([+-]\d+)/);
+  const offsetHours = match ? parseInt(match[1]) : 1;
+
+  // Convert Berlin local time to UTC by subtracting the offset
+  const berlinDate = new Date(localStr);
+  berlinDate.setHours(berlinDate.getHours() - offsetHours);
+  return berlinDate.toISOString().replace('T', ' ').slice(0, 19);
 }
 
 export function monthStart(year: number, month: number): string {

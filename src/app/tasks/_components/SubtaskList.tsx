@@ -1,21 +1,26 @@
 'use client';
 
-import { SubTask } from '@/lib/odoo-tasks';
+import { TaskSubtask } from '@/lib/odoo-tasks';
 
 interface Props {
   taskLineId: number;
-  subtasks: SubTask[];
+  subtasks: TaskSubtask[];
   onToggle: (subtaskId: number, done: boolean) => void;
+  readOnly?: boolean;
 }
 
-export default function SubtaskList({ subtasks, onToggle }: Props) {
+export default function SubtaskList({ subtasks, onToggle, readOnly = false }: Props) {
   if (!subtasks.length) return null;
   return (
     <ul className="mt-2 space-y-1 pl-1">
       {subtasks.map(sub => (
         <li key={sub.id}
-          onClick={e => { e.stopPropagation(); onToggle(sub.id, !sub.done); }}
-          className="flex items-center gap-2 py-1.5 cursor-pointer group">
+          onClick={e => {
+            if (readOnly) return;
+            e.stopPropagation();
+            onToggle(sub.id, !sub.done);
+          }}
+          className={`flex items-center gap-2 py-1.5 group ${readOnly ? '' : 'cursor-pointer'}`}>
           <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${
             sub.done ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white group-hover:border-orange-400'
           }`}>

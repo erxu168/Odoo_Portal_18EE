@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 import { buildLetterHtml, generatePdf } from '@/lib/termination-pdf';
 
 function formatDate(d: string | false): string {
@@ -38,6 +39,7 @@ function formatDate(d: string | false): string {
  */
 export async function POST(req: NextRequest) {
   try {
+    requireRole('manager');
     const odoo = getOdoo();
     const body = await req.json();
 
@@ -97,8 +99,8 @@ export async function POST(req: NextRequest) {
       pdfBase64: pdfBuffer.toString('base64'),
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[termination/preview]', message);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('[termination/preview]', err);
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }

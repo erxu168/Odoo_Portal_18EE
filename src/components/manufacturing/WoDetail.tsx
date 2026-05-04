@@ -419,7 +419,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       {showPdf && hasPdf && (
         <PdfViewer fileData={worksheetPdf} fileName="worksheet.pdf" onClose={() => setShowPdf(false)} />
       )}
-      <style jsx>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
     </div>
   );
 }

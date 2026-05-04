@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { requireAuth, requireRole, AuthError } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,7 @@ const DEFAULT_TOLERANCE_VALUE = 5; // 5% if nothing set
  */
 export async function GET(request: Request) {
   try {
+    requireAuth();
     const db = getDb();
     const { searchParams } = new URL(request.url);
     const bomId = searchParams.get('bom_id');
@@ -41,9 +43,10 @@ export async function GET(request: Request) {
       global_default: globalDefault,
       overrides,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('GET /api/bom-tolerance error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch tolerance settings' }, { status: 500 });
   }
 }
 
@@ -56,6 +59,7 @@ export async function GET(request: Request) {
  */
 export async function PUT(request: Request) {
   try {
+    requireRole('manager');
     const db = getDb();
     const body = await request.json();
     const bomId = body.bom_id;
@@ -81,8 +85,9 @@ export async function PUT(request: Request) {
     ).run(bomId, tolerancePct, now);
 
     return NextResponse.json({ ok: true, action: 'set', bom_id: bomId, tolerance_pct: tolerancePct });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('PUT /api/bom-tolerance error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update tolerance settings' }, { status: 500 });
   }
 }

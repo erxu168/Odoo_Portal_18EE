@@ -1,33 +1,53 @@
 'use client';
 
 import { useState } from 'react';
-import { TaskLine, SubTask } from '@/lib/odoo-tasks';
+import { TaskListLine, TaskSubtask, ModuleLink } from '@/lib/odoo-tasks';
 import SubtaskList from './SubtaskList';
 
 interface Props {
-  task: TaskLine;
+  task: TaskListLine;
   taskListId: number;
   onComplete: (taskId: number) => Promise<void>;
   onSubtaskToggle: (taskLineId: number, subtaskId: number, done: boolean) => Promise<void>;
   onPhotoUpload: (taskId: number) => Promise<void>;
+  readOnly?: boolean;
 }
 
-const MODULE_STYLES: Record<string, string> = {
+const MODULE_STYLES: Record<ModuleLink, string> = {
+  none:          '',
   purchase:      'bg-amber-50 text-amber-800 border-amber-200',
   inventory:     'bg-green-50  text-green-800  border-green-200',
   pos:           'bg-blue-50   text-blue-800   border-blue-200',
   manufacturing: 'bg-orange-50 text-orange-800 border-orange-200',
 };
-const MODULE_ICONS: Record<string, string> = {
-  purchase: '🛒', inventory: '📦', pos: '🖥️', manufacturing: '🏭',
+const MODULE_ICONS: Record<ModuleLink, string> = {
+  none: '',
+  purchase: '\u{1F6D2}',
+  inventory: '\u{1F4E6}',
+  pos: '\u{1F5A5}️',
+  manufacturing: '\u{1F3ED}',
+};
+const MODULE_LABELS: Record<ModuleLink, string> = {
+  none: '',
+  purchase: 'Open Purchase',
+  inventory: 'Open Inventory',
+  pos: 'Open POS',
+  manufacturing: 'Open Manufacturing',
+};
+const MODULE_HREFS: Record<ModuleLink, string | null> = {
+  none: null,
+  purchase: '/purchase',
+  inventory: '/inventory',
+  pos: null,
+  manufacturing: '/manufacturing',
 };
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function TaskRow({ task, taskListId, onComplete, onSubtaskToggle, onPhotoUpload }: Props) {
-  const [subtasks, setSubtasks]     = useState<SubTask[]>(task.subtasks);
+export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, readOnly = false }: Props) {
+  const [subtasks, setSubtasks]     = useState<TaskSubtask[]>(task.subtasks);
   const [photoUploaded, setPhoto]   = useState(task.photo_uploaded);
   const [uploading, setUploading]   = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -44,6 +64,7 @@ export default function TaskRow({ task, taskListId, onComplete, onSubtaskToggle,
     : 0;
 
   async function handleTap() {
+    if (readOnly) return;
     setError(null);
     if (isLocked) {
       const left = subtasks.filter(s => !s.done).length;
@@ -73,25 +94,34 @@ export default function TaskRow({ task, taskListId, onComplete, onSubtaskToggle,
     finally { setUploading(false); }
   }
 
+  const linkLabel = task.module_link_type !== 'none' ? MODULE_LABELS[task.module_link_type] : '';
+  const linkHref = task.module_link_type !== 'none' ? MODULE_HREFS[task.module_link_type] : null;
+
   return (
     <div onClick={handleTap}
-      className={`flex items-start gap-3 px-4 py-3.5 border-b border-gray-100 last:border-0 transition-colors cursor-pointer ${
-        completing ? 'opacity-40 pointer-events-none' : 'hover:bg-orange-50/30'
+      className={`flex items-start gap-3 px-4 py-3.5 border-b border-gray-100 last:border-0 transition-colors ${readOnly ? '' : 'cursor-pointer'} ${
+        completing ? 'opacity-40 pointer-events-none' : (readOnly ? '' : 'hover:bg-orange-50/30')
       }`}>
 
-      {/* Check circle */}
       <div className={`mt-0.5 w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all text-xs font-bold ${
         isLocked ? 'border-gray-200 bg-gray-50 text-gray-400' :
         task.state === 'overdue' ? 'border-red-400 bg-red-50 text-red-500' :
         'border-gray-300 bg-white'
       }`}>
-        {isLocked ? '🔒' : task.state === 'overdue' ? '!' : ''}
+        {isLocked ? '\u{1F512}' : task.state === 'overdue' ? '!' : ''}
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className={`font-semibold text-sm leading-snug ${task.state === 'overdue' ? 'text-red-700' : 'text-gray-800'}`}>
-          {task.name}
-        </p>
+        <div className="flex items-start justify-between gap-2">
+          <p className={`font-semibold text-sm leading-snug ${task.state === 'overdue' ? 'text-red-700' : 'text-gray-800'}`}>
+            {task.name}
+          </p>
+          {task.is_ad_hoc && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 flex-shrink-0">
+              ONE-OFF
+            </span>
+          )}
+        </div>
 
         <div className="flex flex-wrap gap-1.5 mt-1.5">
           {task.deadline_datetime && (
@@ -108,7 +138,6 @@ export default function TaskRow({ task, taskListId, onComplete, onSubtaskToggle,
           )}
         </div>
 
-        {/* Subtask hint */}
         {subtasks.length > 0 && (
           <p className={`text-xs mt-1.5 font-medium ${
             allSubtasksDone ? 'text-green-600' : 'text-gray-400'
@@ -117,21 +146,19 @@ export default function TaskRow({ task, taskListId, onComplete, onSubtaskToggle,
           </p>
         )}
 
-        <SubtaskList taskLineId={task.id} subtasks={subtasks} onToggle={handleSubtask} />
+        <SubtaskList taskLineId={task.id} subtasks={subtasks} onToggle={handleSubtask} readOnly={readOnly} />
 
-        {/* Module link */}
-        {task.module_link_type && (
-          <button onClick={e => { e.stopPropagation(); alert(`Opens: ${task.module_link_label}`); }}
-            className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all hover:shadow-sm ${MODULE_STYLES[task.module_link_type] ?? ''}`}>
-            {MODULE_ICONS[task.module_link_type]} {task.module_link_label} ↗
-          </button>
+        {task.module_link_type !== 'none' && linkHref && (
+          <a href={linkHref} onClick={e => e.stopPropagation()}
+            className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all hover:shadow-sm ${MODULE_STYLES[task.module_link_type]}`}>
+            {MODULE_ICONS[task.module_link_type]} {linkLabel} ↗
+          </a>
         )}
 
-        {/* Photo upload */}
-        {task.photo_required && !photoUploaded && allSubtasksDone && (
+        {!readOnly && task.photo_required && !photoUploaded && allSubtasksDone && (
           <button onClick={handlePhoto} disabled={uploading}
             className="mt-2 w-full py-2.5 border-2 border-dashed border-orange-400 rounded-lg bg-orange-50 text-orange-700 text-xs font-semibold text-center hover:bg-orange-100 transition-colors disabled:opacity-60">
-            {uploading ? '⏳ Uploading...' : '📸 Tap to take / upload photo'}
+            {uploading ? '⏳ Uploading...' : '\u{1F4F8} Tap to take / upload photo'}
           </button>
         )}
         {photoUploaded && (

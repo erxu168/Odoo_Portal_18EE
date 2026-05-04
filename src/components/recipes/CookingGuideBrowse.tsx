@@ -119,14 +119,17 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
     ? recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase()))
     : [];
 
-  // Top 10 quick picks (most steps = most complex = most cooked dishes tend to be standardized)
-  // For now just take alphabetically first 10; frequency tracking can enhance this later
+  // Top 10 quick picks: most-opened recipes first (tracked in localStorage),
+  // with an alphabetical fallback for new users who haven't built frequency yet.
   const quickPicks = (() => {
     const freq = getFrequencyMap();
     const withFreq = recipes.map(r => ({ ...r, _freq: freq[r.id] || 0 }));
     withFreq.sort((a, b) => b._freq - a._freq);
     const frequent = withFreq.filter(r => r._freq > 0).slice(0, 10);
-    return frequent.length > 0 ? frequent : recipes.slice(0, 10);
+    if (frequent.length > 0) return frequent;
+    return [...recipes]
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+      .slice(0, 10);
   })();
 
   // Category view: show recipe list for selected category

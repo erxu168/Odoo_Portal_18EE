@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, AuthError } from '@/lib/auth';
 
 /**
  * GET /api/products/search?q=...&limit=20
@@ -8,6 +9,7 @@ import { getOdoo } from '@/lib/odoo';
  */
 export async function GET(req: NextRequest) {
   try {
+    requireAuth();
     const q = req.nextUrl.searchParams.get('q') || '';
     const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20');
     const odoo = getOdoo();
@@ -35,7 +37,8 @@ export async function GET(req: NextRequest) {
       })),
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('GET /api/products/search error:', error);
+    return NextResponse.json({ ok: false, error: 'Failed to search products' }, { status: 500 });
   }
 }

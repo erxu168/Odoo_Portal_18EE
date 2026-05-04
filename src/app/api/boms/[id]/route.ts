@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireAuth, requireRole, AuthError } from '@/lib/auth';
 import type { ComponentAvailability } from '@/types/manufacturing';
 
 /**
@@ -72,6 +73,7 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   try {
+    requireAuth();
     const odoo = getOdoo();
     const bomId = parseInt(params.id);
 
@@ -119,7 +121,13 @@ export async function GET(
       'product_qty',
       'product_uom_id',
       'child_bom_id',
+      'operation_id',
     ]);
+
+    const lineOperations = lines.map((l: any) => ({
+      line_id: l.id,
+      operation_id: Array.isArray(l.operation_id) ? l.operation_id[0] : null,
+    }));
 
     const allProductIds = new Set<number>();
     const collectProductIds = async (lineIds: number[]) => {
@@ -219,11 +227,13 @@ export async function GET(
       components,
       can_make_qty: Math.floor(canMakeQty * 100) / 100,
       operations: operations.sort((a: any, b: any) => (a.sequence || 0) - (b.sequence || 0)),
+      line_operations: lineOperations,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error(`GET /api/boms/${params.id} error:`, error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch BOM detail' },
+      { error: 'Failed to fetch BOM detail' },
       { status: 500 },
     );
   }
@@ -239,6 +249,7 @@ export async function PATCH(
   { params }: { params: { id: string } },
 ) {
   try {
+    requireRole('manager');
     const bomId = parseInt(params.id);
     const odoo = getOdoo();
     const body = await req.json();
@@ -265,6 +276,15 @@ export async function PATCH(
           product_id: line.product_id,
           product_qty: line.product_qty,
           product_uom_id: line.product_uom_id,
+        });
+      }
+    }
+
+    // Assign / unassign line → operation links
+    if (body.update_line_operations?.length) {
+      for (const link of body.update_line_operations) {
+        await odoo.write('mrp.bom.line', [link.line_id], {
+          operation_id: link.operation_id || false,
         });
       }
     }
@@ -342,8 +362,8 @@ export async function PATCH(
 
     return NextResponse.json({ ok: true });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`PATCH /api/boms/${params.id} error:`, message);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error(`PATCH /api/boms/${params.id} error:`, error);
+    return NextResponse.json({ ok: false, error: 'Failed to update BOM' }, { status: 500 });
   }
 }

@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { getCurrentUser, hasRole, requireAuth, requireRole, AuthError } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
+    requireAuth();
     const odoo = getOdoo();
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const search = searchParams.get('search');
     const companyId = searchParams.get('company_id');
+    const includeArchivedParam = searchParams.get('include_archived') === '1';
 
-    const domain: any[] = [['active', '=', true]];
+    const user = getCurrentUser();
+    const canSeeArchived = includeArchivedParam && user != null && hasRole(user, 'manager');
+
+    const domain: any[] = canSeeArchived ? [] : [['active', '=', true]];
     if (search) {
       domain.push(['product_tmpl_id.name', 'ilike', search]);
     }
@@ -30,7 +36,11 @@ export async function GET(request: Request) {
       'type',
       'code',
       'company_id',
-    ], { order: 'product_tmpl_id asc' });
+      'active',
+    ], {
+      order: 'product_tmpl_id asc',
+      ...(canSeeArchived ? { context: { active_test: false } } : {}),
+    });
 
     const allLineIds: number[] = [];
     for (const bom of boms) {
@@ -148,10 +158,11 @@ export async function GET(request: Request) {
       : enriched;
 
     return NextResponse.json({ boms: filtered, total: filtered.length });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('GET /api/boms error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch BOMs' },
+      { error: 'Failed to fetch BOMs' },
       { status: 500 },
     );
   }
@@ -172,6 +183,7 @@ export async function GET(request: Request) {
  */
 export async function POST(req: NextRequest) {
   try {
+    requireRole('manager');
     const odoo = getOdoo();
     const body = await req.json();
 
@@ -219,8 +231,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, id: bomId });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('POST /api/boms error:', message);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('POST /api/boms error:', error);
+    return NextResponse.json({ ok: false, error: 'Failed to create BOM' }, { status: 500 });
   }
 }

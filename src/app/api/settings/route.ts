@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
+import { requireAuth, requireRole, AuthError } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,14 +10,16 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET() {
   try {
+    requireAuth();
     const db = getDb();
     const rows = db.prepare('SELECT key, value FROM portal_settings').all() as { key: string; value: string }[];
     const settings: Record<string, string> = {};
     for (const r of rows) settings[r.key] = r.value;
     return NextResponse.json({ settings });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('GET /api/settings error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });
   }
 }
 
@@ -26,6 +29,7 @@ export async function GET() {
  */
 export async function PUT(request: Request) {
   try {
+    requireRole('admin');
     const db = getDb();
     const body = await request.json();
 
@@ -42,8 +46,9 @@ export async function PUT(request: Request) {
     tx();
 
     return NextResponse.json({ ok: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
     console.error('PUT /api/settings error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
   }
 }
