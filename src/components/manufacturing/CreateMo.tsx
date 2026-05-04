@@ -23,6 +23,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
   // Selected BOM + detail
   const [selectedBom, setSelectedBom] = useState<any>(null);
   const [components, setComponents] = useState<any[]>([]);
+  const [operations, setOperations] = useState<any[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Configuration
@@ -85,6 +86,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
       const data = await res.json();
       setSelectedBom(data.bom);
       setComponents(data.components || []);
+      setOperations(data.operations || []);
       setQty(String(data.bom?.product_qty || 1));
       setStep('configure');
     } catch (e) {
@@ -562,6 +564,54 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
               });
             })()}
           </div>
+
+          {/* Work order steps (read-only preview) */}
+          {operations.length > 0 && (
+            <div className="mb-4">
+              <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-500 mb-2">
+                Work order steps ({operations.length})
+              </div>
+              <div className="flex flex-col gap-1">
+                {operations.map((op, i) => (
+                  <div key={op.id} className="bg-white border border-gray-200 rounded-xl px-4 py-2 flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700 flex-shrink-0 mt-0.5">{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[var(--fs-sm)] font-bold text-gray-900">{op.name}</div>
+                      <div className="text-[var(--fs-xs)] text-gray-400">{op.workcenter_id?.[1] || ''}{op.time_cycle_manual > 0 ? ` · ${op.time_cycle_manual} min` : ''}</div>
+                      {op.note && <div className="text-[var(--fs-xs)] text-gray-500 mt-1" dangerouslySetInnerHTML={{ __html: op.note }} />}
+                      {op.worksheet_type === 'pdf' && (
+                        <button
+                          onClick={async () => {
+                            const res = await fetch(`/api/boms/operations?id=${op.id}`);
+                            const data = await res.json();
+                            if (data.ok) {
+                              const blob = new Blob([Uint8Array.from(atob(data.data_base64), c => c.charCodeAt(0))], { type: 'application/pdf' });
+                              window.open(URL.createObjectURL(blob), '_blank');
+                            }
+                          }}
+                          className="mt-1.5 flex items-center gap-1.5 text-[var(--fs-xs)] font-semibold text-blue-600 active:text-blue-800"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          View worksheet PDF
+                        </button>
+                      )}
+                      {op.worksheet_type === 'google_slide' && op.worksheet_google_slide && (
+                        <a
+                          href={op.worksheet_google_slide}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1.5 flex items-center gap-1.5 text-[var(--fs-xs)] font-semibold text-blue-600 active:text-blue-800"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                          Open Google Slides
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Bottom CTA */}
