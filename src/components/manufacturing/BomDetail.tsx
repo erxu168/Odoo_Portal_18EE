@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import RichTextEditor from '@/components/ui/RichTextEditor';
-import { StatusDot } from './ui';
 import type { ComponentAvailability } from '@/types/manufacturing';
 
 interface BomDetailProps {
@@ -730,7 +729,6 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                             comp.is_sub_bom ? 'border-green-200 active:scale-[0.98] transition-transform' : 'border-gray-200'
                           }`}>
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <StatusDot status={comp.status} />
                             <div className="min-w-0">
                               <div className="text-[var(--fs-md)] font-bold text-gray-900 truncate">
                                 {comp.product_name}
@@ -742,11 +740,6 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                             <div className="text-[var(--fs-md)] font-bold text-gray-900 tabular-nums font-mono">
                               {fmt(comp.required_qty)} {comp.uom}
                             </div>
-                            <div className={`text-[var(--fs-xs)] mt-0.5 ${
-                              comp.status === 'ok' ? 'text-green-600' : comp.status === 'low' ? 'text-amber-600' : 'text-red-600'
-                            }`}>
-                              {fmt(comp.on_hand_qty)} {comp.uom} on hand
-                            </div>
                           </div>
                         </button>
 
@@ -756,9 +749,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                               <div className="divide-y divide-gray-100">
                                 {comp.sub_bom_lines.map((sub) => (
                                   <div key={sub.product_id} className="px-3.5 py-2.5 flex justify-between items-center">
-                                    <span className="text-[var(--fs-sm)] text-gray-900 flex items-center gap-1.5">
-                                      <StatusDot status={sub.status} />{sub.product_name}
-                                    </span>
+                                    <span className="text-[var(--fs-sm)] text-gray-900">{sub.product_name}</span>
                                     <span className="text-[var(--fs-sm)] font-bold text-gray-700 font-mono">
                                       {fmt(sub.required_qty)} {sub.uom}
                                     </span>

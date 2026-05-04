@@ -100,34 +100,15 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
   const ratio = baseQty > 0 ? numQty / baseQty : 0;
   const uom = selectedBom?.product_uom_id?.[1] || 'kg';
 
-  // Scaled components with availability
+  // Scaled components (inventory deps removed — see feedback_no_inventory_dependencies)
   const drivingQtyNum = parseFloat(drivingCompQty) || 0;
   const scaledComps = useMemo(() => {
     return components.map((c: any) => {
-      // For the driving ingredient, use the exact entered qty (no rounding error)
       const isDriving = sqcEnabled && drivingCompId === c.product_id && drivingQtyNum > 0;
       const scaled = isDriving ? drivingQtyNum : Math.round(c.required_qty * ratio * 10000) / 10000;
-      const short = scaled - c.on_hand_qty;
-      return {
-        ...c,
-        scaled_qty: scaled,
-        is_short: short > 0,
-        short_amount: Math.max(0, Math.round(short * 10000) / 10000),
-      };
+      return { ...c, scaled_qty: scaled };
     });
   }, [components, ratio, sqcEnabled, drivingCompId, drivingQtyNum]);
-
-  // Max producible based on stock
-  const maxProducible = useMemo(() => {
-    if (!components.length || baseQty <= 0) return 0;
-    let minQty = Infinity;
-    for (const c of components) {
-      if (c.required_qty > 0) {
-        minQty = Math.min(minQty, (c.on_hand_qty / c.required_qty) * baseQty);
-      }
-    }
-    return minQty === Infinity ? 0 : Math.floor(minQty);
-  }, [components, baseQty]);
 
   // Shortcuts
   const shortcuts = useMemo(() => {
@@ -158,8 +139,6 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
       setDrivingCompId(components[0].product_id);
     }
   }, [sqcEnabled, components, drivingCompId]);
-
-  const shortComps = scaledComps.filter((c: any) => c.is_short);
 
   // Resolve the correct product_id for MO creation
   // Use resolved_product_id (from BOM detail API) > product_id > product_tmpl_id
@@ -486,21 +465,8 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
               className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-[var(--fs-sm)] text-gray-900" />
           </div>
 
-          {/* Component availability */}
-          <div className="text-[var(--fs-xs)] font-bold text-gray-500 tracking-widest uppercase mb-2">Ingredient availability ({scaledComps.length})</div>
-
-          {shortComps.length > 0 && (
-            <div className="mb-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-xl text-[15px] text-red-700">
-              <strong>{shortComps.length}</strong> ingredient{shortComps.length > 1 ? 's' : ''} short for {fmt(numQty)} {uom}.
-              Max possible: <strong>{fmt(maxProducible)} {uom}</strong>
-            </div>
-          )}
-          {shortComps.length === 0 && scaledComps.length > 0 && (
-            <div className="mb-2 px-3 py-2.5 bg-green-50 border border-green-200 rounded-xl text-[15px] text-green-700 flex items-center gap-2">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-              All {scaledComps.length} ingredients available
-            </div>
-          )}
+          {/* Ingredients */}
+          <div className="text-[var(--fs-xs)] font-bold text-gray-500 tracking-widest uppercase mb-2">Ingredients ({scaledComps.length})</div>
 
           <div className="flex flex-col gap-1 mb-4">
             {(() => {
@@ -514,26 +480,16 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
                       <span className="font-mono text-gray-300">{catItems.length}</span>
                     </div>
                     {catItems.map((c: any) => {
-              const pct = c.scaled_qty > 0 ? Math.min(100, Math.round(c.on_hand_qty / c.scaled_qty * 100)) : 100;
               return (
-                <div key={c.product_id} className={`bg-white border rounded-xl px-3.5 py-2 mb-1 ${c.is_short ? 'border-red-200' : 'border-gray-200'}`}>
-                  <div className="flex justify-between items-center mb-1.5">
+                <div key={c.product_id} className="bg-white border border-gray-200 rounded-xl px-3.5 py-2 mb-1">
+                  <div className="flex justify-between items-center">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <span className={`text-[var(--fs-base)] font-bold truncate ${c.is_short ? 'text-red-700' : 'text-gray-900'}`}>{c.product_name}</span>
+                      <span className="text-[var(--fs-base)] font-bold truncate text-gray-900">{c.product_name}</span>
                       {c.is_sub_bom && <span className="text-[var(--fs-xs)] px-2 py-0.5 rounded bg-blue-50 text-blue-600 font-bold flex-shrink-0">RECIPE</span>}
                     </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {c.is_short && <span className="text-[12px] px-2 py-0.5 rounded bg-red-50 text-red-600 font-bold">SHORT</span>}
-                      <span className={`text-[var(--fs-base)] font-bold font-mono ${c.is_short ? 'text-red-600' : 'text-green-600'}`}>{fmt(c.on_hand_qty)}</span>
-                    </div>
+                    <span className="text-[var(--fs-sm)] font-bold text-gray-700 font-mono flex-shrink-0">{fmt(c.scaled_qty)} {c.uom}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${c.is_short ? (pct >= 50 ? 'bg-amber-400' : 'bg-red-400') : 'bg-green-500'}`} style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="text-[var(--fs-sm)] font-bold text-gray-700 min-w-[80px] text-right">{fmt(c.scaled_qty)} {c.uom} need</span>
-                  </div>
-                  {c.is_sub_bom && c.is_short && !createdSubMos[c.product_id] && (
+                  {c.is_sub_bom && !createdSubMos[c.product_id] && (
                     <div className="mt-2">
                       {expandedSubBom === c.product_id ? (
                         <div className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-3">
@@ -546,15 +502,15 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
                                 type="number" inputMode="decimal"
                                 value={subMoQty}
                                 onChange={(e) => setSubMoQty(e.target.value)}
-                                placeholder={String(c.short_amount || c.scaled_qty)}
+                                placeholder={String(c.scaled_qty)}
                                 className="flex-1 px-3 py-2 text-[var(--fs-base)] font-bold border-none bg-transparent focus:outline-none text-blue-700 placeholder:text-gray-300"
                               />
                               <div className="px-2 py-2 text-[var(--fs-xs)] text-gray-500 bg-gray-50 border-l border-gray-200">{c.uom}</div>
                             </div>
                             <button
-                              onClick={() => setSubMoQty(String(c.short_amount || c.scaled_qty))}
+                              onClick={() => setSubMoQty(String(c.scaled_qty))}
                               className="px-2 py-2 rounded-lg border border-blue-200 text-blue-600 text-[var(--fs-xs)] font-bold bg-white active:bg-blue-50"
-                            >Short</button>
+                            >Need</button>
                           </div>
                           {subMoError && expandedSubBom === c.product_id && (
                             <div className="text-[var(--fs-xs)] text-red-600 mb-2">{subMoError}</div>
@@ -580,7 +536,7 @@ export default function CreateMo({ onBack, onCreated }: CreateMoProps) {
                       ) : (
                         <div className="flex justify-end">
                           <button
-                            onClick={(e) => { e.stopPropagation(); setExpandedSubBom(c.product_id); setSubMoQty(String(c.short_amount || c.scaled_qty)); setSubMoError(null); }}
+                            onClick={(e) => { e.stopPropagation(); setExpandedSubBom(c.product_id); setSubMoQty(String(c.scaled_qty)); setSubMoError(null); }}
                             className="px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-[var(--fs-xs)] font-bold flex items-center gap-1.5 active:bg-blue-100"
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
