@@ -128,17 +128,34 @@ Single-page app with bottom nav (5 tabs).
 
 No other API routes exist yet. All others return 404.
 
+### Department Task Manager — `/tasks` (May 2026)
+
+Department-scoped daily checklists (no shift coupling). Backed by Odoo addon `krawings_task_manager` (models: `krawings.task.template`, `krawings.task.list`, plus lines/subtasks).
+
+| Screen | Route | Status |
+|---|---|---|
+| Role redirect | `/tasks` | ✅ |
+| Staff today's list | `/tasks/staff` | ✅ — sectioned by day-part (Opening / Mid-day / Closing), accountability per task |
+| Manager dashboard | `/tasks/manager` | ✅ — stat cards + dept list, "Spawn" catch-up button |
+| Manager dept review | `/tasks/manager/dept/[id]` | ✅ — date picker, ad-hoc add, read-only history |
+| Template list | `/tasks/manager/templates` | ✅ — create, archived toggle, day-of-week chips |
+| Template edit | `/tasks/manager/templates/[id]` | ✅ — settings, day-part sections, line+subtask editor |
+| Admin settings | `/tasks/admin` | UI exists, save handler not wired |
+
+**Lifecycle:** Odoo cron at 00:05 daily spawns instances from any active template whose day-of-week matches today. Manager can trigger a catch-up spawn via the dashboard. Ad-hoc tasks attach to today's instance only and don't propagate to the template. Template edits affect tomorrow's spawn, not today's already-spawned list.
+
+**API:** `/api/tasks/today`, `/api/tasks/list/[id]`, `/api/tasks/list/[id]/lines`, `/api/tasks/lines/[id]` (PATCH/DELETE), `/api/tasks/lines/[id]/complete`, `/api/tasks/lines/[id]/subtasks/[sid]`, `/api/tasks/lines/[id]/photo`, `/api/tasks/templates`, `/api/tasks/templates/[id]`, `/api/tasks/templates/[id]/lines`, `/api/tasks/templates/[id]/lines/[lineId]`, `/api/tasks/manager/dashboard`, `/api/tasks/manager/history?dept=X&date=Y`, `/api/tasks/spawn-today`, `/api/tasks/departments`.
+
 ### What is NOT built yet (in priority order)
 1. Action buttons on MO/WO (confirm, start, finish, set qty, scrap, cancel)
 2. Numpad for component quantities
 3. Offline queue (IndexedDB + service worker sync)
-4. Shifts module (`/shifts` → `planning.slot`)
-5. Leave requests (`hr.leave`)
-6. Inventory count (`/inventory` → `stock.quant`)
-7. Purchase (`/purchase`)
-8. Task manager (`/tasks`)
-9. Staff profile / HR (`/profile`)
-10. App launcher / home screen (routes staff to the right module by role)
+4. Leave requests (`hr.leave`)
+5. Inventory count (`/inventory` → `stock.quant`)
+6. Purchase (`/purchase`)
+7. Staff profile / HR (`/profile`)
+8. App launcher / home screen (routes staff to the right module by role)
+9. Tasks: photo review queue, admin settings persistence, notifications backend
 
 ---
 
