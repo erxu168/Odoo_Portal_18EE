@@ -522,6 +522,9 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                   onChange={e => updateLineQty(line.line_id, e.target.value)}
                   className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-green-600"
                 />
+                <div className="w-12 text-right text-[var(--fs-xs)] text-gray-400 font-mono flex-shrink-0">
+                  {editIngredientTotal > 0 ? `${((line.product_qty / editIngredientTotal) * 100).toFixed(1)}%` : ''}
+                </div>
                 <button
                   onClick={() => removeLine(line.line_id)}
                   className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center active:bg-red-100 flex-shrink-0"
@@ -740,25 +743,40 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                             <div className="text-[var(--fs-md)] font-bold text-gray-900 tabular-nums font-mono">
                               {fmt(comp.required_qty)} {comp.uom}
                             </div>
+                            {ingredientTotal > 0 && (
+                              <div className="text-[var(--fs-xs)] text-gray-400 font-mono mt-0.5">
+                                {((comp.required_qty / ingredientTotal) * 100).toFixed(1)}%
+                              </div>
+                            )}
                           </div>
                         </button>
 
-                        {comp.is_sub_bom && expandedSubBoms.has(comp.product_id) && comp.sub_bom_lines && (
+                        {comp.is_sub_bom && expandedSubBoms.has(comp.product_id) && comp.sub_bom_lines && (() => {
+                          const subTotal = comp.sub_bom_lines.reduce((s: number, sl: any) => s + (sl.required_qty || 0), 0);
+                          return (
                           <div className="ml-5 border-l-2 border-green-200 mb-1">
                             <div className="ml-3 bg-white border border-green-200 rounded-xl overflow-hidden">
                               <div className="divide-y divide-gray-100">
                                 {comp.sub_bom_lines.map((sub) => (
                                   <div key={sub.product_id} className="px-3.5 py-2.5 flex justify-between items-center">
                                     <span className="text-[var(--fs-sm)] text-gray-900">{sub.product_name}</span>
-                                    <span className="text-[var(--fs-sm)] font-bold text-gray-700 font-mono">
-                                      {fmt(sub.required_qty)} {sub.uom}
-                                    </span>
+                                    <div className="text-right">
+                                      <div className="text-[var(--fs-sm)] font-bold text-gray-700 font-mono">
+                                        {fmt(sub.required_qty)} {sub.uom}
+                                      </div>
+                                      {subTotal > 0 && (
+                                        <div className="text-[var(--fs-xs)] text-gray-400 font-mono">
+                                          {((sub.required_qty / subTotal) * 100).toFixed(1)}%
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 ))}
                               </div>
                             </div>
                           </div>
-                        )}
+                          );
+                        })()}
                       </React.Fragment>
                     ))}
                   </div>
