@@ -5,6 +5,7 @@ import Link from 'next/link';
 import type { TaskList } from '@/lib/odoo-tasks';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import AdHocModal, { type AdHocSubmitVals } from '../../../_components/AdHocModal';
+import { uploadTaskPhoto } from '../../../_components/photoUpload';
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -64,8 +65,8 @@ export default function DeptReviewPage({ params }: PageProps) {
     });
   }
 
-  async function handlePhotoUpload(_lineId: number) {
-    // Manager review screen doesn't expose photo upload — staff page does.
+  async function handlePhotoUpload(lineId: number) {
+    return uploadTaskPhoto(lineId, load);
   }
 
   async function ensureList(): Promise<number | null> {

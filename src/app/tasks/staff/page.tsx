@@ -5,38 +5,7 @@ import type { TaskList, EmployeeContext } from '@/lib/odoo-tasks';
 import ChecklistCard from '../_components/ChecklistCard';
 import BottomNav from '../_components/BottomNav';
 import AdHocModal, { type AdHocSubmitVals } from '../_components/AdHocModal';
-
-// Compress image to a max long-edge in pixels and JPEG at the given quality.
-// Phone photos are 3-10 MB; this typically produces 100-300 KB which uploads
-// reliably over JSON without hitting body-size or timeout limits.
-async function compressImage(file: File, maxLongEdge: number, quality: number): Promise<{ base64: string; filename: string }> {
-  const dataUrl = await new Promise<string>((res, rej) => {
-    const reader = new FileReader();
-    reader.onload = () => res(reader.result as string);
-    reader.onerror = () => rej(new Error('File read error'));
-    reader.readAsDataURL(file);
-  });
-  const img = await new Promise<HTMLImageElement>((res, rej) => {
-    const i = new Image();
-    i.onload = () => res(i);
-    i.onerror = () => rej(new Error('Image decode error'));
-    i.src = dataUrl;
-  });
-  const longEdge = Math.max(img.width, img.height);
-  const scale = longEdge > maxLongEdge ? maxLongEdge / longEdge : 1;
-  const w = Math.round(img.width * scale);
-  const h = Math.round(img.height * scale);
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas unavailable');
-  ctx.drawImage(img, 0, 0, w, h);
-  const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-  const base64 = compressedDataUrl.split(',')[1] || '';
-  // Replace original extension with .jpg since we re-encoded to JPEG
-  const stem = file.name.replace(/\.[^/.]+$/, '') || 'photo';
-  return { base64, filename: `${stem}.jpg` };
-}
+import { uploadTaskPhoto } from '../_components/photoUpload';
 
 interface TodayResponse {
   context: EmployeeContext | null;
@@ -133,38 +102,7 @@ export default function StaffPage() {
   }
 
   async function handlePhotoUpload(lineId: number) {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.capture = 'environment' as never;
-    return new Promise<void>((resolve, reject) => {
-      input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) return reject(new Error('No file selected'));
-        try {
-          const compressed = await compressImage(file, 1280, 0.85);
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 60000);
-          const res = await fetch(`/api/tasks/lines/${lineId}/photo`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filename: compressed.filename, data_base64: compressed.base64 }),
-            signal: controller.signal,
-          }).finally(() => clearTimeout(timeout));
-          const body = await res.json();
-          if (!body.ok) return reject(new Error(body.error || 'Upload failed'));
-          await load();
-          resolve();
-        } catch (e: unknown) {
-          if (e instanceof Error && e.name === 'AbortError') {
-            reject(new Error('Upload timed out — try again on a stronger connection'));
-          } else {
-            reject(e instanceof Error ? e : new Error('Upload failed'));
-          }
-        }
-      };
-      input.click();
-    });
+    return uploadTaskPhoto(lineId, load);
   }
 
   async function ensureList(): Promise<number | null> {
