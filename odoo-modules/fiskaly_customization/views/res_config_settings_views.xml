@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo> 
+    <record id="res_config_settings_view_form_fiskaly_customization" model="ir.ui.view">
+        <field name="name">res.config.settings.form.inherit.fiskaly_customization</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="pos_survey.res_config_settings_view_form"></field>
+        <field name="arch" type="xml">
+            <xpath expr="//setting[@id='pos_default_journals']" position="after">
+                <setting string="Evaluate Survey Scores" id="pos_survey_evaluation" >
+                    <field name="pos_evaluate_scores" readonly="pos_has_active_session"/>
+                    <div class="content-group mt16">
+                        <div invisible="not pos_evaluate_scores" class="row">
+                            <label string="Alternate POS" for="pos_alternate_config_id" class="col-lg-3 o_light_label" options="{'no_open': True, 'no_create': True}"/>
+                            <field name="pos_alternate_config_id" domain="[('company_id', '!=', company_id)]" readonly="pos_has_active_session" required="pos_evaluate_scores"/>
+                        </div>
+                        <div invisible="not pos_evaluate_scores" class="row">
+                            <label string="Pass Score" for="pos_fiskaly_qualify_points" class="col-lg-3 o_light_label"/>
+                            <field name="pos_fiskaly_qualify_points" readonly="pos_has_active_session" required="pos_evaluate_scores"/>
+                        </div>
+                    </div>
+                </setting>
+            </xpath>
+            <xpath expr="//field[@name='survey_ids']" position="attributes">
+                <attribute name="required">pos_evaluate_scores</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

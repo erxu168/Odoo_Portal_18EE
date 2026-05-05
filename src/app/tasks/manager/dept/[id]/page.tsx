@@ -39,8 +39,12 @@ export default function DeptReviewPage({ params }: PageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [creating, setCreating] = useState(false);
 
-  const isToday = date === todayStr();
+  const today = todayStr();
+  const isToday = date === today;
+  const isPast = date < today;
+  const isFuture = date > today;
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -77,9 +81,36 @@ export default function DeptReviewPage({ params }: PageProps) {
     // Manager review screen doesn't expose photo upload — staff page does.
   }
 
+  async function ensureList(): Promise<number | null> {
+    // Returns the list id (existing or freshly created), or null on failure.
+    if (list) return list.id;
+    const res = await fetch('/api/tasks/list/ensure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ department_id: deptId, date }),
+    });
+    const body = await res.json();
+    if (!body.ok) throw new Error(body.error || 'Failed to create list');
+    return body.list_id;
+  }
+
+  async function handleCreateList() {
+    setCreating(true);
+    try {
+      await ensureList();
+      await load();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setCreating(false);
+    }
+  }
+
   async function handleAdd(vals: { name: string; day_part: DayPart; deadline_datetime: string | null; photo_required: boolean; module_link_type: ModuleLink }) {
-    if (!list) return;
-    const res = await fetch(`/api/tasks/list/${list.id}/lines`, {
+    let listId = list?.id;
+    if (!listId) listId = await ensureList() ?? undefined;
+    if (!listId) throw new Error('No list available');
+    const res = await fetch(`/api/tasks/list/${listId}/lines`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(vals),
@@ -104,18 +135,17 @@ export default function DeptReviewPage({ params }: PageProps) {
             type="date"
             value={date}
             onChange={e => setDate(e.target.value)}
-            max={todayStr()}
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
           />
           {!isToday && (
             <button
-              onClick={() => setDate(todayStr())}
+              onClick={() => setDate(today)}
               className="text-xs font-semibold text-orange-600 hover:text-orange-700"
             >
               Today
             </button>
           )}
-          {isToday && list && (
+          {!isPast && list && (
             <button
               onClick={() => setShowAddModal(true)}
               className="ml-auto bg-orange-500 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-orange-600"
@@ -125,9 +155,14 @@ export default function DeptReviewPage({ params }: PageProps) {
           )}
         </div>
 
-        {!isToday && (
+        {isPast && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-700 text-xs mb-4">
             📖 Read-only history. Use the date picker to view a different day.
+          </div>
+        )}
+        {isFuture && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-800 text-xs mb-4">
+            🗓️ Scheduled day — add one-off tasks here. They&apos;ll appear when staff opens this date&apos;s list.
           </div>
         )}
 
@@ -141,6 +176,15 @@ export default function DeptReviewPage({ params }: PageProps) {
           <div className="text-center py-12 text-gray-400">
             <p className="text-3xl mb-2">📋</p>
             <p className="font-semibold">No list for {date}</p>
+            {!isPast && (
+              <button
+                onClick={handleCreateList}
+                disabled={creating}
+                className="mt-4 bg-orange-500 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-orange-600 disabled:opacity-50"
+              >
+                {creating ? 'Creating…' : `Create list for ${date}`}
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -157,20 +201,21 @@ export default function DeptReviewPage({ params }: PageProps) {
               onComplete={handleComplete}
               onSubtaskToggle={handleSubtaskToggle}
               onPhotoUpload={handlePhotoUpload}
-              readOnly={!isToday}
+              readOnly={isPast || isFuture}
             />
           </>
         )}
       </div>
 
       {showAddModal && (
-        <AdHocModal onClose={() => setShowAddModal(false)} onSubmit={handleAdd} />
+        <AdHocModal date={date} onClose={() => setShowAddModal(false)} onSubmit={handleAdd} />
       )}
     </div>
   );
 }
 
 interface ModalProps {
+  date: string;
   onClose: () => void;
   onSubmit: (vals: {
     name: string;
@@ -181,7 +226,7 @@ interface ModalProps {
   }) => Promise<void>;
 }
 
-function AdHocModal({ onClose, onSubmit }: ModalProps) {
+function AdHocModal({ date, onClose, onSubmit }: ModalProps) {
   const [name, setName]                       = useState('');
   const [dayPart, setDayPart]                 = useState<DayPart>('opening');
   const [deadline, setDeadline]               = useState('');
@@ -196,8 +241,8 @@ function AdHocModal({ onClose, onSubmit }: ModalProps) {
     try {
       let deadlineIso: string | null = null;
       if (deadline) {
-        // Combine today date + time into local-zone ISO
-        deadlineIso = new Date(`${todayStr()}T${deadline}:00`).toISOString();
+        // Combine the picked date + time into local-zone ISO
+        deadlineIso = new Date(`${date}T${deadline}:00`).toISOString();
       }
       await onSubmit({
         name: name.trim(),

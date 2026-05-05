@@ -1,0 +1,74 @@
+[
+  {
+    "id": 730,
+    "bom_id": [
+      95,
+      "Bibimbap Soy Sauce"
+    ],
+    "product_qty": 14,
+    "product_uom_id": [
+      12,
+      "kg"
+    ]
+  },
+  {
+    "id": 824,
+    "bom_id": [
+      107,
+      "BBQ Curry Marinade 15kg"
+    ],
+    "product_qty": 0.2,
+    "product_uom_id": [
+      12,
+      "kg"
+    ]
+  },
+  {
+    "id": 922,
+    "bom_id": [
+      118,
+      "Bulgogi Sauce 15kg"
+    ],
+    "product_qty": 32,
+    "product_uom_id": [
+      12,
+      "kg"
+    ]
+  },
+  {
+    "id": 972,
+    "bom_id": [
+      124,
+      "Bibimbap Soy Sauce"
+    ],
+    "product_qty": 14,
+    "product_uom_id": [
+      12,
+      "kg"
+    ]
+  },
+  {
+    "id": 1066,
+    "bom_id": [
+      136,
+      "BBQ Curry Marinade 15kg"
+    ],
+    "product_qty": 0.2,
+    "product_uom_id": [
+      12,
+      "kg"
+    ]
+  },
+  {
+    "id": 1164,
+    "bom_id": [
+      147,
+      "Bulgogi Sauce 15kg"
+    ],
+    "product_qty": 32,
+    "product_uom_id": [
+      12,
+      "kg"
+    ]
+  }
+]

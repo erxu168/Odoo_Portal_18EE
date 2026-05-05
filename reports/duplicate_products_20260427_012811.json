@@ -1,0 +1,47 @@
+[
+  {
+    "kind": "near",
+    "winner_id": 1475,
+    "loser_ids": [
+      1476
+    ],
+    "names": {
+      "1476": "CHUNGJUNGWON Mirin Ginger and Plum Matsul (alt)",
+      "1475": "CHUNGJUNGWON Mirin Ginger and Plum Matsul"
+    },
+    "bom_uses": {
+      "1476": 0,
+      "1475": 0
+    }
+  },
+  {
+    "kind": "near",
+    "winner_id": 1327,
+    "loser_ids": [
+      1355
+    ],
+    "names": {
+      "1327": "Disposable Gloves,Latex Size M",
+      "1355": "Disposable Gloves, Latex Size S"
+    },
+    "bom_uses": {
+      "1327": 0,
+      "1355": 0
+    }
+  },
+  {
+    "kind": "near",
+    "winner_id": 1337,
+    "loser_ids": [
+      1338
+    ],
+    "names": {
+      "1337": "Nitrilhandschuhe, puderfrei - L- black",
+      "1338": "Nitrilhandschuhe, puderfrei - M- black"
+    },
+    "bom_uses": {
+      "1337": 0,
+      "1338": 0
+    }
+  }
+]
