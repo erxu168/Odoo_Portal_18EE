@@ -217,6 +217,8 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
                   <input
                     type="number"
                     inputMode="decimal"
+                    step="0.0001"
+                    min="0"
                     value={line.product_qty || ''}
                     onChange={e => updateLineQty(line.id, e.target.value)}
                     className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-green-600"
