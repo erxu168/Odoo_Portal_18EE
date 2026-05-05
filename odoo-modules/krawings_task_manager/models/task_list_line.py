@@ -59,18 +59,20 @@ class KrawingsTaskListLine(models.Model):
             ])) if rec.id else False
 
     def mark_done(self, employee):
-        """Mark this line done, attributed to `employee` (hr.employee record)."""
+        """Mark this line done, attributed to `employee` (hr.employee record or id)."""
         self.ensure_one()
         if self.completed_at:
-            return self
+            return True
         if self.photo_required and not self.photo_uploaded:
             raise UserError('A photo is required before completing this task.')
+        if isinstance(employee, int):
+            employee = self.env['hr.employee'].sudo().browse(employee)
         self.write({
             'completed_at': fields.Datetime.now(),
-            'completed_by_id': employee.id if employee else False,
-            'completed_by_name': employee.name if employee else False,
+            'completed_by_id': employee.id if employee and employee.exists() else False,
+            'completed_by_name': employee.name if employee and employee.exists() else False,
         })
-        return self
+        return True
 
     def mark_undone(self):
         self.ensure_one()
@@ -79,4 +81,4 @@ class KrawingsTaskListLine(models.Model):
             'completed_by_id': False,
             'completed_by_name': False,
         })
-        return self
+        return True

@@ -17,9 +17,15 @@ class KrawingsTaskListSubtask(models.Model):
 
     def toggle(self, done, employee):
         self.ensure_one()
+        if isinstance(employee, int):
+            emp_id = employee
+        elif employee and hasattr(employee, 'id'):
+            emp_id = employee.id
+        else:
+            emp_id = False
         self.write({
             'done': bool(done),
             'toggled_at': fields.Datetime.now(),
-            'toggled_by_id': employee.id if employee else False,
+            'toggled_by_id': emp_id,
         })
-        return self
+        return True

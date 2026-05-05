@@ -79,7 +79,7 @@ class KrawingsTaskList(models.Model):
             'is_ad_hoc': True,
             'source_template_line_id': False,
         })
-        return self.env['krawings.task.list.line'].create(vals)
+        return self.env['krawings.task.list.line'].create(vals).id
 
     @api.model
     def get_employee_context(self, employee_id):
