@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Krawings KDS</string>
-    <string name="title_activity_main">Krawings KDS</string>
-    <string name="package_name">de.krawings.kds</string>
-    <string name="custom_url_scheme">de.krawings.kds</string>
-</resources>

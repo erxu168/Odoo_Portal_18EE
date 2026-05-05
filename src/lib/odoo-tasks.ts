@@ -595,10 +595,6 @@ export async function spawnTodayLists(): Promise<void> {
   await getOdoo().call('krawings.task.template', '_cron_spawn_daily_task_lists', []);
 }
 
-export async function ensureListForDeptDate(departmentId: number, date: string): Promise<number> {
-  return getOdoo().call('krawings.task.list', 'ensure_for_dept_date', [departmentId, date]);
-}
-
 // ── Departments (for template manager UI) ────
 
 export interface DepartmentOption {

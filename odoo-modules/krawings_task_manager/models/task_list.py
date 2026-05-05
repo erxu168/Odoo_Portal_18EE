@@ -69,10 +69,10 @@ class KrawingsTaskList(models.Model):
         ]
 
     def add_ad_hoc_line(self, vals):
-        """Helper used by the portal API to add a one-off task to today's or a future list."""
+        """Helper used by the portal API to add a one-off task to today's list."""
         self.ensure_one()
-        if self.date < fields.Date.context_today(self):
-            raise UserError('Past task lists are read-only.')
+        if self.date != fields.Date.context_today(self):
+            raise UserError('Ad-hoc tasks can only be added to today’s list.')
         vals = dict(vals)
         vals.update({
             'list_id': self.id,
@@ -80,33 +80,3 @@ class KrawingsTaskList(models.Model):
             'source_template_line_id': False,
         })
         return self.env['krawings.task.list.line'].create(vals)
-
-    @api.model
-    def ensure_for_dept_date(self, department_id, target_date):
-        """Find or create a list for (department, date). If a template applies on that
-        day-of-week, spawn from it; otherwise create an empty list ready for ad-hoc lines."""
-        if isinstance(target_date, str):
-            target_date = fields.Date.from_string(target_date)
-        if target_date < fields.Date.context_today(self):
-            raise UserError('Cannot create a list for a past date.')
-        existing = self.search([
-            ('date', '=', target_date),
-            ('department_id', '=', department_id),
-        ], limit=1)
-        if existing:
-            return existing.id
-        Template = self.env['krawings.task.template']
-        applicable = Template.search([
-            ('active', '=', True),
-            ('department_id', '=', department_id),
-        ])
-        for tpl in applicable:
-            if tpl.applies_today(target_date):
-                spawned = tpl._spawn_for_date(target_date)
-                if spawned:
-                    return spawned.id
-        # No template applies — create an empty list
-        return self.create({
-            'date': target_date,
-            'department_id': department_id,
-        }).id

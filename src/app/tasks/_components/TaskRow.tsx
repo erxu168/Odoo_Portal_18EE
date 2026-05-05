@@ -99,20 +99,13 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
 
   return (
     <div onClick={handleTap}
-      className={`relative flex items-start gap-3 px-4 py-3.5 border-b border-gray-100 last:border-0 transition-colors ${readOnly ? '' : 'cursor-pointer'} ${
-        completing ? 'opacity-40 pointer-events-none' :
-        task.is_ad_hoc ? 'bg-amber-50 hover:bg-amber-100/60' :
-        (readOnly ? '' : 'hover:bg-orange-50/30')
+      className={`flex items-start gap-3 px-4 py-3.5 border-b border-gray-100 last:border-0 transition-colors ${readOnly ? '' : 'cursor-pointer'} ${
+        completing ? 'opacity-40 pointer-events-none' : (readOnly ? '' : 'hover:bg-orange-50/30')
       }`}>
-
-      {task.is_ad_hoc && (
-        <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500" aria-hidden="true" />
-      )}
 
       <div className={`mt-0.5 w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center border-2 transition-all text-xs font-bold ${
         isLocked ? 'border-gray-200 bg-gray-50 text-gray-400' :
         task.state === 'overdue' ? 'border-red-400 bg-red-50 text-red-500' :
-        task.is_ad_hoc ? 'border-amber-400 bg-white' :
         'border-gray-300 bg-white'
       }`}>
         {isLocked ? '\u{1F512}' : task.state === 'overdue' ? '!' : ''}
@@ -124,8 +117,8 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
             {task.name}
           </p>
           {task.is_ad_hoc && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-white flex-shrink-0 uppercase tracking-wide">
-              ⭐ One-off
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-700 flex-shrink-0">
+              ONE-OFF
             </span>
           )}
         </div>
