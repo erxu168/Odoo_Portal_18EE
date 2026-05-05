@@ -56,11 +56,17 @@ function SortableItem<T>({
 }) {
   const id = getItemId(item);
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
-  const style = {
+  const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 50 : undefined,
     opacity: isDragging ? 0.9 : undefined,
+    // Android/iOS WebView: long-press otherwise triggers text selection or
+    // the context menu, which cancels the touch before dnd-kit's TouchSensor
+    // activates (delay: 200ms). Disable both so drag-to-reorder works on touch.
+    WebkitUserSelect: 'none',
+    userSelect: 'none',
+    WebkitTouchCallout: 'none',
   };
 
   return (
