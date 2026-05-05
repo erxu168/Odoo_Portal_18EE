@@ -33,6 +33,7 @@ export interface TaskListLine {
   deadline_datetime: string | null;
   photo_required: boolean;
   photo_uploaded: boolean;
+  photo_instructions: string | null;
   module_link_type: ModuleLink;
   state: LineState;
   completed_at: string | null;
@@ -80,6 +81,7 @@ export interface TaskTemplateLine {
   day_part: DayPart;
   deadline_time: number | null;   // Float hours, e.g. 14.5 = 14:30
   photo_required: boolean;
+  photo_instructions: string | null;
   module_link_type: ModuleLink;
   subtasks: { id: number; name: string; sequence: number }[];
 }
@@ -178,7 +180,8 @@ const LIST_FIELDS = [
 
 const LINE_FIELDS = [
   'id', 'list_id', 'name', 'sequence', 'day_part', 'deadline_datetime',
-  'photo_required', 'photo_uploaded', 'module_link_type', 'state',
+  'photo_required', 'photo_uploaded', 'photo_instructions',
+  'module_link_type', 'state',
   'completed_at', 'completed_by_id', 'completed_by_name',
   'is_ad_hoc', 'source_template_line_id', 'subtask_ids',
 ];
@@ -222,6 +225,7 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
     deadline_datetime: odooDtToIso(l.deadline_datetime),
     photo_required: !!l.photo_required,
     photo_uploaded: !!l.photo_uploaded,
+    photo_instructions: l.photo_instructions || null,
     module_link_type: (l.module_link_type || 'none') as ModuleLink,
     state: l.state as LineState,
     completed_at: odooDtToIso(l.completed_at),
@@ -352,12 +356,13 @@ export async function toggleSubtask(subtaskId: number, done: boolean, employeeId
 
 export async function addAdHocLine(
   listId: number,
-  vals: { name: string; day_part: DayPart; deadline_datetime?: string | null; photo_required?: boolean; module_link_type?: ModuleLink },
+  vals: { name: string; day_part: DayPart; deadline_datetime?: string | null; photo_required?: boolean; photo_instructions?: string | null; module_link_type?: ModuleLink },
 ): Promise<number> {
   const odooVals: any = {
     name: vals.name,
     day_part: vals.day_part,
     photo_required: !!vals.photo_required,
+    photo_instructions: vals.photo_instructions || false,
     module_link_type: vals.module_link_type || 'none',
   };
   if (vals.deadline_datetime) {
@@ -370,9 +375,10 @@ export async function addAdHocLine(
 
 export async function updateLine(
   lineId: number,
-  vals: Partial<{ name: string; day_part: DayPart; deadline_datetime: string | null; photo_required: boolean; module_link_type: ModuleLink }>,
+  vals: Partial<{ name: string; day_part: DayPart; deadline_datetime: string | null; photo_required: boolean; photo_instructions: string | null; module_link_type: ModuleLink }>,
 ): Promise<void> {
   const odooVals: any = { ...vals };
+  if (vals.photo_instructions === null) odooVals.photo_instructions = false;
   if (vals.deadline_datetime) {
     odooVals.deadline_datetime = new Date(vals.deadline_datetime).toISOString().slice(0, 19).replace('T', ' ');
   } else if (vals.deadline_datetime === null) {
@@ -409,7 +415,7 @@ const TEMPLATE_FIELDS = [
 
 const TEMPLATE_LINE_FIELDS = [
   'id', 'template_id', 'name', 'sequence', 'day_part', 'deadline_time',
-  'photo_required', 'module_link_type', 'subtask_ids',
+  'photo_required', 'photo_instructions', 'module_link_type', 'subtask_ids',
 ];
 
 const TEMPLATE_SUBTASK_FIELDS = ['id', 'line_id', 'name', 'sequence'];
@@ -472,6 +478,7 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     day_part: l.day_part as DayPart,
     deadline_time: l.deadline_time === false ? null : l.deadline_time,
     photo_required: !!l.photo_required,
+    photo_instructions: l.photo_instructions || null,
     module_link_type: (l.module_link_type || 'none') as ModuleLink,
     subtasks: subByLine.get(l.id) || [],
   }));
@@ -497,6 +504,7 @@ export interface TemplateLineInput {
   day_part: DayPart;
   deadline_time?: number | null;
   photo_required?: boolean;
+  photo_instructions?: string | null;
   module_link_type?: ModuleLink;
   subtasks?: { id?: number; name: string; sequence?: number }[];
 }
@@ -557,6 +565,7 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
     day_part: line.day_part,
     deadline_time: line.deadline_time ?? false,
     photo_required: !!line.photo_required,
+    photo_instructions: line.photo_instructions || false,
     module_link_type: line.module_link_type || 'none',
   };
   let lineId = line.id;

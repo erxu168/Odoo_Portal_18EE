@@ -17,6 +17,9 @@ class KrawingsTaskListLine(models.Model):
     day_part = fields.Selection(DAY_PART_SELECTION, required=True, default='opening')
     deadline_datetime = fields.Datetime()
     photo_required = fields.Boolean()
+    photo_instructions = fields.Char(
+        help='Hint shown to staff above the photo upload button.',
+    )
     module_link_type = fields.Selection(MODULE_LINK_SELECTION, default='none')
 
     completed_at = fields.Datetime(readonly=True)

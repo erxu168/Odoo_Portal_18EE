@@ -22,6 +22,7 @@ export interface AdHocSubmitVals {
   day_part: DayPart;
   deadline_datetime: string | null;
   photo_required: boolean;
+  photo_instructions: string | null;
   module_link_type: ModuleLink;
 }
 
@@ -36,6 +37,7 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
   const [dayPart, setDayPart]                 = useState<DayPart>('opening');
   const [deadline, setDeadline]               = useState('');
   const [photoRequired, setPhotoRequired]     = useState(false);
+  const [photoInstructions, setPhotoInstr]    = useState('');
   const [moduleLink, setModuleLink]           = useState<ModuleLink>('none');
   const [submitting, setSubmitting]           = useState(false);
   const [error, setError]                     = useState<string | null>(null);
@@ -53,6 +55,7 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
         day_part: dayPart,
         deadline_datetime: deadlineIso,
         photo_required: photoRequired,
+        photo_instructions: photoRequired && photoInstructions.trim() ? photoInstructions.trim() : null,
         module_link_type: moduleLink,
       });
     } catch (e: unknown) {
@@ -96,6 +99,18 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
             <input type="checkbox" checked={photoRequired} onChange={e => setPhotoRequired(e.target.checked)} />
             Photo required
           </label>
+          {photoRequired && (
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Photo instructions (optional)</label>
+              <textarea
+                value={photoInstructions}
+                onChange={e => setPhotoInstr(e.target.value)}
+                placeholder="e.g. Take picture of the toilet bowl showing the connectors/screws"
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+              />
+            </div>
+          )}
           {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
         </div>
         <div className="flex gap-2 mt-5">

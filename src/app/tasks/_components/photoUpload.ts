@@ -31,15 +31,44 @@ async function compressImage(file: File, maxLongEdge: number, quality: number): 
   return { base64, filename: `${stem}.jpg` };
 }
 
+export class PhotoCancelled extends Error {
+  cancelled = true as const;
+  constructor() { super('Photo upload cancelled'); this.name = 'PhotoCancelled'; }
+}
+
 export function uploadTaskPhoto(lineId: number, onAfter?: () => Promise<void>): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
     input.capture = 'environment' as never;
+
+    // The browser fires no `change` event when the user dismisses the camera
+    // dialog. Without an explicit cancel handler the returned Promise never
+    // settles, leaving the row stuck on "⏳ Uploading...". Two fallbacks:
+    //   (a) the modern `cancel` event (Chromium 113+), and
+    //   (b) a window-focus return: if focus comes back and no file was picked
+    //       within 500ms, treat it as a cancellation.
+    let settled = false;
+    const settleAsCancelled = () => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('focus', onFocusBack);
+      reject(new PhotoCancelled());
+    };
+    const onFocusBack = () => {
+      window.removeEventListener('focus', onFocusBack);
+      setTimeout(settleAsCancelled, 500);
+    };
+    input.addEventListener('cancel', settleAsCancelled);
+    window.addEventListener('focus', onFocusBack);
+
     input.onchange = async () => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('focus', onFocusBack);
       const file = input.files?.[0];
-      if (!file) return reject(new Error('No file selected'));
+      if (!file) return reject(new PhotoCancelled());
       try {
         const compressed = await compressImage(file, 1280, 0.85);
         const controller = new AbortController();

@@ -245,6 +245,7 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
   const [dayPart, setDayPart]         = useState<DayPart>(line?.day_part ?? 'opening');
   const [deadline, setDeadline]       = useState(floatToHHMM(line?.deadline_time));
   const [photoRequired, setPhotoReq]  = useState(line?.photo_required ?? false);
+  const [photoInstructions, setPhotoInstr] = useState(line?.photo_instructions ?? '');
   const [moduleLink, setModuleLink]   = useState<ModuleLink>(line?.module_link_type ?? 'none');
   const [subtasks, setSubtasks]       = useState<{ id?: number; name: string }[]>(
     line?.subtasks.map(s => ({ id: s.id, name: s.name })) ?? [],
@@ -268,6 +269,7 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
           day_part: dayPart,
           deadline_time: hhmmToFloat(deadline),
           photo_required: photoRequired,
+          photo_instructions: photoRequired && photoInstructions.trim() ? photoInstructions.trim() : null,
           module_link_type: moduleLink,
           subtasks: subtasks
             .filter(s => s.name.trim())
@@ -318,6 +320,19 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
             <input type="checkbox" checked={photoRequired} onChange={e => setPhotoReq(e.target.checked)} />
             Photo required
           </label>
+          {photoRequired && (
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Photo instructions (optional)</label>
+              <textarea
+                value={photoInstructions}
+                onChange={e => setPhotoInstr(e.target.value)}
+                placeholder="e.g. Take picture of the toilet bowl showing the connectors/screws"
+                rows={2}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+              />
+              <p className="text-[11px] text-gray-400 mt-1">Shown to staff above the photo upload button.</p>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Subtasks</label>
             <div className="space-y-1.5">

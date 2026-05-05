@@ -16,6 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       day_part: body.day_part as DayPart,
       deadline_datetime: body.deadline_datetime ?? null,
       photo_required: !!body.photo_required,
+      photo_instructions: body.photo_instructions ?? null,
       module_link_type: (body.module_link_type || 'none') as ModuleLink,
     });
     return NextResponse.json({ ok: true, line_id: lineId });

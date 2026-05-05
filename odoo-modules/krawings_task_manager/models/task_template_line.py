@@ -31,6 +31,10 @@ class KrawingsTaskTemplateLine(models.Model):
         help='Time of day this task must be done by (24h, e.g. 10.5 = 10:30). Leave empty for no deadline.',
     )
     photo_required = fields.Boolean()
+    photo_instructions = fields.Char(
+        help='Hint shown to staff above the photo upload button when photo_required is set. '
+             'e.g. "Take picture of the toilet bowl showing the connectors/screws."',
+    )
     module_link_type = fields.Selection(MODULE_LINK_SELECTION, default='none')
     subtask_ids = fields.One2many(
         'krawings.task.template.subtask', 'line_id', copy=True,

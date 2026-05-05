@@ -90,7 +90,11 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
     e.stopPropagation();
     setUploading(true);
     try { await onPhotoUpload(task.id); setPhoto(true); setError(null); }
-    catch { setError('Photo upload failed'); }
+    catch (err: unknown) {
+      // Don't surface an error if the user just dismissed the camera.
+      const cancelled = !!(err && typeof err === 'object' && 'cancelled' in err);
+      if (!cancelled) setError(err instanceof Error ? err.message : 'Photo upload failed');
+    }
     finally { setUploading(false); }
   }
 
@@ -163,10 +167,17 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         )}
 
         {!readOnly && task.photo_required && !photoUploaded && allSubtasksDone && (
-          <button onClick={handlePhoto} disabled={uploading}
-            className="mt-2 w-full py-2.5 border-2 border-dashed border-orange-400 rounded-lg bg-orange-50 text-orange-700 text-xs font-semibold text-center hover:bg-orange-100 transition-colors disabled:opacity-60">
-            {uploading ? '⏳ Uploading...' : '\u{1F4F8} Tap to take / upload photo'}
-          </button>
+          <>
+            {task.photo_instructions && (
+              <div className="mt-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-xs leading-snug">
+                <span className="font-bold">📋 Photo guide: </span>{task.photo_instructions}
+              </div>
+            )}
+            <button onClick={handlePhoto} disabled={uploading}
+              className="mt-2 w-full py-2.5 border-2 border-dashed border-orange-400 rounded-lg bg-orange-50 text-orange-700 text-xs font-semibold text-center hover:bg-orange-100 transition-colors disabled:opacity-60">
+              {uploading ? '⏳ Uploading...' : '\u{1F4F8} Tap to take / upload photo'}
+            </button>
+          </>
         )}
         {photoUploaded && (
           <div className="mt-2 py-2 px-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-xs font-semibold">

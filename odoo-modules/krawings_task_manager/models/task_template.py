@@ -96,6 +96,7 @@ class KrawingsTaskTemplate(models.Model):
                 'day_part': tline.day_part,
                 'deadline_datetime': deadline_dt,
                 'photo_required': tline.photo_required,
+                'photo_instructions': tline.photo_instructions or False,
                 'module_link_type': tline.module_link_type,
                 'is_ad_hoc': False,
                 'source_template_line_id': tline.id,
