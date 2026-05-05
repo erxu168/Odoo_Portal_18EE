@@ -272,7 +272,7 @@ export function getSessionUser(token: string): PortalUser | null {
   const db = getDb();
   const now = nowISO();
   const row = db.prepare(`
-    SELECT u.id, u.name, u.email, u.role, u.employee_id, u.applicant_id, u.must_change_password, u.status, u.active, u.login_count, u.tour_seen, u.allowed_company_ids, u.created_at, u.last_login
+    SELECT u.id, u.name, u.email, u.role, u.employee_id, u.applicant_id, u.must_change_password, u.status, u.active, u.login_count, u.tour_seen, u.allowed_company_ids, u.preferences, u.created_at, u.last_login
     FROM sessions s
     JOIN portal_users u ON u.id = s.user_id
     WHERE s.token = ? AND u.active = 1 AND u.status = 'active' AND s.expires_at > ?
