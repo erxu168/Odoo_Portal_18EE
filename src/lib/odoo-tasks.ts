@@ -153,20 +153,18 @@ function m2oName(field: any): string | null {
 
 export async function getEmployeeContext(employeeId: number): Promise<EmployeeContext | null> {
   if (!employeeId) return null;
-  const rows = await getOdoo().searchRead(
-    'hr.employee',
-    [['id', '=', employeeId]],
-    ['id', 'name', 'department_id', 'company_id'],
-    { limit: 1 },
+  // Use the addon's sudo'd helper so this works regardless of whether the
+  // backend Odoo user has permission to read arbitrary hr.employee records.
+  const result = await getOdoo().call(
+    'krawings.task.list', 'get_employee_context', [employeeId],
   );
-  if (!rows.length) return null;
-  const e = rows[0];
+  if (!result) return null;
   return {
-    employee_id: e.id,
-    employee_name: e.name,
-    department_id: m2oId(e.department_id),
-    department_name: m2oName(e.department_id),
-    company_id: m2oId(e.company_id),
+    employee_id: result.employee_id,
+    employee_name: result.employee_name,
+    department_id: result.department_id || null,
+    department_name: result.department_name || null,
+    company_id: result.company_id || null,
   };
 }
 

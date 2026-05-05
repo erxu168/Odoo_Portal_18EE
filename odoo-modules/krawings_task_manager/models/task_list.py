@@ -82,6 +82,28 @@ class KrawingsTaskList(models.Model):
         return self.env['krawings.task.list.line'].create(vals)
 
     @api.model
+    def get_employee_context(self, employee_id):
+        """Return department + company info for the portal user's employee.
+
+        Runs as sudo because the Odoo user the portal authenticates with may
+        not have permission to read arbitrary hr.employee records (only their
+        own). The portal needs this data for any logged-in user, so we expose
+        it as a privileged helper.
+        """
+        if not employee_id:
+            return False
+        emp = self.env['hr.employee'].sudo().browse(int(employee_id))
+        if not emp.exists():
+            return False
+        return {
+            'employee_id': emp.id,
+            'employee_name': emp.name,
+            'department_id': emp.department_id.id or False,
+            'department_name': emp.department_id.name or False,
+            'company_id': emp.company_id.id or False,
+        }
+
+    @api.model
     def ensure_for_dept_date(self, department_id, target_date):
         """Find or create a list for (department, date). If a template applies on that
         day-of-week, spawn from it; otherwise create an empty list ready for ad-hoc lines."""
