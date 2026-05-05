@@ -25,7 +25,14 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  // Force the Capacitor WebView (and other clients) to never cache authenticated
+  // page HTML. Static chunks still cache forever via their content-hashed
+  // filenames, so this only affects the small HTML shells that point at them.
+  // Without this, deploys can take days to surface inside the Android wrapper.
+  response.headers.set('Cache-Control', 'no-store, must-revalidate');
+  response.headers.set('Pragma', 'no-cache');
+  return response;
 }
 
 export const config = {
