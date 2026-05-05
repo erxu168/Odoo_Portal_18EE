@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import Link from 'next/link';
+import ManagerTabs from '../_components/ManagerTabs';
 
 export default function AdminPage() {
   const user = getCurrentUser();
@@ -11,9 +12,11 @@ export default function AdminPage() {
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
         <Link href="/" className="text-sm text-gray-400 hover:text-orange-500 transition-colors">← Dashboard</Link>
-        <h1 className="font-bold text-gray-800">Task Management — Admin</h1>
+        <h1 className="font-bold text-gray-800">Task Settings</h1>
         <div className="w-16" />
       </div>
+
+      <ManagerTabs />
 
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
         <section>

@@ -1,18 +1,30 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const TABS = [
-  { href: '/tasks/manager',           label: 'Dashboard' },
-  { href: '/tasks/manager/templates', label: 'Templates' },
+const BASE_TABS = [
+  { href: '/tasks/manager',           label: 'Dashboard', adminOnly: false },
+  { href: '/tasks/manager/templates', label: 'Templates', adminOnly: false },
+  { href: '/tasks/admin',             label: 'Settings',  adminOnly: true  },
 ];
 
 export default function ManagerTabs() {
   const path = usePathname();
+  const [role, setRole] = useState<string>('staff');
+
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d.user?.role) setRole(d.user.role);
+    }).catch(() => {});
+  }, []);
+
+  const tabs = BASE_TABS.filter(t => !t.adminOnly || role === 'admin');
+
   return (
     <nav className="sticky top-0 z-40 bg-white border-b border-gray-200 flex overflow-x-auto px-4 scrollbar-hide">
-      {TABS.map(tab => {
+      {tabs.map(tab => {
         const active = path === tab.href;
         return (
           <Link key={tab.href} href={tab.href}

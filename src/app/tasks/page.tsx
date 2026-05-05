@@ -5,7 +5,7 @@ export default function TasksPage() {
   const user = getCurrentUser();
 
   if (!user)              redirect('/login');
-  if (user.role === 'admin')   redirect('/tasks/admin');
+  if (user.role === 'admin')   redirect('/tasks/manager');
   if (user.role === 'manager') redirect('/tasks/manager');
   redirect('/tasks/staff');
 }
