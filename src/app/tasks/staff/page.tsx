@@ -28,6 +28,14 @@ export default function StaffPage() {
   const [date,    setDate]    = useState<string>(todayStr());
   const [showAdd, setShowAdd] = useState(false);
   const [creating, setCreating] = useState(false);
+  // Track whether we're on the client. Time-dependent values (todayLabel,
+  // greeting) and the date picker default must be computed only after mount,
+  // because the SSR pass runs in the server's UTC timezone while the phone is
+  // in Europe/Berlin — without this gate, React throws hydration errors
+  // (#418/#423/#425) that can interfere with the role-detection useEffect and
+  // hide the admin controls entirely.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const today    = todayStr();
   const isToday  = date === today;
@@ -146,9 +154,13 @@ export default function StaffPage() {
     await load();
   }
 
-  const todayLabel = new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
-  const hour       = new Date().getHours();
-  const greeting   = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  // Server renders these as empty strings; client fills them in after mount.
+  const todayLabel = mounted
+    ? new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
+    : '';
+  const greeting   = mounted
+    ? (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; })()
+    : '';
   const list = data?.list ?? null;
   const ctx  = data?.context ?? null;
   const showManagerControls = isManagerOrAdmin && !!ctx?.department_id;
