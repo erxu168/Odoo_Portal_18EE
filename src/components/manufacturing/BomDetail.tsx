@@ -686,7 +686,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
             {editLines.map(line => (
               <div key={line.line_id} className="bg-white border border-gray-200 rounded-xl px-4 py-2 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
-                  <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{line.product_name}</div>
+                  <div className="text-[var(--fs-sm)] font-bold text-gray-900 break-words leading-snug">{line.product_name}</div>
                   <div className="text-[var(--fs-xs)] text-gray-400">{line.uom}</div>
                 </div>
                 <input
