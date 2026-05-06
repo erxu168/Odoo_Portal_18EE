@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, use } from 'react';
 import Link from 'next/link';
 import type { TaskTemplate, TaskTemplateLine, TaskAttachment, DayPart, ModuleLink } from '@/lib/odoo-tasks';
 import AttachmentList from '../../../_components/AttachmentList';
+import Toast from '@/components/ui/Toast';
+import { useToast } from '../../../_components/useToast';
 
 const DAY_PART_OPTIONS: { value: DayPart; label: string }[] = [
   { value: 'opening', label: 'Opening' },
@@ -55,6 +57,7 @@ export default function TemplateEditPage({ params }: PageProps) {
   const [saving, setSaving]   = useState(false);
   const [editingLine, setEditingLine] = useState<TaskTemplateLine | null>(null);
   const [showAddLine, setShowAddLine] = useState(false);
+  const { toast, showToast, dismissToast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -83,8 +86,9 @@ export default function TemplateEditPage({ params }: PageProps) {
       });
       const body = await res.json();
       if (!body.ok) throw new Error(body.error || 'Failed');
+      showToast('Settings saved');
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Save failed');
+      showToast(e instanceof Error ? e.message : 'Save failed', 'error');
     } finally {
       setSaving(false);
     }
@@ -98,7 +102,7 @@ export default function TemplateEditPage({ params }: PageProps) {
       body: JSON.stringify({ action: 'archive' }),
     });
     const body = await res.json();
-    if (!body.ok) { alert(body.error || 'Failed'); return; }
+    if (!body.ok) { showToast(body.error || 'Failed to archive', 'error'); return; }
     window.location.href = '/tasks/manager/templates';
   }
 
@@ -106,8 +110,9 @@ export default function TemplateEditPage({ params }: PageProps) {
     if (!confirm('Delete this task from the template?')) return;
     const res = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}`, { method: 'DELETE' });
     const body = await res.json();
-    if (!body.ok) { alert(body.error || 'Failed'); return; }
+    if (!body.ok) { showToast(body.error || 'Failed to delete', 'error'); return; }
     await load();
+    showToast('Task removed');
   }
 
   if (loading) {
@@ -245,9 +250,15 @@ export default function TemplateEditPage({ params }: PageProps) {
           tplId={tplId}
           line={editingLine}
           onClose={() => { setShowAddLine(false); setEditingLine(null); }}
-          onSaved={async () => { setShowAddLine(false); setEditingLine(null); await load(); }}
+          onSaved={async (msg) => {
+            setShowAddLine(false);
+            setEditingLine(null);
+            await load();
+            if (msg) showToast(msg);
+          }}
         />
       )}
+      {toast && <Toast message={toast.msg} type={toast.type} visible={true} onDismiss={dismissToast} />}
     </div>
   );
 }
@@ -256,7 +267,17 @@ interface LineModalProps {
   tplId: number;
   line: TaskTemplateLine | null;
   onClose: () => void;
-  onSaved: () => Promise<void>;
+  onSaved: (toastMessage?: string) => Promise<void>;
+}
+
+interface PendingAttachment {
+  /** Local-only id used as React key while the file is queued for upload. */
+  tempId: string;
+  name: string;
+  mimetype: string;
+  /** Base64 payload stripped of the data: prefix, ready to POST. */
+  base64: string;
+  size: number;
 }
 
 function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
@@ -270,12 +291,12 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
     line?.subtasks.map(s => ({ id: s.id, name: s.name })) ?? [],
   );
   const [attachments, setAttachments] = useState<TaskAttachment[]>(line?.attachments ?? []);
+  const [pendingAtts, setPendingAtts] = useState<PendingAttachment[]>([]);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
 
   async function uploadAttachment(file: File) {
-    if (!line?.id) return;
     setUploadingFile(true);
     try {
       const dataUrl = await new Promise<string>((res, rej) => {
@@ -285,19 +306,35 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
         r.readAsDataURL(file);
       });
       const base64 = dataUrl.split(',')[1] || '';
-      const res = await fetch(`/api/tasks/templates/lines/${line.id}/attachments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: file.name, mimetype: file.type, data_base64: base64 }),
-      });
-      const body = await res.json();
-      if (!body.ok) throw new Error(body.error || 'Upload failed');
-      setAttachments(prev => [...prev, { id: body.id, name: file.name, mimetype: file.type, file_size: file.size }]);
+      if (line?.id) {
+        // Existing line — upload immediately.
+        const res = await fetch(`/api/tasks/templates/lines/${line.id}/attachments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: file.name, mimetype: file.type, data_base64: base64 }),
+        });
+        const body = await res.json();
+        if (!body.ok) throw new Error(body.error || 'Upload failed');
+        setAttachments(prev => [...prev, { id: body.id, name: file.name, mimetype: file.type, file_size: file.size }]);
+      } else {
+        // New line — stash locally; we'll upload after the line is created.
+        setPendingAtts(prev => [...prev, {
+          tempId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          name: file.name,
+          mimetype: file.type,
+          base64,
+          size: file.size,
+        }]);
+      }
     } catch (e: unknown) {
       alert(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       setUploadingFile(false);
     }
+  }
+
+  function removePending(tempId: string) {
+    setPendingAtts(prev => prev.filter(p => p.tempId !== tempId));
   }
 
   async function submit() {
@@ -325,7 +362,34 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
       });
       const body = await res.json();
       if (!body.ok) throw new Error(body.error || 'Failed');
-      await onSaved();
+
+      // Resolve the line id for attachment uploads. PATCH doesn't return the id,
+      // but we already have it on `line.id`. POST returns body.line_id for new lines.
+      const lineId: number | undefined = line?.id ?? body.line_id;
+      let uploadedCount = 0;
+      let uploadFailures = 0;
+      if (lineId && pendingAtts.length > 0) {
+        for (const p of pendingAtts) {
+          try {
+            const upRes = await fetch(`/api/tasks/templates/lines/${lineId}/attachments`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: p.name, mimetype: p.mimetype, data_base64: p.base64 }),
+            });
+            const upBody = await upRes.json();
+            if (upBody.ok) uploadedCount++;
+            else uploadFailures++;
+          } catch {
+            uploadFailures++;
+          }
+        }
+        setPendingAtts([]);
+      }
+
+      const baseMsg = line ? 'Task saved' : 'Task added';
+      const fileNote = uploadedCount > 0 ? ` · ${uploadedCount} file${uploadedCount === 1 ? '' : 's'} uploaded` : '';
+      const failNote = uploadFailures > 0 ? ` · ${uploadFailures} file upload${uploadFailures === 1 ? '' : 's'} failed` : '';
+      await onSaved(`${baseMsg}${fileNote}${failNote}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed');
       setSubmitting(false);
@@ -400,31 +464,37 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Attachments (instructions, references)</label>
-            {!line?.id ? (
-              <p className="text-[11px] text-gray-400">Save the task first, then re-open it to attach files.</p>
-            ) : (
-              <>
-                <AttachmentList
-                  attachments={attachments}
-                  canDelete
-                  onDeleted={(id) => setAttachments(prev => prev.filter(a => a.id !== id))}
-                  compact
-                />
-                <label className="mt-2 inline-flex items-center justify-center gap-2 px-3 py-2 bg-orange-50 border-2 border-dashed border-orange-400 rounded-lg text-xs font-semibold text-orange-700 cursor-pointer hover:bg-orange-100">
-                  {uploadingFile ? '⏳ Uploading…' : '+ Add file (PDF / image)'}
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".pdf,application/pdf,image/*"
-                    onChange={e => {
-                      const f = e.target.files?.[0];
-                      if (f) uploadAttachment(f);
-                      e.target.value = '';
-                    }}
-                  />
-                </label>
-              </>
+            <AttachmentList
+              attachments={attachments}
+              canDelete
+              onDeleted={(id) => setAttachments(prev => prev.filter(a => a.id !== id))}
+              compact
+            />
+            {pendingAtts.length > 0 && (
+              <ul className="mt-1 space-y-1">
+                {pendingAtts.map(p => (
+                  <li key={p.tempId} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-xs">
+                    <span>📎</span>
+                    <span className="flex-1 min-w-0 truncate text-gray-800">{p.name}</span>
+                    <span className="text-[10px] text-amber-700 flex-shrink-0">will upload on save</span>
+                    <button onClick={() => removePending(p.tempId)} className="text-[11px] text-red-500 hover:text-red-600 flex-shrink-0">Remove</button>
+                  </li>
+                ))}
+              </ul>
             )}
+            <label className="mt-2 inline-flex items-center justify-center gap-2 px-3 py-2 bg-orange-50 border-2 border-dashed border-orange-400 rounded-lg text-xs font-semibold text-orange-700 cursor-pointer hover:bg-orange-100">
+              {uploadingFile ? '⏳ Reading file…' : '+ Add file (PDF / image)'}
+              <input
+                type="file"
+                className="hidden"
+                accept=".pdf,application/pdf,image/*"
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadAttachment(f);
+                  e.target.value = '';
+                }}
+              />
+            </label>
           </div>
           {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
           <div className="h-2" />

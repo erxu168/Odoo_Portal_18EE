@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import ManagerTabs from '../../_components/ManagerTabs';
+import Toast from '@/components/ui/Toast';
+import { useToast } from '../../_components/useToast';
 import type { TaskTemplateSummary, DepartmentOption } from '@/lib/odoo-tasks';
 
 const DAY_LABELS: { key: keyof TaskTemplateSummary['days_of_week']; label: string }[] = [

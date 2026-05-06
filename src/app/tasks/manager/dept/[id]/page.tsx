@@ -6,6 +6,8 @@ import type { TaskList } from '@/lib/odoo-tasks';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import AdHocModal, { type AdHocSubmitVals } from '../../../_components/AdHocModal';
 import { uploadTaskPhoto } from '../../../_components/photoUpload';
+import Toast from '@/components/ui/Toast';
+import { useToast } from '../../../_components/useToast';
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -33,6 +35,7 @@ export default function DeptReviewPage({ params }: PageProps) {
   const isToday = date === today;
   const isPast = date < today;
   const isFuture = date > today;
+  const { toast, showToast, dismissToast } = useToast();
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -87,8 +90,9 @@ export default function DeptReviewPage({ params }: PageProps) {
     try {
       await ensureList();
       await load();
+      showToast('List created');
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Failed');
+      showToast(e instanceof Error ? e.message : 'Failed', 'error');
     } finally {
       setCreating(false);
     }
@@ -107,6 +111,7 @@ export default function DeptReviewPage({ params }: PageProps) {
     if (!body.ok) throw new Error(body.error || 'Failed to add task');
     setShowAddModal(false);
     await load();
+    showToast('Task added');
   }
 
   return (
@@ -198,6 +203,7 @@ export default function DeptReviewPage({ params }: PageProps) {
       {showAddModal && (
         <AdHocModal date={date} onClose={() => setShowAddModal(false)} onSubmit={handleAdd} />
       )}
+      {toast && <Toast message={toast.msg} type={toast.type} visible={true} onDismiss={dismissToast} />}
     </div>
   );
 }

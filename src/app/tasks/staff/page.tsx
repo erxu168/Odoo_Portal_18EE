@@ -6,6 +6,8 @@ import ChecklistCard from '../_components/ChecklistCard';
 import BottomNav from '../_components/BottomNav';
 import AdHocModal, { type AdHocSubmitVals } from '../_components/AdHocModal';
 import { uploadTaskPhoto } from '../_components/photoUpload';
+import Toast from '@/components/ui/Toast';
+import { useToast } from '../_components/useToast';
 
 interface TodayResponse {
   context: EmployeeContext | null;
@@ -42,6 +44,7 @@ export default function StaffPage() {
   const isPast   = date < today;
   const isFuture = date > today;
   const isManagerOrAdmin = role === 'manager' || role === 'admin';
+  const { toast, showToast, dismissToast } = useToast();
 
   // Fetch user role once on mount
   useEffect(() => {
@@ -95,6 +98,7 @@ export default function StaffPage() {
     const body = await res.json();
     if (!body.ok) throw new Error(body.error || 'Failed to complete');
     await load();
+    showToast('Task completed');
   }
 
   async function handleSubtaskToggle(_lineId: number, subtaskId: number, done: boolean) {
@@ -132,8 +136,9 @@ export default function StaffPage() {
     try {
       await ensureList();
       await load();
+      showToast('List created');
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : 'Failed');
+      showToast(e instanceof Error ? e.message : 'Failed', 'error');
     } finally {
       setCreating(false);
     }
@@ -152,6 +157,7 @@ export default function StaffPage() {
     if (!body.ok) throw new Error(body.error || 'Failed to add task');
     setShowAdd(false);
     await load();
+    showToast('Task added');
   }
 
   // Server renders these as empty strings; client fills them in after mount.
@@ -284,6 +290,7 @@ export default function StaffPage() {
       {showAdd && (
         <AdHocModal date={date} onClose={() => setShowAdd(false)} onSubmit={handleAdd} />
       )}
+      {toast && <Toast message={toast.msg} type={toast.type} visible={true} onDismiss={dismissToast} />}
     </div>
   );
 }
