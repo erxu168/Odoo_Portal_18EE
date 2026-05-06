@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import AppHeader from '@/components/ui/AppHeader';
 import TermDashboard from '@/components/termination/TermDashboard';
 import TermList from '@/components/termination/TermList';
 import TermWizard from '@/components/termination/TermWizard';
@@ -69,17 +70,7 @@ export default function TerminationPage() {
       case 'dashboard':
         return (
           <>
-            <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
-              <div className="flex items-center gap-3">
-                <button onClick={goHome} className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
-                  <HomeIcon />
-                </button>
-                <div className="flex-1">
-                  <h1 className="text-[20px] font-bold text-white">Terminations</h1>
-                  <p className="text-[12px] text-white/45 mt-0.5">Employee termination management</p>
-                </div>
-              </div>
-            </div>
+            <AppHeader title="Terminations" subtitle="Employee termination management" />
             <TermDashboard onNavigate={handleDashboardNav} />
           </>
         );
