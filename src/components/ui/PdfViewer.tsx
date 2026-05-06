@@ -207,11 +207,24 @@ export default function PdfViewer({
     };
   }, []);
 
+  // Close on Android hardware back button + browser back gesture so the user has
+  // an escape route even when the X button is partially obscured on narrow phones.
+  useEffect(() => {
+    const handler = (e: PopStateEvent) => { e.preventDefault(); onClose(); };
+    history.pushState({ pdfViewer: true }, '');
+    window.addEventListener('popstate', handler);
+    return () => {
+      window.removeEventListener('popstate', handler);
+      // Roll the dummy state we pushed off the stack on unmount
+      if (history.state?.pdfViewer) history.back();
+    };
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-[200] bg-black/95 flex flex-col">
       {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-3 bg-black/80 backdrop-blur-sm flex-shrink-0">
-        <div className="flex items-center gap-3">
+      <div className="relative flex items-center justify-between px-4 py-3 pr-16 bg-black/80 backdrop-blur-sm flex-shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
           {/* Page nav */}
           <button onClick={prevPage} disabled={currentPage <= 1}
             className="w-8 h-8 rounded-full flex items-center justify-center text-white/70 active:bg-white/10 disabled:opacity-30">
@@ -241,20 +254,19 @@ export default function PdfViewer({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* File name */}
-          {fileName && (
-            <span className="text-white/50 text-[11px] font-mono truncate max-w-[120px]">{fileName}</span>
-          )}
+        {/* File name — hidden on narrow phones so the close button always fits */}
+        {fileName && (
+          <span className="hidden sm:inline text-white/50 text-[11px] font-mono truncate max-w-[120px] mr-12">{fileName}</span>
+        )}
 
-          {/* Close button */}
-          <button onClick={onClose}
-            className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20 transition-colors">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
+        {/* Close button — absolutely pinned top-right so it's never pushed off-screen
+            regardless of how wide the page+zoom controls become. */}
+        <button onClick={onClose} aria-label="Close"
+          className="absolute top-1/2 right-3 -translate-y-1/2 w-11 h-11 rounded-full bg-white/15 flex items-center justify-center active:bg-white/25 transition-colors z-10">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
       </div>
 
       {/* Reset zoom button — only visible when zoomed */}
