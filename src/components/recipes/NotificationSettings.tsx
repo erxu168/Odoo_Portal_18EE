@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
 import {
   type NotificationSettings as Settings,
   BANNER_DURATION_OPTIONS,
@@ -30,17 +31,7 @@ export default function NotificationSettings({ settings, onChange, onBack }: Pro
   return (
     <div className="min-h-screen bg-[#1C1C1E] flex flex-col">
       {/* Header */}
-      <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-zinc-700 border border-zinc-700 flex items-center justify-center active:bg-zinc-600">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7" /></svg>
-          </button>
-          <div className="flex-1">
-            <h1 className="text-[20px] font-bold text-white">Notification Settings</h1>
-            <p className="text-[12px] text-zinc-400">Timer alerts &amp; sounds</p>
-          </div>
-        </div>
-      </div>
+      <AppHeader title="Notification Settings" subtitle="Timer alerts & sounds" showBack onBack={onBack} />
 
       <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
         {/* Sound selection */}

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
 
 interface Recipe {
   id: number;
@@ -137,17 +138,7 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
     const cat = categories.find(c => c.id === activeCategory);
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setActiveCategory(null)} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
-            </button>
-            <div className="flex-1">
-              <h1 className="text-[20px] font-bold text-white">{cat?.name || 'Category'}</h1>
-              <p className="text-[12px] text-white/40 mt-0.5">{filteredByCategory.length} dishes</p>
-            </div>
-          </div>
-        </div>
+        <AppHeader title={cat?.name || 'Category'} subtitle={`${filteredByCategory.length} dishes`} showBack onBack={() => setActiveCategory(null)} />
 
         <div className="px-5 pt-4 pb-8 flex-1">
           {filteredByCategory.length === 0 ? (

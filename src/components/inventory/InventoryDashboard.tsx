@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
 import SortableTileGrid from '@/components/ui/SortableTileGrid';
 
 interface InventoryDashboardProps {
@@ -144,21 +145,10 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
-        <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
-        <div className="flex items-center gap-3 relative">
-          <button onClick={onHome}
-            className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M3 12l9-9 9 9M5 10v10a1 1 0 001 1h3a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1h3a1 1 0 001-1V10"/></svg>
-          </button>
-          <div className="flex-1">
-            <h1 className="text-[20px] font-bold text-white">Inventory</h1>
-            <p className="text-[var(--fs-sm)] text-white/50 mt-0.5">
-              {loading ? 'Loading...' : stats.pending > 0 ? `${stats.pending} lists waiting` : 'Stock counting'}
-            </p>
-          </div>
-        </div>
-      </div>
+      <AppHeader
+        title="Inventory"
+        subtitle={loading ? 'Loading...' : stats.pending > 0 ? `${stats.pending} lists waiting` : 'Stock counting'}
+      />
 
       <div className="px-4 pt-4">
         <SortableTileGrid

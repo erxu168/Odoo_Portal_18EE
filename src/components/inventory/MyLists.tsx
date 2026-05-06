@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
 
 interface MyListsProps {
@@ -94,22 +95,12 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
-        <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
-        <div className="flex items-center gap-3 relative">
-          <button onClick={onHome} className="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
-          </button>
-          <div className="flex-1">
-            <h1 className="text-[20px] font-bold text-white">
-              {userRole === 'admin' ? 'Today\u2019s Counts' : 'My Counts'}
-            </h1>
-            <p className="text-[var(--fs-sm)] text-white/50 mt-0.5">
-              {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}
-            </p>
-          </div>
-        </div>
-      </div>
+      <AppHeader
+        title={userRole === 'admin' ? 'Today\u2019s Counts' : 'My Counts'}
+        subtitle={new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' })}
+        showBack
+        onBack={onHome}
+      />
 
       {/* Status filter */}
       <div className="pt-3">
