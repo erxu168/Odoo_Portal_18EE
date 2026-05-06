@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback, use } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink } from '@/lib/odoo-tasks';
+import AppHeader from '@/components/ui/AppHeader';
 import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import Toast from '@/components/ui/Toast';
@@ -109,6 +111,7 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
 }
 
 export default function TemplateEditPage({ params }: PageProps) {
+  const router = useRouter();
   const resolved = (typeof (params as Promise<{ id: string }>).then === 'function')
     ? use(params as Promise<{ id: string }>)
     : (params as { id: string });
@@ -202,21 +205,33 @@ export default function TemplateEditPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between gap-2">
-        <Link href="/tasks/manager/templates" className="text-sm text-gray-400 hover:text-orange-500 flex-shrink-0">← Templates</Link>
-        <h1 className="font-bold text-gray-800 truncate flex-1 text-center min-w-0">{tpl.name || 'Template'}</h1>
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <button
-            onClick={() => setPreviewMode(v => !v)}
-            className={`text-xs font-semibold px-2.5 py-1 rounded-full transition-colors ${
-              previewMode ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            {previewMode ? '✓ Preview' : '👁 Preview'}
-          </button>
-          <button onClick={archive} className="text-xs font-semibold text-red-500 hover:text-red-600">Archive</button>
-        </div>
-      </div>
+      <AppHeader
+        supertitle="TEMPLATE"
+        title={tpl.name || 'Template'}
+        subtitle={tpl.department_name}
+        showBack
+        onBack={() => router.push('/tasks/manager/templates')}
+        action={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPreviewMode(v => !v)}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+                previewMode
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white/15 text-white border-white/20 active:bg-white/25'
+              }`}
+            >
+              {previewMode ? '✓ Preview' : '👁 Preview'}
+            </button>
+            <button
+              onClick={archive}
+              className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white border border-white/20 active:bg-white/25"
+            >
+              Archive
+            </button>
+          </div>
+        }
+      />
 
       {previewMode && (
         <div className="max-w-[430px] mx-auto bg-gray-50">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import AppHeader from '@/components/ui/AppHeader';
 import ManagerTabs from '../_components/ManagerTabs';
 import type { DashboardData, TaskListSummary } from '@/lib/odoo-tasks';
 
@@ -44,17 +45,19 @@ export default function ManagerDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
-        <Link href="/" className="text-sm text-gray-400 hover:text-orange-500 transition-colors">← Dashboard</Link>
-        <h1 className="font-bold text-gray-800">Department Tasks</h1>
-        <button
-          onClick={handleSpawn}
-          disabled={spawning}
-          className="text-sm font-semibold text-orange-600 hover:text-orange-700 disabled:opacity-50"
-        >
-          {spawning ? '…' : 'Spawn'}
-        </button>
-      </div>
+      <AppHeader
+        supertitle="TASK MANAGER"
+        title="Department Tasks"
+        action={
+          <button
+            onClick={handleSpawn}
+            disabled={spawning}
+            className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white border border-white/20 active:bg-white/25 disabled:opacity-50"
+          >
+            {spawning ? '…' : 'Spawn'}
+          </button>
+        }
+      />
 
       <ManagerTabs />
 

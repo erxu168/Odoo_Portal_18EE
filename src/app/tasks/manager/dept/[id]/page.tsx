@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback, use } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { TaskList } from '@/lib/odoo-tasks';
+import AppHeader from '@/components/ui/AppHeader';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import AdHocModal, { type AdHocSubmitVals } from '../../../_components/AdHocModal';
 import { uploadTaskPhoto } from '../../../_components/photoUpload';
@@ -18,6 +19,7 @@ interface PageProps {
 }
 
 export default function DeptReviewPage({ params }: PageProps) {
+  const router = useRouter();
   // Next 14: params may be sync object; Next 15: thenable. Both compatible with `use`.
   const resolved = (typeof (params as Promise<{ id: string }>).then === 'function')
     ? use(params as Promise<{ id: string }>)
@@ -116,11 +118,12 @@ export default function DeptReviewPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
-        <Link href="/tasks/manager" className="text-sm text-gray-400 hover:text-orange-500">← Manager</Link>
-        <h1 className="font-bold text-gray-800 truncate">{list?.department_name ?? 'Department'}</h1>
-        <div className="w-16" />
-      </div>
+      <AppHeader
+        supertitle="DEPARTMENT"
+        title={list?.department_name ?? 'Department'}
+        showBack
+        onBack={() => router.push('/tasks/manager')}
+      />
 
       <div className="max-w-2xl mx-auto px-4 py-4">
         <div className="flex items-center gap-2 mb-4">

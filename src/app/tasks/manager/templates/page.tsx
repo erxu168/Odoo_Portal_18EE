@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import AppHeader from '@/components/ui/AppHeader';
 import ManagerTabs from '../../_components/ManagerTabs';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../_components/useToast';
@@ -14,6 +16,7 @@ const DAY_LABELS: { key: keyof TaskTemplateSummary['days_of_week']; label: strin
 ];
 
 export default function TemplateListPage() {
+  const router = useRouter();
   const [templates, setTemplates]   = useState<TaskTemplateSummary[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [loading, setLoading]       = useState(true);
@@ -45,16 +48,20 @@ export default function TemplateListPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
-        <Link href="/tasks/manager" className="text-sm text-gray-400 hover:text-orange-500">← Manager</Link>
-        <h1 className="font-bold text-gray-800">Templates</h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="text-sm font-semibold text-orange-600 hover:text-orange-700"
-        >
-          + New
-        </button>
-      </div>
+      <AppHeader
+        supertitle="TASK MANAGER"
+        title="Templates"
+        showBack
+        onBack={() => router.push('/tasks/manager')}
+        action={
+          <button
+            onClick={() => setShowCreate(true)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-full bg-white/15 text-white border border-white/20 active:bg-white/25"
+          >
+            + New
+          </button>
+        }
+      />
 
       <ManagerTabs />
 
