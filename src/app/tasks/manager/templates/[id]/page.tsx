@@ -199,6 +199,19 @@ export default function TemplateEditPage({ params }: PageProps) {
                             {l.module_link_type !== 'none' ? `${l.module_link_type} · ` : ''}
                             {l.subtasks.length > 0 ? `${l.subtasks.length} subtask${l.subtasks.length === 1 ? '' : 's'}` : 'no subtasks'}
                           </p>
+                          {l.subtasks.length > 0 && (
+                            <ul className="mt-1.5 space-y-0.5">
+                              {l.subtasks.map(s => (
+                                <li key={s.id} className="text-xs text-gray-600 flex items-start gap-1.5">
+                                  <span className="text-gray-300 mt-0.5">•</span>
+                                  <span className="flex-1">{s.name}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {l.photo_instructions && (
+                            <p className="text-xs text-blue-700 mt-1.5 italic">📋 {l.photo_instructions}</p>
+                          )}
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
                           <button onClick={() => setEditingLine(l)} className="text-xs text-gray-500 hover:text-orange-600 px-2 py-1">Edit</button>
