@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, use } from 'react';
 import Link from 'next/link';
-import type { TaskTemplate, TaskTemplateLine, DayPart, ModuleLink } from '@/lib/odoo-tasks';
+import type { TaskTemplate, TaskTemplateLine, TaskAttachment, DayPart, ModuleLink } from '@/lib/odoo-tasks';
+import AttachmentList from '../../../_components/AttachmentList';
 
 const DAY_PART_OPTIONS: { value: DayPart; label: string }[] = [
   { value: 'opening', label: 'Opening' },
@@ -212,6 +213,11 @@ export default function TemplateEditPage({ params }: PageProps) {
                           {l.photo_instructions && (
                             <p className="text-xs text-blue-700 mt-1.5 italic">📋 {l.photo_instructions}</p>
                           )}
+                          {l.attachments.length > 0 && (
+                            <div className="mt-1.5">
+                              <AttachmentList attachments={l.attachments} compact />
+                            </div>
+                          )}
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
                           <button onClick={() => setEditingLine(l)} className="text-xs text-gray-500 hover:text-orange-600 px-2 py-1">Edit</button>
@@ -263,8 +269,36 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
   const [subtasks, setSubtasks]       = useState<{ id?: number; name: string }[]>(
     line?.subtasks.map(s => ({ id: s.id, name: s.name })) ?? [],
   );
+  const [attachments, setAttachments] = useState<TaskAttachment[]>(line?.attachments ?? []);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
+
+  async function uploadAttachment(file: File) {
+    if (!line?.id) return;
+    setUploadingFile(true);
+    try {
+      const dataUrl = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result as string);
+        r.onerror = () => rej(new Error('File read error'));
+        r.readAsDataURL(file);
+      });
+      const base64 = dataUrl.split(',')[1] || '';
+      const res = await fetch(`/api/tasks/templates/lines/${line.id}/attachments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: file.name, mimetype: file.type, data_base64: base64 }),
+      });
+      const body = await res.json();
+      if (!body.ok) throw new Error(body.error || 'Upload failed');
+      setAttachments(prev => [...prev, { id: body.id, name: file.name, mimetype: file.type, file_size: file.size }]);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Upload failed');
+    } finally {
+      setUploadingFile(false);
+    }
+  }
 
   async function submit() {
     if (!name.trim()) { setError('Name required'); return; }
@@ -363,6 +397,34 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
                 + Add subtask
               </button>
             </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Attachments (instructions, references)</label>
+            {!line?.id ? (
+              <p className="text-[11px] text-gray-400">Save the task first, then re-open it to attach files.</p>
+            ) : (
+              <>
+                <AttachmentList
+                  attachments={attachments}
+                  canDelete
+                  onDeleted={(id) => setAttachments(prev => prev.filter(a => a.id !== id))}
+                  compact
+                />
+                <label className="mt-2 inline-flex items-center justify-center gap-2 px-3 py-2 bg-orange-50 border-2 border-dashed border-orange-400 rounded-lg text-xs font-semibold text-orange-700 cursor-pointer hover:bg-orange-100">
+                  {uploadingFile ? '⏳ Uploading…' : '+ Add file (PDF / image)'}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,application/pdf,image/*"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadAttachment(f);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </>
+            )}
           </div>
           {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
           <div className="h-2" />

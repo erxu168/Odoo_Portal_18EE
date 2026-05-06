@@ -1,4 +1,4 @@
-from odoo import fields, models
+from odoo import api, fields, models
 
 
 DAY_PART_SELECTION = [
@@ -39,3 +39,37 @@ class KrawingsTaskTemplateLine(models.Model):
     subtask_ids = fields.One2many(
         'krawings.task.template.subtask', 'line_id', copy=True,
     )
+
+    @api.model
+    def list_attachments(self, line_ids):
+        """Return [{id, line_id, name, mimetype, file_size}] for the given lines."""
+        if not line_ids:
+            return []
+        recs = self.env['ir.attachment'].sudo().search_read(
+            [('res_model', '=', self._name), ('res_id', 'in', line_ids)],
+            ['id', 'res_id', 'name', 'mimetype', 'file_size'],
+            order='id asc',
+        )
+        return [
+            {
+                'id': r['id'],
+                'line_id': r['res_id'],
+                'name': r['name'],
+                'mimetype': r.get('mimetype') or '',
+                'file_size': r.get('file_size') or 0,
+            }
+            for r in recs
+        ]
+
+    def add_attachment(self, name, data_base64, mimetype=False):
+        """Attach a file to this template line. Returns the new attachment id."""
+        self.ensure_one()
+        att = self.env['ir.attachment'].sudo().create({
+            'name': name,
+            'res_model': self._name,
+            'res_id': self.id,
+            'type': 'binary',
+            'datas': data_base64,
+            'mimetype': mimetype or False,
+        })
+        return att.id

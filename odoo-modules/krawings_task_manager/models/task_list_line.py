@@ -61,6 +61,86 @@ class KrawingsTaskListLine(models.Model):
                 ('res_id', '=', rec.id),
             ])) if rec.id else False
 
+    @api.model
+    def list_attachments(self, line_ids):
+        """Return [{id, line_id, name, mimetype, file_size, scope}] for the given list lines.
+        Each line's attachments come from two places:
+          - ir.attachment records linked directly to the list line (ad-hoc additions)
+          - ir.attachment records linked to the line's source template line, if any
+        Scope is 'task' for direct or 'template' for inherited."""
+        if not line_ids:
+            return []
+        lines = self.sudo().browse(line_ids)
+        tpl_to_list = {}  # template_line_id -> [list_line_id, ...]
+        for l in lines:
+            if l.source_template_line_id:
+                tpl_to_list.setdefault(l.source_template_line_id.id, []).append(l.id)
+        Attachment = self.env['ir.attachment'].sudo()
+        out = []
+        # Direct attachments (ad-hoc tasks or post-spawn additions)
+        direct = Attachment.search_read(
+            [('res_model', '=', self._name), ('res_id', 'in', line_ids)],
+            ['id', 'res_id', 'name', 'mimetype', 'file_size'],
+            order='id asc',
+        )
+        for r in direct:
+            out.append({
+                'id': r['id'],
+                'line_id': r['res_id'],
+                'name': r['name'],
+                'mimetype': r.get('mimetype') or '',
+                'file_size': r.get('file_size') or 0,
+                'scope': 'task',
+            })
+        # Inherited from template
+        if tpl_to_list:
+            tpl = Attachment.search_read(
+                [('res_model', '=', 'krawings.task.template.line'),
+                 ('res_id', 'in', list(tpl_to_list.keys()))],
+                ['id', 'res_id', 'name', 'mimetype', 'file_size'],
+                order='id asc',
+            )
+            for r in tpl:
+                for list_line_id in tpl_to_list[r['res_id']]:
+                    out.append({
+                        'id': r['id'],
+                        'line_id': list_line_id,
+                        'name': r['name'],
+                        'mimetype': r.get('mimetype') or '',
+                        'file_size': r.get('file_size') or 0,
+                        'scope': 'template',
+                    })
+        return out
+
+    def add_attachment(self, name, data_base64, mimetype=False):
+        """Attach a file directly to this list line (ad-hoc, doesn't touch the template)."""
+        self.ensure_one()
+        att = self.env['ir.attachment'].sudo().create({
+            'name': name,
+            'res_model': self._name,
+            'res_id': self.id,
+            'type': 'binary',
+            'datas': data_base64,
+            'mimetype': mimetype or False,
+        })
+        return att.id
+
+    @api.model
+    def get_attachment_data(self, attachment_id):
+        """Fetch the raw base64 payload of an attachment, scoped to a task list line
+        or its source template line (so staff can only fetch attachments they can
+        legitimately view via the task manager)."""
+        att = self.env['ir.attachment'].sudo().browse(int(attachment_id))
+        if not att.exists():
+            return False
+        if att.res_model not in (self._name, 'krawings.task.template.line'):
+            return False
+        return {
+            'name': att.name,
+            'mimetype': att.mimetype or '',
+            'data_base64': att.datas and att.datas.decode('ascii') if att.datas else '',
+        }
+
     def mark_done(self, employee):
         """Mark this line done, attributed to `employee` (hr.employee record or id)."""
         self.ensure_one()

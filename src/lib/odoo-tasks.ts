@@ -25,6 +25,15 @@ export interface TaskSubtask {
   toggled_by_id: number | null;
 }
 
+export interface TaskAttachment {
+  id: number;
+  name: string;
+  mimetype: string;
+  file_size: number;
+  /** 'template' = inherited from the source template line; 'task' = attached directly. */
+  scope?: 'template' | 'task';
+}
+
 export interface TaskListLine {
   id: number;
   name: string;
@@ -42,6 +51,7 @@ export interface TaskListLine {
   is_ad_hoc: boolean;
   source_template_line_id: number | null;
   subtasks: TaskSubtask[];
+  attachments: TaskAttachment[];
 }
 
 export interface TaskList {
@@ -84,6 +94,7 @@ export interface TaskTemplateLine {
   photo_instructions: string | null;
   module_link_type: ModuleLink;
   subtasks: { id: number; name: string; sequence: number }[];
+  attachments: TaskAttachment[];
 }
 
 export interface TaskTemplate {
@@ -217,6 +228,17 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
   }
   Array.from(subtasksByLine.values()).forEach(arr => arr.sort((a, b) => a.sequence - b.sequence));
 
+  // Fetch attachments for all list lines in one batch (combines own + inherited from template).
+  const attRaw: any[] = lineIds.length
+    ? await odoo.call('krawings.task.list.line', 'list_attachments', [lineIds])
+    : [];
+  const attsByLine = new Map<number, TaskAttachment[]>();
+  for (const a of attRaw) {
+    const arr = attsByLine.get(a.line_id) || [];
+    arr.push({ id: a.id, name: a.name, mimetype: a.mimetype || '', file_size: a.file_size || 0, scope: a.scope });
+    attsByLine.set(a.line_id, arr);
+  }
+
   const hydratedLines: TaskListLine[] = lines.map((l: any) => ({
     id: l.id,
     name: l.name,
@@ -234,6 +256,7 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
     is_ad_hoc: !!l.is_ad_hoc,
     source_template_line_id: m2oId(l.source_template_line_id),
     subtasks: subtasksByLine.get(l.id) || [],
+    attachments: attsByLine.get(l.id) || [],
   }));
 
   // Sort: opening → mid_day → closing, then sequence
@@ -470,6 +493,19 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     subByLine.set(lid, arr);
   }
   Array.from(subByLine.values()).forEach(arr => arr.sort((a, b) => a.sequence - b.sequence));
+
+  // Attachments per template line (single batch call)
+  const tplLineIds: number[] = lines.map((l: any) => l.id);
+  const tplAtts: any[] = tplLineIds.length
+    ? await odoo.call('krawings.task.template.line', 'list_attachments', [tplLineIds])
+    : [];
+  const tplAttsByLine = new Map<number, TaskAttachment[]>();
+  for (const a of tplAtts) {
+    const arr = tplAttsByLine.get(a.line_id) || [];
+    arr.push({ id: a.id, name: a.name, mimetype: a.mimetype || '', file_size: a.file_size || 0 });
+    tplAttsByLine.set(a.line_id, arr);
+  }
+
   const order: Record<DayPart, number> = { opening: 1, mid_day: 2, closing: 3 };
   const hydratedLines: TaskTemplateLine[] = lines.map((l: any) => ({
     id: l.id,
@@ -481,6 +517,7 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     photo_instructions: l.photo_instructions || null,
     module_link_type: (l.module_link_type || 'none') as ModuleLink,
     subtasks: subByLine.get(l.id) || [],
+    attachments: tplAttsByLine.get(l.id) || [],
   }));
   hydratedLines.sort((a, b) => order[a.day_part] - order[b.day_part] || a.sequence - b.sequence);
 
@@ -594,6 +631,26 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
 
 export async function deleteTemplateLine(lineId: number): Promise<void> {
   await getOdoo().unlink('krawings.task.template.line', [lineId]);
+}
+
+// ── Attachments ──────────────────────────────
+
+export async function addTemplateLineAttachment(lineId: number, name: string, dataBase64: string, mimetype = ''): Promise<number> {
+  return getOdoo().call('krawings.task.template.line', 'add_attachment', [[lineId], name, dataBase64, mimetype || false]);
+}
+
+export async function addListLineAttachment(lineId: number, name: string, dataBase64: string, mimetype = ''): Promise<number> {
+  return getOdoo().call('krawings.task.list.line', 'add_attachment', [[lineId], name, dataBase64, mimetype || false]);
+}
+
+export async function getAttachmentData(attachmentId: number): Promise<{ name: string; mimetype: string; data_base64: string } | null> {
+  const result = await getOdoo().call('krawings.task.list.line', 'get_attachment_data', [attachmentId]);
+  if (!result) return null;
+  return result;
+}
+
+export async function deleteAttachment(attachmentId: number): Promise<void> {
+  await getOdoo().unlink('ir.attachment', [attachmentId]);
 }
 
 // ── Spawning ──────────────────────────────────

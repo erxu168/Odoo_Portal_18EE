@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { TaskListLine, TaskSubtask, ModuleLink } from '@/lib/odoo-tasks';
 import SubtaskList from './SubtaskList';
+import AttachmentList from './AttachmentList';
 
 interface Props {
   task: TaskListLine;
@@ -158,6 +159,10 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         )}
 
         <SubtaskList taskLineId={task.id} subtasks={subtasks} onToggle={handleSubtask} readOnly={readOnly} />
+
+        {task.attachments.length > 0 && (
+          <AttachmentList attachments={task.attachments} compact />
+        )}
 
         {task.module_link_type !== 'none' && linkHref && (
           <a href={linkHref} onClick={e => e.stopPropagation()}
