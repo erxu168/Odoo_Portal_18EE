@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useCallback, use } from 'react';
 import Link from 'next/link';
-import type { TaskTemplate, TaskTemplateLine, TaskAttachment, DayPart, ModuleLink } from '@/lib/odoo-tasks';
+import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink } from '@/lib/odoo-tasks';
 import AttachmentList from '../../../_components/AttachmentList';
+import ChecklistCard from '../../../_components/ChecklistCard';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
 
@@ -45,6 +46,68 @@ function hhmmToFloat(s: string): number | null {
   return h + m / 60;
 }
 
+/**
+ * Build a fake TaskList from a template so we can render the same ChecklistCard
+ * a real staff user sees, but anchored to today and with no completion state.
+ * Used by the manager-side preview toggle — interaction is read-only.
+ */
+function previewListFromTemplate(tpl: TaskTemplate): TaskList {
+  const todayBase = new Date();
+  todayBase.setSeconds(0, 0);
+  const lines: TaskListLine[] = tpl.lines.map(tl => {
+    let deadline_datetime: string | null = null;
+    if (tl.deadline_time != null) {
+      const h = Math.floor(tl.deadline_time);
+      const m = Math.round((tl.deadline_time - h) * 60);
+      const d = new Date(todayBase);
+      d.setHours(h, m, 0, 0);
+      deadline_datetime = d.toISOString();
+    }
+    return {
+      id: -tl.id,                    // negative so it can never collide with a real list line
+      name: tl.name,
+      sequence: tl.sequence,
+      day_part: tl.day_part,
+      deadline_datetime,
+      photo_required: tl.photo_required,
+      photo_uploaded: false,
+      photo_instructions: tl.photo_instructions,
+      module_link_type: tl.module_link_type,
+      state: 'pending',
+      completed_at: null,
+      completed_by_id: null,
+      completed_by_name: null,
+      is_ad_hoc: false,
+      source_template_line_id: tl.id,
+      subtasks: tl.subtasks.map(s => ({
+        id: -s.id,
+        name: s.name,
+        sequence: s.sequence,
+        done: false,
+        toggled_at: null,
+        toggled_by_id: null,
+      })),
+      attachments: tl.attachments,
+    };
+  });
+  return {
+    id: 0,
+    date: todayBase.toISOString().slice(0, 10),
+    department_id: tpl.department_id,
+    department_name: tpl.department_name,
+    company_id: tpl.company_id,
+    template_id: tpl.id,
+    template_name: tpl.name,
+    state: 'draft',
+    completion_rate: 0,
+    line_count: lines.length,
+    completed_count: 0,
+    overdue_count: 0,
+    photo_pending_count: lines.filter(l => l.photo_required).length,
+    lines,
+  };
+}
+
 export default function TemplateEditPage({ params }: PageProps) {
   const resolved = (typeof (params as Promise<{ id: string }>).then === 'function')
     ? use(params as Promise<{ id: string }>)
@@ -57,6 +120,7 @@ export default function TemplateEditPage({ params }: PageProps) {
   const [saving, setSaving]   = useState(false);
   const [editingLine, setEditingLine] = useState<TaskTemplateLine | null>(null);
   const [showAddLine, setShowAddLine] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
   const { toast, showToast, dismissToast } = useToast();
 
   const load = useCallback(async () => {
@@ -138,12 +202,61 @@ export default function TemplateEditPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between">
-        <Link href="/tasks/manager/templates" className="text-sm text-gray-400 hover:text-orange-500">← Templates</Link>
-        <h1 className="font-bold text-gray-800 truncate">{tpl.name || 'Template'}</h1>
-        <button onClick={archive} className="text-xs font-semibold text-red-500 hover:text-red-600">Archive</button>
+      <div className="bg-white border-b border-gray-200 px-4 py-4 flex items-center justify-between gap-2">
+        <Link href="/tasks/manager/templates" className="text-sm text-gray-400 hover:text-orange-500 flex-shrink-0">← Templates</Link>
+        <h1 className="font-bold text-gray-800 truncate flex-1 text-center min-w-0">{tpl.name || 'Template'}</h1>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <button
+            onClick={() => setPreviewMode(v => !v)}
+            className={`text-xs font-semibold px-2.5 py-1 rounded-full transition-colors ${
+              previewMode ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {previewMode ? '✓ Preview' : '👁 Preview'}
+          </button>
+          <button onClick={archive} className="text-xs font-semibold text-red-500 hover:text-red-600">Archive</button>
+        </div>
       </div>
 
+      {previewMode && (
+        <div className="max-w-[430px] mx-auto bg-gray-50">
+          <div className="bg-amber-100 border-b border-amber-200 px-4 py-2 text-center text-[11px] font-semibold text-amber-800">
+            👁 Staff preview · interactions disabled
+          </div>
+          <div className="bg-orange-500 px-5 pt-5 pb-4">
+            <p className="text-orange-100 text-xs font-medium">
+              {new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+            <p className="text-white text-lg font-bold mt-0.5">Good day 👋</p>
+            <p className="text-orange-100 text-sm mt-0.5">{tpl.department_name}</p>
+          </div>
+          <div className="px-4 pt-4 pb-8">
+            {tpl.lines.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <p className="text-3xl mb-2">📝</p>
+                <p className="font-semibold text-gray-600">Empty list</p>
+                <p className="text-sm mt-1">Add tasks in edit mode to see them here.</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-baseline justify-between mb-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">Today&apos;s tasks</p>
+                  <p className="text-xs font-semibold text-gray-500">0 / {tpl.lines.length} done · 0%</p>
+                </div>
+                <ChecklistCard
+                  taskList={previewListFromTemplate(tpl)}
+                  onComplete={async () => {}}
+                  onSubtaskToggle={async () => {}}
+                  onPhotoUpload={async () => {}}
+                  readOnly
+                />
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!previewMode && (
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-5">
         <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
           <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-3">Settings</p>
@@ -244,6 +357,7 @@ export default function TemplateEditPage({ params }: PageProps) {
           </div>
         </section>
       </div>
+      )}
 
       {(showAddLine || editingLine) && (
         <LineModal
