@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
 import Numpad from '@/components/ui/Numpad';
 import PdfViewer from '@/components/ui/PdfViewer';
 
@@ -185,14 +186,13 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-white px-5 pt-4 pb-4 border-b border-gray-200">
-        <button onClick={onBack} className="flex items-center gap-1 mb-2 text-green-700 text-[var(--fs-xs)] font-semibold active:opacity-70">
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
-          {productName}
-        </button>
-        <h1 className="text-[var(--fs-lg)] font-bold text-gray-900">{wo.name}</h1>
-        <p className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{wo.workcenter_id[1]} {'\u00b7'} {displayComps.length} ingredients</p>
-      </div>
+      <AppHeader
+        supertitle={productName}
+        title={wo.name}
+        subtitle={`${wo.workcenter_id[1]} \u00b7 ${displayComps.length} ingredients`}
+        showBack
+        onBack={onBack}
+      />
 
       <div className="flex gap-1 px-4 py-2.5">
         {allWos.map((w: any) => (

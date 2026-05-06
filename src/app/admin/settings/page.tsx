@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import AppHeader from '@/components/ui/AppHeader';
 
 interface BomTolerance {
   bom_id: number;
@@ -138,18 +139,7 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
-        <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/')}
-            className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M15 19l-7-7 7-7"/></svg>
-          </button>
-          <div className="flex-1">
-            <h1 className="text-[20px] font-bold text-white">Settings</h1>
-            <p className="text-[12px] text-white/50 mt-0.5">Portal configuration</p>
-          </div>
-        </div>
-      </div>
+      <AppHeader supertitle="ADMIN" title="Settings" subtitle="Portal configuration" />
 
       {success && (
         <div className="mx-4 mt-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-[13px] font-semibold">

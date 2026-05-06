@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import AppHeader from '@/components/ui/AppHeader';
 import type { SupplierGroup, SupplierLoginRow, CredentialFormData } from '@/types/credentials';
 
 /* ------------------------------------------------------------------ */
@@ -366,15 +367,7 @@ export default function CredentialsPage() {
 
   return (
     <div className="min-h-screen bg-[#F5F6F8]">
-      {/* Header */}
-      <div className="bg-white border-b border-[#E8E8E8] px-4 py-3 flex items-center gap-3 sticky top-0 z-10">
-        <button onClick={() => router.back()} className="p-2 -ml-2 text-[#6B7280]">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-        </button>
-        <h1 className="text-[20px] font-bold text-[#1A1A1A] tracking-tight">Supplier Logins</h1>
-      </div>
+      <AppHeader supertitle="ADMIN" title="Supplier Logins" />
 
       {/* Toasts */}
       {success && (

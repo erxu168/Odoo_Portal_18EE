@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
 
 interface DashboardProps {
   onNavigate: (screen: any) => void;
@@ -62,11 +63,7 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
-        <h1 className="text-lg font-bold text-gray-900">Krawings SSAM</h1>
-        <p className="text-xs text-gray-500 mt-0.5">Dashboard</p>
-      </div>
+      <AppHeader supertitle="MANUFACTURING" title="Krawings SSAM" subtitle="Dashboard" />
 
       {/* Greeting */}
       <div className="px-5 pt-5 pb-2">

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
 import type { Bom } from '@/types/manufacturing';
 import { useCompany } from '@/lib/company-context';
 
@@ -75,27 +76,17 @@ export default function BomList({ onSelect, onBack, onCreate, title, subtitlePat
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="bg-[#2563EB] px-5 pt-12 pb-3 relative overflow-hidden rounded-b-[28px]">
-        <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
-        <div className="flex items-center gap-3 relative">
-          {onBack && (
-            <button onClick={onBack} className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
-            </button>
-          )}
-          <div className="flex-1">
-            <h1 className="text-[var(--fs-xl)] font-bold text-white">{title ?? 'Recipes'}</h1>
-            <p className="text-[var(--fs-xs)] text-white/45 mt-0.5">
-              {subtitlePattern ? subtitlePattern(filtered.length) : `${filtered.length} active recipes`}
-            </p>
-          </div>
-          {onCreate && (
-            <button onClick={onCreate} className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-green-600 flex items-center justify-center active:bg-green-700 shadow-lg shadow-green-600/30">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            </button>
-          )}
-        </div>
-      </div>
+      <AppHeader
+        title={title ?? 'Recipes'}
+        subtitle={subtitlePattern ? subtitlePattern(filtered.length) : `${filtered.length} active recipes`}
+        showBack={!!onBack}
+        onBack={onBack}
+        action={onCreate ? (
+          <button onClick={onCreate} className="w-11 h-11 rounded-xl bg-green-600 flex items-center justify-center active:bg-green-700 shadow-lg shadow-green-600/30" aria-label="Create">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        ) : undefined}
+      />
 
       <div className="px-4 pt-3">
         <div className="relative">
