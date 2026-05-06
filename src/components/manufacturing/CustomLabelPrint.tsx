@@ -41,6 +41,15 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function addDaysIso(iso: string, days: number): string {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+}
+
 export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintProps) {
   const { companyId } = useCompany();
   const [step, setStep] = useState<Step>('config');
@@ -51,8 +60,26 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
   const [uom, setUom] = useState('');
   const [productionDate, setProductionDate] = useState(todayIso());
   const [expiryDate, setExpiryDate] = useState('');
+  const [shelfLifeDays, setShelfLifeDays] = useState('');
+  const [chilled, setChilled] = useState(false);
+  const [frozen, setFrozen] = useState(false);
   const [labelCount, setLabelCount] = useState('1');
   const [labels, setLabels] = useState<LabelRow[]>([]);
+
+  // Auto-calc expiry date from production date + shelf-life days.
+  // Manual edits to the expiry date are allowed and will be overwritten
+  // the next time production date or days change.
+  useEffect(() => {
+    const days = parseInt(shelfLifeDays, 10);
+    if (!isNaN(days) && days > 0 && productionDate) {
+      setExpiryDate(addDaysIso(productionDate, days));
+    }
+  }, [productionDate, shelfLifeDays]);
+
+  const storageMode: 'chilled' | 'frozen' | 'both' | null =
+    chilled && frozen ? 'both' :
+    chilled ? 'chilled' :
+    frozen ? 'frozen' : null;
 
   const [selectedSize, setSelectedSize] = useState('55x75');
   const [customWidth, setCustomWidth] = useState('55');
@@ -176,6 +203,7 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
       uom,
       productionDate: fmtDate(productionDate),
       expiryDate: fmtDate(expiryDate),
+      storageMode,
       lotName: row.lotName,
       containerNumber: idx + 1,
       totalContainers: labels.length,
@@ -381,6 +409,37 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Storage</div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setChilled(v => !v)}
+                className={`flex-1 py-3 px-4 rounded-xl border-2 font-bold text-[var(--fs-sm)] transition-all active:scale-[0.975] flex items-center justify-center gap-2 ${
+                  chilled ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 bg-gray-50 text-gray-500'
+                }`}>
+                <span className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                  chilled ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-300 bg-white'
+                }`}>
+                  {chilled && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5"/></svg>}
+                </span>
+                Chilled
+              </button>
+              <button type="button" onClick={() => setFrozen(v => !v)}
+                className={`flex-1 py-3 px-4 rounded-xl border-2 font-bold text-[var(--fs-sm)] transition-all active:scale-[0.975] flex items-center justify-center gap-2 ${
+                  frozen ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 bg-gray-50 text-gray-500'
+                }`}>
+                <span className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                  frozen ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-300 bg-white'
+                }`}>
+                  {frozen && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5"/></svg>}
+                </span>
+                Frozen
+              </button>
+            </div>
+            <div className="mt-2 text-[var(--fs-xs)] text-gray-400">
+              Tick neither and the storage line is hidden on the label.
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Production date</div>
@@ -388,9 +447,20 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
                   className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
               </div>
               <div>
-                <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Expiry date</div>
-                <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
-                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+                <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Days until expiration</div>
+                <input type="number" inputMode="numeric" step="1" min="0" max="3650"
+                  value={shelfLifeDays}
+                  onChange={e => setShelfLifeDays(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="e.g. 3"
+                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Expiry date</div>
+              <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
+                className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+              <div className="mt-1.5 text-[var(--fs-xs)] text-gray-400">
+                Type days above and we fill this in. You can still edit it by hand.
               </div>
             </div>
           </div>
@@ -434,7 +504,7 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
                 qty={qtyNum}
                 uom={uom}
                 expiryDate={fmtDate(expiryDate)}
-                storageMode="chilled"
+                storageMode={storageMode}
                 lotName={labels[0]?.lotName}
                 moName={labels[0]?.lotName}
                 containerNumber={1}

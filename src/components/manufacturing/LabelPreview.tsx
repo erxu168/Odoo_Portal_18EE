@@ -14,7 +14,7 @@ interface LabelPreviewProps {
   qty: number;
   uom: string;
   expiryDate: string;
-  storageMode: 'chilled' | 'frozen';
+  storageMode: 'chilled' | 'frozen' | 'both' | null;
   lotName?: string;
   moName?: string;
   containerNumber?: number;
@@ -48,11 +48,17 @@ export default function LabelPreview({
   const hasExpiry = !!(expiryDate && expiryDate.trim());
   const hasMeta = !!moName && containerNumber != null && totalContainers != null;
   const hasLot = !!lotName;
+  const storageText =
+    storageMode === 'both' ? 'CHILLED & FROZEN' :
+    storageMode === 'chilled' ? 'CHILLED' :
+    storageMode === 'frozen' ? 'FROZEN' : null;
+  const hasStorage = storageText != null;
 
   // Barcode space estimate (only count rows that will render)
   const renderedRows =
     (hasProductionDate ? bodyPx : 0) +
     (hasQty ? qtyPx : 0) +
+    (hasStorage ? expPx : 0) +
     (hasExpiry ? expPx : 0) +
     (hasMeta ? metaPx : 0) +
     (hasLot ? metaPx : 0);
@@ -138,16 +144,18 @@ export default function LabelPreview({
           </div>
         )}
 
-        {/* Storage mode — same weight as Expiry for visual pairing */}
-        <div style={{
-          fontSize: expPx,
-          fontWeight: 800,
-          color: '#1a1a1a',
-          lineHeight: 1.1,
-          marginBottom: gap,
-        }}>
-          STORE: {storageMode.toUpperCase()}
-        </div>
+        {/* Storage mode — same weight as Expiry; hidden when no mode selected */}
+        {hasStorage && (
+          <div style={{
+            fontSize: expPx,
+            fontWeight: 800,
+            color: '#1a1a1a',
+            lineHeight: 1.1,
+            marginBottom: gap,
+          }}>
+            STORE: {storageText}
+          </div>
+        )}
 
         {/* Expiry — HUGE 2x emphasis; hidden when blank */}
         {hasExpiry && (

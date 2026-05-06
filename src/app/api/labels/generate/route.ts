@@ -53,6 +53,11 @@ export async function POST(req: NextRequest) {
     bodyHeight ?? null,
   );
 
+  const normalizedStorage: 'chilled' | 'frozen' | 'both' | null =
+    storageMode === 'chilled' || storageMode === 'frozen' || storageMode === 'both'
+      ? storageMode
+      : null;
+
   const labelData: LabelData = {
     productName,
     productReference: productReference || undefined,
@@ -60,7 +65,7 @@ export async function POST(req: NextRequest) {
     qty: typeof qty === 'number' ? qty : 0,
     uom: uom || '',
     expiryDate: expiryDate || '',
-    storageMode: storageMode === 'frozen' ? 'frozen' : 'chilled',
+    storageMode: normalizedStorage,
     lotName: lotName || undefined,
     moName: lotName || productName,
     containerNumber: containerNumber ?? 1,

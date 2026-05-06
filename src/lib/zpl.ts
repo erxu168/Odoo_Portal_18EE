@@ -112,11 +112,17 @@ export function generateZPL(data: LabelData, opts: {
     y += qty.h + gap;
   }
 
-  // ── Storage Mode (small, informational) ──
-  const storeLabel = `STORE: ${data.storageMode.toUpperCase()}`;
-  lines.push(`^A0N,${body.h},${body.w}`);
-  lines.push(`^FO${margin},${y}^FB${printW},1,0,L^FD${escapeZPL(storeLabel)}^FS`);
-  y += body.h + gap;
+  // ── Storage Mode (small, informational) — skipped when null ──
+  const storeText =
+    data.storageMode === 'both' ? 'CHILLED & FROZEN' :
+    data.storageMode === 'chilled' ? 'CHILLED' :
+    data.storageMode === 'frozen' ? 'FROZEN' : null;
+  if (storeText) {
+    const storeLabel = `STORE: ${storeText}`;
+    lines.push(`^A0N,${body.h},${body.w}`);
+    lines.push(`^FO${margin},${y}^FB${printW},1,0,L^FD${escapeZPL(storeLabel)}^FS`);
+    y += body.h + gap;
+  }
 
   // ── Expiry Date (HUGE — 2x emphasis) ──
   if (hasExpiry) {

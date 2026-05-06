@@ -128,6 +128,8 @@ export interface PrintJob {
 
 // --- ZPL Label Data ---
 
+export type StorageMode = 'chilled' | 'frozen' | 'both' | null;
+
 export interface LabelData {
   productName: string;
   productReference?: string;
@@ -135,7 +137,7 @@ export interface LabelData {
   qty: number;
   uom: string;
   expiryDate: string;
-  storageMode: 'chilled' | 'frozen';
+  storageMode: StorageMode;
   lotName?: string;
   moName: string;
   containerNumber: number;
