@@ -33,7 +33,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       await updateTemplate(id, {
         name: body.name,
         department_id: body.department_id,
-        days_of_week: body.days_of_week,
         active: body.active,
       });
     }

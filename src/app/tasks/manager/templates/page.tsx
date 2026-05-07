@@ -9,12 +9,6 @@ import Toast from '@/components/ui/Toast';
 import { useToast } from '../../_components/useToast';
 import type { TaskTemplateSummary, DepartmentOption } from '@/lib/odoo-tasks';
 
-const DAY_LABELS: { key: keyof TaskTemplateSummary['days_of_week']; label: string }[] = [
-  { key: 'mon', label: 'M' }, { key: 'tue', label: 'T' }, { key: 'wed', label: 'W' },
-  { key: 'thu', label: 'T' }, { key: 'fri', label: 'F' }, { key: 'sat', label: 'S' },
-  { key: 'sun', label: 'S' },
-];
-
 export default function TemplateListPage() {
   const router = useRouter();
   const [templates, setTemplates]   = useState<TaskTemplateSummary[]>([]);
@@ -88,22 +82,14 @@ export default function TemplateListPage() {
             {templates.map((t, i) => (
               <Link key={t.id} href={`/tasks/manager/templates/${t.id}`}
                 className={`flex items-center justify-between px-4 py-3.5 hover:bg-orange-50/30 transition-colors ${i < templates.length - 1 ? 'border-b border-gray-100' : ''} ${!t.active ? 'opacity-60' : ''}`}>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="font-semibold text-sm text-gray-800 truncate">
                     {t.name}
                     {!t.active && <span className="ml-2 text-xs font-normal text-gray-400">(archived)</span>}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">{t.department_name} · {t.line_count} task{t.line_count === 1 ? '' : 's'}</p>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  {DAY_LABELS.map(d => (
-                    <span key={d.key} className={`w-5 h-5 flex items-center justify-center rounded text-[10px] font-bold ${
-                      t.days_of_week[d.key] ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-300'
-                    }`}>
-                      {d.label}
-                    </span>
-                  ))}
-                </div>
+                <span className="text-gray-300 text-lg flex-shrink-0">›</span>
               </Link>
             ))}
           </div>
@@ -128,7 +114,6 @@ function CreateModal({ departments, onClose, onCreated }: {
 }) {
   const [name, setName]     = useState('');
   const [deptId, setDeptId] = useState<number>(departments[0]?.id ?? 0);
-  const [days, setDays]     = useState({ mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]   = useState<string | null>(null);
 
@@ -139,7 +124,7 @@ function CreateModal({ departments, onClose, onCreated }: {
       const res = await fetch('/api/tasks/templates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name.trim(), department_id: deptId, days_of_week: days }),
+        body: JSON.stringify({ name: name.trim(), department_id: deptId }),
       });
       const body = await res.json();
       if (!body.ok) throw new Error(body.error || 'Failed');
@@ -167,24 +152,9 @@ function CreateModal({ departments, onClose, onCreated }: {
               {departments.map(d => <option key={d.id} value={d.id}>{d.name} ({d.company_name})</option>)}
             </select>
           </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Days of week</label>
-            <div className="flex gap-2">
-              {([
-                { k: 'mon', l: 'Mon' }, { k: 'tue', l: 'Tue' }, { k: 'wed', l: 'Wed' },
-                { k: 'thu', l: 'Thu' }, { k: 'fri', l: 'Fri' }, { k: 'sat', l: 'Sat' },
-                { k: 'sun', l: 'Sun' },
-              ] as const).map(d => (
-                <button key={d.k} type="button"
-                  onClick={() => setDays(prev => ({ ...prev, [d.k]: !prev[d.k] }))}
-                  className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                    days[d.k] ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-400'
-                  }`}>
-                  {d.l}
-                </button>
-              ))}
-            </div>
-          </div>
+          <p className="text-xs text-gray-500 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+            💡 You&apos;ll set the schedule (daily / weekly / monthly / one-off) on each task after creating the template.
+          </p>
           {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
           <div className="h-2" />
         </div>

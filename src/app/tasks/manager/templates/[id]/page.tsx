@@ -3,10 +3,11 @@
 import { useEffect, useState, useCallback, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink } from '@/lib/odoo-tasks';
+import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule } from '@/lib/odoo-tasks';
 import AppHeader from '@/components/ui/AppHeader';
 import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
+import RecurrenceEditor from '../../../_components/RecurrenceEditor';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
 
@@ -24,11 +25,50 @@ const MODULE_OPTIONS: { value: ModuleLink; label: string }[] = [
   { value: 'manufacturing', label: 'Manufacturing' },
 ];
 
-const DAYS = [
-  { k: 'mon', l: 'Mon' }, { k: 'tue', l: 'Tue' }, { k: 'wed', l: 'Wed' },
-  { k: 'thu', l: 'Thu' }, { k: 'fri', l: 'Fri' }, { k: 'sat', l: 'Sat' },
-  { k: 'sun', l: 'Sun' },
-] as const;
+const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/** Inline copy of the default rule — keeping it client-safe (no odoo-tasks runtime import). */
+function defaultRecurrence(): RecurrenceRule {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    type: 'daily',
+    interval: 1,
+    start_date: today,
+    end_type: 'never',
+    end_date: null,
+    count: null,
+    one_off_date: null,
+    weekdays: [0, 1, 2, 3, 4, 5, 6],
+    monthly_mode: 'day_of_month',
+    day_of_month: 1,
+    weekday_pos: 1,
+    weekday: 0,
+    month: 1,
+    exception_dates: [],
+  };
+}
+
+/**
+ * Plain-language summary of a recurrence rule for inline display.
+ * "Daily", "Every 2 weeks · Mon, Wed, Fri", "On 5 Jun 2026", etc.
+ */
+function recurrenceSummary(r: RecurrenceRule): string {
+  if (r.type === 'once') {
+    if (!r.one_off_date) return 'One-off (no date)';
+    const d = new Date(r.one_off_date + 'T00:00:00');
+    return `On ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+  }
+  const every = r.interval > 1 ? `Every ${r.interval} ` : '';
+  if (r.type === 'daily')   return r.interval > 1 ? `Every ${r.interval} days` : 'Daily';
+  if (r.type === 'weekly') {
+    const days = r.weekdays.length === 7 ? 'every day'
+      : r.weekdays.map(i => WEEKDAY_SHORT[i]).join(', ') || 'no days';
+    return r.interval > 1 ? `Every ${r.interval} weeks · ${days}` : `Weekly · ${days}`;
+  }
+  if (r.type === 'monthly') return `${every}Monthly`.trim() || 'Monthly';
+  if (r.type === 'yearly')  return `${every}Yearly`.trim() || 'Yearly';
+  return 'Recurring';
+}
 
 interface PageProps {
   params: Promise<{ id: string }> | { id: string };
@@ -149,7 +189,7 @@ export default function TemplateEditPage({ params }: PageProps) {
       const res = await fetch(`/api/tasks/templates/${tplId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: tpl.name, days_of_week: tpl.days_of_week }),
+        body: JSON.stringify({ name: tpl.name }),
       });
       const body = await res.json();
       if (!body.ok) throw new Error(body.error || 'Failed');
@@ -285,20 +325,9 @@ export default function TemplateEditPage({ params }: PageProps) {
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Department</label>
               <p className="text-sm text-gray-700">{tpl.department_name}</p>
             </div>
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Days of week</label>
-              <div className="flex gap-2">
-                {DAYS.map(d => (
-                  <button key={d.k} type="button"
-                    onClick={() => setTpl({ ...tpl, days_of_week: { ...tpl.days_of_week, [d.k]: !tpl.days_of_week[d.k] } })}
-                    className={`flex-1 py-2 rounded-lg text-xs font-semibold ${
-                      tpl.days_of_week[d.k] ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-400'
-                    }`}>
-                    {d.l}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <p className="text-xs text-gray-500 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+              💡 Each task carries its own schedule (daily / weekly / monthly / one-off). Open a task to edit its repeat pattern.
+            </p>
             <button onClick={saveHeader} disabled={saving}
               className="w-full py-2.5 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
               {saving ? 'Saving…' : 'Save settings'}
@@ -332,6 +361,9 @@ export default function TemplateEditPage({ params }: PageProps) {
                             {l.photo_required ? '\u{1F4F8} required · ' : ''}
                             {l.module_link_type !== 'none' ? `${l.module_link_type} · ` : ''}
                             {l.subtasks.length > 0 ? `${l.subtasks.length} subtask${l.subtasks.length === 1 ? '' : 's'}` : 'no subtasks'}
+                          </p>
+                          <p className="text-[11px] font-semibold text-orange-600 mt-1">
+                            🔁 {recurrenceSummary(l.recurrence)}
                           </p>
                           {l.subtasks.length > 0 && (
                             <ul className="mt-1.5 space-y-0.5">
@@ -419,6 +451,7 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
   const [subtasks, setSubtasks]       = useState<{ id?: number; name: string }[]>(
     line?.subtasks.map(s => ({ id: s.id, name: s.name })) ?? [],
   );
+  const [recurrence, setRecurrence]   = useState<RecurrenceRule>(line?.recurrence ?? defaultRecurrence());
   const [attachments, setAttachments] = useState<TaskAttachment[]>(line?.attachments ?? []);
   const [pendingAtts, setPendingAtts] = useState<PendingAttachment[]>([]);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -487,6 +520,7 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
           subtasks: subtasks
             .filter(s => s.name.trim())
             .map((s, i) => ({ id: s.id, name: s.name.trim(), sequence: (i + 1) * 10 })),
+          recurrence,
         }),
       });
       const body = await res.json();
@@ -590,6 +624,10 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
                 + Add subtask
               </button>
             </div>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Schedule</label>
+            <RecurrenceEditor value={recurrence} onChange={setRecurrence} />
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Attachments (instructions, references)</label>

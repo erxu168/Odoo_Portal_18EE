@@ -5,6 +5,8 @@ access_task_template_line_user,krawings.task.template.line user,model_krawings_t
 access_task_template_line_manager,krawings.task.template.line manager,model_krawings_task_template_line,hr.group_hr_manager,1,1,1,1
 access_task_template_subtask_user,krawings.task.template.subtask user,model_krawings_task_template_subtask,base.group_user,1,0,0,0
 access_task_template_subtask_manager,krawings.task.template.subtask manager,model_krawings_task_template_subtask,hr.group_hr_manager,1,1,1,1
+access_task_template_line_exc_user,krawings.task.template.line.exception user,model_krawings_task_template_line_exception,base.group_user,1,0,0,0
+access_task_template_line_exc_manager,krawings.task.template.line.exception manager,model_krawings_task_template_line_exception,hr.group_hr_manager,1,1,1,1
 access_task_list_user,krawings.task.list user,model_krawings_task_list,base.group_user,1,1,1,0
 access_task_list_manager,krawings.task.list manager,model_krawings_task_list,hr.group_hr_manager,1,1,1,1
 access_task_list_line_user,krawings.task.list.line user,model_krawings_task_list_line,base.group_user,1,1,1,0

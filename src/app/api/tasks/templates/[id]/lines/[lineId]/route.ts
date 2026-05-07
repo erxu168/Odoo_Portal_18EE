@@ -21,6 +21,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       photo_instructions: body.photo_instructions ?? null,
       module_link_type: (body.module_link_type || 'none') as ModuleLink,
       subtasks: body.subtasks,
+      recurrence: body.recurrence,
     });
     return NextResponse.json({ ok: true });
   } catch (err) {

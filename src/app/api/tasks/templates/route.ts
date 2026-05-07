@@ -21,13 +21,12 @@ export async function POST(req: NextRequest) {
   try {
     requireRole('manager');
     const body = await req.json();
-    if (!body.name || !body.department_id || !body.days_of_week) {
-      return NextResponse.json({ error: 'name, department_id, days_of_week required' }, { status: 400 });
+    if (!body.name || !body.department_id) {
+      return NextResponse.json({ error: 'name and department_id required' }, { status: 400 });
     }
     const id = await createTemplate({
       name: body.name,
       department_id: body.department_id,
-      days_of_week: body.days_of_week,
       active: body.active !== false,
     });
     return NextResponse.json({ ok: true, id });

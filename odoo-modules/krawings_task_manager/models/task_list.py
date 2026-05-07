@@ -117,17 +117,18 @@ class KrawingsTaskList(models.Model):
         ], limit=1)
         if existing:
             return existing.id
+        # The template builder iterates every active template's lines and
+        # asks the recurrence engine which ones fire on target_date. When
+        # nothing fires, it still creates an empty list ready for ad-hoc
+        # additions — no special-casing needed here.
         Template = self.env['krawings.task.template']
-        applicable = Template.search([
-            ('active', '=', True),
-            ('department_id', '=', department_id),
-        ])
-        for tpl in applicable:
-            if tpl.applies_today(target_date):
-                spawned = tpl._spawn_for_date(target_date)
-                if spawned:
-                    return spawned.id
-        # No template applies — create an empty list
+        dept = self.env['hr.department'].browse(department_id)
+        new_list = Template._build_list_for_dept_date(dept, target_date)
+        if new_list:
+            return new_list.id
+        # _build_list_for_dept_date returns False only when a list already
+        # exists; the search above should have caught that, but fall back
+        # to creating an empty list if we somehow got here.
         return self.create({
             'date': target_date,
             'department_id': department_id,

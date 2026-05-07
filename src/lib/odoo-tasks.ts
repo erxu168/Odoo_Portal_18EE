@@ -84,6 +84,28 @@ export interface TaskListSummary {
   photo_pending_count: number;
 }
 
+export type RecurrenceType = 'once' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type RecurrenceEndType = 'never' | 'on_date' | 'after_count';
+export type MonthlyMode = 'day_of_month' | 'weekday_of_month';
+
+/** Mirror of krawings.task.template.line recurrence_* fields. Mon=0..Sun=6. */
+export interface RecurrenceRule {
+  type: RecurrenceType;
+  interval: number;                // ≥ 1
+  start_date: string;              // YYYY-MM-DD
+  end_type: RecurrenceEndType;
+  end_date: string | null;
+  count: number | null;
+  one_off_date: string | null;     // type=once
+  weekdays: number[];              // type=weekly, e.g. [0,2,4]
+  monthly_mode: MonthlyMode;       // monthly + yearly
+  day_of_month: number;            // 1..31 or -1 for last day
+  weekday_pos: number;             // 1/2/3/4/-1
+  weekday: number;                 // 0..6
+  month: number;                   // 1..12 (yearly only)
+  exception_dates: string[];       // YYYY-MM-DD list
+}
+
 export interface TaskTemplateLine {
   id: number;
   name: string;
@@ -95,6 +117,7 @@ export interface TaskTemplateLine {
   module_link_type: ModuleLink;
   subtasks: { id: number; name: string; sequence: number }[];
   attachments: TaskAttachment[];
+  recurrence: RecurrenceRule;
 }
 
 export interface TaskTemplate {
@@ -104,7 +127,6 @@ export interface TaskTemplate {
   department_id: number;
   department_name: string;
   company_id: number;
-  days_of_week: { mon: boolean; tue: boolean; wed: boolean; thu: boolean; fri: boolean; sat: boolean; sun: boolean };
   line_count: number;
   lines: TaskTemplateLine[];
 }
@@ -116,8 +138,27 @@ export interface TaskTemplateSummary {
   department_id: number;
   department_name: string;
   company_id: number;
-  days_of_week: TaskTemplate['days_of_week'];
   line_count: number;
+}
+
+export function defaultRecurrence(): RecurrenceRule {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    type: 'daily',
+    interval: 1,
+    start_date: today,
+    end_type: 'never',
+    end_date: null,
+    count: null,
+    one_off_date: null,
+    weekdays: [0, 1, 2, 3, 4, 5, 6],
+    monthly_mode: 'day_of_month',
+    day_of_month: 1,
+    weekday_pos: 1,
+    weekday: 0,
+    month: 1,
+    exception_dates: [],
+  };
 }
 
 export interface EmployeeContext {
@@ -432,22 +473,34 @@ export async function uploadLinePhoto(lineId: number, fileName: string, base64Da
 
 const TEMPLATE_FIELDS = [
   'id', 'name', 'active', 'department_id', 'company_id',
-  'day_mon', 'day_tue', 'day_wed', 'day_thu', 'day_fri', 'day_sat', 'day_sun',
   'line_count', 'line_ids',
 ];
 
 const TEMPLATE_LINE_FIELDS = [
   'id', 'template_id', 'name', 'sequence', 'day_part', 'deadline_time',
   'photo_required', 'photo_instructions', 'module_link_type', 'subtask_ids',
+  'recurrence_type', 'recurrence_interval', 'recurrence_start_date',
+  'recurrence_end_type', 'recurrence_end_date', 'recurrence_count',
+  'recurrence_one_off_date', 'recurrence_weekdays', 'recurrence_monthly_mode',
+  'recurrence_day_of_month', 'recurrence_weekday_pos', 'recurrence_weekday',
+  'recurrence_month', 'exception_ids',
 ];
 
 const TEMPLATE_SUBTASK_FIELDS = ['id', 'line_id', 'name', 'sequence'];
+const TEMPLATE_EXCEPTION_FIELDS = ['id', 'line_id', 'date', 'note'];
 
-function templateDays(rec: any): TaskTemplate['days_of_week'] {
-  return {
-    mon: !!rec.day_mon, tue: !!rec.day_tue, wed: !!rec.day_wed, thu: !!rec.day_thu,
-    fri: !!rec.day_fri, sat: !!rec.day_sat, sun: !!rec.day_sun,
-  };
+function dateOrNull(v: any): string | null {
+  return v && typeof v === 'string' ? v : null;
+}
+
+function parseWeekdays(raw: any): number[] {
+  if (!raw) return [];
+  return String(raw)
+    .split(',')
+    .map(s => s.trim())
+    .filter(s => s !== '')
+    .map(s => parseInt(s, 10))
+    .filter(n => !Number.isNaN(n) && n >= 0 && n <= 6);
 }
 
 export async function listTemplates(allowedCompanyIds: number[], includeArchived = false): Promise<TaskTemplateSummary[]> {
@@ -456,8 +509,7 @@ export async function listTemplates(allowedCompanyIds: number[], includeArchived
   if (allowedCompanyIds?.length) domain.push(['company_id', 'in', allowedCompanyIds]);
   const rows = await getOdoo().searchRead(
     'krawings.task.template', domain,
-    ['id', 'name', 'active', 'department_id', 'company_id', 'line_count',
-     'day_mon', 'day_tue', 'day_wed', 'day_thu', 'day_fri', 'day_sat', 'day_sun'],
+    ['id', 'name', 'active', 'department_id', 'company_id', 'line_count'],
     { limit: 200, order: 'department_id, name' },
   );
   return rows.map((r: any) => ({
@@ -467,7 +519,6 @@ export async function listTemplates(allowedCompanyIds: number[], includeArchived
     department_id: m2oId(r.department_id)!,
     department_name: m2oName(r.department_id) || '',
     company_id: m2oId(r.company_id)!,
-    days_of_week: templateDays(r),
     line_count: r.line_count || 0,
   }));
 }
@@ -506,6 +557,23 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     tplAttsByLine.set(a.line_id, arr);
   }
 
+  // Exception dates per template line (single batch call)
+  const allExceptionIds = lines.flatMap((l: any) => l.exception_ids || []);
+  const exceptionRows = allExceptionIds.length
+    ? await odoo.searchRead(
+        'krawings.task.template.line.exception',
+        [['id', 'in', allExceptionIds]], TEMPLATE_EXCEPTION_FIELDS, { limit: 1000 },
+      )
+    : [];
+  const excByLine = new Map<number, string[]>();
+  for (const e of exceptionRows) {
+    const lid = m2oId(e.line_id)!;
+    const arr = excByLine.get(lid) || [];
+    if (e.date) arr.push(e.date);
+    excByLine.set(lid, arr);
+  }
+  Array.from(excByLine.values()).forEach(arr => arr.sort());
+
   const order: Record<DayPart, number> = { opening: 1, mid_day: 2, closing: 3 };
   const hydratedLines: TaskTemplateLine[] = lines.map((l: any) => ({
     id: l.id,
@@ -518,6 +586,22 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     module_link_type: (l.module_link_type || 'none') as ModuleLink,
     subtasks: subByLine.get(l.id) || [],
     attachments: tplAttsByLine.get(l.id) || [],
+    recurrence: {
+      type: (l.recurrence_type || 'daily') as RecurrenceType,
+      interval: l.recurrence_interval || 1,
+      start_date: dateOrNull(l.recurrence_start_date) || new Date().toISOString().slice(0, 10),
+      end_type: (l.recurrence_end_type || 'never') as RecurrenceEndType,
+      end_date: dateOrNull(l.recurrence_end_date),
+      count: l.recurrence_count || null,
+      one_off_date: dateOrNull(l.recurrence_one_off_date),
+      weekdays: parseWeekdays(l.recurrence_weekdays),
+      monthly_mode: (l.recurrence_monthly_mode || 'day_of_month') as MonthlyMode,
+      day_of_month: l.recurrence_day_of_month || 1,
+      weekday_pos: l.recurrence_weekday_pos || 1,
+      weekday: l.recurrence_weekday ?? 0,
+      month: l.recurrence_month || 1,
+      exception_dates: excByLine.get(l.id) || [],
+    },
   }));
   hydratedLines.sort((a, b) => order[a.day_part] - order[b.day_part] || a.sequence - b.sequence);
 
@@ -528,7 +612,6 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     department_id: m2oId(r.department_id)!,
     department_name: m2oName(r.department_id) || '',
     company_id: m2oId(r.company_id)!,
-    days_of_week: templateDays(r),
     line_count: r.line_count || 0,
     lines: hydratedLines,
   };
@@ -544,12 +627,12 @@ export interface TemplateLineInput {
   photo_instructions?: string | null;
   module_link_type?: ModuleLink;
   subtasks?: { id?: number; name: string; sequence?: number }[];
+  recurrence?: RecurrenceRule;
 }
 
 export interface TemplateInput {
   name: string;
   department_id: number;
-  days_of_week: TaskTemplate['days_of_week'];
   active?: boolean;
 }
 
@@ -558,13 +641,6 @@ export async function createTemplate(input: TemplateInput): Promise<number> {
     name: input.name,
     department_id: input.department_id,
     active: input.active !== false,
-    day_mon: input.days_of_week.mon,
-    day_tue: input.days_of_week.tue,
-    day_wed: input.days_of_week.wed,
-    day_thu: input.days_of_week.thu,
-    day_fri: input.days_of_week.fri,
-    day_sat: input.days_of_week.sat,
-    day_sun: input.days_of_week.sun,
   });
 }
 
@@ -573,15 +649,6 @@ export async function updateTemplate(id: number, input: Partial<TemplateInput>):
   if (input.name !== undefined) vals.name = input.name;
   if (input.department_id !== undefined) vals.department_id = input.department_id;
   if (input.active !== undefined) vals.active = input.active;
-  if (input.days_of_week) {
-    vals.day_mon = input.days_of_week.mon;
-    vals.day_tue = input.days_of_week.tue;
-    vals.day_wed = input.days_of_week.wed;
-    vals.day_thu = input.days_of_week.thu;
-    vals.day_fri = input.days_of_week.fri;
-    vals.day_sat = input.days_of_week.sat;
-    vals.day_sun = input.days_of_week.sun;
-  }
   await getOdoo().write('krawings.task.template', [id], vals);
 }
 
@@ -591,6 +658,24 @@ export async function archiveTemplate(id: number): Promise<void> {
 
 export async function unarchiveTemplate(id: number): Promise<void> {
   await getOdoo().write('krawings.task.template', [id], { active: true });
+}
+
+function recurrenceVals(r: RecurrenceRule): Record<string, any> {
+  return {
+    recurrence_type: r.type,
+    recurrence_interval: r.interval || 1,
+    recurrence_start_date: r.start_date,
+    recurrence_end_type: r.end_type,
+    recurrence_end_date: r.end_type === 'on_date' ? (r.end_date || false) : false,
+    recurrence_count: r.end_type === 'after_count' ? (r.count || 0) : false,
+    recurrence_one_off_date: r.type === 'once' ? (r.one_off_date || false) : false,
+    recurrence_weekdays: (r.weekdays || []).join(','),
+    recurrence_monthly_mode: r.monthly_mode || 'day_of_month',
+    recurrence_day_of_month: r.day_of_month || 1,
+    recurrence_weekday_pos: r.weekday_pos || 1,
+    recurrence_weekday: r.weekday ?? 0,
+    recurrence_month: r.month || 1,
+  };
 }
 
 export async function upsertTemplateLine(templateId: number, line: TemplateLineInput): Promise<number> {
@@ -605,6 +690,7 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
     photo_instructions: line.photo_instructions || false,
     module_link_type: line.module_link_type || 'none',
   };
+  if (line.recurrence) Object.assign(vals, recurrenceVals(line.recurrence));
   let lineId = line.id;
   if (lineId) {
     await odoo.write('krawings.task.template.line', [lineId], vals);
@@ -612,7 +698,6 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
     lineId = await odoo.create('krawings.task.template.line', vals);
   }
   if (line.subtasks) {
-    // Replace strategy: delete missing, upsert provided
     const existing = await odoo.searchRead(
       'krawings.task.template.subtask',
       [['line_id', '=', lineId]], ['id'], { limit: 200 },
@@ -624,6 +709,20 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
       const sVals = { line_id: lineId, name: s.name, sequence: s.sequence ?? 10 };
       if (s.id) await odoo.write('krawings.task.template.subtask', [s.id], sVals);
       else await odoo.create('krawings.task.template.subtask', sVals);
+    }
+  }
+  // Replace exception_dates: delete all existing rows, recreate from input.
+  // Simple and correct — no need to diff because there's no per-row metadata.
+  if (line.recurrence) {
+    const existingExc = await odoo.searchRead(
+      'krawings.task.template.line.exception',
+      [['line_id', '=', lineId]], ['id'], { limit: 500 },
+    );
+    if (existingExc.length) {
+      await odoo.unlink('krawings.task.template.line.exception', existingExc.map((e: any) => e.id));
+    }
+    for (const date of line.recurrence.exception_dates || []) {
+      await odoo.create('krawings.task.template.line.exception', { line_id: lineId, date });
     }
   }
   return lineId;

@@ -8,13 +8,6 @@
                 <field name="name"/>
                 <field name="department_id"/>
                 <field name="company_id" groups="base.group_multi_company"/>
-                <field name="day_mon" string="Mo"/>
-                <field name="day_tue" string="Tu"/>
-                <field name="day_wed" string="We"/>
-                <field name="day_thu" string="Th"/>
-                <field name="day_fri" string="Fr"/>
-                <field name="day_sat" string="Sa"/>
-                <field name="day_sun" string="Su"/>
                 <field name="line_count"/>
                 <field name="active" widget="boolean_toggle"/>
             </list>
@@ -33,35 +26,24 @@
                     <widget name="web_ribbon" title="Archived" bg_color="bg-danger" invisible="active"/>
                     <div class="oe_title">
                         <h1>
-                            <field name="name" placeholder="e.g. Kitchen — Standard Day"/>
+                            <field name="name" placeholder="e.g. Kitchen Tasks"/>
                         </h1>
                     </div>
                     <group>
-                        <group>
-                            <field name="department_id"/>
-                            <field name="company_id" groups="base.group_multi_company"/>
-                            <field name="active" invisible="1"/>
-                        </group>
-                        <group string="Days of Week">
-                            <field name="day_mon"/>
-                            <field name="day_tue"/>
-                            <field name="day_wed"/>
-                            <field name="day_thu"/>
-                            <field name="day_fri"/>
-                            <field name="day_sat"/>
-                            <field name="day_sun"/>
-                        </group>
+                        <field name="department_id"/>
+                        <field name="company_id" groups="base.group_multi_company"/>
+                        <field name="active" invisible="1"/>
                     </group>
                     <notebook>
                         <page string="Tasks">
                             <field name="line_ids">
-                                <list editable="bottom">
+                                <list>
                                     <field name="sequence" widget="handle"/>
                                     <field name="day_part"/>
                                     <field name="name"/>
+                                    <field name="recurrence_type"/>
                                     <field name="deadline_time" widget="float_time"/>
                                     <field name="photo_required" widget="boolean_toggle"/>
-                                    <field name="module_link_type"/>
                                 </list>
                                 <form>
                                     <group>
@@ -70,13 +52,36 @@
                                         <field name="sequence"/>
                                         <field name="deadline_time" widget="float_time"/>
                                         <field name="photo_required"/>
+                                        <field name="photo_instructions"/>
                                         <field name="module_link_type"/>
+                                    </group>
+                                    <group string="Recurrence">
+                                        <field name="recurrence_type"/>
+                                        <field name="recurrence_interval"/>
+                                        <field name="recurrence_start_date"/>
+                                        <field name="recurrence_end_type"/>
+                                        <field name="recurrence_end_date" invisible="recurrence_end_type != 'on_date'"/>
+                                        <field name="recurrence_count" invisible="recurrence_end_type != 'after_count'"/>
+                                        <field name="recurrence_one_off_date" invisible="recurrence_type != 'once'"/>
+                                        <field name="recurrence_weekdays" invisible="recurrence_type != 'weekly'"/>
+                                        <field name="recurrence_monthly_mode" invisible="recurrence_type not in ('monthly', 'yearly')"/>
+                                        <field name="recurrence_day_of_month" invisible="recurrence_type not in ('monthly', 'yearly') or recurrence_monthly_mode != 'day_of_month'"/>
+                                        <field name="recurrence_weekday_pos" invisible="recurrence_type not in ('monthly', 'yearly') or recurrence_monthly_mode != 'weekday_of_month'"/>
+                                        <field name="recurrence_weekday" invisible="recurrence_type not in ('monthly', 'yearly') or recurrence_monthly_mode != 'weekday_of_month'"/>
+                                        <field name="recurrence_month" invisible="recurrence_type != 'yearly'"/>
                                     </group>
                                     <separator string="Subtasks"/>
                                     <field name="subtask_ids">
                                         <list editable="bottom">
                                             <field name="sequence" widget="handle"/>
                                             <field name="name"/>
+                                        </list>
+                                    </field>
+                                    <separator string="Recurrence exceptions"/>
+                                    <field name="exception_ids">
+                                        <list editable="bottom">
+                                            <field name="date"/>
+                                            <field name="note"/>
                                         </list>
                                     </field>
                                 </form>
