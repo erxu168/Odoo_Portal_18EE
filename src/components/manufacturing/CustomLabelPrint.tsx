@@ -60,26 +60,39 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
   const [uom, setUom] = useState('');
   const [productionDate, setProductionDate] = useState(todayIso());
   const [expiryDate, setExpiryDate] = useState('');
-  const [shelfLifeDays, setShelfLifeDays] = useState('');
   const [chilled, setChilled] = useState(false);
   const [frozen, setFrozen] = useState(false);
+  const [chilledDays, setChilledDays] = useState('');
+  const [frozenDays, setFrozenDays] = useState('');
   const [labelCount, setLabelCount] = useState('1');
   const [labels, setLabels] = useState<LabelRow[]>([]);
-
-  // Auto-calc expiry date from production date + shelf-life days.
-  // Manual edits to the expiry date are allowed and will be overwritten
-  // the next time production date or days change.
-  useEffect(() => {
-    const days = parseInt(shelfLifeDays, 10);
-    if (!isNaN(days) && days > 0 && productionDate) {
-      setExpiryDate(addDaysIso(productionDate, days));
-    }
-  }, [productionDate, shelfLifeDays]);
 
   const storageMode: 'chilled' | 'frozen' | 'both' | null =
     chilled && frozen ? 'both' :
     chilled ? 'chilled' :
     frozen ? 'frozen' : null;
+
+  // Active shelf-life days based on which storage modes are ticked.
+  // Mirrors PackageLabel: each mode has its own days; if both are active,
+  // the label can only honour one expiry date so we use the shorter one.
+  const activeShelfLifeDays = useMemo(() => {
+    const c = chilled ? parseInt(chilledDays, 10) : NaN;
+    const f = frozen ? parseInt(frozenDays, 10) : NaN;
+    const cValid = !isNaN(c) && c > 0;
+    const fValid = !isNaN(f) && f > 0;
+    if (cValid && fValid) return Math.min(c, f);
+    if (cValid) return c;
+    if (fValid) return f;
+    return 0;
+  }, [chilled, frozen, chilledDays, frozenDays]);
+
+  // Auto-fill expiry from production date + active days.
+  // Manual edits to expiry remain allowed and stick until inputs change.
+  useEffect(() => {
+    if (activeShelfLifeDays > 0 && productionDate) {
+      setExpiryDate(addDaysIso(productionDate, activeShelfLifeDays));
+    }
+  }, [productionDate, activeShelfLifeDays]);
 
   const [selectedSize, setSelectedSize] = useState('55x75');
   const [customWidth, setCustomWidth] = useState('55');
@@ -409,33 +422,53 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
-            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Storage</div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setChilled(v => !v)}
-                className={`flex-1 py-3 px-4 rounded-xl border-2 font-bold text-[var(--fs-sm)] transition-all active:scale-[0.975] flex items-center justify-center gap-2 ${
-                  chilled ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 bg-gray-50 text-gray-500'
-                }`}>
-                <span className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
-                  chilled ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-300 bg-white'
-                }`}>
-                  {chilled && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5"/></svg>}
-                </span>
-                Chilled
-              </button>
-              <button type="button" onClick={() => setFrozen(v => !v)}
-                className={`flex-1 py-3 px-4 rounded-xl border-2 font-bold text-[var(--fs-sm)] transition-all active:scale-[0.975] flex items-center justify-center gap-2 ${
-                  frozen ? 'border-pink-600 bg-pink-50 text-pink-700' : 'border-gray-200 bg-gray-50 text-gray-500'
-                }`}>
-                <span className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
-                  frozen ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-300 bg-white'
-                }`}>
-                  {frozen && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5"/></svg>}
-                </span>
-                Frozen
-              </button>
+            <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Storage &amp; shelf life</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className={`rounded-xl border-2 p-3 transition-all ${
+                chilled ? 'border-pink-600 bg-pink-50' : 'border-gray-200 bg-gray-50'
+              }`}>
+                <button type="button" onClick={() => setChilled(v => !v)}
+                  className="w-full flex items-center gap-2 mb-2 active:scale-[0.975]">
+                  <span className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                    chilled ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-300 bg-white'
+                  }`}>
+                    {chilled && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5"/></svg>}
+                  </span>
+                  <span className={`font-bold text-[var(--fs-sm)] ${chilled ? 'text-pink-700' : 'text-gray-500'}`}>Chilled</span>
+                </button>
+                <input type="number" inputMode="numeric" step="1" min="0" max="3650"
+                  disabled={!chilled}
+                  value={chilledDays}
+                  onChange={e => setChilledDays(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="days"
+                  className="w-full px-2.5 py-2 bg-white border border-gray-200 rounded-lg text-[var(--fs-sm)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none disabled:opacity-40 disabled:bg-gray-100" />
+              </div>
+              <div className={`rounded-xl border-2 p-3 transition-all ${
+                frozen ? 'border-pink-600 bg-pink-50' : 'border-gray-200 bg-gray-50'
+              }`}>
+                <button type="button" onClick={() => setFrozen(v => !v)}
+                  className="w-full flex items-center gap-2 mb-2 active:scale-[0.975]">
+                  <span className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                    frozen ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-300 bg-white'
+                  }`}>
+                    {frozen && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5"/></svg>}
+                  </span>
+                  <span className={`font-bold text-[var(--fs-sm)] ${frozen ? 'text-pink-700' : 'text-gray-500'}`}>Frozen</span>
+                </button>
+                <input type="number" inputMode="numeric" step="1" min="0" max="3650"
+                  disabled={!frozen}
+                  value={frozenDays}
+                  onChange={e => setFrozenDays(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="days"
+                  className="w-full px-2.5 py-2 bg-white border border-gray-200 rounded-lg text-[var(--fs-sm)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none disabled:opacity-40 disabled:bg-gray-100" />
+              </div>
             </div>
             <div className="mt-2 text-[var(--fs-xs)] text-gray-400">
-              Tick neither and the storage line is hidden on the label.
+              {storageMode === null
+                ? 'Tick neither and the storage line is hidden on the label.'
+                : storageMode === 'both'
+                ? 'Both ticked — expiry uses whichever expires first.'
+                : `Type the ${storageMode} shelf life in days; expiry fills in below.`}
             </div>
           </div>
 
@@ -447,21 +480,15 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
                   className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
               </div>
               <div>
-                <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Days until expiration</div>
-                <input type="number" inputMode="numeric" step="1" min="0" max="3650"
-                  value={shelfLifeDays}
-                  onChange={e => setShelfLifeDays(e.target.value.replace(/[^0-9]/g, ''))}
-                  placeholder="e.g. 3"
-                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+                <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Expiry date</div>
+                <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
+                  className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
               </div>
             </div>
-            <div className="mt-3">
-              <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Expiry date</div>
-              <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)}
-                className="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-base)] text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
-              <div className="mt-1.5 text-[var(--fs-xs)] text-gray-400">
-                Type days above and we fill this in. You can still edit it by hand.
-              </div>
+            <div className="mt-2 text-[var(--fs-xs)] text-gray-400">
+              {activeShelfLifeDays > 0
+                ? `Auto-filled from production date + ${activeShelfLifeDays} day${activeShelfLifeDays === 1 ? '' : 's'}. You can still edit it.`
+                : 'Set days above to auto-fill expiry, or type it by hand.'}
             </div>
           </div>
 
