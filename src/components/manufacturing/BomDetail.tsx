@@ -935,7 +935,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
                           }`}>
                           <div className="flex items-center gap-2.5 min-w-0">
                             <div className="min-w-0">
-                              <div className="text-[var(--fs-md)] font-bold text-gray-900 truncate">
+                              <div className="text-[var(--fs-md)] font-bold text-gray-900 break-words leading-snug">
                                 {comp.product_name}
                                 {comp.is_sub_bom && <span className="ml-2 text-[var(--fs-xs)] px-2 py-0.5 rounded-md bg-green-50 text-green-800 font-semibold">Sub-recipe</span>}
                               </div>
