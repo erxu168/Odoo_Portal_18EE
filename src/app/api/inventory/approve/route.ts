@@ -48,15 +48,31 @@ export async function POST(request: Request) {
   try {
     const odoo = getOdoo();
 
-    for (const entry of entries) {
-      try {
-        const quants = await odoo.searchRead('stock.quant', [
-          ['product_id', '=', entry.product_id],
-          ['location_id', '=', session.location_id],
-        ], ['id', 'quantity'], { limit: 1 });
+    // One stock.quant lookup for every product in this session, instead
+    // of one round-trip per entry. Up to ~50 entries fits comfortably
+    // under the default search_read limit.
+    const productIds = entries.map(e => e.product_id);
+    const existingQuants = await odoo.searchRead('stock.quant', [
+      ['product_id', 'in', productIds],
+      ['location_id', '=', session.location_id],
+    ], ['id', 'product_id'], {
+      order: 'id asc',
+      limit: Math.max(200, productIds.length * 2),
+    });
+    const quantByProduct = new Map<number, number>();
+    for (const q of existingQuants) {
+      const pid = Array.isArray(q.product_id) ? q.product_id[0] : q.product_id;
+      // First match wins so the choice is deterministic across calls.
+      if (!quantByProduct.has(pid)) quantByProduct.set(pid, q.id);
+    }
 
-        if (quants.length > 0) {
-          await odoo.write('stock.quant', [quants[0].id], {
+    // Run every per-entry write/create in parallel. Per-entry try/catch
+    // is preserved so a single failure doesn't block the others.
+    await Promise.all(entries.map(async (entry) => {
+      try {
+        const existingId = quantByProduct.get(entry.product_id);
+        if (existingId) {
+          await odoo.write('stock.quant', [existingId], {
             inventory_quantity: entry.counted_qty,
           });
         } else {
@@ -72,7 +88,7 @@ export async function POST(request: Request) {
         console.error(`Odoo inventory write failed for product ${entry.product_id}:`, msg);
         failedEntries.push({ product_id: entry.product_id, error: msg });
       }
-    }
+    }));
 
     // Only apply inventory if at least some entries synced
     if (syncedEntries.length > 0) {
