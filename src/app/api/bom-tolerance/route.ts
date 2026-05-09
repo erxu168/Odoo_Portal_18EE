@@ -21,16 +21,21 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const bomId = searchParams.get('bom_id');
 
-    // Get global default
+    // Get global default — fall back if portal_settings row is missing or corrupted
     const globalRow = db.prepare('SELECT value FROM portal_settings WHERE key = ?').get(DEFAULT_TOLERANCE_KEY) as { value: string } | undefined;
-    const globalDefault = globalRow ? parseFloat(globalRow.value) : DEFAULT_TOLERANCE_VALUE;
+    const globalParsed = globalRow ? parseFloat(globalRow.value) : NaN;
+    const globalDefault = Number.isFinite(globalParsed) ? globalParsed : DEFAULT_TOLERANCE_VALUE;
 
     if (bomId) {
+      const bomIdNum = parseInt(bomId, 10);
+      if (!Number.isFinite(bomIdNum)) {
+        return NextResponse.json({ error: 'bom_id must be a number' }, { status: 400 });
+      }
       // Check per-BOM override
-      const bomRow = db.prepare('SELECT tolerance_pct FROM bom_tolerance WHERE bom_id = ?').get(parseInt(bomId)) as { tolerance_pct: number } | undefined;
+      const bomRow = db.prepare('SELECT tolerance_pct FROM bom_tolerance WHERE bom_id = ?').get(bomIdNum) as { tolerance_pct: number } | undefined;
 
       return NextResponse.json({
-        bom_id: parseInt(bomId),
+        bom_id: bomIdNum,
         tolerance_pct: bomRow?.tolerance_pct ?? globalDefault,
         is_override: !!bomRow,
         global_default: globalDefault,
