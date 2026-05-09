@@ -21,77 +21,60 @@ interface Tile {
   subtitle: string;
   href: string | null;
   minRole: string;
-  bg: string;
-  border: string;
-  iconBg: string;
-  iconColor: string;
   icon: React.ReactNode;
 }
 
 const TILES: Tile[] = [
   {
     id: 'production', label: 'Manufacturing', subtitle: 'Prep & production orders', href: '/manufacturing', minRole: 'staff',
-    bg: 'bg-orange-50', border: 'border-orange-200', iconBg: 'bg-orange-100', iconColor: 'text-orange-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>,
   },
   {
     id: 'recipes', label: 'Chef Guide', subtitle: 'Cooking & production guides', href: '/recipes', minRole: 'staff',
-    bg: 'bg-green-50', border: 'border-green-200', iconBg: 'bg-green-100', iconColor: 'text-green-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>,
   },
   {
     id: 'inventory', label: 'Inventory', subtitle: 'Stock counting & tracking', href: '/inventory', minRole: 'staff',
-    bg: 'bg-blue-50', border: 'border-blue-200', iconBg: 'bg-purple-100', iconColor: 'text-blue-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>,
   },
   {
     id: 'purchase', label: 'Purchase', subtitle: 'Orders & suppliers', href: '/purchase', minRole: 'staff',
-    bg: 'bg-blue-50', border: 'border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>,
   },
   {
     id: 'hr', label: 'HR', subtitle: 'Profile & onboarding', href: '/hr', minRole: 'staff',
-    bg: 'bg-rose-50', border: 'border-rose-200', iconBg: 'bg-rose-100', iconColor: 'text-rose-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
   },
   {
     id: 'termination', label: 'Termination', subtitle: 'Letters & offboarding', href: '/hr/termination', minRole: 'admin',
-    bg: 'bg-red-50', border: 'border-red-200', iconBg: 'bg-red-100', iconColor: 'text-red-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>,
   },
   {
     id: 'credentials', label: 'Supplier Logins', subtitle: 'Vendor credentials', href: '/admin/credentials', minRole: 'manager',
-    bg: 'bg-violet-50', border: 'border-violet-200', iconBg: 'bg-violet-100', iconColor: 'text-violet-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>,
   },
   {
     id: 'rentals', label: 'Rentals', subtitle: 'Properties & tenancies', href: '/rentals', minRole: 'admin',
-    bg: 'bg-emerald-50', border: 'border-emerald-200', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
   },
   {
     id: 'prep-planner', label: 'Prep Planner', subtitle: 'Demand forecasts & prep targets', href: '/prep-planner', minRole: 'manager',
-    bg: 'bg-cyan-50', border: 'border-cyan-200', iconBg: 'bg-cyan-100', iconColor: 'text-cyan-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="3" y1="20" x2="21" y2="20"/></svg>,
   },
   {
     id: 'shifts', label: 'Shift Schedule', subtitle: 'Coming soon', href: null, minRole: 'staff',
-    bg: 'bg-amber-50', border: 'border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
   },
   {
     id: 'tasks', label: 'My Tasks', subtitle: 'Daily department checklist', href: '/tasks', minRole: 'staff',
-    bg: 'bg-red-50', border: 'border-red-200', iconBg: 'bg-red-100', iconColor: 'text-red-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>,
   },
   {
     id: 'leave', label: 'Leave', subtitle: 'Coming soon', href: null, minRole: 'staff',
-    bg: 'bg-teal-50', border: 'border-teal-200', iconBg: 'bg-teal-100', iconColor: 'text-teal-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>,
   },
   {
     id: 'payroll', label: 'Payroll', subtitle: 'Coming soon', href: null, minRole: 'staff',
-    bg: 'bg-indigo-50', border: 'border-indigo-200', iconBg: 'bg-indigo-100', iconColor: 'text-indigo-600',
     icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
   },
 ];
@@ -337,17 +320,15 @@ export default function DashboardHome() {
                   if (tile.href === '/recipes') sessionStorage.setItem('kw_recipes_reset', '1');
                   router.push(tile.href);
                 }}
-                className={`relative rounded-2xl border p-4 flex flex-col items-center justify-center text-center aspect-square shadow-sm w-full active:scale-[0.97] transition-transform ${
-                  disabled
-                    ? 'bg-gray-50 border-gray-200 opacity-50'
-                    : `${tile.bg} ${tile.border}`
+                className={`relative rounded-2xl border border-gray-200 bg-[#F1F3F5] p-4 flex flex-col items-center justify-center text-center aspect-square shadow-sm w-full active:scale-[0.97] transition-transform ${
+                  disabled ? 'opacity-50' : ''
                 }`}
               >
                 {count > 0 && (
                   <span className="absolute top-2 right-2 min-w-[22px] h-6 px-2 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-6 text-center">{count}</span>
                 )}
-                <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 mb-2 ${
-                  disabled ? 'bg-gray-100 text-gray-400' : `${tile.iconBg} ${tile.iconColor}`
+                <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 mb-2 bg-white ${
+                  disabled ? 'text-gray-400' : 'text-[#2563EB]'
                 }`}>
                   {tile.icon}
                 </div>
