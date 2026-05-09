@@ -79,67 +79,129 @@ async function autoAssignComponentLotsForClose(
     'move_line_ids', 'location_id', 'location_dest_id', 'name',
   ]);
 
-  for (const move of moves) {
-    if (move.state === 'done' || move.state === 'cancel') continue;
+  // Drop moves Odoo has already settled or has nothing to consume.
+  const activeMoves = moves.filter((m: any) =>
+    m.state !== 'done' && m.state !== 'cancel' && (m.quantity || 0) > 0,
+  );
+  if (!activeMoves.length) return;
 
-    const prod = await odoo.read('product.product', [move.product_id[0]], [
-      'tracking', 'display_name',
-    ]);
-    const tracking = prod[0]?.tracking || 'none';
-    if (tracking === 'none') continue;
+  // One product.product read for every component up front instead of one
+  // read per move. Tracking + display_name come back in a single round-trip.
+  const allProductIds = Array.from(new Set(activeMoves.map((m: any) => m.product_id[0]))) as number[];
+  const products = await odoo.read('product.product', allProductIds, ['tracking', 'display_name']);
+  const productMap = new Map<number, { tracking: string; display_name: string }>();
+  for (const p of products) {
+    productMap.set(p.id, {
+      tracking: p.tracking || 'none',
+      display_name: p.display_name || `product-${p.id}`,
+    });
+  }
 
+  // Only lot/serial-tracked products need our placeholder logic.
+  const trackedMoves = activeMoves.filter((m: any) =>
+    (productMap.get(m.product_id[0])?.tracking || 'none') !== 'none',
+  );
+  if (!trackedMoves.length) return;
+
+  // One stock.move.line read for every tracked move's existing lines —
+  // previously this was N round-trips, one per move.
+  const allLineIds: number[] = trackedMoves.flatMap((m: any) => m.move_line_ids || []);
+  const allLines = allLineIds.length
+    ? await odoo.read('stock.move.line', allLineIds, ['id', 'move_id', 'lot_id', 'quantity'])
+    : [];
+  const linesByMove = new Map<number, any[]>();
+  for (const l of allLines) {
+    const mid = Array.isArray(l.move_id) ? l.move_id[0] : l.move_id;
+    const arr = linesByMove.get(mid) || [];
+    arr.push(l);
+    linesByMove.set(mid, arr);
+  }
+
+  // Find the latest existing lot for each tracked product in parallel —
+  // N parallel searches collapse to one round-trip's latency.
+  const trackedProductIds = Array.from(new Set(trackedMoves.map((m: any) => m.product_id[0]))) as number[];
+  const lotResults = await Promise.all(
+    trackedProductIds.map(pid =>
+      odoo.searchRead(
+        'stock.lot',
+        [['product_id', '=', pid]],
+        ['id'],
+        { order: 'create_date desc, id desc', limit: 1 },
+      ),
+    ),
+  );
+  const lotByProduct = new Map<number, number>();
+  trackedProductIds.forEach((pid, i) => {
+    if (lotResults[i].length) lotByProduct.set(pid, lotResults[i][0].id);
+  });
+
+  // Plan all writes locally before issuing them, then send them in batches.
+  const linesToUnlink: number[] = [];
+  const lotCreates: Array<{ productId: number; vals: Record<string, any> }> = [];
+  const moveLineCreates: Array<{ moveId: number; moveName: string; productId: number; vals: Record<string, any> }> = [];
+
+  for (const move of trackedMoves) {
+    const productId = move.product_id[0];
     const consumedQty: number = move.quantity || 0;
-    if (consumedQty <= 0) continue;
+    const existingLines = linesByMove.get(move.id) || [];
 
-    const existingLineIds: number[] = move.move_line_ids || [];
     let qtyAlreadyAssigned = 0;
-    const linesWithoutLot: number[] = [];
-    if (existingLineIds.length) {
-      const lines = await odoo.read('stock.move.line', existingLineIds, [
-        'id', 'lot_id', 'quantity',
-      ]);
-      for (const l of lines) {
-        if (l.lot_id) qtyAlreadyAssigned += l.quantity || 0;
-        else linesWithoutLot.push(l.id);
-      }
+    for (const l of existingLines) {
+      if (l.lot_id) qtyAlreadyAssigned += l.quantity || 0;
+      else linesToUnlink.push(l.id);
     }
     const remaining = consumedQty - qtyAlreadyAssigned;
     if (remaining <= 0.0001) continue;
 
-    if (linesWithoutLot.length) {
-      await odoo.unlink('stock.move.line', linesWithoutLot);
-    }
-
-    const productId = move.product_id[0];
-    let lotId: number;
-    const anyLots = await odoo.searchRead(
-      'stock.lot',
-      [['product_id', '=', productId]],
-      ['id'],
-      { order: 'create_date desc, id desc', limit: 1 },
-    );
-    if (anyLots.length) {
-      lotId = anyLots[0].id;
-    } else {
-      const safeName = (prod[0]?.display_name || `product-${productId}`).replace(/\s+/g, '-').slice(0, 40);
+    if (!lotByProduct.has(productId)) {
+      const display = productMap.get(productId)?.display_name || `product-${productId}`;
+      const safeName = display.replace(/\s+/g, '-').slice(0, 40);
       const lotVals: Record<string, any> = {
         name: `${moName}-${safeName}-AUTO`,
         product_id: productId,
       };
       if (companyId) lotVals.company_id = companyId;
-      lotId = await odoo.create('stock.lot', lotVals);
+      lotCreates.push({ productId, vals: lotVals });
+      // Mark as "will-have-a-lot" so a second move for the same product
+      // doesn't queue a duplicate create.
+      lotByProduct.set(productId, -1);
     }
 
-    await odoo.create('stock.move.line', {
-      move_id: move.id,
-      product_id: productId,
-      product_uom_id: move.product_uom[0],
-      lot_id: lotId,
-      location_id: move.location_id[0],
-      location_dest_id: move.location_dest_id[0],
-      quantity: remaining,
+    moveLineCreates.push({
+      moveId: move.id,
+      moveName: move.name,
+      productId,
+      vals: {
+        move_id: move.id,
+        product_id: productId,
+        product_uom_id: move.product_uom[0],
+        location_id: move.location_id[0],
+        location_dest_id: move.location_dest_id[0],
+        quantity: remaining,
+      },
     });
-    console.log(`[MO ${moId}] Assigned lot ${lotId} to raw move ${move.id} (${move.name}) for close — inventory not consulted`);
+  }
+
+  // Batch 1: drop every lot-less existing line in a single round-trip.
+  if (linesToUnlink.length) {
+    await odoo.unlink('stock.move.line', linesToUnlink);
+  }
+
+  // Batch 2: create the missing placeholder lots in parallel; remember
+  // their IDs so the move-line creates can reference them.
+  if (lotCreates.length) {
+    const newLotIds = await Promise.all(lotCreates.map(c => odoo.create('stock.lot', c.vals)));
+    lotCreates.forEach((c, i) => lotByProduct.set(c.productId, newLotIds[i]));
+  }
+
+  // Batch 3: create every move line in parallel.
+  if (moveLineCreates.length) {
+    await Promise.all(moveLineCreates.map(c =>
+      odoo.create('stock.move.line', { ...c.vals, lot_id: lotByProduct.get(c.productId)! }),
+    ));
+    for (const c of moveLineCreates) {
+      console.log(`[MO ${moId}] Assigned lot ${lotByProduct.get(c.productId)} to raw move ${c.moveId} (${c.moveName}) for close — inventory not consulted`);
+    }
   }
 }
 
@@ -396,12 +458,12 @@ export async function PATCH(
     }
 
     if (body.component_updates) {
-      for (const update of body.component_updates) {
-        await odoo.write('stock.move', [update.move_id], {
+      await Promise.all(body.component_updates.map((update: { move_id: number; consumed_qty: number }) =>
+        odoo.write('stock.move', [update.move_id], {
           quantity: update.consumed_qty,
           picked: update.consumed_qty > 0,
-        });
-      }
+        }),
+      ));
     }
 
     const updated = await odoo.read('mrp.production', [moId], [
