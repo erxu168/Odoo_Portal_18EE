@@ -78,7 +78,10 @@ export function initInventoryTables() {
     CREATE INDEX IF NOT EXISTS idx_sessions_status ON counting_sessions(status);
     CREATE INDEX IF NOT EXISTS idx_sessions_date ON counting_sessions(scheduled_date);
     CREATE INDEX IF NOT EXISTS idx_entries_session ON count_entries(session_id);
+    CREATE INDEX IF NOT EXISTS idx_entries_product ON count_entries(product_id);
     CREATE INDEX IF NOT EXISTS idx_quick_status ON quick_counts(status);
+    CREATE INDEX IF NOT EXISTS idx_quick_product ON quick_counts(product_id);
+    CREATE INDEX IF NOT EXISTS idx_quick_counted_by ON quick_counts(counted_by);
 
     CREATE TABLE IF NOT EXISTS product_drafts (
       odoo_product_id INTEGER PRIMARY KEY,
