@@ -26,6 +26,11 @@ export default function KdsPage() {
   const lastActivityRef = useRef<number>(Date.now());
   const taskStripRef = useRef<HTMLDivElement>(null);
   const tableStripRef = useRef<HTMLDivElement>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
 
   // Unlock audio on first interaction
   const handleInteraction = useCallback(() => {
@@ -108,8 +113,12 @@ export default function KdsPage() {
   }, [settings.autoScrollSec]);
 
   function showToast(msg: string) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 3000);
   }
 
   // Prep tab content
