@@ -4,6 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 
+// Treat blank / non-numeric input as zero so +/- buttons and saves never produce NaN.
+function num(s: string): number {
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
 interface BomTolerance {
   bom_id: number;
   tolerance_pct: number;
@@ -164,7 +170,7 @@ export default function AdminSettingsPage() {
             <div className="flex items-center gap-3">
               <label className="text-[13px] text-gray-600 font-semibold flex-shrink-0">Global default</label>
               <div className="flex items-center gap-2 flex-1">
-                <button onClick={() => setGlobalTolerance(String(Math.max(0, parseFloat(globalTolerance) - 1)))}
+                <button onClick={() => setGlobalTolerance(String(Math.max(0, num(globalTolerance) - 1)))}
                   className="w-10 h-10 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-600 text-[18px] font-bold active:bg-gray-200">
                   -
                 </button>
@@ -178,7 +184,7 @@ export default function AdminSettingsPage() {
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-gray-400 font-bold">%</span>
                 </div>
-                <button onClick={() => setGlobalTolerance(String(Math.min(100, parseFloat(globalTolerance) + 1)))}
+                <button onClick={() => setGlobalTolerance(String(Math.min(100, num(globalTolerance) + 1)))}
                   className="w-10 h-10 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-600 text-[18px] font-bold active:bg-gray-200">
                   +
                 </button>
@@ -191,7 +197,7 @@ export default function AdminSettingsPage() {
               </button>
             )}
             <div className="mt-3 px-3 py-2 bg-gray-50 rounded-lg text-[11px] text-gray-500">
-              Example: at {globalTolerance}%, a recipe needing 1.000 kg allows {(1 * (1 - parseFloat(globalTolerance || '0') / 100)).toFixed(3)} - {(1 * (1 + parseFloat(globalTolerance || '0') / 100)).toFixed(3)} kg
+              Example: at {globalTolerance}%, a recipe needing 1.000 kg allows {(1 * (1 - num(globalTolerance) / 100)).toFixed(3)} - {(1 * (1 + num(globalTolerance) / 100)).toFixed(3)} kg
             </div>
           </div>
         </div>
@@ -291,7 +297,7 @@ export default function AdminSettingsPage() {
             <p className="text-[13px] text-gray-500 mb-4">{editingBom.name}</p>
 
             <div className="flex items-center gap-2 mb-4">
-              <button onClick={() => setEditingBom({ ...editingBom, pct: String(Math.max(0, parseFloat(editingBom.pct) - 1)) })}
+              <button onClick={() => setEditingBom({ ...editingBom, pct: String(Math.max(0, num(editingBom.pct) - 1)) })}
                 className="w-12 h-12 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-600 text-[20px] font-bold active:bg-gray-200">
                 -
               </button>
@@ -305,7 +311,7 @@ export default function AdminSettingsPage() {
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[16px] text-gray-400 font-bold">%</span>
               </div>
-              <button onClick={() => setEditingBom({ ...editingBom, pct: String(Math.min(100, parseFloat(editingBom.pct) + 1)) })}
+              <button onClick={() => setEditingBom({ ...editingBom, pct: String(Math.min(100, num(editingBom.pct) + 1)) })}
                 className="w-12 h-12 rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-600 text-[20px] font-bold active:bg-gray-200">
                 +
               </button>
@@ -320,7 +326,7 @@ export default function AdminSettingsPage() {
                 className="flex-1 py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-[14px] active:bg-gray-50">
                 Cancel
               </button>
-              <button onClick={() => saveBomOverride(editingBom.id, parseFloat(editingBom.pct))}
+              <button onClick={() => saveBomOverride(editingBom.id, num(editingBom.pct))}
                 className="flex-1 py-3.5 rounded-xl bg-green-600 text-white font-bold text-[14px] shadow-lg shadow-green-600/30 active:bg-green-700">
                 Save
               </button>
