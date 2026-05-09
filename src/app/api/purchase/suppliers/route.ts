@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { listSuppliers, createSupplier, updateSupplier, getSupplier } from '@/lib/purchase-db';
 import { getDb } from '@/lib/db';
-import { OdooClient } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -49,8 +49,7 @@ export async function POST(request: Request) {
   // Mode 2: create the res.partner in Odoo first
   if (create_in_odoo && !odoo_partner_id) {
     try {
-      const odoo = new OdooClient();
-      await odoo.authenticate();
+      const odoo = getOdoo();
       const vals: Record<string, any> = {
         name,
         supplier_rank: 1,

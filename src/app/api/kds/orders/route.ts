@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { OdooClient } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 import { getKdsSettings } from '@/lib/kds-db';
 import { KDS_LOCATION_ID } from '@/types/kds';
 
@@ -14,8 +14,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ orders: [], error: 'No POS config ID set' });
     }
 
-    const odoo = new OdooClient();
-    await odoo.authenticate();
+    const odoo = getOdoo();
 
     const rawOrders = await odoo.searchRead(
       'pos.order',
