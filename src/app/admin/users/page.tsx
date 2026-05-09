@@ -86,29 +86,35 @@ export default function AdminUsersPage() {
       ? current.filter(id => id !== companyId)
       : [...current, companyId];
     try {
-      await fetch(`/api/admin/users/${user.id}`, {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ allowed_company_ids: updated }),
       });
+      if (!res.ok) throw new Error('Server rejected company update');
       setUsers(prev => prev.map(u =>
         u.id === user.id ? { ...u, allowed_company_ids: JSON.stringify(updated) } : u
       ));
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not update companies');
+    }
   }
 
   async function assignAllCompanies(user: User) {
     const allIds = companies.map(c => c.id);
     try {
-      await fetch(`/api/admin/users/${user.id}`, {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ allowed_company_ids: allIds }),
       });
+      if (!res.ok) throw new Error('Server rejected company assignment');
       setUsers(prev => prev.map(u =>
         u.id === user.id ? { ...u, allowed_company_ids: JSON.stringify(allIds) } : u
       ));
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not assign companies');
+    }
   }
 
   async function handleApprove(userId: number, role: string) {
@@ -188,13 +194,16 @@ export default function AdminUsersPage() {
 
   async function toggleActive(user: User) {
     try {
-      await fetch(`/api/admin/users/${user.id}`, {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: !user.active }),
       });
+      if (!res.ok) throw new Error('Server rejected status change');
       fetchAll();
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not change account status');
+    }
   }
 
   async function handleResetPassword(user: User) {
@@ -206,19 +215,25 @@ export default function AdminUsersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ new_password: pw }),
       });
-      if (res.ok) alert('Password updated.');
-    } catch { /* ignore */ }
+      if (!res.ok) throw new Error('Password update failed');
+      alert('Password updated.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not reset password');
+    }
   }
 
   async function handleChangeRole(user: User, role: string) {
     try {
-      await fetch(`/api/admin/users/${user.id}`, {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role }),
       });
+      if (!res.ok) throw new Error('Server rejected role change');
       fetchAll();
-    } catch { /* ignore */ }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not change role');
+    }
   }
 
   const roleColors: Record<string, string> = {
