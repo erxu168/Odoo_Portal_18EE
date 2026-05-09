@@ -115,7 +115,7 @@ export default function BomList({ onSelect, onBack, onCreate, title, subtitlePat
           <button key={bom.id} onClick={() => onSelect(bom)}
             className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 flex justify-between items-center text-left w-full active:scale-[0.98] transition-transform">
             <div className="min-w-0 flex-1">
-              <div className="text-[var(--fs-lg)] font-bold text-gray-900 truncate">{bom.product_tmpl_id[1]}</div>
+              <div className="text-[var(--fs-lg)] font-bold text-gray-900 leading-tight break-words">{bom.product_tmpl_id[1]}</div>
               <div className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
                 {bom.category !== 'All' ? bom.category : ''}
                 {bom.category !== 'All' && bom.component_count ? ' \u00b7 ' : ''}
