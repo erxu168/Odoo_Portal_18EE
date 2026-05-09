@@ -201,22 +201,21 @@ export async function POST(req: NextRequest) {
 
     const bomId = await odoo.create('mrp.bom', bomVals);
 
-    // Add lines if provided
+    // Add lines and operations in parallel — independent creates
+    const writes: Promise<unknown>[] = [];
     if (body.lines?.length) {
       for (const line of body.lines) {
-        await odoo.create('mrp.bom.line', {
+        writes.push(odoo.create('mrp.bom.line', {
           bom_id: bomId,
           product_id: line.product_id,
           product_qty: line.product_qty,
           product_uom_id: line.product_uom_id,
-        });
+        }));
       }
     }
-
-    // Add operations if provided
     if (body.operations?.length) {
       for (const op of body.operations) {
-        await odoo.create('mrp.routing.workcenter', {
+        writes.push(odoo.create('mrp.routing.workcenter', {
           bom_id: bomId,
           name: op.name,
           workcenter_id: op.workcenter_id,
@@ -225,9 +224,10 @@ export async function POST(req: NextRequest) {
           note: op.note || false,
           worksheet: op.worksheet || false,
           worksheet_type: op.worksheet ? 'pdf' : false,
-        });
+        }));
       }
     }
+    if (writes.length) await Promise.all(writes);
 
     return NextResponse.json({ ok: true, id: bomId });
   } catch (error: unknown) {
