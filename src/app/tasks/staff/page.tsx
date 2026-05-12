@@ -6,6 +6,7 @@ import ChecklistCard from '../_components/ChecklistCard';
 import BottomNav from '../_components/BottomNav';
 import AdHocModal, { type AdHocSubmitVals } from '../_components/AdHocModal';
 import { uploadTaskPhoto } from '../_components/photoUpload';
+import NotificationsToggle from '../_components/NotificationsToggle';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../_components/useToast';
 
@@ -222,6 +223,7 @@ export default function StaffPage() {
       )}
 
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-24">
+        {isToday && <NotificationsToggle />}
         {showManagerControls && isPast && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-blue-700 text-xs mb-4">
             📖 Read-only history.

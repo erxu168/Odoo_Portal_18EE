@@ -424,6 +424,29 @@ export async function setLineNote(lineId: number, note: string, employeeId: numb
   await getOdoo().call('krawings.task.list.line', 'set_note', [[lineId], note, employeeId]);
 }
 
+/** Lightweight read for push payloads: line name + parent list's date / department. */
+export async function getLineSummary(lineId: number): Promise<{ line_name: string; list_id: number; department_id: number; date: string } | null> {
+  const rows = await getOdoo().searchRead(
+    'krawings.task.list.line',
+    [['id', '=', lineId]],
+    ['name', 'list_id'],
+    { limit: 1 },
+  );
+  if (!rows.length) return null;
+  const listId = m2oId(rows[0].list_id);
+  if (!listId) return null;
+  const lists = await getOdoo().searchRead(
+    'krawings.task.list', [['id', '=', listId]], ['department_id', 'date'], { limit: 1 },
+  );
+  if (!lists.length) return null;
+  return {
+    line_name: rows[0].name,
+    list_id: listId,
+    department_id: m2oId(lists[0].department_id) ?? 0,
+    date: lists[0].date,
+  };
+}
+
 export async function toggleSubtask(subtaskId: number, done: boolean, employeeId: number): Promise<void> {
   await getOdoo().call(
     'krawings.task.list.subtask', 'toggle',
@@ -769,7 +792,7 @@ export async function deleteAttachment(attachmentId: number): Promise<void> {
 // ── Spawning ──────────────────────────────────
 
 export async function spawnTodayLists(): Promise<void> {
-  await getOdoo().call('krawings.task.template', '_cron_spawn_daily_task_lists', []);
+  await getOdoo().call('krawings.task.template', 'spawn_today_lists', []);
 }
 
 export async function ensureListForDeptDate(departmentId: number, date: string): Promise<number> {

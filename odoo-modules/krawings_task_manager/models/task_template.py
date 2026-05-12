@@ -36,6 +36,13 @@ class KrawingsTaskTemplate(models.Model):
             tpl.line_count = len(tpl.line_ids)
 
     @api.model
+    def spawn_today_lists(self):
+        """Public RPC entry: spawn today's lists for every department. Safe to
+        call from the portal (manager Spawn button). Idempotent — calling
+        again does not duplicate today's lists."""
+        return self._cron_spawn_daily_task_lists()
+
+    @api.model
     def _cron_spawn_daily_task_lists(self):
         """Cron entry: spawn today's lists for every department that has at
         least one applicable template line firing today."""
