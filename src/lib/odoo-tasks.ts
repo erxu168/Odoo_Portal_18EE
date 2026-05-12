@@ -593,7 +593,8 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     name: l.name,
     sequence: l.sequence,
     day_part: l.day_part as DayPart,
-    deadline_time: l.deadline_time === false ? null : l.deadline_time,
+    // Odoo Float can't be null — a cleared deadline stores 0.0. Treat any falsy value as "no deadline".
+    deadline_time: l.deadline_time ? l.deadline_time : null,
     photo_required: !!l.photo_required,
     photo_instructions: l.photo_instructions || null,
     module_link_type: (l.module_link_type || 'none') as ModuleLink,
