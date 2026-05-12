@@ -18,6 +18,12 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // The push service worker must be reachable without auth — the browser
+  // fetches it during registration and expects JS, not the login HTML.
+  if (pathname === '/sw.js') {
+    return NextResponse.next();
+  }
+
   const session = request.cookies.get('kw_session');
   if (!session?.value) {
     const loginUrl = new URL('/login', request.url);
