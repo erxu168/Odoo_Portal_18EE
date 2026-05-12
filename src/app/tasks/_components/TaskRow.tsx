@@ -50,7 +50,14 @@ function formatTime(iso: string) {
 
 export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, readOnly = false }: Props) {
   const [subtasks, setSubtasks]     = useState<TaskSubtask[]>(task.subtasks);
-  const [photoUploaded, setPhoto]   = useState(task.photo_uploaded);
+  // Count of photos uploaded against this task — derived from runtime-scoped image attachments
+  // plus a transient "just uploaded" counter for instant feedback before the parent reload settles.
+  const persistedPhotos = task.attachments.filter(
+    a => a.scope === 'task' && (a.mimetype || '').startsWith('image/'),
+  ).length;
+  const [justUploaded, setJustUploaded] = useState(0);
+  const photoCount = persistedPhotos + justUploaded;
+  const photoUploaded = photoCount > 0;
   const [uploading, setUploading]   = useState(false);
   const [completing, setCompleting] = useState(false);
   const [error, setError]           = useState<string | null>(null);
@@ -109,8 +116,13 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
   async function handlePhoto(e: React.MouseEvent) {
     e.stopPropagation();
     setUploading(true);
-    try { await onPhotoUpload(task.id); setPhoto(true); setError(null); }
-    catch (err: unknown) {
+    try {
+      await onPhotoUpload(task.id);
+      // Optimistic bump; the parent reload will refresh task.attachments and
+      // make this counter redundant, but it removes a one-second blank period.
+      setJustUploaded(n => n + 1);
+      setError(null);
+    } catch (err: unknown) {
       // Don't surface an error if the user just dismissed the camera.
       const cancelled = !!(err && typeof err === 'object' && 'cancelled' in err);
       if (!cancelled) setError(err instanceof Error ? err.message : 'Photo upload failed');
@@ -190,23 +202,24 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
           </a>
         )}
 
-        {!readOnly && task.photo_required && !photoUploaded && allSubtasksDone && (
+        {!readOnly && task.photo_required && allSubtasksDone && (
           <>
-            {task.photo_instructions && (
+            {task.photo_instructions && photoCount === 0 && (
               <div className="mt-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-xs leading-snug">
                 <span className="font-bold">📋 Photo guide: </span>{task.photo_instructions}
               </div>
             )}
+            {photoCount > 0 && (
+              <div className="mt-2 flex items-center gap-2 py-2 px-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-xs font-semibold">
+                <span>✅ {photoCount} photo{photoCount === 1 ? '' : 's'} uploaded</span>
+                <span className="text-green-600/80 font-medium">— tap task to complete, or add more below</span>
+              </div>
+            )}
             <button onClick={handlePhoto} disabled={uploading}
               className="mt-2 w-full py-2.5 border-2 border-dashed border-orange-400 rounded-lg bg-orange-50 text-orange-700 text-xs font-semibold text-center hover:bg-orange-100 transition-colors disabled:opacity-60">
-              {uploading ? '⏳ Uploading...' : '\u{1F4F8} Tap to take / upload photo'}
+              {uploading ? '⏳ Uploading...' : photoCount === 0 ? '\u{1F4F8} Tap to take / upload photo' : '\u{1F4F8} Add another photo'}
             </button>
           </>
-        )}
-        {photoUploaded && (
-          <div className="mt-2 py-2 px-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-xs font-semibold">
-            ✅ Photo uploaded — tap task to complete
-          </div>
         )}
 
         {!readOnly && onNoteSave && (
