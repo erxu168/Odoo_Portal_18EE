@@ -34,6 +34,17 @@ class KrawingsTaskListLine(models.Model):
         'krawings.task.template.line', ondelete='set null', readonly=True,
     )
 
+    note = fields.Text(
+        help='Free-text note left by the staff doing this task '
+             '(e.g. "ran out of bleach", "fryer making noise").',
+    )
+    note_at = fields.Datetime(readonly=True)
+    note_by_id = fields.Many2one('hr.employee', readonly=True, ondelete='set null')
+    note_by_name = fields.Char(
+        readonly=True,
+        help='Denormalized employee name preserved for history.',
+    )
+
     subtask_ids = fields.One2many('krawings.task.list.subtask', 'line_id')
     photo_uploaded = fields.Boolean(compute='_compute_photo_uploaded', store=False)
     state = fields.Selection([
@@ -163,5 +174,28 @@ class KrawingsTaskListLine(models.Model):
             'completed_at': False,
             'completed_by_id': False,
             'completed_by_name': False,
+        })
+        return True
+
+    def set_note(self, note, employee):
+        """Write the free-text note, attributing it to `employee` (hr.employee record or id).
+        An empty/whitespace-only note clears the field and its audit metadata."""
+        self.ensure_one()
+        text = (note or '').strip()
+        if isinstance(employee, int):
+            employee = self.env['hr.employee'].sudo().browse(employee)
+        if not text:
+            self.write({
+                'note': False,
+                'note_at': False,
+                'note_by_id': False,
+                'note_by_name': False,
+            })
+            return True
+        self.write({
+            'note': text,
+            'note_at': fields.Datetime.now(),
+            'note_by_id': employee.id if employee and employee.exists() else False,
+            'note_by_name': employee.name if employee and employee.exists() else False,
         })
         return True

@@ -9,6 +9,7 @@ interface Props {
   onComplete: (taskId: number) => Promise<void>;
   onSubtaskToggle: (taskLineId: number, subtaskId: number, done: boolean) => Promise<void>;
   onPhotoUpload: (taskId: number) => Promise<void>;
+  onNoteSave?: (taskId: number, note: string) => Promise<void>;
   readOnly?: boolean;
 }
 
@@ -30,7 +31,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function ChecklistCard({ taskList, onComplete, onSubtaskToggle, onPhotoUpload, readOnly = false }: Props) {
+export default function ChecklistCard({ taskList, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, readOnly = false }: Props) {
   const grouped: Record<DayPart, TaskListLine[]> = { opening: [], mid_day: [], closing: [] };
   for (const line of taskList.lines) grouped[line.day_part].push(line);
 
@@ -48,6 +49,7 @@ export default function ChecklistCard({ taskList, onComplete, onSubtaskToggle, o
             onComplete={onComplete}
             onSubtaskToggle={onSubtaskToggle}
             onPhotoUpload={onPhotoUpload}
+            onNoteSave={onNoteSave}
             readOnly={readOnly}
           />
         );
@@ -63,10 +65,11 @@ interface SectionProps {
   onComplete: Props['onComplete'];
   onSubtaskToggle: Props['onSubtaskToggle'];
   onPhotoUpload: Props['onPhotoUpload'];
+  onNoteSave: Props['onNoteSave'];
   readOnly: boolean;
 }
 
-function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, onPhotoUpload, readOnly }: SectionProps) {
+function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, readOnly }: SectionProps) {
   const [open, setOpen] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -113,6 +116,7 @@ function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, 
                   onComplete={onComplete}
                   onSubtaskToggle={onSubtaskToggle}
                   onPhotoUpload={onPhotoUpload}
+                  onNoteSave={onNoteSave}
                   readOnly={readOnly}
                 />
               ))}
@@ -146,13 +150,21 @@ function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, 
                           <path d="M1.5 5l2.5 2.5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </div>
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-gray-500 line-through">{task.name}</p>
                         <p className="text-xs text-gray-400 mt-0.5">
                           Done at {task.completed_at ? formatTime(task.completed_at) : '—'}
                           {task.completed_by_name ? ` · ${task.completed_by_name}` : ''}
                           {task.photo_uploaded ? ' · \u{1F4F8}' : ''}
                         </p>
+                        {task.note && (
+                          <div className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200 text-xs text-yellow-900">
+                            <span className="font-semibold">📝 Note: </span>{task.note}
+                            {task.note_by_name && (
+                              <span className="block text-[10px] text-yellow-700 mt-0.5">— {task.note_by_name}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </li>
                   ))}

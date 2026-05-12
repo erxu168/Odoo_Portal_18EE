@@ -74,6 +74,18 @@ export default function DeptReviewPage({ params }: PageProps) {
     return uploadTaskPhoto(lineId, load);
   }
 
+  async function handleNoteSave(lineId: number, note: string) {
+    const res = await fetch(`/api/tasks/lines/${lineId}/note`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note }),
+    });
+    const body = await res.json();
+    if (!body.ok) throw new Error(body.error || 'Failed to save note');
+    await load();
+    showToast(note.trim() ? 'Note saved' : 'Note removed');
+  }
+
   async function ensureList(): Promise<number | null> {
     // Returns the list id (existing or freshly created), or null on failure.
     if (list) return list.id;
@@ -197,6 +209,7 @@ export default function DeptReviewPage({ params }: PageProps) {
               onComplete={handleComplete}
               onSubtaskToggle={handleSubtaskToggle}
               onPhotoUpload={handlePhotoUpload}
+              onNoteSave={handleNoteSave}
               readOnly={isPast || isFuture}
             />
           </>

@@ -131,6 +131,10 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
         toggled_by_id: null,
       })),
       attachments: tl.attachments,
+      note: null,
+      note_at: null,
+      note_by_id: null,
+      note_by_name: null,
     };
   });
   return {
@@ -610,9 +614,23 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Deadline</label>
-              <input type="time" value={deadline} onChange={e => setDeadline(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+              <label className="flex items-baseline justify-between text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                <span>Deadline</span>
+                <span className="text-[10px] font-medium normal-case tracking-normal text-gray-400">optional</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input type="time" value={deadline} onChange={e => setDeadline(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                {deadline && (
+                  <button type="button" onClick={() => setDeadline('')}
+                    className="text-[11px] font-semibold text-gray-500 hover:text-red-600 px-2 py-1 rounded-md hover:bg-gray-100">
+                    Clear
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Leave empty if it just needs to be done sometime during the {DAY_PART_OPTIONS.find(o => o.value === dayPart)?.label.toLowerCase()} section.
+              </p>
             </div>
           </div>
           <div>

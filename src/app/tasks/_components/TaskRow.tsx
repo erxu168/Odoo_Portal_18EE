@@ -11,6 +11,7 @@ interface Props {
   onComplete: (taskId: number) => Promise<void>;
   onSubtaskToggle: (taskLineId: number, subtaskId: number, done: boolean) => Promise<void>;
   onPhotoUpload: (taskId: number) => Promise<void>;
+  onNoteSave?: (taskId: number, note: string) => Promise<void>;
   readOnly?: boolean;
 }
 
@@ -47,12 +48,16 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, readOnly = false }: Props) {
+export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, readOnly = false }: Props) {
   const [subtasks, setSubtasks]     = useState<TaskSubtask[]>(task.subtasks);
   const [photoUploaded, setPhoto]   = useState(task.photo_uploaded);
   const [uploading, setUploading]   = useState(false);
   const [completing, setCompleting] = useState(false);
   const [error, setError]           = useState<string | null>(null);
+  const [note, setNote]             = useState(task.note ?? '');
+  const [noteOpen, setNoteOpen]     = useState(!!task.note);
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteDirty, setNoteDirty]   = useState(false);
 
   if (task.state === 'done') return null;
 
@@ -85,6 +90,20 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
     setSubtasks(prev => prev.map(s => s.id === subtaskId ? { ...s, done } : s));
     try { await onSubtaskToggle(task.id, subtaskId, done); }
     catch { setSubtasks(prev => prev.map(s => s.id === subtaskId ? { ...s, done: !done } : s)); }
+  }
+
+  async function handleSaveNote(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!onNoteSave) return;
+    setNoteSaving(true);
+    try {
+      await onNoteSave(task.id, note);
+      setNoteDirty(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save note');
+    } finally {
+      setNoteSaving(false);
+    }
   }
 
   async function handlePhoto(e: React.MouseEvent) {
@@ -187,6 +206,56 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         {photoUploaded && (
           <div className="mt-2 py-2 px-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-xs font-semibold">
             ✅ Photo uploaded — tap task to complete
+          </div>
+        )}
+
+        {!readOnly && onNoteSave && (
+          <div className="mt-2" onClick={e => e.stopPropagation()}>
+            {!noteOpen && !task.note ? (
+              <button
+                type="button"
+                onClick={() => setNoteOpen(true)}
+                className="text-xs font-semibold text-gray-500 hover:text-orange-600 inline-flex items-center gap-1"
+              >
+                📝 Add note
+              </button>
+            ) : (
+              <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-2">
+                <textarea
+                  value={note}
+                  onChange={e => { setNote(e.target.value); setNoteDirty(true); }}
+                  placeholder="e.g. ran out of bleach, fryer making noise…"
+                  rows={2}
+                  className="w-full text-xs px-2 py-1.5 border border-yellow-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 resize-y min-h-[44px]"
+                />
+                <div className="flex items-center justify-between gap-2 mt-1.5">
+                  <span className="text-[10px] text-yellow-700">
+                    {task.note_by_name && task.note_at && !noteDirty
+                      ? `Saved by ${task.note_by_name} at ${formatTime(task.note_at)}`
+                      : noteDirty ? 'Unsaved changes' : ''}
+                  </span>
+                  <div className="flex gap-1.5">
+                    {!task.note && !noteDirty && (
+                      <button
+                        type="button"
+                        onClick={() => { setNote(''); setNoteOpen(false); }}
+                        className="text-[11px] text-gray-500 px-2 py-1 rounded-md hover:bg-yellow-100"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleSaveNote}
+                      disabled={noteSaving || !noteDirty}
+                      className="text-[11px] font-semibold text-white bg-orange-500 hover:bg-orange-600 disabled:opacity-40 px-2.5 py-1 rounded-md"
+                    >
+                      {noteSaving ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

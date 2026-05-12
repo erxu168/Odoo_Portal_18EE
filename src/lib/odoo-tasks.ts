@@ -52,6 +52,10 @@ export interface TaskListLine {
   source_template_line_id: number | null;
   subtasks: TaskSubtask[];
   attachments: TaskAttachment[];
+  note: string | null;
+  note_at: string | null;
+  note_by_id: number | null;
+  note_by_name: string | null;
 }
 
 export interface TaskList {
@@ -236,6 +240,7 @@ const LINE_FIELDS = [
   'module_link_type', 'state',
   'completed_at', 'completed_by_id', 'completed_by_name',
   'is_ad_hoc', 'source_template_line_id', 'subtask_ids',
+  'note', 'note_at', 'note_by_id', 'note_by_name',
 ];
 
 const SUBTASK_FIELDS = [
@@ -298,6 +303,10 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
     source_template_line_id: m2oId(l.source_template_line_id),
     subtasks: subtasksByLine.get(l.id) || [],
     attachments: attsByLine.get(l.id) || [],
+    note: l.note || null,
+    note_at: odooDtToIso(l.note_at),
+    note_by_id: m2oId(l.note_by_id),
+    note_by_name: l.note_by_name || null,
   }));
 
   // Sort: opening → mid_day → closing, then sequence
@@ -409,6 +418,10 @@ export async function completeLine(lineId: number, employeeId: number): Promise<
 
 export async function uncompleteLine(lineId: number): Promise<void> {
   await getOdoo().call('krawings.task.list.line', 'mark_undone', [[lineId]]);
+}
+
+export async function setLineNote(lineId: number, note: string, employeeId: number): Promise<void> {
+  await getOdoo().call('krawings.task.list.line', 'set_note', [[lineId], note, employeeId]);
 }
 
 export async function toggleSubtask(subtaskId: number, done: boolean, employeeId: number): Promise<void> {
