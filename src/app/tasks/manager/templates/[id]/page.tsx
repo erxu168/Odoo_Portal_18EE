@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule, DepartmentOption } from '@/lib/odoo-tasks';
 import AppHeader from '@/components/ui/AppHeader';
+import { useCompany } from '@/lib/company-context';
 import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import RecurrenceEditor from '../../../_components/RecurrenceEditor';
@@ -166,6 +167,7 @@ export default function TemplateEditPage({ params }: PageProps) {
   const [showAddLine, setShowAddLine] = useState(false);
   const [previewMode, setPreviewMode] = useState(false);
   const { toast, showToast, dismissToast } = useToast();
+  const { companyId: activeCompanyId } = useCompany();
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -186,7 +188,7 @@ export default function TemplateEditPage({ params }: PageProps) {
     }
   }, [tplId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, activeCompanyId]);
 
   async function saveHeader() {
     if (!tpl) return;
@@ -329,22 +331,31 @@ export default function TemplateEditPage({ params }: PageProps) {
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Department</label>
-              {departments.length > 0 ? (
-                <select
-                  value={tpl.department_id}
-                  onChange={e => {
-                    const newId = parseInt(e.target.value, 10);
-                    const match = departments.find(d => d.id === newId);
-                    setTpl({ ...tpl, department_id: newId, department_name: match?.name ?? tpl.department_name });
-                  }}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
-                >
-                  {departments.map(d => <option key={d.id} value={d.id}>{d.name} ({d.company_name})</option>)}
-                </select>
-              ) : (
-                <p className="text-sm text-gray-700">{tpl.department_name}</p>
-              )}
-              <p className="text-[11px] text-gray-400 mt-1">Lists already spawned for the old department stay there — only future spawns move.</p>
+              {(() => {
+                // Always keep the current department in the option list so the select isn't blank
+                // when viewing a template belonging to a company other than the active one.
+                const currentInList = departments.some(d => d.id === tpl.department_id);
+                const options = currentInList
+                  ? departments
+                  : [{ id: tpl.department_id, name: tpl.department_name, company_id: tpl.company_id, company_name: '(other company)' } as DepartmentOption, ...departments];
+                return (
+                  <select
+                    value={tpl.department_id}
+                    onChange={e => {
+                      const newId = parseInt(e.target.value, 10);
+                      const match = options.find(d => d.id === newId);
+                      setTpl({ ...tpl, department_id: newId, department_name: match?.name ?? tpl.department_name });
+                    }}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+                  >
+                    {options.map(d => <option key={d.id} value={d.id}>{d.name} ({d.company_name})</option>)}
+                  </select>
+                );
+              })()}
+              <p className="text-[11px] text-gray-400 mt-1">
+                Showing departments for the active company. Switch company in the header to pick from a different one.
+                Lists already spawned for the old department stay there — only future spawns move.
+              </p>
             </div>
             <p className="text-xs text-gray-500 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
               💡 Each task carries its own schedule (daily / weekly / monthly / one-off). Open a task to edit its repeat pattern.

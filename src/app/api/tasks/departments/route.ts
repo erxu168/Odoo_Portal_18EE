@@ -1,12 +1,30 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { listDepartments } from '@/lib/odoo-tasks';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const user = requireRole('manager');
-    const companies = parseCompanyIds(user.allowed_company_ids);
+    const allowed = parseCompanyIds(user.allowed_company_ids);
+
+    // Active-company cookie (set by company-context.tsx) wins by default.
+    // ?scope=allowed bypasses it for cross-company admin views.
+    const scope = req.nextUrl.searchParams.get('scope') || 'active';
+    let companies: number[];
+    if (scope === 'allowed') {
+      companies = allowed;
+    } else {
+      const activeRaw = cookies().get('kw_company_id')?.value;
+      const active = activeRaw ? parseInt(activeRaw, 10) : NaN;
+      if (Number.isFinite(active) && allowed.includes(active)) {
+        companies = [active];
+      } else {
+        companies = allowed;
+      }
+    }
+
     const departments = await listDepartments(companies);
     return NextResponse.json({ departments });
   } catch (err) {
