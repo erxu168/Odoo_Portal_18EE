@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule } from '@/lib/odoo-tasks';
+import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule, DepartmentOption } from '@/lib/odoo-tasks';
 import AppHeader from '@/components/ui/AppHeader';
 import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
@@ -158,6 +158,7 @@ export default function TemplateEditPage({ params }: PageProps) {
   const tplId = parseInt(resolved.id, 10);
 
   const [tpl, setTpl]         = useState<TaskTemplate | null>(null);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [saving, setSaving]   = useState(false);
@@ -169,10 +170,15 @@ export default function TemplateEditPage({ params }: PageProps) {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const res = await fetch(`/api/tasks/templates/${tplId}`);
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || 'Failed');
+      const [tplRes, deptRes] = await Promise.all([
+        fetch(`/api/tasks/templates/${tplId}`),
+        fetch('/api/tasks/departments'),
+      ]);
+      const body = await tplRes.json();
+      const deptBody = await deptRes.json();
+      if (!tplRes.ok) throw new Error(body.error || 'Failed');
       setTpl(body.template);
+      if (deptRes.ok) setDepartments(deptBody.departments || []);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed');
     } finally {
@@ -189,7 +195,7 @@ export default function TemplateEditPage({ params }: PageProps) {
       const res = await fetch(`/api/tasks/templates/${tplId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: tpl.name }),
+        body: JSON.stringify({ name: tpl.name, department_id: tpl.department_id }),
       });
       const body = await res.json();
       if (!body.ok) throw new Error(body.error || 'Failed');
@@ -323,7 +329,22 @@ export default function TemplateEditPage({ params }: PageProps) {
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Department</label>
-              <p className="text-sm text-gray-700">{tpl.department_name}</p>
+              {departments.length > 0 ? (
+                <select
+                  value={tpl.department_id}
+                  onChange={e => {
+                    const newId = parseInt(e.target.value, 10);
+                    const match = departments.find(d => d.id === newId);
+                    setTpl({ ...tpl, department_id: newId, department_name: match?.name ?? tpl.department_name });
+                  }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white"
+                >
+                  {departments.map(d => <option key={d.id} value={d.id}>{d.name} ({d.company_name})</option>)}
+                </select>
+              ) : (
+                <p className="text-sm text-gray-700">{tpl.department_name}</p>
+              )}
+              <p className="text-[11px] text-gray-400 mt-1">Lists already spawned for the old department stay there — only future spawns move.</p>
             </div>
             <p className="text-xs text-gray-500 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
               💡 Each task carries its own schedule (daily / weekly / monthly / one-off). Open a task to edit its repeat pattern.
