@@ -92,6 +92,7 @@ class MrpBom(models.Model):
         for bom in self:
             bom.version_root_id = bom.version_parent_id.version_root_id or bom
 
+    @api.depends('version_root_id')
     def _compute_version_count(self):
         # Walk by each BOM's root, not by self.ids — self contains
         # arbitrary versions in the chain, and we want the total count
