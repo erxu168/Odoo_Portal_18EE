@@ -1,15 +1,11 @@
 {
     'name': 'Krawings Recipe Config',
-    'version': '18.0.2.0.0',
+    'version': '18.0.3.0.0',
     'category': 'Manufacturing',
-    'summary': 'Recipe Guide data layer for Krawings Portal PWA',
+    'summary': 'Recipe Guide data layer + BOM versioning for Krawings Portal PWA',
     'description': """
-        Adds recipe guide fields and models to support the Krawings
-        Portal Recipe Guide module. Creates:
-        - Recipe categories with location mapping
-        - Cooking steps with images and versioning
-        - Recording sessions for field capture
-        - Custom fields on product.template and mrp.bom
+        Adds recipe guide fields and BOM ingredient-version chaining to
+        support the Krawings Portal Manufacturing module.
     """,
     'author': 'Krawings GmbH',
     'website': 'https://krawings.de',
@@ -23,6 +19,7 @@
         'views/mrp_bom_views.xml',
         'views/menu.xml',
     ],
+    'post_init_hook': 'post_init_backfill_version_root',
     'installable': True,
     'application': False,
     'auto_install': False,
