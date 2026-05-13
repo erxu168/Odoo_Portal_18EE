@@ -6,3 +6,4 @@ from . import recipe_version
 from . import recipe_recording
 from . import product_template
 from . import mrp_bom
+from . import mrp_production
