@@ -263,9 +263,9 @@ export async function computeDailyBreakdown(
   }
 
   let bestRev = 0, bestDate = '';
-  for (const [d, e] of dayMap.entries()) {
+  dayMap.forEach((e, d) => {
     if (e.rev > bestRev) { bestRev = e.rev; bestDate = d; }
-  }
+  });
 
   const days: DailyRow[] = Array.from(dayMap.keys()).sort().map(date => {
     const entry = dayMap.get(date)!;
@@ -435,10 +435,10 @@ export async function computeRecords(
   }));
 
   const byWeek = new Map<string, number>();
-  for (const [date, entry] of byDay.entries()) {
+  byDay.forEach((entry, date) => {
     const ws = weekStart(date);
     byWeek.set(ws, (byWeek.get(ws) || 0) + entry.rev);
-  }
+  });
   const weekEntries = Array.from(byWeek.entries()).sort((a, b) => b[1] - a[1]);
   const bestWeeks: RecordEntry[] = weekEntries.slice(0, 3).map((entry, i) => ({
     label: i === 0 ? `Best Week (${year} YTD)` : `Rank ${i + 1}`,
@@ -773,9 +773,9 @@ export async function computeOperations(
     hourly.set(h, e);
   }
   let peakHour = 0, peakOrders = 0;
-  for (const [h, e] of hourly.entries()) {
+  hourly.forEach((e, h) => {
     if (e.orders > peakOrders) { peakOrders = e.orders; peakHour = h; }
-  }
+  });
   const hourlyDistribution: HourlyBucket[] = [];
   for (let h = 0; h < 24; h++) {
     const e = hourly.get(h);
@@ -855,10 +855,10 @@ export async function computeOperations(
     orderItemCount.set(oid, (orderItemCount.get(oid) || 0) + l.qty);
   }
   const buckets: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5+': 0 };
-  for (const qty of orderItemCount.values()) {
+  orderItemCount.forEach((qty) => {
     const b = qty >= 5 ? '5+' : String(Math.max(1, Math.floor(qty)));
     buckets[b] = (buckets[b] || 0) + 1;
-  }
+  });
   const totalOrdersCount = Object.values(buckets).reduce((a, b) => a + b, 0);
   const orderComposition: OrderComposition[] = Object.entries(buckets).map(([bucket, count]) => ({
     bucket, count, pct: totalOrdersCount ? (count / totalOrdersCount) * 100 : 0,
@@ -876,7 +876,7 @@ export async function computeOperations(
       e.orders++; e.rev += o.amount_total; e.tips += o.tip_amount;
       byTable.set(tid, e);
     }
-    for (const [tid, e] of byTable.entries()) {
+    byTable.forEach((e, tid) => {
       tablePerformance.push({
         tableId: tid, tableName: e.name,
         orders: e.orders, revenue: e.rev,
@@ -884,7 +884,7 @@ export async function computeOperations(
         tips: e.tips,
         tipPct: e.rev ? (e.tips / e.rev) * 100 : 0,
       });
-    }
+    });
     tablePerformance.sort((a, b) => b.revenue - a.revenue);
   }
 
@@ -945,11 +945,11 @@ export async function computeOperations(
   }
   const tipVolatility: DailyTipVolatility[] = [];
   let minCv = Infinity, mostConsistentName = '';
-  for (const [id, days] of empDaily.entries()) {
+  Array.from(empDaily.entries()).forEach(([id, days]) => {
     const ratios = Array.from(days.values())
       .filter(d => d.rev > 50)
       .map(d => (d.tips / d.rev) * 100);
-    if (ratios.length < 3) continue;
+    if (ratios.length < 3) return;
     const mean = ratios.reduce((a, b) => a + b, 0) / ratios.length;
     const sd = stdev(ratios);
     const cv = mean ? (sd / mean) * 100 : 0;
@@ -964,7 +964,7 @@ export async function computeOperations(
       below2Sigma: ratios.filter(r => r < mean - 2 * sd).length,
       mostConsistent: false,
     });
-  }
+  });
   tipVolatility.forEach(v => { if (v.name === mostConsistentName) v.mostConsistent = true; });
 
   // Monthly trend (last 3 months)
@@ -1163,10 +1163,10 @@ export async function computeMenu(year: number, month: number): Promise<MenuData
       productCategory.set(p.id, p.categ_id ? String(p.categ_id[1]) : 'Uncategorized');
     }
     const catMap = new Map<string, number>();
-    for (const [pid, prod] of productMap.entries()) {
+    productMap.forEach((prod, pid) => {
       const cat = productCategory.get(pid) || 'Uncategorized';
       catMap.set(cat, (catMap.get(cat) || 0) + prod.revenue);
-    }
+    });
     const colors = ['var(--red)', 'var(--amber)', 'var(--cyan)', 'var(--purple)', 'var(--accent)', 'var(--green)', 'var(--text-muted)'];
     const categories: CategoryMix[] = Array.from(catMap.entries())
       .sort((a, b) => b[1] - a[1])
