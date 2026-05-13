@@ -11,6 +11,7 @@ import MfgDashboard from '@/components/manufacturing/MfgDashboard';
 import PickList from '@/components/manufacturing/PickList';
 import BomList from '@/components/manufacturing/BomList';
 import BomDetail from '@/components/manufacturing/BomDetail';
+import RecipeHistory from '@/components/manufacturing/RecipeHistory';
 import CreateBom from '@/components/manufacturing/CreateBom';
 import PackageLabel from '@/components/manufacturing/PackageLabel';
 import AdHocLabelPrint from '@/components/manufacturing/AdHocLabelPrint';
@@ -26,6 +27,7 @@ type Screen =
   | { type: 'bom-list' }
   | { type: 'create-bom' }
   | { type: 'bom-detail'; bomId: number }
+  | { type: 'recipe-history'; bomId: number }
   | { type: 'package'; moId: number }
   | { type: 'label-print-list' }
   | { type: 'label-print-config'; bomId: number }
@@ -155,6 +157,15 @@ export default function ManufacturingPage() {
             bomId={screen.bomId}
             onBack={goBack}
             onCreateMo={() => navigate({ type: 'create' })}
+            onOpenHistory={(bid) => navigate({ type: 'recipe-history', bomId: bid })}
+          />
+        );
+      case 'recipe-history':
+        return (
+          <RecipeHistory
+            bomId={screen.bomId}
+            onBack={goBack}
+            onOpenBom={(bid) => navigate({ type: 'bom-detail', bomId: bid })}
           />
         );
       case 'package':

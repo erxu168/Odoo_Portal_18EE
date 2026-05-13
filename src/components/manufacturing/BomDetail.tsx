@@ -10,6 +10,7 @@ interface BomDetailProps {
   bomId: number;
   onBack: () => void;
   onCreateMo: (bomId: number) => void;
+  onOpenHistory?: (bomId: number) => void;
 }
 
 interface EditLine {
@@ -36,7 +37,7 @@ interface EditOp {
   _hadPdf?: boolean;
 }
 
-export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps) {
+export default function BomDetail({ bomId, onBack, onCreateMo, onOpenHistory }: BomDetailProps) {
   const [bom, setBom] = useState<any>(null);
   const [components, setComponents] = useState<ComponentAvailability[]>([]);
   const [canMakeQty, setCanMakeQty] = useState(0);
@@ -44,6 +45,23 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
   const [error, setError] = useState<string | null>(null);
   const [expandedSubBoms, setExpandedSubBoms] = useState<Set<number>>(new Set());
   const [canEdit, setCanEdit] = useState(false);
+  const [versionCount, setVersionCount] = useState<number>(1);
+  const [versionLabel, setVersionLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/boms/${bomId}/versions`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (cancelled || !d) return;
+        const list = d.versions || [];
+        setVersionCount(list.length);
+        const me = list.find((v: { id: number; version_label: string }) => v.id === bomId);
+        setVersionLabel(me?.version_label || null);
+      })
+      .catch(() => { /* non-fatal */ });
+    return () => { cancelled = true; };
+  }, [bomId]);
 
   // Operations
   const [operations, setOperations] = useState<any[]>([]);
@@ -664,6 +682,27 @@ export default function BomDetail({ bomId, onBack, onCreateMo }: BomDetailProps)
           </div>
         </div>
       </div>
+
+      {/* Version label + history */}
+      {(versionLabel || versionCount > 1) && (
+        <div className="px-4 pb-2 flex items-center justify-between gap-2">
+          {versionLabel && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-1 text-[var(--fs-xs)] font-semibold text-orange-700 border border-orange-200">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8 5.8 21.3l2.4-7.4L2 9.4h7.6z"/></svg>
+              <span className="font-mono">{versionLabel}</span>
+            </span>
+          )}
+          {versionCount > 1 && onOpenHistory && (
+            <button
+              onClick={() => onOpenHistory(bomId)}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-orange-300 px-3 py-1 text-[var(--fs-xs)] font-semibold text-orange-600 active:bg-orange-50"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              History ({versionCount})
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Edit mode */}
       {editing ? (
