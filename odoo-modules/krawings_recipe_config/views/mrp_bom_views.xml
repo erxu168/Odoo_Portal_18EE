@@ -6,6 +6,27 @@
         <field name="model">mrp.bom</field>
         <field name="inherit_id" ref="mrp.mrp_bom_form_view"/>
         <field name="arch" type="xml">
+            <xpath expr="//field[@name='product_tmpl_id']" position="after">
+                <group string="Version" name="krawings_version_group">
+                    <field name="version_label"/>
+                    <field name="is_current_version"/>
+                    <field name="version_parent_id" readonly="1"
+                           invisible="not version_parent_id"/>
+                    <field name="version_root_id" readonly="1" groups="base.group_no_one"/>
+                    <field name="version_notes" nolabel="1"
+                           placeholder="What changed and why?" colspan="2"/>
+                </group>
+            </xpath>
+
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button class="oe_stat_button" type="object"
+                        name="action_view_recipe_versions"
+                        icon="fa-history"
+                        invisible="version_count &lt;= 1">
+                    <field name="version_count" widget="statinfo" string="Versions"/>
+                </button>
+            </xpath>
+
             <xpath expr="//notebook" position="inside">
                 <page string="Recipe Guide" name="recipe_guide">
                     <group>

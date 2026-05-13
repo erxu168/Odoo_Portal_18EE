@@ -124,3 +124,14 @@ class MrpBom(models.Model):
                     f"Another version of this recipe is already marked as current "
                     f"({others.version_label}). Unmark it before marking this one."
                 )
+
+    def action_view_recipe_versions(self):
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': f'Versions of {self.product_tmpl_id.display_name}',
+            'res_model': 'mrp.bom',
+            'view_mode': 'tree,form',
+            'domain': [('version_root_id', '=', self.version_root_id.id)],
+            'context': {'default_version_root_id': self.version_root_id.id},
+        }
