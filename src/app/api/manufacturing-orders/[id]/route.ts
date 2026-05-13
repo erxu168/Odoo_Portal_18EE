@@ -260,13 +260,26 @@ export async function GET(
       console.warn('Could not fetch product shelf-life fields:', err);
     }
 
-    const components = mo.move_raw_ids?.length
+    const EDITABLE_MO_STATES = ['draft', 'confirmed', 'progress'];
+    const EDITABLE_SAVE_STATES = ['draft', 'confirmed', 'progress', 'to_close'];
+
+    let bomVersionLabel: string | null = null;
+    if (mo.bom_id) {
+      try {
+        const boms = await odoo.read('mrp.bom', [mo.bom_id[0]], ['version_label']);
+        bomVersionLabel = boms[0]?.version_label || null;
+      } catch (err) {
+        console.warn('Could not fetch bom_version_label:', err);
+      }
+    }
+
+    const components = (mo.move_raw_ids?.length
       ? await odoo.searchRead('stock.move',
           [['id', 'in', mo.move_raw_ids]],
           ['product_id', 'product_uom_qty', 'quantity', 'product_uom',
            'forecast_availability', 'state', 'is_done', 'should_consume_qty',
            'picked', 'operation_id'])
-      : [];
+      : []).filter((m: any) => m.state !== 'cancel');
 
     // Fetch product categories for grouping
     const productIds = components.map((c: any) => c.product_id[0]);
@@ -283,7 +296,10 @@ export async function GET(
 
     const enrichedComponents = components.map((c: any) => ({
       ...c,
+      move_id: c.id,
+      planned_qty: c.product_uom_qty,
       consumed_qty: c.quantity || 0,
+      can_edit: EDITABLE_MO_STATES.includes(c.state) && (c.quantity || 0) === 0,
       category: categMap[c.product_id[0]] || 'Other',
     }));
 
@@ -309,6 +325,10 @@ export async function GET(
         shelf_life_chilled_days: shelfLifeChilledDays,
         shelf_life_frozen_days:  shelfLifeFrozenDays,
         product_tracking: productTracking,
+        // Component editability flags
+        can_edit_components: EDITABLE_MO_STATES.includes(mo.state),
+        can_save_version: EDITABLE_SAVE_STATES.includes(mo.state) && !!mo.bom_id,
+        bom_version_label: bomVersionLabel,
       },
     });
   } catch (error: unknown) {
