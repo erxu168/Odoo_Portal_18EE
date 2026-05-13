@@ -49,7 +49,6 @@ class MrpBom(models.Model):
     version_label = fields.Char(
         string='Version',
         default='v.1',
-        tracking=True,
         copy=False,
         help='Free-form label for this BOM version (e.g. "v.3", "v.3 — lime"). Suggested but not enforced.',
     )
