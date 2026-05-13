@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import EditComponentSheet from './EditComponentSheet';
 import AddIngredientSheet from './AddIngredientSheet';
+import SaveAsVersionModal from './SaveAsVersionModal';
 
 interface MoDetailProps {
   moId: number;
@@ -27,12 +28,20 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
   const [actionError, setActionError] = useState<string | null>(null);
   const [editingComponent, setEditingComponent] = useState<any | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [saveVersionOpen, setSaveVersionOpen] = useState(false);
+  const [versionToast, setVersionToast] = useState<{ version_label: string; bom_id: number } | null>(null);
 
   useEffect(() => { fetchDetail(); }, [moId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (actionError) { const t = setTimeout(() => setActionError(null), 5000); return () => clearTimeout(t); }
   }, [actionError]);
+
+  useEffect(() => {
+    if (!versionToast) return;
+    const t = setTimeout(() => setVersionToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [versionToast]);
 
   const pickedKey = `mo-picked-${moId}`;
 
@@ -378,6 +387,22 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
         </div>
       )}
 
+      {mo?.can_save_version && (
+        <div className="px-4 pb-3">
+          <button
+            onClick={() => setSaveVersionOpen(true)}
+            className="w-full py-3 rounded-xl bg-white border border-orange-300 text-orange-600 font-semibold text-[var(--fs-sm)] active:bg-orange-50 flex items-center justify-center gap-2"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            Save as new version
+          </button>
+        </div>
+      )}
+
       {isDraft && (
         <div className="px-4 pb-6">
           <div className="flex gap-2">
@@ -496,6 +521,21 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
         onClose={() => setAddOpen(false)}
         onAdded={fetchDetail}
       />
+
+      <SaveAsVersionModal
+        moId={moId}
+        open={saveVersionOpen}
+        productName={mo?.product_id?.[1] || ''}
+        sourceVersionLabel={mo?.bom_version_label || 'v.1'}
+        onClose={() => setSaveVersionOpen(false)}
+        onSaved={(res) => setVersionToast(res)}
+      />
+
+      {versionToast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-gray-900 px-5 py-3 text-sm text-white shadow-lg">
+          Saved as <span className="font-mono font-semibold">{versionToast.version_label}</span>
+        </div>
+      )}
     </div>
   );
 }
