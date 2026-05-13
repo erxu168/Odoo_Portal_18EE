@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import EditComponentSheet from './EditComponentSheet';
+import AddIngredientSheet from './AddIngredientSheet';
 
 interface MoDetailProps {
   moId: number;
@@ -23,6 +25,8 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
   const [cancelLoading, setCancelLoading] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editingComponent, setEditingComponent] = useState<any | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => { fetchDetail(); }, [moId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -284,6 +288,16 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
                               </span>
                               <span className={`text-[var(--fs-xs)] font-semibold ${isPicked ? 'text-green-500' : 'text-gray-400'}`}>{compUom}</span>
                             </div>
+                            {c.can_edit && (
+                              <span
+                                role="button"
+                                aria-label="Edit ingredient"
+                                onClick={(e) => { e.stopPropagation(); setEditingComponent(c); }}
+                                className="ml-2 mr-1 flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-orange-50 hover:text-orange-600 active:scale-95"
+                              >
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                              </span>
+                            )}
                           </div>
                         </button>
                       );
@@ -294,6 +308,14 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
             });
           })()}
           {components.length === 0 && <div className="text-center py-6 text-gray-400 text-[var(--fs-sm)]">No ingredients</div>}
+          {mo?.can_edit_components && (
+            <button
+              onClick={() => setAddOpen(true)}
+              className="mt-2 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-orange-300 px-4 py-3 text-[var(--fs-sm)] font-medium text-orange-600 active:bg-orange-50"
+            >
+              + Add ingredient
+            </button>
+          )}
         </div>
 
         <div className="flex flex-col gap-2">
@@ -458,6 +480,22 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
       )}
 
       <style jsx>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+
+      {editingComponent && (
+        <EditComponentSheet
+          moId={moId}
+          component={editingComponent}
+          open={!!editingComponent}
+          onClose={() => setEditingComponent(null)}
+          onSaved={fetchDetail}
+        />
+      )}
+      <AddIngredientSheet
+        moId={moId}
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onAdded={fetchDetail}
+      />
     </div>
   );
 }
