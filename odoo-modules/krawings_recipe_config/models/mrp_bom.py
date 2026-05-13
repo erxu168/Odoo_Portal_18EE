@@ -68,11 +68,9 @@ class MrpBom(models.Model):
     version_root_id = fields.Many2one(
         'mrp.bom',
         string='Recipe Root',
-        compute='_compute_version_root_id',
-        store=True,
         index=True,
-        recursive=True,
-        help='The first version in this recipe chain (root of the version tree).',
+        copy=False,
+        help='The first version in this recipe chain (root of the version tree). Set on create from version_parent_id.',
     )
     is_current_version = fields.Boolean(
         string='Current Version',
@@ -86,10 +84,24 @@ class MrpBom(models.Model):
         compute='_compute_version_count',
     )
 
-    @api.depends('version_parent_id', 'version_parent_id.version_root_id')
-    def _compute_version_root_id(self):
-        for bom in self:
-            bom.version_root_id = bom.version_parent_id.version_root_id or bom
+    @api.model_create_multi
+    def create(self, vals_list):
+        boms = super().create(vals_list)
+        # Backfill version_root_id at create time: walk parent if set,
+        # otherwise self. Avoiding a stored compute keeps the field
+        # outside Odoo's compute machinery, which interacted badly
+        # with mail.thread tracking during ALTER TABLE migrations.
+        for bom in boms:
+            if bom.version_root_id:
+                continue
+            parent = bom.version_parent_id
+            if parent and parent.version_root_id:
+                bom.version_root_id = parent.version_root_id.id
+            elif parent:
+                bom.version_root_id = parent.id
+            else:
+                bom.version_root_id = bom.id
+        return boms
 
     @api.depends('version_root_id')
     def _compute_version_count(self):
