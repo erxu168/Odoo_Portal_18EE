@@ -60,7 +60,8 @@ export default function AddIngredientSheet({
   async function handleAdd() {
     setError(null);
     if (!picked) { setError('Pick an ingredient first.'); return; }
-    const value = Number(qty);
+    // Accept German-locale ("0,0835") and US-locale ("0.0835") input.
+    const value = Number(qty.replace(',', '.'));
     if (!Number.isFinite(value) || value <= 0) {
       setError('Quantity must be a positive number.');
       return;
@@ -90,7 +91,7 @@ export default function AddIngredientSheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
          onClick={onClose}>
-      <div className="w-full max-w-md rounded-t-2xl bg-white p-5 pb-7"
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-t-2xl bg-white p-5 pb-7"
            onClick={(e) => e.stopPropagation()}>
         <h2 className="mb-4 text-lg font-bold">Add ingredient</h2>
 
@@ -146,9 +147,8 @@ export default function AddIngredientSheet({
               Quantity ({picked.uom_name})
             </label>
             <input
-              type="number"
-              step="any"
-              min="0"
+              type="text"
+              inputMode="decimal"
               value={qty}
               onChange={(e) => setQty(e.target.value)}
               className="w-full rounded-lg border border-gray-300 px-3 py-3 text-lg font-mono focus:border-orange-500 focus:outline-none"

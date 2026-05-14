@@ -17,10 +17,12 @@ interface EditComponentSheetProps {
   onSaved: () => void;
 }
 
+const fmtDe = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4, useGrouping: false }).format(n);
+
 export default function EditComponentSheet({
   moId, component, open, onClose, onSaved,
 }: EditComponentSheetProps) {
-  const [qty, setQty] = useState<string>(String(component.planned_qty));
+  const [qty, setQty] = useState<string>(fmtDe(component.planned_qty));
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,8 @@ export default function EditComponentSheet({
 
   async function handleSave() {
     setError(null);
-    const value = Number(qty);
+    // Accept German-locale input ("0,0835") and US-locale ("0.0835").
+    const value = Number(qty.replace(',', '.'));
     if (!Number.isFinite(value) || value <= 0) {
       setError('Quantity must be a positive number.');
       return;
@@ -78,7 +81,7 @@ export default function EditComponentSheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
          onClick={onClose}>
-      <div className="w-full max-w-md rounded-t-2xl bg-white p-5 pb-7"
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-t-2xl bg-white p-5 pb-7"
            onClick={(e) => e.stopPropagation()}>
         <div className="mb-1 text-xs font-semibold uppercase text-gray-500">
           {component.product_uom[1]}
@@ -87,9 +90,8 @@ export default function EditComponentSheet({
 
         <label className="mb-1 block text-sm font-medium text-gray-700">Quantity</label>
         <input
-          type="number"
-          step="any"
-          min="0"
+          type="text"
+          inputMode="decimal"
           value={qty}
           onChange={(e) => setQty(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-3 text-lg font-mono focus:border-orange-500 focus:outline-none"

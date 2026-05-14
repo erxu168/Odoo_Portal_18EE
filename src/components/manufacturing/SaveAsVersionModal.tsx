@@ -68,7 +68,7 @@ export default function SaveAsVersionModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
          onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-5"
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-5"
            onClick={(e) => e.stopPropagation()}>
         <h2 className="text-lg font-bold">Save changes as a new version</h2>
         <p className="mt-1 text-sm text-gray-500">
