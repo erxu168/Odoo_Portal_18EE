@@ -621,7 +621,7 @@ function OperationsScreen({ locationId, month }: { locationId: number; month: st
       {/* Benford's Law */}
       {data.benfordDigits && data.benfordDigits.length > 0 && (
         <>
-          <SectionLabel>Benford's Law (cash transactions)</SectionLabel>
+          <SectionLabel>Benford&rsquo;s Law (cash transactions)</SectionLabel>
           <Card>
             <div className="text-[11px] text-gray-500 mb-3">
               First-digit distribution should match Benford expectation. Large deviations can indicate fabricated numbers.

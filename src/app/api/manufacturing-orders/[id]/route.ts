@@ -294,12 +294,17 @@ export async function GET(
       categMap[p.id] = parts[parts.length - 1];
     }
 
+    const moIsEditable = EDITABLE_MO_STATES.includes(mo.state);
     const enrichedComponents = components.map((c: any) => ({
       ...c,
       move_id: c.id,
       planned_qty: c.product_uom_qty,
       consumed_qty: c.quantity || 0,
-      can_edit: EDITABLE_MO_STATES.includes(c.state) && (c.quantity || 0) === 0,
+      // Editability tracks the MO, not each move. Odoo can pre-fill
+      // a move's consumed quantity at reservation time even before
+      // anything is actually cooked, so a per-move guard hides the
+      // pencil from rows the chef expects to be editable.
+      can_edit: moIsEditable,
       category: categMap[c.product_id[0]] || 'Other',
     }));
 

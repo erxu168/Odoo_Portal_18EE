@@ -8,6 +8,7 @@ async function guardEditableMove(
   odoo: ReturnType<typeof getOdoo>,
   moId: number,
   moveId: number,
+  opts: { requireUnconsumed?: boolean } = {},
 ) {
   const mos = await odoo.read('mrp.production', [moId], ['id', 'state']);
   if (!mos.length) return { error: 'MO not found', status: 404 };
@@ -22,8 +23,10 @@ async function guardEditableMove(
   if ((m.raw_material_production_id?.[0]) !== moId) {
     return { error: 'Component does not belong to this MO', status: 409 };
   }
-  if ((m.quantity ?? 0) > 0) {
-    return { error: 'Component already partially consumed; cannot edit.', status: 409 };
+  // PATCH: allow changing planned qty even on already-consumed moves.
+  // DELETE: still refuse if anything has been consumed (no undo).
+  if (opts.requireUnconsumed && (m.quantity ?? 0) > 0) {
+    return { error: 'Component already partially consumed; cannot remove.', status: 409 };
   }
   return { move: m };
 }
@@ -88,7 +91,7 @@ export async function DELETE(
   }
 
   const odoo = getOdoo();
-  const guard = await guardEditableMove(odoo, moId, moveId);
+  const guard = await guardEditableMove(odoo, moId, moveId, { requireUnconsumed: true });
   if ('error' in guard) {
     return NextResponse.json({ error: guard.error }, { status: guard.status });
   }
