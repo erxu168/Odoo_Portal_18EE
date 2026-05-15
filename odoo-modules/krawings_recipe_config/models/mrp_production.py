@@ -34,22 +34,20 @@ class MrpProduction(models.Model):
                 'product_uom_id': move.product_uom.id,
             }))
 
-        # Copy the source BOM; copy=False fields (version_*, is_current_version)
-        # start clean and we set them explicitly below.
+        # Copy the source BOM. is_current_version must be False at
+        # create time, otherwise the at-most-one constraint fires
+        # immediately (both source and new BOM would be current in the
+        # same chain). We turn it back on below, after unsetting the
+        # prior current.
         new_bom = source_bom.copy({
             'product_qty': self.qty_producing or self.product_qty or source_bom.product_qty,
             'bom_line_ids': [(5, 0, 0)] + line_vals,
             'version_label': version_label.strip(),
             'version_notes': (version_notes or '').strip(),
             'version_parent_id': source_bom.id,
+            'is_current_version': False,
         })
 
-        # The compute on version_root_id picks up source_bom.version_root_id
-        # automatically because we set version_parent_id during copy.
-
-        # Handle is_current_version after creation, ordered to satisfy
-        # the at-most-one constraint.
-        new_bom.is_current_version = False  # copy=False already left it False; explicit for clarity
         if make_current:
             prior_current = self.env['mrp.bom'].search([
                 ('version_root_id', '=', new_bom.version_root_id.id),
