@@ -59,4 +59,16 @@
         </field>
     </record>
 
+    <record id="view_mrp_bom_list_recipe" model="ir.ui.view">
+        <field name="name">mrp.bom.list.recipe</field>
+        <field name="model">mrp.bom</field>
+        <field name="inherit_id" ref="mrp.mrp_bom_tree_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='product_tmpl_id']" position="after">
+                <field name="version_label" string="Version" optional="show"/>
+                <field name="is_current_version" string="Current" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+
 </odoo>
