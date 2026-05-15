@@ -5,6 +5,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import EditComponentSheet from './EditComponentSheet';
 import AddIngredientSheet from './AddIngredientSheet';
 import SaveAsVersionModal from './SaveAsVersionModal';
+import EditStepNoteSheet from './EditStepNoteSheet';
 
 interface MoDetailProps {
   moId: number;
@@ -27,6 +28,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [editingComponent, setEditingComponent] = useState<any | null>(null);
+  const [editingStep, setEditingStep] = useState<{ id: number; name: string; idx: number; note: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [saveVersionOpen, setSaveVersionOpen] = useState(false);
   const [versionToast, setVersionToast] = useState<{ version_label: string; bom_id: number } | null>(null);
@@ -354,6 +356,16 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
                   <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-semibold flex-shrink-0 ${woStateColors[wo.state] || 'bg-gray-100 text-gray-500'}`}>
                     {woStateLabels[wo.state] || wo.state}
                   </span>
+                  {mo?.can_edit_components && (
+                    <span
+                      role="button"
+                      aria-label="Edit step instructions"
+                      onClick={(e) => { e.stopPropagation(); setEditingStep({ id: wo.id, name: wo.name, idx: idx + 1, note: wo.operation_note || '' }); }}
+                      className="ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-orange-50 hover:text-orange-600 active:scale-95"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    </span>
+                  )}
                 </div>
                 <div className="px-4 py-3">
                   {hasNote ? (
@@ -522,6 +534,19 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
         onAdded={fetchDetail}
       />
 
+      {editingStep && (
+        <EditStepNoteSheet
+          moId={moId}
+          woId={editingStep.id}
+          stepNumber={editingStep.idx}
+          stepName={editingStep.name}
+          initialText={editingStep.note}
+          open={!!editingStep}
+          onClose={() => setEditingStep(null)}
+          onSaved={fetchDetail}
+        />
+      )}
+
       <SaveAsVersionModal
         moId={moId}
         open={saveVersionOpen}
@@ -532,7 +557,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
       />
 
       {versionToast && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-gray-900 px-5 py-3 text-sm text-white shadow-lg">
+        <div className="fixed bottom-20 left-1/2 z-[110] -translate-x-1/2 rounded-full bg-gray-900 px-5 py-3 text-sm text-white shadow-lg">
           Saved as <span className="font-mono font-semibold">{versionToast.version_label}</span>
         </div>
       )}

@@ -118,8 +118,19 @@ export async function PATCH(
       }
     }
 
+    if (typeof body.operation_note === 'string') {
+      // operation_note is related='operation_id.note'; writing through
+      // the workorder propagates to the BOM operation, so the change
+      // sticks on the source recipe immediately.
+      const escapeHtml = (s: string) =>
+        s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const text = body.operation_note.trim();
+      const html = text ? `<p>${escapeHtml(text).replace(/\n/g, '<br/>')}</p>` : '<p><br></p>';
+      await odoo.write('mrp.workorder', [woId], { operation_note: html });
+    }
+
     const updated = await odoo.read('mrp.workorder', [woId], [
-      'name', 'state', 'duration', 'date_start',
+      'name', 'state', 'duration', 'date_start', 'operation_note',
     ]);
 
     return NextResponse.json({ work_order: updated[0] });
