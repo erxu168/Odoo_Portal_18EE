@@ -13,11 +13,18 @@ export async function GET(request: Request) {
     const search = searchParams.get('search');
     const companyId = searchParams.get('company_id');
     const includeArchivedParam = searchParams.get('include_archived') === '1';
+    // Default: only return the BOM marked current in each recipe chain.
+    // Pass include_all_versions=1 to get every version (used by Recipe
+    // History which already filters by version_root_id).
+    const includeAllVersions = searchParams.get('include_all_versions') === '1';
 
     const user = getCurrentUser();
     const canSeeArchived = includeArchivedParam && user != null && hasRole(user, 'manager');
 
     const domain: any[] = canSeeArchived ? [] : [['active', '=', true]];
+    if (!includeAllVersions) {
+      domain.push(['is_current_version', '=', true]);
+    }
     if (search) {
       domain.push(['product_tmpl_id.name', 'ilike', search]);
     }
@@ -37,6 +44,8 @@ export async function GET(request: Request) {
       'code',
       'company_id',
       'active',
+      'version_label',
+      'is_current_version',
     ], {
       order: 'product_tmpl_id asc',
       ...(canSeeArchived ? { context: { active_test: false } } : {}),
