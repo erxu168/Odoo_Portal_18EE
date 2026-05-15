@@ -16,10 +16,21 @@ interface EditLine {
   line_id: number; // positive = existing move_id, negative = pending add
   product_id: number;
   product_name: string;
-  planned_qty: number;
+  planned_qty_str: string; // stored as string so users can type "0,5" without re-formatting
   uom_id: number;
   uom_name: string;
   _isNew?: boolean;
+}
+
+function fmtQtyDe(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return '';
+  return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4, useGrouping: false }).format(n);
+}
+
+function parseQty(s: string): number {
+  if (!s || !s.trim()) return 0;
+  const n = Number(s.replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
 }
 
 export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetailProps) {
@@ -166,7 +177,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
       line_id: c.move_id,
       product_id: c.product_id?.[0] ?? 0,
       product_name: c.product_id?.[1] ?? '',
-      planned_qty: c.planned_qty ?? c.product_uom_qty ?? 0,
+      planned_qty_str: fmtQtyDe(c.planned_qty ?? c.product_uom_qty ?? 0),
       uom_id: c.product_uom?.[0] ?? 0,
       uom_name: c.product_uom?.[1] ?? '',
     })));
@@ -187,9 +198,29 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
   }
 
   function updateEditLineQty(line_id: number, raw: string) {
-    // Accept German "0,5" and US "0.5"
-    const v = Number(raw.replace(',', '.'));
-    setEditLines(prev => prev.map(l => l.line_id === line_id ? { ...l, planned_qty: Number.isFinite(v) ? v : 0 } : l));
+    // Store the raw string so the user sees exactly what they typed
+    // ("0,", "0,5", etc.). We parse on save.
+    setEditLines(prev => prev.map(l => l.line_id === line_id ? { ...l, planned_qty_str: raw } : l));
+  }
+
+  function adjustEditLineByDelta(line_id: number, sign: 1 | -1) {
+    const line = editLines.find(l => l.line_id === line_id);
+    if (!line) return;
+    const verb = sign > 0 ? 'add' : 'subtract';
+    const raw = window.prompt(`How much to ${verb}? (${line.uom_name})`, '');
+    if (raw === null) return; // user cancelled
+    const delta = parseQty(raw);
+    if (!delta || delta <= 0) {
+      window.alert('Enter a positive number.');
+      return;
+    }
+    const current = parseQty(line.planned_qty_str);
+    const next = current + sign * delta;
+    if (next < 0) {
+      window.alert(`That would make ${line.product_name} negative. Skipped.`);
+      return;
+    }
+    setEditLines(prev => prev.map(l => l.line_id === line_id ? { ...l, planned_qty_str: fmtQtyDe(next) } : l));
   }
 
   function removeEditLine(line_id: number) {
@@ -208,7 +239,7 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
         line_id: nextId,
         product_id: product.id,
         product_name: product.name,
-        planned_qty: 0,
+        planned_qty_str: '',
         uom_id: product.uom_id,
         uom_name: product.uom_name,
         _isNew: true,
@@ -244,13 +275,14 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
       );
       // 1) updates to existing lines and new additions
       for (const l of editLines) {
+        const qty = parseQty(l.planned_qty_str);
         if (l.line_id > 0) {
           const orig = originalQtyById.get(l.line_id);
-          if (orig !== l.planned_qty && l.planned_qty > 0) {
+          if (orig !== qty && qty > 0) {
             const r = await fetch(`/api/manufacturing-orders/${moId}/components/${l.line_id}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ qty: l.planned_qty }),
+              body: JSON.stringify({ qty }),
             });
             if (!r.ok) {
               const d = await r.json().catch(() => ({}));
@@ -258,11 +290,11 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
             }
           }
         } else if (l._isNew) {
-          if (l.planned_qty <= 0) continue; // skip empty rows
+          if (qty <= 0) continue; // skip empty rows
           const r = await fetch(`/api/manufacturing-orders/${moId}/components`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ product_id: l.product_id, qty: l.planned_qty, uom_id: l.uom_id }),
+            body: JSON.stringify({ product_id: l.product_id, qty, uom_id: l.uom_id }),
           });
           if (!r.ok) {
             const d = await r.json().catch(() => ({}));
@@ -376,8 +408,13 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
         </div>
       )}
 
-      <div className="px-4 pt-5">
+      <div className="px-4 pt-5 flex items-baseline gap-2 flex-wrap">
         <h2 className="text-xl font-bold text-gray-900 leading-tight">{mo.product_id[1]}</h2>
+        {mo.bom_version_label && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-0.5 text-[var(--fs-xs)] font-semibold text-orange-700 border border-orange-200 font-mono">
+            {mo.bom_version_label}
+          </span>
+        )}
       </div>
 
       <div className="px-4 py-3">
@@ -405,21 +442,32 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
           </div>
           <div className="flex flex-col gap-1 mb-4">
             {editLines.map(line => (
-              <div key={line.line_id} className="bg-white border border-gray-200 rounded-xl px-4 py-2 flex items-center gap-3">
+              <div key={line.line_id} className="bg-white border border-gray-200 rounded-xl px-3 py-2 flex items-center gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="text-[var(--fs-sm)] font-bold text-gray-900 break-words leading-snug">{line.product_name}</div>
                   <div className="text-[var(--fs-xs)] text-gray-400">{line.uom_name}</div>
                 </div>
+                <button
+                  onClick={() => adjustEditLineByDelta(line.line_id, -1)}
+                  className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200 flex-shrink-0 text-gray-700 font-bold text-lg"
+                  aria-label="Subtract amount"
+                >−</button>
                 <input
                   type="text"
                   inputMode="decimal"
-                  value={line.planned_qty === 0 ? '' : new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4, useGrouping: false }).format(line.planned_qty)}
+                  value={line.planned_qty_str}
                   onChange={e => updateEditLineQty(line.line_id, e.target.value)}
-                  className="w-24 px-3 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-orange-500"
+                  className="w-20 px-2 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-orange-500"
                 />
+                <button
+                  onClick={() => adjustEditLineByDelta(line.line_id, +1)}
+                  className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center active:bg-orange-100 flex-shrink-0 text-orange-600 font-bold text-lg"
+                  aria-label="Add amount"
+                >+</button>
                 <button
                   onClick={() => removeEditLine(line.line_id)}
                   className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center active:bg-red-100 flex-shrink-0"
+                  aria-label="Remove ingredient"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-red-500"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                 </button>
