@@ -197,19 +197,23 @@ export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetail
     if (line_id > 0) setRemovedMoveIds(prev => [...prev, line_id]);
   }
 
-  let _addCounter = -1;
   function addEditLine(product: { id: number; name: string; uom_id: number; uom_name: string }) {
-    if (editLines.some(l => l.product_id === product.id)) return;
-    _addCounter -= 1;
-    setEditLines(prev => [...prev, {
-      line_id: _addCounter,
-      product_id: product.id,
-      product_name: product.name,
-      planned_qty: 0,
-      uom_id: product.uom_id,
-      uom_name: product.uom_name,
-      _isNew: true,
-    }]);
+    setEditLines(prev => {
+      if (prev.some(l => l.product_id === product.id)) return prev;
+      // Each add picks a fresh negative temp id by reading the current
+      // lowest one in state. Using a module-level counter would collide
+      // across re-renders.
+      const nextId = Math.min(0, ...prev.map(l => l.line_id)) - 1;
+      return [...prev, {
+        line_id: nextId,
+        product_id: product.id,
+        product_name: product.name,
+        planned_qty: 0,
+        uom_id: product.uom_id,
+        uom_name: product.uom_name,
+        _isNew: true,
+      }];
+    });
     setShowEditSearch(false);
     setEditSearchQuery('');
     setEditSearchResults([]);
