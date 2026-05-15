@@ -41,7 +41,7 @@ export async function POST(
   const odoo = getOdoo();
 
   const mos = await odoo.read('mrp.production', [moId], [
-    'id', 'name', 'state', 'location_src_id', 'production_location_id', 'company_id',
+    'id', 'name', 'state', 'location_src_id', 'production_location_id', 'company_id', 'move_raw_ids',
   ]);
   if (!mos.length) {
     return NextResponse.json({ error: 'MO not found' }, { status: 404 });
@@ -69,19 +69,27 @@ export async function POST(
   const prods2 = await odoo.read('product.product', [productId], ['display_name']);
   const productName = prods2[0]?.display_name || `Product ${productId}`;
 
-  const moveId = await odoo.create('stock.move', {
-    name: productName,
-    product_id: productId,
-    product_uom_qty: qty,
-    product_uom: uomId,
-    raw_material_production_id: moId,
-    location_id: mo.location_src_id?.[0],
-    location_dest_id: mo.production_location_id?.[0],
-    company_id: mo.company_id?.[0],
+  // Odoo 18 blocks private method calls (_action_confirm) via JSON-RPC,
+  // so we create the move via the MO's own write, which runs all the
+  // hooks Odoo expects (state propagation, reservation, etc.) without
+  // needing a follow-up confirm call.
+  const existing: number[] = (mo.move_raw_ids || []) as number[];
+  await odoo.write('mrp.production', [moId], {
+    move_raw_ids: [[0, 0, {
+      name: productName,
+      product_id: productId,
+      product_uom_qty: qty,
+      product_uom: uomId,
+      location_id: mo.location_src_id?.[0],
+      location_dest_id: mo.production_location_id?.[0],
+      company_id: mo.company_id?.[0],
+    }]],
   });
-
-  if (['confirmed', 'progress'].includes(mo.state)) {
-    await odoo.call('stock.move', '_action_confirm', [[moveId]]);
+  const refreshed = await odoo.read('mrp.production', [moId], ['move_raw_ids']);
+  const newIds: number[] = (refreshed[0]?.move_raw_ids || []).filter((id: number) => !existing.includes(id));
+  const moveId = newIds[newIds.length - 1] ?? null;
+  if (!moveId) {
+    return NextResponse.json({ error: 'Could not locate the new ingredient line after create.' }, { status: 500 });
   }
 
   return NextResponse.json({

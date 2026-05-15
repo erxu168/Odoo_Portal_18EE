@@ -96,8 +96,10 @@ export async function DELETE(
     return NextResponse.json({ error: guard.error }, { status: guard.status });
   }
 
-  // Cancel the move instead of unlink — Odoo's manufacturing flow keeps
-  // the record but in 'cancel' state; the GET handler filters those out.
-  await odoo.call('stock.move', '_action_cancel', [[moveId]]);
+  // Odoo 18 blocks private method calls (_action_cancel) via JSON-RPC.
+  // Setting state directly to 'cancel' achieves the same outcome — the
+  // GET handler filters cancelled moves out, and the consumed-qty guard
+  // already protected against cancelling a partially-consumed line.
+  await odoo.write('stock.move', [moveId], { state: 'cancel' });
   return NextResponse.json({ move_id: moveId, cancelled: true });
 }
