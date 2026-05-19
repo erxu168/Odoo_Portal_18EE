@@ -28,6 +28,20 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [qcConfirm, setQcConfirm] = useState<'approve' | 'reject' | null>(null);
   const [draftDecisions, setDraftDecisions] = useState<Record<number, 'approved' | 'linked' | 'rejected'>>({});
   const [lightbox, setLightbox] = useState<{ open: boolean; photos: string[]; index: number }>({ open: false, photos: [], index: 0 });
+  const [locations, setLocations] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch('/api/inventory/locations')
+      .then((r) => r.json())
+      .then((d) => setLocations(d.locations || []))
+      .catch(() => { /* non-fatal */ });
+  }, []);
+
+  function locationName(id: number | null | undefined): string | null {
+    if (id == null) return null;
+    const loc = locations.find((l) => l.id === id);
+    return loc?.complete_name?.split('/').pop()?.trim() || loc?.name || null;
+  }
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -238,7 +252,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
             </div>
 
             <div className="space-y-2 text-[var(--fs-sm)] text-gray-500">
-              <div className="flex justify-between"><span>Location</span><span className="font-semibold text-gray-700">ID #{reviewQC.location_id}</span></div>
+              <div className="flex justify-between"><span>Location</span><span className="font-semibold text-gray-700">{locationName(reviewQC.location_id) || `ID #${reviewQC.location_id}`}</span></div>
               <div className="flex justify-between"><span>Counted by</span><span className="font-semibold text-gray-700">{reviewQC.counted_by_name || `User #${reviewQC.counted_by}`}</span></div>
               <div className="flex justify-between"><span>Submitted</span><span className="font-semibold text-gray-700">{submittedDate}</span></div>
             </div>
@@ -315,7 +329,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
           <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
             {[
               reviewSession.scheduled_date,
-              reviewSession.location_name,
+              locationName(reviewSession.location_id),
               reviewSession.assigned_user_id != null
                 ? `Counted by ${reviewSession.assigned_user_name || `user #${reviewSession.assigned_user_id}`}`
                 : null,
@@ -528,7 +542,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                       <span className="text-[var(--fs-lg)] font-bold text-gray-900">{sess.template_name || `Session #${sess.id}`}</span>
                       <StatusBadge status={sess.status} />
                     </div>
-                    <div className="text-[var(--fs-sm)] text-gray-500 mb-3">{sess.scheduled_date} {sess.location_name && `\u00B7 ${sess.location_name}`}</div>
+                    <div className="text-[var(--fs-sm)] text-gray-500 mb-3">{[sess.scheduled_date, locationName(sess.location_id)].filter(Boolean).join(' \u00B7 ')}</div>
                     {sess.status === 'submitted' ? (
                       <button onClick={() => openReview(sess)} className="w-full py-2.5 rounded-xl bg-green-600 text-white text-[var(--fs-base)] font-bold active:bg-green-700 shadow-sm">Review</button>
                     ) : sess.status === 'rejected' ? (
