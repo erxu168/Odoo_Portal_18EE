@@ -12,9 +12,10 @@ export default function AppTopBar() {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const { hidden } = useTopBar();
-  const [now, setNow] = React.useState(new Date());
+  const [now, setNow] = React.useState<Date | null>(null);
 
   React.useEffect(() => {
+    setNow(new Date());
     const t = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(t);
   }, []);
@@ -23,8 +24,8 @@ export default function AppTopBar() {
     return null;
   }
 
-  const dateStr = `${now.getDate()}.${now.toLocaleDateString('en-US', { month: 'short' })}. ${now.getFullYear()}`;
-  const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = now ? `${now.getDate()}.${now.toLocaleDateString('en-US', { month: 'short' })}. ${now.getFullYear()}` : '';
+  const timeStr = now ? now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
 
   return (
     <>

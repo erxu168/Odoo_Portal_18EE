@@ -40,7 +40,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   function locationName(id: number | null | undefined): string | null {
     if (id == null) return null;
     const loc = locations.find((l) => l.id === id);
-    return loc?.complete_name?.split('/').pop()?.trim() || loc?.name || null;
+    return loc?.complete_name || loc?.name || null;
   }
 
   const fetchData = useCallback(async () => {
