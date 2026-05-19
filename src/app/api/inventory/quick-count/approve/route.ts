@@ -48,12 +48,14 @@ export async function POST(request: Request) {
     if (quants.length > 0) {
       await odoo.write('stock.quant', [quants[0].id], {
         inventory_quantity: qc.counted_qty,
+        inventory_quantity_set: true,
       });
     } else {
       await odoo.create('stock.quant', {
         product_id: qc.product_id,
         location_id: qc.location_id,
         inventory_quantity: qc.counted_qty,
+        inventory_quantity_set: true,
       });
     }
 
