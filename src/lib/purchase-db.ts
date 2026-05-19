@@ -143,6 +143,16 @@ export function initPurchaseTables() {
       value TEXT NOT NULL DEFAULT ''
     );
 
+    CREATE TABLE IF NOT EXISTS purchase_locations (
+      id INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      odoo_company_id INTEGER NOT NULL,
+      odoo_warehouse_id INTEGER,
+      odoo_picking_type_id INTEGER,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_guides_supplier ON purchase_order_guides(supplier_id, location_id);
     CREATE INDEX IF NOT EXISTS idx_guide_items ON purchase_guide_items(guide_id);
     CREATE INDEX IF NOT EXISTS idx_carts_loc ON purchase_carts(location_id, supplier_id, status);
@@ -163,6 +173,64 @@ export function initPurchaseTables() {
   try { db().exec('ALTER TABLE purchase_orders ADD COLUMN cancelled_at TEXT'); } catch (_e) { /* already exists */ }
   // v2: delivery_days for supplier delivery schedule alerts
   try { db().exec("ALTER TABLE purchase_suppliers ADD COLUMN delivery_days TEXT NOT NULL DEFAULT '[]'"); } catch (_e) { /* already exists */ }
+
+  // Seed the two long-standing locations so the picker keeps working even before
+  // auto-discover has run. id = Odoo stock.location.id (matches existing data).
+  const existingLocs = db().prepare('SELECT COUNT(*) AS c FROM purchase_locations').get() as { c: number };
+  if (existingLocs.c === 0) {
+    const stmt = db().prepare(
+      'INSERT OR IGNORE INTO purchase_locations (id, name, odoo_company_id, odoo_warehouse_id, odoo_picking_type_id, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    stmt.run(32, 'SSAM', 3, null, 15, 1, nowISO());
+    stmt.run(22, 'GBM38', 2, null, 8, 2, nowISO());
+  }
+}
+
+// ============================================================
+// LOCATIONS
+// ============================================================
+export interface PurchaseLocation {
+  id: number;
+  name: string;
+  odoo_company_id: number;
+  odoo_warehouse_id: number | null;
+  odoo_picking_type_id: number | null;
+  sort_order: number;
+  created_at: string;
+}
+
+export function listLocations(): PurchaseLocation[] {
+  return db().prepare(
+    'SELECT * FROM purchase_locations ORDER BY sort_order, name'
+  ).all() as PurchaseLocation[];
+}
+
+export function getLocationByCompany(companyId: number): PurchaseLocation | undefined {
+  return db().prepare(
+    'SELECT * FROM purchase_locations WHERE odoo_company_id = ? LIMIT 1'
+  ).get(companyId) as PurchaseLocation | undefined;
+}
+
+export function upsertLocation(loc: {
+  id: number; name: string; odoo_company_id: number;
+  odoo_warehouse_id?: number | null; odoo_picking_type_id?: number | null;
+  sort_order?: number;
+}) {
+  db().prepare(`
+    INSERT INTO purchase_locations (id, name, odoo_company_id, odoo_warehouse_id, odoo_picking_type_id, sort_order, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      odoo_company_id = excluded.odoo_company_id,
+      odoo_warehouse_id = COALESCE(excluded.odoo_warehouse_id, purchase_locations.odoo_warehouse_id),
+      odoo_picking_type_id = COALESCE(excluded.odoo_picking_type_id, purchase_locations.odoo_picking_type_id),
+      sort_order = excluded.sort_order
+  `).run(
+    loc.id, loc.name, loc.odoo_company_id,
+    loc.odoo_warehouse_id ?? null,
+    loc.odoo_picking_type_id ?? null,
+    loc.sort_order ?? 99, nowISO()
+  );
 }
 
 // ============================================================

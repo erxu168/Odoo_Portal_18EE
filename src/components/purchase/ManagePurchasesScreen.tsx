@@ -20,11 +20,13 @@ interface ManagePurchasesScreenProps {
   suppliers: Supplier[];
   isAdmin: boolean;
   seedMsg: string;
+  autoImportBusy?: boolean;
   onAddSupplier: () => void;
   onInsights: () => void;
   onOpenGuide: (supplier: Supplier) => void;
   onRequestDelete: (supplier: Supplier) => void;
   onSeed: () => void;
+  onAutoImport: () => void;
 }
 
 function TrashIcon() {
@@ -40,11 +42,13 @@ export default function ManagePurchasesScreen({
   suppliers,
   isAdmin,
   seedMsg,
+  autoImportBusy,
   onAddSupplier,
   onInsights,
   onOpenGuide,
   onRequestDelete,
   onSeed,
+  onAutoImport,
 }: ManagePurchasesScreenProps) {
   return (
     <div className="px-4 py-3">
@@ -72,22 +76,40 @@ export default function ManagePurchasesScreen({
         </button>
       </div>
 
+      {isAdmin && (
+        <div className="mb-3 p-3 rounded-xl bg-purple-50 border border-purple-100">
+          <div className="text-[12px] font-semibold text-purple-900 mb-0.5">Auto-build order lists</div>
+          <div className="text-[11px] text-purple-700 mb-2 leading-snug">
+            Pulls every supplier you&apos;ve ordered from in the last 12 months and their products from Odoo.
+            Safe to re-run — prices refresh, no duplicates.
+          </div>
+          <button
+            onClick={onAutoImport}
+            disabled={!!autoImportBusy}
+            className="w-full py-2.5 rounded-lg bg-purple-600 text-white text-[13px] font-bold active:scale-[0.98] transition-transform disabled:opacity-50"
+          >
+            {autoImportBusy ? 'Importing…' : 'Auto-import from order history'}
+          </button>
+          {seedMsg && <p className="text-[11px] text-purple-800 mt-2 whitespace-pre-line">{seedMsg}</p>}
+        </div>
+      )}
+
       <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Edit order guides</div>
 
       {suppliers.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-[var(--fs-sm)] text-gray-500 mb-4">
-            No suppliers yet. Tap <span className="font-semibold text-blue-600">Add supplier</span> above, or seed from Odoo.
+            No suppliers yet. Tap <span className="font-semibold text-blue-600">Add supplier</span> above
+            {isAdmin ? <>, or use <span className="font-semibold text-purple-700">Auto-import</span> to pull them all from Odoo.</> : '.'}
           </div>
           {isAdmin && (
             <button
               onClick={onSeed}
-              className="py-3 px-6 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30"
+              className="py-2.5 px-5 rounded-lg bg-white border border-gray-200 text-gray-600 text-[12px] font-semibold"
             >
-              Seed suppliers from Odoo
+              Seed sample data
             </button>
           )}
-          {seedMsg && <p className="text-[12px] text-gray-500 mt-3">{seedMsg}</p>}
         </div>
       ) : (
         suppliers.map((s) => (
