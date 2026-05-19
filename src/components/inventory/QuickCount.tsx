@@ -298,7 +298,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
               const flagged = !!flags[p.id];
               const prodPhotos = photos[p.id] || [];
               return (
-                <div key={p.id} className="py-3 border-b border-gray-100">
+                <div key={p.id} className="py-3 border-b border-gray-100 [content-visibility:auto] [contain-intrinsic-size:auto_60px]">
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
