@@ -88,7 +88,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                   key={p.id}
                   onClick={() => !busy && toggle(p.id)}
                   disabled={busy}
-                  className="flex items-center justify-between gap-3 py-3.5 border-b border-gray-100 text-left active:bg-gray-50 disabled:opacity-60"
+                  className="flex items-center justify-between gap-3 py-3.5 border-b border-gray-100 text-left active:bg-gray-50 disabled:opacity-60 [content-visibility:auto] [contain-intrinsic-size:auto_60px]"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>

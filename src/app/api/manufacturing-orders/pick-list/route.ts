@@ -90,7 +90,10 @@ export async function GET(request: Request) {
 
     const categMap: Record<number, string> = {};
     for (const p of products) {
-      const fullName = p.categ_id?.[1] || 'Uncategorized'; const parts = fullName.split(' / '); categMap[p.id] = parts[parts.length - 1];
+      const fullName = p.categ_id?.[1] || 'Uncategorized';
+      const parts = fullName.split(' / ');
+      const leaf = parts[parts.length - 1];
+      categMap[p.id] = leaf === 'All' ? 'Uncategorized' : leaf;
     }
 
     const items = Object.values(productMap).map(item => ({

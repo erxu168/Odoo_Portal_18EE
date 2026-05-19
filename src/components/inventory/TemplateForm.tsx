@@ -22,7 +22,7 @@ const WEEKDAYS = [
 
 const ASSIGN_TYPES = [
   { id: 'person', label: 'Person' },
-  { id: 'department', label: 'Department' },
+  { id: 'department', label: 'Dept' },
   { id: 'shift', label: 'Shift' },
 ];
 
