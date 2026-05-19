@@ -211,7 +211,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
             </button>
           </div>
           <h1 className="text-[18px] font-bold text-gray-900">Review quick count</h1>
-          <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">Submitted {submittedDate} {'\u00B7'} by user #{reviewQC.counted_by}</p>
+          <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">Submitted {submittedDate} {'\u00B7'} by {reviewQC.counted_by_name || `User #${reviewQC.counted_by}`}</p>
         </div>
 
         {errorMsg && (
@@ -239,7 +239,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
 
             <div className="space-y-2 text-[var(--fs-sm)] text-gray-500">
               <div className="flex justify-between"><span>Location</span><span className="font-semibold text-gray-700">ID #{reviewQC.location_id}</span></div>
-              <div className="flex justify-between"><span>Counted by</span><span className="font-semibold text-gray-700">User #{reviewQC.counted_by}</span></div>
+              <div className="flex justify-between"><span>Counted by</span><span className="font-semibold text-gray-700">{reviewQC.counted_by_name || `User #${reviewQC.counted_by}`}</span></div>
               <div className="flex justify-between"><span>Submitted</span><span className="font-semibold text-gray-700">{submittedDate}</span></div>
             </div>
           </div>
@@ -313,7 +313,13 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
           </div>
           <h1 className="text-[18px] font-bold text-gray-900">{reviewSession.template_name || `Session #${reviewSession.id}`}</h1>
           <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
-            {reviewSession.scheduled_date} {'\u00B7'} {reviewSession.location_name || ''} {'\u00B7'} Counted by user #{reviewSession.assigned_user_id}
+            {[
+              reviewSession.scheduled_date,
+              reviewSession.location_name,
+              reviewSession.assigned_user_id != null
+                ? `Counted by ${reviewSession.assigned_user_name || `user #${reviewSession.assigned_user_id}`}`
+                : null,
+            ].filter(Boolean).join(' \u00B7 ')}
           </p>
         </div>
 
@@ -555,7 +561,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                     </div>
                     <div className="flex items-center gap-3 text-[var(--fs-base)] text-gray-500 mb-3">
                       <span className="font-mono font-semibold text-gray-900">{qc.counted_qty} {qc.uom}</span>
-                      <span>by user #{qc.counted_by}</span>
+                      <span>by {qc.counted_by_name || `user #${qc.counted_by}`}</span>
                       <span>{new Date(qc.submitted_at).toLocaleDateString('de-DE')}</span>
                     </div>
                     {qc.status === 'pending' ? (

@@ -246,7 +246,12 @@ export function updateTemplate(id: number, data: Partial<{
 
 export function getTemplate(id: number): CountingTemplate | null {
   const db = getDb();
-  const row = db.prepare('SELECT * FROM counting_templates WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  const row = db.prepare(`
+    SELECT t.*, u.name as assign_label
+    FROM counting_templates t
+    LEFT JOIN portal_users u ON u.id = t.assign_id AND t.assign_type = 'person'
+    WHERE t.id = ?
+  `).get(id) as Record<string, unknown> | undefined;
   return row ? parseTemplate(row) : null;
 }
 
@@ -254,10 +259,16 @@ export function listTemplates(filters?: { location_id?: number; active?: boolean
   const db = getDb();
   const where: string[] = [];
   const vals: unknown[] = [];
-  if (filters?.location_id) { where.push('location_id = ?'); vals.push(filters.location_id); }
-  if (filters?.active !== undefined) { where.push('active = ?'); vals.push(filters.active ? 1 : 0); }
+  if (filters?.location_id) { where.push('t.location_id = ?'); vals.push(filters.location_id); }
+  if (filters?.active !== undefined) { where.push('t.active = ?'); vals.push(filters.active ? 1 : 0); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-  const rows = db.prepare(`SELECT * FROM counting_templates ${clause} ORDER BY updated_at DESC`).all(...vals) as Record<string, unknown>[];
+  const rows = db.prepare(`
+    SELECT t.*, u.name as assign_label
+    FROM counting_templates t
+    LEFT JOIN portal_users u ON u.id = t.assign_id AND t.assign_type = 'person'
+    ${clause}
+    ORDER BY t.updated_at DESC
+  `).all(...vals) as Record<string, unknown>[];
   return rows.map(parseTemplate);
 }
 
@@ -307,9 +318,11 @@ export function listSessions(filters?: {
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
   return db.prepare(`
     SELECT s.*, t.name as template_name, t.frequency as template_frequency,
-           t.product_ids as template_product_ids, t.category_ids as template_category_ids
+           t.product_ids as template_product_ids, t.category_ids as template_category_ids,
+           u.name as assigned_user_name
     FROM counting_sessions s
     LEFT JOIN counting_templates t ON t.id = s.template_id
+    LEFT JOIN portal_users u ON u.id = s.assigned_user_id
     ${clause}
     ORDER BY s.scheduled_date DESC
   `).all(...vals) as CountingSession[];
@@ -319,9 +332,11 @@ export function getSession(id: number): CountingSession | null {
   const db = getDb();
   return db.prepare(`
     SELECT s.*, t.name as template_name, t.frequency as template_frequency,
-           t.product_ids as template_product_ids, t.category_ids as template_category_ids
+           t.product_ids as template_product_ids, t.category_ids as template_category_ids,
+           u.name as assigned_user_name
     FROM counting_sessions s
     LEFT JOIN counting_templates t ON t.id = s.template_id
+    LEFT JOIN portal_users u ON u.id = s.assigned_user_id
     WHERE s.id = ?
   `).get(id) as CountingSession | null;
 }
@@ -502,10 +517,16 @@ export function listQuickCounts(filters?: { status?: string; counted_by?: number
   const db = getDb();
   const where: string[] = [];
   const vals: unknown[] = [];
-  if (filters?.status) { where.push('status = ?'); vals.push(filters.status); }
-  if (filters?.counted_by) { where.push('counted_by = ?'); vals.push(filters.counted_by); }
+  if (filters?.status) { where.push('q.status = ?'); vals.push(filters.status); }
+  if (filters?.counted_by) { where.push('q.counted_by = ?'); vals.push(filters.counted_by); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-  return db.prepare(`SELECT * FROM quick_counts ${clause} ORDER BY submitted_at DESC`).all(...vals) as QuickCount[];
+  return db.prepare(`
+    SELECT q.*, u.name as counted_by_name
+    FROM quick_counts q
+    LEFT JOIN portal_users u ON u.id = q.counted_by
+    ${clause}
+    ORDER BY q.submitted_at DESC
+  `).all(...vals) as QuickCount[];
 }
 
 export function approveQuickCount(id: number, reviewed_by: number) {

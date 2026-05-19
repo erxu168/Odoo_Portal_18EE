@@ -63,7 +63,7 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
 
   function assignLabel(tpl: any) {
     if (!tpl.assign_type) return 'Anyone';
-    if (tpl.assign_type === 'person') return `Person #${tpl.assign_id}`;
+    if (tpl.assign_type === 'person') return tpl.assign_label || `Person #${tpl.assign_id}`;
     if (tpl.assign_type === 'department') {
       const dept = departments.find((d: any) => d.id === tpl.assign_id);
       return dept?.name || `Dept #${tpl.assign_id}`;
