@@ -6,7 +6,11 @@ import NumpadModal from './NumpadModal';
 import FilePicker from "@/components/ui/FilePicker";
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
+import OfflineBanner from './OfflineBanner';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
+import { useSyncQueue } from '@/hooks/useSyncQueue';
+import { cacheSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
+import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
 
 interface CountingSessionProps {
   sessionId: number;
@@ -39,6 +43,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [showScanner, setShowScanner] = useState(false);
   const [hwBarcode, setHwBarcode] = useState<string | undefined>();
 
+  // -- Offline / sync queue --
+  const sync = useSyncQueue();
+
   function handleHardwareScan(barcode: string) {
     const product = products.find((p: any) => p.barcode && p.barcode === barcode);
     if (product) {
@@ -56,18 +63,13 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    try {
-      const [sessRes, countRes] = await Promise.all([
-        fetch('/api/inventory/sessions').then((r) => r.json()),
-        fetch(`/api/inventory/counts?session_id=${sessionId}`).then((r) => r.json()),
-      ]);
 
-      const sess = (sessRes.sessions || []).find((s: any) => s.id === sessionId);
+    // Helper: apply a payload (from network or cache) to state.
+    function apply(sess: any, products: any[], entriesArr: any[], sysQtys: Record<number, number>) {
       setSession(sess);
-
       const entryMap: Record<number, number> = {};
       const photoMap: Record<number, string[]> = {};
-      for (const e of (countRes.entries || [])) {
+      for (const e of entriesArr || []) {
         entryMap[e.product_id] = e.counted_qty;
         if (Array.isArray(e.photos) && e.photos.length > 0) {
           photoMap[e.product_id] = e.photos;
@@ -75,7 +77,17 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       }
       setEntries(entryMap);
       setRowPhotos(photoMap);
-      setSystemQtys(countRes.system_qtys || {});
+      setSystemQtys(sysQtys || {});
+      setProducts(products);
+    }
+
+    try {
+      const [sessRes, countRes] = await Promise.all([
+        fetch('/api/inventory/sessions').then((r) => r.json()),
+        fetch(`/api/inventory/counts?session_id=${sessionId}`).then((r) => r.json()),
+      ]);
+
+      const sess = (sessRes.sessions || []).find((s: any) => s.id === sessionId);
 
       let productIds: number[] = [];
       let categoryIds: number[] = [];
@@ -100,9 +112,26 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         });
       }
 
-      setProducts(loadedProducts);
+      apply(sess, loadedProducts, countRes.entries || [], countRes.system_qtys || {});
+
+      // Cache to IDB for offline use. flags are populated separately and
+      // patched into the cache by the flags effect.
+      void cacheSessionData(sessionId, {
+        session: sess,
+        products: loadedProducts,
+        entries: countRes.entries || [],
+        systemQtys: countRes.system_qtys || {},
+        flags: {},
+      });
     } catch (err) {
-      console.error('Failed to load session:', err);
+      console.warn('Network fetch failed, attempting cache fallback:', err);
+      const cached = await getCachedSessionData(sessionId);
+      if (cached) {
+        apply(cached.session, cached.products, cached.entries, cached.systemQtys);
+        if (cached.flags) setFlags(cached.flags);
+      } else {
+        console.error('No cached data available for session', sessionId);
+      }
     } finally {
       setLoading(false);
     }
@@ -111,12 +140,17 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useEffect(() => {
-    fetch('/api/inventory/product-flags').then(r => r.json()).then(d => {
+    fetch('/api/inventory/product-flags').then(r => r.json()).then(async (d) => {
       const map: Record<number, boolean> = {};
       (d.flags || []).forEach((f: any) => { map[f.odoo_product_id] = !!f.requires_photo; });
       setFlags(map);
+      // Patch flags into cached session data so an offline reload has them.
+      const cached = await getCachedSessionData(sessionId);
+      if (cached) {
+        void cacheSessionData(sessionId, { ...cached, flags: map });
+      }
     }).catch(() => {});
-  }, []);
+  }, [sessionId]);
 
   // Build categories using LEAF names only
   const categories = React.useMemo(() => {
@@ -173,15 +207,24 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
   async function saveCount(productId: number, qty: number | null, uom: string) {
     if (qty === null || qty === undefined) {
-      await fetch(`/api/inventory/counts?session_id=${sessionId}&product_id=${productId}`, { method: 'DELETE' });
       setEntries((prev) => { const next = { ...prev }; delete next[productId]; return next; });
-    } else {
-      await fetch('/api/inventory/counts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, product_id: productId, counted_qty: qty, uom }),
+      void updateCachedEntry(sessionId, productId, { counted_qty: null });
+      const res = await offlineSafeMutate({
+        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${productId}`,
+        method: 'DELETE',
+        dedupKey: `delete:${sessionId}:${productId}`,
       });
+      if (res.queued) void sync.refresh();
+    } else {
       setEntries((prev) => ({ ...prev, [productId]: qty }));
+      void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom });
+      const res = await offlineSafeMutate({
+        url: '/api/inventory/counts',
+        method: 'POST',
+        body: { session_id: sessionId, product_id: productId, counted_qty: qty, uom },
+        dedupKey: `save:${sessionId}:${productId}`,
+      });
+      if (res.queued) void sync.refresh();
     }
   }
 
@@ -232,6 +275,19 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   }
 
   async function handleSubmit() {
+    // Submit requires server validation (count completion + photo requirements),
+    // and the manager review flow needs a known-good submit state. Block while
+    // offline or while there are unsynced counts to avoid a silent failure.
+    if (!sync.online) {
+      setSubmitError('You are offline. Connect to WiFi and try again.');
+      setShowConfirm(false);
+      return;
+    }
+    if (sync.pending > 0) {
+      setSubmitError(`${sync.pending} count change${sync.pending !== 1 ? 's are' : ' is'} still syncing — wait a moment and try again.`);
+      setShowConfirm(false);
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -298,19 +354,22 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           <div className="mt-2">
             <PhotoCaptureStrip
               photos={prodPhotos}
-              onChange={(next) => {
+              onChange={async (next) => {
                 setRowPhotos(prev => ({ ...prev, [p.id]: next }));
-                fetch('/api/inventory/counts', {
+                void updateCachedEntry(sessionId, p.id, { counted_qty: val ?? undefined, uom, photos: next });
+                const res = await offlineSafeMutate({
+                  url: '/api/inventory/counts',
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
+                  body: {
                     session_id: sessionId,
                     product_id: p.id,
                     counted_qty: val,
                     uom,
                     photos: next,
-                  }),
+                  },
+                  dedupKey: `save:${sessionId}:${p.id}`,
                 });
+                if (res.queued) void sync.refresh();
               }}
             />
           </div>
@@ -356,6 +415,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           <h1 className="text-[var(--fs-xl)] font-bold text-gray-900">Review count</h1>
           <p className="text-[var(--fs-sm)] text-gray-500 mt-0.5">{session?.template_name} {'\u00B7'} {session?.scheduled_date}</p>
         </div>
+
+        <OfflineBanner sync={sync} />
 
         <div className="px-4 pt-4">
           <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
@@ -518,6 +579,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         title={session?.template_name || `Session #${sessionId}`}
         subtitle={`${locationName ? locationName + ' \u00B7 ' : ''}${totalCount} products`}
       />
+
+      <OfflineBanner sync={sync} />
 
       <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
 

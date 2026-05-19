@@ -117,7 +117,7 @@ Company: 5 / What a Jerk
 
 - **Manufacturing**: Live (MO list, MO detail, WO detail, BOM list, BOM detail, Create MO)
 - **Purchase**: 5 tabs, 11 screens, order guides, Odoo PO creation (receive flow pending rebuild)
-- **Inventory**: Backend done (SQLite + 7 API routes), frontend page.tsx not built yet
+- **Inventory**: Live — 7 screens (dashboard, my-lists, quick-count, mo-ingredients, manage, review, product-settings), 13 API routes, SQLite for templates/sessions/counts/photos/drafts/flags, approve writes back to Odoo `stock.quant.inventory_quantity` + `action_apply_inventory`. Includes barcode scanning, scan-to-create draft products, per-line photo proof. Module exists end-to-end but is NOT yet in active production use (see feedback: manufacturing must not gate on stock).
 - **HR/Onboarding**: 7-step DATEV wizard, DocumentCapture, FilePicker, profile photos
 - **Chef Guide**: Concurrent cook sessions, Kitchen Board, global timer alerts
 - **Issues & Requests**: Mock complete (17 screens), not yet coded

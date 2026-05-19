@@ -6,8 +6,11 @@ import NumpadModal from './NumpadModal';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
 import UnknownBarcodeSheet from './UnknownBarcodeSheet';
+import OfflineBanner from './OfflineBanner';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
+import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { useCompany } from '@/lib/company-context';
+import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
 
 interface QuickCountProps {
   userRole: string;
@@ -35,6 +38,9 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   const [unknownBarcode, setUnknownBarcode] = useState<string | null>(null);
   const [scanToast, setScanToast] = useState<{ msg: string; kind: 'ok' | 'warn' } | null>(null);
 
+  // ── Offline / sync queue ──
+  const sync = useSyncQueue();
+
   function showScanToast(msg: string, kind: 'ok' | 'warn' = 'ok') {
     setScanToast({ msg, kind });
     setTimeout(() => setScanToast(null), 2500);
@@ -54,7 +60,12 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       return;
     }
 
-    // 2. Look it up in Odoo
+    // 2. Look it up in Odoo (online only — needs a fresh server call)
+    if (!sync.online) {
+      showScanToast(`Offline — can't look up new barcode`, 'warn');
+      try { navigator.vibrate([60, 30, 60]); } catch { /* ignore */ }
+      return;
+    }
     try {
       const res = await fetch(`/api/inventory/barcode-lookup?barcode=${encodeURIComponent(barcode)}`);
       const data = await res.json();
@@ -71,7 +82,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       }
     } catch (_err) { /* fall through to unknown */ }
 
-    // 3. Unknown → open the create-new-product sheet
+    // 3. Unknown → open the create-new-product sheet (needs network for Odoo)
     setUnknownBarcode(barcode);
     try { navigator.vibrate([60, 30, 60]); } catch { /* ignore */ }
   }
@@ -194,20 +205,22 @@ export default function QuickCount({ userRole }: QuickCountProps) {
           photos: photos[productId] || [],
         };
       });
-      const res = await fetch('/api/inventory/quick-count', {
+      const res = await offlineSafeMutate({
+        url: '/api/inventory/quick-count',
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entries, location_id: locFilter }),
+        body: { entries, location_id: locFilter },
+        // No dedupKey — each batch is a distinct submit. If the user offline-
+        // submits twice, both should replay.
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setSubmitError(data.error || 'Submit failed');
+      if (!res.ok && !res.queued) {
+        setSubmitError(res.error || 'Submit failed');
         return;
       }
       setCounts({});
       setPhotos({});
       setSubmitted(true);
       setTimeout(() => setSubmitted(false), 3000);
+      if (res.queued) void sync.refresh();
     } catch (err) {
       console.error('Quick count submit failed:', err);
       setSubmitError('Network error. Please try again.');
@@ -231,6 +244,8 @@ export default function QuickCount({ userRole }: QuickCountProps) {
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
+      <OfflineBanner sync={sync} />
+
       {/* Location pills — only shown when the active company has multiple
           internal locations. Company scope comes from the top-bar selector. */}
       {locations.length > 1 && (
@@ -267,7 +282,9 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       <div className="flex-1 overflow-y-auto px-4 pb-24">
         {submitted && (
           <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-3 text-center">
-            <span className="text-[var(--fs-base)] font-semibold text-green-700">Quick counts submitted for review</span>
+            <span className="text-[var(--fs-base)] font-semibold text-green-700">
+              {sync.online ? 'Quick counts submitted for review' : 'Saved offline — will submit when back online'}
+            </span>
           </div>
         )}
         {filtered.length === 0 ? (

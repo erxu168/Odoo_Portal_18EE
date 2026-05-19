@@ -116,7 +116,7 @@ Single-page app with bottom nav (5 tabs).
 | BOM Detail | `BomDetail.tsx` | ✅ Live |
 | Create MO | `CreateMo.tsx` | ✅ Live |
 | My Tasks tab | — | 🚧 "Coming soon" placeholder |
-| Inventory tab | — | 🚧 "Coming soon" placeholder |
+| Inventory tab | — | ✅ Routes to `/inventory` (full module — see below) |
 | Settings tab | — | 🚧 "Coming soon" placeholder |
 
 ### Live API routes
@@ -126,7 +126,34 @@ Single-page app with bottom nav (5 tabs).
 | `/api/manufacturing-orders/:id` | GET | `{order:{...}, components:[...], workOrders:[...]}` |
 | `/api/boms` | GET | `{boms:[...]}` — all BOMs |
 
-No other API routes exist yet. All others return 404.
+Other modules (Inventory, Tasks, Purchase, HR, Chef Guide) have their own API routes — see the relevant module section below.
+
+### Inventory module — `/inventory`
+Single-page screen router; mobile-first; role-gated.
+
+| Screen | Component | Status |
+|---|---|---|
+| Dashboard | `InventoryDashboard.tsx` | ✅ Live — sortable tile grid, live badge counts |
+| My Lists | `MyLists.tsx` | ✅ Live — assigned sessions for today |
+| Counting Session | `CountingSession.tsx` | ✅ Live — numpad, scanner, per-line photos, proof photo |
+| Quick Count | `QuickCount.tsx` | ✅ Live — search any product + qty, no template needed |
+| MO Ingredients | `MoIngredients.tsx` | ✅ Live — ingredients required by confirmed MOs |
+| Manage Lists (mgr/admin) | `ManageTemplates.tsx` + `TemplateForm.tsx` | ✅ Live — frequency/schedule/location/products/assignee |
+| Review (mgr/admin) | `ReviewSubmissions.tsx` | ✅ Live — approve/reject sessions + quick counts, photo viewer |
+| Product Settings (mgr/admin) | `ProductSettings.tsx` | ✅ Live — per-product `requires_photo` flag |
+| Helpers | `NumpadModal.tsx`, `PhotoCaptureStrip.tsx`, `PhotoLightbox.tsx`, `UnknownBarcodeSheet.tsx`, `OfflineBanner.tsx`, `ui.tsx` | ✅ Live |
+
+**Lifecycle:** Templates define what to count + frequency (daily / weekly with weekday list / monthly / ad-hoc). Sessions auto-generate for today from active templates on first load. Status flow: `pending → in_progress → submitted → approved | rejected`. Approval writes `stock.quant.inventory_quantity` back to Odoo and calls `action_apply_inventory` — session is NOT marked approved if Odoo sync fails.
+
+**Storage split:** SQLite (`src/lib/inventory-db.ts`) owns templates, sessions, count_entries, quick_counts, product_drafts, product_flags, count_photos. Odoo owns products, categories, locations, vendors, UoMs, and actual stock.
+
+**Scanning:** Hardware/HID barcode scanner via `useHardwareScanner` + `ScannerSink` (Android WebView focus-trap). Unknown scans open `UnknownBarcodeSheet` — staff captures front + back package photos and creates an inactive draft product in Odoo; manager approves draft during Review and supplies cost + vendor (writes `standard_price` + `product.supplierinfo`).
+
+**Offline mode (Counting Session + Quick Count):** Once a session is opened online, counting keeps working if the network drops (walk-in freezer use case). Session data (session, products, entries, system qtys, flags) is cached in IndexedDB (`src/lib/inventory-offline.ts`). Count saves, deletes, photo writes, and quick-count submits are routed through `offlineSafeMutate` (`src/lib/inventory-offline-fetch.ts`) — on network failure they queue (deduped per `session_id+product_id`) and replay automatically when `navigator.onLine` flips back (`src/hooks/useOnlineStatus.ts`, `src/hooks/useSyncQueue.ts`). UI shows `OfflineBanner` with offline / N-pending / syncing / "Synced N" states. **Blocked offline by design:** session submit-for-approval (server validates count completion + photo requirements), barcode lookup for unknown products, and the create-new-product sheet (needs Odoo round-trip). Conflict model: last-write-wins per product line — server upserts are idempotent so replay is safe. Service-worker app-shell caching for fresh-load-while-offline is NOT yet built.
+
+**API routes** (under `/api/inventory/`): `approve`, `barcode-lookup`, `categories`, `counts`, `departments`, `locations`, `product-flags`, `products` (+ `[id]`, `similar`), `quick-count` (+ `approve`), `sessions`, `templates`, `uoms`, `vendors`.
+
+**Note:** Module is built end-to-end but is NOT yet in active production use. Stock readings from Odoo are stale because real counts aren't being run. See feedback rule: manufacturing UI must not gate features on `on_hand_qty`/`is_short` until inventory is live.
 
 ### Department Task Manager — `/tasks` (May 2026)
 
@@ -151,11 +178,10 @@ Department-scoped daily checklists (no shift coupling). Backed by Odoo addon `kr
 2. Numpad for component quantities
 3. Offline queue (IndexedDB + service worker sync)
 4. Leave requests (`hr.leave`)
-5. Inventory count (`/inventory` → `stock.quant`)
-6. Purchase (`/purchase`)
-7. Staff profile / HR (`/profile`)
-8. App launcher / home screen (routes staff to the right module by role)
-9. Tasks: photo review queue, admin settings persistence, notifications backend
+5. Purchase (`/purchase`)
+6. Staff profile / HR (`/profile`)
+7. App launcher / home screen (routes staff to the right module by role)
+8. Tasks: photo review queue, admin settings persistence, notifications backend
 
 ---
 
