@@ -35,6 +35,21 @@ export async function GET(
 
     const wo = wos[0];
 
+    // While running, mrp.workorder.duration only reflects already-closed
+    // intervals — the live one isn't included until pause/done. Surface
+    // the open productivity record's date_start so the client can add the
+    // wall-clock delta and survive a remount.
+    let activeRunStart: string | null = null;
+    if (wo.state === 'progress') {
+      const open = await odoo.searchRead(
+        'mrp.workcenter.productivity',
+        [['workorder_id', '=', woId], ['date_end', '=', false]],
+        ['date_start'],
+        { order: 'date_start desc', limit: 1 },
+      );
+      if (open.length && open[0].date_start) activeRunStart = open[0].date_start;
+    }
+
     let components: any[] = [];
     if (wo.move_raw_ids?.length) {
       components = await odoo.searchRead(
@@ -64,7 +79,7 @@ export async function GET(
     }
 
     return NextResponse.json({
-      work_order: { ...wo, components },
+      work_order: { ...wo, components, active_run_start: activeRunStart },
     });
   } catch (error: unknown) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });

@@ -21,9 +21,13 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
   const [tab, setTab] = useState<'components' | 'instructions'>('components');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [timerSec, setTimerSec] = useState(0);
-  const [running, setRunning] = useState(false);
+  const [baseSec, setBaseSec] = useState(0);
+  const [runStartMs, setRunStartMs] = useState<number | null>(null);
+  const [tickNow, setTickNow] = useState<number>(() => Date.now());
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const running = runStartMs !== null;
+  const liveSec = running ? Math.max(0, Math.floor((tickNow - (runStartMs as number)) / 1000)) : 0;
+  const timerSec = baseSec + liveSec;
 
   const [worksheetType, setWorksheetType] = useState<string>('');
   const [operationNote, setOperationNote] = useState<string>('');
@@ -39,7 +43,8 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
 
   useEffect(() => {
     if (running) {
-      timerRef.current = setInterval(() => setTimerSec((s) => s + 1), 1000);
+      setTickNow(Date.now());
+      timerRef.current = setInterval(() => setTickNow(Date.now()), 1000);
     } else if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -51,8 +56,8 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
     if (actionError) { const t = setTimeout(() => setActionError(null), 5000); return () => clearTimeout(t); }
   }, [actionError]);
 
-  async function fetchData() {
-    setLoading(true);
+  async function fetchData(silent = false) {
+    if (!silent) setLoading(true);
     try {
       const moRes = await fetch(`/api/manufacturing-orders/${moId}`);
       const moData = await moRes.json();
@@ -76,11 +81,6 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         setWoComponents(allComps);
       }
 
-      if (thisWo) {
-        setTimerSec(Math.round((thisWo.duration || 0) * 60));
-        if (thisWo.state === 'progress') setRunning(true);
-      }
-
       const woRes = await fetch(`/api/manufacturing-orders/${moId}/work-orders/${woId}`);
       const woData = await woRes.json();
       const woDetail = woData.work_order || {};
@@ -88,6 +88,20 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
       setOperationNote(woDetail.operation_note || '');
       setWorksheetPdf(woDetail.worksheet || '');
       setWorksheetGoogleSlide(woDetail.worksheet_google_slide || '');
+
+      // Seed timer from server: duration is closed-interval seconds; add
+      // the live run delta from active_run_start so the timer survives
+      // navigation away/back while a WO is in progress.
+      if (thisWo) {
+        setBaseSec(Math.round((thisWo.duration || 0) * 60));
+        const startStr: string | null = woDetail.active_run_start || null;
+        if (thisWo.state === 'progress' && startStr) {
+          // Odoo serializes datetimes as "YYYY-MM-DD HH:MM:SS" in UTC.
+          setRunStartMs(new Date(startStr.replace(' ', 'T') + 'Z').getTime());
+        } else {
+          setRunStartMs(null);
+        }
+      }
 
       // Fetch tolerance for this BOM
       const bomId = moData.order?.bom_id?.[0];
@@ -99,7 +113,7 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
         } catch { /* fallback to default */ }
       }
     } catch (err) { console.error('Failed to fetch WO:', err); }
-    finally { setLoading(false); }
+    finally { if (!silent) setLoading(false); }
   }
 
   const callWoAction = useCallback(async (action: 'start' | 'pause' | 'done') => {
@@ -119,14 +133,26 @@ export default function WoDetail({ moId, woId, onBack, onDone }: WoDetailProps) 
     } finally { setActionLoading(null); }
   }, [moId, woId]);
 
-  async function handleStart() { try { await callWoAction('start'); setRunning(true); } catch (e) { void e; } }
-  async function handlePause() { try { await callWoAction('pause'); setRunning(false); } catch (e) { void e; } }
+  async function handleStart() {
+    try {
+      await callWoAction('start');
+      // Re-fetch so we anchor on Odoo's date_start, not local clock.
+      await fetchData(true);
+    } catch (e) { void e; }
+  }
+  async function handlePause() {
+    try {
+      await callWoAction('pause');
+      // Re-fetch so baseSec picks up the now-closed interval Odoo just wrote.
+      await fetchData(true);
+    } catch (e) { void e; }
+  }
   function handleToggle() { if (running) { handlePause(); } else { handleStart(); } }
 
   async function handleDone() {
     try {
       await callWoAction('done');
-      setRunning(false);
+      setRunStartMs(null);
       const idx = allWos.findIndex((w: any) => w.id === woId);
       const nextPending = allWos.slice(idx + 1).find((w: any) => w.state !== 'done');
       onDone(nextPending?.id);
