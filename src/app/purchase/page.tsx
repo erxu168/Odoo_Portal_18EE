@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useCompany } from '@/lib/company-context';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Numpad from '@/components/ui/Numpad';
@@ -59,19 +60,15 @@ interface AnalyticsPayload {
   top_categories: { category_name: string; total: number }[];
 }
 
-interface PortalLocation { id: number; name: string; key: string; }
-// Fallback while the /api/purchase/locations fetch is in flight or fails.
-const DEFAULT_LOCATIONS: PortalLocation[] = [
-  { id: 32, name: 'SSAM', key: 'SSAM' },
-  { id: 22, name: 'GBM38', key: 'GBM38' },
-];
-
 export default function PurchasePage() {
   const router = useRouter();
+  // The global CompanyContext (top-right selector in AppTopBar) is the single
+  // source of truth for which site we're on. stockLocationId matches the
+  // legacy SSAM=32 / GBM38=22 convention used throughout the purchase module.
+  const { current: currentCompany, stockLocationId, warehouseCode } = useCompany();
   const [tab, setTab] = useState<Tab>('order');
   const [screen, setScreen] = useState<Screen>('dashboard');
-  const [locations, setLocations] = useState<PortalLocation[]>(DEFAULT_LOCATIONS);
-  const [locationId, setLocationId] = useState(32);
+  const locationId = stockLocationId || 32;
   const [autoImportBusy, setAutoImportBusy] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -143,18 +140,6 @@ export default function PurchasePage() {
 
   useEffect(() => { fetchSuppliers(); fetchCart(); fetchPending(); }, [fetchSuppliers, fetchCart, fetchPending]);
   useEffect(() => { if (tab === 'history') fetchOrders(); if (tab === 'receive') fetchPending(); }, [locationId, tab, fetchOrders, fetchPending]);
-
-  // Load locations from the server so newly-added sites (e.g. What a Jerk via
-  // auto-discover) show up in the picker without redeploying.
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/api/purchase/locations');
-        const d = await r.json();
-        if (Array.isArray(d.locations) && d.locations.length > 0) setLocations(d.locations);
-      } catch (e) { void e; }
-    })();
-  }, []);
 
   // Clear per-location caches when the location changes so stale products
   // from the previous location don't bleed into search results / tax totals.
@@ -578,12 +563,6 @@ export default function PurchasePage() {
         setSeedMsg(`Error: ${d.error || 'Failed'}`);
         return;
       }
-      // Refresh location list (auto-discover may have added What a Jerk) and supplier list.
-      try {
-        const lr = await fetch('/api/purchase/locations');
-        const ld = await lr.json();
-        if (ld.locations?.length) setLocations(ld.locations);
-      } catch (e) { void e; }
       const lines = (d.results || []).map((x: any) => {
         if (x.error) return `${x.company_name}: ${x.error}`;
         if (x.po_count === 0) return `${x.company_name} → ${x.location_name || '?'}: no orders in window`;
@@ -609,7 +588,7 @@ export default function PurchasePage() {
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isAdmin = user?.role === 'admin';
-  const locName = locations.find(l => l.id === locationId)?.name || 'SSAM';
+  const locName = warehouseCode || currentCompany?.name || 'SSAM';
 
   // Local Header is now a thin wrapper around AppHeader so the canonical
   // back-button location, size and design is shared across the portal.
@@ -792,19 +771,6 @@ export default function PurchasePage() {
         <ReceiveListScreen orders={pendingDeliveries} onOpen={openReceiveCheck} /></>
       ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><OrderHistoryScreen orders={orders} filter={historyFilter} onFilterChange={setHistoryFilter} onOpen={openOrderDetail} /></>
       ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={isManager ? manageIconBtn : undefined} />
-        {locations.length > 1 && (
-          <div className="px-4 pt-3 pb-1 flex gap-2 overflow-x-auto">
-            {locations.map((l) => (
-              <button
-                key={l.id}
-                onClick={() => setLocationId(l.id)}
-                className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-bold transition-colors ${l.id === locationId ? 'bg-[#1A1F2E] text-white' : 'bg-white text-gray-600 border border-gray-200'}`}
-              >
-                {l.name}
-              </button>
-            ))}
-          </div>
-        )}
         <PurchaseAlerts suppliers={suppliers} />
         <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} onNavigate={changeTab} locationId={locationId} />
       </>)}
