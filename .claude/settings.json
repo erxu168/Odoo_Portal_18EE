@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m ' *)",
+      "Bash(node -e ' *)",
+      "Bash(brew --version)",
+      "Bash(brew install *)",
+      "Bash(adb version *)",
+      "Bash(scrcpy --version)"
+    ]
+  }
+}
