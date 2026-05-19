@@ -74,12 +74,14 @@ export async function POST(request: Request) {
         if (existingId) {
           await odoo.write('stock.quant', [existingId], {
             inventory_quantity: entry.counted_qty,
+            inventory_quantity_set: true,
           });
         } else {
           await odoo.create('stock.quant', {
             product_id: entry.product_id,
             location_id: session.location_id,
             inventory_quantity: entry.counted_qty,
+            inventory_quantity_set: true,
           });
         }
         syncedEntries.push(entry.product_id);
