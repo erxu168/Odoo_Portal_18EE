@@ -76,6 +76,7 @@ function initSchema(d: Database.Database) {
       hausverwaltung TEXT,
       mietspiegel_eur_per_sqm REAL,
       mietspiegel_updated_at TEXT,
+      rundfunkbeitragsnummer TEXT,
       notes TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -436,6 +437,12 @@ function initSchema(d: Database.Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_furniture_room ON room_furniture(room_id);
   `);
+
+  // Migration: add rundfunkbeitragsnummer (ARD/ZDF broadcasting-fee account no.) to properties
+  const propCols = d.prepare("PRAGMA table_info(properties)").all() as { name: string }[];
+  if (!propCols.some(c => c.name === 'rundfunkbeitragsnummer')) {
+    d.exec("ALTER TABLE properties ADD COLUMN rundfunkbeitragsnummer TEXT");
+  }
 
   // Migration: add furnished column to rooms
   const roomCols = d.prepare("PRAGMA table_info(rooms)").all() as { name: string }[];

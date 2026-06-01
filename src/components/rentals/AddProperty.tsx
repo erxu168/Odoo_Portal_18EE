@@ -28,6 +28,7 @@ export default function AddProperty() {
   const [owner, setOwner] = useState('');
   const [hausverwaltung, setHausverwaltung] = useState('');
   const [mietspiegel, setMietspiegel] = useState('');
+  const [rundfunkNo, setRundfunkNo] = useState('');
   const [notes, setNotes] = useState('');
 
   const isValid = street.trim() && plz.trim() && city.trim();
@@ -49,6 +50,7 @@ export default function AddProperty() {
           owner: owner.trim() || null,
           hausverwaltung: hausverwaltung.trim() || null,
           mietspiegel_eur_per_sqm: mietspiegel ? Number(mietspiegel) : null,
+          rundfunkbeitragsnummer: rundfunkNo.trim() || null,
           notes: notes.trim() || null,
         }),
       });
@@ -151,6 +153,12 @@ export default function AddProperty() {
         <div>
           <label className={labelCls}>Mietspiegel ({'\u20ac'}/m{'\u00b2'})</label>
           <input className={inputCls} value={mietspiegel} onChange={e => setMietspiegel(e.target.value)} placeholder="7.50" inputMode="decimal" />
+        </div>
+
+        {/* Rundfunkbeitragsnummer (ARD/ZDF broadcasting fee) */}
+        <div>
+          <label className={labelCls}>Rundfunkbeitragsnummer</label>
+          <input className={inputCls} value={rundfunkNo} onChange={e => setRundfunkNo(e.target.value)} placeholder="z. B. 123 456 789" />
         </div>
 
         {/* Notes */}

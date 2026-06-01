@@ -86,6 +86,7 @@ export interface Property {
   hausverwaltung: string | null;
   mietspiegel_eur_per_sqm: number | null;
   mietspiegel_updated_at: string | null;
+  rundfunkbeitragsnummer: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;

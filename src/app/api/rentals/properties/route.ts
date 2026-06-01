@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const {
       street, plz, city, floor_unit, type,
       total_size_sqm, owner, hausverwaltung,
-      mietspiegel_eur_per_sqm, notes,
+      mietspiegel_eur_per_sqm, rundfunkbeitragsnummer, notes,
     } = body;
 
     if (!street || !plz || !city || !type) {
@@ -59,13 +59,14 @@ export async function POST(req: NextRequest) {
     const result = db.prepare(`
       INSERT INTO properties
       (street, plz, city, floor_unit, type, total_size_sqm, owner, hausverwaltung,
-       mietspiegel_eur_per_sqm, mietspiegel_updated_at, notes, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       mietspiegel_eur_per_sqm, mietspiegel_updated_at, rundfunkbeitragsnummer, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       street, plz, city, floor_unit ?? null, type,
       total_size_sqm ?? null, owner ?? null, hausverwaltung ?? null,
       mietspiegel_eur_per_sqm ?? null,
       mietspiegel_eur_per_sqm ? now : null,
+      rundfunkbeitragsnummer ?? null,
       notes ?? null, now, now
     );
 

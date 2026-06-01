@@ -32,6 +32,7 @@ export default function EditProperty() {
   const [owner, setOwner] = useState('');
   const [hausverwaltung, setHausverwaltung] = useState('');
   const [mietspiegel, setMietspiegel] = useState('');
+  const [rundfunkNo, setRundfunkNo] = useState('');
   const [notes, setNotes] = useState('');
 
   useEffect(() => {
@@ -49,6 +50,7 @@ export default function EditProperty() {
         setOwner(data.owner || '');
         setHausverwaltung(data.hausverwaltung || '');
         setMietspiegel(data.mietspiegel_eur_per_sqm != null ? String(data.mietspiegel_eur_per_sqm) : '');
+        setRundfunkNo(data.rundfunkbeitragsnummer || '');
         setNotes(data.notes || '');
       } catch (err) {
         console.error('[rentals] fetch property failed:', err);
@@ -80,6 +82,7 @@ export default function EditProperty() {
           owner: owner.trim() || null,
           hausverwaltung: hausverwaltung.trim() || null,
           mietspiegel_eur_per_sqm: mietspiegel ? Number(mietspiegel) : null,
+          rundfunkbeitragsnummer: rundfunkNo.trim() || null,
           notes: notes.trim() || null,
         }),
       });
@@ -193,6 +196,12 @@ export default function EditProperty() {
         <div>
           <label className={labelCls}>Mietspiegel ({'\u20ac'}/m{'\u00b2'})</label>
           <input className={inputCls} value={mietspiegel} onChange={e => setMietspiegel(e.target.value)} placeholder="7.50" inputMode="decimal" />
+        </div>
+
+        {/* Rundfunkbeitragsnummer (ARD/ZDF broadcasting fee) */}
+        <div>
+          <label className={labelCls}>Rundfunkbeitragsnummer</label>
+          <input className={inputCls} value={rundfunkNo} onChange={e => setRundfunkNo(e.target.value)} placeholder="z. B. 123 456 789" />
         </div>
 
         {/* Notes */}

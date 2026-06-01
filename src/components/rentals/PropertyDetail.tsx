@@ -270,6 +270,7 @@ function OverviewTab({ property }: { property: Property }) {
     { label: 'Owner', value: property.owner || '\u2014' },
     { label: 'Hausverwaltung', value: property.hausverwaltung || '\u2014' },
     { label: 'Mietspiegel', value: property.mietspiegel_eur_per_sqm ? `${property.mietspiegel_eur_per_sqm.toFixed(2)} \u20ac/m\u00b2` : '\u2014' },
+    { label: 'Rundfunkbeitragsnr.', value: property.rundfunkbeitragsnummer || '\u2014' },
   ];
 
   return (

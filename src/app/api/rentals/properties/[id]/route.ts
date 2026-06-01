@@ -34,7 +34,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     const fields = [
       'street', 'plz', 'city', 'floor_unit', 'type', 'total_size_sqm',
-      'owner', 'hausverwaltung', 'mietspiegel_eur_per_sqm', 'notes',
+      'owner', 'hausverwaltung', 'mietspiegel_eur_per_sqm',
+      'rundfunkbeitragsnummer', 'notes',
     ];
     const updates: string[] = [];
     const values: unknown[] = [];
