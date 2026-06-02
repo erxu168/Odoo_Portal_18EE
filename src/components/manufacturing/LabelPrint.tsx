@@ -554,11 +554,27 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
 
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-6">
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Number of labels</div>
-            <div className="flex gap-2 items-center">
-              <input type="number" inputMode="numeric" step="1" min="1" max="100"
-                value={labelCount} onChange={e => setLabelCount(e.target.value.replace(/[^0-9]/g, ''))}
-                placeholder="1"
-                className="flex-1 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+            <div className="flex items-center gap-2">
+              <div className="flex-1 flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden h-14 focus-within:border-pink-600 focus-within:ring-2 focus-within:ring-pink-100">
+                <button type="button"
+                  onClick={() => setLabelCount(String(Math.max(1, (parseInt(labelCount, 10) || 1) - 1)))}
+                  disabled={(parseInt(labelCount, 10) || 1) <= 1}
+                  className="w-14 h-14 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-r border-gray-200 select-none disabled:opacity-30"
+                  aria-label="Decrease label count">
+                  &minus;
+                </button>
+                <input type="number" inputMode="numeric" step="1" min="1" max="100"
+                  value={labelCount} onChange={e => setLabelCount(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="1"
+                  className="flex-1 min-w-0 h-14 px-2 bg-transparent text-center text-[var(--fs-lg)] font-mono font-bold text-gray-900 outline-none" />
+                <button type="button"
+                  onClick={() => setLabelCount(String(Math.min(100, (parseInt(labelCount, 10) || 1) + 1)))}
+                  disabled={(parseInt(labelCount, 10) || 1) >= 100}
+                  className="w-14 h-14 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-l border-gray-200 select-none font-semibold disabled:opacity-30"
+                  aria-label="Increase label count">
+                  +
+                </button>
+              </div>
               <span className="text-[var(--fs-sm)] font-bold text-gray-500 w-16">labels</span>
             </div>
           </div>
