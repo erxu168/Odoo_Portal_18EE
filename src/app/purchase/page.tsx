@@ -217,6 +217,21 @@ export default function PurchasePage() {
     fetchCart();
   }
 
+  async function discardCart(cartId: number) {
+    await fetch('/api/purchase/cart', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cart_id: cartId }) });
+    fetchCart();
+  }
+
+  function requestDiscardCart(cart: CartSummary) {
+    setConfirmDialog({
+      title: 'Discard this order?',
+      message: `This empties your ${cart.supplier_name} cart (${cart.item_count} items). Nothing has been sent to the supplier yet. This cannot be undone.`,
+      confirmLabel: 'Yes, discard',
+      variant: 'danger',
+      onConfirm: () => { setConfirmDialog(null); discardCart(cart.id); },
+    });
+  }
+
   async function openReceiveCheck(order: { id: number }) {
     setScreen('receive-check');
     try { const r = await fetch(`/api/purchase/receive?order_id=${order.id}`); const d = await r.json(); setReceipt(d.receipt); setReceiptLines(d.receipt?.lines || []); setRecvOrder(d.order || null); } catch (e) { void e; }
@@ -765,6 +780,7 @@ export default function PurchasePage() {
           onUpdateQty={(product, qty, supplierId) => updateCartQty(product, qty, supplierId)}
           onOpenNumpad={openCartNumpad}
           onRemoveItem={removeCartItem}
+          onDiscardCart={requestDiscardCart}
           onReview={(cart) => { setReviewCart(cart); setScreen('review'); }}
         /></>
       ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} />

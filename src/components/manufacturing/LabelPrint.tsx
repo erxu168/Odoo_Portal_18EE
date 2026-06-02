@@ -4,10 +4,12 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import LabelPreview from '@/components/manufacturing/LabelPreview';
 import LabelSizeSelector from '@/components/manufacturing/LabelSizeSelector';
+import BomList from '@/components/manufacturing/BomList';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { useCompany } from '@/lib/company-context';
+import type { Bom } from '@/types/manufacturing';
 
-interface CustomLabelPrintProps {
+interface LabelPrintProps {
   onBack: () => void;
   onDone: () => void;
 }
@@ -50,10 +52,12 @@ function addDaysIso(iso: string, days: number): string {
   return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
 }
 
-export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintProps) {
+export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
   const { companyId } = useCompany();
   const [step, setStep] = useState<Step>('config');
   const [error, setError] = useState<string | null>(null);
+  const [pickingRecipe, setPickingRecipe] = useState(false);
+  const [loadingRecipe, setLoadingRecipe] = useState(false);
 
   const [productName, setProductName] = useState('');
   const [qty, setQty] = useState('');
@@ -139,6 +143,32 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
     setQty(t.qty != null ? String(t.qty) : '');
     setUom(t.uom || '');
     setLabelCount(t.label_count != null ? String(t.label_count) : '1');
+  }
+
+  async function loadFromRecipe(bom: Bom) {
+    setPickingRecipe(false);
+    setLoadingRecipe(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/boms/${bom.id}`);
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.error || `Failed to load recipe (${res.status})`);
+        return;
+      }
+      const full = data.bom;
+      setProductName(full.product_tmpl_id?.[1] || bom.product_tmpl_id[1] || '');
+      setUom(full.product_uom_id?.[1] || bom.product_uom_id[1] || '');
+      const shelf = full.shelf_life_days || 0;
+      if (shelf > 0) {
+        setChilled(true);
+        setChilledDays(String(shelf));
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load recipe');
+    } finally {
+      setLoadingRecipe(false);
+    }
   }
 
   async function saveTemplate() {
@@ -310,10 +340,22 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
     }
   }
 
+  if (pickingRecipe) {
+    return (
+      <BomList
+        title="Load from recipe"
+        subtitlePattern={(n) => `${n} ${n === 1 ? 'recipe' : 'recipes'} · pre-fills label fields`}
+        searchPlaceholder="Search recipes..."
+        onSelect={loadFromRecipe}
+        onBack={() => setPickingRecipe(false)}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F6F7F9]">
       <AppHeader
-        title="Custom Labels"
+        title="Label Print"
         subtitle={productName || 'Print any label'}
         showBack
         onBack={onBack}
@@ -376,6 +418,24 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
 
       {step === 'config' && (
         <div className="px-4 pt-3 pb-24">
+          <button onClick={() => setPickingRecipe(true)} disabled={loadingRecipe}
+            className="w-full mb-3 px-4 py-3 rounded-xl border-2 border-dashed border-pink-300 bg-pink-50/50 text-pink-700 font-bold text-[var(--fs-sm)] flex items-center justify-center gap-2 active:bg-pink-100 disabled:opacity-50">
+            {loadingRecipe ? (
+              <>
+                <div className="w-4 h-4 border-2 border-pink-400 border-t-transparent rounded-full animate-spin" />
+                Loading recipe…
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
+                </svg>
+                Load from recipe
+              </>
+            )}
+          </button>
+
           {templates.length > 0 && (
             <div className="mb-3">
               <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2 px-1">Saved templates</div>
@@ -494,11 +554,27 @@ export default function CustomLabelPrint({ onBack, onDone }: CustomLabelPrintPro
 
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-6">
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Number of labels</div>
-            <div className="flex gap-2 items-center">
-              <input type="number" inputMode="numeric" step="1" min="1" max="100"
-                value={labelCount} onChange={e => setLabelCount(e.target.value.replace(/[^0-9]/g, ''))}
-                placeholder="1"
-                className="flex-1 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-[var(--fs-lg)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none" />
+            <div className="flex items-center gap-2">
+              <div className="flex-1 flex items-center bg-gray-50 border border-gray-200 rounded-xl overflow-hidden h-14 focus-within:border-pink-600 focus-within:ring-2 focus-within:ring-pink-100">
+                <button type="button"
+                  onClick={() => setLabelCount(String(Math.max(1, (parseInt(labelCount, 10) || 1) - 1)))}
+                  disabled={(parseInt(labelCount, 10) || 1) <= 1}
+                  className="w-14 h-14 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-r border-gray-200 select-none disabled:opacity-30"
+                  aria-label="Decrease label count">
+                  &minus;
+                </button>
+                <input type="number" inputMode="numeric" step="1" min="1" max="100"
+                  value={labelCount} onChange={e => setLabelCount(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="1"
+                  className="flex-1 min-w-0 h-14 px-2 bg-transparent text-center text-[var(--fs-lg)] font-mono font-bold text-gray-900 outline-none" />
+                <button type="button"
+                  onClick={() => setLabelCount(String(Math.min(100, (parseInt(labelCount, 10) || 1) + 1)))}
+                  disabled={(parseInt(labelCount, 10) || 1) >= 100}
+                  className="w-14 h-14 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-l border-gray-200 select-none font-semibold disabled:opacity-30"
+                  aria-label="Increase label count">
+                  +
+                </button>
+              </div>
               <span className="text-[var(--fs-sm)] font-bold text-gray-500 w-16">labels</span>
             </div>
           </div>
