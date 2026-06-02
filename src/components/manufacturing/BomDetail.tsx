@@ -337,11 +337,8 @@ export default function BomDetail({ bomId, onBack, onCreateMo, onOpenHistory }: 
     try {
       const body: any = {};
 
-      // Always set product_qty to the sum of ingredient quantities
-      const newBomQty = Math.round(editIngredientTotal * 10000) / 10000;
-      if (newBomQty > 0 && newBomQty !== bom.product_qty) {
-        body.product_qty = newBomQty;
-      }
+      // Output qty is auto-recomputed server-side from line edits — don't send it.
+      // What a Jerk recipes hard-block direct product_qty writes.
 
       const updates = editLines
         .filter(l => l.line_id > 0)

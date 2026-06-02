@@ -254,10 +254,10 @@ export async function PATCH(
     const odoo = getOdoo();
     const body = await req.json();
 
-    // Update BOM output qty
-    if (body.product_qty !== undefined) {
-      await odoo.write('mrp.bom', [bomId], { product_qty: body.product_qty });
-    }
+    // BOM output qty is auto-recalculated by krawings_bom_auto_qty whenever
+    // a line is created, edited, or removed — see _sync_bom_product_qty.
+    // What a Jerk (company 5) raises UserError on direct product_qty writes,
+    // so never touch the BOM total here.
 
     // Update existing line quantities
     if (body.update_lines?.length) {
