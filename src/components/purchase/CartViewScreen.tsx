@@ -46,6 +46,7 @@ interface CartViewScreenProps {
   onUpdateQty: (product: ProductRef, qty: number, supplierId: number) => void;
   onOpenNumpad: (item: CartItem, supplierId: number) => void;
   onRemoveItem: (cartId: number, productId: number) => void;
+  onDiscardCart: (cart: CartSummary) => void;
   onReview: (cart: CartSummary) => void;
 }
 
@@ -68,6 +69,7 @@ export default function CartViewScreen({
   onUpdateQty,
   onOpenNumpad,
   onRemoveItem,
+  onDiscardCart,
   onReview,
 }: CartViewScreenProps) {
   if (carts.length === 0) {
@@ -201,6 +203,13 @@ export default function CartViewScreen({
               className="w-full mt-2 py-3.5 rounded-xl bg-green-600 text-white text-[14px] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all"
             >
               Review order &rarr;
+            </button>
+
+            <button
+              onClick={() => onDiscardCart(cart)}
+              className="w-full mt-2 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[13px] font-semibold active:bg-red-100"
+            >
+              Discard order
             </button>
           </div>
         );

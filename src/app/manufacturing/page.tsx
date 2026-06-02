@@ -14,8 +14,7 @@ import BomDetail from '@/components/manufacturing/BomDetail';
 import RecipeHistory from '@/components/manufacturing/RecipeHistory';
 import CreateBom from '@/components/manufacturing/CreateBom';
 import PackageLabel from '@/components/manufacturing/PackageLabel';
-import AdHocLabelPrint from '@/components/manufacturing/AdHocLabelPrint';
-import CustomLabelPrint from '@/components/manufacturing/CustomLabelPrint';
+import LabelPrint from '@/components/manufacturing/LabelPrint';
 
 type Screen =
   | { type: 'dashboard' }
@@ -29,9 +28,7 @@ type Screen =
   | { type: 'bom-detail'; bomId: number }
   | { type: 'recipe-history'; bomId: number }
   | { type: 'package'; moId: number }
-  | { type: 'label-print-list' }
-  | { type: 'label-print-config'; bomId: number }
-  | { type: 'custom-labels' };
+  | { type: 'label-print' };
 
 export default function ManufacturingPage() {
   const router = useRouter();
@@ -69,8 +66,7 @@ export default function ManufacturingPage() {
     else if (tile === 'recipes') navigate({ type: 'bom-list' });
     else if (tile === 'completed') navigate({ type: 'mo-list', mode: 'completed' });
     else if (tile === 'pick-list') navigate({ type: 'pick-list' });
-    else if (tile === 'label-print') navigate({ type: 'label-print-list' });
-    else if (tile === 'custom-labels') navigate({ type: 'custom-labels' });
+    else if (tile === 'label-print') navigate({ type: 'label-print' });
   }
 
   const Header = ({ title, subtitle }: { title: string; subtitle?: string }) => (
@@ -176,27 +172,9 @@ export default function ManufacturingPage() {
             onDone={goBack}
           />
         );
-      case 'label-print-list':
+      case 'label-print':
         return (
-          <BomList
-            title="Label Print"
-            subtitlePattern={(n) => `${n} ${n === 1 ? 'recipe' : 'recipes'} · print without producing`}
-            searchPlaceholder="Search recipes..."
-            onSelect={(bom) => navigate({ type: 'label-print-config', bomId: bom.id })}
-            onBack={goDashboard}
-          />
-        );
-      case 'label-print-config':
-        return (
-          <AdHocLabelPrint
-            bomId={screen.bomId}
-            onBack={goBack}
-            onDone={goBack}
-          />
-        );
-      case 'custom-labels':
-        return (
-          <CustomLabelPrint
+          <LabelPrint
             onBack={goDashboard}
             onDone={goDashboard}
           />
