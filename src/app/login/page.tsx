@@ -2,10 +2,12 @@
 
 import React, { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useCompany } from '@/lib/company-context';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { reload: reloadCompanies } = useCompany();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +37,10 @@ function LoginForm() {
         setError(data.error || 'Login failed. Check your email and password.');
         return;
       }
+
+      // Login succeeded — connect the active company now (with the new session)
+      // so it's ready before we navigate, instead of only after a manual reload.
+      await reloadCompanies();
 
       // Force password change for new candidates
       if (data.user?.must_change_password) {
