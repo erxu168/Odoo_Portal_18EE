@@ -90,6 +90,24 @@ export class OdooClient {
         await this.authenticate();
         return this.rpc(endpoint, params, true);
       }
+      // Retry once on a stale company cache. This client is a long-lived singleton
+      // that captures allowed_company_ids at auth time and stamps them onto every
+      // request. If a company is archived or reassigned in Odoo afterwards, Odoo
+      // rejects every call with "Access to unauthorized or invalid companies" until
+      // the process restarts. Re-authenticate to refresh the list, rewrite the
+      // company ids already baked into this request's context, and retry once.
+      if (!_retried && msg.includes('unauthorized or invalid companies')) {
+        console.warn('[OdooClient] Stale company cache — re-authenticating to refresh allowed companies...');
+        this.uid = null;
+        this.sessionId = null;
+        await this.authenticate();
+        const ctx = params?.kwargs?.context;
+        if (ctx && typeof ctx === 'object') {
+          if (this.allowedCompanyIds.length > 0) ctx.allowed_company_ids = this.allowedCompanyIds;
+          else delete ctx.allowed_company_ids;
+        }
+        return this.rpc(endpoint, params, true);
+      }
       throw new Error(
         `Odoo RPC Error: ${data.error.message} — ${data.error.data?.message || ''}`
       );
