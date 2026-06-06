@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "smoke": "playwright test",
+    "smoke:staging": "SMOKE_ENV=staging playwright test",
+    "smoke:live": "SMOKE_ENV=live playwright test"
   },
   "dependencies": {
     "@capacitor-mlkit/barcode-scanning": "^8.0.1",
@@ -34,6 +37,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.8",
     "@types/node": "^20",
