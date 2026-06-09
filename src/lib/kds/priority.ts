@@ -3,7 +3,7 @@
  * Pure functions — no side effects, no state.
  */
 import type { KdsOrder, KdsSettings, TimerTier, TaskGroup, OrderType, ProductConfig, FireLane, FireTask, PrepType, SourceStation } from '@/types/kds';
-import { SOURCES, PREP_TYPE_ORDER, PREP_TYPE_META } from '@/types/kds';
+import { PREP_TYPE_ORDER, PREP_TYPE_META } from '@/types/kds';
 
 export function effectiveWait(order: KdsOrder, boost: number): number {
   return order.waitMin + (order.type === 'Takeaway' ? boost : 0);
@@ -117,11 +117,9 @@ export function buildFirePlan(
   function getConfig(itemName: string): { sourceStation: SourceStation; prepType: PrepType } {
     const fromDb = configMap.get(itemName);
     if (fromDb) return fromDb;
-    const fromSources = SOURCES[itemName];
-    return {
-      sourceStation: fromSources?.source || 'cold',
-      prepType: 'ondemand',
-    };
+    // Unknown product (manager hasn't synced yet, or product was added in POS
+    // after the last sync). Default to grill + ondemand so it still shows up.
+    return { sourceStation: 'grill', prepType: 'ondemand' };
   }
 
   const taskMap: Record<string, FireTask> = {};

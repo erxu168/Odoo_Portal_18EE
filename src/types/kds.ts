@@ -1,6 +1,6 @@
 // =============================================================================
 // KDS (Kitchen Display System) Types
-// Phase 1: Mock data, no Odoo integration
+// Live Odoo POS integration. Product station/prep config loaded from DB.
 // =============================================================================
 
 // -- Source stations --
@@ -14,18 +14,26 @@ export interface SourceInfo {
   bg: string;
 }
 
-export const SOURCES: Record<string, SourceInfo> = {
-  'Jerk Chicken':   { source: 'grill',  label: 'GRILL',  color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-  'Jerk Pork':      { source: 'grill',  label: 'GRILL',  color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-  'Fried Chicken':  { source: 'drawer', label: 'DRAWER', color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
-  'Festival':       { source: 'drawer', label: 'DRAWER', color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
-  'Plantain':       { source: 'fryer',  label: 'FRY',    color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
-  'Curry Goat':     { source: 'pot',    label: 'POT',    color: '#eab308', bg: 'rgba(234,179,8,0.12)' },
-  'Oxtail':         { source: 'pot',    label: 'POT',    color: '#eab308', bg: 'rgba(234,179,8,0.12)' },
-  'Rice & Peas':    { source: 'pot',    label: 'POT',    color: '#eab308', bg: 'rgba(234,179,8,0.12)' },
-  'Coleslaw':       { source: 'cold',   label: 'COLD',   color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
-  'Beef Patties':   { source: 'fryer',  label: 'FRY',    color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+export const STATION_META: Record<SourceStation, Omit<SourceInfo, 'source'>> = {
+  grill:  { label: 'GRILL',  color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+  drawer: { label: 'DRAWER', color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
+  fryer:  { label: 'FRY',    color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
+  pot:    { label: 'POT',    color: '#eab308', bg: 'rgba(234,179,8,0.12)' },
+  cold:   { label: 'COLD',   color: '#22c55e', bg: 'rgba(34,197,94,0.12)' },
 };
+
+/**
+ * Look up source-station metadata for a dish by name.
+ * Source of truth: the productConfig synced from Odoo POS.
+ */
+export function lookupSource(name: string, productConfig: ProductConfig[]): SourceInfo | null {
+  const pc = productConfig.find(p => p.productName === name);
+  if (!pc) return null;
+  const station = pc.sourceStation;
+  const meta = STATION_META[station];
+  if (!meta) return null;
+  return { source: station, ...meta };
+}
 
 // -- Order and item types --
 
@@ -131,6 +139,7 @@ export interface TaskGroup {
 export type PrepType = 'ondemand' | 'batch' | 'advance';
 
 export interface ProductConfig {
+  odooProductId: number | null;
   productName: string;
   sourceStation: SourceStation;
   prepType: PrepType;
@@ -163,5 +172,4 @@ export const PREP_TYPE_META: Record<PrepType, { label: string; emoji: string; de
 
 // -- Constants --
 
-export const KDS_LOCATION_ID = 99; // Placeholder for Phase 1
-export const KDS_COMPANY_ID = 5;   // What a Jerk
+export const KDS_LOCATION_ID = 99;

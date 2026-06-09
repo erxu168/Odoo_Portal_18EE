@@ -58,7 +58,7 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
   // Track locally checked items so they survive poll refreshes
   const checkedItemsRef = useRef<Set<string>>(new Set());
 
-  // Load settings and product config from API on mount
+  // Load settings, product config, and persisted checks from API on mount
   useEffect(() => {
     fetch('/api/kds/settings')
       .then(r => r.json())
@@ -73,6 +73,26 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
       .then(r => r.json())
       .then(data => {
         if (data.config) setProductConfig(data.config);
+      })
+      .catch(() => {});
+
+    // Hydrate previously-checked items so a tablet reboot mid-shift doesn't
+    // lose the cook's progress on the current ticket.
+    fetch('/api/kds/order-checks')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data.checks)) {
+          for (const c of data.checks) {
+            checkedItemsRef.current.add(`${c.order_id}:${c.item_id}`);
+          }
+          setOrders(prev => prev.map(o => ({
+            ...o,
+            items: o.items.map(i => ({
+              ...i,
+              done: checkedItemsRef.current.has(`${o.id}:${i.id}`),
+            })),
+          })));
+        }
       })
       .catch(() => {});
   }, []);
@@ -156,17 +176,23 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleItem = useCallback((itemId: string, ticketId: number) => {
+    let newDone = false;
     setOrders(prev => prev.map(o => {
       if (o.id !== ticketId) return o;
       return { ...o, items: o.items.map(i => {
         if (i.id !== itemId) return i;
-        const newDone = !i.done;
+        newDone = !i.done;
         const key = `${ticketId}:${itemId}`;
         if (newDone) checkedItemsRef.current.add(key);
         else checkedItemsRef.current.delete(key);
         return { ...i, done: newDone };
       })};
     }));
+    fetch('/api/kds/order-checks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: ticketId, itemId, checked: newDone }),
+    }).catch(err => console.error('[KDS] persist check error:', err));
   }, []);
 
   const markReady = useCallback((ticketId: number) => {
@@ -178,6 +204,11 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
     checkedItemsRef.current.forEach(key => {
       if (key.startsWith(`${ticketId}:`)) checkedItemsRef.current.delete(key);
     });
+    fetch('/api/kds/order-checks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clearOrder: ticketId }),
+    }).catch(() => {});
     // Notify Odoo (fire and forget)
     if (settings.posConfigId) {
       fetch('/api/kds/orders/done', {
@@ -208,6 +239,11 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
     checkedItemsRef.current.forEach(key => {
       if (key.startsWith(`${ticketId}:`)) checkedItemsRef.current.delete(key);
     });
+    fetch('/api/kds/order-checks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clearOrder: ticketId }),
+    }).catch(() => {});
     setCurrentTab('prep');
   }, []);
 

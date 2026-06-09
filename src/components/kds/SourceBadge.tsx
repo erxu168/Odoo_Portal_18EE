@@ -1,6 +1,7 @@
 'use client';
 
-import { SOURCES } from '@/types/kds';
+import { lookupSource } from '@/types/kds';
+import { useKds } from '@/lib/kds/state';
 
 interface SourceBadgeProps {
   dishName: string;
@@ -8,7 +9,8 @@ interface SourceBadgeProps {
 }
 
 export default function SourceBadge({ dishName, fontSize }: SourceBadgeProps) {
-  const src = SOURCES[dishName];
+  const { productConfig } = useKds();
+  const src = lookupSource(dishName, productConfig);
   if (!src) return null;
   return (
     <span

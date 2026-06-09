@@ -3,12 +3,12 @@
 import React from 'react';
 import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier, mostUrgentOrderId } from '@/lib/kds/priority';
-import { SOURCES } from '@/types/kds';
+import { lookupSource } from '@/types/kds';
 import Timer from './Timer';
 import TakeawayBag from './TakeawayBag';
 
 const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, ref) {
-  const { orders, roundState, firedOrderIds, settings, markReady, toggleItem } = useKds();
+  const { orders, roundState, firedOrderIds, settings, markReady, toggleItem, productConfig } = useKds();
   const boost = settings.takeawayBoost;
   const prep = orders.filter(o => o.status === 'prep').sort((a, b) => effectiveWait(b, boost) - effectiveWait(a, boost));
 
@@ -86,7 +86,7 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
 
             <div className="kds-tc-items">
               {o.items.map(item => {
-                const src = SOURCES[item.name];
+                const src = lookupSource(item.name, productConfig);
                 return (
                   <div
                     key={item.id}

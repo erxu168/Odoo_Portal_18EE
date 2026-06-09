@@ -1,7 +1,6 @@
 /**
- * KDS SQLite database — settings and product config.
- * Order state is client-side only in Phase 1 (mock data).
- * Phase 2 will add order state persistence.
+ * KDS SQLite database — settings, product config, and per-item checked state.
+ * Survives tablet reboots so cooks don't lose in-progress ticks mid-shift.
  */
 import { getDb } from './db';
 import type { KdsSettings } from '@/types/kds';
@@ -54,6 +53,16 @@ function ensureTables() {
       batch_size INTEGER,
       UNIQUE(location_id, product_name)
     );
+
+    CREATE TABLE IF NOT EXISTS kds_order_checks (
+      order_id INTEGER NOT NULL,
+      item_id TEXT NOT NULL,
+      checked_at TEXT NOT NULL,
+      PRIMARY KEY (order_id, item_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_kds_product_config_odoo
+      ON kds_product_config(location_id, odoo_product_id);
   `);
   // Migrate: add auto_scroll_sec if missing
   const cols = db.prepare("PRAGMA table_info('kds_settings')").all() as { name: string }[];
@@ -121,9 +130,10 @@ export function getKdsSettings(locationId: number): KdsSettings {
   };
 }
 
-// -- Product config read --
+// -- Product config read/write --
 
 export interface ProductConfigRow {
+  odoo_product_id: number | null;
   product_name: string;
   source_station: string;
   prep_type: string;
@@ -133,8 +143,97 @@ export function getProductConfig(locationId: number): ProductConfigRow[] {
   ensureTables();
   const db = getDb();
   return db.prepare(
-    'SELECT product_name, source_station, prep_type FROM kds_product_config WHERE location_id = ?'
+    'SELECT odoo_product_id, product_name, source_station, prep_type FROM kds_product_config WHERE location_id = ?'
   ).all(locationId) as ProductConfigRow[];
+}
+
+export interface ProductSyncInput {
+  odooProductId: number;
+  productName: string;
+}
+
+export function upsertSyncedProducts(locationId: number, products: ProductSyncInput[]): number {
+  ensureTables();
+  const db = getDb();
+  const insert = db.prepare(
+    `INSERT INTO kds_product_config (location_id, odoo_product_id, product_name, source_station, prep_type)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(location_id, product_name) DO UPDATE SET odoo_product_id = excluded.odoo_product_id`
+  );
+  let count = 0;
+  const tx = db.transaction((items: ProductSyncInput[]) => {
+    for (const p of items) {
+      const station = inferStation(p.productName);
+      const prep = inferPrep(p.productName);
+      insert.run(locationId, p.odooProductId, p.productName, station, prep);
+      count += 1;
+    }
+  });
+  tx(products);
+  return count;
+}
+
+export function setProductMapping(
+  locationId: number,
+  productName: string,
+  station: string,
+  prepType: string
+): void {
+  ensureTables();
+  const db = getDb();
+  db.prepare(
+    `UPDATE kds_product_config SET source_station = ?, prep_type = ?
+     WHERE location_id = ? AND product_name = ?`
+  ).run(station, prepType, locationId, productName);
+}
+
+// -- Order item checked state (survives reloads) --
+
+export interface OrderCheckRow {
+  order_id: number;
+  item_id: string;
+}
+
+export function getOrderChecks(): OrderCheckRow[] {
+  ensureTables();
+  const db = getDb();
+  return db.prepare('SELECT order_id, item_id FROM kds_order_checks').all() as OrderCheckRow[];
+}
+
+export function setOrderCheck(orderId: number, itemId: string, checked: boolean): void {
+  ensureTables();
+  const db = getDb();
+  if (checked) {
+    db.prepare(
+      `INSERT OR REPLACE INTO kds_order_checks (order_id, item_id, checked_at) VALUES (?, ?, ?)`
+    ).run(orderId, itemId, nowISO());
+  } else {
+    db.prepare(`DELETE FROM kds_order_checks WHERE order_id = ? AND item_id = ?`).run(orderId, itemId);
+  }
+}
+
+export function clearOrderChecks(orderId: number): void {
+  ensureTables();
+  const db = getDb();
+  db.prepare(`DELETE FROM kds_order_checks WHERE order_id = ?`).run(orderId);
+}
+
+// Heuristic seed for newly-synced products. Manager can override later via UI.
+function inferStation(name: string): string {
+  const n = name.toLowerCase();
+  if (/jerk|grill|bbq/.test(n)) return 'grill';
+  if (/curry|oxtail|rice|peas|stew/.test(n)) return 'pot';
+  if (/plantain|festival|patty|fries|chip/.test(n)) return 'fryer';
+  if (/fried chicken|wing|drawer/.test(n)) return 'drawer';
+  if (/slaw|salad|sauce|cold/.test(n)) return 'cold';
+  return 'grill';
+}
+
+function inferPrep(name: string): string {
+  const n = name.toLowerCase();
+  if (/curry|oxtail|jerk chicken|jerk pork|rice|slaw/.test(n)) return 'advance';
+  if (/festival|patty|chip/.test(n)) return 'batch';
+  return 'ondemand';
 }
 
 export function saveKdsSettings(s: KdsSettings): void {

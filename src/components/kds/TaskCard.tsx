@@ -1,7 +1,7 @@
 'use client';
 
 import { useKds } from '@/lib/kds/state';
-import { SOURCES } from '@/types/kds';
+import { lookupSource } from '@/types/kds';
 import type { TaskGroup } from '@/types/kds';
 import Timer from './Timer';
 import SourceBadge from './SourceBadge';
@@ -15,12 +15,12 @@ interface TaskCardProps {
 }
 
 export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardProps) {
-  const { toggleItem, orders, settings } = useKds();
+  const { toggleItem, orders, settings, productConfig } = useKds();
   const pct = task.totalQty > 0 ? Math.round((task.servedQty / task.totalQty) * 100) : 0;
   const r = 14;
   const circ = 2 * Math.PI * r;
   const offset = circ - (pct / 100) * circ;
-  const srcInfo = SOURCES[task.name];
+  const srcInfo = lookupSource(task.name, productConfig);
 
   return (
     <div

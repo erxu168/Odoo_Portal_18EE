@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { OdooClient } from '@/lib/odoo';
+import { getOdoo } from '@/lib/odoo';
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,9 +9,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'orderId required' }, { status: 400 });
     }
 
-    const odoo = new OdooClient();
-    await odoo.authenticate();
-
+    const odoo = getOdoo();
     await odoo.write('pos.order', [orderId], { state: 'done' });
 
     return NextResponse.json({ ok: true });

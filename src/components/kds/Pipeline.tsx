@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier } from '@/lib/kds/priority';
-import { SOURCES } from '@/types/kds';
+import { lookupSource } from '@/types/kds';
 import type { KdsOrder } from '@/types/kds';
 import Timer from './Timer';
 import SourceBadge from './SourceBadge';
@@ -12,7 +12,7 @@ import TakeawayBag from './TakeawayBag';
 type PipeView = 'orders' | 'summary';
 
 export default function Pipeline() {
-  const { orders, roundState, firedOrderIds, settings } = useKds();
+  const { orders, roundState, firedOrderIds, settings, productConfig } = useKds();
   const [view, setView] = useState<PipeView>('orders');
   const boost = settings.takeawayBoost;
 
@@ -63,7 +63,7 @@ export default function Pipeline() {
                     <div key={item.id} className={`kds-pipe-order-item ${item.done ? 'poi-done' : ''}`}>
                       <span className="kds-poi-qty">{item.qty}x</span>
                       <span className="kds-poi-name">{item.name}</span>
-                      {SOURCES[item.name] && <SourceBadge dishName={item.name} />}
+                      {lookupSource(item.name, productConfig) && <SourceBadge dishName={item.name} />}
                       {item.note && <span className="kds-s-note">{item.note}</span>}
                       {item.done && <span style={{ color: 'var(--green)', fontSize: '12px', fontWeight: 700 }}>{'\u2713'}</span>}
                     </div>

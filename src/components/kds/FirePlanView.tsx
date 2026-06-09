@@ -2,7 +2,7 @@
 
 import { useKds } from '@/lib/kds/state';
 import { buildFirePlan, effectiveWait, timerTier } from '@/lib/kds/priority';
-import { SOURCES } from '@/types/kds';
+import { lookupSource } from '@/types/kds';
 import type { FireLane, FireTask, KdsOrder } from '@/types/kds';
 import Timer from './Timer';
 import TakeawayBag from './TakeawayBag';
@@ -56,8 +56,8 @@ function LaneSection({ lane }: { lane: FireLane }) {
 }
 
 function TaskRow({ task }: { task: FireTask }) {
-  const { toggleItem, settings } = useKds();
-  const src = SOURCES[task.name];
+  const { toggleItem, settings, productConfig } = useKds();
+  const src = lookupSource(task.name, productConfig);
   const remaining = task.totalQty - task.doneQty;
   const allDone = remaining === 0;
 

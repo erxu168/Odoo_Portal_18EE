@@ -8,6 +8,7 @@ export async function GET() {
   try {
     const rows = getProductConfig(KDS_LOCATION_ID);
     const config = rows.map(r => ({
+      odooProductId: r.odoo_product_id,
       productName: r.product_name,
       sourceStation: r.source_station,
       prepType: r.prep_type,
