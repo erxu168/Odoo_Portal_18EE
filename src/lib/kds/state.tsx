@@ -57,6 +57,8 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
   const nextIdRef = useRef(8);
   // Track locally checked items so they survive poll refreshes
   const checkedItemsRef = useRef<Set<string>>(new Set());
+  // Orders recalled to prep locally; ignore stale server stage for a few seconds
+  const recallProtectRef = useRef<Map<number, number>>(new Map());
 
   // Load settings, product config, and persisted checks from API on mount
   useEffect(() => {
@@ -118,17 +120,28 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
         }));
 
         setOrders(prev => {
-          // Keep orders locally moved to ready/done (Odoo no longer returns them as paid)
-          const odooIds = new Set(odooOrders.map(o => o.id));
-          const localReadyDone = prev.filter(o =>
-            (o.status === 'ready' || o.status === 'done') && !odooIds.has(o.id)
-          );
-          // Keep orders the cook already moved to ready/done locally (don't overwrite with prep)
-          const localMovedIds = new Set(
-            prev.filter(o => o.status === 'ready' || o.status === 'done').map(o => o.id)
-          );
-          const newPrep = odooOrders.filter(o => !localMovedIds.has(o.id));
-          return [...newPrep, ...localReadyDone];
+          // Server status (from kds_completed_orders) is authoritative, with two
+          // client-side overlays:
+          //  1. Optimistic local moves ahead of the server (ready/done tapped but
+          //     the persist call has not landed in a poll response yet).
+          //  2. Recall protection: an order recalled to prep stays prep for a few
+          //     seconds even if a stale poll still reports it as ready/done.
+          const RANK: Record<string, number> = { prep: 0, ready: 1, done: 2 };
+          const prevById = new Map(prev.map(o => [o.id, o]));
+          const now = Date.now();
+          recallProtectRef.current.forEach((ts, id) => {
+            if (now - ts > 15000) recallProtectRef.current.delete(id);
+          });
+          return odooOrders.map(o => {
+            if (recallProtectRef.current.has(o.id)) {
+              return { ...o, status: 'prep' as const, readyAt: null, doneAt: null };
+            }
+            const local = prevById.get(o.id);
+            if (local && (RANK[local.status] ?? 0) > (RANK[o.status] ?? 0)) {
+              return { ...o, status: local.status, readyAt: local.readyAt, doneAt: local.doneAt };
+            }
+            return o;
+          });
         });
       } catch (err) {
         console.error('[KDS] poll error:', err);
@@ -209,13 +222,13 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clearOrder: ticketId }),
     }).catch(() => {});
-    // Notify Odoo (fire and forget)
+    // Persist the ready stage in the portal DB (never written to Odoo)
     if (settings.posConfigId) {
       fetch('/api/kds/orders/done', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: ticketId }),
-      }).catch(err => console.error('[KDS] mark done error:', err));
+        body: JSON.stringify({ orderId: ticketId, stage: 'ready' }),
+      }).catch(err => console.error('[KDS] persist ready error:', err));
     }
   }, [settings.posConfigId]);
 
@@ -223,9 +236,17 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
     setOrders(prev => prev.map(o =>
       o.id === ticketId ? { ...o, status: 'done' as const, doneAt: Date.now() } : o
     ));
-  }, []);
+    if (settings.posConfigId) {
+      fetch('/api/kds/orders/done', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: ticketId, stage: 'done' }),
+      }).catch(err => console.error('[KDS] persist done error:', err));
+    }
+  }, [settings.posConfigId]);
 
   const recall = useCallback((ticketId: number) => {
+    recallProtectRef.current.set(ticketId, Date.now());
     setOrders(prev => prev.map(o => {
       if (o.id !== ticketId) return o;
       return {
@@ -244,8 +265,15 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clearOrder: ticketId }),
     }).catch(() => {});
+    if (settings.posConfigId) {
+      fetch('/api/kds/orders/done', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: ticketId, stage: 'clear' }),
+      }).catch(() => {});
+    }
     setCurrentTab('prep');
-  }, []);
+  }, [settings.posConfigId]);
 
   const setTab = useCallback((tab: KdsTab) => setCurrentTab(tab), []);
   const toggleMute = useCallback(() => setMuted(prev => !prev), []);

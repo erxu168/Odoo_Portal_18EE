@@ -61,6 +61,13 @@ function ensureTables() {
       PRIMARY KEY (order_id, item_id)
     );
 
+    CREATE TABLE IF NOT EXISTS kds_completed_orders (
+      order_id INTEGER PRIMARY KEY,
+      stage TEXT NOT NULL CHECK(stage IN ('ready','done')),
+      ready_at INTEGER,
+      done_at INTEGER
+    );
+
     CREATE INDEX IF NOT EXISTS idx_kds_product_config_odoo
       ON kds_product_config(location_id, odoo_product_id);
   `);
@@ -72,6 +79,9 @@ function ensureTables() {
   if (!cols.some(c => c.name === 'pos_config_id')) {
     db.exec('ALTER TABLE kds_settings ADD COLUMN pos_config_id INTEGER DEFAULT 0');
   }
+  // Prune completed-order stages older than 3 days so the table stays small.
+  db.prepare('DELETE FROM kds_completed_orders WHERE COALESCE(done_at, ready_at, 0) < ?')
+    .run(Date.now() - 3 * 24 * 3600 * 1000);
   seedProductConfig(db);
   _initialized = true;
 }
@@ -216,6 +226,54 @@ export function clearOrderChecks(orderId: number): void {
   ensureTables();
   const db = getDb();
   db.prepare(`DELETE FROM kds_order_checks WHERE order_id = ?`).run(orderId);
+}
+
+// -- Completed order stages (ready/done -- survives tablet reboots) --
+// The KDS never writes order state to Odoo; kitchen progress lives here.
+
+export interface CompletedOrderRow {
+  order_id: number;
+  stage: 'ready' | 'done';
+  ready_at: number | null;
+  done_at: number | null;
+}
+
+export function getCompletedOrders(): CompletedOrderRow[] {
+  ensureTables();
+  const db = getDb();
+  return db.prepare(
+    'SELECT order_id, stage, ready_at, done_at FROM kds_completed_orders'
+  ).all() as CompletedOrderRow[];
+}
+
+export function setOrderStage(orderId: number, stage: 'ready' | 'done'): void {
+  ensureTables();
+  const db = getDb();
+  const now = Date.now();
+  if (stage === 'ready') {
+    db.prepare(`
+      INSERT INTO kds_completed_orders (order_id, stage, ready_at, done_at)
+      VALUES (?, 'ready', ?, NULL)
+      ON CONFLICT(order_id) DO UPDATE SET
+        stage = 'ready',
+        ready_at = COALESCE(kds_completed_orders.ready_at, excluded.ready_at)
+    `).run(orderId, now);
+  } else {
+    db.prepare(`
+      INSERT INTO kds_completed_orders (order_id, stage, ready_at, done_at)
+      VALUES (?, 'done', ?, ?)
+      ON CONFLICT(order_id) DO UPDATE SET
+        stage = 'done',
+        done_at = excluded.done_at,
+        ready_at = COALESCE(kds_completed_orders.ready_at, excluded.ready_at)
+    `).run(orderId, now, now);
+  }
+}
+
+export function clearOrderStage(orderId: number): void {
+  ensureTables();
+  const db = getDb();
+  db.prepare('DELETE FROM kds_completed_orders WHERE order_id = ?').run(orderId);
 }
 
 // Heuristic seed for newly-synced products. Manager can override later via UI.
