@@ -1,6 +1,34 @@
 # Krawings Portal — STATUS
 
-_Last updated: 2026-04-26_
+_Last updated: 2026-06-10_
+
+## 2026-06-10 session — KDS: production-safe Odoo POS integration (commit `6e3f153`)
+
+The KDS (built since the last STATUS update: `/kds` page, 14 components, state/priority/sound libs, kds-db.ts, 5 API route groups) was audited and hardened for live POS use on staging AND a config-only move to production.
+
+**Critical fix — KDS is now strictly READ-ONLY towards Odoo:**
+- Removed the `pos.order` write in `/api/kds/orders/done` (it forced `state='done'`, which bypasses the POS workflow and would corrupt session closing/accounting — same failure family as the account 1410 incident).
+- Ready/Done stages now persist in a new `kds_completed_orders` SQLite table (pruned after 3 days). Pass state survives tablet reboots. The endpoint now accepts `{orderId, stage: 'ready'|'done'|'clear'}`.
+
+**Order feed rewrite (`/api/kds/orders`):**
+- Hybrid fire trigger: `paid` orders appear immediately (counter flow); `draft` orders appear once the waiter taps the Order button (detected via non-empty `last_order_preparation_change.lines`). Half-entered drafts never show.
+- Service-day floor at 05:00 Europe/Berlin (orders after midnight belong to the previous service day until 05:00).
+- Refund lines (`qty <= 0`) excluded; refund-only/empty orders dropped.
+- Dine-in tickets show the real table name (`table_id`) when present, else `#tracking_number`.
+- Completed-stage overlay merged server-side so all tabs (Prep/Ready/Done) rebuild correctly after reboot.
+
+**state.tsx:** server stage is authoritative with optimistic local overlay; 15s recall protection prevents snap-back flicker; `pickup`/`recall` now persist stages.
+
+**Verified live on staging via JSON-RPC introspection (2026-06-10):**
+- WAJ POS = `pos.config` id **14**, company **6** (What a Jerk Kottbusser Damm 96), restaurant mode ON, session open.
+- POS orders sync to the server immediately (drafts visible pre-payment) — polling confirmed viable, no webhooks/custom addons needed.
+- EE Preparation Display models exist but hold no WAJ data — KDS stays independent of Odoo stages as designed.
+
+**Staging → production switch is config-only:** flip `ODOO_URL` in `.env.local` to `http://128.140.12.188:15069`, restart service, set POS Config ID in KDS settings to the production config id (differs from staging — look up before go-live). Zero Odoo writes, zero custom addons.
+
+**KDS test procedure (staging):** deploy portal → open `/kds` → Settings → POS Config ID = 14 → Save → "Sync products from POS" → ring a test order in WAJ POS. Paid orders appear within 5s; table-service orders appear after the Order button.
+
+**Open KDS threads:** poll interval 5s (design said 2s), course separation, waiter notifications, order modification mid-round, multi-screen assignment, `kds_product_config` → `prep_items` migration.
 
 ## 2026-04-26 session — WAJ Boston Bay Jerk BOMs deployed
 
@@ -20,7 +48,7 @@ Bug fix discovered during deploy: in Odoo 18 EE multi-company setups, `mrp.workc
 New raw material products created on staging: 1567 (Pimento berries, whole), 1568 (Black peppercorns, whole), 1569 (Brown sugar), 1570 (Water). All in RAW MATERIALS category, kg UoM, WAJ company. Need supplier prices set before BOM cost rollup is meaningful.
 
 ## Current focus
-Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with real data from seeded SQLite.
+KDS — staging deploy + live test with WAJ POS (config id 14). Production go-live is a config-only switch once staging validates.
 
 ## Module status
 
@@ -38,7 +66,7 @@ Rentals module (Properties & Tenancies) — frontend v1 shipped. 11 pages with r
 | Letter Writing | 📋 designed | DIN 5008 Form B spec, Puppeteer PDF. Not built. |
 | Contract scanner | ✅ shipped | Claude Vision API. ANTHROPIC_API_KEY in .env.local. |
 | Invoice scanner | 📋 scoped | 8-screen mock. Vision + Graph API + WhatsApp + SEPA XML + DATEV. Not built. |
-| KDS | 📋 v8 designed | What a Jerk task-first auto-batch. Not built. |
+| KDS | 🟢 **live-POS ready (staging)** | `/kds` + 14 components + 5 API groups. Read-only Odoo polling (hybrid trigger), stages persisted in SQLite. Staging WAJ config id = 14. Production switch = env + settings only. |
 | Prep Planner | 🟡 **Phase 2 backend shipped** | EWMA engine + Open-Meteo + nightly cron (Phase 1) + prep items, POS↔prep mapping, item-level forecasts (Phase 2). 21/21 smoke tests pass. Seed data + frontend = Phase 3. |
 | Music (Krawings Auto) | 📋 mock done | Locked-down kiosk PWA, YouTube IFrame Player API. 9-screen mock. |
 | Staffing optimization | 📋 designed | Prophet+XGBoost → rules engine → OR-Tools constraint scheduling. 10–14 week build. |
