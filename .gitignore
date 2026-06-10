@@ -37,10 +37,18 @@ next-env.d.ts
 /data/
 .env
 
-
-# Capacitor native projects (not committed — rebuild from capacitor.config.ts)
-/android/
+# Capacitor: commit android sources (custom plugins live there), ignore build artifacts
 /ios/
+android/.gradle/
+android/**/.gradle/
+android/.idea/
+android/**/.idea/
+android/build/
+android/**/build/
+android/local.properties
+android/**/local.properties
+android/.DS_Store
+android/**/.DS_Store
 
 # worktrees (Claude isolated workspaces)
 .worktrees/
