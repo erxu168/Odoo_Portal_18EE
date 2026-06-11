@@ -22,8 +22,8 @@ def rpc(model, method, *args, **kw):
         "args":[DB,UID,PW,model,method,list(args),kw]},"id":1}
     req = urllib.request.Request(URL, json.dumps(payload).encode(),
         {"Content-Type":"application/json"})
-    r = json.loads(urllib.request.urlopen(req, timeout=120).read())
-    if "error" in r: raise SystemExit(json.dumps(r["error"], indent=2)[:2000])
+    r = json.loads(urllib.request.urlopen(req, timeout=300).read())
+    if "error" in r: raise SystemExit(json.dumps(r["error"], indent=2)[:3000])
     return r["result"]
 
 cos = rpc("res.company","search_read",[],fields=["id","name","chart_template"])
@@ -50,7 +50,8 @@ if not RUN:
     print("inspect-only mode. Rerun with RUN=1 to apply.")
     sys.exit(0)
 
-rpc("account.chart.template","try_loading",[template, waj["id"]],)
+# NOTE: template_code and company are two separate positional args
+rpc("account.chart.template","try_loading", template, waj["id"], False)
 print("chart template installed. verifying taxes...")
 taxes = rpc("account.tax","search_read",
     [["type_tax_use","=","sale"],["amount","in",[7.0,19.0]],["company_id","=",waj["id"]]],
