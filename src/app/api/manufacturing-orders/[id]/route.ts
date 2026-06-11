@@ -231,6 +231,7 @@ export async function GET(
     // These fields live on product.template, so we need to go through the variant
     let shelfLifeChilledDays = 0;
     let shelfLifeFrozenDays = 0;
+    let shelfLifeAmbientDays = 0;
     let productTracking = 'none';
     try {
       // Step 1: get product_tmpl_id and tracking from product.product
@@ -252,6 +253,19 @@ export async function GET(
           if (templates.length > 0) {
             shelfLifeChilledDays = templates[0]?.x_shelf_life_chilled_days || 0;
             shelfLifeFrozenDays  = templates[0]?.x_shelf_life_frozen_days  || 0;
+          }
+          // Ambient is a newer field — read separately so a missing Odoo
+          // column doesn't wipe out the chilled/frozen values above.
+          try {
+            const ambRows = await odoo.read(
+              'product.template',
+              [tmplId],
+              ['x_shelf_life_ambient_days'],
+            );
+            shelfLifeAmbientDays = ambRows[0]?.x_shelf_life_ambient_days || 0;
+          } catch {
+            // Field not on product.template yet — staff can still pick ambient
+            // and type the expiry date manually.
           }
         }
       }
@@ -329,6 +343,7 @@ export async function GET(
         // Shelf-life settings from finished product template
         shelf_life_chilled_days: shelfLifeChilledDays,
         shelf_life_frozen_days:  shelfLifeFrozenDays,
+        shelf_life_ambient_days: shelfLifeAmbientDays,
         product_tracking: productTracking,
         // Component editability flags
         can_edit_components: EDITABLE_MO_STATES.includes(mo.state),

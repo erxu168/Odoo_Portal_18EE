@@ -77,7 +77,7 @@ export interface ContainerSplit {
   created_by: number;
   created_at: string;
   confirmed_at: string | null;
-  storage_mode: 'chilled' | 'frozen' | null;
+  storage_mode: 'chilled' | 'frozen' | 'ambient' | null;
 }
 
 export interface Container {
@@ -105,7 +105,7 @@ export interface CreateSplitRequest {
   total_qty: number;
   uom: string;
   containers: ContainerInput[];
-  storage_mode: 'chilled' | 'frozen';
+  storage_mode: 'chilled' | 'frozen' | 'ambient';
 }
 
 // --- Print Job ---
@@ -128,7 +128,7 @@ export interface PrintJob {
 
 // --- ZPL Label Data ---
 
-export type StorageMode = 'chilled' | 'frozen' | 'both' | null;
+export type StorageMode = 'chilled' | 'frozen' | 'ambient' | 'both' | null;
 
 export interface LabelData {
   productName: string;

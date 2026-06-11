@@ -245,7 +245,7 @@ export function getContainers(splitId: number): Container[] {
 export function createSplit(
   data: CreateSplitRequest,
   userId: number,
-  storageMode: 'chilled' | 'frozen' = 'chilled',
+  storageMode: 'chilled' | 'frozen' | 'ambient' = 'chilled',
 ): { splitId: number; containerIds: number[] } {
   ensureLabelingTables();
   const db = getDb();

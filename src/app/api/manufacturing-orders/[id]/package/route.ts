@@ -73,8 +73,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   const storageMode = body.storage_mode;
-  if (storageMode !== 'chilled' && storageMode !== 'frozen') {
-    return NextResponse.json({ error: 'storage_mode must be "chilled" or "frozen"' }, { status: 400 });
+  if (storageMode !== 'chilled' && storageMode !== 'frozen' && storageMode !== 'ambient') {
+    return NextResponse.json({ error: 'storage_mode must be "chilled", "frozen", or "ambient"' }, { status: 400 });
   }
 
   // Check MO state

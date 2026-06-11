@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
     bodyHeight ?? null,
   );
 
-  const normalizedStorage: 'chilled' | 'frozen' | 'both' | null =
-    storageMode === 'chilled' || storageMode === 'frozen' || storageMode === 'both'
+  const normalizedStorage: 'chilled' | 'frozen' | 'ambient' | 'both' | null =
+    storageMode === 'chilled' || storageMode === 'frozen' || storageMode === 'ambient' || storageMode === 'both'
       ? storageMode
       : null;
 

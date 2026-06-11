@@ -14,13 +14,71 @@ interface LabelPreviewProps {
   qty: number;
   uom: string;
   expiryDate: string;
-  storageMode: 'chilled' | 'frozen' | 'both' | null;
+  storageMode: 'chilled' | 'frozen' | 'ambient' | 'both' | null;
   lotName?: string;
   moName?: string;
   containerNumber?: number;
   totalContainers?: number;
   widthMm: number;
   heightMm: number;
+}
+
+/**
+ * Match drawStorageIcon() in zpl.ts — same shapes, rendered as SVG so the
+ * on-screen preview is honest about what the printer will emit.
+ */
+function StorageIcon({ mode, size }: { mode: 'chilled' | 'frozen' | 'ambient' | 'both'; size: number }) {
+  const lt = Math.max(1.5, size * 0.09);
+  const cx = size / 2;
+  const cy = size / 2;
+
+  if (mode === 'ambient') {
+    const rC = size * 0.30;
+    const rayInner = size * 0.36;
+    const rayOuter = size * 0.48;
+    const rays = [0, 45, 90, 135, 180, 225, 270, 315].map(deg => {
+      const a = (deg * Math.PI) / 180;
+      return {
+        x1: cx + Math.cos(a) * rayInner,
+        y1: cy + Math.sin(a) * rayInner,
+        x2: cx + Math.cos(a) * rayOuter,
+        y2: cy + Math.sin(a) * rayOuter,
+      };
+    });
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+        <circle cx={cx} cy={cy} r={rC} fill="none" stroke="#1a1a1a" strokeWidth={lt} />
+        {rays.map((r, i) => (
+          <line key={i} x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2} stroke="#1a1a1a" strokeWidth={lt} strokeLinecap="round" />
+        ))}
+      </svg>
+    );
+  }
+
+  // Snowflake (chilled / frozen / both); frozen gets an outline box around it
+  const boxed = mode === 'frozen';
+  const armRadius = size * (boxed ? 0.34 : 0.46);
+  const half = size * 0.46;
+  const arms = [0, 45, 90, 135].map(deg => {
+    const a = (deg * Math.PI) / 180;
+    return {
+      x1: cx - Math.cos(a) * armRadius,
+      y1: cy - Math.sin(a) * armRadius,
+      x2: cx + Math.cos(a) * armRadius,
+      y2: cy + Math.sin(a) * armRadius,
+    };
+  });
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ flexShrink: 0 }}>
+      {boxed && (
+        <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2}
+          fill="none" stroke="#1a1a1a" strokeWidth={lt} />
+      )}
+      {arms.map((a, i) => (
+        <line key={i} x1={a.x1} y1={a.y1} x2={a.x2} y2={a.y2} stroke="#1a1a1a" strokeWidth={lt} strokeLinecap="round" />
+      ))}
+    </svg>
+  );
 }
 
 export default function LabelPreview({
@@ -49,16 +107,17 @@ export default function LabelPreview({
   const hasMeta = !!moName && containerNumber != null && totalContainers != null;
   const hasLot = !!lotName;
   const storageText =
-    storageMode === 'both' ? 'CHILLED & FROZEN' :
-    storageMode === 'chilled' ? 'CHILLED' :
-    storageMode === 'frozen' ? 'FROZEN' : null;
-  const hasStorage = storageText != null;
+    storageMode === 'both' ? 'COOLED & FROZEN' :
+    storageMode === 'chilled' ? 'COOLED' :
+    storageMode === 'frozen' ? 'FROZEN' :
+    storageMode === 'ambient' ? 'AMBIENT' : null;
+  const hasStorage = storageText != null && storageMode != null;
 
   // Barcode space estimate (only count rows that will render)
   const renderedRows =
     (hasProductionDate ? bodyPx : 0) +
     (hasQty ? qtyPx : 0) +
-    (hasStorage ? expPx : 0) +
+    (hasStorage ? bodyPx * 1.6 : 0) +
     (hasExpiry ? expPx : 0) +
     (hasMeta ? metaPx : 0) +
     (hasLot ? metaPx : 0);
@@ -144,16 +203,24 @@ export default function LabelPreview({
           </div>
         )}
 
-        {/* Storage mode — same weight as Expiry; hidden when no mode selected */}
-        {hasStorage && (
+        {/* Storage mode — pictogram + label, same weight as Expiry */}
+        {hasStorage && storageMode && (
           <div style={{
-            fontSize: expPx,
-            fontWeight: 800,
-            color: '#1a1a1a',
-            lineHeight: 1.1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: bodyPx * 0.5,
             marginBottom: gap,
           }}>
-            STORE: {storageText}
+            <StorageIcon mode={storageMode} size={bodyPx * 1.6} />
+            <div style={{
+              fontSize: bodyPx,
+              fontWeight: 800,
+              color: '#1a1a1a',
+              lineHeight: 1.1,
+              letterSpacing: '0.04em',
+            }}>
+              {storageText}
+            </div>
           </div>
         )}
 

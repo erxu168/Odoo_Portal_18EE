@@ -112,16 +112,20 @@ export function generateZPL(data: LabelData, opts: {
     y += qty.h + gap;
   }
 
-  // ── Storage Mode (small, informational) — skipped when null ──
+  // ── Storage Mode + temperature pictogram (icon left, text right) ──
   const storeText =
-    data.storageMode === 'both' ? 'CHILLED & FROZEN' :
-    data.storageMode === 'chilled' ? 'CHILLED' :
-    data.storageMode === 'frozen' ? 'FROZEN' : null;
-  if (storeText) {
-    const storeLabel = `STORE: ${storeText}`;
+    data.storageMode === 'both' ? 'COOLED & FROZEN' :
+    data.storageMode === 'chilled' ? 'COOLED' :
+    data.storageMode === 'frozen' ? 'FROZEN' :
+    data.storageMode === 'ambient' ? 'AMBIENT' : null;
+  if (storeText && data.storageMode) {
+    const iconSize = Math.round(body.h * 1.4);
+    const iconGap = Math.round(scale * 1.5);
+    lines.push(...drawStorageIcon(data.storageMode, margin, y, iconSize));
+    const textY = y + Math.max(0, Math.round((iconSize - body.h) / 2));
     lines.push(`^A0N,${body.h},${body.w}`);
-    lines.push(`^FO${margin},${y}^FB${printW},1,0,L^FD${escapeZPL(storeLabel)}^FS`);
-    y += body.h + gap;
+    lines.push(`^FO${margin + iconSize + iconGap},${textY}^FD${escapeZPL(storeText)}^FS`);
+    y += iconSize + gap;
   }
 
   // ── Expiry Date (HUGE — 2x emphasis) ──
@@ -157,6 +161,66 @@ export function generateZPL(data: LabelData, opts: {
 
   lines.push('^XZ');
   return lines.join('\n');
+}
+
+/**
+ * Draw a temperature pictogram in ZPL primitives at (x, y) within a `size` × `size` box.
+ * - chilled / both: 8-arm snowflake
+ * - frozen: 8-arm snowflake inside an outline box (Codex Alimentarius "deep frozen" mark)
+ * - ambient: sun (circle + 8 rays)
+ * Uses ^GB (filled rects for arms), ^GD (diagonals), ^GE (ellipse). No bitmap data.
+ */
+function drawStorageIcon(
+  mode: 'chilled' | 'frozen' | 'ambient' | 'both',
+  x: number,
+  y: number,
+  size: number,
+): string[] {
+  const out: string[] = [];
+  const lt = Math.max(2, Math.round(size * 0.09));            // line thickness
+  const cx = x + Math.round(size / 2);
+  const cy = y + Math.round(size / 2);
+
+  if (mode === 'ambient') {
+    // Sun: outline circle in the center + 8 rays
+    const rC = Math.round(size * 0.30);                       // circle radius
+    const rayInner = Math.round(size * 0.36);                  // ray start (just outside circle)
+    const rayOuter = Math.round(size * 0.48);                  // ray end (near bbox edge)
+    // Circle outline
+    out.push(`^FO${cx - rC},${cy - rC}^GE${rC * 2},${rC * 2},${lt},B^FS`);
+    // 4 cardinal rays (as thin rectangles)
+    out.push(`^FO${cx - Math.round(lt / 2)},${cy - rayOuter}^GB${lt},${rayOuter - rayInner},${lt}^FS`); // top
+    out.push(`^FO${cx - Math.round(lt / 2)},${cy + rayInner}^GB${lt},${rayOuter - rayInner},${lt}^FS`); // bottom
+    out.push(`^FO${cx - rayOuter},${cy - Math.round(lt / 2)}^GB${rayOuter - rayInner},${lt},${lt}^FS`); // left
+    out.push(`^FO${cx + rayInner},${cy - Math.round(lt / 2)}^GB${rayOuter - rayInner},${lt},${lt}^FS`); // right
+    // 4 diagonal rays via short ^GD strokes from rayInner→rayOuter on the diagonal
+    const d = Math.round(rayInner * 0.707);
+    const D = Math.round(rayOuter * 0.707);
+    out.push(`^FO${cx - D},${cy - D}^GD${D - d},${D - d},${lt},B,L^FS`); // NW
+    out.push(`^FO${cx + d},${cy - D}^GD${D - d},${D - d},${lt},B,R^FS`); // NE
+    out.push(`^FO${cx - D},${cy + d}^GD${D - d},${D - d},${lt},B,R^FS`); // SW
+    out.push(`^FO${cx + d},${cy + d}^GD${D - d},${D - d},${lt},B,L^FS`); // SE
+    return out;
+  }
+
+  // Snowflake (chilled / frozen / both) — 8-arm star
+  // Frozen draws the same snowflake inside an outline box (deep-frozen pictogram).
+  const boxed = mode === 'frozen';
+  const armRadius = Math.round(size * (boxed ? 0.34 : 0.46));
+  // 4 orthogonal arms (filled thin rectangles)
+  out.push(`^FO${cx - armRadius},${cy - Math.round(lt / 2)}^GB${armRadius * 2},${lt},${lt}^FS`); // horizontal
+  out.push(`^FO${cx - Math.round(lt / 2)},${cy - armRadius}^GB${lt},${armRadius * 2},${lt}^FS`); // vertical
+  // 2 diagonal arms (one full diagonal line each across the bounding square)
+  const d = Math.round(armRadius * 0.707);
+  out.push(`^FO${cx - d},${cy - d}^GD${d * 2},${d * 2},${lt},B,L^FS`); // \
+  out.push(`^FO${cx - d},${cy - d}^GD${d * 2},${d * 2},${lt},B,R^FS`); // /
+
+  if (boxed) {
+    // Outline box around the snowflake
+    const half = Math.round(size * 0.46);
+    out.push(`^FO${cx - half},${cy - half}^GB${half * 2},${half * 2},${lt}^FS`);
+  }
+  return out;
 }
 
 function escapeZPL(text: string): string {

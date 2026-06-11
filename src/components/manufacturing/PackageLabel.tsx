@@ -27,6 +27,52 @@ type Step = 'split' | 'preview' | 'print';
  * Calculate expiry date string (YYYY-MM-DD) from today + days.
  * Returns '' (empty) when shelfLifeDays is 0 — caller treats this as "no expiry".
  */
+/**
+ * Tile icon for the storage picker — mirrors LabelPreview/zpl shapes
+ * so what staff pick is what prints.
+ */
+function StorageModeIcon({ mode, size, active }: { mode: 'chilled' | 'frozen' | 'ambient'; size: number; active: boolean }) {
+  const stroke = active ? '#ea580c' : '#9ca3af';
+  const lt = Math.max(1.5, size * 0.1);
+  const cx = size / 2;
+  const cy = size / 2;
+  if (mode === 'ambient') {
+    const rC = size * 0.28;
+    const rIn = size * 0.34;
+    const rOut = size * 0.48;
+    const rays = [0, 45, 90, 135, 180, 225, 270, 315].map(d => (d * Math.PI) / 180);
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={cx} cy={cy} r={rC} fill="none" stroke={stroke} strokeWidth={lt} />
+        {rays.map((a, i) => (
+          <line key={i}
+            x1={cx + Math.cos(a) * rIn} y1={cy + Math.sin(a) * rIn}
+            x2={cx + Math.cos(a) * rOut} y2={cy + Math.sin(a) * rOut}
+            stroke={stroke} strokeWidth={lt} strokeLinecap="round" />
+        ))}
+      </svg>
+    );
+  }
+  const boxed = mode === 'frozen';
+  const r = size * (boxed ? 0.30 : 0.44);
+  const half = size * 0.44;
+  const arms = [0, 45, 90, 135].map(d => (d * Math.PI) / 180);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {boxed && (
+        <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2}
+          fill="none" stroke={stroke} strokeWidth={lt} />
+      )}
+      {arms.map((a, i) => (
+        <line key={i}
+          x1={cx - Math.cos(a) * r} y1={cy - Math.sin(a) * r}
+          x2={cx + Math.cos(a) * r} y2={cy + Math.sin(a) * r}
+          stroke={stroke} strokeWidth={lt} strokeLinecap="round" />
+      ))}
+    </svg>
+  );
+}
+
 function calcExpiryDate(shelfLifeDays: number): string {
   if (!(shelfLifeDays > 0)) return '';
   const d = new Date();
@@ -62,8 +108,12 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
 
   const chilledDays: number = mo?.shelf_life_chilled_days || 0;
   const frozenDays: number = mo?.shelf_life_frozen_days || 0;
-  const [storageMode, setStorageMode] = useState<'chilled' | 'frozen'>('chilled');
-  const activeShelfLifeDays = storageMode === 'chilled' ? chilledDays : frozenDays;
+  const ambientDays: number = mo?.shelf_life_ambient_days || 0;
+  const [storageMode, setStorageMode] = useState<'chilled' | 'frozen' | 'ambient'>('chilled');
+  const activeShelfLifeDays =
+    storageMode === 'chilled' ? chilledDays :
+    storageMode === 'frozen' ? frozenDays :
+    ambientDays;
 
   const labelDims = useMemo(() => {
     if (selectedSize === 'custom' || selectedSize?.startsWith('saved-')) {
@@ -101,7 +151,11 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
           setExistingContainers(splitData.containers || []);
           setSplitDone(true);
           setStep('preview');
-          if (splitData.split.storage_mode === 'frozen' || splitData.split.storage_mode === 'chilled') {
+          if (
+            splitData.split.storage_mode === 'frozen' ||
+            splitData.split.storage_mode === 'chilled' ||
+            splitData.split.storage_mode === 'ambient'
+          ) {
             setStorageMode(splitData.split.storage_mode);
           }
           // NULL (legacy splits before this migration) defaults to 'chilled' which is the initial state.
@@ -460,27 +514,31 @@ export default function PackageLabel({ moId, onBack, onDone }: PackageLabelProps
             </div>
           </div>
 
-          {/* Storage mode toggle */}
+          {/* Storage mode picker — three tiles with pictograms */}
           <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-4">
             <div className="text-[11px] font-bold tracking-wider uppercase text-gray-400 mb-3">
               Storage
             </div>
-            <div className="flex gap-2">
-              {(['chilled', 'frozen'] as const).map(mode => {
-                const days = mode === 'chilled' ? chilledDays : frozenDays;
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { mode: 'chilled' as const, label: 'Cooled',  days: chilledDays },
+                { mode: 'frozen'  as const, label: 'Frozen',  days: frozenDays  },
+                { mode: 'ambient' as const, label: 'Ambient', days: ambientDays },
+              ]).map(({ mode, label, days }) => {
                 const isActive = storageMode === mode;
                 return (
                   <button
                     key={mode}
                     onClick={() => setStorageMode(mode)}
-                    className={`flex-1 h-16 rounded-xl border-2 font-semibold text-sm transition active:scale-[0.97] ${
+                    className={`h-24 rounded-xl border-2 font-semibold text-sm transition active:scale-[0.97] flex flex-col items-center justify-center gap-1 ${
                       isActive
                         ? 'bg-orange-50 border-orange-500 text-orange-600'
                         : 'bg-white border-gray-200 text-gray-500'
                     }`}
                   >
-                    <div className="uppercase text-xs tracking-wider">{mode === 'chilled' ? 'Chilled' : 'Frozen'}</div>
-                    <div className="text-base mt-1">{days > 0 ? `${days} days` : '— days'}</div>
+                    <StorageModeIcon mode={mode} size={26} active={isActive} />
+                    <div className="uppercase text-[11px] tracking-wider leading-tight">{label}</div>
+                    <div className="text-xs leading-tight">{days > 0 ? `${days}d` : '—'}</div>
                   </button>
                 );
               })}

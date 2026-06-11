@@ -32,6 +32,48 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
+function StorageModeIcon({ mode, size, active }: { mode: 'chilled' | 'frozen' | 'ambient'; size: number; active: boolean }) {
+  const stroke = active ? '#be185d' : '#9ca3af';
+  const lt = Math.max(1.5, size * 0.1);
+  const cx = size / 2;
+  const cy = size / 2;
+  if (mode === 'ambient') {
+    const rC = size * 0.28;
+    const rIn = size * 0.34;
+    const rOut = size * 0.48;
+    const rays = [0, 45, 90, 135, 180, 225, 270, 315].map(d => (d * Math.PI) / 180);
+    return (
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={cx} cy={cy} r={rC} fill="none" stroke={stroke} strokeWidth={lt} />
+        {rays.map((a, i) => (
+          <line key={i}
+            x1={cx + Math.cos(a) * rIn} y1={cy + Math.sin(a) * rIn}
+            x2={cx + Math.cos(a) * rOut} y2={cy + Math.sin(a) * rOut}
+            stroke={stroke} strokeWidth={lt} strokeLinecap="round" />
+        ))}
+      </svg>
+    );
+  }
+  const boxed = mode === 'frozen';
+  const r = size * (boxed ? 0.30 : 0.44);
+  const half = size * 0.44;
+  const arms = [0, 45, 90, 135].map(d => (d * Math.PI) / 180);
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {boxed && (
+        <rect x={cx - half} y={cy - half} width={half * 2} height={half * 2}
+          fill="none" stroke={stroke} strokeWidth={lt} />
+      )}
+      {arms.map((a, i) => (
+        <line key={i}
+          x1={cx - Math.cos(a) * r} y1={cy - Math.sin(a) * r}
+          x2={cx + Math.cos(a) * r} y2={cy + Math.sin(a) * r}
+          stroke={stroke} strokeWidth={lt} strokeLinecap="round" />
+      ))}
+    </svg>
+  );
+}
+
 function generateLotName(seq: number): string {
   const d = new Date();
   const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
@@ -64,31 +106,16 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
   const [uom, setUom] = useState('');
   const [productionDate, setProductionDate] = useState(todayIso());
   const [expiryDate, setExpiryDate] = useState('');
-  const [chilled, setChilled] = useState(false);
-  const [frozen, setFrozen] = useState(false);
-  const [chilledDays, setChilledDays] = useState('');
-  const [frozenDays, setFrozenDays] = useState('');
+  const [storageMode, setStorageMode] = useState<'chilled' | 'frozen' | 'ambient' | null>(null);
+  const [storageDays, setStorageDays] = useState('');
   const [labelCount, setLabelCount] = useState('1');
   const [labels, setLabels] = useState<LabelRow[]>([]);
 
-  const storageMode: 'chilled' | 'frozen' | 'both' | null =
-    chilled && frozen ? 'both' :
-    chilled ? 'chilled' :
-    frozen ? 'frozen' : null;
-
-  // Active shelf-life days based on which storage modes are ticked.
-  // Mirrors PackageLabel: each mode has its own days; if both are active,
-  // the label can only honour one expiry date so we use the shorter one.
   const activeShelfLifeDays = useMemo(() => {
-    const c = chilled ? parseInt(chilledDays, 10) : NaN;
-    const f = frozen ? parseInt(frozenDays, 10) : NaN;
-    const cValid = !isNaN(c) && c > 0;
-    const fValid = !isNaN(f) && f > 0;
-    if (cValid && fValid) return Math.min(c, f);
-    if (cValid) return c;
-    if (fValid) return f;
-    return 0;
-  }, [chilled, frozen, chilledDays, frozenDays]);
+    if (!storageMode) return 0;
+    const n = parseInt(storageDays, 10);
+    return isNaN(n) || n <= 0 ? 0 : n;
+  }, [storageMode, storageDays]);
 
   // Auto-fill expiry from production date + active days.
   // Manual edits to expiry remain allowed and stick until inputs change.
@@ -161,8 +188,8 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
       setUom(full.product_uom_id?.[1] || bom.product_uom_id[1] || '');
       const shelf = full.shelf_life_days || 0;
       if (shelf > 0) {
-        setChilled(true);
-        setChilledDays(String(shelf));
+        setStorageMode('chilled');
+        setStorageDays(String(shelf));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load recipe');
@@ -483,52 +510,51 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
 
           <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] p-4 mb-3">
             <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">Storage &amp; shelf life</div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className={`rounded-xl border-2 p-3 transition-all ${
-                chilled ? 'border-pink-600 bg-pink-50' : 'border-gray-200 bg-gray-50'
-              }`}>
-                <button type="button" onClick={() => setChilled(v => !v)}
-                  className="w-full flex items-center gap-2 mb-2 active:scale-[0.975]">
-                  <span className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                    chilled ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-300 bg-white'
-                  }`}>
-                    {chilled && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5"/></svg>}
-                  </span>
-                  <span className={`font-bold text-[var(--fs-sm)] ${chilled ? 'text-pink-700' : 'text-gray-500'}`}>Chilled</span>
-                </button>
-                <input type="number" inputMode="numeric" step="1" min="0" max="3650"
-                  disabled={!chilled}
-                  value={chilledDays}
-                  onChange={e => setChilledDays(e.target.value.replace(/[^0-9]/g, ''))}
-                  placeholder="days"
-                  className="w-full px-2.5 py-2 bg-white border border-gray-200 rounded-lg text-[var(--fs-sm)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none disabled:opacity-40 disabled:bg-gray-100" />
-              </div>
-              <div className={`rounded-xl border-2 p-3 transition-all ${
-                frozen ? 'border-pink-600 bg-pink-50' : 'border-gray-200 bg-gray-50'
-              }`}>
-                <button type="button" onClick={() => setFrozen(v => !v)}
-                  className="w-full flex items-center gap-2 mb-2 active:scale-[0.975]">
-                  <span className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                    frozen ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-300 bg-white'
-                  }`}>
-                    {frozen && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4"><path d="M20 6L9 17l-5-5"/></svg>}
-                  </span>
-                  <span className={`font-bold text-[var(--fs-sm)] ${frozen ? 'text-pink-700' : 'text-gray-500'}`}>Frozen</span>
-                </button>
-                <input type="number" inputMode="numeric" step="1" min="0" max="3650"
-                  disabled={!frozen}
-                  value={frozenDays}
-                  onChange={e => setFrozenDays(e.target.value.replace(/[^0-9]/g, ''))}
-                  placeholder="days"
-                  className="w-full px-2.5 py-2 bg-white border border-gray-200 rounded-lg text-[var(--fs-sm)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none disabled:opacity-40 disabled:bg-gray-100" />
-              </div>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { mode: 'chilled' as const, label: 'Cooled'  },
+                { mode: 'frozen'  as const, label: 'Frozen'  },
+                { mode: 'ambient' as const, label: 'Ambient' },
+              ]).map(({ mode, label }) => {
+                const isActive = storageMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      if (isActive) {
+                        setStorageMode(null);
+                        setStorageDays('');
+                      } else {
+                        setStorageMode(mode);
+                      }
+                    }}
+                    className={`h-24 rounded-xl border-2 font-semibold text-sm transition active:scale-[0.97] flex flex-col items-center justify-center gap-1 ${
+                      isActive
+                        ? 'bg-pink-50 border-pink-600 text-pink-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-500'
+                    }`}
+                  >
+                    <StorageModeIcon mode={mode} size={26} active={isActive} />
+                    <div className="uppercase text-[11px] tracking-wider leading-tight">{label}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3">
+              <input
+                type="number" inputMode="numeric" step="1" min="0" max="3650"
+                disabled={!storageMode}
+                value={storageDays}
+                onChange={e => setStorageDays(e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder={storageMode ? 'shelf life in days' : 'pick a storage mode first'}
+                className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-[var(--fs-sm)] font-mono font-bold text-gray-900 focus:border-pink-600 focus:ring-2 focus:ring-pink-100 outline-none disabled:opacity-40 disabled:bg-gray-100"
+              />
             </div>
             <div className="mt-2 text-[var(--fs-xs)] text-gray-400">
               {storageMode === null
-                ? 'Tick neither and the storage line is hidden on the label.'
-                : storageMode === 'both'
-                ? 'Both ticked — expiry uses whichever expires first.'
-                : `Type the ${storageMode} shelf life in days; expiry fills in below.`}
+                ? 'Pick a storage mode to show a pictogram on the label.'
+                : `Symbol prints next to "${storageMode === 'chilled' ? 'COOLED' : storageMode === 'frozen' ? 'FROZEN' : 'AMBIENT'}" on the label.`}
             </div>
           </div>
 
