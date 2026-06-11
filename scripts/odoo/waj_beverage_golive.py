@@ -3,6 +3,7 @@
 - Creates/updates per-unit POS beverage products for What a Jerk
 - Leaves crate-unit GFGH purchasing products untouched
 - Assigns 19% price-included sale tax (drinks are 19% USt, not 7%)
+- Self-heals missing 19% incl tax by duplicating an existing 19% tax
 - Pfand: ensures DPG Pfand product is NOT in POS (price is baked in),
   creates Pfand Rueckgabe -0,25 for can returns
 Idempotent. DRY=1 env var prints actions without writing.
@@ -39,11 +40,36 @@ def create(model, vals):
 # ---- introspect ----
 WAJ = rpc("res.company","search",[["name","ilike","What a Jerk"]])[0]
 companies = rpc("res.company","search",[])
-tax_by_co = {}
-for co in companies:
+
+def ensure_19_incl(co):
+    """Return id of a 19% price-included sale tax for company, creating it if possible."""
     t = rpc("account.tax","search",[["type_tax_use","=","sale"],
         ["amount","=",19.0],["price_include","=",True],["company_id","=",co]])
-    if t: tax_by_co[co] = t[0]
+    if t: return t[0]
+    # diagnose: list this company's 19% sale taxes
+    excl = rpc("account.tax","search_read",[["type_tax_use","=","sale"],
+        ["amount","=",19.0],["company_id","=",co]],fields=["id","name","price_include"])
+    if excl:
+        srcid = excl[0]["id"]
+        print(f"  company {co}: no 19% incl tax; duplicating tax {srcid} ({excl[0]['name']}) as price-included")
+        if DRY: return -co  # placeholder in dry mode
+        newid = rpc("account.tax","copy",[srcid],
+            {"default":{"name":"19% Umsatzsteuer (inkl. im Preis)"}})
+        if isinstance(newid,list): newid = newid[0]
+        try:
+            rpc("account.tax","write",[newid],{"price_include_override":"tax_included"})
+        except SystemExit:
+            rpc("account.tax","write",[newid],{"price_include":True})
+        return newid
+    print(f"  company {co}: WARNING no 19% sale tax at all - skipping (configure manually)")
+    return None
+
+tax_by_co = {}
+for co in companies:
+    tid = ensure_19_incl(co)
+    if tid: tax_by_co[co] = tid
+if WAJ not in tax_by_co:
+    sys.exit(f"FATAL: could not ensure a 19% incl tax for WAJ company {WAJ}")
 TAX_WAJ = [(6,0,[tax_by_co[WAJ]])]
 TAX_ALL = [(6,0,list(tax_by_co.values()))]
 cat = rpc("product.category","search",[["name","=","Soft Drinks"]])
