@@ -553,3 +553,14 @@
 .kds-fp-pass-table { font-size: 21px; font-weight: 900; color: var(--text); min-width: 64px; font-variant-numeric: tabular-nums; }
 .kds-fp-pass-status { font-size: 13px; font-weight: 600; color: var(--muted); }
 .kds-fp-pass-row.ready .kds-fp-pass-status { color: var(--green); }
+.kds-fp-pass-ready {
+  margin-left: auto; flex-shrink: 0;
+  background: var(--green); color: #fff; border: none; border-radius: 8px;
+  padding: 9px 18px; font-size: 14px; font-weight: 800; cursor: pointer;
+}
+.kds-fp-pass-ready:active { transform: scale(0.96); }
+
+/* DONE section — finished dishes stay visible so the cook can review & undo */
+.kds-fp-done-lane { border-left: 4px solid var(--green); }
+.kds-fp-done-lane .kds-fp-lane-label { color: #4ade80; }
+.kds-fp-done-lane .kds-fp-entry.done { opacity: 0.9; background: rgba(34,197,94,0.10); }
