@@ -69,6 +69,13 @@ export function playPassAlert(vol: number = 0.8): void {
   }
 }
 
+/** Insistent four-beep alarm for a finished kitchen timer */
+export function playTimerAlarm(vol: number = 0.9): void {
+  for (let i = 0; i < 4; i++) {
+    setTimeout(() => beep(880, 220, vol * 0.5, 'square'), i * 300);
+  }
+}
+
 /** Ascending arpeggio for round complete */
 export function playRoundDone(vol: number = 0.6): void {
   const notes = [523.25, 659.25, 783.99, 1046.50];

@@ -3,6 +3,8 @@
 import { useEffect } from 'react';
 import { useTopBar } from '@/components/ui/TopBarContext';
 import { KdsProvider } from '@/lib/kds/state';
+import { TimerProvider } from '@/lib/kds/timers';
+import TimerPanel from '@/components/kds/TimerPanel';
 import './kds.css';
 
 export default function KdsLayout({ children }: { children: React.ReactNode }) {
@@ -28,9 +30,12 @@ export default function KdsLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <KdsProvider>
-      <div className="kds">
-        {children}
-      </div>
+      <TimerProvider>
+        <div className="kds">
+          {children}
+          <TimerPanel />
+        </div>
+      </TimerProvider>
     </KdsProvider>
   );
 }
