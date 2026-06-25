@@ -2,7 +2,7 @@
 
 import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier } from '@/lib/kds/priority';
-import { isAllergyNote } from '@/lib/kds/notes';
+import { isAllergenOrAdditiveNote } from '@/lib/kds/notes';
 import Timer from './Timer';
 import SourceBadge from './SourceBadge';
 import OrderTypePill from './OrderTypePill';
@@ -42,7 +42,7 @@ export default function ClassicView() {
             </div>
             <div className="kds-sc-items">
               {o.items.map(i => {
-                const allergy = isAllergyNote(i.note);
+                const showNote = i.note && !isAllergenOrAdditiveNote(i.note);
                 return (
                   <div
                     key={i.id}
@@ -61,11 +61,7 @@ export default function ClassicView() {
                       <span className="kds-sc-name">{i.name}</span>
                       <SourceBadge dishName={i.name} fontSize={9} />
                     </div>
-                    {i.note && (
-                      <div className={`kds-note ${allergy ? 'allergy' : ''}`}>
-                        {allergy ? `⚠ ${i.note}` : i.note}
-                      </div>
-                    )}
+                    {showNote && <div className="kds-note">{i.note}</div>}
                   </div>
                 );
               })}

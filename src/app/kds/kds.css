@@ -378,15 +378,12 @@
 .kds-sc-qty { font-size: 18px; font-weight: 900; color: var(--text); font-variant-numeric: tabular-nums; min-width: 34px; }
 .kds-sc-name { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.2; }
 
-/* Special notes — pulled onto their own line, loud. Allergies shout in red. */
+/* Cooking instructions — pulled onto their own line so the cook can't miss them.
+   (Allergen/additive declarations are filtered out upstream — not a kitchen concern.) */
 .kds-note {
   margin: 4px 0 2px 34px; padding: 5px 9px; border-radius: 6px;
   font-size: 13px; font-weight: 700;
   background: rgba(245,158,11,0.16); color: #fcd34d;
-}
-.kds-note.allergy {
-  background: rgba(239,68,68,0.22); border: 1px solid rgba(239,68,68,0.6);
-  color: #fecaca; font-weight: 800; text-transform: uppercase; letter-spacing: 0.3px;
 }
 
 .kds-sc-foot { padding: 8px 12px; border-top: 1px solid #334155; display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }

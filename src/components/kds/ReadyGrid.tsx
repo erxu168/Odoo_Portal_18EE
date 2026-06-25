@@ -2,7 +2,7 @@
 
 import { useKds } from '@/lib/kds/state';
 import { timerTier, passMinutes, passTier } from '@/lib/kds/priority';
-import { isAllergyNote } from '@/lib/kds/notes';
+import { isAllergenOrAdditiveNote } from '@/lib/kds/notes';
 import Timer from './Timer';
 import OrderTypePill from './OrderTypePill';
 import { useState, useEffect } from 'react';
@@ -48,18 +48,14 @@ export default function ReadyGrid() {
             </div>
             <div className="kds-sc-items">
               {o.items.map(i => {
-                const allergy = isAllergyNote(i.note);
+                const showNote = i.note && !isAllergenOrAdditiveNote(i.note);
                 return (
                   <div key={i.id} className="kds-sc-item">
                     <div className="kds-sc-item-main">
                       <span className="kds-sc-qty">{i.qty}x</span>
                       <span className="kds-sc-name">{i.name}</span>
                     </div>
-                    {i.note && (
-                      <div className={`kds-note ${allergy ? 'allergy' : ''}`}>
-                        {allergy ? `⚠ ${i.note}` : i.note}
-                      </div>
-                    )}
+                    {showNote && <div className="kds-note">{i.note}</div>}
                   </div>
                 );
               })}

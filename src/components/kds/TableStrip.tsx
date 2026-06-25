@@ -3,7 +3,7 @@
 import React from 'react';
 import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier, mostUrgentOrderId } from '@/lib/kds/priority';
-import { isAllergyNote } from '@/lib/kds/notes';
+import { isAllergenOrAdditiveNote } from '@/lib/kds/notes';
 import { lookupSource } from '@/types/kds';
 import Timer from './Timer';
 import OrderTypePill from './OrderTypePill';
@@ -86,7 +86,7 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
             <div className="kds-tc-items">
               {o.items.map(item => {
                 const src = lookupSource(item.name, productConfig);
-                const allergy = isAllergyNote(item.note);
+                const showNote = item.note && !isAllergenOrAdditiveNote(item.note);
                 return (
                   <div
                     key={item.id}
@@ -109,11 +109,7 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
                         </span>
                       )}
                     </div>
-                    {item.note && (
-                      <div className={`kds-note ${allergy ? 'allergy' : ''}`}>
-                        {allergy ? `⚠ ${item.note}` : item.note}
-                      </div>
-                    )}
+                    {showNote && <div className="kds-note">{item.note}</div>}
                   </div>
                 );
               })}

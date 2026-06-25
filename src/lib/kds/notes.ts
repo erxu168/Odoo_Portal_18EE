@@ -1,12 +1,16 @@
 /**
  * Note helpers for the KDS.
- * Keeps the "is this an allergy?" rule in one place so every view flags it the same way.
+ *
+ * Cooks need cooking instructions ("no onions", "extra spicy", "gluten free"),
+ * but NOT allergy/additive declarations ("allergy: nuts", "contains E330").
+ * The kitchen does not handle allergen/additive info — that's a front-of-house /
+ * menu-labelling concern — so the screen hides those notes.
  */
 
-// Words that mark a free-text note as an allergy / intolerance, so the screen can shout about it.
-const ALLERGY_PATTERN = /allerg|intoleran|coeliac|celiac|anaphyla|gluten[\s-]?free|nut[\s-]?free/i;
+// Declaration-style allergen / additive info the kitchen should not see.
+const HIDE_PATTERN = /allerg|intoleran|enthält|\bcontains\b|\badditive|zusatzstoff|konservierungsstoff|farbstoff|antioxidationsmittel|geschmacksverstärker|süßungsmittel|phosphat|geschwärzt|geschwefelt|nitritpökel|\bE\s?\d{3}\b/i;
 
-/** True when a note looks like an allergy / intolerance warning. */
-export function isAllergyNote(note?: string | null): boolean {
-  return !!note && ALLERGY_PATTERN.test(note);
+/** True when a note is an allergen / additive declaration that cooks should not see. */
+export function isAllergenOrAdditiveNote(note?: string | null): boolean {
+  return !!note && HIDE_PATTERN.test(note);
 }
