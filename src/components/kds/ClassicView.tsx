@@ -30,8 +30,9 @@ export default function ClassicView() {
       {prep.map(o => {
         const tier = timerTier(o.waitMin, o.type, settings);
         const allDone = o.items.every(i => i.done);
-        const done = o.items.filter(i => i.done).length;
-        const total = o.items.length;
+        // Count by quantity (units of food), not by number of dish lines.
+        const done = o.items.filter(i => i.done).reduce((s, i) => s + i.qty, 0);
+        const total = o.items.reduce((s, i) => s + i.qty, 0);
 
         return (
           <div key={o.id} className={`kds-stage-card tier-${tier} ${allDone ? 'ready' : ''}`}>

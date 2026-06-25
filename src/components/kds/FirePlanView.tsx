@@ -109,16 +109,18 @@ function PassReadiness({ orders }: { orders: KdsOrder[] }) {
     <div className="kds-fp-pass">
       <div className="kds-fp-pass-header">ORDER STATUS</div>
       {orders.map(o => {
-        const done = o.items.filter(i => i.done).length;
-        const total = o.items.length;
-        const allDone = done === total;
-        const waiting = o.items.filter(i => !i.done).map(i => i.name);
+        // Count by quantity (units of food), matching the lane headers, entries
+        // and progress rings \u2014 not by number of dish lines.
+        const doneQty = o.items.filter(i => i.done).reduce((s, i) => s + i.qty, 0);
+        const totalQty = o.items.reduce((s, i) => s + i.qty, 0);
+        const allDone = o.items.every(i => i.done);
+        const waiting = o.items.filter(i => !i.done).map(i => `${i.qty}x ${i.name}`);
 
         return (
           <div key={o.id} className={`kds-fp-pass-row ${allDone ? 'ready' : ''}`}>
             <span className="kds-fp-pass-table">{o.table}</span>
             <span className="kds-fp-pass-status">
-              {allDone ? '\u2705 Ready to serve' : `${done}/${total} done \u2014 still making: ${waiting.join(', ')}`}
+              {allDone ? '\u2705 Ready to serve' : `${doneQty}/${totalQty} done \u2014 still making: ${waiting.join(', ')}`}
             </span>
           </div>
         );

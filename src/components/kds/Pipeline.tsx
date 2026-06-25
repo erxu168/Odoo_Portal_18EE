@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier } from '@/lib/kds/priority';
+import { isAllergenOrAdditiveNote } from '@/lib/kds/notes';
 import { lookupSource } from '@/types/kds';
 import type { KdsOrder } from '@/types/kds';
 import Timer from './Timer';
@@ -38,8 +39,9 @@ export default function Pipeline() {
             const isTa = o.type === 'Takeaway';
             const inRound = firedOrderIds.includes(o.id) && roundState === 'active';
             const isQueued = roundState === 'active' && !firedOrderIds.includes(o.id);
-            const done = o.items.filter(i => i.done).length;
-            const total = o.items.length;
+            // Count by quantity (units of food), not by number of dish lines.
+            const done = o.items.filter(i => i.done).reduce((s, i) => s + i.qty, 0);
+            const total = o.items.reduce((s, i) => s + i.qty, 0);
             const pct = total > 0 ? Math.round((done / total) * 100) : 0;
             const tier = timerTier(o.waitMin, o.type, settings);
 
@@ -64,7 +66,7 @@ export default function Pipeline() {
                       <span className="kds-poi-qty">{item.qty}x</span>
                       <span className="kds-poi-name">{item.name}</span>
                       {lookupSource(item.name, productConfig) && <SourceBadge dishName={item.name} />}
-                      {item.note && <span className="kds-s-note">{item.note}</span>}
+                      {item.note && !isAllergenOrAdditiveNote(item.note) && <span className="kds-s-note">{item.note}</span>}
                       {item.done && <span style={{ color: 'var(--green)', fontSize: '12px', fontWeight: 700 }}>{'\u2713'}</span>}
                     </div>
                   ))}
