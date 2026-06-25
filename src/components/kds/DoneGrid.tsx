@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useKds } from '@/lib/kds/state';
 import { timerTier } from '@/lib/kds/priority';
 import Timer from './Timer';
+import OrderTypePill from './OrderTypePill';
 
 export default function DoneGrid() {
   const { orders, recall, settings } = useKds();
@@ -43,13 +44,17 @@ export default function DoneGrid() {
           return (
             <div key={o.id} className="kds-stage-card done-card">
               <div className="kds-sc-head">
-                <span>{o.table}</span>
+                <span className="kds-sc-ticket">{o.table}</span>
+                <OrderTypePill type={o.type} />
                 <Timer minutes={o.waitMin} tier={tier} size="md" />
               </div>
               <div className="kds-sc-items">
                 {o.items.map(i => (
                   <div key={i.id} className="kds-sc-item">
-                    <strong>{i.qty}x</strong>{i.name}
+                    <div className="kds-sc-item-main">
+                      <span className="kds-sc-qty">{i.qty}x</span>
+                      <span className="kds-sc-name">{i.name}</span>
+                    </div>
                   </div>
                 ))}
               </div>

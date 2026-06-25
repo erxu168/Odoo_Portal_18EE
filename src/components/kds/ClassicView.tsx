@@ -2,9 +2,10 @@
 
 import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier } from '@/lib/kds/priority';
+import { isAllergyNote } from '@/lib/kds/notes';
 import Timer from './Timer';
 import SourceBadge from './SourceBadge';
-import TakeawayBag from './TakeawayBag';
+import OrderTypePill from './OrderTypePill';
 
 export default function ClassicView() {
   const { orders, settings, toggleItem, markReady } = useKds();
@@ -27,42 +28,54 @@ export default function ClassicView() {
   return (
     <div className="kds-stage-grid">
       {prep.map(o => {
-        const isTa = o.type === 'Takeaway';
         const tier = timerTier(o.waitMin, o.type, settings);
         const allDone = o.items.every(i => i.done);
         const done = o.items.filter(i => i.done).length;
         const total = o.items.length;
 
         return (
-          <div key={o.id} className={`kds-stage-card ${allDone ? 'ready' : ''}`}>
+          <div key={o.id} className={`kds-stage-card tier-${tier} ${allDone ? 'ready' : ''}`}>
             <div className="kds-sc-head">
-              <span>
-                {o.table}
-                {isTa && <> <TakeawayBag /></>}
-              </span>
+              <span className="kds-sc-ticket">{o.table}</span>
+              <OrderTypePill type={o.type} />
               <Timer minutes={o.waitMin} tier={tier} size="md" />
             </div>
             <div className="kds-sc-items">
-              {o.items.map(i => (
-                <div
-                  key={i.id}
-                  className="kds-sc-item"
-                  style={{ cursor: 'pointer', opacity: i.done ? 0.3 : 1, textDecoration: i.done ? 'line-through' : 'none' }}
-                  onClick={() => toggleItem(i.id, o.id)}
-                >
-                  <strong>{i.qty}x</strong>
-                  {i.name}
-                  <SourceBadge dishName={i.name} fontSize={9} />
-                  {i.note && <span style={{ color: 'var(--cooking)', fontSize: '10px' }}>{i.note}</span>}
-                </div>
-              ))}
+              {o.items.map(i => {
+                const allergy = isAllergyNote(i.note);
+                return (
+                  <div
+                    key={i.id}
+                    className={`kds-sc-item ${i.done ? 'done' : ''}`}
+                    onClick={() => toggleItem(i.id, o.id)}
+                  >
+                    <div className="kds-sc-item-main">
+                      <span className={`kds-sc-check ${i.done ? 'checked' : ''}`}>
+                        {i.done && (
+                          <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="3" width="15" height="15">
+                            <path d="M3 8.5l3.5 3.5 6.5-7" />
+                          </svg>
+                        )}
+                      </span>
+                      <span className="kds-sc-qty">{i.qty}x</span>
+                      <span className="kds-sc-name">{i.name}</span>
+                      <SourceBadge dishName={i.name} fontSize={9} />
+                    </div>
+                    {i.note && (
+                      <div className={`kds-note ${allergy ? 'allergy' : ''}`}>
+                        {allergy ? `⚠ ${i.note}` : i.note}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="kds-sc-foot">
-              <span>{done}/{total} items</span>
+              <span>{done}/{total} items ready</span>
             </div>
             {allDone && (
-              <button className="kds-sc-btn pickup" onClick={() => markReady(o.id)}>
-                READY
+              <button className="kds-sc-btn ready-btn" onClick={() => markReady(o.id)}>
+                {'✅'} READY
               </button>
             )}
           </div>

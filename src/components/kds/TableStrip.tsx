@@ -3,9 +3,10 @@
 import React from 'react';
 import { useKds } from '@/lib/kds/state';
 import { effectiveWait, timerTier, mostUrgentOrderId } from '@/lib/kds/priority';
+import { isAllergyNote } from '@/lib/kds/notes';
 import { lookupSource } from '@/types/kds';
 import Timer from './Timer';
-import TakeawayBag from './TakeawayBag';
+import OrderTypePill from './OrderTypePill';
 
 const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, ref) {
   const { orders, roundState, firedOrderIds, settings, markReady, toggleItem, productConfig } = useKds();
@@ -35,10 +36,8 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
       {fired.map(o => {
         const total = o.items.length;
         const done = o.items.filter(i => i.done).length;
-        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
         const complete = done === total;
         const isNext = o.id === mui;
-        const isTa = o.type === 'Takeaway';
         const tier = timerTier(o.waitMin, o.type, settings);
 
         return complete ? (
@@ -47,67 +46,74 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
             className="kds-table-card complete"
           >
             <div className="kds-tc-top">
-              <div className="kds-tc-name">
-                {o.table}
-                {isTa && <TakeawayBag size={16} />}
-              </div>
+              <div className="kds-tc-name">{o.table}</div>
+              <OrderTypePill type={o.type} size="sm" />
               <Timer minutes={o.waitMin} tier={tier} size="sm" />
             </div>
             <div className="kds-tc-items">
               {o.items.map(item => (
                 <div key={item.id} className="kds-tc-item done" style={{ pointerEvents: 'none' }}>
-                  <div className="kds-tc-check checked">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.5" width="14" height="14">
-                      <path d="M3 8.5l3.5 3.5 6.5-7" />
-                    </svg>
+                  <div className="kds-tc-item-main">
+                    <div className="kds-tc-check checked">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="3" width="14" height="14">
+                        <path d="M3 8.5l3.5 3.5 6.5-7" />
+                      </svg>
+                    </div>
+                    <span className="kds-tc-item-qty">{item.qty}x</span>
+                    <span className="kds-tc-item-name">{item.name}</span>
                   </div>
-                  <span className="kds-tc-item-qty">{item.qty}x</span>
-                  <span className="kds-tc-item-name">{item.name}</span>
                 </div>
               ))}
             </div>
             <button className="kds-tc-ready-btn" onClick={() => markReady(o.id)}>
-              {'\u2705'} READY
+              {'✅'} READY
             </button>
           </div>
         ) : (
           <div
             key={o.id}
-            className={`kds-table-card ${isNext ? 'is-next' : ''} ${isTa ? 'is-takeaway' : ''}`}
+            className={`kds-table-card tier-${tier} ${isNext ? 'is-next' : ''}`}
           >
             <div className="kds-tc-top">
               <div className="kds-tc-name">
                 {isNext && <div className="kds-tc-next-dot" />}
                 {o.table}
-                {isTa && <TakeawayBag size={16} />}
               </div>
+              <OrderTypePill type={o.type} size="sm" />
               <Timer minutes={o.waitMin} tier={tier} size="sm" />
             </div>
 
             <div className="kds-tc-items">
               {o.items.map(item => {
                 const src = lookupSource(item.name, productConfig);
+                const allergy = isAllergyNote(item.note);
                 return (
                   <div
                     key={item.id}
                     className={`kds-tc-item ${item.done ? 'done' : ''}`}
                     onClick={() => toggleItem(item.id, o.id)}
                   >
-                    <div className={`kds-tc-check ${item.done ? 'checked' : ''}`}>
-                      {item.done && (
-                        <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.5" width="14" height="14">
-                          <path d="M3 8.5l3.5 3.5 6.5-7" />
-                        </svg>
+                    <div className="kds-tc-item-main">
+                      <div className={`kds-tc-check ${item.done ? 'checked' : ''}`}>
+                        {item.done && (
+                          <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="3" width="14" height="14">
+                            <path d="M3 8.5l3.5 3.5 6.5-7" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className="kds-tc-item-qty">{item.qty}x</span>
+                      <span className="kds-tc-item-name">{item.name}</span>
+                      {src && (
+                        <span className="kds-s-source" style={{ background: src.bg, color: src.color, fontSize: '9px' }}>
+                          {src.label}
+                        </span>
                       )}
                     </div>
-                    <span className="kds-tc-item-qty">{item.qty}x</span>
-                    <span className="kds-tc-item-name">{item.name}</span>
-                    {src && (
-                      <span className="kds-s-source" style={{ background: src.bg, color: src.color, fontSize: '9px' }}>
-                        {src.label}
-                      </span>
+                    {item.note && (
+                      <div className={`kds-note ${allergy ? 'allergy' : ''}`}>
+                        {allergy ? `⚠ ${item.note}` : item.note}
+                      </div>
                     )}
-                    {item.note && <span className="kds-tc-item-note">{item.note}</span>}
                   </div>
                 );
               })}
@@ -117,29 +123,26 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
         );
       })}
 
-      {queued.map(o => {
-        const isTa = o.type === 'Takeaway';
-        return (
-          <div key={o.id} className="kds-table-card queued">
-            <div className="kds-tc-top">
-              <div className="kds-tc-name">
-                {o.table}
-                {isTa && <TakeawayBag size={16} />}
-              </div>
-              <span className="kds-tc-queued-tag">NEXT ROUND</span>
-            </div>
-            <div className="kds-tc-items">
-              {o.items.map(item => (
-                <div key={item.id} className="kds-tc-item" style={{ opacity: 0.4 }}>
+      {queued.map(o => (
+        <div key={o.id} className="kds-table-card queued">
+          <div className="kds-tc-top">
+            <div className="kds-tc-name">{o.table}</div>
+            <OrderTypePill type={o.type} size="sm" />
+            <span className="kds-tc-queued-tag">NEXT ROUND</span>
+          </div>
+          <div className="kds-tc-items">
+            {o.items.map(item => (
+              <div key={item.id} className="kds-tc-item" style={{ opacity: 0.4 }}>
+                <div className="kds-tc-item-main">
                   <div className="kds-tc-check" />
                   <span className="kds-tc-item-qty">{item.qty}x</span>
                   <span className="kds-tc-item-name">{item.name}</span>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        );
-      })}
+        </div>
+      ))}
     </div>
   );
 });

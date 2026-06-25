@@ -29,10 +29,10 @@ export default function KdsTopbar() {
         <button
           className="kds-topbar-btn"
           onClick={() => setMode(mode === 'smart' ? 'classic' : 'smart')}
-          aria-label={`Switch to ${mode === 'smart' ? 'classic' : 'smart'} mode`}
-          style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.5px' }}
+          aria-label={mode === 'smart' ? 'Switch to one-card-per-order view' : 'Switch to grouped-by-dish view'}
+          style={{ fontSize: 12, fontWeight: 700, letterSpacing: '0.3px' }}
         >
-          {mode === 'smart' ? 'CLASSIC' : 'SMART'}
+          {mode === 'smart' ? 'By order ⇄' : 'By dish ⇄'}
         </button>
         <button
           className={`kds-topbar-btn ${muted ? 'is-muted' : ''}`}
