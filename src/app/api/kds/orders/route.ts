@@ -97,6 +97,7 @@ export async function GET(req: NextRequest) {
       [
         ['order_id', 'in', orderIds],
         ['qty', '>', 0], // exclude refund lines
+        ['product_id.type', '!=', 'service'], // exclude tips / fees / other non-food service lines
       ],
       ['id', 'order_id', 'full_product_name', 'qty', 'note', 'customer_note'],
       { limit: 800 }
