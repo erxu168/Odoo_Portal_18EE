@@ -10,6 +10,19 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { playTimerAlarm } from './soundEngine';
 
+const STORAGE_KEY = 'kds_timer_state_v1';
+
+/** Format a number of seconds as M:SS or H:MM:SS. */
+export function formatDuration(totalSec: number): string {
+  const s = Math.max(0, Math.floor(totalSec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const ss = String(sec).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
 export interface KitchenTimer {
   id: number;
   label: string;
@@ -57,6 +70,36 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const nextId = useRef(1);
   const timersRef = useRef<KitchenTimer[]>([]);
   timersRef.current = timers;
+  const firstSave = useRef(true);
+
+  // Restore persisted timers/stopwatch on mount (survives a page reload).
+  // State is timestamp-based, so running timers/stopwatch resume at the correct time.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as { timers?: KitchenTimer[]; stopwatch?: StopwatchState };
+      const now = Date.now();
+      if (Array.isArray(data.timers)) {
+        const loaded = data.timers.map(t =>
+          (t.endsAt !== null && !t.finished && t.endsAt - now <= 0)
+            ? { ...t, endsAt: null, remainingSec: 0, finished: true }
+            : t
+        );
+        setTimers(loaded);
+        nextId.current = loaded.reduce((m, t) => Math.max(m, t.id), 0) + 1;
+      }
+      if (data.stopwatch) setStopwatch(data.stopwatch);
+    } catch { /* ignore corrupt/unavailable storage */ }
+  }, []);
+
+  // Persist on change (skip the first run so we don't clobber what we just loaded).
+  useEffect(() => {
+    if (firstSave.current) { firstSave.current = false; return; }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ timers, stopwatch }));
+    } catch { /* ignore */ }
+  }, [timers, stopwatch]);
 
   // Watch for finished countdowns and alarm — runs regardless of panel state.
   useEffect(() => {
