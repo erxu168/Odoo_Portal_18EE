@@ -7,6 +7,7 @@ import Timer from './Timer';
 import SourceBadge from './SourceBadge';
 import TakeawayBag from './TakeawayBag';
 import { timerTier, getTableRemaining } from '@/lib/kds/priority';
+import { isAllergenOrAdditiveNote } from '@/lib/kds/notes';
 
 interface TaskCardProps {
   task: TaskGroup;
@@ -60,7 +61,7 @@ export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardPro
       <div className="kds-task-divider" />
 
       <div className="kds-serve-queue">
-        <div className="kds-serve-label">Plate for</div>
+        <div className="kds-serve-label">Orders</div>
         {task.entries.map((entry) => {
           const showNext = entry.ticketId === mostUrgentId && !entry.done;
           const otherItems = showNext
@@ -77,15 +78,15 @@ export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardPro
               >
                 <div className={`kds-s-check ${entry.done ? 'checked' : ''}`}>
                   {entry.done && (
-                    <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.5" width="12" height="12">
+                    <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="3" width="13" height="13">
                       <path d="M3 8.5l3.5 3.5 6.5-7" />
                     </svg>
                   )}
                 </div>
-                <span className="kds-s-qty">{entry.qty}x</span>
                 <span className="kds-s-table">{entry.table}</span>
-                {isTa && <TakeawayBag />}
-                {entry.note && <span className="kds-s-note">{entry.note}</span>}
+                <span className="kds-s-qty">{entry.qty}x</span>
+                {isTa && <TakeawayBag size={16} />}
+                {entry.note && !isAllergenOrAdditiveNote(entry.note) && <span className="kds-s-note">{entry.note}</span>}
                 <Timer minutes={entry.waitMin} tier={tier} size="sm" />
               </div>
               {showNext && otherItems.length > 0 && (

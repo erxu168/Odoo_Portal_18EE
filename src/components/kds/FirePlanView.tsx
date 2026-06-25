@@ -2,6 +2,7 @@
 
 import { useKds } from '@/lib/kds/state';
 import { buildFirePlan, effectiveWait, timerTier } from '@/lib/kds/priority';
+import { isAllergenOrAdditiveNote } from '@/lib/kds/notes';
 import { lookupSource } from '@/types/kds';
 import type { FireLane, FireTask, KdsOrder } from '@/types/kds';
 import Timer from './Timer';
@@ -83,16 +84,16 @@ function TaskRow({ task }: { task: FireTask }) {
             >
               <div className={`kds-fp-check ${entry.done ? 'checked' : ''}`}>
                 {entry.done && (
-                  <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.5" width="10" height="10">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="3" width="12" height="12">
                     <path d="M3 8.5l3.5 3.5 6.5-7" />
                   </svg>
                 )}
               </div>
-              <span className="kds-fp-entry-qty">{entry.qty}x</span>
               <span className="kds-fp-entry-table">{entry.table}</span>
-              {entry.type === 'Takeaway' && <TakeawayBag />}
+              <span className="kds-fp-entry-qty">{entry.qty}x</span>
+              {entry.type === 'Takeaway' && <TakeawayBag size={16} />}
               <Timer minutes={entry.waitMin} tier={tier} size="sm" />
-              {entry.note && <span className="kds-s-note">{entry.note}</span>}
+              {entry.note && !isAllergenOrAdditiveNote(entry.note) && <span className="kds-s-note">{entry.note}</span>}
             </div>
           );
         })}
@@ -106,7 +107,7 @@ function PassReadiness({ orders }: { orders: KdsOrder[] }) {
 
   return (
     <div className="kds-fp-pass">
-      <div className="kds-fp-pass-header">PASS READINESS</div>
+      <div className="kds-fp-pass-header">ORDER STATUS</div>
       {orders.map(o => {
         const done = o.items.filter(i => i.done).length;
         const total = o.items.length;
@@ -117,7 +118,7 @@ function PassReadiness({ orders }: { orders: KdsOrder[] }) {
           <div key={o.id} className={`kds-fp-pass-row ${allDone ? 'ready' : ''}`}>
             <span className="kds-fp-pass-table">{o.table}</span>
             <span className="kds-fp-pass-status">
-              {allDone ? '\u2705 READY' : `${done}/${total} \u2014 waiting: ${waiting.join(', ')}`}
+              {allDone ? '\u2705 Ready to serve' : `${done}/${total} done \u2014 still making: ${waiting.join(', ')}`}
             </span>
           </div>
         );

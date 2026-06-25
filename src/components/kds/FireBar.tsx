@@ -14,7 +14,7 @@ export default function FireBar() {
     if (prep.length === 0) {
       return (
         <div className="kds-fire-bar">
-          <div className="kds-fire-status">No orders to fire</div>
+          <div className="kds-fire-status">No orders waiting</div>
         </div>
       );
     }
@@ -25,10 +25,10 @@ export default function FireBar() {
             <path d="M12 2c0 4-4 6-4 10a4 4 0 0 0 8 0c0-4-4-6-4-10z" />
             <path d="M12 18v3" />
           </svg>
-          FIRE ROUND
+          START COOKING
         </button>
         <div className="kds-fire-status">
-          <strong>{prep.length} orders</strong> ready -- review and fire when ready
+          <strong>{prep.length} orders</strong> waiting -- tap Start Cooking
         </div>
       </div>
     );
@@ -43,7 +43,7 @@ export default function FireBar() {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
             <path d="M5 12h14M12 5l7 7-7 7" />
           </svg>
-          NEXT ROUND
+          START NEXT ORDERS
         </button>
       ) : (
         <div className="kds-fire-btn round-active">
@@ -51,19 +51,19 @@ export default function FireBar() {
             <circle cx="12" cy="12" r="10" />
             <path d="M12 6v6l3 3" />
           </svg>
-          ROUND ACTIVE
+          COOKING NOW
         </div>
       )}
       <div className="kds-fire-status">
         {roundComplete ? (
-          <><strong>Round complete!</strong> Tap to load next orders.</>
+          <><strong>All done!</strong> Tap for the next orders.</>
         ) : (
-          <><strong>{activeLeft} tables</strong> still plating in this round</>
+          <><strong>{activeLeft} {activeLeft === 1 ? 'order' : 'orders'}</strong> still being made</>
         )}
       </div>
       {queued.length > 0 && (
         <div className="kds-next-round-badge has-orders">
-          Next round: <span className="kds-nrb-count">{queued.length}</span> orders waiting
+          <span className="kds-nrb-count">{queued.length}</span> more {queued.length === 1 ? 'order' : 'orders'} waiting
         </div>
       )}
     </div>
