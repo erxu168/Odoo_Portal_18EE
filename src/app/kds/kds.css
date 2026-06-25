@@ -525,15 +525,22 @@
 .kds-fp-lane-emoji { font-size: 16px; }
 .kds-fp-lane-label { font-size: 13px; font-weight: 800; letter-spacing: 0.08em; color: var(--text); }
 
-.kds-fp-tasks { display: flex; flex-direction: column; }
+/* Dishes laid out as horizontal cards (consistent with the idle view) */
+.kds-fp-tasks { display: flex; flex-direction: row; gap: 10px; padding: 10px; overflow-x: auto; align-items: flex-start; }
 
-.kds-fp-task { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.kds-fp-task {
+  box-sizing: border-box; flex-shrink: 0;
+  min-width: 210px; max-width: 260px;
+  padding: 10px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--card);
+}
 .kds-fp-task.all-done { opacity: 0.4; }
-.kds-fp-task-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.kds-fp-task-qty { font-size: 16px; font-weight: 800; color: var(--text); min-width: 30px; }
-.kds-fp-task-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.kds-fp-task-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.kds-fp-task-qty { font-size: 18px; font-weight: 800; color: var(--text); min-width: 30px; }
+.kds-fp-task-name { font-size: 15px; font-weight: 700; color: var(--text); }
 
-.kds-fp-task-tables { display: flex; flex-wrap: wrap; gap: 4px; margin-left: 30px; }
+.kds-fp-task-tables { display: flex; flex-direction: column; gap: 4px; margin-left: 0; }
+.kds-fp-task .kds-fp-entry { flex-wrap: wrap; }
+.kds-fp-task .kds-fp-entry .kds-timer { margin-left: auto; }
 
 .kds-fp-entry { display: flex; align-items: center; gap: 8px; padding: 7px 11px; border-radius: 8px; background: rgba(255,255,255,0.05); cursor: pointer; transition: background 0.15s; }
 .kds-fp-entry:active { background: rgba(255,255,255,0.09); transform: scale(0.97); }
@@ -548,15 +555,22 @@
 /* Pass readiness */
 .kds-fp-pass { background: var(--surface); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
 .kds-fp-pass-header { padding: 8px 12px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--border); }
-.kds-fp-pass-row { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); }
-.kds-fp-pass-row.ready { background: rgba(34,197,94,0.08); }
+/* Orders laid out as horizontal cards (consistent with the idle view) */
+.kds-fp-pass-rows { display: flex; flex-direction: row; gap: 10px; padding: 10px; overflow-x: auto; align-items: flex-start; }
+.kds-fp-pass-row {
+  box-sizing: border-box; flex-shrink: 0;
+  min-width: 210px; max-width: 290px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  padding: 12px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--card);
+}
+.kds-fp-pass-row.ready { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.4); }
 .kds-fp-pass-table { font-size: 21px; font-weight: 900; color: var(--text); min-width: 64px; font-variant-numeric: tabular-nums; }
 .kds-fp-pass-status { font-size: 13px; font-weight: 600; color: var(--muted); }
 .kds-fp-pass-row.ready .kds-fp-pass-status { color: var(--green); }
 .kds-fp-pass-ready {
-  margin-left: auto; flex-shrink: 0;
+  width: 100%; margin-top: 2px;
   background: var(--green); color: #fff; border: none; border-radius: 8px;
-  padding: 9px 18px; font-size: 14px; font-weight: 800; cursor: pointer;
+  padding: 10px 18px; font-size: 14px; font-weight: 800; cursor: pointer;
 }
 .kds-fp-pass-ready:active { transform: scale(0.96); }
 

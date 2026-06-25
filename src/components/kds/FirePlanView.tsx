@@ -155,6 +155,7 @@ function PassReadiness({ orders }: { orders: KdsOrder[] }) {
   return (
     <div className="kds-fp-pass">
       <div className="kds-fp-pass-header">ORDER STATUS</div>
+      <div className="kds-fp-pass-rows">
       {orders.map(o => {
         // Count by quantity (units of food), matching the lanes and progress rings.
         const doneQty = o.items.filter(i => i.done).reduce((s, i) => s + i.qty, 0);
@@ -176,6 +177,7 @@ function PassReadiness({ orders }: { orders: KdsOrder[] }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
