@@ -10,7 +10,7 @@ export default function OrderTypePill({ type, size = 'md' }: { type: OrderType; 
   const isTa = type === 'Takeaway';
   return (
     <span className={`kds-type-pill ${isTa ? 'takeaway' : 'dinein'} kds-type-pill-${size}`}>
-      {isTa ? 'TAKEAWAY' : 'DINE-IN'}
+      {isTa ? 'TAKE AWAY' : 'DINE-IN'}
     </span>
   );
 }
