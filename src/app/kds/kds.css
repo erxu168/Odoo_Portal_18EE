@@ -576,6 +576,18 @@
 }
 .kds-fp-pass-ready:active { transform: scale(0.96); }
 
+/* Item list inside each order-status card */
+.kds-fp-pass-items { display: flex; flex-direction: column; gap: 2px; width: 100%; margin: 2px 0; }
+.kds-fp-pass-item { display: flex; align-items: center; gap: 8px; padding: 4px 2px; }
+.kds-fp-pass-item.done { opacity: 0.6; }
+.kds-fp-pass-item-check {
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid #475569;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.kds-fp-pass-item.done .kds-fp-pass-item-check { background: var(--ready); border-color: var(--ready); }
+.kds-fp-pass-item-qty { font-size: 15px; font-weight: 800; color: var(--text); min-width: 26px; font-variant-numeric: tabular-nums; }
+.kds-fp-pass-item-name { font-size: 14px; font-weight: 600; color: var(--text); }
+
 /* DONE section — finished dishes stay visible so the cook can review & undo */
 .kds-fp-done-lane { border-left: 4px solid var(--green); }
 .kds-fp-done-lane .kds-fp-lane-label { color: #4ade80; }

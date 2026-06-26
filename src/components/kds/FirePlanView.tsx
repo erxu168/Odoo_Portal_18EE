@@ -161,14 +161,28 @@ function PassReadiness({ orders }: { orders: KdsOrder[] }) {
         const doneQty = o.items.filter(i => i.done).reduce((s, i) => s + i.qty, 0);
         const totalQty = o.items.reduce((s, i) => s + i.qty, 0);
         const allDone = o.items.every(i => i.done);
-        const waiting = o.items.filter(i => !i.done).map(i => `${i.qty}x ${i.name}`);
 
         return (
           <div key={o.id} className={`kds-fp-pass-row ${allDone ? 'ready' : ''}`}>
             <span className="kds-fp-pass-table">{o.table}</span>
             <span className="kds-fp-pass-status">
-              {allDone ? '✅ Ready to serve' : `${doneQty}/${totalQty} done — still making: ${waiting.join(', ')}`}
+              {allDone ? '✅ Ready to serve' : `${doneQty}/${totalQty} done`}
             </span>
+            <div className="kds-fp-pass-items">
+              {o.items.map(i => (
+                <div key={i.id} className={`kds-fp-pass-item ${i.done ? 'done' : ''}`}>
+                  <span className="kds-fp-pass-item-check">
+                    {i.done && (
+                      <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="3" width="11" height="11">
+                        <path d="M3 8.5l3.5 3.5 6.5-7" />
+                      </svg>
+                    )}
+                  </span>
+                  <span className="kds-fp-pass-item-qty">{i.qty}x</span>
+                  <span className="kds-fp-pass-item-name">{i.name}</span>
+                </div>
+              ))}
+            </div>
             {allDone && (
               <button className="kds-fp-pass-ready" onClick={() => markReady(o.id)}>
                 Mark Ready
