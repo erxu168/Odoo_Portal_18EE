@@ -292,6 +292,15 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const setMode = useCallback((m: KdsMode) => setModeState(m), []);
 
+  // Auto-advance: once every fired order has been marked Ready (none of the
+  // round's orders are still in prep), end the round automatically instead of
+  // making the cook tap "Start next orders".
+  useEffect(() => {
+    if (roundState !== 'active') return;
+    const stillCooking = orders.some(o => firedOrderIds.includes(o.id) && o.status === 'prep');
+    if (!stillCooking) nextRound();
+  }, [roundState, firedOrderIds, orders, nextRound]);
+
   const value: KdsContextType = {
     orders, roundState, firedOrderIds, currentTab, mode, settings, muted, settingsOpen,
     nextId: nextIdRef.current, productConfig,
