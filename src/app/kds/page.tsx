@@ -49,9 +49,10 @@ export default function KdsPage() {
     };
   }, [handleInteraction]);
 
-  // Sound: new order
+  // Sound: new order (only while something is actually being prepared)
   useEffect(() => {
-    if (orders.length > prevCountRef.current && !muted && settings.sndNewOrder) {
+    const hasPrep = orders.some(o => o.status === 'prep');
+    if (hasPrep && orders.length > prevCountRef.current && !muted && settings.sndNewOrder) {
       playNewOrderSound(settings.sndNewOrderVol);
       const newest = orders[orders.length - 1];
       showToast(`New order: ${newest.table}`);
@@ -67,16 +68,19 @@ export default function KdsPage() {
     }
     const roundOrders = orders.filter(o => firedOrderIds.includes(o.id) && o.status === 'prep');
     const isComplete = roundOrders.length === 0 || roundOrders.every(o => o.items.every(i => i.done));
-    if (isComplete && !prevRoundDoneRef.current && !muted && settings.sndRound) {
+    // Only chime if the round actually had food being prepared (no empty-board sound).
+    if (isComplete && roundOrders.length > 0 && !prevRoundDoneRef.current && !muted && settings.sndRound) {
       playRoundDone(settings.sndRoundVol);
     }
     prevRoundDoneRef.current = isComplete;
   }, [orders, roundState, firedOrderIds, muted, settings.sndRound, settings.sndRoundVol]);
 
-  // Sound: pass alert (check every 15s)
+  // Sound: pass alert (check every 15s) — only while the kitchen is busy
   useEffect(() => {
     if (!settings.sndPass || muted) return;
     const interval = setInterval(() => {
+      // No order being prepared -> kitchen is idle -> stay silent.
+      if (!orders.some(o => o.status === 'prep')) return;
       const readyOrders = orders.filter(o => o.status === 'ready' && o.readyAt);
       const hasCritical = readyOrders.some(o => passTier(o.readyAt!, settings) === 'red');
       if (hasCritical) playPassAlert(settings.sndPassVol);
