@@ -4,6 +4,8 @@ import { useEffect, useCallback, useState, useRef } from 'react';
 import { useKds } from '@/lib/kds/state';
 import { buildTaskGroups, effectiveWait, mostUrgentOrderId, passTier } from '@/lib/kds/priority';
 import { unlockAudio, playNewOrderSound, playPassAlert, playRoundDone } from '@/lib/kds/soundEngine';
+import { useTaskReminders } from '@/lib/kds/taskReminders';
+import TaskReminderOverlay from '@/components/kds/TaskReminderOverlay';
 import KdsTopbar from '@/components/kds/KdsTopbar';
 import KdsTabs from '@/components/kds/KdsTabs';
 import FireBar from '@/components/kds/FireBar';
@@ -18,6 +20,7 @@ import SettingsPanel from '@/components/kds/SettingsPanel';
 
 export default function KdsPage() {
   const { orders, currentTab, roundState, firedOrderIds, settings, muted, mode, connected } = useKds();
+  const { reminder, dismiss: dismissReminder } = useTaskReminders(settings.posConfigId, muted);
   const [toast, setToast] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const boost = settings.takeawayBoost;
@@ -51,14 +54,16 @@ export default function KdsPage() {
 
   // Sound: new order (only while something is actually being prepared)
   useEffect(() => {
+    const isNewOrder = orders.length > prevCountRef.current;
     const hasPrep = orders.some(o => o.status === 'prep');
-    if (hasPrep && orders.length > prevCountRef.current && !muted && settings.sndNewOrder) {
+    if (isNewOrder) dismissReminder(); // a new order takes the screen back from any task reminder
+    if (isNewOrder && hasPrep && !muted && settings.sndNewOrder) {
       playNewOrderSound(settings.sndNewOrderVol);
       const newest = orders[orders.length - 1];
       showToast(`New order: ${newest.table}`);
     }
     prevCountRef.current = orders.length;
-  }, [orders.length, muted, settings.sndNewOrder, settings.sndNewOrderVol, orders]);
+  }, [orders.length, muted, settings.sndNewOrder, settings.sndNewOrderVol, orders, dismissReminder]);
 
   // Sound: round done
   useEffect(() => {
@@ -197,6 +202,8 @@ export default function KdsPage() {
       )}
 
       <SettingsPanel />
+
+      <TaskReminderOverlay reminder={reminder} />
 
       {toast && <div className="kds-toast">{toast}</div>}
     </>

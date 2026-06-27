@@ -63,6 +63,32 @@
   flex-shrink: 0; animation: kds-blink 1s step-end infinite;
 }
 
+/* TASK REMINDER — pops over the board, fades, never blocks (informational only) */
+.kds-task-reminder {
+  position: fixed; inset: 0; z-index: 150;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  animation: kds-task-pop 12s ease forwards;
+}
+@keyframes kds-task-pop {
+  0%   { opacity: 0; transform: scale(0.94); }
+  4%   { opacity: 1; transform: scale(1); }
+  90%  { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+.kds-task-reminder-card {
+  box-sizing: border-box; max-width: 84%; text-align: center;
+  border-radius: 22px; padding: 40px 56px;
+  border: 3px solid #fff;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.55);
+}
+.kds-task-reminder.upcoming .kds-task-reminder-card { background: #f59e0b; color: #1a1a1a; }
+.kds-task-reminder.overdue  .kds-task-reminder-card { background: #ef4444; color: #fff; }
+.kds-task-reminder-icon { font-size: 60px; line-height: 1; margin-bottom: 6px; }
+.kds-task-reminder-text { font-size: 42px; font-weight: 800; line-height: 1.15; }
+.kds-task-reminder-due  { font-size: 26px; font-weight: 800; margin-top: 14px; text-transform: uppercase; letter-spacing: 1.5px; }
+.kds-task-reminder.overdue .kds-task-reminder-due { animation: kds-blink 0.8s step-end infinite; }
+
 /* TOOLBAR — tabs + fire bar in one row */
 .kds-toolbar {
   background: #020617;

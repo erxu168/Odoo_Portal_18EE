@@ -69,6 +69,25 @@ export function playPassAlert(vol: number = 0.8): void {
   }
 }
 
+/** Distinct two-tone alert for a due task reminder */
+export function playTaskReminder(vol: number = 0.85): void {
+  const ctx = getCtx();
+  const now = ctx.currentTime;
+  [660, 880].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, now + i * 0.18);
+    gain.gain.linearRampToValueAtTime(vol * 0.4, now + i * 0.18 + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.18 + 0.6);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now + i * 0.18);
+    osc.stop(now + i * 0.18 + 0.6);
+  });
+}
+
 /** Insistent four-beep alarm for a finished kitchen timer */
 export function playTimerAlarm(vol: number = 0.9): void {
   for (let i = 0; i < 4; i++) {
