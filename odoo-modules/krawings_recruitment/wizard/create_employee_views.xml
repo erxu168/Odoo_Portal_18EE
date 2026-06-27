@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_create_employee_wizard" model="ir.ui.view">
+        <field name="name">create.employee.wizard.form</field>
+        <field name="model">create.employee.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Create Employee">
+                <group invisible="employee_created">
+                    <group>
+                        <field name="applicant_name" string="Name"/>
+                        <field name="applicant_email" string="Email"/>
+                        <field name="department_id"/>
+                        <field name="job_id"/>
+                    </group>
+                    <separator/>
+                    <p class="text-muted">
+                        This will create an employee record for this applicant.
+                        The employee will be linked to the applicant automatically.
+                    </p>
+                </group>
+                <group invisible="not employee_created">
+                    <field name="result_message" widget="text" readonly="1" nolabel="1"/>
+                </group>
+                <field name="applicant_id" invisible="1"/>
+                <field name="employee_created" invisible="1"/>
+                <footer>
+                    <button string="Create Employee" name="action_create_employee" type="object"
+                            class="btn-primary" invisible="employee_created"/>
+                    <button string="Close" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_create_employee_wizard" model="ir.actions.act_window">
+        <field name="name">Create Employee</field>
+        <field name="res_model">create.employee.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="hr_recruitment.model_hr_applicant"/>
+    </record>
+</odoo>

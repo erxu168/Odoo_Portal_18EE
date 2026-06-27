@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="grant_portal_access_wizard_form" model="ir.ui.view">
+        <field name="name">grant.portal.access.wizard.form</field>
+        <field name="model">grant.portal.access.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Grant Portal Access">
+                <group invisible="access_granted">
+                    <group>
+                        <field name="applicant_id" readonly="1"/>
+                        <field name="applicant_name" readonly="1"/>
+                        <field name="applicant_email" readonly="1"/>
+                    </group>
+                </group>
+                <div invisible="not access_granted" class="alert alert-success" role="alert">
+                    <field name="result_message" readonly="1" nolabel="1"
+                           widget="text" style="white-space: pre-wrap;"/>
+                </div>
+                <field name="access_granted" invisible="1"/>
+                <field name="temp_password" invisible="1"/>
+                <field name="portal_url" invisible="1"/>
+                <footer>
+                    <button name="action_grant_access"
+                            string="Grant Access"
+                            type="object"
+                            class="btn-primary"
+                            invisible="access_granted"/>
+                    <button string="Close" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_grant_portal_access_wizard" model="ir.actions.act_window">
+        <field name="name">Grant Portal Access</field>
+        <field name="res_model">grant.portal.access.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="hr_recruitment.model_hr_applicant"/>
+    </record>
+
+</odoo>
