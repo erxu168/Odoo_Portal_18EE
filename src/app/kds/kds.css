@@ -49,6 +49,20 @@
 .kds-topbar-btn.is-muted { color: var(--red); }
 .kds-clock { font-variant-numeric: tabular-nums; font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: 0.5px; padding-left: 2px; }
 
+/* OFFLINE BANNER — internet/server unreachable */
+.kds-offline-banner {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 10px;
+  background: #b45309; color: #fff;
+  font-size: 15px; font-weight: 700;
+  padding: 9px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.25);
+}
+.kds-offline-dot {
+  width: 10px; height: 10px; border-radius: 50%; background: #fde68a;
+  flex-shrink: 0; animation: kds-blink 1s step-end infinite;
+}
+
 /* TOOLBAR — tabs + fire bar in one row */
 .kds-toolbar {
   background: #020617;

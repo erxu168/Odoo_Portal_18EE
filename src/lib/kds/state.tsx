@@ -16,6 +16,7 @@ interface KdsState {
   settingsOpen: boolean;
   nextId: number;
   productConfig: ProductConfig[];
+  connected: boolean;
 }
 
 interface KdsActions {
@@ -54,6 +55,7 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
   const [muted, setMuted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [productConfig, setProductConfig] = useState<ProductConfig[]>([]);
+  const [connected, setConnected] = useState(true);
   const nextIdRef = useRef(8);
   // Track locally checked items so they survive poll refreshes
   const checkedItemsRef = useRef<Set<string>>(new Set());
@@ -109,6 +111,7 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
       try {
         const res = await fetch(`/api/kds/orders?configId=${settings.posConfigId}`);
         const data = await res.json();
+        if (active) setConnected(true); // reached the server
         if (!active || !data.orders) return;
 
         const odooOrders: KdsOrder[] = data.orders.map((o: KdsOrder) => ({
@@ -145,6 +148,7 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
         });
       } catch (err) {
         console.error('[KDS] poll error:', err);
+        if (active) setConnected(false); // server unreachable — internet/down
       }
     }
 
@@ -152,6 +156,13 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(poll, 5000);
     return () => { active = false; clearInterval(interval); };
   }, [settings.posConfigId]);
+
+  // Immediate offline feedback from the device's own network status.
+  useEffect(() => {
+    const onOffline = () => setConnected(false);
+    window.addEventListener('offline', onOffline);
+    return () => window.removeEventListener('offline', onOffline);
+  }, []);
 
   // Mock: simulate new orders in dev when no POS config
   useEffect(() => {
@@ -303,7 +314,7 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
 
   const value: KdsContextType = {
     orders, roundState, firedOrderIds, currentTab, mode, settings, muted, settingsOpen,
-    nextId: nextIdRef.current, productConfig,
+    nextId: nextIdRef.current, productConfig, connected,
     fireRound, nextRound, toggleItem, markReady, pickup, recall,
     setTab, toggleMute, openSettings, closeSettings, updateSettings, addOrder, setMode,
   };

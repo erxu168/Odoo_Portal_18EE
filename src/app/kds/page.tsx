@@ -17,7 +17,7 @@ import FirePlanView from '@/components/kds/FirePlanView';
 import SettingsPanel from '@/components/kds/SettingsPanel';
 
 export default function KdsPage() {
-  const { orders, currentTab, roundState, firedOrderIds, settings, muted, mode } = useKds();
+  const { orders, currentTab, roundState, firedOrderIds, settings, muted, mode, connected } = useKds();
   const [toast, setToast] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const boost = settings.takeawayBoost;
@@ -136,6 +136,12 @@ export default function KdsPage() {
   return (
     <>
       <KdsTopbar />
+      {!connected && (
+        <div className="kds-offline-banner">
+          <span className="kds-offline-dot" />
+          Offline — reconnecting. Orders on screen are still valid; new orders appear when the connection is back.
+        </div>
+      )}
       <div className="kds-toolbar">
         <KdsTabs />
         {currentTab === 'prep' && mode === 'smart' && <FireBar />}
