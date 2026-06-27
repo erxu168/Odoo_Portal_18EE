@@ -5,15 +5,17 @@ import { KDS_LOCATION_ID } from '@/types/kds';
 
 export const dynamic = 'force-dynamic';
 
-/** Today's calendar date (YYYY-MM-DD) in Europe/Berlin. */
-function berlinToday(): string {
-  return new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
+/** Odoo stores datetimes as naive UTC "YYYY-MM-DD HH:MM:SS". */
+function toOdooUtc(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
 }
 
 /**
- * Due/upcoming tasks from today's task list(s) for the register's company.
- * Returns only tasks that have a due time set and are not yet completed; the
- * KDS decides which are "within the reminder window". No order data here.
+ * Tasks worth reminding about: not yet completed, with a due time that is
+ * within the next couple of hours or recently overdue, for the register's
+ * company. We filter on the deadline timestamp (absolute time) rather than the
+ * list's calendar date, so it is robust across the UTC/local midnight boundary.
+ * The KDS decides which of these are inside its 30-min reminder window.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -23,28 +25,22 @@ export async function GET(req: NextRequest) {
 
     const odoo = getOdoo();
 
-    // Company that owns this register.
     const configs = await odoo.searchRead('pos.config', [['id', '=', configId]], ['company_id'], { limit: 1 });
     const companyId = configs.length && Array.isArray(configs[0].company_id) ? configs[0].company_id[0] : null;
     if (!companyId) return NextResponse.json({ tasks: [] });
 
-    // Today's task lists for that company.
-    const lists = await odoo.searchRead(
-      'krawings.task.list',
-      [['date', '=', berlinToday()], ['company_id', '=', companyId]],
-      ['id'],
-      { limit: 50 }
-    );
-    const listIds = lists.map((l: any) => l.id);
-    if (listIds.length === 0) return NextResponse.json({ tasks: [] });
+    const now = Date.now();
+    const lower = toOdooUtc(now - 12 * 60 * 60 * 1000); // ignore tasks overdue by more than 12h
+    const upper = toOdooUtc(now + 2 * 60 * 60 * 1000);  // ignore tasks due more than 2h out
 
-    // Task lines that have a deadline and are not yet done.
     const lines = await odoo.searchRead(
       'krawings.task.list.line',
       [
-        ['list_id', 'in', listIds],
+        ['list_id.company_id', '=', companyId],
         ['deadline_datetime', '!=', false],
         ['completed_at', '=', false],
+        ['deadline_datetime', '>=', lower],
+        ['deadline_datetime', '<=', upper],
       ],
       ['id', 'name', 'deadline_datetime'],
       { limit: 100 }
@@ -53,7 +49,6 @@ export async function GET(req: NextRequest) {
     const tasks = lines.map((l: any) => ({
       id: l.id,
       name: l.name || 'Task',
-      // Odoo datetimes are naive UTC ("YYYY-MM-DD HH:MM:SS"); convert to epoch ms.
       deadlineMs: new Date(l.deadline_datetime.replace(' ', 'T') + 'Z').getTime(),
     }));
 
