@@ -11,7 +11,7 @@ DEFAULT_PORTAL_BASE_URL = "http://127.0.0.1:3000"
 PORTAL_TIMEOUT = 30
 
 
-def _get_config(env):
+def get_portal_config(env):
     """Read the portal base URL + internal API token from system parameters."""
     icp = env["ir.config_parameter"].sudo()
     base_url = (icp.get_param("krawings.portal_base_url") or DEFAULT_PORTAL_BASE_URL).rstrip("/")
@@ -19,14 +19,11 @@ def _get_config(env):
     return base_url, token
 
 
-def portal_post(env, path, payload):
-    """POST to a portal internal endpoint with bearer authentication.
-
-    Returns a ``(status_code, json_body)`` tuple. Transport errors propagate to
-    the caller. A missing token raises ``ValueError`` so the caller can log a
-    clear configuration message instead of a silent 401.
+def portal_post_raw(base_url, token, uid, path, payload):
+    """POST to a portal internal endpoint with bearer auth, using already-read
+    config values (so it is safe to call from a post-commit callback with no
+    live cursor). Returns ``(status_code, json_body)``.
     """
-    base_url, token = _get_config(env)
     if not token:
         raise ValueError(
             "Portal API token is not configured. Set the system parameter "
@@ -38,7 +35,7 @@ def portal_post(env, path, payload):
     headers = {
         "Content-Type": "application/json",
         "Authorization": "Bearer %s" % token,
-        "X-Odoo-User-Id": str(env.uid),
+        "X-Odoo-User-Id": str(uid),
     }
 
     _logger.info("[krawings_portal_invite] POST %s payload=%s", url, payload)
@@ -49,3 +46,9 @@ def portal_post(env, path, payload):
     except ValueError:
         body = {"error": (response.text or "")[:500]}
     return response.status_code, body
+
+
+def portal_post(env, path, payload):
+    """Convenience: read config from env then POST (live-cursor callers)."""
+    base_url, token = get_portal_config(env)
+    return portal_post_raw(base_url, token, env.uid, path, payload)
