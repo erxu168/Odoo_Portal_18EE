@@ -113,6 +113,21 @@ function initTables(db: Database.Database) {
       last_used_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
+
+    CREATE TABLE IF NOT EXISTS portal_invites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      email TEXT,
+      token_hash TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      accepted_at TEXT,
+      created_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_invites_employee ON portal_invites(employee_id);
+    CREATE INDEX IF NOT EXISTS idx_invites_token ON portal_invites(token_hash);
   `);
 }
 
@@ -396,4 +411,58 @@ export function getAuditLog(filters?: { module?: string; limit?: number }): any[
   const limit = filters?.limit || 100;
   vals.push(limit);
   return db.prepare(`SELECT * FROM audit_log ${clause} ORDER BY created_at DESC LIMIT ?`).all(...vals);
+}
+
+// -- Staff Invites --
+
+export interface StaffInvite {
+  id: number;
+  employee_id: number;
+  name: string;
+  email: string | null;
+  token_hash: string;
+  status: string;
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+  created_by: string | null;
+}
+
+export function createInvite(d: { employee_id: number; name: string; email: string | null; token_hash: string; expires_at: string; created_by: string }): number {
+  const db = getDb();
+  const result = db.prepare(
+    'INSERT INTO portal_invites (employee_id, name, email, token_hash, status, created_at, expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(d.employee_id, d.name, d.email, d.token_hash, 'pending', nowISO(), d.expires_at, d.created_by);
+  return result.lastInsertRowid as number;
+}
+
+export function getInviteByTokenHash(tokenHash: string): StaffInvite | null {
+  const db = getDb();
+  return db.prepare('SELECT * FROM portal_invites WHERE token_hash = ?').get(tokenHash) as StaffInvite | null;
+}
+
+export function getActiveInviteByEmployeeId(employeeId: number): StaffInvite | null {
+  const db = getDb();
+  return db.prepare("SELECT * FROM portal_invites WHERE employee_id = ? AND status = 'pending' AND expires_at > ? ORDER BY created_at DESC LIMIT 1").get(employeeId, nowISO()) as StaffInvite | null;
+}
+
+export function revokeInvitesForEmployee(employeeId: number): void {
+  const db = getDb();
+  db.prepare("UPDATE portal_invites SET status = 'revoked' WHERE employee_id = ? AND status = 'pending'").run(employeeId);
+}
+
+export function markInviteAccepted(id: number): void {
+  const db = getDb();
+  db.prepare("UPDATE portal_invites SET status = 'accepted', accepted_at = ? WHERE id = ?").run(nowISO(), id);
+}
+
+export function listPendingInvites(): StaffInvite[] {
+  const db = getDb();
+  return db.prepare("SELECT * FROM portal_invites WHERE status = 'pending' AND expires_at > ? ORDER BY created_at DESC").all(nowISO()) as StaffInvite[];
+}
+
+export function listEmployeeIdsWithAccounts(): number[] {
+  const db = getDb();
+  const rows = db.prepare('SELECT DISTINCT employee_id FROM portal_users WHERE employee_id IS NOT NULL AND active = 1').all() as { employee_id: number }[];
+  return rows.map(r => r.employee_id);
 }

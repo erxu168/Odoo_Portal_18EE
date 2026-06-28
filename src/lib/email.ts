@@ -123,3 +123,43 @@ export async function sendCandidateWelcomeEmail(
     `,
   });
 }
+
+
+/**
+ * Send a staff member their portal invite link (push-provisioning model).
+ */
+export async function sendStaffInviteEmail(toEmail: string, toName: string, inviteUrl: string) {
+  await transporter.sendMail({
+    from: `"Krawings Portal" <${FROM}>`,
+    to: toEmail,
+    subject: 'Set up your Krawings Staff Portal account',
+    text: [
+      `Hi ${toName},`,
+      '',
+      'Welcome to the Krawings Staff Portal. Tap the link below to set up your account and choose a password:',
+      inviteUrl,
+      '',
+      'This link is just for you and expires in 14 days.',
+      '',
+      'If you were not expecting this, you can ignore this email.',
+      '',
+      '— Krawings SSAM Korean BBQ',
+    ].join('\n'),
+    html: `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+          <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">SSAM KOREAN BBQ</div>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Welcome to the Krawings Staff Portal! Tap the button below to set up your account and choose a password.</p>
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${inviteUrl}" style="display: inline-block; padding: 14px 32px; background-color: #16A34A; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px;">Set up my account</a>
+        </div>
+        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link is just for you and expires in 14 days. If you were not expecting this, you can ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings SSAM Korean BBQ &middot; Staff Portal</p>
+      </div>
+    `,
+  });
+}
