@@ -210,8 +210,8 @@
   background: var(--card);
   border: 2px solid var(--card-border);
   border-radius: 10px;
-  min-width: 220px;
-  max-width: 280px;
+  min-width: 260px;
+  max-width: 340px;
   flex-shrink: 0;
   overflow-y: auto;
   overflow-x: hidden;
@@ -223,9 +223,9 @@
 .kds-task-card.all-served { opacity: 0.25; border-color: var(--ready); }
 .kds-task-header { padding: 8px 10px 6px; display: flex; align-items: flex-start; justify-content: space-between; }
 .kds-task-dish { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.kds-task-qty { font-size: 36px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
-.kds-task-qty-unit { font-size: 18px; font-weight: 700; opacity: 0.5; margin-left: 1px; }
-.kds-task-name { font-size: 15px; font-weight: 700; margin-top: 2px; }
+.kds-task-qty { font-size: 42px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+.kds-task-qty-unit { font-size: 20px; font-weight: 700; opacity: 0.5; margin-left: 1px; }
+.kds-task-name { font-size: 22px; font-weight: 800; line-height: 1.15; margin-top: 2px; }
 .kds-task-solo-tag { background: var(--card-border); color: var(--muted); font-size: 8px; font-weight: 700; padding: 2px 5px; border-radius: 4px; margin-top: 3px; display: inline-block; }
 .kds-task-ring { flex-shrink: 0; }
 .kds-task-ring circle { transition: stroke-dashoffset 0.4s ease; }
@@ -583,8 +583,8 @@
 }
 .kds-fp-task.all-done { opacity: 0.4; }
 .kds-fp-task-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.kds-fp-task-qty { font-size: 18px; font-weight: 800; color: var(--text); min-width: 30px; }
-.kds-fp-task-name { font-size: 15px; font-weight: 700; color: var(--text); }
+.kds-fp-task-qty { font-size: 24px; font-weight: 800; color: var(--text); min-width: 34px; }
+.kds-fp-task-name { font-size: 22px; font-weight: 800; color: var(--text); }
 
 .kds-fp-task-tables { display: flex; flex-direction: column; gap: 4px; margin-left: 0; }
 .kds-fp-task .kds-fp-entry { flex-wrap: wrap; }
