@@ -62,6 +62,9 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
   const checkedItemsRef = useRef<Set<string>>(new Set());
   // Orders recalled to prep locally; ignore stale server stage for a few seconds
   const recallProtectRef = useRef<Map<number, number>>(new Map());
+  // Offline detection: tolerate a single missed poll before showing "offline".
+  const failCountRef = useRef(0);
+  const pollRef = useRef<() => void>(() => {});
 
   // Load settings, product config, and persisted checks from API on mount
   useEffect(() => {
@@ -112,7 +115,7 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
       try {
         const res = await fetch(`/api/kds/orders?configId=${settings.posConfigId}`);
         const data = await res.json();
-        if (active) setConnected(true); // reached the server
+        if (active) { failCountRef.current = 0; setConnected(true); } // reached the server
         if (!active || !data.orders) return;
 
         const odooOrders: KdsOrder[] = data.orders.map((o: KdsOrder) => ({
@@ -149,20 +152,28 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
         });
       } catch (err) {
         console.error('[KDS] poll error:', err);
-        if (active) setConnected(false); // server unreachable — internet/down
+        // Tolerate one hiccup; only show offline after two misses in a row.
+        if (active) { failCountRef.current += 1; if (failCountRef.current >= 2) setConnected(false); }
       }
     }
 
+    pollRef.current = poll;
     poll();
     const interval = setInterval(poll, 5000);
     return () => { active = false; clearInterval(interval); };
   }, [settings.posConfigId]);
 
-  // Immediate offline feedback from the device's own network status.
+  // Device network status: drop to offline at once when the link dies, and
+  // re-check the server immediately (rather than waiting up to 5s) on reconnect.
   useEffect(() => {
     const onOffline = () => setConnected(false);
+    const onOnline = () => { failCountRef.current = 0; pollRef.current(); };
     window.addEventListener('offline', onOffline);
-    return () => window.removeEventListener('offline', onOffline);
+    window.addEventListener('online', onOnline);
+    return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
   }, []);
 
   // Mock: simulate new orders in dev when no POS config

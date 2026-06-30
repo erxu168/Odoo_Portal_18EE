@@ -26,6 +26,7 @@ export default function KdsPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const boost = settings.takeawayBoost;
   const prevCountRef = useRef<number>(orders.length);
+  const seenOrdersRef = useRef(false); // suppress the "new order" chime on first load
   const prevRoundDoneRef = useRef(false);
   const lastActivityRef = useRef<number>(Date.now());
   const taskStripRef = useRef<HTMLDivElement>(null);
@@ -57,8 +58,11 @@ export default function KdsPage() {
   useEffect(() => {
     const isNewOrder = orders.length > prevCountRef.current;
     const hasPrep = orders.some(o => o.status === 'prep');
-    if (isNewOrder) dismissReminder(); // a new order takes the screen back from any task reminder
-    if (isNewOrder && hasPrep && !muted && settings.sndNewOrder) {
+    // The first poll that populates the board is a load, not a new order.
+    const initialLoad = !seenOrdersRef.current && orders.length > 0;
+    if (orders.length > 0) seenOrdersRef.current = true;
+    if (isNewOrder && !initialLoad) dismissReminder(); // a new order takes the screen back from any reminder
+    if (isNewOrder && !initialLoad && hasPrep && !muted && settings.sndNewOrder) {
       playNewOrderSound(settings.sndNewOrderVol);
       const newest = orders[orders.length - 1];
       showToast(`New order: ${newest.table}`);
