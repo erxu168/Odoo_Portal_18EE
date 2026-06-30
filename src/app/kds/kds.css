@@ -556,7 +556,13 @@
 .kds-empty-icon { font-size: 36px; opacity: 0.3; }
 
 /* ── Fire Plan ── */
-.kds-fire-plan { display: flex; flex-direction: column; gap: 12px; padding: 8px; overflow-y: auto; height: 100%; }
+.kds-fire-plan { display: flex; flex-direction: column; gap: 12px; padding: 8px; overflow-y: auto; min-height: 0; flex: 1; }
+/* Keep lanes + ORDER STATUS at full height. Without this they are flex
+   children with the default flex-shrink:1, so a tall stack gets compressed
+   to fit instead of overflowing — and each card's `overflow:hidden` then
+   clips its rows with no scrollbar to reach them (the cut-off cards bug).
+   flex-shrink:0 preserves their height so .kds-fire-plan actually scrolls. */
+.kds-fire-plan > * { flex-shrink: 0; }
 
 .kds-fp-lane { background: var(--surface); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
 .kds-fp-lane--ondemand { border-left: 4px solid #ef4444; }
