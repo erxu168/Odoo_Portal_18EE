@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useKds } from '@/lib/kds/state';
 import type { KdsSettings, SourceStation, PrepType } from '@/types/kds';
 import { STATION_META, PREP_TYPE_META } from '@/types/kds';
@@ -28,9 +28,9 @@ export default function SettingsPanel() {
 
         <div className="kds-settings-section">
           <div className="kds-settings-section-title">Odoo POS Connection</div>
-          <NumRow label="POS Config ID" value={draft.posConfigId} onChange={v => setField('posConfigId', v)} />
+          <PosConfigRow value={draft.posConfigId} onChange={v => setField('posConfigId', v)} />
           <div style={{ fontSize: 11, color: 'var(--muted)', padding: '0 0 4px' }}>
-            Set to the Odoo POS config ID for What a Jerk. Set to 0 for mock data.
+            Pick the register to show its live orders. &ldquo;Demo data&rdquo; uses sample orders.
           </div>
           <SyncProductsRow disabled={!draft.posConfigId} />
         </div>
@@ -82,6 +82,68 @@ export default function SettingsPanel() {
           Save Settings
         </button>
       </div>
+    </>
+  );
+}
+
+interface PosConfig { id: number; name: string; company: string }
+
+function PosConfigRow({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [configs, setConfigs] = useState<PosConfig[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/kds/pos-configs')
+      .then(r => r.json())
+      .then(data => {
+        if (!active) return;
+        if (Array.isArray(data.configs)) setConfigs(data.configs);
+        if (data.error) setErr(String(data.error));
+      })
+      .catch(() => { if (active) setErr('Could not reach Odoo'); });
+    return () => { active = false; };
+  }, []);
+
+  const known = configs?.some(c => c.id === value) ?? false;
+
+  return (
+    <>
+      <div className="kds-settings-row">
+        <span className="kds-settings-label">Connected register</span>
+        {configs === null && !err ? (
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>Loading…</span>
+        ) : configs && configs.length > 0 ? (
+          <select
+            className="kds-settings-select"
+            value={value}
+            onChange={e => onChange(Number(e.target.value))}
+          >
+            <option value={0}>Demo data (not connected)</option>
+            {configs.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.name}{c.company ? ` — ${c.company}` : ''}
+              </option>
+            ))}
+            {value !== 0 && !known && <option value={value}>Register #{value} (current)</option>}
+          </select>
+        ) : (
+          // Couldn't load the list — fall back to manual entry so it's never a dead end.
+          <input
+            type="number"
+            className="kds-settings-input"
+            value={value}
+            min={0}
+            max={9999}
+            onChange={e => onChange(Number(e.target.value) || 0)}
+          />
+        )}
+      </div>
+      {err && (
+        <div style={{ fontSize: 11, color: 'var(--orange)', padding: '0 0 4px' }}>
+          Couldn&rsquo;t load registers ({err}). Enter the ID manually.
+        </div>
+      )}
     </>
   );
 }
