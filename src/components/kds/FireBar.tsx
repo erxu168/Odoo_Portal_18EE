@@ -27,7 +27,7 @@ export default function FireBar() {
           START COOKING
         </button>
         <div className="kds-fire-status">
-          <strong>{prep.length} orders</strong> waiting -- tap Start Cooking
+          <strong>{prep.length} {prep.length === 1 ? 'order' : 'orders'}</strong> waiting
         </div>
       </div>
     );
@@ -55,7 +55,7 @@ export default function FireBar() {
       )}
       <div className="kds-fire-status">
         {roundComplete ? (
-          <><strong>All done!</strong> Tap for the next orders.</>
+          <><strong>All done</strong> — tap for next</>
         ) : (
           <><strong>{activeLeft} {activeLeft === 1 ? 'order' : 'orders'}</strong> still being made</>
         )}
