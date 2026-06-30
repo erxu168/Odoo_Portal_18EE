@@ -22,6 +22,7 @@ interface KdsState {
 interface KdsActions {
   fireRound: () => void;
   nextRound: () => void;
+  addToRound: () => void;
   toggleItem: (itemId: string, ticketId: number) => void;
   markReady: (ticketId: number) => void;
   pickup: (ticketId: number) => void;
@@ -199,6 +200,21 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
     setFiredOrderIds([]);
   }, []);
 
+  // Fold orders that arrived mid-round into the locked batch. New orders are
+  // held out of the cooking screen until the cook taps "Add to batch" — this
+  // is what keeps the layout stable instead of orders popping in on their own.
+  const addToRound = useCallback(() => {
+    setOrders(prevOrders => {
+      setFiredOrderIds(prevIds => {
+        const queued = prevOrders
+          .filter(o => o.status === 'prep' && !prevIds.includes(o.id))
+          .map(o => o.id);
+        return queued.length ? [...prevIds, ...queued] : prevIds;
+      });
+      return prevOrders;
+    });
+  }, []);
+
   const toggleItem = useCallback((itemId: string, ticketId: number) => {
     let newDone = false;
     setOrders(prev => prev.map(o => {
@@ -315,7 +331,7 @@ export function KdsProvider({ children }: { children: React.ReactNode }) {
   const value: KdsContextType = {
     orders, roundState, firedOrderIds, currentTab, mode, settings, muted, settingsOpen,
     nextId: nextIdRef.current, productConfig, connected,
-    fireRound, nextRound, toggleItem, markReady, pickup, recall,
+    fireRound, nextRound, addToRound, toggleItem, markReady, pickup, recall,
     setTab, toggleMute, openSettings, closeSettings, updateSettings, addOrder, setMode,
   };
 

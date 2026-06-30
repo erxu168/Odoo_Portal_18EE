@@ -6,7 +6,6 @@ export default function FireBar() {
   const { orders, roundState, firedOrderIds, fireRound, nextRound } = useKds();
   const prep = orders.filter(o => o.status === 'prep');
   const roundOrders = orders.filter(o => firedOrderIds.includes(o.id) && o.status === 'prep');
-  const queued = prep.filter(o => !firedOrderIds.includes(o.id));
   const allPlated = roundOrders.every(o => o.items.every(i => i.done));
   const roundComplete = roundState === 'active' && (roundOrders.length === 0 || allPlated);
 
@@ -61,11 +60,6 @@ export default function FireBar() {
           <><strong>{activeLeft} {activeLeft === 1 ? 'order' : 'orders'}</strong> still being made</>
         )}
       </div>
-      {queued.length > 0 && (
-        <div className="kds-next-round-badge has-orders">
-          <span className="kds-nrb-count">{queued.length}</span> more {queued.length === 1 ? 'order' : 'orders'} waiting
-        </div>
-      )}
     </div>
   );
 }

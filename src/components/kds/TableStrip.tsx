@@ -21,12 +21,11 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
     );
   }
 
+  // During an active round only the locked batch is shown. Orders that arrive
+  // mid-round are held off-screen and surfaced via the "new orders" banner.
   const fired = roundState === 'active'
     ? orders.filter(o => firedOrderIds.includes(o.id) && o.status === 'prep').sort((a, b) => effectiveWait(b, boost) - effectiveWait(a, boost))
     : prep;
-  const queued = roundState === 'active'
-    ? prep.filter(o => !firedOrderIds.includes(o.id))
-    : [];
   const mui = mostUrgentOrderId(fired, boost);
 
   return (
@@ -118,27 +117,6 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
           </div>
         );
       })}
-
-      {queued.map(o => (
-        <div key={o.id} className="kds-table-card queued">
-          <div className="kds-tc-top">
-            <div className="kds-tc-name">{o.table}</div>
-            <OrderTypePill type={o.type} size="sm" />
-            <span className="kds-tc-queued-tag">NEXT ROUND</span>
-          </div>
-          <div className="kds-tc-items">
-            {o.items.map(item => (
-              <div key={item.id} className="kds-tc-item" style={{ opacity: 0.4 }}>
-                <div className="kds-tc-item-main">
-                  <div className="kds-tc-check" />
-                  <span className="kds-tc-item-qty">{item.qty}x</span>
-                  <span className="kds-tc-item-name">{item.name}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
     </div>
   );
 });

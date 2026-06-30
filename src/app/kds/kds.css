@@ -192,6 +192,71 @@
 /* MAIN */
 .kds-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
+/* NEW-BATCH BANNER — surfaces orders that arrived after START COOKING locked
+   the batch. Keeps the cooking layout stable; tap to preview, button to fold in. */
+.kds-newbatch { flex-shrink: 0; margin: 8px 8px 0; }
+.kds-newbatch-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(59,130,246,0.12);
+  border: 1px solid rgba(59,130,246,0.35);
+  color: var(--text);
+  cursor: pointer;
+  animation: kds-nrb-pulse 2s ease-in-out infinite;
+}
+.kds-newbatch-msg { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.kds-newbatch-msg strong { color: var(--blue); font-weight: 800; }
+.kds-newbatch-spark { font-size: 17px; }
+.kds-newbatch-chevron {
+  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--blue);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.85;
+}
+.kds-newbatch-chevron.open { opacity: 1; }
+.kds-newbatch-add {
+  background: var(--blue);
+  color: white;
+  font-weight: 900;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.kds-newbatch-add:active { transform: scale(0.96); }
+
+/* Expandable preview of the waiting order(s) */
+.kds-newbatch-preview {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--card, #1e293b);
+  border: 1px solid rgba(59,130,246,0.25);
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  max-height: 22vh;
+  overflow-y: auto;
+}
+.kds-newbatch-pv-order { min-width: 180px; }
+.kds-newbatch-pv-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.kds-newbatch-pv-num { font-size: 18px; font-weight: 900; color: var(--text); font-variant-numeric: tabular-nums; }
+.kds-newbatch-pv-items { display: flex; flex-direction: column; gap: 2px; }
+.kds-newbatch-pv-item { font-size: 14px; color: var(--text); }
+.kds-newbatch-pv-qty { font-weight: 800; color: var(--blue); }
+
 /* TASK STRIP — 60% of .kds-main */
 .kds-task-strip {
   flex: 6 1 0%;

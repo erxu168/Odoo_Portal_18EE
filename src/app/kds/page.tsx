@@ -11,18 +11,19 @@ import KdsTabs from '@/components/kds/KdsTabs';
 import FireBar from '@/components/kds/FireBar';
 import TaskCard from '@/components/kds/TaskCard';
 import TableStrip from '@/components/kds/TableStrip';
+import OrderTypePill from '@/components/kds/OrderTypePill';
 import ReadyGrid from '@/components/kds/ReadyGrid';
 import DoneGrid from '@/components/kds/DoneGrid';
 import Pipeline from '@/components/kds/Pipeline';
 import ClassicView from '@/components/kds/ClassicView';
-import FirePlanView from '@/components/kds/FirePlanView';
 import SettingsPanel from '@/components/kds/SettingsPanel';
 
 export default function KdsPage() {
-  const { orders, currentTab, roundState, firedOrderIds, settings, muted, mode, connected } = useKds();
+  const { orders, currentTab, roundState, firedOrderIds, settings, muted, mode, connected, addToRound } = useKds();
   const { reminder, dismiss: dismissReminder } = useTaskReminders(settings.posConfigId, muted);
   const [toast, setToast] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const boost = settings.takeawayBoost;
   const prevCountRef = useRef<number>(orders.length);
   const prevRoundDoneRef = useRef(false);
@@ -138,6 +139,13 @@ export default function KdsPage() {
   const tasks = buildTaskGroups(displayOrders, boost);
   const mui = mostUrgentOrderId(displayOrders, boost);
 
+  // Orders that arrived after START COOKING locked the batch. They stay off the
+  // cooking screen and are surfaced through the banner instead of appearing on
+  // their own — so the layout doesn't shift under the cook mid-service.
+  const queuedNew = roundState === 'active'
+    ? orders.filter(o => o.status === 'prep' && !firedOrderIds.includes(o.id))
+    : [];
+
   return (
     <>
       <KdsTopbar />
@@ -155,10 +163,50 @@ export default function KdsPage() {
       {currentTab === 'prep' && (
         <>
           <div className="kds-main">
+            {roundState === 'active' && queuedNew.length > 0 && (
+              <div className="kds-newbatch">
+                <div
+                  className="kds-newbatch-banner"
+                  role="button"
+                  onClick={() => setPreviewOpen(o => !o)}
+                >
+                  <span className="kds-newbatch-msg">
+                    <span className="kds-newbatch-spark">{'⚡'}</span>
+                    <strong>{queuedNew.length} new {queuedNew.length === 1 ? 'order' : 'orders'}</strong> waiting
+                    <span className={`kds-newbatch-chevron ${previewOpen ? 'open' : ''}`}>
+                      {previewOpen ? 'Hide' : 'Preview'} {'▾'}
+                    </span>
+                  </span>
+                  <button
+                    className="kds-newbatch-add"
+                    onClick={e => { e.stopPropagation(); addToRound(); setPreviewOpen(false); }}
+                  >
+                    + ADD TO BATCH
+                  </button>
+                </div>
+                {previewOpen && (
+                  <div className="kds-newbatch-preview">
+                    {queuedNew.map(o => (
+                      <div key={o.id} className="kds-newbatch-pv-order">
+                        <div className="kds-newbatch-pv-head">
+                          <span className="kds-newbatch-pv-num">{o.table}</span>
+                          <OrderTypePill type={o.type} size="sm" />
+                        </div>
+                        <div className="kds-newbatch-pv-items">
+                          {o.items.map(i => (
+                            <span key={i.id} className="kds-newbatch-pv-item">
+                              <span className="kds-newbatch-pv-qty">{i.qty}x</span> {i.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {mode === 'classic' ? (
               <ClassicView />
-            ) : roundState === 'active' ? (
-              <FirePlanView />
             ) : tasks.length === 0 ? (
               <div className="kds-task-strip">
                 <div className="kds-empty">
@@ -178,7 +226,7 @@ export default function KdsPage() {
                 ))}
               </div>
             )}
-            {mode === 'smart' && roundState !== 'active' && <TableStrip ref={tableStripRef} />}
+            {mode === 'smart' && <TableStrip ref={tableStripRef} />}
           </div>
         </>
       )}
