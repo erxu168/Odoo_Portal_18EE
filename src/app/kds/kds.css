@@ -295,8 +295,8 @@
 .kds-task-card.all-served { opacity: 0.25; border-color: var(--ready); }
 .kds-task-header { padding: 8px 10px 6px; display: flex; align-items: flex-start; justify-content: space-between; }
 .kds-task-dish { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.kds-task-qty { font-size: 42px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
-.kds-task-qty-unit { font-size: 20px; font-weight: 700; opacity: 0.5; margin-left: 1px; }
+.kds-task-qty { font-size: 44px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -1px; color: #fbbf24; }
+.kds-task-qty-unit { font-size: 22px; font-weight: 800; opacity: 0.85; margin-left: 1px; color: #fbbf24; }
 .kds-task-name { font-size: 22px; font-weight: 800; line-height: 1.15; margin-top: 2px; }
 .kds-task-solo-tag { background: var(--card-border); color: var(--muted); font-size: 8px; font-weight: 700; padding: 2px 5px; border-radius: 4px; margin-top: 3px; display: inline-block; }
 .kds-task-ring { flex-shrink: 0; }
