@@ -26,10 +26,12 @@ const REPEAT_MS = 5 * 60 * 1000;  // re-show roughly every 5 min
 const SHOW_MS = 12 * 1000;        // each pop stays ~12s
 const POLL_MS = 60 * 1000;        // refresh the task list every 60s
 const TICK_MS = 15 * 1000;        // scheduler granularity (first show within ~15s)
+const SNOOZE_MS = 10 * 60 * 1000; // snoozed tasks stay quiet for 10 min
 
 export function useTaskReminders(configId: number, muted: boolean): {
   reminder: ActiveReminder | null;
   dismiss: () => void;
+  snooze: (taskId: number) => void;
 } {
   const [reminder, setReminder] = useState<ActiveReminder | null>(null);
   const tasksRef = useRef<RawTask[]>([]);
@@ -37,6 +39,7 @@ export function useTaskReminders(configId: number, muted: boolean): {
   const showIdRef = useRef(0);
   const lastShowRef = useRef(0);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snoozedRef = useRef<Map<number, number>>(new Map()); // taskId -> snooze-until ms
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
 
@@ -63,6 +66,12 @@ export function useTaskReminders(configId: number, muted: boolean): {
     setReminder(null);
   }, []);
 
+  const snooze = useCallback((taskId: number) => {
+    snoozedRef.current.set(taskId, Date.now() + SNOOZE_MS);
+    if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
+    setReminder(null);
+  }, []);
+
   // Scheduler: decide when to pop the next due reminder.
   useEffect(() => {
     if (!configId) return;
@@ -70,6 +79,10 @@ export function useTaskReminders(configId: number, muted: boolean): {
       const now = Date.now();
       const activeList = tasksRef.current
         .filter(t => t.deadlineMs - now <= LEAD_MS)        // within window or overdue
+        .filter(t => {                                     // skip snoozed tasks
+          const until = snoozedRef.current.get(t.id);
+          return !until || now >= until;
+        })
         .sort((a, b) => a.deadlineMs - b.deadlineMs);
 
       if (activeList.length === 0) {
@@ -100,5 +113,5 @@ export function useTaskReminders(configId: number, muted: boolean): {
     };
   }, [configId]);
 
-  return { reminder, dismiss };
+  return { reminder, dismiss, snooze };
 }

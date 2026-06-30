@@ -20,7 +20,7 @@ import SettingsPanel from '@/components/kds/SettingsPanel';
 
 export default function KdsPage() {
   const { orders, currentTab, roundState, firedOrderIds, settings, muted, mode, connected, addToRound } = useKds();
-  const { reminder, dismiss: dismissReminder } = useTaskReminders(settings.posConfigId, muted);
+  const { reminder, dismiss: dismissReminder, snooze: snoozeReminder } = useTaskReminders(settings.posConfigId, muted);
   const [toast, setToast] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -255,7 +255,7 @@ export default function KdsPage() {
 
       <SettingsPanel />
 
-      <TaskReminderOverlay reminder={reminder} />
+      <TaskReminderOverlay reminder={reminder} onSnooze={snoozeReminder} />
 
       {toast && <div className="kds-toast">{toast}</div>}
     </>

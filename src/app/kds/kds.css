@@ -88,6 +88,15 @@
 .kds-task-reminder-text { font-size: 42px; font-weight: 800; line-height: 1.15; }
 .kds-task-reminder-due  { font-size: 26px; font-weight: 800; margin-top: 14px; text-transform: uppercase; letter-spacing: 1.5px; }
 .kds-task-reminder.overdue .kds-task-reminder-due { animation: kds-blink 0.8s step-end infinite; }
+/* Only the button is interactive — the rest of the overlay lets taps reach the orders. */
+.kds-task-reminder-snooze {
+  pointer-events: auto;
+  display: inline-block; margin-top: 22px;
+  background: rgba(0,0,0,0.35); color: #fff;
+  border: 2px solid rgba(255,255,255,0.75); border-radius: 100px;
+  padding: 13px 32px; font-size: 18px; font-weight: 800; cursor: pointer;
+}
+.kds-task-reminder-snooze:active { transform: scale(0.96); }
 
 /* TOOLBAR — tabs + fire bar in one row */
 .kds-toolbar {
