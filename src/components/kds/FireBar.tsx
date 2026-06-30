@@ -45,13 +45,13 @@ export default function FireBar() {
           START NEXT ORDERS
         </button>
       ) : (
-        <div className="kds-fire-btn round-active">
+        <button className="kds-fire-btn round-active" onClick={nextRound} aria-label="Stop cooking — back to Start Cooking">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 6v6l3 3" />
           </svg>
           COOKING NOW
-        </div>
+        </button>
       )}
       <div className="kds-fire-status">
         {roundComplete ? (
