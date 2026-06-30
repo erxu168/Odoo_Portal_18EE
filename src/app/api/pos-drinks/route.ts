@@ -128,7 +128,15 @@ export async function POST(request: Request) {
       const productId = Number(body.product_id);
       if (!productId) return NextResponse.json({ error: 'product_id is required' }, { status: 400 });
       await odoo.write('product.product', [productId], { barcode });
-      const [p] = await odoo.read('product.product', [productId], ['id', 'name', 'lst_price']);
+      const [p] = await odoo.read('product.product', [productId], ['id', 'name', 'lst_price', 'product_tmpl_id']);
+      // Also file the drink under "WAJ Drinks" so it's tappable at the till as a
+      // fallback when a barcode is damaged. [4, id] adds the category without
+      // touching any it already has, and is a no-op if already present.
+      if (p.product_tmpl_id) {
+        await odoo.write('product.template', [p.product_tmpl_id[0]], {
+          pos_categ_ids: [[4, WAJ_DRINKS_POS_CATEG]],
+        });
+      }
       return NextResponse.json({
         success: true,
         product: { id: p.id, name: p.name, price: p.lst_price, barcode },
