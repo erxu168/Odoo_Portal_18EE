@@ -11,6 +11,7 @@ import ManageTemplates from '@/components/inventory/ManageTemplates';
 import ReviewSubmissions from '@/components/inventory/ReviewSubmissions';
 import MoIngredients from '@/components/inventory/MoIngredients';
 import ProductSettings from '@/components/inventory/ProductSettings';
+import DrinksScanner from '@/components/inventory/DrinksScanner';
 
 type Screen =
   | { type: 'dashboard' }
@@ -20,6 +21,7 @@ type Screen =
   | { type: 'review' }
   | { type: 'mo-ingredients' }
   | { type: 'product-settings' }
+  | { type: 'drinks-scanner' }
   | { type: 'session'; sessionId: number };
 
 export default function InventoryPage() {
@@ -100,6 +102,15 @@ export default function InventoryPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <ProductSettings onBack={goDashboard} />
+      </div>
+    );
+  }
+
+  if (screen.type === 'drinks-scanner' && canManage) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <AppHeader title="Drinks Scanner" subtitle="Scan to barcode What a Jerk drinks" showBack onBack={goDashboard} />
+        <DrinksScanner />
       </div>
     );
   }

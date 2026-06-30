@@ -129,6 +129,21 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
       ),
     }] : []),
     ...(canManage ? [{
+      id: 'drinks-scanner',
+      label: 'Drinks Scanner',
+      color: 'bg-pink-50 border-pink-200', iconBg: 'bg-pink-100', iconColor: 'text-pink-600',
+      sublabel: 'Barcode WAJ drinks',
+      badge: 0,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12"/>
+          <path d="M4 8h16"/>
+          <path d="M9 8V5a1 1 0 011-1h4a1 1 0 011 1v3"/>
+          <path d="M10 13h4"/>
+        </svg>
+      ),
+    }] : []),
+    ...(canManage ? [{
       id: 'product-settings',
       label: 'Product settings',
       color: 'bg-white border-gray-200', iconBg: 'bg-blue-50', iconColor: 'text-blue-600',

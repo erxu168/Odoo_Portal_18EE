@@ -1,14 +1,13 @@
 'use client';
 
 /**
- * What a Jerk — Drinks scanner.
+ * DrinksScanner — Inventory module screen (manager+).
  *
  * Scan a drink barcode with the hardware scanner, then either attach it to an
- * existing What a Jerk POS drink or create a new one. Built for a tablet at the
- * counter: big touch targets, scanner-first, running log of what's been added.
+ * existing What a Jerk POS drink or create a new one. Rendered inside the
+ * Inventory page under its own AppHeader (this component is the body only).
  */
-import React, { useEffect, useRef, useState } from 'react';
-import AppHeader from '@/components/ui/AppHeader';
+import React, { useRef, useState } from 'react';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 
 type Match = { id: number; name: string; barcode: string | null; price: number };
@@ -17,8 +16,7 @@ type Phase = 'idle' | 'looking' | 'choose' | 'saving';
 
 const eur = (n: number) => `€${(n ?? 0).toFixed(2)}`;
 
-export default function PosDrinksPage() {
-  const [role, setRole] = useState<string | null>(null);
+export default function DrinksScanner() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [barcode, setBarcode] = useState('');
   const [matches, setMatches] = useState<Match[]>([]);
@@ -31,12 +29,6 @@ export default function PosDrinksPage() {
 
   const searchRef = useRef<HTMLInputElement>(null);
   const searchSeq = useRef(0);
-
-  useEffect(() => {
-    fetch('/api/auth/me').then((r) => r.json()).then((d) => setRole(d.user?.role ?? 'none')).catch(() => setRole('none'));
-  }, []);
-
-  const canManage = role === 'manager' || role === 'admin';
 
   function flash(kind: 'ok' | 'warn' | 'err', text: string) {
     setToast({ kind, text });
@@ -76,7 +68,7 @@ export default function PosDrinksPage() {
   }
 
   // Hardware scanner is only live when we're idle (waiting for the next bottle).
-  useHardwareScanner({ enabled: phase === 'idle' && canManage, onScan: handleBarcode });
+  useHardwareScanner({ enabled: phase === 'idle', onScan: handleBarcode });
 
   async function runSearch(term: string) {
     const seq = ++searchSeq.current;
@@ -104,8 +96,8 @@ export default function PosDrinksPage() {
       setLog((l) => [{ name: res.product.name, barcode, price: res.product.price, mode: 'attached' }, ...l]);
       flash('ok', `Barcode added → ${res.product.name}`);
       reset();
-    } catch (e: any) {
-      flash('err', e.message || 'Could not attach');
+    } catch (e: unknown) {
+      flash('err', e instanceof Error ? e.message : 'Could not attach');
       setPhase('choose');
     }
   }
@@ -125,34 +117,18 @@ export default function PosDrinksPage() {
       setLog((l) => [{ name: res.product.name, barcode, price: res.product.price, mode: 'created' }, ...l]);
       flash('ok', `Created → ${res.product.name}`);
       reset();
-    } catch (e: any) {
-      flash('err', e.message || 'Could not create');
+    } catch (e: unknown) {
+      flash('err', e instanceof Error ? e.message : 'Could not create');
       setPhase('choose');
     }
   }
 
-  if (role === null) {
-    return <div className="min-h-screen grid place-items-center text-gray-400">Loading…</div>;
-  }
-  if (!canManage) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <AppHeader supertitle="WHAT A JERK" title="Drinks Scanner" />
-        <div className="p-6 text-center text-gray-600 mt-10">
-          Only managers can add drinks. Ask a manager to sign in.
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      <AppHeader supertitle="WHAT A JERK" title="Drinks Scanner" subtitle={`${log.length} added this session`} />
-
+    <div className="flex-1 pb-24">
       {/* Toast */}
       {toast && (
         <div
-          className={`mx-4 mt-4 rounded-xl px-4 py-3 text-sm font-medium ${
+          className={`mx-4 mt-4 rounded-xl px-4 py-3 text-[var(--fs-sm)] font-medium ${
             toast.kind === 'ok' ? 'bg-green-100 text-green-800'
             : toast.kind === 'warn' ? 'bg-amber-100 text-amber-800'
             : 'bg-red-100 text-red-800'
@@ -166,10 +142,10 @@ export default function PosDrinksPage() {
       {phase !== 'choose' && (
         <div className="mx-4 mt-5 rounded-2xl bg-white border border-gray-200 p-6 text-center shadow-sm">
           <div className="text-5xl mb-2">🥤</div>
-          <div className="text-lg font-semibold text-gray-800">
+          <div className="text-[var(--fs-lg)] font-semibold text-gray-800">
             {phase === 'looking' ? 'Looking up…' : phase === 'saving' ? 'Saving…' : 'Scan a drink'}
           </div>
-          <div className="text-sm text-gray-500 mt-1">Point the scanner at the bottle or can barcode.</div>
+          <div className="text-[var(--fs-sm)] text-gray-500 mt-1">Point the scanner at the bottle or can barcode.</div>
           <div className="mt-4 flex gap-2">
             <input
               value={manualBarcode}
@@ -179,7 +155,7 @@ export default function PosDrinksPage() {
               }}
               placeholder="…or type a barcode + Enter"
               inputMode="numeric"
-              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)]"
             />
           </div>
         </div>
@@ -190,24 +166,24 @@ export default function PosDrinksPage() {
         <div className="mx-4 mt-5 space-y-4">
           <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 flex items-center justify-between">
             <div>
-              <div className="text-xs uppercase tracking-wide text-blue-500">Scanned barcode</div>
-              <div className="font-mono text-lg text-blue-900">{barcode}</div>
+              <div className="text-[var(--fs-xs)] uppercase tracking-wide text-blue-500">Scanned barcode</div>
+              <div className="font-mono text-[var(--fs-lg)] text-blue-900">{barcode}</div>
             </div>
-            <button onClick={reset} className="text-sm text-gray-500 underline">Cancel</button>
+            <button onClick={reset} className="text-[var(--fs-sm)] text-gray-500 underline">Cancel</button>
           </div>
 
           <div className="rounded-2xl bg-white border border-gray-200 p-4 shadow-sm">
-            <div className="text-sm font-semibold text-gray-700 mb-2">Is this drink already on the menu?</div>
+            <div className="text-[var(--fs-sm)] font-semibold text-gray-700 mb-2">Is this drink already on the menu?</div>
             <input
               ref={searchRef}
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search WAJ drinks (e.g. Pepsi, Ting)…"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-3"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)] mb-3"
             />
             <div className="max-h-64 overflow-y-auto divide-y divide-gray-100">
               {matches.length === 0 && (
-                <div className="text-sm text-gray-400 py-4 text-center">No matching drinks — create it below.</div>
+                <div className="text-[var(--fs-sm)] text-gray-400 py-4 text-center">No matching drinks — create it below.</div>
               )}
               {matches.map((m) => (
                 <button
@@ -218,23 +194,23 @@ export default function PosDrinksPage() {
                 >
                   <div>
                     <div className="font-medium text-gray-800">{m.name}</div>
-                    <div className="text-xs text-gray-400">
+                    <div className="text-[var(--fs-xs)] text-gray-400">
                       {eur(m.price)}{m.barcode ? ` · already has barcode ${m.barcode}` : ''}
                     </div>
                   </div>
-                  <span className="text-sm font-semibold text-blue-600">{m.barcode ? '—' : 'Attach →'}</span>
+                  <span className="text-[var(--fs-sm)] font-semibold text-blue-600">{m.barcode ? '—' : 'Attach →'}</span>
                 </button>
               ))}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white border border-gray-200 p-4 shadow-sm">
-            <div className="text-sm font-semibold text-gray-700 mb-2">Or create a new drink</div>
+            <div className="text-[var(--fs-sm)] font-semibold text-gray-700 mb-2">Or create a new drink</div>
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Drink name"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm mb-2"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)] mb-2"
             />
             <div className="flex gap-2 items-center">
               <span className="text-gray-500">€</span>
@@ -244,17 +220,17 @@ export default function PosDrinksPage() {
                 onKeyDown={(e) => { if (e.key === 'Enter') createNew(); }}
                 placeholder="Price"
                 inputMode="decimal"
-                className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-[var(--fs-sm)]"
               />
               <button
                 onClick={createNew}
                 disabled={phase !== 'choose'}
-                className="ml-auto rounded-lg bg-[#2563EB] text-white px-5 py-2 text-sm font-semibold active:bg-blue-700 disabled:opacity-50"
+                className="ml-auto rounded-lg bg-[#2563EB] text-white px-5 py-2 text-[var(--fs-sm)] font-semibold active:bg-blue-700 disabled:opacity-50"
               >
                 Create drink
               </button>
             </div>
-            <div className="text-xs text-gray-400 mt-2">New drinks: 19% incl. tax, POS category “WAJ Drinks”, sellable at the till.</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 mt-2">New drinks: 19% incl. tax, POS category &ldquo;WAJ Drinks&rdquo;, sellable at the till.</div>
           </div>
         </div>
       )}
@@ -262,17 +238,17 @@ export default function PosDrinksPage() {
       {/* Session log */}
       {log.length > 0 && (
         <div className="mx-4 mt-6">
-          <div className="text-xs uppercase tracking-wide text-gray-400 mb-2">Added this session</div>
+          <div className="text-[var(--fs-xs)] uppercase tracking-wide text-gray-400 mb-2">Added this session ({log.length})</div>
           <div className="rounded-2xl bg-white border border-gray-200 divide-y divide-gray-100 shadow-sm">
             {log.map((e, i) => (
               <div key={i} className="flex items-center justify-between px-4 py-3">
                 <div>
                   <div className="font-medium text-gray-800">{e.name}</div>
-                  <div className="text-xs text-gray-400 font-mono">{e.barcode}</div>
+                  <div className="text-[var(--fs-xs)] text-gray-400 font-mono">{e.barcode}</div>
                 </div>
                 <div className="text-right">
-                  <div className="text-sm text-gray-700">{eur(e.price)}</div>
-                  <div className={`text-xs ${e.mode === 'created' ? 'text-purple-500' : 'text-green-600'}`}>
+                  <div className="text-[var(--fs-sm)] text-gray-700">{eur(e.price)}</div>
+                  <div className={`text-[var(--fs-xs)] ${e.mode === 'created' ? 'text-purple-500' : 'text-green-600'}`}>
                     {e.mode === 'created' ? 'new' : 'barcode added'}
                   </div>
                 </div>
