@@ -330,9 +330,9 @@
 .kds-task-card.all-served { opacity: 0.25; border-color: var(--ready); }
 .kds-task-header { padding: 8px 10px 6px; display: flex; align-items: flex-start; justify-content: space-between; }
 .kds-task-dish { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.kds-task-qty { font-size: 44px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -1px; color: #fbbf24; }
-.kds-task-qty-unit { font-size: 22px; font-weight: 800; opacity: 0.85; margin-left: 1px; color: #fbbf24; }
-.kds-task-name { font-size: 22px; font-weight: 800; line-height: 1.15; margin-top: 2px; }
+.kds-task-qty { font-size: 34px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -1px; color: #fbbf24; }
+.kds-task-qty-unit { font-size: 17px; font-weight: 800; opacity: 0.85; margin-left: 1px; color: #fbbf24; }
+.kds-task-name { font-size: 17px; font-weight: 800; line-height: 1.15; margin-top: 2px; }
 .kds-task-solo-tag { background: var(--card-border); color: var(--muted); font-size: 8px; font-weight: 700; padding: 2px 5px; border-radius: 4px; margin-top: 3px; display: inline-block; }
 .kds-task-ring { flex-shrink: 0; }
 .kds-task-ring circle { transition: stroke-dashoffset 0.4s ease; }
@@ -372,8 +372,8 @@
    visible (it keeps its place), just stop flashing and show it's done. */
 .kds-serve-item.is-next.served { opacity: 0.6; animation: none; background: rgba(239,68,68,0.16); }
 .kds-serve-item .kds-timer { margin-left: auto; }
-.kds-serve-item.is-next .kds-s-table { font-size: 23px; }
-.kds-serve-item.is-next .kds-s-qty { font-size: 16px; }
+.kds-serve-item.is-next .kds-s-table { font-size: 18px; }
+.kds-serve-item.is-next .kds-s-qty { font-size: 14px; }
 .kds-s-check {
   width: 22px; height: 22px; border-radius: 50%;
   border: 2px solid #475569;
@@ -382,8 +382,8 @@
 }
 .kds-serve-item.is-next .kds-s-check { width: 24px; height: 24px; border-color: #64748b; }
 .kds-s-check.checked { background: var(--ready); border-color: var(--ready); }
-.kds-s-table { font-weight: 900; color: var(--text); font-size: 20px; font-variant-numeric: tabular-nums; }
-.kds-s-qty { font-size: 15px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 28px; }
+.kds-s-table { font-weight: 900; color: var(--text); font-size: 16px; font-variant-numeric: tabular-nums; }
+.kds-s-qty { font-size: 13px; font-weight: 800; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 26px; }
 .kds-s-note { color: var(--cooking); font-size: 11px; font-weight: 600; }
 .kds-s-takeaway { color: var(--purple); display: inline-flex; align-items: center; flex-shrink: 0; }
 .kds-s-source { font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
