@@ -15,9 +15,7 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
 
   if (prep.length === 0) {
     return (
-      <div className="kds-table-strip" ref={ref}>
-        <span className="kds-table-strip-label">ORDERS</span>
-      </div>
+      <div className="kds-table-strip" ref={ref} />
     );
   }
 
@@ -30,8 +28,6 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
 
   return (
     <div className="kds-table-strip" ref={ref}>
-      <span className="kds-table-strip-label">ORDERS</span>
-
       {fired.map(o => {
         const total = o.items.length;
         const done = o.items.filter(i => i.done).length;
