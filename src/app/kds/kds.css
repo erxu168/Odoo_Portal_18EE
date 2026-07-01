@@ -287,11 +287,11 @@
 .kds-newbatch-pv-item { font-size: 14px; color: var(--text); }
 .kds-newbatch-pv-qty { font-weight: 800; color: var(--blue); }
 
-/* TASK STRIP — 60% of .kds-main */
+/* TASK STRIP — 50% of .kds-main (even split with the order strip) */
 .kds-task-strip {
-  flex: 6 1 0%;
+  flex: 1 1 0%;
   min-height: 0;
-  max-height: 60%;
+  max-height: 50%;
   display: flex;
   gap: 8px;
   padding: 8px;
@@ -388,9 +388,9 @@
   padding: 8px 10px;
   overflow-x: auto;
   overflow-y: hidden;
-  flex: 4 1 0%;
+  flex: 1 1 0%;
   min-height: 0;
-  max-height: 40%;
+  max-height: 50%;
   align-items: stretch;
 }
 .kds-table-strip-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #475569; writing-mode: vertical-lr; transform: rotate(180deg); margin-right: 4px; flex-shrink: 0; }
