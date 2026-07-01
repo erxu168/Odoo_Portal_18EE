@@ -42,9 +42,7 @@ export default function KdsTopbar({ tabs, fireBar }: { tabs?: ReactNode; fireBar
   return (
     <div className="kds-topbar">
       <div className="kds-topbar-left">
-        <div className="kds-logo">
-          KRAWINGS KDS <span>What a Jerk</span>
-        </div>
+        <div className="kds-logo">What a Jerk</div>
         {tabs}
       </div>
       <div className="kds-topbar-right">

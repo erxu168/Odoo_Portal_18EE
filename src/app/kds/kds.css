@@ -46,10 +46,13 @@
 .kds-topbar-right .kds-fire-bar { margin-left: 0; padding: 0; }
 /* Compact the tabs + fire button so the single header row stays short and the
    cards get the reclaimed height (this row replaces two stacked rows). */
-.kds-topbar .kds-tab { padding: 6px 13px; font-size: 15px; border-bottom-width: 2px; }
-.kds-topbar .kds-tab-n { font-size: 12px; min-width: 18px; padding: 1px 6px; }
-.kds-topbar .kds-fire-btn { padding: 7px 16px; min-width: 200px; font-size: 13px; }
-.kds-topbar .kds-fire-status { width: auto; max-width: 160px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kds-topbar .kds-tab { padding: 6px 10px; font-size: 14px; border-bottom-width: 2px; }
+.kds-topbar .kds-tab-n { font-size: 11px; min-width: 17px; padding: 1px 5px; }
+.kds-topbar .kds-fire-btn { padding: 7px 14px; min-width: 155px; font-size: 13px; }
+.kds-topbar .kds-clock { font-size: 20px; }
+/* The fire-bar status text ("N orders waiting") duplicates the In-Preparation
+   tab count; hide it in the merged header to keep the single row uncrowded. */
+.kds-topbar .kds-fire-status { display: none; }
 .kds-topbar-btn { white-space: nowrap; flex-shrink: 0; }
 .kds-logo { font-weight: 800; font-size: 15px; }
 .kds-logo span { opacity: 0.4; font-weight: 400; font-size: 12px; margin-left: 4px; }
