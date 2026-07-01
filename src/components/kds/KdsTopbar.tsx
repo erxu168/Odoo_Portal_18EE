@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useKds } from '@/lib/kds/state';
 import { useTimers, formatDuration } from '@/lib/kds/timers';
 
@@ -8,7 +8,7 @@ function pad(n: number): string {
   return n.toString().padStart(2, '0');
 }
 
-export default function KdsTopbar() {
+export default function KdsTopbar({ tabs, fireBar }: { tabs?: ReactNode; fireBar?: ReactNode }) {
   const { muted, toggleMute, openSettings, mode, setMode } = useKds();
   const { openPanel, activeCount, anyFinished, timers, stopwatch } = useTimers();
   const [time, setTime] = useState('');
@@ -41,10 +41,14 @@ export default function KdsTopbar() {
 
   return (
     <div className="kds-topbar">
-      <div className="kds-logo">
-        KRAWINGS KDS <span>What a Jerk</span>
+      <div className="kds-topbar-left">
+        <div className="kds-logo">
+          KRAWINGS KDS <span>What a Jerk</span>
+        </div>
+        {tabs}
       </div>
       <div className="kds-topbar-right">
+        {fireBar}
         <button
           className="kds-topbar-btn"
           onClick={() => setMode(mode === 'smart' ? 'classic' : 'smart')}

@@ -152,17 +152,16 @@ export default function KdsPage() {
 
   return (
     <>
-      <KdsTopbar />
+      <KdsTopbar
+        tabs={<KdsTabs />}
+        fireBar={currentTab === 'prep' && mode === 'smart' ? <FireBar /> : null}
+      />
       {!connected && (
         <div className="kds-offline-banner">
           <span className="kds-offline-dot" />
           Offline — reconnecting. Orders on screen are still valid; new orders appear when the connection is back.
         </div>
       )}
-      <div className="kds-toolbar">
-        <KdsTabs />
-        {currentTab === 'prep' && mode === 'smart' && <FireBar />}
-      </div>
 
       {currentTab === 'prep' && (
         <>
