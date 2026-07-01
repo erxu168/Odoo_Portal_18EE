@@ -13,6 +13,26 @@ export interface StepData {
   images?: StepImage[];
 }
 
+/** A recipe ingredient with its total base amount, used to drive "set by ingredient" scaling. */
+export interface ScaleIngredient { id: number; name: string; baseQty: number; uom: string; }
+
+/**
+ * Collapse per-step ingredients into one list per ingredient, summing amounts
+ * across steps (an ingredient used in several steps gets one base total).
+ * Only ingredients with a recorded amount (> 0) are returned.
+ */
+export function aggregateStepIngredients(steps: StepData[]): ScaleIngredient[] {
+  const map = new Map<number, ScaleIngredient>();
+  for (const s of steps) {
+    for (const ing of s.ingredients || []) {
+      const existing = map.get(ing.id);
+      if (existing) existing.baseQty += ing.qty || 0;
+      else map.set(ing.id, { id: ing.id, name: ing.name, baseQty: ing.qty || 0, uom: ing.uom || '' });
+    }
+  }
+  return Array.from(map.values()).filter(i => i.baseQty > 0);
+}
+
 export interface CookingSession {
   id: string;
   recipeId: number;

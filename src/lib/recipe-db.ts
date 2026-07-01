@@ -79,7 +79,99 @@ export function initRecipeTables(): void {
       cooked_by INTEGER NOT NULL,
       status TEXT NOT NULL DEFAULT 'in_progress' CHECK(status IN ('in_progress', 'completed', 'abandoned'))
     );
+
+    -- Manager-curated "featured" dishes shown on the Cooking Board, scoped per restaurant.
+    CREATE TABLE IF NOT EXISTS recipe_featured (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      mode TEXT NOT NULL,               -- 'cooking' | 'production'
+      recipe_id INTEGER NOT NULL,       -- product_tmpl_id (cooking) or bom_id (production)
+      recipe_name TEXT NOT NULL,        -- denormalised for display without an Odoo round-trip
+      base_qty REAL NOT NULL DEFAULT 1, -- base batch (1 serving for cooking, product_qty kg for production)
+      sequence INTEGER NOT NULL DEFAULT 0,
+      featured_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(company_id, mode, recipe_id)
+    );
+
+    -- Lightweight popularity log used for the "auto fallback" when nothing is featured.
+    CREATE TABLE IF NOT EXISTS recipe_cook_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      mode TEXT NOT NULL,
+      recipe_id INTEGER NOT NULL,
+      recipe_name TEXT NOT NULL,
+      base_qty REAL NOT NULL DEFAULT 1,
+      cooked_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
+}
+
+// -- Featured dishes (Cooking Board quick-start) --
+
+export interface FeaturedRecipe {
+  recipe_id: number;
+  recipe_name: string;
+  mode: string;
+  base_qty: number;
+}
+
+export function listFeatured(companyId: number, mode: string): FeaturedRecipe[] {
+  const db = getDb();
+  return db.prepare(
+    `SELECT recipe_id, recipe_name, mode, base_qty
+       FROM recipe_featured
+      WHERE company_id = ? AND mode = ?
+      ORDER BY sequence ASC, created_at ASC`
+  ).all(companyId, mode) as FeaturedRecipe[];
+}
+
+export function addFeatured(data: {
+  company_id: number; mode: string; recipe_id: number; recipe_name: string;
+  base_qty?: number; featured_by?: number | null;
+}): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO recipe_featured (company_id, mode, recipe_id, recipe_name, base_qty, featured_by)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(company_id, mode, recipe_id)
+     DO UPDATE SET recipe_name = excluded.recipe_name, base_qty = excluded.base_qty`
+  ).run(
+    data.company_id, data.mode, data.recipe_id, data.recipe_name,
+    data.base_qty ?? 1, data.featured_by ?? null,
+  );
+}
+
+export function removeFeatured(companyId: number, mode: string, recipeId: number): void {
+  const db = getDb();
+  db.prepare('DELETE FROM recipe_featured WHERE company_id = ? AND mode = ? AND recipe_id = ?')
+    .run(companyId, mode, recipeId);
+}
+
+export function logCook(data: {
+  company_id: number; mode: string; recipe_id: number; recipe_name: string; base_qty?: number;
+}): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO recipe_cook_log (company_id, mode, recipe_id, recipe_name, base_qty)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(data.company_id, data.mode, data.recipe_id, data.recipe_name, data.base_qty ?? 1);
+}
+
+export function getTopCookedRecipes(companyId: number, mode: string, limit = 4): FeaturedRecipe[] {
+  const db = getDb();
+  return db.prepare(
+    `SELECT recipe_id,
+            MAX(recipe_name) AS recipe_name,
+            mode,
+            MAX(base_qty) AS base_qty,
+            COUNT(*) AS cooks
+       FROM recipe_cook_log
+      WHERE company_id = ? AND mode = ?
+      GROUP BY recipe_id, mode
+      ORDER BY cooks DESC, MAX(cooked_at) DESC
+      LIMIT ?`
+  ).all(companyId, mode, limit) as FeaturedRecipe[];
 }
 
 // -- Local Recipes --

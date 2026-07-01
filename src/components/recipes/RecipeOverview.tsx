@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { useCompany } from '@/lib/company-context';
 
 interface StepData {
   id: number;
@@ -46,10 +47,41 @@ function firstSentence(html: string): string {
 
 export default function RecipeOverview({
   mode, recipeId, recipeName, difficulty, categoryName, productQty,
-  onBack, onHome, onStartCooking, onEdit,
+  onBack, onHome, onStartCooking, onEdit, userRole,
 }: Props) {
   const [steps, setSteps] = useState<StepData[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Manager/admin: feature this dish on the Cooking Board for the active restaurant.
+  const { companyId } = useCompany();
+  const canFeature = userRole === 'manager' || userRole === 'admin';
+  const [featured, setFeatured] = useState(false);
+  const [featBusy, setFeatBusy] = useState(false);
+
+  useEffect(() => {
+    if (!canFeature || !companyId) return;
+    fetch(`/api/recipes/featured?company_id=${companyId}&mode=${mode}`)
+      .then(r => (r.ok ? r.json() : { featured: [], source: 'manual' }))
+      .then(d => setFeatured(d.source === 'manual' && (d.featured || []).some((f: { recipe_id: number }) => f.recipe_id === recipeId)))
+      .catch(() => {});
+  }, [canFeature, companyId, mode, recipeId]);
+
+  async function toggleFeatured() {
+    if (!companyId || featBusy) return;
+    setFeatBusy(true);
+    const next = !featured;
+    try {
+      const res = await fetch('/api/recipes/featured', {
+        method: next ? 'POST' : 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId, mode, recipe_id: recipeId,
+          recipe_name: recipeName, base_qty: mode === 'cooking' ? 1 : (productQty || 10),
+        }),
+      });
+      if (res.ok) setFeatured(next);
+    } catch { /* ignore */ } finally { setFeatBusy(false); }
+  }
 
   useEffect(() => {
     async function load() {
@@ -80,10 +112,23 @@ export default function RecipeOverview({
         subtitle={categoryName || (mode === 'cooking' ? 'Cooking Guide' : 'Production Guide')}
         showBack
         onBack={onBack}
-        action={onEdit ? (
-          <button onClick={onEdit} className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center active:bg-white/25" aria-label="Edit">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          </button>
+        action={(canFeature || onEdit) ? (
+          <div className="flex items-center gap-2">
+            {canFeature && (
+              <button onClick={toggleFeatured} disabled={featBusy}
+                className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center active:bg-white/25 disabled:opacity-50"
+                aria-label={featured ? 'Remove from board' : 'Feature on board'}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill={featured ? '#FBBF24' : 'none'} stroke={featured ? '#FBBF24' : 'white'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                </svg>
+              </button>
+            )}
+            {onEdit && (
+              <button onClick={onEdit} className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center active:bg-white/25" aria-label="Edit">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+            )}
+          </div>
         ) : undefined}
       />
 

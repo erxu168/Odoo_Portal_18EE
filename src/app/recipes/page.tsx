@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { setDebugInfo } from '@/components/ui/DebugOverlay';
-import { type CookingSession, type StepData, createSessionId } from '@/lib/cooking-sessions';
+import { type CookingSession, type StepData, createSessionId, aggregateStepIngredients } from '@/lib/cooking-sessions';
+import { useCompany } from '@/lib/company-context';
 import { unlockAudio } from '@/lib/timer-sounds';
 import { loadSettings, type NotificationSettings } from '@/lib/notification-settings';
 import TimerAlert, { type TimerAlertItem } from '@/components/ui/TimerAlert';
@@ -17,7 +18,7 @@ import BatchSize from '@/components/recipes/BatchSize';
 import IngredientCheck from '@/components/recipes/IngredientCheck';
 import CookMode from '@/components/recipes/CookMode';
 import CookComplete from '@/components/recipes/CookComplete';
-import ActiveSessions from '@/components/recipes/ActiveSessions';
+import ActiveSessions, { type FeaturedTile } from '@/components/recipes/ActiveSessions';
 import RecordSelect from '@/components/recipes/RecordSelect';
 import CreateDish from '@/components/recipes/CreateDish';
 import { useTopBar } from '@/components/ui/TopBarContext';
@@ -118,6 +119,9 @@ export default function RecipesPage() {
   const alertedRef = useRef<Set<string>>(new Set());
   const [notifSettings, setNotifSettings] = useState<NotificationSettings>(() => loadSettings());
   const [browseMode, setBrowseMode] = useState<'cooking' | 'production'>('cooking');
+  const { companyId } = useCompany();
+  const [featured, setFeatured] = useState<FeaturedTile[]>([]);
+  const [featuredSource, setFeaturedSource] = useState<'manual' | 'auto'>('manual');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
   function showToast(msg: string, type: 'success' | 'error' | 'info' = 'info') { setToast({ msg, type }); }
 
@@ -127,6 +131,15 @@ export default function RecipesPage() {
   }, [sessions]);
 
   useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.role) setUserRole(d.user.role); }).catch(() => {}); }, []);
+
+  // Load featured / quick-start dishes for the Cooking Board (per restaurant + mode)
+  useEffect(() => {
+    if (screen.type !== 'active-sessions' || !companyId) return;
+    fetch(`/api/recipes/featured?company_id=${companyId}&mode=${browseMode}`)
+      .then(r => (r.ok ? r.json() : { featured: [], source: 'manual' }))
+      .then(d => { setFeatured(d.featured || []); setFeaturedSource(d.source || 'manual'); })
+      .catch(() => {});
+  }, [screen.type, browseMode, companyId]);
 
   // Reset to dashboard when entering from another module
   useEffect(() => {
@@ -203,7 +216,37 @@ export default function RecipesPage() {
       timerEndAt: null, timerTotal: 0, timerPausedLeft: null,
       showPlating: false, status: 'active', startedAt: Date.now(),
     }]);
+    // Fire-and-forget popularity log feeding the Cooking Board's auto-fallback.
+    if (companyId && ctx.recipeId) {
+      fetch('/api/recipes/cooked', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId, mode: ctx.mode, recipe_id: ctx.recipeId,
+          recipe_name: ctx.recipeName, base_qty: ctx.mode === 'cooking' ? 1 : (ctx.productQty || 10),
+        }),
+      }).catch(() => {});
+    }
     return id;
+  }
+
+  // Featured tile tapped on the board → load steps, then jump straight to "set amount".
+  async function startFeatured(tile: FeaturedTile) {
+    setCtx(p => ({
+      ...p,
+      mode: tile.mode, recipeId: tile.recipe_id, recipeName: tile.recipe_name,
+      difficulty: undefined, categoryName: undefined,
+      productQty: tile.mode === 'production' ? (tile.base_qty || 10) : undefined,
+      batch: tile.mode === 'cooking' ? 1 : (tile.base_qty || 10), multiplier: 1, steps: [],
+    }));
+    let steps: StepData[] = [];
+    try {
+      const param = tile.mode === 'cooking' ? `product_tmpl_id=${tile.recipe_id}` : `bom_id=${tile.recipe_id}`;
+      const res = await fetch(`/api/recipes/steps?${param}`);
+      if (res.ok) { const data = await res.json(); steps = data.steps || []; }
+    } catch { /* offline or no guide */ }
+    setCtx(p => ({ ...p, steps }));
+    // If the dish has no recorded guide, fall back to the overview (which explains that).
+    setScreen({ type: steps.length > 0 ? 'batch-size' : 'overview' });
   }
 
   const activeSessions = sessions.filter(s => s.status === 'active');
@@ -229,6 +272,7 @@ export default function RecipesPage() {
     onSettings={() => setScreen({ type: 'settings' }) } onHome={goHome} /></>);
 
   if (screen.type === 'active-sessions') return (<>{alertEl}<ActiveSessions sessions={sessions}
+    featured={featured} featuredSource={featuredSource} onSelectFeatured={startFeatured}
     onSelectSession={(id) => setScreen({ type: 'cook-mode', sessionId: id })}
     onNewDish={() => setScreen({ type: browseMode === 'cooking' ? 'cooking-guide' : 'production-guide' })} onBack={goDashboard} onEndSession={removeSession} /></>);
 
@@ -250,6 +294,7 @@ export default function RecipesPage() {
     onStartCooking={(steps) => { setCtx(p => ({ ...p, steps })); setScreen({ type: 'batch-size' }); }} /></>);
 
   if (screen.type === 'batch-size') return (<>{alertEl}<BatchSize mode={ctx.mode} recipeName={ctx.recipeName} baseBatch={ctx.mode === 'cooking' ? 1 : (ctx.productQty || 10)}
+    ingredients={aggregateStepIngredients(ctx.steps)}
     onBack={() => setScreen({ type: 'overview' })}
     onConfirm={(b, m) => { setCtx(p => ({ ...p, batch: b, multiplier: m })); setScreen({ type: 'ingredient-check' }); }} /></>);
 
