@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { setDebugInfo } from '@/components/ui/DebugOverlay';
-import { type CookingSession, type StepData, createSessionId, aggregateStepIngredients } from '@/lib/cooking-sessions';
+import { type CookingSession, type StepData, type ScaleIngredient, createSessionId, aggregateStepIngredients } from '@/lib/cooking-sessions';
 import { useCompany } from '@/lib/company-context';
 import { unlockAudio } from '@/lib/timer-sounds';
 import { loadSettings, type NotificationSettings } from '@/lib/notification-settings';
@@ -122,6 +122,7 @@ export default function RecipesPage() {
   const { companyId } = useCompany();
   const [featured, setFeatured] = useState<FeaturedTile[]>([]);
   const [featuredSource, setFeaturedSource] = useState<'manual' | 'auto'>('manual');
+  const [bomScaleIngredients, setBomScaleIngredients] = useState<ScaleIngredient[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
   function showToast(msg: string, type: 'success' | 'error' | 'info' = 'info') { setToast({ msg, type }); }
 
@@ -140,6 +141,26 @@ export default function RecipesPage() {
       .then(d => { setFeatured(d.featured || []); setFeaturedSource(d.source || 'manual'); })
       .catch(() => {});
   }, [screen.type, browseMode, companyId]);
+
+  // Production recipes = real Odoo BOMs: drive "set by ingredient" from the actual BOM lines.
+  useEffect(() => {
+    if (screen.type !== 'batch-size' || ctx.mode !== 'production' || !ctx.recipeId) return;
+    let cancelled = false;
+    setBomScaleIngredients([]);
+    fetch(`/api/boms/${ctx.recipeId}`)
+      .then(r => (r.ok ? r.json() : { components: [] }))
+      .then((d) => {
+        if (cancelled) return;
+        const comps: ScaleIngredient[] = (d.components || [])
+          .map((c: { product_id: number; product_name: string; required_qty: number; uom: string }) => ({
+            id: c.product_id, name: c.product_name, baseQty: c.required_qty || 0, uom: c.uom || '',
+          }))
+          .filter((c: ScaleIngredient) => c.baseQty > 0);
+        setBomScaleIngredients(comps);
+      })
+      .catch(() => { if (!cancelled) setBomScaleIngredients([]); });
+    return () => { cancelled = true; };
+  }, [screen.type, ctx.mode, ctx.recipeId]);
 
   // Reset to dashboard when entering from another module
   useEffect(() => {
@@ -294,7 +315,7 @@ export default function RecipesPage() {
     onStartCooking={(steps) => { setCtx(p => ({ ...p, steps })); setScreen({ type: 'batch-size' }); }} /></>);
 
   if (screen.type === 'batch-size') return (<>{alertEl}<BatchSize mode={ctx.mode} recipeName={ctx.recipeName} baseBatch={ctx.mode === 'cooking' ? 1 : (ctx.productQty || 10)}
-    ingredients={aggregateStepIngredients(ctx.steps)}
+    ingredients={ctx.mode === 'production' ? bomScaleIngredients : aggregateStepIngredients(ctx.steps)}
     onBack={() => setScreen({ type: 'overview' })}
     onConfirm={(b, m) => { setCtx(p => ({ ...p, batch: b, multiplier: m })); setScreen({ type: 'ingredient-check' }); }} /></>);
 
