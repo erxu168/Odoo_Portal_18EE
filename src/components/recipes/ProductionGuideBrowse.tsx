@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { useCompany } from '@/lib/company-context';
 
 interface ProductionRecipe {
   id: number;
@@ -36,6 +37,7 @@ const DIFFICULTY_STYLES: Record<string, { bg: string; text: string; label: strin
 };
 
 export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }: Props) {
+  const { companyId } = useCompany();
   const [recipes, setRecipes] = useState<ProductionRecipe[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,9 +46,10 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
   const [activeCategory, setActiveCategory] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!companyId) return;
     async function fetchData() {
       try {
-        const res = await fetch('/api/recipes?mode=production_guide');
+        const res = await fetch(`/api/recipes?mode=production_guide&company_id=${companyId}`);
         if (!res.ok) throw new Error('Failed to fetch recipes');
         const data = await res.json();
         setRecipes(data.production_guide || []);
@@ -61,7 +64,7 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
       }
     }
     fetchData();
-  }, []);
+  }, [companyId]);
 
   function getName(r: ProductionRecipe): string {
     return r.product_tmpl_id ? r.product_tmpl_id[1] : `BoM #${r.id}`;

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { useCompany } from '@/lib/company-context';
 
 interface Recipe {
   id: number;
@@ -83,6 +84,7 @@ function getCatIcon(cat: Category): string {
 }
 
 export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
+  const { companyId } = useCompany();
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,9 +93,10 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
+    if (!companyId) return;
     async function fetchData() {
       try {
-        const res = await fetch('/api/recipes?mode=cooking_guide');
+        const res = await fetch(`/api/recipes?mode=cooking_guide&company_id=${companyId}`);
         if (!res.ok) throw new Error('Failed to fetch recipes');
         const data = await res.json();
         setRecipes(data.cooking_guide || []);
@@ -108,7 +111,7 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
       }
     }
     fetchData();
-  }, []);
+  }, [companyId]);
 
   // When a category is selected, show filtered recipe list
   const filteredByCategory = activeCategory !== null

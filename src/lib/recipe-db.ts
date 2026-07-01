@@ -104,7 +104,30 @@ export function initRecipeTables(): void {
       base_qty REAL NOT NULL DEFAULT 1,
       cooked_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- Which restaurant owns a cooking recipe category (product.templates carry no
+    -- company, so we scope cooking recipes by their category). Portal-side only.
+    CREATE TABLE IF NOT EXISTS recipe_category_company (
+      category_id INTEGER PRIMARY KEY,
+      company_id INTEGER NOT NULL
+    );
   `);
+}
+
+// -- Recipe category → company scoping (cooking recipes) --
+
+export function setCategoryCompany(categoryId: number, companyId: number): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO recipe_category_company (category_id, company_id) VALUES (?, ?)
+     ON CONFLICT(category_id) DO UPDATE SET company_id = excluded.company_id`
+  ).run(categoryId, companyId);
+}
+
+export function getCategoryIdsForCompany(companyId: number): number[] {
+  const db = getDb();
+  return (db.prepare('SELECT category_id FROM recipe_category_company WHERE company_id = ?')
+    .all(companyId) as { category_id: number }[]).map(r => r.category_id);
 }
 
 // -- Featured dishes (Cooking Board quick-start) --

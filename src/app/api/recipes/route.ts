@@ -8,7 +8,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
-import { initRecipeTables, getLocalRecipes } from '@/lib/recipe-db';
+import { initRecipeTables, getLocalRecipes, getCategoryIdsForCompany } from '@/lib/recipe-db';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -17,10 +17,15 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const mode = searchParams.get('mode');
   const search = searchParams.get('search');
+  const companyId = parseInt(searchParams.get('company_id') || '0', 10);
 
   try {
     const odoo = getOdoo();
     const result: any = { cooking_guide: [], production_guide: [], categories: [], local_recipes: [] };
+
+    // Cooking recipes carry no company, so scope them by their category → restaurant map.
+    let cookingCatIds: number[] | null = null;
+    if (companyId) { initRecipeTables(); cookingCatIds = getCategoryIdsForCompany(companyId); }
 
     // Fetch categories
     result.categories = await odoo.searchRead(
@@ -28,6 +33,11 @@ export async function GET(request: Request) {
       ['id', 'name', 'sequence', 'icon', 'mode', 'warehouse_ids', 'recipe_count'],
       { order: 'sequence' },
     );
+    if (companyId) {
+      result.categories = result.categories.filter((c: any) =>
+        c.mode === 'production_guide' || (cookingCatIds || []).includes(c.id)
+      );
+    }
 
     // Cooking Guide recipes (product.template)
     if (!mode || mode === 'cooking_guide') {
@@ -36,6 +46,7 @@ export async function GET(request: Request) {
         ['x_recipe_published', '=', true],
       ];
       if (search) domain.push(['name', 'ilike', search]);
+      if (companyId) domain.push(['x_recipe_category_id', 'in', (cookingCatIds && cookingCatIds.length) ? cookingCatIds : [-1]]);
 
       result.cooking_guide = await odoo.searchRead(
         'product.template', domain,
@@ -55,6 +66,7 @@ export async function GET(request: Request) {
         ['x_recipe_published', '=', true],
       ];
       if (search) domain.push(['product_tmpl_id.name', 'ilike', search]);
+      if (companyId) domain.push(['company_id', '=', companyId]);
 
       result.production_guide = await odoo.searchRead(
         'mrp.bom', domain,

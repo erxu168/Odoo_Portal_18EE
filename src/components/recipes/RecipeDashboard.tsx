@@ -74,7 +74,7 @@ const TILES = [
 const ROLE_LEVEL: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
 
 export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettings, scope = 'cooking' }: Props) {
-  const { companyName } = useCompany();
+  const { companyName, companyId } = useCompany();
   const isProduction = scope === 'production';
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [recipeCount, setRecipeCount] = useState({ cooking: 0, production: 0 });
@@ -84,8 +84,8 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
   useEffect(() => {
     async function fetchStats() {
       try {
-        // Fetch recipe counts
-        const res = await fetch('/api/recipes');
+        // Fetch recipe counts (scoped to the active restaurant)
+        const res = await fetch(`/api/recipes${companyId ? `?company_id=${companyId}` : ''}`);
         if (res.ok) {
           const data = await res.json();
           setRecipeCount({
@@ -118,7 +118,7 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
       }
     }
     fetchStats();
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {

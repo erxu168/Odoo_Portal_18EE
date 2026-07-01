@@ -10,7 +10,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, requireRole, AuthError } from '@/lib/auth';
 import {
-  initRecipeTables, listFeatured, addFeatured, removeFeatured, getTopCookedRecipes,
+  initRecipeTables, listFeatured, addFeatured, removeFeatured,
 } from '@/lib/recipe-db';
 
 function normMode(raw: unknown): 'cooking' | 'production' {
@@ -33,12 +33,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ featured: manualAll, source: 'manual' });
     }
 
+    // Single-mode: manager-curated only (no most-cooked guessing).
     const mode = normMode(modeParam);
-    const manual = listFeatured(companyId, mode);
-    if (manual.length > 0) return NextResponse.json({ featured: manual, source: 'manual' });
-
-    const auto = getTopCookedRecipes(companyId, mode, 4);
-    return NextResponse.json({ featured: auto, source: 'auto' });
+    return NextResponse.json({ featured: listFeatured(companyId, mode), source: 'manual' });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     return NextResponse.json({ error: 'Failed to load featured dishes' }, { status: 500 });
