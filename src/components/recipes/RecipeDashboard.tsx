@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import SortableTileGrid from '@/components/ui/SortableTileGrid';
+import { useCompany } from '@/lib/company-context';
 
 interface Props {
   userRole: string;
@@ -72,6 +73,7 @@ const TILES = [
 const ROLE_LEVEL: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
 
 export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettings }: Props) {
+  const { companyName } = useCompany();
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [recipeCount, setRecipeCount] = useState({ cooking: 0, production: 0 });
   const [syncPending, setSyncPending] = useState(0);
@@ -137,7 +139,7 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
       <AppHeader
         supertitle="CHEF GUIDE"
         title="Chef Guide"
-        subtitle="SSAM Korean BBQ"
+        subtitle={companyName || 'Chef Guide'}
         action={onSettings ? (
           <button onClick={onSettings}
             className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center active:bg-white/25"
