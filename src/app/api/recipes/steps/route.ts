@@ -91,6 +91,7 @@ export async function GET(request: Request) {
             if (!p) return null;
             return {
               id: Array.isArray(p.product_id) ? p.product_id[0] : 0,
+              pivot_id: pivotId,
               name: Array.isArray(p.product_id) ? p.product_id[1] : 'Unknown',
               qty: p.qty || 0,
               uom: Array.isArray(p.uom_id) ? p.uom_id[1] : '',

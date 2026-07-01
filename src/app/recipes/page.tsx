@@ -29,6 +29,7 @@ import ApprovalList from '@/components/recipes/ApprovalList';
 import ApprovalReview from '@/components/recipes/ApprovalReview';
 import EditRecipeBrowse from '@/components/recipes/EditRecipeBrowse';
 import EditRecipeOverview from '@/components/recipes/EditRecipeOverview';
+import EditIngredients from '@/components/recipes/EditIngredients';
 import EditMetadata from '@/components/recipes/EditMetadata';
 import Toast from '@/components/ui/Toast';
 import AppHeader from '@/components/ui/AppHeader';
@@ -80,7 +81,7 @@ type Screen =
   | { type: 'active-recording' } | { type: 'recording-summary' }
   | { type: 'edit-step'; stepIndex: number }
   | { type: 'approvals' } | { type: 'approval-review' }
-  | { type: 'edit-browse' } | { type: 'edit-overview' } | { type: 'edit-metadata' }
+  | { type: 'edit-browse' } | { type: 'edit-overview' } | { type: 'edit-metadata' } | { type: 'edit-ingredients' }
   | { type: 'edit-steps' } | { type: 'edit-step-detail'; stepIndex: number }
   | { type: 'stats' }
   | { type: 'settings' };
@@ -434,6 +435,7 @@ export default function RecipesPage() {
     difficulty={editCtx.difficulty} categoryName={editCtx.categoryName} productQty={editCtx.productQty}
     isPublished={editCtx.isPublished} userRole={userRole}
     onEditMetadata={() => setScreen({ type: 'edit-metadata' })}
+    onEditIngredients={() => setScreen({ type: 'edit-ingredients' })}
     onEditSteps={(steps) => { setEditCtx(p => ({ ...p, steps })); setScreen({ type: 'edit-steps' }); }}
     onTogglePublish={async () => {
       const action = editCtx.isPublished ? 'unpublish' : 'publish';
@@ -490,6 +492,10 @@ export default function RecipesPage() {
         }
       } catch (_e) { showToast('Connection failed.', 'error'); } finally { setSubmitting(false); }
     }}
+    onBack={() => setScreen({ type: 'edit-overview' })} /></>);
+
+  if (screen.type === 'edit-ingredients') return (<>{alertEl}<EditIngredients
+    mode={editCtx.mode} recipeId={editCtx.recipeId} recipeName={editCtx.recipeName}
     onBack={() => setScreen({ type: 'edit-overview' })} /></>);
 
   if (screen.type === 'edit-steps') {
