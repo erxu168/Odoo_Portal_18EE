@@ -267,7 +267,7 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
             <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-3">
               Categories
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-2">
               {categories.map((cat, idx) => {
                 const color = CAT_COLORS[idx % CAT_COLORS.length];
                 const icon = getCatIcon(cat);
@@ -275,11 +275,11 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
                   <button
                     key={cat.id}
                     onClick={() => setActiveCategory(cat.id)}
-                    className={`${color.bg} rounded-2xl p-4 flex flex-col items-center justify-center gap-2 aspect-square active:opacity-85 active:scale-[0.96] transition-all shadow-lg`}
+                    className={`${color.bg} rounded-xl p-2 flex flex-col items-center justify-center gap-0.5 aspect-square active:opacity-85 active:scale-[0.96] transition-all shadow`}
                   >
-                    <span className="text-[32px] leading-none drop-shadow-sm">{icon}</span>
-                    <span className="text-[12px] font-bold text-white text-center leading-tight line-clamp-2">{cat.name}</span>
-                    <span className="text-[10px] text-white/60 font-medium">{cat.recipe_count}</span>
+                    <span className="text-[20px] leading-none drop-shadow-sm">{icon}</span>
+                    <span className="text-[10px] font-bold text-white text-center leading-tight line-clamp-2">{cat.name}</span>
+                    <span className="text-[9px] text-white/60 font-medium">{cat.recipe_count}</span>
                   </button>
                 );
               })}
@@ -287,11 +287,11 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
               {/* All dishes button */}
               <button
                 onClick={() => setSearch(' ')}
-                className="bg-gray-800 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 aspect-square active:opacity-85 active:scale-[0.96] transition-all shadow-lg"
+                className="bg-gray-800 rounded-xl p-2 flex flex-col items-center justify-center gap-0.5 aspect-square active:opacity-85 active:scale-[0.96] transition-all shadow"
               >
-                <span className="text-[32px] leading-none">{'\uD83D\uDCCB'}</span>
-                <span className="text-[12px] font-bold text-white text-center leading-tight">All Dishes</span>
-                <span className="text-[10px] text-white/60 font-medium">{recipes.length}</span>
+                <span className="text-[20px] leading-none">{'\uD83D\uDCCB'}</span>
+                <span className="text-[10px] font-bold text-white text-center leading-tight">All Dishes</span>
+                <span className="text-[9px] text-white/60 font-medium">{recipes.length}</span>
               </button>
             </div>
           </div>
