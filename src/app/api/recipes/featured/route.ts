@@ -27,14 +27,10 @@ export async function GET(request: Request) {
     if (!companyId) return NextResponse.json({ featured: [], source: 'manual' });
 
     // mode=all → one combined prep list (cooking + production) for the restaurant.
+    // Manager-curated ONLY — no auto-suggest, so staff see exactly what the manager chose.
     if (modeParam === 'all') {
       const manualAll = [...listFeatured(companyId, 'cooking'), ...listFeatured(companyId, 'production')];
-      if (manualAll.length > 0) return NextResponse.json({ featured: manualAll, source: 'manual' });
-      const autoAll = [
-        ...getTopCookedRecipes(companyId, 'cooking', 4),
-        ...getTopCookedRecipes(companyId, 'production', 4),
-      ].slice(0, 8);
-      return NextResponse.json({ featured: autoAll, source: 'auto' });
+      return NextResponse.json({ featured: manualAll, source: 'manual' });
     }
 
     const mode = normMode(modeParam);
