@@ -44,6 +44,14 @@ export async function PATCH(
         return NextResponse.json({ error: 'allowed_company_ids must be an array of numbers' }, { status: 400 });
       }
     }
+    if (body.module_access !== undefined) {
+      // null = reset to role default; otherwise an explicit array of module id strings.
+      if (body.module_access === null || (Array.isArray(body.module_access) && body.module_access.every((m: any) => typeof m === 'string'))) {
+        updates.module_access = body.module_access;
+      } else {
+        return NextResponse.json({ error: 'module_access must be null or an array of strings' }, { status: 400 });
+      }
+    }
 
     if (Object.keys(updates).length > 0) {
       updateUser(userId, updates);

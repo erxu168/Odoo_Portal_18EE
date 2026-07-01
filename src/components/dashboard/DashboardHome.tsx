@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import SortableTileGrid from '@/components/ui/SortableTileGrid';
 import CookPlanModal, { type CookPlanItem } from '@/components/prep-planner/CookPlanModal';
 import { DEFAULT_COMPANY_ID } from '@/components/prep-planner/companies';
+import { GOVERNED_MODULE_IDS } from '@/lib/modules';
 
 function berlinToday(): string {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' }).slice(0, 10);
@@ -103,6 +104,7 @@ export default function DashboardHome() {
   const [tasks, setTasks] = useState<any>(null);
   const [now, setNow] = useState(new Date());
   const [isCandidate, setIsCandidate] = useState(false);
+  const [allowedModules, setAllowedModules] = useState<string[] | null>(null);
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
   const [cookPlanItems, setCookPlanItems] = useState<CookPlanItem[] | null>(null);
   const [cookPlanOpen, setCookPlanOpen] = useState(false);
@@ -116,6 +118,7 @@ export default function DashboardHome() {
       if (d.user) {
         setUserName(d.user.name);
         setUserRole(d.user.role);
+        if (Array.isArray(d.user.modules)) setAllowedModules(d.user.modules);
         if (d.user.avatar) setAvatar(d.user.avatar);
         if (d.user.is_candidate) setIsCandidate(true);
         if (d.user.preferences?.dashboard_tile_order) {
@@ -183,7 +186,13 @@ export default function DashboardHome() {
   const myLevel = ROLE_LEVEL[userRole] || 1;
   const visibleTiles = isCandidate
     ? TILES.filter(t => t.id === 'hr')
-    : TILES.filter(t => myLevel >= (ROLE_LEVEL[t.minRole] || 1));
+    : TILES.filter(t => {
+        // Placeholder tiles (not governed by access control) always show.
+        if (!GOVERNED_MODULE_IDS.has(t.id)) return true;
+        // Until access loads, fall back to role default; then use the admin-set list.
+        if (allowedModules == null) return myLevel >= (ROLE_LEVEL[t.minRole] || 1);
+        return allowedModules.includes(t.id);
+      });
 
   const tasksDone = tasks?.done || 0;
   const tasksTotal = tasks?.total || 0;

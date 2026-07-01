@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import { PORTAL_MODULES, defaultModuleIds, parseModuleAccess } from '@/lib/modules';
 
 interface User {
   id: number;
@@ -13,6 +14,7 @@ interface User {
   employee_id: number | null;
   active: number;
   allowed_company_ids: string;
+  module_access: string | null;
   created_at: string;
   last_login: string | null;
 }
@@ -37,6 +39,7 @@ export default function AdminUsersPage() {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<number | null>(null);
+  const [expandedModules, setExpandedModules] = useState<number | null>(null);
 
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -97,6 +100,47 @@ export default function AdminUsersPage() {
       ));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not update companies');
+    }
+  }
+
+  // Effective module ids for a user: their explicit allowlist if set, else the role default.
+  function userModuleIds(user: User): string[] {
+    return parseModuleAccess(user.module_access) ?? defaultModuleIds(user.role);
+  }
+
+  async function toggleModule(user: User, moduleId: string) {
+    const current = userModuleIds(user);
+    const updated = current.includes(moduleId)
+      ? current.filter(m => m !== moduleId)
+      : [...current, moduleId];
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ module_access: updated }),
+      });
+      if (!res.ok) throw new Error('Server rejected module update');
+      setUsers(prev => prev.map(u =>
+        u.id === user.id ? { ...u, module_access: JSON.stringify(updated) } : u
+      ));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not update modules');
+    }
+  }
+
+  async function resetModules(user: User) {
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ module_access: null }),
+      });
+      if (!res.ok) throw new Error('Server rejected module reset');
+      setUsers(prev => prev.map(u =>
+        u.id === user.id ? { ...u, module_access: null } : u
+      ));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not reset modules');
     }
   }
 
@@ -418,6 +462,10 @@ export default function AdminUsersPage() {
                             className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${isExpanded ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
                             Companies
                           </button>
+                          <button onClick={() => setExpandedModules(expandedModules === u.id ? null : u.id)}
+                            className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${expandedModules === u.id ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
+                            Modules
+                          </button>
                           <button onClick={() => handleResetPassword(u)}
                             className="px-3 py-1 rounded-lg border border-gray-200 text-gray-600 active:bg-gray-50 text-[12px]">
                             Reset pw
@@ -473,6 +521,44 @@ export default function AdminUsersPage() {
                       {isExpanded && isAdmin && (
                         <div className="border-t border-gray-100 px-4 py-3 bg-blue-50">
                           <div className="text-[12px] text-blue-700">Admins automatically have access to all companies. No assignment needed.</div>
+                        </div>
+                      )}
+
+                      {/* Per-user module access */}
+                      {expandedModules === u.id && (
+                        <div className="border-t border-gray-100 px-4 py-3 bg-gray-50">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                              App modules {u.module_access ? '· custom' : '· role default'}
+                            </span>
+                            {u.module_access && (
+                              <button onClick={() => resetModules(u)}
+                                className="text-[11px] font-semibold text-gray-500 active:opacity-70">
+                                Reset to role default
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            {PORTAL_MODULES.map(m => {
+                              const checked = userModuleIds(u).includes(m.id);
+                              return (
+                                <button key={m.id} onClick={() => toggleModule(u, m.id)}
+                                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                                    checked ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 active:bg-gray-50'
+                                  }`}>
+                                  <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                                    checked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
+                                  }`}>
+                                    {checked && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[13px] font-semibold text-gray-900">{m.label}</div>
+                                  </div>
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 font-mono flex-shrink-0">{m.minRole}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>

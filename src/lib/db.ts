@@ -159,6 +159,15 @@ function migrateSchema(db: Database.Database) {
   if (!colNames.includes('preferences')) {
     db.exec("ALTER TABLE portal_users ADD COLUMN preferences TEXT DEFAULT '{}'");
   }
+  // Per-user module allowlist (JSON array of module ids). NULL = use role default.
+  if (!colNames.includes('module_access')) {
+    try {
+      db.exec('ALTER TABLE portal_users ADD COLUMN module_access TEXT DEFAULT NULL');
+    } catch (e) {
+      // A concurrent process (e.g. a parallel build worker) may have added it first.
+      if (!String((e as Error)?.message).includes('duplicate column')) throw e;
+    }
+  }
 }
 
 function seedAdmin(db: Database.Database) {
@@ -189,6 +198,7 @@ export interface PortalUser {
   tour_seen: number;
   allowed_company_ids: string;
   preferences: string;
+  module_access: string | null;
   created_at: string;
   last_login: string | null;
 }
@@ -216,17 +226,17 @@ export function getUserByApplicantId(applicantId: number): PortalUser | null {
 
 export function getUserById(id: number): PortalUser | null {
   const db = getDb();
-  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE id = ?').get(id) as PortalUser | null;
+  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, created_at, last_login FROM portal_users WHERE id = ?').get(id) as PortalUser | null;
 }
 
 export function listUsers(): PortalUser[] {
   const db = getDb();
-  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users ORDER BY created_at DESC').all() as PortalUser[];
+  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, created_at, last_login FROM portal_users ORDER BY created_at DESC').all() as PortalUser[];
 }
 
 export function listUsersByStatus(status: string): PortalUser[] {
   const db = getDb();
-  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, created_at, last_login FROM portal_users WHERE status = ? AND active = 1 ORDER BY created_at DESC').all(status) as PortalUser[];
+  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, created_at, last_login FROM portal_users WHERE status = ? AND active = 1 ORDER BY created_at DESC').all(status) as PortalUser[];
 }
 
 export function countUsersByStatus(status: string): number {
@@ -249,7 +259,7 @@ export function createUser(name: string, email: string, password: string, role: 
   return result.lastInsertRowid as number;
 }
 
-export function updateUser(id: number, updates: { name?: string; role?: string; active?: number; employee_id?: number | null; applicant_id?: number | null; must_change_password?: number; status?: string; allowed_company_ids?: number[] }) {
+export function updateUser(id: number, updates: { name?: string; role?: string; active?: number; employee_id?: number | null; applicant_id?: number | null; must_change_password?: number; status?: string; allowed_company_ids?: number[]; module_access?: string[] | null }) {
   const db = getDb();
   const sets: string[] = [];
   const vals: any[] = [];
@@ -261,6 +271,7 @@ export function updateUser(id: number, updates: { name?: string; role?: string; 
   if (updates.must_change_password !== undefined) { sets.push('must_change_password = ?'); vals.push(updates.must_change_password); }
   if (updates.status !== undefined) { sets.push('status = ?'); vals.push(updates.status); }
   if (updates.allowed_company_ids !== undefined) { sets.push('allowed_company_ids = ?'); vals.push(JSON.stringify(updates.allowed_company_ids)); }
+  if (updates.module_access !== undefined) { sets.push('module_access = ?'); vals.push(updates.module_access === null ? null : JSON.stringify(updates.module_access)); }
   if (sets.length === 0) return;
   vals.push(id);
   db.prepare(`UPDATE portal_users SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
@@ -299,7 +310,7 @@ export function getSessionUser(token: string): PortalUser | null {
   const db = getDb();
   const now = nowISO();
   const row = db.prepare(`
-    SELECT u.id, u.name, u.email, u.role, u.employee_id, u.applicant_id, u.must_change_password, u.status, u.active, u.login_count, u.tour_seen, u.allowed_company_ids, u.preferences, u.created_at, u.last_login
+    SELECT u.id, u.name, u.email, u.role, u.employee_id, u.applicant_id, u.must_change_password, u.status, u.active, u.login_count, u.tour_seen, u.allowed_company_ids, u.module_access, u.preferences, u.created_at, u.last_login
     FROM sessions s
     JOIN portal_users u ON u.id = s.user_id
     WHERE s.token = ? AND u.active = 1 AND u.status = 'active' AND s.expires_at > ?

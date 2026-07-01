@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getOdoo, PORTAL_LANG_COOKIE } from '@/lib/odoo';
 import { updateUserPreferences } from '@/lib/db';
+import { effectiveModuleIds } from '@/lib/modules';
 
 /**
  * GET /api/auth/me
@@ -39,6 +40,7 @@ export async function GET() {
       is_candidate: !!user.applicant_id && !user.employee_id,
       avatar,
       preferences,
+      modules: effectiveModuleIds(user.role, user.module_access),
     },
   });
 }

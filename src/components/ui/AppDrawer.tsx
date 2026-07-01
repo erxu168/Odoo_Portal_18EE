@@ -17,7 +17,7 @@ const ROLE_LABELS: Record<string, string> = {
 export default function AppDrawer({ open, onClose }: AppDrawerProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<{ name: string; email: string; role: string; avatar?: string | null; is_candidate?: boolean } | null>(null);
+  const [user, setUser] = useState<{ name: string; email: string; role: string; avatar?: string | null; is_candidate?: boolean; modules?: string[] } | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
@@ -56,6 +56,9 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isAdmin = user?.role === 'admin';
   const isCandidate = user?.is_candidate === true;
+  // Per-user module access (admin-configurable). Before it loads, show nothing extra.
+  const modules = user?.modules;
+  const canSee = (id: string) => !modules || modules.includes(id);
 
   return (
     <>
@@ -102,15 +105,23 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
               icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>} />
             {!isCandidate && (
               <>
-                <NavItem label="Manufacturing" href="/manufacturing" current={pathname} onClick={navigate}
-                  icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>} />
-                <NavItem label="Purchase" href="/purchase" current={pathname} onClick={navigate}
-                  icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>} />
-                <NavItem label="Inventory" href="/inventory" current={pathname} onClick={navigate}
-                  icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>} />
-                <NavItem label="Chef Guide" href="/recipes" current={pathname} onClick={navigate}
-                  icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>} />
-                {isManager && (
+                {canSee('production') && (
+                  <NavItem label="Manufacturing" href="/manufacturing" current={pathname} onClick={navigate}
+                    icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>} />
+                )}
+                {canSee('purchase') && (
+                  <NavItem label="Purchase" href="/purchase" current={pathname} onClick={navigate}
+                    icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>} />
+                )}
+                {canSee('inventory') && (
+                  <NavItem label="Inventory" href="/inventory" current={pathname} onClick={navigate}
+                    icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>} />
+                )}
+                {canSee('recipes') && (
+                  <NavItem label="Chef Guide" href="/recipes" current={pathname} onClick={navigate}
+                    icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>} />
+                )}
+                {canSee('production-guide') && (
                   <NavItem label="Production Guide" href="/recipes" current={pathname} onClick={() => navigate('/recipes', 'production')}
                     icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>} />
                 )}
