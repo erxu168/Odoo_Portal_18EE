@@ -56,8 +56,8 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
 
         </div>
         <div className="text-center">
-          <div className="text-[20px] font-bold text-white">Cooking Board</div>
-          <div className="text-[12px] text-zinc-400">{active.length}/10 dishes active</div>
+          <div className="text-[20px] font-bold text-white">What to prepare</div>
+          <div className="text-[12px] text-zinc-400">{active.length > 0 ? `${active.length}/10 cooking now` : 'Tap a dish to start'}</div>
         </div>
       </div>
 
@@ -67,7 +67,7 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
         {featured.length > 0 && (
           <div className="mb-4">
             <div className="text-[11px] font-bold tracking-widest uppercase text-zinc-500 mb-2 px-1">
-              {featuredSource === 'auto' ? 'Popular dishes' : 'Featured'} {'·'} tap to cook
+              {featuredSource === 'auto' ? 'Suggested' : 'To prepare'} {'·'} tap to start
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               {featured.map((t) => (
@@ -86,7 +86,7 @@ export default function ActiveSessions({ sessions, onSelectSession, onNewDish, o
           </div>
         )}
 
-        {active.length === 0 && (
+        {active.length === 0 && featured.length === 0 && (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">{<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>}</div>
             <div className="text-[16px] font-bold text-zinc-200 mb-2">Kitchen is quiet</div>

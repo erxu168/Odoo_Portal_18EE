@@ -23,9 +23,21 @@ export async function GET(request: Request) {
     initRecipeTables();
     const { searchParams } = new URL(request.url);
     const companyId = parseInt(searchParams.get('company_id') || '0', 10);
-    const mode = normMode(searchParams.get('mode'));
+    const modeParam = searchParams.get('mode');
     if (!companyId) return NextResponse.json({ featured: [], source: 'manual' });
 
+    // mode=all → one combined prep list (cooking + production) for the restaurant.
+    if (modeParam === 'all') {
+      const manualAll = [...listFeatured(companyId, 'cooking'), ...listFeatured(companyId, 'production')];
+      if (manualAll.length > 0) return NextResponse.json({ featured: manualAll, source: 'manual' });
+      const autoAll = [
+        ...getTopCookedRecipes(companyId, 'cooking', 4),
+        ...getTopCookedRecipes(companyId, 'production', 4),
+      ].slice(0, 8);
+      return NextResponse.json({ featured: autoAll, source: 'auto' });
+    }
+
+    const mode = normMode(modeParam);
     const manual = listFeatured(companyId, mode);
     if (manual.length > 0) return NextResponse.json({ featured: manual, source: 'manual' });
 

@@ -87,16 +87,10 @@ type Screen =
 
 export default function RecipesPage() {
   const router = useRouter();
+  // Staff land straight on the prep board (the manager's list of what to prepare).
   const [screen, setScreen] = useState<Screen>(() => {
-    if (typeof window === 'undefined') return { type: 'dashboard' };
-    try {
-      const saved = localStorage.getItem('kw_cook_sessions');
-      if (saved) {
-        const parsed = JSON.parse(saved) as CookingSession[];
-        if (parsed.some(s => s.status === 'active')) return { type: 'active-sessions' };
-      }
-    } catch (_e) { /* */ }
-    return { type: 'dashboard' };
+    if (typeof window === 'undefined') return { type: 'active-sessions' };
+    return { type: 'active-sessions' };
   });
   const [userRole, setUserRole] = useState<string>('staff');
   const [ctx, setCtx] = useState<RecipeCtx>({ mode: 'cooking', recipeId: 0, recipeName: '', steps: [], batch: 1, multiplier: 1 });
@@ -133,14 +127,14 @@ export default function RecipesPage() {
 
   useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.role) setUserRole(d.user.role); }).catch(() => {}); }, []);
 
-  // Load featured / quick-start dishes for the Cooking Board (per restaurant + mode)
+  // Load the manager's combined prep list (cooking + production) for the active restaurant.
   useEffect(() => {
     if (screen.type !== 'active-sessions' || !companyId) return;
-    fetch(`/api/recipes/featured?company_id=${companyId}&mode=${browseMode}`)
+    fetch(`/api/recipes/featured?company_id=${companyId}&mode=all`)
       .then(r => (r.ok ? r.json() : { featured: [], source: 'manual' }))
       .then(d => { setFeatured(d.featured || []); setFeaturedSource(d.source || 'manual'); })
       .catch(() => {});
-  }, [screen.type, browseMode, companyId]);
+  }, [screen.type, companyId]);
 
   // Production recipes = real Odoo BOMs: drive "set by ingredient" from the actual BOM lines.
   useEffect(() => {
@@ -168,7 +162,7 @@ export default function RecipesPage() {
     if (reset) {
       sessionStorage.removeItem('kw_recipes_reset');
 
-      setScreen({ type: 'dashboard' });
+      setScreen({ type: 'active-sessions' });
     }
   }, []);
 
