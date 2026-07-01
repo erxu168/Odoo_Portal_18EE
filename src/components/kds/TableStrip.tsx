@@ -51,7 +51,11 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
             </div>
             <div className="kds-tc-items">
               {o.items.map(item => (
-                <div key={item.id} className="kds-tc-item done" style={{ pointerEvents: 'none' }}>
+                <div
+                  key={item.id}
+                  className="kds-tc-item done"
+                  onClick={() => toggleItem(item.id, o.id)}
+                >
                   <div className="kds-tc-item-main">
                     <div className="kds-tc-check checked">
                       <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="3" width="14" height="14">
@@ -67,6 +71,7 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
             <button className="kds-tc-ready-btn" onClick={() => markReady(o.id)}>
               {'✅'} READY
             </button>
+            <div className="kds-tc-undo-hint">Tap a dish to undo</div>
           </div>
         ) : (
           <div

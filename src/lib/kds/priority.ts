@@ -67,16 +67,18 @@ export function buildTaskGroups(orders: KdsOrder[], boost: number): TaskGroup[] 
 
   const tasks = Object.values(map);
   for (const task of tasks) {
-    task.entries.sort((a, b) => {
-      if (a.done !== b.done) return a.done ? 1 : -1;
-      return b.effectiveWait - a.effectiveWait;
-    });
+    // Order rows by the ORDER's urgency only — NOT by whether the individual
+    // item is ticked. Checking one dish must not make rows jump around; the
+    // row keeps its place so the cook can work an order top-to-bottom. (Rows
+    // only leave when the whole order is marked Ready and drops out of prep.)
+    task.entries.sort((a, b) => b.effectiveWait - a.effectiveWait);
     task.totalQty = task.entries.reduce((s, e) => s + e.qty, 0);
     task.servedQty = task.entries.filter(e => e.done).reduce((s, e) => s + e.qty, 0);
     task.remainQty = task.totalQty - task.servedQty;
     task.allDone = task.entries.every(e => e.done);
-    const unserved = task.entries.filter(e => !e.done);
-    task.priority = unserved.length > 0 ? Math.max(...unserved.map(e => e.effectiveWait)) : 0;
+    // Card rank is the most-urgent order that needs this dish, across ALL its
+    // entries (served or not) — so ticking a dish doesn't reshuffle the cards.
+    task.priority = task.entries.length > 0 ? Math.max(...task.entries.map(e => e.effectiveWait)) : 0;
   }
 
   tasks.sort((a, b) => {

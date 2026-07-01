@@ -63,8 +63,12 @@ export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardPro
       <div className="kds-serve-queue">
         <div className="kds-serve-label">Orders</div>
         {task.entries.map((entry) => {
-          const showNext = entry.ticketId === mostUrgentId && !entry.done;
-          const otherItems = showNext
+          // Highlight EVERY row of the priority order until that order is fully
+          // done. mostUrgentId only advances once the order clears, so the
+          // whole order stays lit while the cook works through it — the
+          // emphasis doesn't hop dish-to-dish as items get ticked.
+          const isPriorityOrder = entry.ticketId === mostUrgentId;
+          const otherItems = isPriorityOrder && !entry.done
             ? getTableRemaining(orders, entry.ticketId).filter(i => i.name !== task.name)
             : [];
           const isTa = entry.type === 'Takeaway';
@@ -73,7 +77,7 @@ export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardPro
           return (
             <div key={entry.itemId}>
               <div
-                className={`kds-serve-item ${entry.done ? 'served' : ''} ${showNext ? 'is-next' : ''}`}
+                className={`kds-serve-item ${entry.done ? 'served' : ''} ${isPriorityOrder ? 'is-next' : ''}`}
                 onClick={() => toggleItem(entry.itemId, entry.ticketId)}
               >
                 <div className={`kds-s-check ${entry.done ? 'checked' : ''}`}>
@@ -89,7 +93,7 @@ export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardPro
                 {entry.note && !isAllergenOrAdditiveNote(entry.note) && <span className="kds-s-note">{entry.note}</span>}
                 <Timer minutes={entry.waitMin} tier={tier} size="sm" />
               </div>
-              {showNext && otherItems.length > 0 && (
+              {isPriorityOrder && !entry.done && otherItems.length > 0 && (
                 <div className="kds-also-needs">
                   {'\u26A0'} {entry.table} also needs: {otherItems.map(i => `${i.qty}x ${i.name}`).join(', ')}
                 </div>

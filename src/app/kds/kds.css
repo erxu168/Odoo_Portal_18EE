@@ -211,6 +211,17 @@
 /* MAIN */
 .kds-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 
+/* Thin, subtle scrollbars — a card/list that overflows looks clean, not broken */
+.kds-serve-queue::-webkit-scrollbar, .kds-tc-items::-webkit-scrollbar,
+.kds-task-strip::-webkit-scrollbar, .kds-table-strip::-webkit-scrollbar,
+.kds-fire-plan::-webkit-scrollbar, .kds-newbatch-preview::-webkit-scrollbar { width: 6px; height: 6px; }
+.kds-serve-queue::-webkit-scrollbar-thumb, .kds-tc-items::-webkit-scrollbar-thumb,
+.kds-task-strip::-webkit-scrollbar-thumb, .kds-table-strip::-webkit-scrollbar-thumb,
+.kds-fire-plan::-webkit-scrollbar-thumb, .kds-newbatch-preview::-webkit-scrollbar-thumb {
+  background: rgba(148,163,184,0.35); border-radius: 3px;
+}
+.kds-serve-queue, .kds-tc-items { scrollbar-width: thin; scrollbar-color: rgba(148,163,184,0.35) transparent; }
+
 /* NEW-BATCH BANNER — surfaces orders that arrived after START COOKING locked
    the batch. Keeps the cooking layout stable; tap to preview, button to fold in. */
 .kds-newbatch { flex-shrink: 0; margin: 8px 8px 0; }
@@ -297,8 +308,7 @@
   min-width: 260px;
   max-width: 340px;
   flex-shrink: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   transition: all 0.2s;
   display: flex;
   flex-direction: column;
@@ -318,7 +328,7 @@
 .kds-task-divider { height: 1px; background: #334155; margin: 0 10px; }
 
 /* SERVE QUEUE */
-.kds-serve-queue { padding: 4px 8px 8px; flex: 1; }
+.kds-serve-queue { padding: 4px 8px 8px; flex: 1; min-height: 0; overflow-y: auto; }
 .kds-serve-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 4px; padding-left: 2px; }
 .kds-serve-item {
   display: flex;
@@ -334,17 +344,20 @@
 .kds-serve-item:active { background: rgba(255,255,255,0.04); }
 .kds-serve-item.served { opacity: 0.25; text-decoration: line-through; }
 .kds-serve-item.is-next {
-  background: rgba(239,68,68,0.12);
-  border-left: 3px solid var(--red);
+  background: rgba(239,68,68,0.32);
+  border-left: 5px solid #ef4444;
   color: var(--text);
   font-size: 14px;
   padding: 6px 8px;
-  animation: kds-row-flash 1.5s ease-in-out infinite;
+  animation: kds-row-flash 1.4s ease-in-out infinite;
 }
 @keyframes kds-row-flash {
-  0%, 100% { background: rgba(239,68,68,0.12); }
-  50% { background: rgba(239,68,68,0.25); }
+  0%, 100% { background: rgba(239,68,68,0.32); }
+  50% { background: rgba(239,68,68,0.5); }
 }
+/* A ticked-off dish that still belongs to the priority order: stay clearly
+   visible (it keeps its place), just stop flashing and show it's done. */
+.kds-serve-item.is-next.served { opacity: 0.6; animation: none; background: rgba(239,68,68,0.16); }
 .kds-serve-item .kds-timer { margin-left: auto; }
 .kds-serve-item.is-next .kds-s-table { font-size: 23px; }
 .kds-serve-item.is-next .kds-s-qty { font-size: 16px; }
@@ -394,7 +407,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 /* Left edge = how late the order is */
 .kds-table-card.tier-green  { border-left-color: var(--green); }
@@ -411,7 +424,7 @@
 .kds-tc-queued-tag { font-size: 9px; color: var(--blue); font-weight: 700; }
 
 /* Item checklist inside table cards */
-.kds-tc-items { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; }
+.kds-tc-items { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow-y: auto; }
 .kds-tc-item {
   display: flex;
   flex-direction: column;
@@ -444,6 +457,7 @@
   width: 100%; margin-top: 2px; letter-spacing: 0.5px; flex-shrink: 0;
 }
 .kds-tc-ready-btn:active { transform: scale(0.95); }
+.kds-tc-undo-hint { text-align: center; font-size: 10px; color: var(--muted); margin-top: 3px; flex-shrink: 0; }
 
 /* TIMER BADGES */
 .kds-timer { font-variant-numeric: tabular-nums; font-weight: 700; border-radius: 4px; display: inline-flex; align-items: center; flex-shrink: 0; }
