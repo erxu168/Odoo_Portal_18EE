@@ -10,6 +10,7 @@ interface Props {
   onNavigate: (screen: string) => void;
   onHome?: () => void;
   onSettings?: () => void;
+  scope?: 'cooking' | 'production';
 }
 
 const TILES = [
@@ -72,8 +73,9 @@ const TILES = [
 
 const ROLE_LEVEL: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
 
-export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettings }: Props) {
+export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettings, scope = 'cooking' }: Props) {
   const { companyName } = useCompany();
+  const isProduction = scope === 'production';
   const [pendingApprovals, setPendingApprovals] = useState(0);
   const [recipeCount, setRecipeCount] = useState({ cooking: 0, production: 0 });
   const [syncPending, setSyncPending] = useState(0);
@@ -125,7 +127,14 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
   }, []);
 
   const myLevel = ROLE_LEVEL[userRole] || 1;
-  const visibleTiles = TILES.filter(t => myLevel >= (ROLE_LEVEL[t.minRole] || 1));
+  const visibleTiles = TILES
+    .filter(t => myLevel >= (ROLE_LEVEL[t.minRole] || 1))
+    // Chef Guide shows the cooking browse; Production Guide shows the production browse. Never both.
+    .filter(t => {
+      if (t.id === 'cooking-guide') return !isProduction;
+      if (t.id === 'production-guide') return isProduction;
+      return true;
+    });
 
   function getSub(tile: typeof TILES[0]): string {
     if (tile.id === 'cooking-guide') return `${recipeCount.cooking} published recipes`;
@@ -137,9 +146,9 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <AppHeader
-        supertitle="CHEF GUIDE"
-        title="Chef Guide"
-        subtitle={companyName || 'Chef Guide'}
+        supertitle={isProduction ? 'PRODUCTION GUIDE' : 'CHEF GUIDE'}
+        title={isProduction ? 'Production Guide' : 'Chef Guide'}
+        subtitle={companyName || (isProduction ? 'Production Guide' : 'Chef Guide')}
         action={onSettings ? (
           <button onClick={onSettings}
             className="w-11 h-11 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center active:bg-white/25"

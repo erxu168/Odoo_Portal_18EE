@@ -127,14 +127,14 @@ export default function RecipesPage() {
 
   useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.role) setUserRole(d.user.role); }).catch(() => {}); }, []);
 
-  // Load the manager's combined prep list (cooking + production) for the active restaurant.
+  // Load the manager's prep list for THIS guide (cooking or production) + restaurant.
   useEffect(() => {
     if (screen.type !== 'active-sessions' || !companyId) return;
-    fetch(`/api/recipes/featured?company_id=${companyId}&mode=all`)
+    fetch(`/api/recipes/featured?company_id=${companyId}&mode=${browseMode}`)
       .then(r => (r.ok ? r.json() : { featured: [], source: 'manual' }))
       .then(d => { setFeatured(d.featured || []); setFeaturedSource(d.source || 'manual'); })
       .catch(() => {});
-  }, [screen.type, companyId]);
+  }, [screen.type, browseMode, companyId]);
 
   // Production recipes = real Odoo BOMs: drive "set by ingredient" from the actual BOM lines.
   useEffect(() => {
@@ -156,12 +156,14 @@ export default function RecipesPage() {
     return () => { cancelled = true; };
   }, [screen.type, ctx.mode, ctx.recipeId]);
 
-  // Reset to dashboard when entering from another module
+  // On entry from home/drawer: set which guide this is (cooking = Chef Guide, production = Production Guide)
+  // and land on that guide's prep board.
   useEffect(() => {
+    const scope = sessionStorage.getItem('kw_guide_scope');
+    if (scope === 'production' || scope === 'cooking') setBrowseMode(scope);
     const reset = sessionStorage.getItem('kw_recipes_reset');
     if (reset) {
       sessionStorage.removeItem('kw_recipes_reset');
-
       setScreen({ type: 'active-sessions' });
     }
   }, []);
@@ -277,7 +279,7 @@ export default function RecipesPage() {
   );
 
   // ===== COOK FLOW =====
-  if (screen.type === 'dashboard') return (<>{alertEl}<RecipeDashboard userRole={userRole}
+  if (screen.type === 'dashboard') return (<>{alertEl}<RecipeDashboard userRole={userRole} scope={browseMode}
     onNavigate={(id: string) => {
       if (id === 'cooking-guide') { setBrowseMode('cooking'); goCookingBoard(); return; }
       if (id === 'production-guide') { setBrowseMode('production'); goCookingBoard(); return; }
