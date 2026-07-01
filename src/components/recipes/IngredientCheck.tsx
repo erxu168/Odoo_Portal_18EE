@@ -21,7 +21,7 @@ interface Props {
   onStartCook: () => void;
 }
 
-export default function IngredientCheck({ mode, recipeName, steps, onBack, onHome, onStartCook }: Props) {
+export default function IngredientCheck({ mode, recipeName, steps, multiplier, onBack, onHome, onStartCook }: Props) {
   const ingredients = useMemo(() => {
     const map = new Map<number, StepIngredient>();
     for (const s of steps) {
@@ -74,7 +74,15 @@ export default function IngredientCheck({ mode, recipeName, steps, onBack, onHom
                 <div className="flex-1 min-w-0">
                   <div className={`text-[14px] font-semibold ${isChecked ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{ing.name}</div>
                 </div>
-                {ing.uom && <div className="text-[12px] text-gray-400 font-mono flex-shrink-0">{ing.uom}</div>}
+                {(() => {
+                  const scaled = ing.qty > 0 ? Math.round(ing.qty * (multiplier || 1) * 100) / 100 : 0;
+                  if (!scaled && !ing.uom) return null;
+                  return (
+                    <div className={`text-[13px] font-mono font-semibold flex-shrink-0 ${isChecked ? 'text-gray-300' : 'text-gray-600'}`}>
+                      {scaled > 0 ? `${scaled} ` : ''}{ing.uom}
+                    </div>
+                  );
+                })()}
               </button>
             );
           })}
