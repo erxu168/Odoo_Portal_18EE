@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, setCountPhotos, getCountPhotosMap } from '@/lib/inventory-db';
 import { getOdoo } from '@/lib/odoo';
+import { resolveAttribution } from '@/lib/shift-attribution';
 
 
 export async function GET(request: Request) {
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
     system_qty: system_qty ?? null,
     uom: uom || 'Units',
     notes,
-    counted_by: user.id,
+    counted_by: resolveAttribution(user).userId,
   });
 
   if (Array.isArray(photos)) {

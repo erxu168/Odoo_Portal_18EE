@@ -9,6 +9,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { initInventoryTables, createQuickCount, listQuickCounts, approveQuickCount, getProductFlags, setCountPhotos, getCountPhotosMap } from '@/lib/inventory-db';
+import { resolveAttribution } from '@/lib/shift-attribution';
 
 
 export async function GET(request: Request) {
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
       location_id,
       counted_qty: Number(entry.counted_qty),
       uom: entry.uom || 'Units',
-      counted_by: user.id,
+      counted_by: resolveAttribution(user).userId,
     });
     const photos: string[] = Array.isArray(entry.photos) ? entry.photos : [];
     if (photos.length > 0) {

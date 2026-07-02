@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
-import { htmlToText } from '@/lib/recipe-text';
+import { sanitizeRecipeHtml } from '@/lib/recipe-text';
 import {
   DndContext,
   closestCenter,
@@ -96,7 +96,17 @@ function SortableStepCard({ step, index, ingredients, onEdit, onDelete }: {
                 {step.timer_seconds > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono">{Math.ceil(step.timer_seconds / 60)}m</span>}
                 {step.photos.length > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600">{step.photos.length} photo{step.photos.length > 1 ? 's' : ''}</span>}
               </div>
-              <div className="text-[13px] text-gray-800 line-clamp-2">{htmlToText(step.instruction)}</div>
+              <div className="summary-instruction text-[13px] text-gray-800"
+                dangerouslySetInnerHTML={{ __html: sanitizeRecipeHtml(step.instruction) }} />
+              <style jsx>{`
+                .summary-instruction :global(p) { margin: 0 0 3px; }
+                .summary-instruction :global(p:last-child) { margin-bottom: 0; }
+                .summary-instruction :global(ul) { list-style: disc; padding-left: 18px; margin: 2px 0; }
+                .summary-instruction :global(ol) { list-style: decimal; padding-left: 18px; margin: 2px 0; }
+                .summary-instruction :global(li) { margin: 1px 0; }
+                .summary-instruction :global(strong), .summary-instruction :global(b) { font-weight: 700; }
+                .summary-instruction :global(h2), .summary-instruction :global(h3) { font-size: 14px; font-weight: 700; margin: 3px 0; }
+              `}</style>
               {step.tip && <div className="text-[11px] text-amber-600 mt-1">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/></svg>} {step.tip}</div>}
               {step.ingredientIds && step.ingredientIds.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">
