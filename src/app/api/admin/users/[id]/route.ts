@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
-import { getUserById, updateUser, resetPassword } from '@/lib/db';
+import { getUserById, updateUser, resetPassword, setUserPin } from '@/lib/db';
 
 /**
  * PATCH /api/admin/users/[id]
@@ -29,6 +29,15 @@ export async function PATCH(
       resetPassword(userId, body.new_password);
     }
 
+    // Set / clear the shared-device attribution PIN (4 digits).
+    if (body.pin !== undefined) {
+      const pin = body.pin === null || body.pin === '' ? null : String(body.pin);
+      if (pin !== null && !/^\d{4}$/.test(pin)) {
+        return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
+      }
+      setUserPin(userId, pin);
+    }
+
     // Update fields
     const updates: Record<string, any> = {};
     if (body.name !== undefined) updates.name = body.name;
@@ -52,6 +61,7 @@ export async function PATCH(
         return NextResponse.json({ error: 'module_access must be null or an array of strings' }, { status: 400 });
       }
     }
+    if (body.is_shared_device !== undefined) updates.is_shared_device = body.is_shared_device ? 1 : 0;
 
     if (Object.keys(updates).length > 0) {
       updateUser(userId, updates);

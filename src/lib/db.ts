@@ -168,6 +168,16 @@ function migrateSchema(db: Database.Database) {
       if (!String((e as Error)?.message).includes('duplicate column')) throw e;
     }
   }
+  // 4-digit PIN (hashed) for "Working as" attribution on shared devices.
+  if (!colNames.includes('pin_hash')) {
+    try { db.exec('ALTER TABLE portal_users ADD COLUMN pin_hash TEXT DEFAULT NULL'); }
+    catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
+  }
+  // Marks a login as a shared/department device (kitchen tablet) rather than a person.
+  if (!colNames.includes('is_shared_device')) {
+    try { db.exec('ALTER TABLE portal_users ADD COLUMN is_shared_device INTEGER NOT NULL DEFAULT 0'); }
+    catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
+  }
 }
 
 function seedAdmin(db: Database.Database) {
@@ -199,6 +209,8 @@ export interface PortalUser {
   allowed_company_ids: string;
   preferences: string;
   module_access: string | null;
+  is_shared_device: number;
+  has_pin?: number;
   created_at: string;
   last_login: string | null;
 }
@@ -226,17 +238,17 @@ export function getUserByApplicantId(applicantId: number): PortalUser | null {
 
 export function getUserById(id: number): PortalUser | null {
   const db = getDb();
-  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, created_at, last_login FROM portal_users WHERE id = ?').get(id) as PortalUser | null;
+  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, is_shared_device, (pin_hash IS NOT NULL) AS has_pin, created_at, last_login FROM portal_users WHERE id = ?').get(id) as PortalUser | null;
 }
 
 export function listUsers(): PortalUser[] {
   const db = getDb();
-  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, created_at, last_login FROM portal_users ORDER BY created_at DESC').all() as PortalUser[];
+  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, is_shared_device, (pin_hash IS NOT NULL) AS has_pin, created_at, last_login FROM portal_users ORDER BY created_at DESC').all() as PortalUser[];
 }
 
 export function listUsersByStatus(status: string): PortalUser[] {
   const db = getDb();
-  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, created_at, last_login FROM portal_users WHERE status = ? AND active = 1 ORDER BY created_at DESC').all(status) as PortalUser[];
+  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, is_shared_device, (pin_hash IS NOT NULL) AS has_pin, created_at, last_login FROM portal_users WHERE status = ? AND active = 1 ORDER BY created_at DESC').all(status) as PortalUser[];
 }
 
 export function countUsersByStatus(status: string): number {
@@ -259,7 +271,7 @@ export function createUser(name: string, email: string, password: string, role: 
   return result.lastInsertRowid as number;
 }
 
-export function updateUser(id: number, updates: { name?: string; role?: string; active?: number; employee_id?: number | null; applicant_id?: number | null; must_change_password?: number; status?: string; allowed_company_ids?: number[]; module_access?: string[] | null }) {
+export function updateUser(id: number, updates: { name?: string; role?: string; active?: number; employee_id?: number | null; applicant_id?: number | null; must_change_password?: number; status?: string; allowed_company_ids?: number[]; module_access?: string[] | null; is_shared_device?: number }) {
   const db = getDb();
   const sets: string[] = [];
   const vals: any[] = [];
@@ -272,9 +284,36 @@ export function updateUser(id: number, updates: { name?: string; role?: string; 
   if (updates.status !== undefined) { sets.push('status = ?'); vals.push(updates.status); }
   if (updates.allowed_company_ids !== undefined) { sets.push('allowed_company_ids = ?'); vals.push(JSON.stringify(updates.allowed_company_ids)); }
   if (updates.module_access !== undefined) { sets.push('module_access = ?'); vals.push(updates.module_access === null ? null : JSON.stringify(updates.module_access)); }
+  if (updates.is_shared_device !== undefined) { sets.push('is_shared_device = ?'); vals.push(updates.is_shared_device ? 1 : 0); }
   if (sets.length === 0) return;
   vals.push(id);
   db.prepare(`UPDATE portal_users SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+}
+
+/** Set (or clear, if pin is empty) a user's 4-digit attribution PIN. */
+export function setUserPin(id: number, pin: string | null) {
+  const db = getDb();
+  const hash = pin ? bcrypt.hashSync(pin, 10) : null;
+  db.prepare('UPDATE portal_users SET pin_hash = ? WHERE id = ?').run(hash, id);
+}
+
+/** Verify a PIN for a specific user. */
+export function verifyUserPin(id: number, pin: string): boolean {
+  const db = getDb();
+  const row = db.prepare("SELECT pin_hash FROM portal_users WHERE id = ? AND active = 1 AND status = 'active'").get(id) as { pin_hash: string | null } | undefined;
+  if (!row || !row.pin_hash) return false;
+  return bcrypt.compareSync(pin, row.pin_hash);
+}
+
+/** Personal staff (with a PIN set) who can sign in on a shared device in this company. */
+export function listShiftStaff(companyId: number): { id: number; name: string }[] {
+  const db = getDb();
+  const rows = db.prepare(
+    "SELECT id, name, role, allowed_company_ids FROM portal_users WHERE active = 1 AND status = 'active' AND is_shared_device = 0 AND pin_hash IS NOT NULL ORDER BY name"
+  ).all() as { id: number; name: string; role: string; allowed_company_ids: string }[];
+  return rows
+    .filter(r => r.role === 'admin' || parseCompanyIds(r.allowed_company_ids).includes(companyId))
+    .map(r => ({ id: r.id, name: r.name }));
 }
 
 export function updateUserPreferences(id: number, prefs: Record<string, any>) {
@@ -310,7 +349,7 @@ export function getSessionUser(token: string): PortalUser | null {
   const db = getDb();
   const now = nowISO();
   const row = db.prepare(`
-    SELECT u.id, u.name, u.email, u.role, u.employee_id, u.applicant_id, u.must_change_password, u.status, u.active, u.login_count, u.tour_seen, u.allowed_company_ids, u.module_access, u.preferences, u.created_at, u.last_login
+    SELECT u.id, u.name, u.email, u.role, u.employee_id, u.applicant_id, u.must_change_password, u.status, u.active, u.login_count, u.tour_seen, u.allowed_company_ids, u.module_access, u.is_shared_device, u.preferences, u.created_at, u.last_login
     FROM sessions s
     JOIN portal_users u ON u.id = s.user_id
     WHERE s.token = ? AND u.active = 1 AND u.status = 'active' AND s.expires_at > ?

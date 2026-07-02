@@ -38,6 +38,7 @@ export async function GET() {
       applicant_id: user.applicant_id,
       must_change_password: !!user.must_change_password,
       is_candidate: !!user.applicant_id && !user.employee_id,
+      is_shared_device: !!user.is_shared_device,
       avatar,
       preferences,
       modules: effectiveModuleIds(user.role, user.module_access),
