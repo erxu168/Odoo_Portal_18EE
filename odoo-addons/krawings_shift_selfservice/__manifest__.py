@@ -1,6 +1,6 @@
 {
     'name': 'Krawings Shift Self-Service',
-    'version': '18.0.1.0.0',
+    'version': '18.0.1.0.1',
     'category': 'Human Resources/Planning',
     'summary': 'Custom fields backing the Krawings Portal shift '
                'self-service and auto-scheduling modules',
@@ -14,8 +14,7 @@ defines the fields the portal reads and writes over JSON-RPC.
 
 Extended fields on hr.employee:
 - x_max_weekly_hours: SOFT per-employee weekly hour cap (ISO week Mon-Sun)
-- x_skill_level: capability tier (1 cannot work alone / 2 can work alone /
-  3 can work alone + all tasks)
+- x_skill_level: capability tier (1 Trainee / 2 Associate / 3 Team Lead)
 
 Extended fields on planning.slot:
 - x_over_cap_flag: stored flag set by the portal when a claim/assignment

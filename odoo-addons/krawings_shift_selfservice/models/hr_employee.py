@@ -17,15 +17,16 @@ class HrEmployee(models.Model):
     )
     x_skill_level = fields.Selection(
         selection=[
-            ('1', 'Cannot work alone'),
-            ('2', 'Can work alone'),
-            ('3', 'Can work alone + all tasks'),
+            ('1', 'Trainee'),
+            ('2', 'Associate'),
+            ('3', 'Team Lead'),
         ],
         string='Shift Skill Level',
         help='Capability tier used by the Krawings Portal scheduler. '
-             '1 = must always be paired with a more experienced colleague; '
-             '2 = can hold a shift on their own; '
-             '3 = can work alone and is trained on every task. '
+             '1 Trainee = must always be paired with a more experienced '
+             'colleague; '
+             '2 Associate = can hold a shift on their own; '
+             '3 Team Lead = can work alone and is trained on every task. '
              'Drives skill-safety rules in both self-service warnings and '
              'the auto-scheduling engine.',
     )
