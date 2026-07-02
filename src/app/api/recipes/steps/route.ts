@@ -254,6 +254,41 @@ export async function POST(request: Request) {
       }
     }
 
+    // Edit Steps sends no ingredients, so a new version would lose the recipe's
+    // ingredient list. If none were submitted, carry them forward from the
+    // previous version onto the first new step (deduped, keeping qty + unit).
+    const submittedAnyIngredient = steps.some((s: any) => (s.ingredients || []).length > 0);
+    if (!submittedAnyIngredient && createdIds.length > 0) {
+      const priorDomain: any[] = [['id', '!=', versionId]];
+      if (product_tmpl_id) priorDomain.push(['product_tmpl_id', '=', product_tmpl_id]);
+      if (bom_id) priorDomain.push(['bom_id', '=', bom_id]);
+      const priorVersions = await odoo.searchRead('krawings.recipe.version', priorDomain, ['id'], { order: 'version desc', limit: 30 });
+      // Walk back to the most recent version that still has an ingredient list.
+      let priorIngs: any[] = [];
+      for (const pv of priorVersions) {
+        const priorSteps = await odoo.searchRead('krawings.recipe.step', [['version_id', '=', pv.id]], ['step_ingredient_ids']);
+        const priorPivotIds: number[] = priorSteps.flatMap((s: any) => s.step_ingredient_ids || []);
+        if (priorPivotIds.length) {
+          priorIngs = await odoo.read('krawings.recipe.step.ingredient', priorPivotIds, ['product_id', 'qty', 'uom_id']);
+          break;
+        }
+      }
+      const seen = new Set<number>();
+      let seq = 10;
+      for (const ing of priorIngs) {
+        const pid = Array.isArray(ing.product_id) ? ing.product_id[0] : ing.product_id;
+        if (!pid || seen.has(pid)) continue;
+        seen.add(pid);
+        try {
+          await odoo.create('krawings.recipe.step.ingredient', {
+            step_id: createdIds[0], product_id: pid, qty: ing.qty || 0,
+            uom_id: Array.isArray(ing.uom_id) ? ing.uom_id[0] : (ing.uom_id || false), sequence: seq,
+          });
+          seq += 10;
+        } catch (_e) { /* skip */ }
+      }
+    }
+
     // Auto-publish: set x_recipe_published on the product/bom
     if (auto_publish) {
       if (product_tmpl_id) {
