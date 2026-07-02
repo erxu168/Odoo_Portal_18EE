@@ -22,7 +22,7 @@ import ActiveSessions, { type FeaturedTile } from '@/components/recipes/ActiveSe
 import RecordSelect from '@/components/recipes/RecordSelect';
 import CreateDish from '@/components/recipes/CreateDish';
 import { useTopBar } from '@/components/ui/TopBarContext';
-import ActiveRecording, { type RecordedStep, type RecordedIngredient } from '@/components/recipes/ActiveRecording';
+import ActiveRecording, { type RecordedStep, type RecordedIngredient, clearRecordingStorage } from '@/components/recipes/ActiveRecording';
 import RecordingSummary from '@/components/recipes/RecordingSummary';
 import EditStep from '@/components/recipes/EditStep';
 import ApprovalList from '@/components/recipes/ApprovalList';
@@ -376,7 +376,7 @@ export default function RecipesPage() {
           const body: Record<string, unknown> = {
             steps: recCtx.recordedSteps.map(s => ({
               step_type: s.step_type, instruction: s.instruction, timer_seconds: s.timer_seconds, tip: s.tip,
-              images: s.photos.map(p => ({ data: p.split(',')[1] || p, source: 'record' })),
+              images: s.photos.map((p, pi) => ({ data: p.split(',')[1] || p, caption: s.photoCaptions?.[pi] || '', source: 'record' })),
               ingredients: (s.ingredientIds || []).map(iid => {
                 const ing = recCtx.ingredients.find(i => i.id === iid);
                 if (!ing) return null;
@@ -389,6 +389,7 @@ export default function RecipesPage() {
           if (recCtx.mode === 'cooking') body.product_tmpl_id = recCtx.recipeId; else body.bom_id = recCtx.recipeId;
           const res = await fetch('/api/recipes/steps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
           if (res.ok) {
+            clearRecordingStorage();
             showToast(canSaveDirect ? 'Recipe saved and published!' : 'Submitted for review!', 'success');
             setTimeout(goDashboard, 1500);
           } else {

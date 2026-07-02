@@ -21,6 +21,7 @@ export interface RecordedStep {
   timer_seconds: number;
   tip: string;
   photos: string[];
+  photoCaptions?: string[];  // aligned with photos by index (optional)
   ingredientIds: string[];  // references RecordedIngredient.id
 }
 
@@ -69,6 +70,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
   const [timerSec, setTimerSec] = useState(0);
   const [tip, setTip] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
+  const [photoCaptions, setPhotoCaptions] = useState<string[]>([]);
   const [selectedIngIds, setSelectedIngIds] = useState<string[]>([]);
   const [showIngredientManager, setShowIngredientManager] = useState(false);
   const [productQuery, setProductQuery] = useState('');
@@ -92,6 +94,14 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
     timerRef.current = setInterval(() => setElapsed(p => p + 1), 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [recording]);
+
+  // Draft resume: on a fresh recording (not the edit flow), tell the user if a saved draft was restored.
+  React.useEffect(() => {
+    if ((!initialSteps || initialSteps.length === 0) && steps.length > 0) {
+      setToast({ msg: `Resumed your draft — ${steps.length} step${steps.length !== 1 ? 's' : ''}`, type: 'info' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // P9: Auto-save steps to localStorage whenever they change
   const updateSteps = useCallback((newSteps: RecordedStep[]) => {
@@ -125,7 +135,10 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
     }
     const reader = new FileReader();
     reader.onload = () => {
-      if (typeof reader.result === 'string') setPhotos(prev => [...prev, reader.result as string]);
+      if (typeof reader.result === 'string') {
+        setPhotos(prev => [...prev, reader.result as string]);
+        setPhotoCaptions(prev => [...prev, '']);
+      }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
@@ -136,7 +149,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
     return {
       id: `step_${Date.now()}`, step_type: stepType,
       instruction: instruction.trim(), timer_seconds: timerSec,
-      tip: tip.trim(), photos: [...photos],
+      tip: tip.trim(), photos: [...photos], photoCaptions: [...photoCaptions],
       ingredientIds: [...selectedIngIds],
     };
   }
@@ -146,7 +159,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
     if (!newStep) return;
     const newSteps = [...stepsRef.current, newStep];
     updateSteps(newSteps);
-    setInstruction(''); setTimerSec(0); setTip(''); setPhotos([]); setSelectedIngIds([]);
+    setInstruction(''); setTimerSec(0); setTip(''); setPhotos([]); setPhotoCaptions([]); setSelectedIngIds([]);
     setToast({ msg: `Step ${newSteps.length} saved`, type: 'success' });
   }
 
@@ -156,7 +169,8 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
     const finalSteps = currentStep
       ? [...stepsRef.current, currentStep]
       : [...stepsRef.current];
-    clearRecordingStorage();
+    // Keep the draft (incl. the in-progress step) until it's actually submitted.
+    saveStepsToStorage(recipeName, finalSteps);
     onFinish(finalSteps);
   }
 
@@ -172,7 +186,7 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
       ? [...stepsRef.current, currentStep]
       : [...stepsRef.current];
     setRecording(false);
-    clearRecordingStorage();
+    saveStepsToStorage(recipeName, finalSteps);
     onFinish(finalSteps);
   }
 
@@ -213,7 +227,10 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
       uomName: selectedUomId ? (uoms.find(u => u.id === selectedUomId)?.name || product.uom_name) : product.uom_name,
     };
     onIngredientsChange([...ingredients, ing]);
+    // Auto-select the new ingredient for the step you're building — no round trip.
+    setSelectedIngIds(prev => prev.includes(ing.id) ? prev : [...prev, ing.id]);
     setProductQuery(''); setProductResults([]); setNewIngQty(''); setSelectedUomId(null);
+    setToast({ msg: `${ing.name} added to this step`, type: 'success' });
   }
 
   function removeIngredient(id: string) {
@@ -396,13 +413,19 @@ export default function ActiveRecording({ recipeName, mode, initialSteps, ingred
         
       </div>
       {photos.length > 0 && (
-        <div className="px-5 mb-3 flex gap-2 overflow-x-auto no-scrollbar">
+        <div className="px-5 mb-3 flex flex-col gap-2">
           {photos.map((p, i) => (
-            <div key={i} className="w-16 h-16 rounded-xl bg-zinc-700 flex-shrink-0 relative overflow-hidden">
-              <img src={p} alt="" className="w-full h-full object-cover" />
-              <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
-                className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <div key={i} className="flex items-center gap-2.5">
+              <div className="w-14 h-14 rounded-xl bg-zinc-700 flex-shrink-0 overflow-hidden">
+                <img src={p} alt="" className="w-full h-full object-cover" />
+              </div>
+              <input type="text" value={photoCaptions[i] || ''} maxLength={120}
+                onChange={(e) => setPhotoCaptions(prev => { const n = [...prev]; n[i] = e.target.value; return n; })}
+                placeholder="Caption (optional) — e.g. golden brown"
+                className="flex-1 px-3 py-2.5 rounded-lg bg-zinc-800 border border-zinc-700 text-[13px] text-white placeholder-white/30" />
+              <button onClick={() => { setPhotos(prev => prev.filter((_, j) => j !== i)); setPhotoCaptions(prev => prev.filter((_, j) => j !== i)); }}
+                className="w-8 h-8 rounded-lg bg-red-500/15 flex items-center justify-center flex-shrink-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
           ))}
