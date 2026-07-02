@@ -115,7 +115,7 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
               onClick={() => setActiveCategory(null)}
               className={`flex-shrink-0 px-4 py-2 rounded-full text-[12px] font-semibold border transition-colors ${
                 activeCategory === null
-                  ? 'bg-blue-600 text-white border-purple-600'
+                  ? 'bg-[#2563EB] text-white border-[#2563EB]'
                   : 'bg-white text-gray-600 border-gray-200 active:bg-gray-50'
               }`}
             >All</button>
@@ -125,7 +125,7 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
                 onClick={() => setActiveCategory(activeCategory === cat.id ? null : cat.id)}
                 className={`flex-shrink-0 px-4 py-2 rounded-full text-[12px] font-semibold border transition-colors ${
                   activeCategory === cat.id
-                    ? 'bg-blue-600 text-white border-purple-600'
+                    ? 'bg-[#2563EB] text-white border-[#2563EB]'
                     : 'bg-white text-gray-600 border-gray-200 active:bg-gray-50'
                 }`}
               >{cat.name}</button>
@@ -138,7 +138,7 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
       <div className="px-5 pt-4 pb-8 flex-1">
         {loading && (
           <div className="flex items-center justify-center py-12">
-            <div className="w-8 h-8 border-3 border-purple-600 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-[3px] border-gray-300 border-t-[#2563EB] rounded-full animate-spin" />
           </div>
         )}
 
@@ -172,7 +172,7 @@ export default function ProductionGuideBrowse({ onSelectRecipe, onBack, onHome }
                 className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] active:scale-[0.98] transition-transform"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-14 h-14 rounded-xl bg-blue-50 flex items-center justify-center text-2xl flex-shrink-0">
+                  <div className="w-14 h-14 rounded-xl bg-[#F1F3F5] flex items-center justify-center text-2xl flex-shrink-0">
                     \ud83c\udfed
                   </div>
                   <div className="flex-1 min-w-0">

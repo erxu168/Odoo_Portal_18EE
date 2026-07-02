@@ -6,7 +6,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Toast from '@/components/ui/Toast';
 import FilePicker from "@/components/ui/FilePicker";
-import { htmlToText } from '@/lib/recipe-text';
+import RichTextEditor from '@/components/ui/RichTextEditor';
 
 const MAX_PHOTO_MB = 5;
 const MAX_PHOTO_BYTES = MAX_PHOTO_MB * 1024 * 1024;
@@ -31,7 +31,7 @@ function formatTimerDisplay(sec: number): string {
 
 export default function EditStep({ step, stepIndex, ingredients = [], onSave, onBack, onHome }: Props) {
   const [stepType, setStepType] = useState(step.step_type);
-  const [instruction, setInstruction] = useState(htmlToText(step.instruction));
+  const [instruction, setInstruction] = useState(step.instruction || '');
   const [timerSec, setTimerSec] = useState(step.timer_seconds);
   const [tip, setTip] = useState(step.tip);
   const [photos, setPhotos] = useState<string[]>([...step.photos]);
@@ -105,9 +105,7 @@ export default function EditStep({ step, stepIndex, ingredients = [], onSave, on
         </div>
         <div className="mb-4">
           <label className="text-[13px] font-bold text-gray-900 mb-2 block">Instruction</label>
-          <textarea value={instruction} onChange={(e) => setInstruction(e.target.value)}
-            rows={4} maxLength={2000}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-[14px] text-gray-900 resize-none bg-white" />
+          <RichTextEditor value={instruction} onChange={setInstruction} placeholder="Describe this step…" minHeight={120} />
           {!instruction.trim() && (
             <p className="text-[11px] text-amber-600 mt-1">Empty instruction will delete this step on save</p>
           )}

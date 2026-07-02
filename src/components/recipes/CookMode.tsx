@@ -3,27 +3,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { type CookingSession, type StepImage, computeTimer, formatTimer } from '@/lib/cooking-sessions';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import { sanitizeRecipeHtml } from '@/lib/recipe-text';
 
 const TYPE_LABEL: Record<string, string> = { prep: 'PREP', cook: 'COOK', plate: 'PLATE' };
 const TYPE_COLOR: Record<string, string> = { prep: 'bg-blue-500/25 text-blue-300', cook: 'bg-orange-500/25 text-orange-300', plate: 'bg-emerald-500/25 text-emerald-300' };
-
-function parseInstructions(html: string): string[] {
-  if (!html) return [];
-  let text = html.replace(/<\/?p>/gi, '').replace(/<br\s*\/?>/gi, '. ').trim();
-  text = text.replace(/<(?!\/?b\b)[^>]*>/gi, '');
-  text = text.replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#0?39;/g, "'").replace(/&nbsp;/gi, ' ');
-  const raw = text.split(/\.(?=\s+[A-Z])/).map(s => s.trim()).filter(s => s.length > 0);
-  return raw.map(s => s.endsWith('.') ? s : s + '.');
-}
-
-function renderBulletText(text: string): React.ReactNode {
-  const parts = text.split(/(<b>.*?<\/b>)/gi);
-  return parts.map((part, i) => {
-    const boldMatch = part.match(/^<b>(.*?)<\/b>$/i);
-    if (boldMatch) return <strong key={i} className="text-white font-bold">{boldMatch[1]}</strong>;
-    return <span key={i}>{part}</span>;
-  });
-}
 
 function PhotoCarousel({ images }: { images: StepImage[] }) {
   const [activeIdx, setActiveIdx] = useState(0);
@@ -218,7 +201,6 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
   }
 
   if (!step) return null;
-  const bullets = parseInstructions(step.instruction);
   const stepImages = step.images || [];
   const typeBadge = TYPE_COLOR[step.step_type] || 'bg-zinc-700 text-zinc-300';
   const typeLabel = TYPE_LABEL[step.step_type] || step.step_type.toUpperCase();
@@ -274,16 +256,18 @@ export default function CookMode({ session, onUpdateSession, onDashboard, onComp
           })}</div></div>
         )}
         <div className="px-4" data-dbg="instruction-box">
-          {bullets.length > 0 ? (
-            <div className="space-y-3">{bullets.map((bullet, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 mt-0.5"><span className="text-[12px] font-bold text-zinc-400 font-mono">{i + 1}</span></div>
-                <div className="text-[20px] text-white leading-[1.45] flex-1">{renderBulletText(bullet)}</div>
-              </div>
-            ))}</div>
-          ) : (
-            <div className="text-[20px] text-white leading-[1.45]">{step.instruction?.replace(/<[^>]*>/g, '') || `Step ${session.currentStep + 1}`}</div>
-          )}
+          <div className="cook-instruction text-[20px] text-white leading-[1.45]"
+            dangerouslySetInnerHTML={{ __html: sanitizeRecipeHtml(step.instruction) || `Step ${session.currentStep + 1}` }} />
+          <style jsx>{`
+            .cook-instruction :global(p) { margin: 0 0 10px; }
+            .cook-instruction :global(p:last-child) { margin-bottom: 0; }
+            .cook-instruction :global(ul) { list-style: disc; padding-left: 24px; margin: 6px 0 10px; }
+            .cook-instruction :global(ol) { list-style: decimal; padding-left: 24px; margin: 6px 0 10px; }
+            .cook-instruction :global(li) { margin: 5px 0; }
+            .cook-instruction :global(strong), .cook-instruction :global(b) { font-weight: 800; color: #ffffff; }
+            .cook-instruction :global(h2) { font-size: 22px; font-weight: 800; margin: 10px 0 8px; }
+            .cook-instruction :global(h3) { font-size: 20px; font-weight: 700; margin: 10px 0 8px; }
+          `}</style>
         </div>
         {step.tip && <div className="mx-4 mt-3 px-3 py-2.5 rounded-xl bg-amber-900/40 border border-amber-700/50"><div className="text-[14px] text-amber-200 leading-snug">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/></svg>} {step.tip}</div></div>}
       </div>
