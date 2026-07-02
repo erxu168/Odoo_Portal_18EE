@@ -28,19 +28,6 @@ interface Props {
   onHome?: () => void;
 }
 
-const CAT_COLORS = [
-  { bg: 'bg-red-500', ring: 'ring-red-200' },
-  { bg: 'bg-amber-500', ring: 'ring-amber-200' },
-  { bg: 'bg-green-600', ring: 'ring-green-200' },
-  { bg: 'bg-blue-500', ring: 'ring-blue-200' },
-  { bg: 'bg-blue-500', ring: 'ring-purple-200' },
-  { bg: 'bg-pink-500', ring: 'ring-pink-200' },
-  { bg: 'bg-teal-500', ring: 'ring-teal-200' },
-  { bg: 'bg-orange-500', ring: 'ring-orange-200' },
-  { bg: 'bg-indigo-500', ring: 'ring-indigo-200' },
-  { bg: 'bg-cyan-600', ring: 'ring-cyan-200' },
-];
-
 const CAT_FALLBACK_ICONS: Record<string, string> = {
   appetizer: '\uD83E\uDD57',
   starter: '\uD83E\uDD57',
@@ -181,21 +168,12 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
   // Main view: categories + quick picks
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <div className="bg-[#2563EB] px-5 pt-12 pb-3 rounded-b-[28px]">
-        <div className="flex items-center gap-3">
-          <button onClick={onBack} className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center active:bg-white/20">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round"><path d="M15 19l-7-7 7-7"/></svg>
-          </button>
-          <div className="flex-1">
-            <h1 className="text-[20px] font-bold text-white">Cooking Guide</h1>
-            <p className="text-[12px] text-white/40 mt-0.5">Select a category or quick pick</p>
-          </div>
-        </div>
+      <AppHeader title="Cooking Guide" subtitle="Select a category or dish" showBack onBack={onBack} />
 
-        {/* Search */}
-        <div className="mt-4 flex items-center gap-2.5 px-4 py-3 bg-white/10 rounded-xl">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2">
+      {/* Search */}
+      <div className="px-5 pt-4">
+        <div className="flex items-center gap-2.5 px-4 py-3 bg-white border border-gray-200 rounded-xl">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2">
             <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
           </svg>
           <input
@@ -203,10 +181,10 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
             placeholder="Search all dishes..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 text-[14px] text-white placeholder-white/40 outline-none bg-transparent"
+            className="flex-1 text-[14px] text-gray-900 placeholder-gray-400 outline-none bg-transparent"
           />
           {search && (
-            <button onClick={() => setSearch('')} className="text-white/40 active:text-white/60">
+            <button onClick={() => setSearch('')} className="text-gray-400 active:text-gray-600">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
             </button>
           )}
@@ -215,7 +193,7 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
 
       {loading && (
         <div className="flex items-center justify-center py-16">
-          <div className="w-8 h-8 border-3 border-green-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-[3px] border-gray-300 border-t-[#2563EB] rounded-full animate-spin" />
         </div>
       )}
 
@@ -270,31 +248,30 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
             <div className="text-[11px] font-bold tracking-widest uppercase text-gray-400 mb-3">
               Categories
             </div>
-            <div className="grid grid-cols-4 gap-2">
-              {categories.map((cat, idx) => {
-                const color = CAT_COLORS[idx % CAT_COLORS.length];
+            <div className="grid grid-cols-4 gap-2.5">
+              {categories.map((cat) => {
                 const icon = getCatIcon(cat);
                 return (
                   <button
                     key={cat.id}
                     onClick={() => setActiveCategory(cat.id)}
-                    className={`${color.bg} rounded-xl p-2 flex flex-col items-center justify-center gap-0.5 aspect-square active:opacity-85 active:scale-[0.96] transition-all shadow`}
+                    className="bg-[#F1F3F5] border border-gray-200 rounded-xl p-2 flex flex-col items-center justify-center gap-0.5 aspect-square active:bg-gray-200 active:scale-[0.97] transition-all"
                   >
-                    <span className="text-[20px] leading-none drop-shadow-sm">{icon}</span>
-                    <span className="text-[10px] font-bold text-white text-center leading-tight line-clamp-2">{cat.name}</span>
-                    <span className="text-[9px] text-white/60 font-medium">{cat.recipe_count}</span>
+                    <span className="text-[22px] leading-none">{icon}</span>
+                    <span className="text-[10px] font-bold text-gray-800 text-center leading-tight line-clamp-2">{cat.name}</span>
+                    <span className="text-[9px] text-gray-500 font-medium">{cat.recipe_count}</span>
                   </button>
                 );
               })}
 
-              {/* All dishes button */}
+              {/* All dishes button \u2014 same tile style */}
               <button
                 onClick={() => setSearch(' ')}
-                className="bg-gray-800 rounded-xl p-2 flex flex-col items-center justify-center gap-0.5 aspect-square active:opacity-85 active:scale-[0.96] transition-all shadow"
+                className="bg-[#F1F3F5] border border-gray-200 rounded-xl p-2 flex flex-col items-center justify-center gap-0.5 aspect-square active:bg-gray-200 active:scale-[0.97] transition-all"
               >
-                <span className="text-[20px] leading-none">{'\uD83D\uDCCB'}</span>
-                <span className="text-[10px] font-bold text-white text-center leading-tight">All Dishes</span>
-                <span className="text-[9px] text-white/60 font-medium">{recipes.length}</span>
+                <span className="text-[22px] leading-none">{'\uD83D\uDCCB'}</span>
+                <span className="text-[10px] font-bold text-gray-800 text-center leading-tight">All Dishes</span>
+                <span className="text-[9px] text-gray-500 font-medium">{recipes.length}</span>
               </button>
             </div>
           </div>
@@ -310,7 +287,7 @@ export default function CookingGuideBrowse({ onSelectRecipe, onBack }: Props) {
                   <button
                     key={recipe.id}
                     onClick={() => onSelectRecipe(recipe)}
-                    className="bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 flex items-center gap-2 active:bg-green-50 active:border-green-300 active:scale-[0.97] transition-all"
+                    className="bg-white border border-gray-200 rounded-xl px-3.5 py-2.5 flex items-center gap-2 active:bg-gray-50 active:scale-[0.97] transition-all"
                   >
                     <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
                       {recipe.image_128
