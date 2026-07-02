@@ -26,9 +26,29 @@ export async function GET(request: Request) {
 
   try {
     const odoo = getOdoo();
+
+    // Only return the current version's steps. Each save creates a new
+    // krawings.recipe.version; without this filter, steps from every past
+    // version pile up and show as duplicates. Prefer the latest approved
+    // version (what cooks should see); fall back to the newest overall.
+    const versionDomain: any[] = [];
+    if (productTmplId) versionDomain.push(['product_tmpl_id', '=', parseInt(productTmplId)]);
+    if (bomId) versionDomain.push(['bom_id', '=', parseInt(bomId)]);
+    const versions = await odoo.searchRead(
+      'krawings.recipe.version', versionDomain,
+      ['id', 'version', 'status'],
+      { order: 'version desc', limit: 30 },
+    );
+    const chosenVersion = versions.find((v: any) => v.status === 'approved') || versions[0];
+
     const domain: any[] = [];
-    if (productTmplId) domain.push(['product_tmpl_id', '=', parseInt(productTmplId)]);
-    if (bomId) domain.push(['bom_id', '=', parseInt(bomId)]);
+    if (chosenVersion) {
+      domain.push(['version_id', '=', chosenVersion.id]);
+    } else {
+      // Legacy steps with no version record — fall back to the recipe filter.
+      if (productTmplId) domain.push(['product_tmpl_id', '=', parseInt(productTmplId)]);
+      if (bomId) domain.push(['bom_id', '=', parseInt(bomId)]);
+    }
 
     const steps = await odoo.searchRead(
       'krawings.recipe.step', domain,
