@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import { useCompany } from '@/lib/company-context';
+import { htmlToText } from '@/lib/recipe-text';
 
 interface StepData {
   id: number;
@@ -39,7 +40,7 @@ const TYPE_EMOJI: Record<string, React.ReactNode> = { prep: <svg width="14" heig
 
 /** Extract first sentence from HTML instruction */
 function firstSentence(html: string): string {
-  const plain = html.replace(/<[^>]*>/g, '').trim();
+  const plain = htmlToText(html);
   // Split on period followed by space + uppercase (same logic as CookMode)
   const match = plain.match(/^(.+?\.)(?=\s+[A-Z])/);
   return match ? match[1] : plain;

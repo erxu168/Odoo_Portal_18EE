@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { htmlToText } from '@/lib/recipe-text';
 import {
   DndContext,
   closestCenter,
@@ -95,7 +96,7 @@ function SortableStepCard({ step, index, ingredients, onEdit, onDelete }: {
                 {step.timer_seconds > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono">{Math.ceil(step.timer_seconds / 60)}m</span>}
                 {step.photos.length > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-600">{step.photos.length} photo{step.photos.length > 1 ? 's' : ''}</span>}
               </div>
-              <div className="text-[13px] text-gray-800 line-clamp-2">{step.instruction}</div>
+              <div className="text-[13px] text-gray-800 line-clamp-2">{htmlToText(step.instruction)}</div>
               {step.tip && <div className="text-[11px] text-amber-600 mt-1">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/></svg>} {step.tip}</div>}
               {step.ingredientIds && step.ingredientIds.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">

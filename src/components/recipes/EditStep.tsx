@@ -6,6 +6,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Toast from '@/components/ui/Toast';
 import FilePicker from "@/components/ui/FilePicker";
+import { htmlToText } from '@/lib/recipe-text';
 
 const MAX_PHOTO_MB = 5;
 const MAX_PHOTO_BYTES = MAX_PHOTO_MB * 1024 * 1024;
@@ -30,7 +31,7 @@ function formatTimerDisplay(sec: number): string {
 
 export default function EditStep({ step, stepIndex, ingredients = [], onSave, onBack, onHome }: Props) {
   const [stepType, setStepType] = useState(step.step_type);
-  const [instruction, setInstruction] = useState(step.instruction);
+  const [instruction, setInstruction] = useState(htmlToText(step.instruction));
   const [timerSec, setTimerSec] = useState(step.timer_seconds);
   const [tip, setTip] = useState(step.tip);
   const [photos, setPhotos] = useState<string[]>([...step.photos]);

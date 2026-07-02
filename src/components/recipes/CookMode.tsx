@@ -11,6 +11,7 @@ function parseInstructions(html: string): string[] {
   if (!html) return [];
   let text = html.replace(/<\/?p>/gi, '').replace(/<br\s*\/?>/gi, '. ').trim();
   text = text.replace(/<(?!\/?b\b)[^>]*>/gi, '');
+  text = text.replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#0?39;/g, "'").replace(/&nbsp;/gi, ' ');
   const raw = text.split(/\.(?=\s+[A-Z])/).map(s => s.trim()).filter(s => s.length > 0);
   return raw.map(s => s.endsWith('.') ? s : s + '.');
 }
