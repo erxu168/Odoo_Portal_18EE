@@ -139,6 +139,19 @@ export default function ShiftsDashboard({ isManager, badges, onNavigate }: Shift
       badge: null,
     },
     {
+      key: 'presence',
+      label: 'Right Now',
+      sublabel: "Who's in · live",
+      color: 'bg-teal-50 border-teal-200', iconBg: 'bg-teal-100', iconColor: 'text-teal-600',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="2"/>
+          <path d="M16.24 7.76a6 6 0 010 8.49M7.76 16.24a6 6 0 010-8.49M19.07 4.93a10 10 0 010 14.14M4.93 19.07a10 10 0 010-14.14"/>
+        </svg>
+      ),
+      badge: null,
+    },
+    {
       key: 'coverage',
       label: 'Coverage',
       sublabel: 'Week at a glance',
