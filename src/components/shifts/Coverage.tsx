@@ -27,6 +27,12 @@ interface CoverageTotals {
   cost: number;
 }
 
+interface ComplianceWarning {
+  employee: string;
+  kind: 'rest' | 'long';
+  detail: string;
+}
+
 interface CoverageProps {
   companyId: number;
   isManager: boolean;
@@ -60,6 +66,7 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
   const [weekKey, setWeekKey] = useState(currentWeekKey());
   const [days, setDays] = useState<CoverageDay[]>([]);
   const [totals, setTotals] = useState<CoverageTotals>({ shifts: 0, open: 0, overCap: 0, cost: 0 });
+  const [warnings, setWarnings] = useState<ComplianceWarning[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -95,6 +102,7 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
         overCap: num(data.totals?.overCap),
         cost: num(data.totals?.cost),
       });
+      setWarnings(Array.isArray(data.warnings) ? data.warnings : []);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
     } finally {
@@ -163,6 +171,21 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
                 €{Math.round(totals.cost)}
               </div>
             </div>
+
+            {warnings.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3.5">
+                <div className="text-[var(--fs-md)] font-bold text-red-800 mb-1.5 flex items-center gap-2">
+                  <span>{'⚠️'}</span> Working-time warnings (ArbZG)
+                </div>
+                <div className="flex flex-col gap-1">
+                  {warnings.map((w, i) => (
+                    <div key={i} className="text-[var(--fs-sm)] text-red-800">
+                      <span className="font-semibold">{w.employee}</span> · {w.detail}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] overflow-hidden">
               {days.map((d, i) => (

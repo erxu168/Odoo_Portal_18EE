@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchEmployees, fetchWeekSlots, MIN_WAGE_EUR } from '@/lib/shifts-odoo';
-import { berlinParts, weekKeyDays } from '@/lib/shifts-time';
+import { berlinParts, odooToDate, weekKeyDays } from '@/lib/shifts-time';
 import { requireManagerCompany, resolveWeekKey, serverError } from '../_manager';
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +53,34 @@ export async function GET(req: NextRequest) {
     for (const d of days) d.cost = Math.round(d.cost * 100) / 100;
     totals.cost = Math.round(totals.cost * 100) / 100;
 
-    return NextResponse.json({ weekKey, days, totals });
+    // ArbZG compliance: rest gaps < 11h between an employee's consecutive shifts,
+    // and single shifts > 10h (daily maximum). Surfaced as manager warnings.
+    const REST_MIN_H = 11;
+    const DAILY_MAX_H = 10;
+    const byEmp = new Map<number, { name: string; slots: { start: string; end: string; hours: number }[] }>();
+    for (const s of slots) {
+      if (s.employeeId === null) continue;
+      const e = byEmp.get(s.employeeId) ?? { name: s.employeeName, slots: [] };
+      e.slots.push({ start: s.start, end: s.end, hours: s.hours });
+      byEmp.set(s.employeeId, e);
+    }
+    const warnings: { employee: string; kind: 'rest' | 'long'; detail: string }[] = [];
+    byEmp.forEach(e => {
+      const sorted = e.slots.slice().sort((a, b) => odooToDate(a.start).getTime() - odooToDate(b.start).getTime());
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const gap = (odooToDate(sorted[i + 1].start).getTime() - odooToDate(sorted[i].end).getTime()) / 3_600_000;
+        if (gap >= 0 && gap < REST_MIN_H) {
+          warnings.push({ employee: e.name, kind: 'rest', detail: `${Math.round(gap)}h rest between shifts (min ${REST_MIN_H}h)` });
+        }
+      }
+      for (const sl of sorted) {
+        if (sl.hours > DAILY_MAX_H) {
+          warnings.push({ employee: e.name, kind: 'long', detail: `${sl.hours}h shift (max ${DAILY_MAX_H}h)` });
+        }
+      }
+    });
+
+    return NextResponse.json({ weekKey, days, totals, warnings });
   } catch (err: unknown) {
     return serverError('GET coverage', err);
   }
