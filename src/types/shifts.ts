@@ -40,6 +40,12 @@ export interface ShiftEmployee {
   skill: '1' | '2' | '3' | null;
   /** planning.role ids the employee can work as (resource.resource.role_ids) */
   roleIds: number[];
+  /** German classification from hr.employee.x_employment_type; null = unclassified */
+  employmentType: 'minijob' | 'midijob' | 'fulltime' | null;
+  /** €/h from the current contract; falls back to the statutory minimum wage */
+  hourlyRate: number;
+  /** false when the employee has no contract on file (rate is the fallback) */
+  hasContract: boolean;
 }
 
 /** Per-company shift settings (portal SQLite, defaults 1/12/2/1/1). */

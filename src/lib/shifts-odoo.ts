@@ -50,6 +50,30 @@ function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
 
+function num(v: unknown): number {
+  return typeof v === 'number' ? v : 0;
+}
+
+/**
+ * 2026 German statutory minimum wage (€/h). Rises to €14.60 in 2027 — used ONLY
+ * as a fallback when an employee has no contract wage on file. Real rate always
+ * comes from hr.contract when present.
+ */
+export const MIN_WAGE_EUR = 13.9;
+/** Minijob monthly earnings cap (€) — derived from the min wage (× ~130/3 h). */
+export const MINIJOB_CAP_EUR = Math.round((MIN_WAGE_EUR * 130) / 3); // 603
+
+/** Hourly rate from an hr.contract row: hourly wage direct, else monthly→hourly. */
+function contractHourlyRate(c: OdooRow): number {
+  if (c.wage_type === 'hourly' && num(c.hourly_wage) > 0) return num(c.hourly_wage);
+  const monthly = num(c.wage);
+  const weekly = num(c.kw_agreed_weekly_hours);
+  if (monthly > 0 && weekly > 0) {
+    return Math.round(((monthly * 12) / (weekly * 52)) * 100) / 100;
+  }
+  return MIN_WAGE_EUR;
+}
+
 function mapSlot(row: OdooRow): ShiftSlot {
   const start = str(row.start_datetime);
   const end = str(row.end_datetime);
@@ -114,7 +138,8 @@ export async function fetchEmployees(companyId: number): Promise<ShiftEmployee[]
       ['active', '=', true],
       ['company_id', '=', companyId],
     ],
-    ['name', 'resource_id', 'department_id', 'x_max_weekly_hours', 'x_skill_level'],
+    ['name', 'resource_id', 'department_id', 'x_max_weekly_hours', 'x_skill_level',
+     'x_employment_type', 'contract_id'],
     { limit: 500, order: 'name asc' },
   )) as OdooRow[];
 
@@ -133,10 +158,25 @@ export async function fetchEmployees(companyId: number): Promise<ShiftEmployee[]
     }
   }
 
+  // Batch-read current-contract hourly rate (WAJ staff have none → fallback).
+  const contractIds = rows
+    .map(r => m2oId(r.contract_id))
+    .filter((id): id is number => id !== null);
+  const rateMap = new Map<number, number>();
+  if (contractIds.length > 0) {
+    const contracts = (await odoo.read('hr.contract', contractIds,
+      ['wage', 'wage_type', 'hourly_wage', 'kw_agreed_weekly_hours'])) as OdooRow[];
+    for (const c of contracts) {
+      rateMap.set(c.id as number, contractHourlyRate(c));
+    }
+  }
+
   return rows.map(r => {
     const resourceId = m2oId(r.resource_id);
     const capRaw = typeof r.x_max_weekly_hours === 'number' ? r.x_max_weekly_hours : 0;
     const skillRaw = r.x_skill_level;
+    const et = r.x_employment_type;
+    const contractId = m2oId(r.contract_id);
     return {
       id: r.id as number,
       name: str(r.name),
@@ -146,6 +186,10 @@ export async function fetchEmployees(companyId: number): Promise<ShiftEmployee[]
       cap: capRaw > 0 ? capRaw : null,
       skill: skillRaw === '1' || skillRaw === '2' || skillRaw === '3' ? skillRaw : null,
       roleIds: resourceId !== null ? roleMap.get(resourceId) ?? [] : [],
+      employmentType:
+        et === 'minijob' || et === 'midijob' || et === 'fulltime' ? et : null,
+      hourlyRate: contractId !== null ? rateMap.get(contractId) ?? MIN_WAGE_EUR : MIN_WAGE_EUR,
+      hasContract: contractId !== null,
     };
   });
 }
