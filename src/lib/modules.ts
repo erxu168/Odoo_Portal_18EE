@@ -25,6 +25,7 @@ export const PORTAL_MODULES: PortalModule[] = [
   { id: 'purchase', label: 'Purchase', minRole: 'staff' },
   { id: 'hr', label: 'HR', minRole: 'staff' },
   { id: 'tasks', label: 'My Tasks', minRole: 'staff' },
+  { id: 'shifts', label: 'Shifts', minRole: 'staff' },
   { id: 'prep-planner', label: 'Prep Planner', minRole: 'manager' },
   { id: 'credentials', label: 'Supplier Logins', minRole: 'manager' },
   { id: 'termination', label: 'Termination', minRole: 'admin' },

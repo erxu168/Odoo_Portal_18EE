@@ -1,0 +1,28 @@
+/**
+ * GET /api/shifts/roster?company_id= — roster & caps list for managers.
+ *
+ * Employees with caps, skill levels and "Can work as" roles resolved, plus the
+ * company's planning roles for the edit sheet's role chips.
+ */
+import { NextRequest, NextResponse } from 'next/server';
+import { fetchEmployees, fetchRoles } from '@/lib/shifts-odoo';
+import { requireManagerCompany, serverError } from '../_manager';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(req: NextRequest) {
+  try {
+    const auth = requireManagerCompany(req.nextUrl.searchParams.get('company_id'));
+    if (!auth.ok) return auth.res;
+    const { companyId } = auth;
+
+    const [employees, roles] = await Promise.all([
+      fetchEmployees(companyId),
+      fetchRoles(companyId),
+    ]);
+
+    return NextResponse.json({ employees, roles });
+  } catch (err: unknown) {
+    return serverError('GET roster', err);
+  }
+}
