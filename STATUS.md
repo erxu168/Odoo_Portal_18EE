@@ -1,6 +1,19 @@
 # Krawings Portal — STATUS
 
-_Last updated: 2026-06-10_
+_Last updated: 2026-07-03_
+
+## 2026-07-03 session — Inventory: count drinks in crates + loose bottles (multi-UoM) (commit `8a4be4b`)
+
+Added crate + loose-unit counting to the existing Inventory module (staging, `main`). This is Phase B "count in packs" — but implemented **portal-side**, not via Odoo `product.packaging` (staging has **zero** packaging records across all 1,151 products, and counting never needs them).
+
+- **Crate size** lives in `product_flags.units_per_crate`. Managers/admins set it per product in **Product Settings** (opt-in). A "Suggest: N (from name)" chip parses the crate size out of the product name (e.g. `Coca-Cola Mw 24x0,33` → 24). No Odoo write.
+- **Count entry**: a product with a crate size opens `CrateCountSheet` — two steppers (full crates + loose units) with a live base-unit total `(crates × size) + loose`. Products without a crate size keep today's single stepper/numpad, unchanged.
+- **Storage**: `count_entries` + `quick_counts` gained nullable `crate_qty`, `loose_qty`, `units_per_crate` (additive migration in `migrateInventorySchema`). `counted_qty` stays the **base total**; approve still writes `stock.quant.inventory_quantity` in base units only — crates never reach Odoo.
+- **Review** (manager + staff) gets a crates ⇄ units display toggle; the QC detail card shows the split. Base total drives the Odoo write regardless of display mode.
+- Shared math in `src/lib/crate-units.ts` (unit-verified). Offline crate counting works (crate size cached per session; `updateCachedEntry` carries the split; a photo-only re-save preserves the split).
+- Files: `crate-units.ts` (new), `CrateCountSheet.tsx` (new), `inventory-db.ts`, `inventory-offline.ts`, `types/inventory.ts`, `counts` + `product-flags/[product_id]` + `quick-count` routes, `ProductSettings`/`CountingSession`/`QuickCount`/`ReviewSubmissions`.
+- **Verified on staging**: build green; migration applied to the live DB; manager crate-size set → read (24) → clear (null) round-trip all 200.
+- Approved mock: https://claude.ai/code/artifact/76548528-f836-4265-b143-189b71e652eb
 
 ## 2026-06-10 session — KDS: production-safe Odoo POS integration (commit `6e3f153`)
 
