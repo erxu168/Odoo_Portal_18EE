@@ -30,6 +30,21 @@ class HrEmployee(models.Model):
              'Drives skill-safety rules in both self-service warnings and '
              'the auto-scheduling engine.',
     )
+    x_employment_type = fields.Selection(
+        selection=[
+            ('minijob', 'Minijob'),
+            ('midijob', 'Midijob'),
+            ('fulltime', 'Full-time'),
+        ],
+        string='Employment Type (Krawings)',
+        help='German employment classification used by the Krawings Portal '
+             'shift planner. Minijob triggers the monthly earnings-cap '
+             'warning (dynamically derived from the minimum wage, currently '
+             'EUR 603/month); Midijob and Full-time do not. Odoo has no '
+             'native field for this distinction, so the portal Roster reads '
+             'and writes it here (single source of truth). Empty = not '
+             'classified.',
+    )
 
     @api.constrains('x_max_weekly_hours')
     def _check_max_weekly_hours(self):

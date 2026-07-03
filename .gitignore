@@ -59,3 +59,4 @@ android/**/.DS_Store
 /playwright-report/
 /playwright/.cache/
 .env.smoke.local
+__pycache__/
