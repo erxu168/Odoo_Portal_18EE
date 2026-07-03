@@ -82,6 +82,8 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [empType, setEmpType] = useState<EmpType | null>(null);
   const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [pinStr, setPinStr] = useState('');
+  const [pinnedIds, setPinnedIds] = useState<Set<number>>(new Set());
 
   const fetchRoster = useCallback(async () => {
     setLoading(true);
@@ -92,6 +94,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setEmployees(Array.isArray(data.employees) ? data.employees : []);
       setRoles(Array.isArray(data.roles) ? data.roles : []);
+      setPinnedIds(new Set(Array.isArray(data.pinnedEmployeeIds) ? data.pinnedEmployeeIds : []));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
     } finally {
@@ -122,6 +125,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
     setRoleIds(e.roleIds);
     setEmpType(e.employmentType);
     setNeedsConfirm(false);
+    setPinStr('');
     setSaveError(null);
   }
 
@@ -135,6 +139,10 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
     const capNum = trimmed === '' ? null : Number(trimmed);
     if (capNum !== null && (!Number.isFinite(capNum) || capNum < 0)) {
       setSaveError('Enter a valid number of hours, or leave it empty for no cap.');
+      return;
+    }
+    if (pinStr && !/^\d{4}$/.test(pinStr)) {
+      setSaveError('PIN must be exactly 4 digits.');
       return;
     }
     // Employment type is an official HR change — confirm before writing it back.
@@ -154,6 +162,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
           skill,
           role_ids: roleIds,
           employment_type: empType,
+          pin: /^\d{4}$/.test(pinStr) ? pinStr : undefined,
         }),
       });
       const data = await res.json();
@@ -221,6 +230,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
                         <div className={`text-[var(--fs-sm)] mt-0.5 truncate ${names ? 'text-gray-500' : 'text-gray-400'}`}>
                           {names || 'No role yet'}
                           {e.employmentType ? ` · ${EMP_TYPE_LABEL[e.employmentType]}` : ''}
+                          {pinnedIds.has(e.id) ? ' · 🔑' : ''}
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
@@ -370,6 +380,25 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
                   })}
                 </div>
               )}
+            </div>
+
+            <div>
+              <div className={ds.label}>
+                Kiosk PIN{pinnedIds.has(editing.id) ? <span className="text-green-600 font-bold"> · set ✓</span> : ''}
+              </div>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="\d*"
+                maxLength={4}
+                value={pinStr}
+                onChange={e => setPinStr(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder={pinnedIds.has(editing.id) ? '•••• (blank = keep)' : 'Set a 4-digit PIN'}
+                className="w-full max-w-[220px] bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-[var(--fs-md)] font-semibold text-gray-900 tracking-[0.4em] outline-none focus:border-green-600"
+              />
+              <p className="text-[var(--fs-sm)] text-gray-500 mt-1.5 leading-snug">
+                Staff type this on the tablet clock to clock in/out. Blank = leave unchanged.
+              </p>
             </div>
 
             {saveError && (

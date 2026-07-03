@@ -9,6 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { setKioskPin } from '@/lib/shifts-db';
 import { fetchEmployees, recomputeWeekFlags } from '@/lib/shifts-odoo';
 import { currentWeekKey, offsetWeekKey } from '@/lib/shifts-time';
 import { requireManagerCompany, serverError } from '../../_manager';
@@ -85,6 +86,17 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
         );
       }
       roleIds = Array.from(new Set(body.role_ids as number[]));
+    }
+
+    if ('pin' in body) {
+      const pin = body.pin;
+      if (pin === null || pin === '') {
+        setKioskPin(companyId, employeeId, null);
+      } else if (typeof pin === 'string' && /^\d{4}$/.test(pin)) {
+        setKioskPin(companyId, employeeId, pin);
+      } else {
+        return NextResponse.json({ error: 'PIN must be 4 digits, or empty to clear' }, { status: 400 });
+      }
     }
 
     const odoo = getOdoo();

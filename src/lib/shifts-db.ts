@@ -11,6 +11,7 @@
  * - Active-request uniqueness per slot is enforced by a partial unique index
  *   (double-tap safe) — createCoverRequest catches the constraint error.
  */
+import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { getDb } from '@/lib/db';
 import type {
   CoverRequest,
@@ -99,8 +100,64 @@ function ensureTables(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_shift_notif_employee
       ON shift_notifications(employee_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS shift_kiosk_pins (
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      pin TEXT NOT NULL,
+      updated_at TEXT,
+      PRIMARY KEY (company_id, employee_id)
+    );
   `);
   _initialized = true;
+}
+
+// -- Kiosk PINs -----------------------------------------------------------------
+
+function hashPin(pin: string): string {
+  const salt = randomBytes(16);
+  const hash = scryptSync(pin, salt, 32);
+  return `${salt.toString('hex')}:${hash.toString('hex')}`;
+}
+
+function checkPin(pin: string, stored: string): boolean {
+  const [saltHex, hashHex] = stored.split(':');
+  if (!saltHex || !hashHex) return false;
+  const hash = scryptSync(pin, Buffer.from(saltHex, 'hex'), 32);
+  const expected = Buffer.from(hashHex, 'hex');
+  return hash.length === expected.length && timingSafeEqual(hash, expected);
+}
+
+/** Set (empty/null clears) a staff member's kiosk PIN. */
+export function setKioskPin(companyId: number, employeeId: number, pin: string | null): void {
+  ensureTables();
+  const db = getDb();
+  if (!pin) {
+    db.prepare('DELETE FROM shift_kiosk_pins WHERE company_id=? AND employee_id=?').run(companyId, employeeId);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO shift_kiosk_pins (company_id, employee_id, pin, updated_at)
+     VALUES (?,?,?,?)
+     ON CONFLICT(company_id, employee_id) DO UPDATE SET pin=excluded.pin, updated_at=excluded.updated_at`,
+  ).run(companyId, employeeId, hashPin(pin), nowISO());
+}
+
+export function verifyKioskPin(companyId: number, employeeId: number, pin: string): boolean {
+  ensureTables();
+  const row = getDb()
+    .prepare('SELECT pin FROM shift_kiosk_pins WHERE company_id=? AND employee_id=?')
+    .get(companyId, employeeId) as { pin: string } | undefined;
+  return row ? checkPin(pin, row.pin) : false;
+}
+
+/** employeeIds of the company that have a kiosk PIN set. */
+export function employeesWithPin(companyId: number): Set<number> {
+  ensureTables();
+  const rows = getDb()
+    .prepare('SELECT employee_id FROM shift_kiosk_pins WHERE company_id=?')
+    .all(companyId) as { employee_id: number }[];
+  return new Set(rows.map(r => r.employee_id));
 }
 
 // -- Settings -------------------------------------------------------------------

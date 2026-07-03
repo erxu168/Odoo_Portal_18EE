@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchEmployees, fetchRoles } from '@/lib/shifts-odoo';
+import { employeesWithPin } from '@/lib/shifts-db';
 import { requireManagerCompany, serverError } from '../_manager';
 
 export const dynamic = 'force-dynamic';
@@ -20,8 +21,9 @@ export async function GET(req: NextRequest) {
       fetchEmployees(companyId),
       fetchRoles(companyId),
     ]);
+    const pinnedEmployeeIds = Array.from(employeesWithPin(companyId));
 
-    return NextResponse.json({ employees, roles });
+    return NextResponse.json({ employees, roles, pinnedEmployeeIds });
   } catch (err: unknown) {
     return serverError('GET roster', err);
   }
