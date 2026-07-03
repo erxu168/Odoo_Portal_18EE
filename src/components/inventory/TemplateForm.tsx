@@ -62,7 +62,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
     async function load() {
       try {
         const [prodRes, userRes] = await Promise.all([
-          fetch('/api/inventory/products?limit=500'),
+          fetch('/api/inventory/products?limit=500&include_pos=1'),
           fetch('/api/admin/users'),
         ]);
         const prodData = await prodRes.json();

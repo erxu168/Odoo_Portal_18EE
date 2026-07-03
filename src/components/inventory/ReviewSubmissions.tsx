@@ -99,7 +99,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         let categoryIds: number[] = [];
         try { categoryIds = JSON.parse(sess.template_category_ids || '[]'); } catch { categoryIds = []; }
         if (categoryIds.length > 0) {
-          const promises = categoryIds.map(cid => fetch(`/api/inventory/products?category_id=${cid}`).then(r => r.json()));
+          const promises = categoryIds.map(cid => fetch(`/api/inventory/products?category_id=${cid}&include_pos=1`).then(r => r.json()));
           const results = await Promise.all(promises);
           const seen = new Set<number>();
           results.forEach(r => (r.products || []).forEach((p: any) => { if (!seen.has(p.id)) { seen.add(p.id); productList.push(p); } }));

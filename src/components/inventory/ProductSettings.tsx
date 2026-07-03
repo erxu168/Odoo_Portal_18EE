@@ -27,7 +27,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
       setLoading(true);
       try {
         const [prodRes, flagRes] = await Promise.all([
-          fetch('/api/inventory/products?limit=500').then(r => r.json()),
+          fetch('/api/inventory/products?limit=500&include_pos=1').then(r => r.json()),
           fetch('/api/inventory/product-flags').then(r => r.json()),
         ]);
         const prods = (prodRes.products || []).filter((p: any) => p.active !== false);

@@ -2,11 +2,14 @@
  * GET /api/inventory/products
  *
  * Proxies product.product from Odoo 18 EE.
- * Query params: ?category_id=32&search=soju&limit=100&ids=891,950,938
+ * Query params: ?category_id=32&search=soju&limit=100&ids=891,950,938&include_pos=1
  *
- * Scope: only raw stock, not POS-sellable items. Includes archived
- * (active=False) products so draft products created via the scan-to-count
- * flow show up during review.
+ * Scope: defaults to raw stock only (excludes POS-sellable items so the
+ * ad-hoc browse isn't flooded with menu items). POS-sellable products ARE
+ * returned when the caller passes explicit `ids` (a count template listed
+ * them) or `include_pos=1` (config screens: product settings, list builder).
+ * Includes archived (active=False) products so draft products created via the
+ * scan-to-count flow show up during review.
  *
  * POST /api/inventory/products
  *
@@ -72,10 +75,12 @@ export async function GET(request: Request) {
 
   try {
     const odoo = getOdoo();
-    const domain: any[] = [
-      ['type', '=', 'consu'],
-      ['available_in_pos', '=', false],
-    ];
+    // POS-sellable items are included when the caller lists explicit ids
+    // (from a count template) or asks via include_pos=1 (config screens).
+    // Otherwise they're excluded so the browse stays raw-stock only.
+    const includePos = searchParams.get('include_pos') === '1' || !!ids;
+    const domain: any[] = [['type', '=', 'consu']];
+    if (!includePos) domain.push(['available_in_pos', '=', false]);
 
     // Filter by explicit product IDs (from counting template)
     if (ids) {

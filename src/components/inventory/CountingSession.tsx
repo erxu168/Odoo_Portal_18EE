@@ -113,7 +113,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         loadedProducts = prodRes.products || [];
       } else if (categoryIds.length > 0) {
         const promises = categoryIds.map(cid =>
-          fetch(`/api/inventory/products?category_id=${cid}`).then(r => r.json())
+          fetch(`/api/inventory/products?category_id=${cid}&include_pos=1`).then(r => r.json())
         );
         const results = await Promise.all(promises);
         const seen = new Set<number>();
