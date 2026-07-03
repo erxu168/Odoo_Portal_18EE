@@ -16,6 +16,7 @@ import RosterCaps from '@/components/shifts/RosterCaps';
 import Approvals from '@/components/shifts/Approvals';
 import PresenceBoard from '@/components/shifts/PresenceBoard';
 import Timesheet from '@/components/shifts/Timesheet';
+import Punctuality from '@/components/shifts/Punctuality';
 import ShiftSettings from '@/components/shifts/ShiftSettings';
 import { Spinner } from '@/components/shifts/ui';
 
@@ -45,6 +46,7 @@ type Screen =
   | { type: 'approvals' }
   | { type: 'presence' }
   | { type: 'timesheet' }
+  | { type: 'punctuality' }
   | { type: 'settings' };
 
 export default function ShiftsPage() {
@@ -137,6 +139,7 @@ export default function ShiftsPage() {
     else if (key === 'approvals') navigate({ type: 'approvals' });
     else if (key === 'presence') navigate({ type: 'presence' });
     else if (key === 'timesheet') navigate({ type: 'timesheet' });
+    else if (key === 'punctuality') navigate({ type: 'punctuality' });
   }
 
   const common = {
@@ -215,6 +218,8 @@ export default function ShiftsPage() {
         return <PresenceBoard {...common} />;
       case 'timesheet':
         return <Timesheet {...common} />;
+      case 'punctuality':
+        return <Punctuality {...common} />;
       case 'settings':
         return <ShiftSettings {...common} />;
     }

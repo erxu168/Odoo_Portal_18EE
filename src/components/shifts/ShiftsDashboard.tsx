@@ -192,6 +192,21 @@ export default function ShiftsDashboard({ isManager, badges, onNavigate }: Shift
       badge: badges.approvals > 0 ? badges.approvals : null,
     },
     {
+      key: 'punctuality',
+      label: 'Punctuality',
+      sublabel: 'Late · early · overtime',
+      color: 'bg-rose-50 border-rose-200', iconBg: 'bg-rose-100', iconColor: 'text-rose-600',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="13" r="8"/>
+          <path d="M12 9v4l2 2"/>
+          <path d="M5 3L2 6"/>
+          <path d="M22 6l-3-3"/>
+        </svg>
+      ),
+      badge: null,
+    },
+    {
       key: 'timesheet',
       label: 'Timesheets',
       sublabel: '§17 records · export',
