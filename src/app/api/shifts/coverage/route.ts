@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchEmployees, fetchWeekSlots, MIN_WAGE_EUR } from '@/lib/shifts-odoo';
+import { confirmedSlotIds } from '@/lib/shifts-db';
 import { berlinParts, odooToDate, weekKeyDays } from '@/lib/shifts-time';
 import { requireManagerCompany, resolveWeekKey, serverError } from '../_manager';
 
@@ -80,7 +81,18 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    return NextResponse.json({ weekKey, days, totals, warnings });
+    const confirmedSet = confirmedSlotIds(companyId);
+    let assignedPublished = 0;
+    let confirmedCount = 0;
+    for (const s of slots) {
+      if (s.resourceId !== null && s.state === 'published') {
+        assignedPublished += 1;
+        if (confirmedSet.has(s.id)) confirmedCount += 1;
+      }
+    }
+    const confirmations = { confirmed: confirmedCount, total: assignedPublished };
+
+    return NextResponse.json({ weekKey, days, totals, warnings, confirmations });
   } catch (err: unknown) {
     return serverError('GET coverage', err);
   }

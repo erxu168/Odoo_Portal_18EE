@@ -12,7 +12,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
-import { getShiftSettings, listCoverRequests } from '@/lib/shifts-db';
+import { confirmedSlotIds, getShiftSettings, listCoverRequests } from '@/lib/shifts-db';
 import { lazyExpireIfDue } from '@/lib/shifts-guards';
 import { fetchEmployees, fetchSlot, fetchWeekSlots, weekHoursMap } from '@/lib/shifts-odoo';
 import {
@@ -86,6 +86,8 @@ export async function GET(request: Request) {
 
     // Staff only ever see published shifts — drafts are invisible until publish.
     const mineSlots = weekSlots.filter(s => s.employeeId === employeeId && s.state === 'published');
+    const confirmedIds = confirmedSlotIds(companyId);
+    const myConfirmed = mineSlots.filter(s => confirmedIds.has(s.id)).map(s => s.id);
     const days = weekKeyDays(weekKey).map(date => ({
       date,
       slots: mineSlots.filter(s => berlinParts(s.start).date === date),
@@ -179,6 +181,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       weekKey,
       days,
+      confirmedSlotIds: myConfirmed,
       weekHours: hoursMap.get(employeeId) ?? 0,
       cap: me?.cap ?? null,
       requests: { outgoing, incomingCount },

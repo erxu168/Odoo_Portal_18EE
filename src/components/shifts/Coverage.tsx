@@ -67,6 +67,7 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
   const [days, setDays] = useState<CoverageDay[]>([]);
   const [totals, setTotals] = useState<CoverageTotals>({ shifts: 0, open: 0, overCap: 0, cost: 0 });
   const [warnings, setWarnings] = useState<ComplianceWarning[]>([]);
+  const [confirmations, setConfirmations] = useState<{ confirmed: number; total: number }>({ confirmed: 0, total: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,6 +104,11 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
         cost: num(data.totals?.cost),
       });
       setWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      setConfirmations(
+        data.confirmations && typeof data.confirmations === 'object'
+          ? { confirmed: num(data.confirmations.confirmed), total: num(data.confirmations.total) }
+          : { confirmed: 0, total: 0 },
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
     } finally {
@@ -183,6 +189,19 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
                       <span className="font-semibold">{w.employee}</span> · {w.detail}
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {confirmations.total > 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3 flex items-center justify-between">
+                <div className="text-[var(--fs-sm)] font-bold text-gray-900">Confirmed by staff</div>
+                <div
+                  className={`text-[var(--fs-md)] font-bold tabular-nums ${
+                    confirmations.confirmed < confirmations.total ? 'text-amber-600' : 'text-green-600'
+                  }`}
+                >
+                  {confirmations.confirmed} / {confirmations.total}
                 </div>
               </div>
             )}

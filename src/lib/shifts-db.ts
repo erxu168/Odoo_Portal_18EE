@@ -108,8 +108,39 @@ function ensureTables(): void {
       updated_at TEXT,
       PRIMARY KEY (company_id, employee_id)
     );
+
+    CREATE TABLE IF NOT EXISTS shift_confirmations (
+      slot_id INTEGER PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      confirmed_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_confirm_company ON shift_confirmations(company_id);
   `);
   _initialized = true;
+}
+
+// -- Shift confirmations (staff "I'll be there") --------------------------------
+
+/** Record a staff confirmation for a slot (idempotent per slot). */
+export function confirmSlot(slotId: number, companyId: number, employeeId: number): void {
+  ensureTables();
+  getDb()
+    .prepare(
+      `INSERT INTO shift_confirmations (slot_id, company_id, employee_id, confirmed_at)
+       VALUES (?,?,?,?)
+       ON CONFLICT(slot_id) DO UPDATE SET employee_id=excluded.employee_id, confirmed_at=excluded.confirmed_at`,
+    )
+    .run(slotId, companyId, employeeId, nowISO());
+}
+
+/** slot_ids in the company that have been confirmed by staff. */
+export function confirmedSlotIds(companyId: number): Set<number> {
+  ensureTables();
+  const rows = getDb()
+    .prepare('SELECT slot_id FROM shift_confirmations WHERE company_id=?')
+    .all(companyId) as { slot_id: number }[];
+  return new Set(rows.map(r => r.slot_id));
 }
 
 // -- Kiosk PINs -----------------------------------------------------------------

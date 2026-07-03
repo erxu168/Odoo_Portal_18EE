@@ -75,6 +75,7 @@ interface MineData {
   incomingCount: number;
   tentative: ShiftSlot[];
   eligibleBySlot: Record<string, EligibleTeammate[]>;
+  confirmedSlotIds: number[];
   settings: MineSettings;
 }
 
@@ -177,6 +178,7 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
   const [cancelReq, setCancelReq] = useState<OutgoingRequest | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback((msg: string) => {
@@ -208,6 +210,7 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
         tentative: Array.isArray(raw.tentative) ? raw.tentative : [],
         eligibleBySlot:
           raw.eligibleBySlot && typeof raw.eligibleBySlot === 'object' ? raw.eligibleBySlot : {},
+        confirmedSlotIds: Array.isArray(raw.confirmedSlotIds) ? raw.confirmedSlotIds : [],
         settings: {
           allowAskAll: settings.allowAskAll !== false,
           allowSickReport: settings.allowSickReport !== false,
@@ -496,7 +499,11 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
                             {req ? (
                               <Badge variant="orange">Cover pending</Badge>
                             ) : isFuture ? (
-                              <Badge variant="blue">Upcoming</Badge>
+                              (data?.confirmedSlotIds ?? []).includes(s.id) ? (
+                                <Badge variant="green">Confirmed</Badge>
+                              ) : (
+                                <Badge variant="blue">Upcoming</Badge>
+                              )
                             ) : (
                               <Badge variant="gray">Past</Badge>
                             )}
@@ -577,12 +584,44 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
               </>
             ) : sheetIsFuture ? (
               <>
+                {(data?.confirmedSlotIds ?? []).includes(sheetSlot.id) ? (
+                  <div className="text-center text-[var(--fs-sm)] font-bold text-green-700 py-1.5">
+                    ✓ You confirmed this shift
+                  </div>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      setConfirming(true);
+                      setSheetError(null);
+                      try {
+                        const r = await fetch('/api/shifts/confirm', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ company_id: companyId, slot_id: sheetSlot.id }),
+                        });
+                        const d = await r.json().catch(() => ({}));
+                        if (!r.ok) throw new Error(typeof d.error === 'string' ? d.error : 'Could not confirm');
+                        setToast('Confirmed — thanks!');
+                        setSheetSlot(null);
+                        await load();
+                      } catch (e: unknown) {
+                        setSheetError(e instanceof Error ? e.message : 'Could not confirm');
+                      } finally {
+                        setConfirming(false);
+                      }
+                    }}
+                    disabled={confirming}
+                    className={`${ds.btnPrimary} disabled:opacity-50`}
+                  >
+                    {confirming ? 'Confirming…' : '✓ Confirm you’ll be there'}
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setSheetMode('picker');
                     setSheetError(null);
                   }}
-                  className={ds.btnPrimary}
+                  className="w-full py-3.5 rounded-xl border border-gray-300 bg-white text-gray-700 text-[var(--fs-sm)] font-bold active:bg-gray-50"
                 >
                   Ask a teammate to cover
                 </button>
