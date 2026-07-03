@@ -15,6 +15,8 @@ Added crate + loose-unit counting to the existing Inventory module (staging, `ma
 - **Verified on staging**: build green; migration applied to the live DB; manager crate-size set → read (24) → clear (null) round-trip all 200.
 - Approved mock: https://claude.ai/code/artifact/76548528-f836-4265-b143-189b71e652eb
 
+**Follow-up same day (commit `03b276e`) — generalized crate → labeled "pack".** Products can now be counted in any per-product unit (crate / bunch / piece / head / tray…) that converts to the base unit by an **average**. Managers pick the count-by word + size in Product Settings. Two shapes, chosen by base UoM: **weight/volume base (kg, L)** → a single "count pieces → = X kg (avg)" stepper (no loose field — staff have no scale on the floor); **countable base** (bottles) → keeps crates + loose. Covers herbs-in-bunches and loose produce (tomato/potato/scallion/cucumber counted by piece → kg). Added `product_flags.pack_label`; `crate-units` gained `pluralizePack` + `baseIsMeasure` + label-aware `formatSplit`. Odoo write still base-unit only. Verified on staging (1 piece = 0.12 kg → read back → clear, all 200).
+
 ## 2026-06-10 session — KDS: production-safe Odoo POS integration (commit `6e3f153`)
 
 The KDS (built since the last STATUS update: `/kds` page, 14 components, state/priority/sound libs, kds-db.ts, 5 API route groups) was audited and hardened for live POS use on staging AND a config-only move to production.
