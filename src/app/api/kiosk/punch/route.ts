@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 import { verifyKioskPin } from '@/lib/shifts-db';
 import { kioskPunch } from '@/lib/shifts-kiosk';
+import { checkRateLimit, clientIpFromHeaders } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,17 @@ export async function POST(request: Request) {
     if (!Number.isInteger(companyId) || companyId <= 0 || !Number.isInteger(employeeId) || employeeId <= 0) {
       return NextResponse.json({ error: 'Bad request' }, { status: 400 });
     }
+
+    // Blunt PIN brute-force: max 5 attempts / minute per (company, employee, ip).
+    const ip = clientIpFromHeaders(request.headers);
+    const rl = checkRateLimit(`kiosk-punch:${companyId}:${employeeId}:${ip}`, 5, 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many attempts — wait a moment.' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } },
+      );
+    }
+
     if (!/^\d{4}$/.test(pin) || !verifyKioskPin(companyId, employeeId, pin)) {
       return NextResponse.json({ error: 'Wrong PIN' }, { status: 401 });
     }
