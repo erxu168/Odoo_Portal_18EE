@@ -12,7 +12,7 @@ import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { cacheSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
-import { hasCrate, crateTotal, splitFromTotal, formatSplit } from '@/lib/crate-units';
+import { hasCrate, crateTotal, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
 
 interface CountingSessionProps {
   sessionId: number;
@@ -41,7 +41,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [flags, setFlags] = useState<Record<number, boolean>>({});
   const [rowPhotos, setRowPhotos] = useState<Record<number, string[]>>({});
   // -- Crate (multi-UoM) counting --
-  const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});          // product_id -> units per crate
+  const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});          // product_id -> base units per pack
+  const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});         // product_id -> count-by label
   const [crateSplits, setCrateSplits] = useState<Record<number, { crates: number; loose: number }>>({});
   const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
 
@@ -134,6 +135,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         systemQtys: countRes.system_qtys || {},
         flags: {},
         crateSizes: {},
+        crateLabels: {},
       });
     } catch (err) {
       console.warn('Network fetch failed, attempting cache fallback:', err);
@@ -142,6 +144,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         apply(cached.session, cached.products, cached.entries, cached.systemQtys);
         if (cached.flags) setFlags(cached.flags);
         if (cached.crateSizes) setCrateSizes(cached.crateSizes);
+        if (cached.crateLabels) setCrateLabels(cached.crateLabels);
       } else {
         console.error('No cached data available for session', sessionId);
       }
@@ -156,16 +159,19 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     fetch('/api/inventory/product-flags').then(r => r.json()).then(async (d) => {
       const map: Record<number, boolean> = {};
       const crateMap: Record<number, number> = {};
+      const labelMap: Record<number, string> = {};
       (d.flags || []).forEach((f: any) => {
         map[f.odoo_product_id] = !!f.requires_photo;
         if (f.units_per_crate != null && Number(f.units_per_crate) > 0) crateMap[f.odoo_product_id] = Number(f.units_per_crate);
+        if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
       });
       setFlags(map);
       setCrateSizes(crateMap);
-      // Patch flags + crate sizes into cached session data so an offline reload has them.
+      setCrateLabels(labelMap);
+      // Patch flags + pack sizes/labels into cached session data so an offline reload has them.
       const cached = await getCachedSessionData(sessionId);
       if (cached) {
-        void cacheSessionData(sessionId, { ...cached, flags: map, crateSizes: crateMap });
+        void cacheSessionData(sessionId, { ...cached, flags: map, crateSizes: crateMap, crateLabels: labelMap });
       }
     }).catch(() => {});
   }, [sessionId]);
@@ -384,6 +390,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     const prodPhotos = rowPhotos[p.id] || [];
     const size = crateSizes[p.id];
     const isCrate = hasCrate(size);
+    const label = crateLabels[p.id] ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
+    const measure = baseIsMeasure(uom);
     const split = crateSplits[p.id] ?? (val != null ? splitFromTotal(val, size) : null);
     return (
       <div className="py-3 border-b border-gray-100">
@@ -394,7 +402,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">{uom}</span>
               {isCrate && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 flex-shrink-0">
-                  1 crate = {size}
+                  1 {label} {measure ? '≈' : '='} {size}
                 </span>
               )}
               {flagged && (
@@ -414,7 +422,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   <div className="font-mono text-[var(--fs-lg)] font-bold text-gray-900 leading-none">
                     {val}<span className="text-[10px] font-semibold text-gray-500 ml-0.5">{uom}</span>
                   </div>
-                  {split && <div className="text-[10px] text-gray-500 mt-1 font-mono">{split.crates} cr {'·'} {split.loose} {uom}</div>}
+                  {split && <div className="text-[10px] text-gray-500 mt-1 font-mono">{formatSplit(split.crates, split.loose, uom, label)}</div>}
                 </>
               ) : (
                 <div className="text-[var(--fs-sm)] font-bold text-green-700">Count {'→'}</div>
@@ -429,7 +437,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700 text-right">
               {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
               {isCrate && split && val !== null && (
-                <div className="text-[10px] text-gray-400 font-normal font-mono">{split.crates} cr {'·'} {split.loose} {uom}</div>
+                <div className="text-[10px] text-gray-400 font-normal font-mono">{formatSplit(split.crates, split.loose, uom, label)}</div>
               )}
             </div>
           )}
@@ -581,6 +589,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 const uom = p.uom_id?.[1] || 'Units';
                 const size = crateSizes[p.id];
                 const isCrate = hasCrate(size);
+                const label = crateLabels[p.id] ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
                 const split = crateSplits[p.id] ?? (val != null ? splitFromTotal(val, size) : null);
                 return (
                   <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-gray-100">
@@ -595,7 +604,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                         {val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span>
                       </span>
                       {isCrate && split && (
-                        <div className="text-[10px] text-gray-400 font-mono">{formatSplit(split.crates, split.loose, uom)}</div>
+                        <div className="text-[10px] text-gray-400 font-mono">{formatSplit(split.crates, split.loose, uom, label)}</div>
                       )}
                     </div>
                   </div>
@@ -772,6 +781,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           product={crateSheet.product}
           unitsPerCrate={crateSizes[crateSheet.product.id] || 0}
           uom={crateSheet.product.uom_id?.[1] || 'Units'}
+          packLabel={crateLabels[crateSheet.product.id] ?? (baseIsMeasure(crateSheet.product.uom_id?.[1] || 'Units') ? 'piece' : 'crate')}
           initialCrates={crateSplits[crateSheet.product.id]?.crates ?? splitFromTotal(entries[crateSheet.product.id] ?? 0, crateSizes[crateSheet.product.id]).crates}
           initialLoose={crateSplits[crateSheet.product.id]?.loose ?? splitFromTotal(entries[crateSheet.product.id] ?? 0, crateSizes[crateSheet.product.id]).loose}
           showSystemQty={userRole !== 'staff'}

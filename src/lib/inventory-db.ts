@@ -167,6 +167,10 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   if (!pfCols.some(c => c.name === 'units_per_crate')) {
     db.exec("ALTER TABLE product_flags ADD COLUMN units_per_crate REAL");
   }
+  if (!pfCols.some(c => c.name === 'pack_label')) {
+    // The word staff count in: 'crate', 'bunch', 'piece', 'tray'… (null = 'pack').
+    db.exec("ALTER TABLE product_flags ADD COLUMN pack_label TEXT");
+  }
   for (const table of ['count_entries', 'quick_counts']) {
     const cols = (db.prepare(`PRAGMA table_info('${table}')`).all() as { name: string }[]).map(c => c.name);
     if (!cols.includes('crate_qty')) db.exec(`ALTER TABLE ${table} ADD COLUMN crate_qty REAL`);
@@ -632,7 +636,8 @@ export function deleteCountsForProduct(productId: number): number {
 export interface ProductFlag {
   odoo_product_id: number;
   requires_photo: boolean;
-  units_per_crate: number | null;  // portal-side crate (Kasten) size; null = count in base units
+  units_per_crate: number | null;  // base units per counted pack/piece; null = count in base units
+  pack_label: string | null;       // what staff count in: 'crate' | 'bunch' | 'piece' | 'tray'… (null → 'pack')
   updated_by: number | null;
   updated_at: string | null;
 }
@@ -652,6 +657,7 @@ export function getProductFlags(ids?: number[]): ProductFlag[] {
     odoo_product_id: r.odoo_product_id,
     requires_photo: !!r.requires_photo,
     units_per_crate: r.units_per_crate != null ? Number(r.units_per_crate) : null,
+    pack_label: r.pack_label ?? null,
     updated_by: r.updated_by,
     updated_at: r.updated_at,
   }));
@@ -693,6 +699,28 @@ export function setProductCrateSize(
       updated_by = excluded.updated_by,
       updated_at = excluded.updated_at
   `).run(productId, size, userId, now());
+}
+
+/**
+ * Set (or clear) the word staff count a product in ('crate' | 'bunch' |
+ * 'piece' | 'tray'…). Pass null/'' to clear. Leaves the size + photo flag
+ * untouched (defaults on a brand-new row only).
+ */
+export function setProductPackLabel(
+  productId: number,
+  packLabel: string | null,
+  userId: number,
+) {
+  const db = getDb();
+  const label = packLabel && packLabel.trim() ? packLabel.trim().toLowerCase() : null;
+  db.prepare(`
+    INSERT INTO product_flags (odoo_product_id, pack_label, updated_by, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(odoo_product_id) DO UPDATE SET
+      pack_label = excluded.pack_label,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(productId, label, userId, now());
 }
 
 // ===

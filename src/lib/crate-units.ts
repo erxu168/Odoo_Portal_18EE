@@ -49,12 +49,39 @@ export function splitFromTotal(
   return { crates, loose };
 }
 
-/** "3 crates + 7 Units" — or "79 Units" when there's no crate part. */
-export function formatSplit(crates: number, loose: number, unit: string): string {
+/** Pluralize a pack label: "crate"→"crates", "bunch"→"bunches", "box"→"boxes". */
+export function pluralizePack(label: string, n: number): string {
+  const l = (label || 'pack').trim();
+  if (n === 1) return l;
+  if (/(s|x|z|ch|sh)$/i.test(l)) return `${l}es`;
+  if (/[^aeiou]y$/i.test(l)) return `${l.slice(0, -1)}ies`;
+  return `${l}s`;
+}
+
+/**
+ * "3 crates + 7 Units" (count base) / "12 pieces" (weight base, no loose) /
+ * "79 Units" when there's no pack part.
+ */
+export function formatSplit(crates: number, loose: number, unit: string, packLabel = 'pack'): string {
   const u = unit || 'Units';
   if (crates <= 0) return `${round2(loose)} ${u}`;
-  const crateWord = crates === 1 ? 'crate' : 'crates';
-  return `${crates} ${crateWord} + ${round2(loose)} ${u}`;
+  const word = pluralizePack(packLabel, crates);
+  if (!loose) return `${crates} ${word}`;
+  return `${crates} ${word} + ${round2(loose)} ${u}`;
+}
+
+/**
+ * True when the base UoM is a weight/volume measure (kg, g, L…) rather than a
+ * discrete count. Weight-based products are counted by piece/bunch only — no
+ * "loose grams" field, because staff can't weigh a partial on the floor.
+ */
+const MEASURE_UOMS = new Set([
+  'kg', 'g', 'mg', 'kilogram', 'kilogramm', 'gram', 'gramm', 'gramme',
+  'l', 'ml', 'cl', 'dl', 'liter', 'litre', 'lt',
+  'oz', 'lb',
+]);
+export function baseIsMeasure(uom: string): boolean {
+  return MEASURE_UOMS.has((uom || '').trim().toLowerCase());
 }
 
 /** "79 Units" — the base-unit-only display. */

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
 import StandardFilter from '@/components/ui/StandardFilter';
 import PhotoLightbox from './PhotoLightbox';
-import { hasCrate, splitFromTotal } from '@/lib/crate-units';
+import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
 
 interface ReviewSubmissionsProps {
   onViewSession: (sessionId: number) => void;
@@ -30,7 +30,9 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [draftDecisions, setDraftDecisions] = useState<Record<number, 'approved' | 'linked' | 'rejected'>>({});
   const [lightbox, setLightbox] = useState<{ open: boolean; photos: string[]; index: number }>({ open: false, photos: [], index: 0 });
   const [locations, setLocations] = useState<any[]>([]);
-  const [dispMode, setDispMode] = useState<'split' | 'base'>('split');  // crate display toggle
+  const [dispMode, setDispMode] = useState<'split' | 'base'>('split');  // pack display toggle
+  const [reviewPackLabels, setReviewPackLabels] = useState<Record<number, string>>({});  // product_id -> count-by label
+  const [reviewQCLabel, setReviewQCLabel] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/inventory/locations')
@@ -115,6 +117,17 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         productList.push(...(extra.products || []));
       }
       setReviewProducts(productList);
+
+      // Pack labels aren't snapshotted on count rows — fetch current per-product labels.
+      try {
+        const ids = productList.map((p: any) => p.id).filter(Boolean);
+        const labelMap: Record<number, string> = {};
+        if (ids.length > 0) {
+          const flagRes = await fetch(`/api/inventory/product-flags?ids=${ids.join(',')}`).then(r => r.json());
+          (flagRes.flags || []).forEach((f: any) => { if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label; });
+        }
+        setReviewPackLabels(labelMap);
+      } catch { setReviewPackLabels({}); }
     } catch (err) {
       console.error('Failed to load review data:', err);
     } finally {
@@ -154,11 +167,16 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   async function openQCReview(qc: any) {
     setReviewQC(qc);
     setQcProduct(null);
+    setReviewQCLabel(null);
     setErrorMsg(null);
     try {
       const prodRes = await fetch(`/api/inventory/products?ids=${qc.product_id}`).then(r => r.json());
       const products = prodRes.products || [];
       setQcProduct(products.length > 0 ? products[0] : null);
+      try {
+        const flagRes = await fetch(`/api/inventory/product-flags?ids=${qc.product_id}`).then(r => r.json());
+        setReviewQCLabel((flagRes.flags || [])[0]?.pack_label || null);
+      } catch { setReviewQCLabel(null); }
     } catch (err) {
       console.error('Failed to load QC product:', err);
     }
@@ -257,7 +275,9 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                 <div className="text-[28px] font-bold text-green-700 font-mono">{reviewQC.counted_qty}</div>
                 <div className="text-[var(--fs-xs)] text-green-600 font-semibold">{uom} counted</div>
                 {qcIsCrate && qcSplit && (
-                  <div className="text-[var(--fs-xs)] text-green-700 mt-1 font-mono">= {qcSplit.crates} crates + {qcSplit.loose} {uom}</div>
+                  <div className="text-[var(--fs-xs)] text-green-700 mt-1 font-mono">
+                    = {formatSplit(qcSplit.crates, qcSplit.loose, uom, reviewQCLabel ?? (baseIsMeasure(uom) ? 'piece' : 'crate'))}
+                  </div>
                 )}
               </div>
             </div>
@@ -384,7 +404,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                 <div className="flex bg-gray-100 rounded-xl p-1" role="group" aria-label="Display units">
                   <button onClick={() => setDispMode('split')}
                     className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition-all ${dispMode === 'split' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
-                    Crates + units
+                    Packs + units
                   </button>
                   <button onClick={() => setDispMode('base')}
                     className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition-all ${dispMode === 'base' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
@@ -408,6 +428,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   const decision = draftDecisions[p.id];
                   const entry = entryByProduct[p.id];
                   const isCrate = hasCrate(entry?.units_per_crate);
+                  const packLabel = reviewPackLabels[p.id] ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
                   const split = isCrate
                     ? ((entry?.crate_qty != null || entry?.loose_qty != null)
                         ? { crates: Number(entry.crate_qty) || 0, loose: Number(entry.loose_qty) || 0 }
@@ -466,7 +487,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                         </div>
                         <span className="text-[14px] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3 text-right">
                           {isCrate && dispMode === 'split' && split ? (
-                            <>{split.crates} cr + {split.loose} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></>
+                            <span>{formatSplit(split.crates, split.loose, uom, packLabel)}</span>
                           ) : (
                             <>{val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></>
                           )}

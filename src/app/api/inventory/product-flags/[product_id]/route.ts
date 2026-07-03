@@ -3,13 +3,13 @@ export const dynamic = 'force-dynamic';
  * PUT /api/inventory/product-flags/[product_id]
  *
  * Upserts a product flag. Manager+ only.
- * Body: { requires_photo?: boolean, units_per_crate?: number | null }
+ * Body: { requires_photo?: boolean, units_per_crate?: number | null, pack_label?: string | null }
  * Only the keys present in the body are changed. Pass units_per_crate = null
- * (or 0) to clear the crate size so the product is counted in base units.
+ * (or 0) to clear the pack size so the product is counted in base units.
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { initInventoryTables, setProductFlag, setProductCrateSize } from '@/lib/inventory-db';
+import { initInventoryTables, setProductFlag, setProductCrateSize, setProductPackLabel } from '@/lib/inventory-db';
 
 export async function PUT(
   request: Request,
@@ -29,7 +29,7 @@ export async function PUT(
   try {
     initInventoryTables();
     const body = await request.json();
-    const result: { success: true; requires_photo?: boolean; units_per_crate?: number | null } = { success: true };
+    const result: { success: true; requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null } = { success: true };
 
     if ('requires_photo' in body) {
       const requiresPhoto = !!body.requires_photo;
@@ -51,6 +51,13 @@ export async function PUT(
       }
       setProductCrateSize(productId, size, user.id);
       result.units_per_crate = size;
+    }
+
+    if ('pack_label' in body) {
+      const raw = body.pack_label;
+      const label = (raw == null || String(raw).trim() === '') ? null : String(raw).trim().toLowerCase().slice(0, 20);
+      setProductPackLabel(productId, label, user.id);
+      result.pack_label = label;
     }
 
     return NextResponse.json(result);

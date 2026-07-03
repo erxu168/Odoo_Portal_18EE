@@ -29,7 +29,8 @@ export interface CachedSessionData {
   entries: any[];
   systemQtys: Record<number, number>;
   flags: Record<number, boolean>;
-  crateSizes?: Record<number, number>;  // per-product crate size, for offline crate counting
+  crateSizes?: Record<number, number>;   // per-product pack size, for offline pack counting
+  crateLabels?: Record<number, string>;  // per-product count-by label (crate/bunch/piece…)
   cachedAt: number;
 }
 
