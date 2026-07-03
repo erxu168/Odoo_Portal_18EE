@@ -132,16 +132,27 @@ export async function fetchSlot(id: number): Promise<ShiftSlot | null> {
 /** Active employees of the company with resource, caps, skills and roles resolved. */
 export async function fetchEmployees(companyId: number): Promise<ShiftEmployee[]> {
   const odoo = getOdoo();
-  const rows = (await odoo.searchRead(
-    'hr.employee',
-    [
-      ['active', '=', true],
-      ['company_id', '=', companyId],
-    ],
-    ['name', 'resource_id', 'department_id', 'x_max_weekly_hours', 'x_skill_level',
-     'x_employment_type', 'contract_id'],
-    { limit: 500, order: 'name asc' },
-  )) as OdooRow[];
+  const domain = [
+    ['active', '=', true],
+    ['company_id', '=', companyId],
+  ];
+  const baseFields = [
+    'name', 'resource_id', 'department_id', 'x_max_weekly_hours', 'x_skill_level', 'contract_id',
+  ];
+  // x_employment_type may not exist yet if the addon update hasn't been applied to
+  // this Odoo — read it optionally so a deploy-order mismatch can't break the roster.
+  let rows: OdooRow[];
+  try {
+    rows = (await odoo.searchRead('hr.employee', domain, [...baseFields, 'x_employment_type'], {
+      limit: 500,
+      order: 'name asc',
+    })) as OdooRow[];
+  } catch {
+    rows = (await odoo.searchRead('hr.employee', domain, baseFields, {
+      limit: 500,
+      order: 'name asc',
+    })) as OdooRow[];
+  }
 
   // Batch-read resource.resource.role_ids (m2m) → "Can work as".
   const resourceIds = rows
