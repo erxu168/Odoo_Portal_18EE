@@ -40,6 +40,18 @@ const SKILL_BADGE: Record<SkillLevel, { variant: 'amber' | 'blue' | 'green'; lab
   '3': { variant: 'green', label: 'Team Lead' },
 };
 
+type EmpType = 'minijob' | 'midijob' | 'fulltime';
+const EMP_TYPES: { value: EmpType; label: string }[] = [
+  { value: 'minijob', label: 'Minijob' },
+  { value: 'midijob', label: 'Midijob' },
+  { value: 'fulltime', label: 'Full-time' },
+];
+const EMP_TYPE_LABEL: Record<EmpType, string> = { minijob: 'Minijob', midijob: 'Midijob', fulltime: 'Full-time' };
+const MINIJOB_CAP = 603;
+function eur(n: number): string {
+  return `€${n.toFixed(2)}`;
+}
+
 function initials(name: string): string {
   return name
     .split(/\s+/)
@@ -68,6 +80,8 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
   const [roleIds, setRoleIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [empType, setEmpType] = useState<EmpType | null>(null);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
 
   const fetchRoster = useCallback(async () => {
     setLoading(true);
@@ -106,6 +120,8 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
     setCapStr(e.cap !== null ? String(e.cap % 1 === 0 ? e.cap.toFixed(0) : e.cap) : '');
     setSkill(e.skill);
     setRoleIds(e.roleIds);
+    setEmpType(e.employmentType);
+    setNeedsConfirm(false);
     setSaveError(null);
   }
 
@@ -121,6 +137,11 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
       setSaveError('Enter a valid number of hours, or leave it empty for no cap.');
       return;
     }
+    // Employment type is an official HR change — confirm before writing it back.
+    if (empType !== editing.employmentType && !needsConfirm) {
+      setNeedsConfirm(true);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -132,11 +153,13 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
           cap: capNum,
           skill,
           role_ids: roleIds,
+          employment_type: empType,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setEditing(null);
+      setNeedsConfirm(false);
       await fetchRoster();
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Network error');
@@ -197,6 +220,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
                         <div className="text-[var(--fs-md)] font-bold text-gray-900 truncate">{e.name}</div>
                         <div className={`text-[var(--fs-sm)] mt-0.5 truncate ${names ? 'text-gray-500' : 'text-gray-400'}`}>
                           {names || 'No role yet'}
+                          {e.employmentType ? ` · ${EMP_TYPE_LABEL[e.employmentType]}` : ''}
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
@@ -234,6 +258,41 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
                 <div className={`text-[var(--fs-sm)] truncate ${roleNames(editing) ? 'text-gray-500' : 'text-gray-400'}`}>
                   {roleNames(editing) || 'No role yet'}
                 </div>
+              </div>
+            </div>
+
+            <div>
+              <div className={ds.label}>Employment type</div>
+              <div className="flex gap-2">
+                {EMP_TYPES.map(t => {
+                  const on = empType === t.value;
+                  return (
+                    <button
+                      key={t.value}
+                      onClick={() => setEmpType(on ? null : t.value)}
+                      className={`flex-1 h-11 rounded-xl text-[var(--fs-sm)] font-bold border transition-colors ${
+                        on ? 'border-green-600 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-500'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {empType === 'minijob' && (
+                <p className="text-[var(--fs-sm)] text-amber-700 mt-1.5 leading-snug">
+                  Minijob earnings limit {eur(MINIJOB_CAP)}/month — you’ll be warned before scheduling over it.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <div className={ds.label}>Pay rate</div>
+              <div className="flex items-center justify-between bg-gray-100 border border-gray-200 rounded-xl px-4 py-3">
+                <span className="text-[var(--fs-md)] font-bold text-gray-900 tabular-nums">{eur(editing.hourlyRate)} / h</span>
+                <span className="text-[var(--fs-xs)] text-gray-500">
+                  {editing.hasContract ? '🔒 from contract' : '🔒 min-wage (no contract)'}
+                </span>
               </div>
             </div>
 
@@ -319,9 +378,38 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
               </div>
             )}
 
-            <button onClick={handleSave} disabled={saving} className={`${ds.btnPrimary} disabled:opacity-50`}>
-              {saving ? 'Saving…' : 'Save changes'}
-            </button>
+            {needsConfirm && (
+              <div className="rounded-xl bg-amber-50 border border-amber-300 p-3.5">
+                <div className="text-[var(--fs-md)] font-bold text-amber-900 mb-1">
+                  Update {editing.name.split(' ')[0]}’s Employee file?
+                </div>
+                <div className="text-[var(--fs-sm)] text-amber-800 leading-snug mb-3">
+                  Employment type is stored on the official Employee record in Odoo HR — payroll, tax class and
+                  social insurance follow from it.
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setNeedsConfirm(false)}
+                    className="flex-1 h-11 rounded-xl border border-gray-300 bg-white text-gray-700 text-[var(--fs-sm)] font-bold active:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex-1 h-11 rounded-xl bg-green-600 text-white text-[var(--fs-sm)] font-bold active:bg-green-700 disabled:opacity-50"
+                  >
+                    {saving ? 'Saving…' : 'Update file'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!needsConfirm && (
+              <button onClick={handleSave} disabled={saving} className={`${ds.btnPrimary} disabled:opacity-50`}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            )}
           </div>
         )}
       </Sheet>

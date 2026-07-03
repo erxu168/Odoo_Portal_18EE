@@ -59,6 +59,20 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
       }
     }
 
+    if ('employment_type' in body) {
+      const et = body.employment_type;
+      if (et === null) {
+        employeeVals.x_employment_type = false;
+      } else if (et === 'minijob' || et === 'midijob' || et === 'fulltime') {
+        employeeVals.x_employment_type = et;
+      } else {
+        return NextResponse.json(
+          { error: 'employment_type must be null, "minijob", "midijob" or "fulltime"' },
+          { status: 400 },
+        );
+      }
+    }
+
     let roleIds: number[] | null = null;
     if ('role_ids' in body) {
       if (!Array.isArray(body.role_ids) || !body.role_ids.every(r => typeof r === 'number' && Number.isInteger(r) && r > 0)) {
