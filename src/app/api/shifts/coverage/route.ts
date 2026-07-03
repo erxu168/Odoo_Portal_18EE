@@ -5,7 +5,7 @@
  * and over-cap count, plus week totals for the three stat chips.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchWeekSlots } from '@/lib/shifts-odoo';
+import { fetchEmployees, fetchWeekSlots, MIN_WAGE_EUR } from '@/lib/shifts-odoo';
 import { berlinParts, weekKeyDays } from '@/lib/shifts-time';
 import { requireManagerCompany, resolveWeekKey, serverError } from '../_manager';
 
@@ -22,11 +22,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid week' }, { status: 400 });
     }
 
-    const slots = await fetchWeekSlots(companyId, weekKey);
+    const [slots, employees] = await Promise.all([
+      fetchWeekSlots(companyId, weekKey),
+      fetchEmployees(companyId),
+    ]);
+    const rateMap = new Map(employees.map(e => [e.id, e.hourlyRate]));
     const dayList = weekKeyDays(weekKey);
     const dayIndex = new Map(dayList.map((d, i) => [d, i]));
-    const days = dayList.map(date => ({ date, shifts: 0, open: 0, overCap: 0 }));
-    const totals = { shifts: 0, open: 0, overCap: 0 };
+    const days = dayList.map(date => ({ date, shifts: 0, open: 0, overCap: 0, cost: 0 }));
+    const totals = { shifts: 0, open: 0, overCap: 0, cost: 0 };
 
     for (const slot of slots) {
       const idx = dayIndex.get(berlinParts(slot.start).date);
@@ -36,12 +40,18 @@ export async function GET(req: NextRequest) {
       if (slot.resourceId === null) {
         days[idx].open++;
         totals.open++;
+      } else if (slot.employeeId !== null) {
+        const cost = slot.hours * (rateMap.get(slot.employeeId) ?? MIN_WAGE_EUR);
+        days[idx].cost += cost;
+        totals.cost += cost;
       }
       if (slot.overCap) {
         days[idx].overCap++;
         totals.overCap++;
       }
     }
+    for (const d of days) d.cost = Math.round(d.cost * 100) / 100;
+    totals.cost = Math.round(totals.cost * 100) / 100;
 
     return NextResponse.json({ weekKey, days, totals });
   } catch (err: unknown) {

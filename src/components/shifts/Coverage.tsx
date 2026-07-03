@@ -17,12 +17,14 @@ interface CoverageDay {
   shifts: number;
   open: number;
   overCap: number;
+  cost: number;
 }
 
 interface CoverageTotals {
   shifts: number;
   open: number;
   overCap: number;
+  cost: number;
 }
 
 interface CoverageProps {
@@ -57,7 +59,7 @@ function num(v: unknown): number {
 export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps) {
   const [weekKey, setWeekKey] = useState(currentWeekKey());
   const [days, setDays] = useState<CoverageDay[]>([]);
-  const [totals, setTotals] = useState<CoverageTotals>({ shifts: 0, open: 0, overCap: 0 });
+  const [totals, setTotals] = useState<CoverageTotals>({ shifts: 0, open: 0, overCap: 0, cost: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,18 +80,20 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
             shifts: num(d.shifts),
             open: num(d.open),
             overCap: num(d.overCap),
+            cost: num(d.cost),
           });
         }
       }
       setDays(
         weekKeyDays(weekKey).map(
-          date => byDate.get(date) ?? { date, shifts: 0, open: 0, overCap: 0 }
+          date => byDate.get(date) ?? { date, shifts: 0, open: 0, overCap: 0, cost: 0 }
         )
       );
       setTotals({
         shifts: num(data.totals?.shifts),
         open: num(data.totals?.open),
         overCap: num(data.totals?.overCap),
+        cost: num(data.totals?.cost),
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -148,6 +152,18 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
               <StatChip value={totals.overCap} label="Over cap" tone="red" />
             </div>
 
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3 flex items-center justify-between">
+              <div className="min-w-0">
+                <div className="text-[var(--fs-sm)] font-bold text-gray-900">Labour cost this week</div>
+                <div className="text-[var(--fs-xs)] text-gray-500 leading-snug">
+                  Wages at each person’s rate · min wage if no contract
+                </div>
+              </div>
+              <div className="text-[var(--fs-xl)] font-extrabold text-gray-900 tabular-nums flex-shrink-0 pl-3">
+                €{Math.round(totals.cost)}
+              </div>
+            </div>
+
             <div className="bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] overflow-hidden">
               {days.map((d, i) => (
                 <button
@@ -162,7 +178,7 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
                     <div className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
                       {d.shifts === 0
                         ? 'No shifts planned'
-                        : `${d.shifts} shift${d.shifts === 1 ? '' : 's'}`}
+                        : `${d.shifts} shift${d.shifts === 1 ? '' : 's'}${d.cost > 0 ? ` · €${Math.round(d.cost)}` : ''}`}
                     </div>
                   </div>
                   <div className="flex-shrink-0">{dayBadges(d)}</div>
