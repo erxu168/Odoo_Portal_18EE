@@ -86,13 +86,16 @@ export interface CountEntry {
   session_id: number;
   product_id: number;
   product_name?: string;
-  counted_qty: number;
+  counted_qty: number;                // base-unit total (bottles) — what Odoo gets
   system_qty: number | null;
   diff: number | null;
   uom: string;
   notes: string | null;
   counted_by: number;
   counted_at: string;
+  crate_qty?: number | null;          // crates as entered (audit / review replay)
+  loose_qty?: number | null;          // loose base units as entered
+  units_per_crate?: number | null;    // crate size snapshot at count time
 }
 
 export interface QuickCount {
@@ -100,7 +103,7 @@ export interface QuickCount {
   product_id: number;
   product_name?: string;
   location_id: number;
-  counted_qty: number;
+  counted_qty: number;                // base-unit total (bottles)
   uom: string;
   counted_by: number;
   counted_by_name?: string;
@@ -108,4 +111,7 @@ export interface QuickCount {
   submitted_at: string;
   reviewed_by: number | null;
   reviewed_at: string | null;
+  crate_qty?: number | null;
+  loose_qty?: number | null;
+  units_per_crate?: number | null;
 }

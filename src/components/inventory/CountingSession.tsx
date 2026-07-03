@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState, leafCategory } from './ui';
 import NumpadModal from './NumpadModal';
+import CrateCountSheet from './CrateCountSheet';
 import FilePicker from "@/components/ui/FilePicker";
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
@@ -11,6 +12,7 @@ import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { cacheSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
+import { hasCrate, crateTotal, splitFromTotal, formatSplit } from '@/lib/crate-units';
 
 interface CountingSessionProps {
   sessionId: number;
@@ -38,6 +40,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [flags, setFlags] = useState<Record<number, boolean>>({});
   const [rowPhotos, setRowPhotos] = useState<Record<number, string[]>>({});
+  // -- Crate (multi-UoM) counting --
+  const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});          // product_id -> units per crate
+  const [crateSplits, setCrateSplits] = useState<Record<number, { crates: number; loose: number }>>({});
+  const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
 
   // -- Barcode scanner --
   const [showScanner, setShowScanner] = useState(false);
@@ -69,14 +75,19 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setSession(sess);
       const entryMap: Record<number, number> = {};
       const photoMap: Record<number, string[]> = {};
+      const splitMap: Record<number, { crates: number; loose: number }> = {};
       for (const e of entriesArr || []) {
         entryMap[e.product_id] = e.counted_qty;
         if (Array.isArray(e.photos) && e.photos.length > 0) {
           photoMap[e.product_id] = e.photos;
         }
+        if (e.crate_qty != null || e.loose_qty != null) {
+          splitMap[e.product_id] = { crates: Number(e.crate_qty) || 0, loose: Number(e.loose_qty) || 0 };
+        }
       }
       setEntries(entryMap);
       setRowPhotos(photoMap);
+      setCrateSplits(splitMap);
       setSystemQtys(sysQtys || {});
       setProducts(products);
     }
@@ -122,6 +133,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         entries: countRes.entries || [],
         systemQtys: countRes.system_qtys || {},
         flags: {},
+        crateSizes: {},
       });
     } catch (err) {
       console.warn('Network fetch failed, attempting cache fallback:', err);
@@ -129,6 +141,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       if (cached) {
         apply(cached.session, cached.products, cached.entries, cached.systemQtys);
         if (cached.flags) setFlags(cached.flags);
+        if (cached.crateSizes) setCrateSizes(cached.crateSizes);
       } else {
         console.error('No cached data available for session', sessionId);
       }
@@ -142,12 +155,17 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   useEffect(() => {
     fetch('/api/inventory/product-flags').then(r => r.json()).then(async (d) => {
       const map: Record<number, boolean> = {};
-      (d.flags || []).forEach((f: any) => { map[f.odoo_product_id] = !!f.requires_photo; });
+      const crateMap: Record<number, number> = {};
+      (d.flags || []).forEach((f: any) => {
+        map[f.odoo_product_id] = !!f.requires_photo;
+        if (f.units_per_crate != null && Number(f.units_per_crate) > 0) crateMap[f.odoo_product_id] = Number(f.units_per_crate);
+      });
       setFlags(map);
-      // Patch flags into cached session data so an offline reload has them.
+      setCrateSizes(crateMap);
+      // Patch flags + crate sizes into cached session data so an offline reload has them.
       const cached = await getCachedSessionData(sessionId);
       if (cached) {
-        void cacheSessionData(sessionId, { ...cached, flags: map });
+        void cacheSessionData(sessionId, { ...cached, flags: map, crateSizes: crateMap });
       }
     }).catch(() => {});
   }, [sessionId]);
@@ -230,6 +248,45 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
   function handleScanCount(productId: number, qty: number, uom: string) {
     saveCount(productId, qty, uom);
+  }
+
+  function openCrateSheet(product: any) {
+    setCrateSheet({ open: true, product });
+  }
+
+  // Save a crate + loose count. Stores the base-unit total (what Odoo gets)
+  // plus the crate/loose split for audit + review replay. total 0 clears it.
+  async function saveCrateCount(product: any, crates: number, loose: number) {
+    const size = crateSizes[product.id] || 0;
+    const uom = product.uom_id?.[1] || 'Units';
+    const total = crateTotal(crates, loose, size);
+    setCrateSheet({ open: false, product: null });
+
+    if (total <= 0) {
+      setEntries((prev) => { const next = { ...prev }; delete next[product.id]; return next; });
+      setCrateSplits((prev) => { const next = { ...prev }; delete next[product.id]; return next; });
+      void updateCachedEntry(sessionId, product.id, { counted_qty: null });
+      const res = await offlineSafeMutate({
+        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}`,
+        method: 'DELETE',
+        dedupKey: `delete:${sessionId}:${product.id}`,
+      });
+      if (res.queued) void sync.refresh();
+      return;
+    }
+
+    setEntries((prev) => ({ ...prev, [product.id]: total }));
+    setCrateSplits((prev) => ({ ...prev, [product.id]: { crates, loose } }));
+    void updateCachedEntry(sessionId, product.id, {
+      counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size,
+    });
+    const res = await offlineSafeMutate({
+      url: '/api/inventory/counts',
+      method: 'POST',
+      body: { session_id: sessionId, product_id: product.id, counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size },
+      dedupKey: `save:${sessionId}:${product.id}`,
+    });
+    if (res.queued) void sync.refresh();
   }
 
   function stepQty(product: any, delta: number) {
@@ -325,6 +382,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     const uom = p.uom_id?.[1] || 'Units';
     const flagged = !!flags[p.id];
     const prodPhotos = rowPhotos[p.id] || [];
+    const size = crateSizes[p.id];
+    const isCrate = hasCrate(size);
+    const split = crateSplits[p.id] ?? (val != null ? splitFromTotal(val, size) : null);
     return (
       <div className="py-3 border-b border-gray-100">
         <div className="flex items-center gap-3">
@@ -332,6 +392,11 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             <div className="flex items-baseline gap-1.5 flex-wrap">
               <span className="text-[var(--fs-xxl)] font-semibold text-gray-900 truncate">{p.name}</span>
               <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">{uom}</span>
+              {isCrate && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 flex-shrink-0">
+                  1 crate = {size}
+                </span>
+              )}
               {flagged && (
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0">
                   Photo required
@@ -339,14 +404,33 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               )}
             </div>
           </div>
-          {!isReadOnly ? (
+          {isCrate && !isReadOnly ? (
+            <button
+              onClick={() => openCrateSheet(p)}
+              className={`flex-shrink-0 text-right border rounded-xl px-3 py-2 min-w-[94px] active:bg-gray-50 ${val != null ? 'border-green-500 bg-green-50' : 'border-dashed border-gray-300'}`}
+            >
+              {val != null ? (
+                <>
+                  <div className="font-mono text-[var(--fs-lg)] font-bold text-gray-900 leading-none">
+                    {val}<span className="text-[10px] font-semibold text-gray-500 ml-0.5">{uom}</span>
+                  </div>
+                  {split && <div className="text-[10px] text-gray-500 mt-1 font-mono">{split.crates} cr {'·'} {split.loose} {uom}</div>}
+                </>
+              ) : (
+                <div className="text-[var(--fs-sm)] font-bold text-green-700">Count {'→'}</div>
+              )}
+            </button>
+          ) : !isReadOnly ? (
             <Stepper value={val} uom={uom}
               onMinus={() => stepQty(p, -1)}
               onPlus={() => stepQty(p, 1)}
               onTap={() => openNumpad(p)} />
           ) : (
-            <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700">
+            <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700 text-right">
               {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
+              {isCrate && split && val !== null && (
+                <div className="text-[10px] text-gray-400 font-normal font-mono">{split.crates} cr {'·'} {split.loose} {uom}</div>
+              )}
             </div>
           )}
         </div>
@@ -495,6 +579,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               {countedProducts.map((p) => {
                 const val = entries[p.id];
                 const uom = p.uom_id?.[1] || 'Units';
+                const size = crateSizes[p.id];
+                const isCrate = hasCrate(size);
+                const split = crateSplits[p.id] ?? (val != null ? splitFromTotal(val, size) : null);
                 return (
                   <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-gray-100">
                     <div className="flex items-baseline gap-1.5 flex-1 min-w-0">
@@ -503,9 +590,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                       </div>
                       <span className="text-[var(--fs-lg)] text-gray-900 truncate">{p.name}</span>
                     </div>
-                    <span className="text-[var(--fs-lg)] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3">
-                      {val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span>
-                    </span>
+                    <div className="flex-shrink-0 ml-3 text-right">
+                      <span className="text-[var(--fs-lg)] font-mono font-semibold text-gray-900">
+                        {val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span>
+                      </span>
+                      {isCrate && split && (
+                        <div className="text-[10px] text-gray-400 font-mono">{formatSplit(split.crates, split.loose, uom)}</div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -671,6 +763,22 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           locationName={locationName}
           onSave={handleNumpadSave}
           onClose={() => setNumpad({ open: false, product: null })}
+        />
+      )}
+
+      {!isReadOnly && crateSheet.open && crateSheet.product && (
+        <CrateCountSheet
+          open={crateSheet.open}
+          product={crateSheet.product}
+          unitsPerCrate={crateSizes[crateSheet.product.id] || 0}
+          uom={crateSheet.product.uom_id?.[1] || 'Units'}
+          initialCrates={crateSplits[crateSheet.product.id]?.crates ?? splitFromTotal(entries[crateSheet.product.id] ?? 0, crateSizes[crateSheet.product.id]).crates}
+          initialLoose={crateSplits[crateSheet.product.id]?.loose ?? splitFromTotal(entries[crateSheet.product.id] ?? 0, crateSizes[crateSheet.product.id]).loose}
+          showSystemQty={userRole !== 'staff'}
+          systemQty={systemQtys[crateSheet.product.id] ?? null}
+          locationName={locationName}
+          onSave={(crates, loose) => saveCrateCount(crateSheet.product, crates, loose)}
+          onClose={() => setCrateSheet({ open: false, product: null })}
         />
       )}
     </div>

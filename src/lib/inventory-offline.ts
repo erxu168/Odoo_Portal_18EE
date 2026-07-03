@@ -29,6 +29,7 @@ export interface CachedSessionData {
   entries: any[];
   systemQtys: Record<number, number>;
   flags: Record<number, boolean>;
+  crateSizes?: Record<number, number>;  // per-product crate size, for offline crate counting
   cachedAt: number;
 }
 
@@ -140,7 +141,14 @@ export async function getCachedSessionData(
 export async function updateCachedEntry(
   sessionId: number,
   productId: number,
-  patch: { counted_qty?: number | null; photos?: string[]; uom?: string },
+  patch: {
+    counted_qty?: number | null;
+    photos?: string[];
+    uom?: string;
+    crate_qty?: number | null;
+    loose_qty?: number | null;
+    units_per_crate?: number | null;
+  },
 ): Promise<void> {
   if (!isBrowser()) return;
   try {
@@ -162,6 +170,9 @@ export async function updateCachedEntry(
             counted_qty: patch.counted_qty,
             uom: patch.uom ?? entries[idx].uom,
             photos: patch.photos ?? entries[idx].photos,
+            crate_qty: patch.crate_qty !== undefined ? patch.crate_qty : entries[idx].crate_qty,
+            loose_qty: patch.loose_qty !== undefined ? patch.loose_qty : entries[idx].loose_qty,
+            units_per_crate: patch.units_per_crate !== undefined ? patch.units_per_crate : entries[idx].units_per_crate,
           };
         } else {
           entries.push({
@@ -169,6 +180,9 @@ export async function updateCachedEntry(
             counted_qty: patch.counted_qty,
             uom: patch.uom || 'Units',
             photos: patch.photos || [],
+            crate_qty: patch.crate_qty ?? null,
+            loose_qty: patch.loose_qty ?? null,
+            units_per_crate: patch.units_per_crate ?? null,
           });
         }
       } else if (patch.photos !== undefined && idx >= 0) {

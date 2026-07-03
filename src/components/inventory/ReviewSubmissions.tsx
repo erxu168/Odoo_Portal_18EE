@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
 import StandardFilter from '@/components/ui/StandardFilter';
 import PhotoLightbox from './PhotoLightbox';
+import { hasCrate, splitFromTotal } from '@/lib/crate-units';
 
 interface ReviewSubmissionsProps {
   onViewSession: (sessionId: number) => void;
@@ -29,6 +30,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [draftDecisions, setDraftDecisions] = useState<Record<number, 'approved' | 'linked' | 'rejected'>>({});
   const [lightbox, setLightbox] = useState<{ open: boolean; photos: string[]; index: number }>({ open: false, photos: [], index: 0 });
   const [locations, setLocations] = useState<any[]>([]);
+  const [dispMode, setDispMode] = useState<'split' | 'base'>('split');  // crate display toggle
 
   useEffect(() => {
     fetch('/api/inventory/locations')
@@ -212,6 +214,12 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     const productName = qcProduct?.name || `Product #${reviewQC.product_id}`;
     const uom = qcProduct?.uom_id?.[1] || reviewQC.uom || 'Units';
     const catName = qcProduct?.categ_id?.[1] || '';
+    const qcIsCrate = hasCrate(reviewQC.units_per_crate);
+    const qcSplit = qcIsCrate
+      ? ((reviewQC.crate_qty != null || reviewQC.loose_qty != null)
+          ? { crates: Number(reviewQC.crate_qty) || 0, loose: Number(reviewQC.loose_qty) || 0 }
+          : splitFromTotal(reviewQC.counted_qty, reviewQC.units_per_crate))
+      : null;
     const submittedDate = reviewQC.submitted_at ? new Date(reviewQC.submitted_at).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
     return (
@@ -248,6 +256,9 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               <div className="flex-1 bg-green-50 rounded-xl p-4 text-center">
                 <div className="text-[28px] font-bold text-green-700 font-mono">{reviewQC.counted_qty}</div>
                 <div className="text-[var(--fs-xs)] text-green-600 font-semibold">{uom} counted</div>
+                {qcIsCrate && qcSplit && (
+                  <div className="text-[var(--fs-xs)] text-green-700 mt-1 font-mono">= {qcSplit.crates} crates + {qcSplit.loose} {uom}</div>
+                )}
               </div>
             </div>
 
@@ -309,7 +320,9 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   // ======== SESSION DETAIL VIEW ========
   if (reviewSession) {
     const entryMap: Record<number, number> = {};
-    reviewEntries.forEach((e: any) => { entryMap[e.product_id] = e.counted_qty; });
+    const entryByProduct: Record<number, any> = {};
+    reviewEntries.forEach((e: any) => { entryMap[e.product_id] = e.counted_qty; entryByProduct[e.product_id] = e; });
+    const hasAnyCrate = reviewEntries.some((e: any) => hasCrate(e.units_per_crate));
     const countedProducts = reviewProducts.filter(p => entryMap[p.id] !== undefined);
     const uncountedProducts = reviewProducts.filter(p => entryMap[p.id] === undefined);
     const isSubmitted = reviewSession.status === 'submitted';
@@ -366,6 +379,21 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               </div>
             </div>
 
+            {hasAnyCrate && (
+              <div className="px-4 pt-1">
+                <div className="flex bg-gray-100 rounded-xl p-1" role="group" aria-label="Display units">
+                  <button onClick={() => setDispMode('split')}
+                    className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition-all ${dispMode === 'split' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+                    Crates + units
+                  </button>
+                  <button onClick={() => setDispMode('base')}
+                    className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition-all ${dispMode === 'base' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+                    Units only
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto px-4 pb-36">
               {countedProducts.length > 0 && (<>
                 <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mt-2 mb-2">Counted items</p>
@@ -378,6 +406,13 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   const isVariance = diffPct !== null && Math.abs(diffPct) > 10;
                   const isDraft = p.is_draft === true;
                   const decision = draftDecisions[p.id];
+                  const entry = entryByProduct[p.id];
+                  const isCrate = hasCrate(entry?.units_per_crate);
+                  const split = isCrate
+                    ? ((entry?.crate_qty != null || entry?.loose_qty != null)
+                        ? { crates: Number(entry.crate_qty) || 0, loose: Number(entry.loose_qty) || 0 }
+                        : splitFromTotal(val, entry?.units_per_crate))
+                    : null;
                   return (
                     <div key={p.id}>
                       <div className={`flex items-center justify-between py-2.5 border-b ${isVariance ? 'border-red-100 bg-red-50/50' : 'border-gray-100'}`}>
@@ -429,7 +464,13 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                             })()}
                           </div>
                         </div>
-                        <span className="text-[14px] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3">{val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></span>
+                        <span className="text-[14px] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3 text-right">
+                          {isCrate && dispMode === 'split' && split ? (
+                            <>{split.crates} cr + {split.loose} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></>
+                          ) : (
+                            <>{val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></>
+                          )}
+                        </span>
                       </div>
                       {isDraft && !decision && (
                         <DraftReviewPanel

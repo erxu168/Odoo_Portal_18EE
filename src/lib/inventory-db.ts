@@ -160,6 +160,19 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   if (!tmplColNames.includes('schedule_days')) {
     db.exec("ALTER TABLE counting_templates ADD COLUMN schedule_days TEXT NOT NULL DEFAULT '[]'");
   }
+
+  // Crate/multi-UoM migrations — portal-side crate size + count-line split.
+  // All additive & nullable: existing rows keep working (missing = no crate).
+  const pfCols = db.prepare("PRAGMA table_info('product_flags')").all() as { name: string }[];
+  if (!pfCols.some(c => c.name === 'units_per_crate')) {
+    db.exec("ALTER TABLE product_flags ADD COLUMN units_per_crate REAL");
+  }
+  for (const table of ['count_entries', 'quick_counts']) {
+    const cols = (db.prepare(`PRAGMA table_info('${table}')`).all() as { name: string }[]).map(c => c.name);
+    if (!cols.includes('crate_qty')) db.exec(`ALTER TABLE ${table} ADD COLUMN crate_qty REAL`);
+    if (!cols.includes('loose_qty')) db.exec(`ALTER TABLE ${table} ADD COLUMN loose_qty REAL`);
+    if (!cols.includes('units_per_crate')) db.exec(`ALTER TABLE ${table} ADD COLUMN units_per_crate REAL`);
+  }
 }
 
 // ===
@@ -452,11 +465,14 @@ export function generateSessionForTemplate(templateId: number): number | null {
 export function upsertCountEntry(data: {
   session_id: number;
   product_id: number;
-  counted_qty: number;
+  counted_qty: number;               // always the base-unit total (bottles)
   system_qty?: number | null;
   uom: string;
   notes?: string;
   counted_by: number;
+  crate_qty?: number | null;         // audit trail: crates as entered
+  loose_qty?: number | null;         // audit trail: loose base units as entered
+  units_per_crate?: number | null;   // snapshot of the crate size at count time
 }) {
   const db = getDb();
   const existing = db.prepare(
@@ -465,16 +481,43 @@ export function upsertCountEntry(data: {
 
   const diff = data.system_qty != null ? data.counted_qty - data.system_qty : null;
 
+  // Preserve an existing crate/loose split when a save doesn't carry crate
+  // fields (e.g. a photo-only re-save of a crate product). Passing any crate
+  // field (even null) is treated as an explicit set/clear.
+  const hasCrateData = data.crate_qty !== undefined || data.loose_qty !== undefined || data.units_per_crate !== undefined;
+  let crateQty: number | null;
+  let looseQty: number | null;
+  let upc: number | null;
+  if (hasCrateData) {
+    crateQty = data.crate_qty ?? null;
+    looseQty = data.loose_qty ?? null;
+    upc = data.units_per_crate ?? null;
+  } else if (existing) {
+    const prev = db.prepare('SELECT crate_qty, loose_qty, units_per_crate FROM count_entries WHERE id = ?').get(existing.id) as
+      { crate_qty: number | null; loose_qty: number | null; units_per_crate: number | null } | undefined;
+    crateQty = prev?.crate_qty ?? null;
+    looseQty = prev?.loose_qty ?? null;
+    upc = prev?.units_per_crate ?? null;
+  } else {
+    crateQty = null;
+    looseQty = null;
+    upc = null;
+  }
+
   if (existing) {
     db.prepare(`
-      UPDATE count_entries SET counted_qty = ?, system_qty = ?, diff = ?, uom = ?, notes = ?, counted_at = ?
+      UPDATE count_entries SET counted_qty = ?, system_qty = ?, diff = ?, uom = ?, notes = ?,
+        crate_qty = ?, loose_qty = ?, units_per_crate = ?, counted_at = ?
       WHERE id = ?
-    `).run(data.counted_qty, data.system_qty ?? null, diff, data.uom, data.notes || null, now(), existing.id);
+    `).run(data.counted_qty, data.system_qty ?? null, diff, data.uom, data.notes || null,
+      crateQty, looseQty, upc, now(), existing.id);
   } else {
     db.prepare(`
-      INSERT INTO count_entries (session_id, product_id, counted_qty, system_qty, diff, uom, notes, counted_by, counted_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(data.session_id, data.product_id, data.counted_qty, data.system_qty ?? null, diff, data.uom, data.notes || null, data.counted_by, now());
+      INSERT INTO count_entries (session_id, product_id, counted_qty, system_qty, diff, uom, notes,
+        crate_qty, loose_qty, units_per_crate, counted_by, counted_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(data.session_id, data.product_id, data.counted_qty, data.system_qty ?? null, diff, data.uom, data.notes || null,
+      crateQty, looseQty, upc, data.counted_by, now());
   }
 }
 
@@ -501,15 +544,20 @@ export function getSessionEntries(session_id: number): CountEntry[] {
 export function createQuickCount(data: {
   product_id: number;
   location_id: number;
-  counted_qty: number;
+  counted_qty: number;               // always the base-unit total (bottles)
   uom: string;
   counted_by: number;
+  crate_qty?: number | null;
+  loose_qty?: number | null;
+  units_per_crate?: number | null;
 }): number {
   const db = getDb();
   const r = db.prepare(`
-    INSERT INTO quick_counts (product_id, location_id, counted_qty, uom, counted_by, status, submitted_at)
-    VALUES (?, ?, ?, ?, ?, 'pending', ?)
-  `).run(data.product_id, data.location_id, data.counted_qty, data.uom, data.counted_by, now());
+    INSERT INTO quick_counts (product_id, location_id, counted_qty, uom, counted_by, status, submitted_at,
+      crate_qty, loose_qty, units_per_crate)
+    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+  `).run(data.product_id, data.location_id, data.counted_qty, data.uom, data.counted_by, now(),
+    data.crate_qty ?? null, data.loose_qty ?? null, data.units_per_crate ?? null);
   return r.lastInsertRowid as number;
 }
 
@@ -584,6 +632,7 @@ export function deleteCountsForProduct(productId: number): number {
 export interface ProductFlag {
   odoo_product_id: number;
   requires_photo: boolean;
+  units_per_crate: number | null;  // portal-side crate (Kasten) size; null = count in base units
   updated_by: number | null;
   updated_at: string | null;
 }
@@ -602,6 +651,7 @@ export function getProductFlags(ids?: number[]): ProductFlag[] {
   return rows.map(r => ({
     odoo_product_id: r.odoo_product_id,
     requires_photo: !!r.requires_photo,
+    units_per_crate: r.units_per_crate != null ? Number(r.units_per_crate) : null,
     updated_by: r.updated_by,
     updated_at: r.updated_at,
   }));
@@ -621,6 +671,28 @@ export function setProductFlag(
       updated_by = excluded.updated_by,
       updated_at = excluded.updated_at
   `).run(productId, requiresPhoto ? 1 : 0, userId, now());
+}
+
+/**
+ * Set (or clear) a product's crate size. Pass null to clear it — that product
+ * then falls back to counting in base units. Upsert leaves requires_photo
+ * untouched (defaults to 0 only when creating a brand-new row).
+ */
+export function setProductCrateSize(
+  productId: number,
+  unitsPerCrate: number | null,
+  userId: number,
+) {
+  const db = getDb();
+  const size = unitsPerCrate != null && unitsPerCrate > 0 ? unitsPerCrate : null;
+  db.prepare(`
+    INSERT INTO product_flags (odoo_product_id, units_per_crate, updated_by, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(odoo_product_id) DO UPDATE SET
+      units_per_crate = excluded.units_per_crate,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(productId, size, userId, now());
 }
 
 // ===

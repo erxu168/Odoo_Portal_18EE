@@ -3,11 +3,13 @@ export const dynamic = 'force-dynamic';
  * PUT /api/inventory/product-flags/[product_id]
  *
  * Upserts a product flag. Manager+ only.
- * Body: { requires_photo: boolean }
+ * Body: { requires_photo?: boolean, units_per_crate?: number | null }
+ * Only the keys present in the body are changed. Pass units_per_crate = null
+ * (or 0) to clear the crate size so the product is counted in base units.
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { initInventoryTables, setProductFlag } from '@/lib/inventory-db';
+import { initInventoryTables, setProductFlag, setProductCrateSize } from '@/lib/inventory-db';
 
 export async function PUT(
   request: Request,
@@ -27,9 +29,31 @@ export async function PUT(
   try {
     initInventoryTables();
     const body = await request.json();
-    const requiresPhoto = !!body.requires_photo;
-    setProductFlag(productId, requiresPhoto, user.id);
-    return NextResponse.json({ success: true, requires_photo: requiresPhoto });
+    const result: { success: true; requires_photo?: boolean; units_per_crate?: number | null } = { success: true };
+
+    if ('requires_photo' in body) {
+      const requiresPhoto = !!body.requires_photo;
+      setProductFlag(productId, requiresPhoto, user.id);
+      result.requires_photo = requiresPhoto;
+    }
+
+    if ('units_per_crate' in body) {
+      const raw = body.units_per_crate;
+      let size: number | null;
+      if (raw === null || raw === '' || raw === undefined) {
+        size = null;
+      } else {
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n < 0 || n > 100000) {
+          return NextResponse.json({ error: 'Invalid crate size' }, { status: 400 });
+        }
+        size = n > 0 ? n : null;
+      }
+      setProductCrateSize(productId, size, user.id);
+      result.units_per_crate = size;
+    }
+
+    return NextResponse.json(result);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[product-flags PUT]', msg);

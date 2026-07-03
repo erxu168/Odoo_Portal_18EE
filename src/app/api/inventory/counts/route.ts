@@ -11,6 +11,7 @@ import { requireAuth } from '@/lib/auth';
 import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, setCountPhotos, getCountPhotosMap } from '@/lib/inventory-db';
 import { getOdoo } from '@/lib/odoo';
 import { resolveAttribution } from '@/lib/shift-attribution';
+import { crateTotal } from '@/lib/crate-units';
 
 
 export async function GET(request: Request) {
@@ -56,18 +57,32 @@ export async function POST(request: Request) {
 
   initInventoryTables();
   const body = await request.json();
-  const { session_id, product_id, counted_qty, system_qty, uom, notes, photos } = body;
+  const { session_id, product_id, counted_qty, crate_qty, loose_qty, units_per_crate, system_qty, uom, notes, photos } = body;
 
-  if (!session_id || !product_id || counted_qty === undefined) {
+  // When a crate split is provided, the base total is computed HERE (server is
+  // the source of truth) so the value written to Odoo can never drift. Odoo
+  // still only ever receives the base-unit total via counted_qty.
+  const hasSplit = units_per_crate != null && Number(units_per_crate) > 0
+    && (crate_qty !== undefined || loose_qty !== undefined);
+  const baseQty = hasSplit
+    ? crateTotal(Number(crate_qty) || 0, Number(loose_qty) || 0, Number(units_per_crate))
+    : counted_qty;
+
+  if (!session_id || !product_id || baseQty === undefined || baseQty === null) {
     return NextResponse.json({ error: 'session_id, product_id, counted_qty required' }, { status: 400 });
   }
 
   upsertCountEntry({
-    session_id, product_id, counted_qty,
+    session_id, product_id, counted_qty: baseQty,
     system_qty: system_qty ?? null,
     uom: uom || 'Units',
     notes,
     counted_by: resolveAttribution(user).userId,
+    // undefined (not null) when no split → upsertCountEntry preserves any
+    // existing crate split (e.g. a later photo-only save of a crate product).
+    crate_qty: hasSplit ? (Number(crate_qty) || 0) : undefined,
+    loose_qty: hasSplit ? (Number(loose_qty) || 0) : undefined,
+    units_per_crate: hasSplit ? Number(units_per_crate) : undefined,
   });
 
   if (Array.isArray(photos)) {

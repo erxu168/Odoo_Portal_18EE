@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, SearchBar, Stepper, Spinner, EmptyState } from './ui';
 import NumpadModal from './NumpadModal';
+import CrateCountSheet from './CrateCountSheet';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
 import UnknownBarcodeSheet from './UnknownBarcodeSheet';
@@ -11,6 +12,7 @@ import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { useCompany } from '@/lib/company-context';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
+import { hasCrate, crateTotal, splitFromTotal } from '@/lib/crate-units';
 
 interface QuickCountProps {
   userRole: string;
@@ -31,6 +33,10 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   const [flags, setFlags] = useState<Record<number, boolean>>({});
   const [photos, setPhotos] = useState<Record<number, string[]>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // -- Crate (multi-UoM) counting --
+  const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});
+  const [crateSplits, setCrateSplits] = useState<Record<number, { crates: number; loose: number }>>({});
+  const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
 
   // ── Barcode scanner ──
   const [showScanner, setShowScanner] = useState(false);
@@ -123,8 +129,13 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       setLocations(locs);
       setLocFilter(locs.length > 0 ? locs[0].id : null);
       const flagMap: Record<number, boolean> = {};
-      (flagRes.flags || []).forEach((f: any) => { flagMap[f.odoo_product_id] = !!f.requires_photo; });
+      const crateMap: Record<number, number> = {};
+      (flagRes.flags || []).forEach((f: any) => {
+        flagMap[f.odoo_product_id] = !!f.requires_photo;
+        if (f.units_per_crate != null && Number(f.units_per_crate) > 0) crateMap[f.odoo_product_id] = Number(f.units_per_crate);
+      });
       setFlags(flagMap);
+      setCrateSizes(crateMap);
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
@@ -165,6 +176,23 @@ export default function QuickCount({ userRole }: QuickCountProps) {
     setNumpad({ open: true, product });
   }
 
+  function openCrateSheet(product: any) {
+    setCrateSheet({ open: true, product });
+  }
+
+  function saveCrateCount(product: any, crates: number, loose: number) {
+    const size = crateSizes[product.id] || 0;
+    const total = crateTotal(crates, loose, size);
+    setCrateSheet({ open: false, product: null });
+    if (total <= 0) {
+      setCounts((prev) => { const copy = { ...prev }; delete copy[product.id]; return copy; });
+      setCrateSplits((prev) => { const copy = { ...prev }; delete copy[product.id]; return copy; });
+      return;
+    }
+    setCounts((prev) => ({ ...prev, [product.id]: total }));
+    setCrateSplits((prev) => ({ ...prev, [product.id]: { crates, loose } }));
+  }
+
   function handleNumpadSave(value: number | null) {
     if (numpad.product) {
       setCounts((prev) => {
@@ -198,11 +226,14 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       const entries = Object.entries(counts).map(([pid, qty]) => {
         const productId = Number(pid);
         const p = products.find((pr) => pr.id === productId);
+        const size = crateSizes[productId];
+        const split = crateSplits[productId];
         return {
           product_id: productId,
           counted_qty: qty,
           uom: p?.uom_id?.[1] || 'Units',
           photos: photos[productId] || [],
+          ...(split && hasCrate(size) ? { crate_qty: split.crates, loose_qty: split.loose, units_per_crate: size } : {}),
         };
       });
       const res = await offlineSafeMutate({
@@ -218,6 +249,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       }
       setCounts({});
       setPhotos({});
+      setCrateSplits({});
       setSubmitted(true);
       setTimeout(() => setSubmitted(false), 3000);
       if (res.queued) void sync.refresh();
@@ -297,12 +329,20 @@ export default function QuickCount({ userRole }: QuickCountProps) {
               const catName = p.categ_id?.[1] || '';
               const flagged = !!flags[p.id];
               const prodPhotos = photos[p.id] || [];
+              const size = crateSizes[p.id];
+              const isCrate = hasCrate(size);
+              const split = crateSplits[p.id] ?? (val != null ? splitFromTotal(val, size) : null);
               return (
                 <div key={p.id} className="py-3 border-b border-gray-100 [content-visibility:auto] [contain-intrinsic-size:auto_60px]">
                   <div className="flex items-center gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</span>
+                        {isCrate && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 flex-shrink-0">
+                            1 crate = {size}
+                          </span>
+                        )}
                         {flagged && (
                           <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0">
                             Photo required
@@ -311,10 +351,28 @@ export default function QuickCount({ userRole }: QuickCountProps) {
                       </div>
                       <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{catName}</div>
                     </div>
-                    <Stepper value={val} uom={uom}
-                      onMinus={() => stepQty(p.id, -1)}
-                      onPlus={() => stepQty(p.id, 1)}
-                      onTap={() => openNumpad(p)} />
+                    {isCrate ? (
+                      <button
+                        onClick={() => openCrateSheet(p)}
+                        className={`flex-shrink-0 text-right border rounded-xl px-3 py-2 min-w-[94px] active:bg-gray-50 ${val != null ? 'border-green-500 bg-green-50' : 'border-dashed border-gray-300'}`}
+                      >
+                        {val != null ? (
+                          <>
+                            <div className="font-mono text-[var(--fs-lg)] font-bold text-gray-900 leading-none">
+                              {val}<span className="text-[10px] font-semibold text-gray-500 ml-0.5">{uom}</span>
+                            </div>
+                            {split && <div className="text-[10px] text-gray-500 mt-1 font-mono">{split.crates} cr {'·'} {split.loose} {uom}</div>}
+                          </>
+                        ) : (
+                          <div className="text-[var(--fs-sm)] font-bold text-green-700">Count {'→'}</div>
+                        )}
+                      </button>
+                    ) : (
+                      <Stepper value={val} uom={uom}
+                        onMinus={() => stepQty(p.id, -1)}
+                        onPlus={() => stepQty(p.id, 1)}
+                        onTap={() => openNumpad(p)} />
+                    )}
                   </div>
                   {flagged && (val ?? 0) > 0 && (
                     <div className="mt-2">
@@ -415,6 +473,23 @@ export default function QuickCount({ userRole }: QuickCountProps) {
         onSave={handleNumpadSave}
         onClose={() => setNumpad({ open: false, product: null })}
       />
+
+      {/* Crate + loose count sheet */}
+      {crateSheet.open && crateSheet.product && (
+        <CrateCountSheet
+          open={crateSheet.open}
+          product={crateSheet.product}
+          unitsPerCrate={crateSizes[crateSheet.product.id] || 0}
+          uom={crateSheet.product.uom_id?.[1] || 'Units'}
+          initialCrates={crateSplits[crateSheet.product.id]?.crates ?? splitFromTotal(counts[crateSheet.product.id] ?? 0, crateSizes[crateSheet.product.id]).crates}
+          initialLoose={crateSplits[crateSheet.product.id]?.loose ?? splitFromTotal(counts[crateSheet.product.id] ?? 0, crateSizes[crateSheet.product.id]).loose}
+          showSystemQty={false}
+          systemQty={null}
+          locationName={locName}
+          onSave={(crates, loose) => saveCrateCount(crateSheet.product, crates, loose)}
+          onClose={() => setCrateSheet({ open: false, product: null })}
+        />
+      )}
     </div>
   );
 }

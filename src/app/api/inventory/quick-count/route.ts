@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { initInventoryTables, createQuickCount, listQuickCounts, approveQuickCount, getProductFlags, setCountPhotos, getCountPhotosMap } from '@/lib/inventory-db';
 import { resolveAttribution } from '@/lib/shift-attribution';
+import { crateTotal } from '@/lib/crate-units';
 
 
 export async function GET(request: Request) {
@@ -65,12 +66,21 @@ export async function POST(request: Request) {
 
   const ids: number[] = [];
   for (const entry of entries) {
+    // If a crate split was sent, the base total is computed server-side.
+    const upc = entry.units_per_crate != null && Number(entry.units_per_crate) > 0 ? Number(entry.units_per_crate) : null;
+    const hasSplit = upc !== null && (entry.crate_qty !== undefined || entry.loose_qty !== undefined);
+    const baseQty = hasSplit
+      ? crateTotal(Number(entry.crate_qty) || 0, Number(entry.loose_qty) || 0, upc)
+      : Number(entry.counted_qty);
     const id = createQuickCount({
       product_id: Number(entry.product_id),
       location_id,
-      counted_qty: Number(entry.counted_qty),
+      counted_qty: baseQty,
       uom: entry.uom || 'Units',
       counted_by: resolveAttribution(user).userId,
+      crate_qty: hasSplit ? (Number(entry.crate_qty) || 0) : null,
+      loose_qty: hasSplit ? (Number(entry.loose_qty) || 0) : null,
+      units_per_crate: hasSplit ? upc : null,
     });
     const photos: string[] = Array.isArray(entry.photos) ? entry.photos : [];
     if (photos.length > 0) {
