@@ -12,6 +12,8 @@ import EmployeeForm from '@/components/hr/EmployeeForm';
 import EmployeeContract from '@/components/hr/EmployeeContract';
 import DepartmentsRoles from '@/components/hr/DepartmentsRoles';
 import DeptRoleForm from '@/components/hr/DeptRoleForm';
+import TimeOff from '@/components/hr/TimeOff';
+import TimeOffRequest from '@/components/hr/TimeOffRequest';
 import CandidateStatus from '@/components/hr/CandidateStatus';
 
 type DeptRoleKind = 'department' | 'role';
@@ -27,6 +29,8 @@ type Screen =
   | { type: 'employee-contract'; employeeId: number }
   | { type: 'dept-roles' }
   | { type: 'dept-role-edit'; kind: DeptRoleKind; recordId: number | null }
+  | { type: 'timeoff' }
+  | { type: 'timeoff-create' }
   | { type: 'candidate-status' };
 
 export default function HrPage() {
@@ -81,6 +85,7 @@ export default function HrPage() {
     else if (tile === 'documents') navigate({ type: 'documents' });
     else if (tile === 'employees') navigate({ type: 'employees' });
     else if (tile === 'departments') navigate({ type: 'dept-roles' });
+    else if (tile === 'timeoff') navigate({ type: 'timeoff' });
   }
 
   switch (screen.type) {
@@ -164,6 +169,22 @@ export default function HrPage() {
         <DeptRoleForm
           kind={screen.kind}
           recordId={screen.recordId}
+          onBack={goBack}
+          onHome={goHome}
+          onSaved={goBack}
+        />
+      );
+    case 'timeoff':
+      return (
+        <TimeOff
+          onBack={goDashboard}
+          onHome={goHome}
+          onCreate={() => navigate({ type: 'timeoff-create' })}
+        />
+      );
+    case 'timeoff-create':
+      return (
+        <TimeOffRequest
           onBack={goBack}
           onHome={goHome}
           onSaved={goBack}
