@@ -68,12 +68,13 @@ export async function GET(request: Request) {
         ['start_datetime', 'end_datetime'],
         { limit: 2000 },
       ) as Promise<Record<string, unknown>[]>,
-      odoo.searchRead(
+      (odoo.searchRead(
         'hr.employee',
         [['id', '=', employeeId]],
         ['x_max_weekly_hours'],
         { limit: 1 },
-      ) as Promise<Record<string, unknown>[]>,
+        // custom cap field may be absent (addon not installed) → no cap, don't 500
+      ) as Promise<Record<string, unknown>[]>).catch(() => [] as Record<string, unknown>[]),
     ]);
 
     const capRaw = empRows.length > 0 && typeof empRows[0].x_max_weekly_hours === 'number'

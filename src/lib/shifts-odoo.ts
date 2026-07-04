@@ -137,14 +137,16 @@ export async function fetchEmployees(companyId: number): Promise<ShiftEmployee[]
     ['active', '=', true],
     ['company_id', '=', companyId],
   ];
-  const baseFields = [
-    'name', 'resource_id', 'department_id', 'x_max_weekly_hours', 'x_skill_level', 'contract_id',
-  ];
-  // x_employment_type may not exist yet if the addon update hasn't been applied to
-  // this Odoo — read it optionally so a deploy-order mismatch can't break the roster.
+  const baseFields = ['name', 'resource_id', 'department_id', 'contract_id'];
+  // These three custom fields only exist where the krawings_shift_selfservice addon
+  // is installed. Read them optionally: on an Odoo WITHOUT the addon (e.g. a portal
+  // deploy that lands before the addon update, as on production) the fallback must
+  // request ONLY standard fields so the roster still loads — caps/skill/employment
+  // then simply default to empty downstream instead of 500-ing the whole screen.
+  const optionalFields = ['x_max_weekly_hours', 'x_skill_level', 'x_employment_type'];
   let rows: OdooRow[];
   try {
-    rows = (await odoo.searchRead('hr.employee', domain, [...baseFields, 'x_employment_type'], {
+    rows = (await odoo.searchRead('hr.employee', domain, [...baseFields, ...optionalFields], {
       limit: 500,
       order: 'name asc',
     })) as OdooRow[];
@@ -405,12 +407,19 @@ export async function recomputeWeekFlags(
 
   // Read caps live for the employees involved.
   const empIds = Array.from(byEmployee.keys());
-  const caps = (await odoo.searchRead(
-    'hr.employee',
-    [['id', 'in', empIds]],
-    ['x_max_weekly_hours'],
-    { limit: empIds.length },
-  )) as OdooRow[];
+  // Cap lives on a custom field that may be absent (addon not installed) — if so,
+  // treat everyone as uncapped rather than crashing the flag recompute.
+  let caps: OdooRow[] = [];
+  try {
+    caps = (await odoo.searchRead(
+      'hr.employee',
+      [['id', 'in', empIds]],
+      ['x_max_weekly_hours'],
+      { limit: empIds.length },
+    )) as OdooRow[];
+  } catch {
+    caps = [];
+  }
   const capMap = new Map<number, number>();
   for (const c of caps) {
     capMap.set(c.id as number, typeof c.x_max_weekly_hours === 'number' ? c.x_max_weekly_hours : 0);

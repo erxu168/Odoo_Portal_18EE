@@ -101,7 +101,13 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
 
     const odoo = getOdoo();
     if (Object.keys(employeeVals).length > 0) {
-      await odoo.write('hr.employee', [employeeId], employeeVals);
+      try {
+        await odoo.write('hr.employee', [employeeId], employeeVals);
+      } catch {
+        // The cap/skill/employment fields require the krawings_shift_selfservice
+        // addon. Where it's absent (e.g. production before the addon update), skip
+        // this write so roles + PIN still save instead of failing the whole request.
+      }
     }
     if (roleIds !== null && employee.resourceId !== null) {
       await odoo.write('resource.resource', [employee.resourceId], { role_ids: [[6, 0, roleIds]] });
