@@ -9,6 +9,7 @@ import MyDocuments from '@/components/hr/MyDocuments';
 import EmployeeOverview from '@/components/hr/EmployeeOverview';
 import EmployeeDetail from '@/components/hr/EmployeeDetail';
 import EmployeeForm from '@/components/hr/EmployeeForm';
+import EmployeeContract from '@/components/hr/EmployeeContract';
 import DepartmentsRoles from '@/components/hr/DepartmentsRoles';
 import DeptRoleForm from '@/components/hr/DeptRoleForm';
 import CandidateStatus from '@/components/hr/CandidateStatus';
@@ -23,6 +24,7 @@ type Screen =
   | { type: 'employees' }
   | { type: 'employee-detail'; employeeId: number }
   | { type: 'employee-edit'; employeeId: number | null }
+  | { type: 'employee-contract'; employeeId: number }
   | { type: 'dept-roles' }
   | { type: 'dept-role-edit'; kind: DeptRoleKind; recordId: number | null }
   | { type: 'candidate-status' };
@@ -119,7 +121,17 @@ export default function HrPage() {
           onBack={goBack}
           onHome={goHome}
           onEdit={() => navigate({ type: 'employee-edit', employeeId: screen.employeeId })}
+          onContract={() => navigate({ type: 'employee-contract', employeeId: screen.employeeId })}
           onDeactivated={goBack}
+        />
+      );
+    case 'employee-contract':
+      return (
+        <EmployeeContract
+          employeeId={screen.employeeId}
+          onBack={goBack}
+          onHome={goHome}
+          onSaved={goBack}
         />
       );
     case 'employee-edit':
