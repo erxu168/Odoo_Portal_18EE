@@ -41,9 +41,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No count entries to approve' }, { status: 400 });
   }
 
-  // Sync to Odoo FIRST — only mark approved after success
+  // Best-effort Odoo sync. The portal is the record of the count; Odoo stock
+  // is only updated for products Odoo actually tracks (storable). Non-storable
+  // products (or an Odoo outage) simply don't sync — the count is still approved.
   const syncedEntries: number[] = [];
   const failedEntries: { product_id: number; error: string }[] = [];
+  let syncError: string | null = null;
 
   try {
     const odoo = getOdoo();
@@ -105,37 +108,32 @@ export async function POST(request: Request) {
       }
     }
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('Odoo inventory sync failed entirely:', msg);
-    // Do NOT mark session as approved if Odoo connection failed entirely
-    return NextResponse.json({
-      error: `Odoo sync failed — session NOT approved: ${msg}`,
-      synced_count: syncedEntries.length,
-      failed_count: entries.length - syncedEntries.length,
-    }, { status: 502 });
+    // A whole-sync failure (e.g. Odoo unreachable) is non-fatal — the count is
+    // still recorded/approved in the portal. Odoo stock is a best-effort push.
+    syncError = err instanceof Error ? err.message : String(err);
+    console.error('Odoo inventory sync failed entirely:', syncError);
   }
 
-  // If ALL entries failed individually, do not approve
-  if (syncedEntries.length === 0) {
-    return NextResponse.json({
-      error: 'All Odoo writes failed — session NOT approved',
-      failed_entries: failedEntries,
-    }, { status: 502 });
-  }
-
-  // Mark session as approved AFTER Odoo sync (fully or partially)
+  // Approve regardless of the Odoo outcome. The count is recorded in the portal;
+  // Odoo stock updates only for products it can track (storable).
   updateSessionStatus(session_id, 'approved', {
     reviewed_by: user.id,
     review_note,
   });
 
-  const odooWarning = failedEntries.length > 0
-    ? `Approved but ${failedEntries.length} of ${entries.length} entries failed to sync to Odoo`
-    : null;
+  const notSynced = entries.length - syncedEntries.length;
+  let warning: string | null = null;
+  if (syncError) {
+    warning = `Approved and recorded. Couldn’t reach Odoo to update stock (${syncError}).`;
+  } else if (notSynced > 0) {
+    warning = syncedEntries.length === 0
+      ? 'Approved and recorded. Odoo stock was not updated — these products aren’t stock-tracked in Odoo.'
+      : `Approved. ${syncedEntries.length} updated in Odoo; ${notSynced} recorded here only (not stock-tracked in Odoo).`;
+  }
 
   return NextResponse.json({
-    message: odooWarning || `Approved ${entries.length} counts`,
-    warning: odooWarning,
+    message: warning || `Approved ${entries.length} counts`,
+    warning,
     synced_count: syncedEntries.length,
     failed_entries: failedEntries.length > 0 ? failedEntries : undefined,
     entries_count: entries.length,
