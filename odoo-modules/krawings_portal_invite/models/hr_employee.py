@@ -2,13 +2,61 @@ import logging
 
 from odoo import api, models
 
-from ..utils import get_portal_config, portal_post_raw
+from ..utils import get_portal_config, portal_post, portal_post_raw
 
 _logger = logging.getLogger(__name__)
 
 
 class HrEmployee(models.Model):
     _inherit = 'hr.employee'
+
+    # --- Manual, confirmed send: the "Send portal invite" button on the form ---
+
+    def action_send_portal_invite(self):
+        """User presses the button on the employee form to create + send the
+        invite. The employee already exists (and is committed), so a plain
+        live-cursor call is fine here. Returns a toast notification."""
+        self.ensure_one()
+        try:
+            status, body = portal_post(
+                self.env, '/api/internal/hr/staff-invite', {'employee_id': self.id}
+            )
+        except Exception as e:
+            _logger.warning('[krawings_portal_invite] send invite failed for employee %s: %s', self.id, e)
+            return self._invite_notification('Could not reach the portal', str(e), 'danger')
+
+        if status == 200 and body.get('success'):
+            if body.get('email_sent'):
+                return self._invite_notification(
+                    'Invite sent',
+                    'A portal invite was emailed to %s.' % (body.get('email') or 'the employee'),
+                    'success',
+                )
+            return self._invite_notification(
+                'Invite created',
+                'No email on file for this employee. Open the portal Staff Access screen to copy the invite link.',
+                'warning',
+            )
+        if status == 409:
+            return self._invite_notification(
+                'Already set up', body.get('error') or 'This employee already has a portal account.', 'warning'
+            )
+        if status == 404:
+            return self._invite_notification(
+                'Employee not visible to portal',
+                'The portal user cannot see this employee — check the company it belongs to.',
+                'warning',
+            )
+        return self._invite_notification('Invite failed', body.get('error') or ('HTTP %s' % status), 'danger')
+
+    def _invite_notification(self, title, message, ntype):
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {'title': title, 'message': message, 'type': ntype, 'sticky': ntype == 'danger'},
+        }
+
+    # --- Optional automatic send on hire (OFF by default; button is the norm) ---
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -24,13 +72,13 @@ class HrEmployee(models.Model):
         return employees
 
     def _portal_auto_invite_enabled(self):
-        """Master switch so a large employee import can be run without firing
-        hundreds of invites: set system param
-        krawings.portal_auto_invite_enabled = 0 to disable."""
+        """Automatic invite-on-create is OFF by default — sending is a deliberate
+        button press. Set system param krawings.portal_auto_invite_enabled = 1 to
+        opt back into automatic sending."""
         val = self.env['ir.config_parameter'].sudo().get_param(
-            'krawings.portal_auto_invite_enabled', '1'
+            'krawings.portal_auto_invite_enabled', '0'
         )
-        return str(val).strip().lower() not in ('0', 'false', 'no', '')
+        return str(val).strip().lower() in ('1', 'true', 'yes')
 
     @staticmethod
     def _post_invites(base_url, token, uid, ids):
