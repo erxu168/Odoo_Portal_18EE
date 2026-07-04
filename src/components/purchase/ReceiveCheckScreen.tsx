@@ -36,40 +36,26 @@ interface RecvOrder {
   order_note?: string;
 }
 
-// Mirror of the ScanResult returned by /api/purchase/receive/scan.
-interface ScanMatched {
-  line_id: number;
-  product_name: string;
-  received_qty: number;
-  ocr_price: number | null;
-  confidence: 'high' | 'medium' | 'low';
-  price_flag: boolean;
-}
-interface ScanResult {
-  ocr_mode: 'mock' | 'azure';
-  matched: ScanMatched[];
-  unmatched_ocr: { description: string; quantity: number | null; unit_price: number | null }[];
-  missing_ordered: { line_id: number; product_name: string; ordered_qty: number }[];
-}
-
 interface ReceiveCheckScreenProps {
   order: RecvOrder | null;
   lines: ReceiptLine[];
   isManager: boolean;
 
-  // OCR scan state
-  scanning: boolean;
-  scanResult: ScanResult | null;
-  scanErr: string;
-  onScanFile: (file: File) => void;
-  onDismissScan: () => void;
+  // Delivery note (staff capture) + submit / manager approve
+  isSubmitted: boolean;            // receipt already submitted -> manager approval mode
+  deliveryPhotos: string[];        // captured photos (data URLs), capture mode only
+  submitting: boolean;
+  onAddPhoto: (dataUrl: string) => void;
+  onRemovePhoto: (index: number) => void;
+  onSubmit: () => void;            // staff: submit for approval
+  onViewNote: () => void;          // view the delivery-note PDF
 
   // Per-line actions
   onUpdateQty: (lineId: number, qty: number) => void;
   onOpenNumpad: (line: ReceiptLine) => void;
   onReportIssue: (line: ReceiptLine) => void;
 
-  // Bottom action bar
+  // Bottom action bar (manager approve)
   onConfirmClose: () => void;
   onKeepBackorder: () => void;
 }
@@ -87,11 +73,13 @@ export default function ReceiveCheckScreen({
   order,
   lines,
   isManager,
-  scanning,
-  scanResult,
-  scanErr,
-  onScanFile,
-  onDismissScan,
+  isSubmitted,
+  deliveryPhotos,
+  submitting,
+  onAddPhoto,
+  onRemovePhoto,
+  onSubmit,
+  onViewNote,
   onUpdateQty,
   onOpenNumpad,
   onReportIssue,
@@ -130,73 +118,11 @@ export default function ReceiveCheckScreen({
         </div>
       )}
 
-      {isManager && (
-        <div className="mb-3">
-          <FilePicker
-            onFile={(file) => onScanFile(file)}
-            accept="image/*"
-            variant="button"
-            icon="\u{1F4F7}"
-            loading={scanning}
-            disabled={scanning}
-            label={scanning ? 'Scanning delivery note...' : 'Scan delivery note'}
-            className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[13px] font-bold shadow-sm transition-colors ${scanning ? 'bg-gray-200 text-gray-500' : 'bg-[#2563EB] text-white active:bg-blue-700'}`}
-          />
-          {scanErr && <div className="mt-2 text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{scanErr}</div>}
-          {scanResult && !scanning && (
-            <div className="mt-2 px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-100">
-              <div className="flex items-center gap-2">
-                <span className="text-[14px]">&#128196;</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[12px] font-bold text-blue-900">
-                    Scan complete
-                    {scanResult.ocr_mode === 'mock' && (
-                      <span className="ml-1 text-[10px] font-semibold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">MOCK</span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-blue-800">
-                    {scanResult.matched.length} matched
-                    {scanResult.unmatched_ocr.length > 0 && ` \u2022 ${scanResult.unmatched_ocr.length} unmatched`}
-                    {scanResult.missing_ordered.length > 0 && ` \u2022 ${scanResult.missing_ordered.length} not on note`}
-                  </div>
-                </div>
-                <button onClick={onDismissScan} className="text-blue-400 text-[16px] flex-shrink-0" aria-label="Dismiss">&times;</button>
-              </div>
-              {scanResult.unmatched_ocr.length > 0 && (
-                <details className="mt-2">
-                  <summary className="text-[11px] font-semibold text-blue-700 cursor-pointer">Lines on the note that didn&rsquo;t match</summary>
-                  <ul className="mt-1.5 text-[11px] text-gray-700 space-y-1">
-                    {scanResult.unmatched_ocr.map((u, i) => (
-                      <li key={i} className="font-mono">
-                        &bull; {u.description || '(no description)'} {u.quantity != null && `\u00d7 ${u.quantity}`}{' '}
-                        {u.unit_price != null && `@ \u20ac${u.unit_price.toFixed(2)}`}
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              {scanResult.missing_ordered.length > 0 && (
-                <details className="mt-2">
-                  <summary className="text-[11px] font-semibold text-amber-700 cursor-pointer">Ordered items not on the note</summary>
-                  <ul className="mt-1.5 text-[11px] text-gray-700 space-y-1">
-                    {scanResult.missing_ordered.map((m) => (
-                      <li key={m.line_id}>&bull; {m.product_name} (ordered {m.ordered_qty})</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-              {scanResult.matched.some((m) => m.price_flag) && (
-                <div className="mt-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
-                  <strong>Price mismatch:</strong>{' '}
-                  {scanResult.matched.filter((m) => m.price_flag).map((m) => m.product_name).join(', ')}. Please verify.
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      <p className="text-[12px] text-gray-500 mb-3">Enter the quantity you actually received. Leave blank if not delivered yet.</p>
+      <p className="text-[12px] text-gray-500 mb-3">
+        {isSubmitted
+          ? 'Delivery submitted. Review the quantities and the attached delivery note.'
+          : 'Enter the quantity you actually received. Leave blank if not delivered yet.'}
+      </p>
 
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
         {lines.map((line) => {
@@ -209,7 +135,7 @@ export default function ReceiveCheckScreen({
                   <div className="text-[13px] font-semibold text-gray-900">{line.product_name}</div>
                   <div className="text-[11px] text-gray-500 font-mono">
                     Ordered: {line.ordered_qty} {line.product_uom}
-                    {linePrice > 0 && ` \u00b7 \u20ac${linePrice.toFixed(2)}/${line.product_uom}`}
+                    {linePrice > 0 && ` · €${linePrice.toFixed(2)}/${line.product_uom}`}
                   </div>
                   {linePrice > 0 && (
                     <div className="text-[10px] text-gray-400 font-mono">
@@ -252,16 +178,53 @@ export default function ReceiveCheckScreen({
       </div>
 
       <div className="fixed bottom-16 left-0 right-0 max-w-lg mx-auto bg-white border-t border-gray-200 px-4 py-3 z-50">
-        {isManager ? (
-          <>
-            <div className="flex gap-2 mb-2">
-              <button onClick={onConfirmClose} className="flex-1 py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700">Confirm &amp; close</button>
-              <button onClick={onKeepBackorder} className="flex-1 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold active:bg-gray-50">Keep as backorder</button>
-            </div>
-            <p className="text-[11px] text-gray-400 text-center">Confirming will update stock in Odoo.</p>
-          </>
+        {isSubmitted ? (
+          isManager ? (
+            <>
+              <button onClick={onViewNote} className="w-full mb-2 py-2.5 rounded-xl bg-[#FFF4E6] border border-[#F5800A] text-[#F5800A] text-[13px] font-bold active:bg-[#ffe9cc]">View delivery note</button>
+              <div className="flex gap-2">
+                <button onClick={onConfirmClose} className="flex-1 py-3 rounded-xl bg-green-600 text-white text-[13px] font-bold active:bg-green-700">Approve &amp; close</button>
+                <button onClick={onKeepBackorder} className="flex-1 py-3 rounded-xl bg-white border border-gray-200 text-gray-700 text-[13px] font-semibold active:bg-gray-50">Keep backorder</button>
+              </div>
+              <p className="text-[11px] text-gray-400 text-center mt-1">Approving updates stock in Odoo.</p>
+            </>
+          ) : (
+            <>
+              <button onClick={onViewNote} className="w-full mb-2 py-2.5 rounded-xl bg-[#FFF4E6] border border-[#F5800A] text-[#F5800A] text-[13px] font-bold active:bg-[#ffe9cc]">View delivery note</button>
+              <p className="text-[12px] text-gray-500 text-center py-1">Submitted &mdash; waiting for a manager to approve.</p>
+            </>
+          )
         ) : (
-          <p className="text-[12px] text-gray-500 text-center py-2">A manager must confirm receipt to update stock.</p>
+          <>
+            <div className="mb-2">
+              <FilePicker
+                onFile={(_file, dataUrl) => onAddPhoto(dataUrl)}
+                accept="image/*"
+                variant="button"
+                icon={'\u{1F4F7}'}
+                label="Add delivery note photo"
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[13px] font-bold bg-[#F5800A] text-white active:bg-[#E86000]"
+              />
+              {deliveryPhotos.length > 0 && (
+                <div className="flex gap-2 mt-2 overflow-x-auto">
+                  {deliveryPhotos.map((src, i) => (
+                    <div key={i} className="relative flex-shrink-0">
+                      <img src={src} alt={`note ${i + 1}`} className="w-14 h-14 object-cover rounded-lg border border-gray-200" />
+                      <button onClick={() => onRemovePhoto(i)} aria-label="Remove" className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white text-[11px] leading-none">&times;</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              onClick={onSubmit}
+              disabled={deliveryPhotos.length === 0 || submitting}
+              className={`w-full py-3 rounded-xl text-[14px] font-bold ${deliveryPhotos.length === 0 || submitting ? 'bg-gray-200 text-gray-400' : 'bg-green-600 text-white active:bg-green-700'}`}
+            >
+              {submitting ? 'Submitting…' : 'Submit for approval'}
+            </button>
+            <p className="text-[11px] text-gray-400 text-center mt-1">A manager approves before stock updates.</p>
+          </>
         )}
       </div>
     </div>

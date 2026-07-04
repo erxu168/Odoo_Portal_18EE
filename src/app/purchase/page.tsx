@@ -7,7 +7,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Numpad from '@/components/ui/Numpad';
 import OrdersDashboard from '@/components/purchase/OrdersDashboard';
-import FilePicker from "@/components/ui/FilePicker";
+import PdfViewer from '@/components/ui/PdfViewer';
 import PurchaseAlerts from '@/components/purchase/PurchaseAlerts';
 import StatusBadge from '@/components/purchase/StatusBadge';
 import OrderSentScreen from '@/components/purchase/OrderSentScreen';
@@ -41,17 +41,6 @@ type Screen = 'dashboard' | 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' |
 interface OdooPartnerResult { odoo_id: number; name: string; email: string; phone: string; already_added: boolean; }
 interface CatalogOption { item_id: number; product_id: number; product_name: string; product_uom: string; price: number; category_name: string; supplier_id: number; supplier_name: string; }
 interface CatalogGroup { product_id: number; product_name: string; product_uom: string; category_name: string; options: CatalogOption[]; }
-interface ScanMatched { line_id: number; product_name: string; received_qty: number; ocr_description: string; ocr_price: number | null; confidence: 'high' | 'medium' | 'low'; price_flag: boolean; }
-interface ScanResult {
-  ocr_mode: 'mock' | 'azure';
-  ocr_error: string | null;
-  attachment_id: number | null;
-  supplier_name?: string;
-  invoice_total?: number;
-  matched: ScanMatched[];
-  unmatched_ocr: { description: string; quantity: number | null; unit_price: number | null }[];
-  missing_ordered: { line_id: number; product_name: string; ordered_qty: number }[];
-}
 interface AnalyticsPayload {
   month: string; prev_month: string;
   month_total: number; month_orders: number; prev_month_total: number;
@@ -234,6 +223,7 @@ export default function PurchasePage() {
 
   async function openReceiveCheck(order: { id: number }) {
     setScreen('receive-check');
+    setDeliveryPhotos([]);
     try { const r = await fetch(`/api/purchase/receive?order_id=${order.id}`); const d = await r.json(); setReceipt(d.receipt); setReceiptLines(d.receipt?.lines || []); setRecvOrder(d.order || null); } catch (e) { void e; }
   }
 
@@ -412,10 +402,10 @@ export default function PurchasePage() {
     }, 250);
   }
 
-  // ── Scan delivery note state ────────────────────────────────
-  const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const [scanErr, setScanErr] = useState<string>('');
+  // ── Delivery note (staff capture) + submit / manager approve ─
+  const [deliveryPhotos, setDeliveryPhotos] = useState<string[]>([]);
+  const [submittingReceipt, setSubmittingReceipt] = useState(false);
+  const [notePdf, setNotePdf] = useState<string | null>(null);
 
   const [reordering, setReordering] = useState(false);
   async function reorderPastOrder(order: Order) {
@@ -442,39 +432,41 @@ export default function PurchasePage() {
     finally { setReordering(false); }
   }
 
-  async function scanDeliveryNote(file: File) {
-    if (!recvOrder?.id) { setScanErr('Open an order first.'); return; }
-    setScanning(true); setScanErr(''); setScanResult(null);
+  function addDeliveryPhoto(dataUrl: string) {
+    if (dataUrl.startsWith('data:image/')) setDeliveryPhotos(prev => [...prev, dataUrl]);
+  }
+
+  function removeDeliveryPhoto(index: number) {
+    setDeliveryPhotos(prev => prev.filter((_, i) => i !== index));
+  }
+
+  async function submitReceiptForApproval() {
+    if (!receipt || deliveryPhotos.length === 0) return;
+    setSubmittingReceipt(true);
     try {
-      const dataUrl: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-      const r = await fetch('/api/purchase/receive/scan', {
+      const r = await fetch('/api/purchase/receive', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: recvOrder.id, image_data_url: dataUrl }),
+        body: JSON.stringify({ action: 'submit', receipt_id: receipt.id, photos: deliveryPhotos }),
       });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || 'Scan failed');
-      setScanResult(d);
-      // Prefill received_qty for every matched line. UI keeps Issue buttons so the user can still flag problems.
-      if (d.matched?.length) {
-        for (const m of d.matched as ScanMatched[]) {
-          try {
-            await fetch('/api/purchase/receive', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'update_line', line_id: m.line_id, received_qty: m.received_qty }),
-            });
-          } catch (e) { void e; }
-        }
-        const rr = await fetch(`/api/purchase/receive?order_id=${recvOrder.id}`);
-        const rd = await rr.json();
-        setReceiptLines(rd.receipt?.lines || []);
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setConfirmDialog({ title: 'Could not submit', message: d.error || 'Please try again.', confirmLabel: 'OK', variant: 'primary', onConfirm: () => setConfirmDialog(null) });
+        return;
       }
-    } catch (e: any) { setScanErr(e.message || 'Scan failed'); }
-    finally { setScanning(false); }
+      setDeliveryPhotos([]);
+      fetchPending();
+      setScreen('receive-list');
+    } catch (e) { void e; }
+    finally { setSubmittingReceipt(false); }
+  }
+
+  async function viewDeliveryNote() {
+    if (!receipt) return;
+    try {
+      const r = await fetch(`/api/purchase/receive?note_pdf=${receipt.id}`);
+      const d = await r.json();
+      if (d.pdf) setNotePdf(d.pdf);
+    } catch (e) { void e; }
   }
 
   // ── Insights state ──────────────────────────────────────────
@@ -744,15 +736,17 @@ export default function PurchasePage() {
           order={recvOrder}
           lines={receiptLines}
           isManager={isManager}
-          scanning={scanning}
-          scanResult={scanResult}
-          scanErr={scanErr}
-          onScanFile={scanDeliveryNote}
-          onDismissScan={() => setScanResult(null)}
+          isSubmitted={receipt?.status === 'submitted'}
+          deliveryPhotos={deliveryPhotos}
+          submitting={submittingReceipt}
+          onAddPhoto={addDeliveryPhoto}
+          onRemovePhoto={removeDeliveryPhoto}
+          onSubmit={() => setConfirmDialog({ title: 'Submit for approval?', message: 'This sends the delivery to a manager to approve. You cannot edit it after submitting.', confirmLabel: 'Yes, submit', variant: 'primary', onConfirm: () => { setConfirmDialog(null); submitReceiptForApproval(); } })}
+          onViewNote={viewDeliveryNote}
           onUpdateQty={updateRecvQty}
           onOpenNumpad={openRecvNumpadForLine}
           onReportIssue={openIssueReport}
-          onConfirmClose={() => setConfirmDialog({ title: 'Confirm receipt?', message: 'This will update stock quantities in Odoo and close this order. This cannot be undone.', confirmLabel: 'Yes, confirm & close', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(true); } })}
+          onConfirmClose={() => setConfirmDialog({ title: 'Approve receipt?', message: 'This will update stock quantities in Odoo and close this order. This cannot be undone.', confirmLabel: 'Yes, approve & close', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(true); } })}
           onKeepBackorder={() => setConfirmDialog({ title: 'Keep as backorder?', message: 'Received quantities will be updated in Odoo. The remaining items will stay open for a future delivery.', confirmLabel: 'Yes, keep backorder', variant: 'primary', onConfirm: () => { setConfirmDialog(null); confirmReceiptAction(false); } })}
         /></>
       ) : screen === 'receive-issue' ? (<><Header title="Report issue" showBack onBack={() => setScreen('receive-check')} />
@@ -784,7 +778,7 @@ export default function PurchasePage() {
           onReview={(cart) => { setReviewCart(cart); setScreen('review'); }}
         /></>
       ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} />
-        <ReceiveListScreen orders={pendingDeliveries} onOpen={openReceiveCheck} /></>
+        <ReceiveListScreen orders={pendingDeliveries} isManager={isManager} onOpen={openReceiveCheck} /></>
       ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><OrderHistoryScreen orders={orders} filter={historyFilter} onFilterChange={setHistoryFilter} onOpen={openOrderDetail} /></>
       ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={isManager ? manageIconBtn : undefined} />
         <PurchaseAlerts suppliers={suppliers} />
@@ -792,6 +786,7 @@ export default function PurchasePage() {
       </>)}
       <Numpad open={numpadOpen} value={numpadValue} onChange={setNumpadValue} label={numpadProduct?.product_name} sublabel={numpadProduct?.product_uom} onConfirm={handleNumpadConfirm} onClose={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }} />
       {confirmDialog && <ConfirmDialog title={confirmDialog.title} message={confirmDialog.message} confirmLabel={confirmDialog.confirmLabel} cancelLabel={confirmDialog.cancelLabel} variant={confirmDialog.variant} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
+      {notePdf && <PdfViewer fileData={notePdf} fileName="delivery-note.pdf" onClose={() => setNotePdf(null)} />}
     </div>
   );
 }
