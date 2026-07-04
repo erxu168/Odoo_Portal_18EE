@@ -32,6 +32,12 @@ class HrEmployee(models.Model):
                     'A portal invite was emailed to %s.' % (body.get('email') or 'the employee'),
                     'success',
                 )
+            if body.get('email'):
+                return self._invite_notification(
+                    'Invite created',
+                    'Could not email %s right now. Open the portal Staff Access screen to copy the invite link and share it.' % body.get('email'),
+                    'warning',
+                )
             return self._invite_notification(
                 'Invite created',
                 'No email on file for this employee. Open the portal Staff Access screen to copy the invite link.',
