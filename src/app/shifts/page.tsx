@@ -8,6 +8,7 @@ import ShiftsDashboard from '@/components/shifts/ShiftsDashboard';
 import OpenShiftsList from '@/components/shifts/OpenShiftsList';
 import MyShifts from '@/components/shifts/MyShifts';
 import MyHours from '@/components/shifts/MyHours';
+import MyPin from '@/components/shifts/MyPin';
 import RequestsInbox from '@/components/shifts/RequestsInbox';
 import CreateShift from '@/components/shifts/CreateShift';
 import ManageShifts from '@/components/shifts/ManageShifts';
@@ -39,6 +40,7 @@ type Screen =
   | { type: 'mine' }
   | { type: 'hours' }
   | { type: 'requests' }
+  | { type: 'mypin' }
   | { type: 'create'; prefill?: CreatePrefill }
   | { type: 'manage'; focusDate?: string }
   | { type: 'coverage' }
@@ -132,6 +134,7 @@ export default function ShiftsPage() {
     else if (key === 'mine') navigate({ type: 'mine' });
     else if (key === 'hours') navigate({ type: 'hours' });
     else if (key === 'requests') navigate({ type: 'requests' });
+    else if (key === 'mypin') navigate({ type: 'mypin' });
     else if (key === 'create') navigate({ type: 'create' });
     else if (key === 'manage') navigate({ type: 'manage' });
     else if (key === 'coverage') navigate({ type: 'coverage' });
@@ -189,6 +192,8 @@ export default function ShiftsPage() {
         return <MyHours {...common} />;
       case 'requests':
         return <RequestsInbox {...common} />;
+      case 'mypin':
+        return <MyPin {...common} />;
       case 'create':
         return (
           <CreateShift
