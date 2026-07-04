@@ -117,6 +117,18 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
       ),
     }] : []),
     ...(canManage ? [{
+      id: 'consumption',
+      label: 'Consumption',
+      color: 'bg-green-50 border-green-200', iconBg: 'bg-green-100', iconColor: 'text-green-600',
+      sublabel: 'Usage by period',
+      badge: 0,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>
+        </svg>
+      ),
+    }] : []),
+    ...(canManage ? [{
       id: 'review',
       label: 'Review',
       color: 'bg-amber-50 border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',

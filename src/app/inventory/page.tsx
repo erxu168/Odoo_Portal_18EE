@@ -12,6 +12,7 @@ import ReviewSubmissions from '@/components/inventory/ReviewSubmissions';
 import MoIngredients from '@/components/inventory/MoIngredients';
 import ProductSettings from '@/components/inventory/ProductSettings';
 import DrinksScanner from '@/components/inventory/DrinksScanner';
+import ConsumptionReport from '@/components/inventory/ConsumptionReport';
 
 type Screen =
   | { type: 'dashboard' }
@@ -22,6 +23,7 @@ type Screen =
   | { type: 'mo-ingredients' }
   | { type: 'product-settings' }
   | { type: 'drinks-scanner' }
+  | { type: 'consumption' }
   | { type: 'session'; sessionId: number };
 
 export default function InventoryPage() {
@@ -94,6 +96,14 @@ export default function InventoryPage() {
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <AppHeader title="Manage Lists" subtitle="Create and manage counting templates" showBack onBack={goDashboard} />
         <ManageTemplates onBack={goDashboard} />
+      </div>
+    );
+  }
+
+  if (screen.type === 'consumption' && canManage) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <ConsumptionReport onBack={goDashboard} />
       </div>
     );
   }
