@@ -6,7 +6,8 @@ import { BackHeader, FilterBar, FilterPill, SearchBar, Spinner } from './ui';
 const FREQUENCIES = [
   { id: 'daily', label: 'Daily' },
   { id: 'weekly', label: 'Weekly' },
-  { id: 'monthly', label: 'Monthly' },
+  // 'monthly' hidden: not implemented in shouldGenerateToday() so it never
+  // auto-generates a session. Re-add here once monthly scheduling is built.
   { id: 'adhoc', label: 'Ad-hoc' },
 ];
 

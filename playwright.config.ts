@@ -41,5 +41,12 @@ export default defineConfig({
       dependencies: ['setup'],
       use: { storageState: '.auth/portal.json' },
     },
+    {
+      // Module e2e tests that log in themselves (manager + shared tablet) and
+      // drive real screens. No storageState dependency. Run: npm run test:inventory
+      name: 'modules',
+      testMatch: /\.e2e\.spec\.ts/,
+      use: { viewport: { width: 390, height: 844 } },
+    },
   ],
 });

@@ -9,7 +9,8 @@
     "lint": "next lint",
     "smoke": "playwright test",
     "smoke:staging": "SMOKE_ENV=staging playwright test",
-    "smoke:live": "SMOKE_ENV=live playwright test"
+    "smoke:live": "SMOKE_ENV=live playwright test",
+    "test:inventory": "SMOKE_ENV=staging playwright test --project=modules"
   },
   "dependencies": {
     "@capacitor-mlkit/barcode-scanning": "^8.0.1",
