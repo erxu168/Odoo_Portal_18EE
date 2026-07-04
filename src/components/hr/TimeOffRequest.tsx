@@ -86,7 +86,7 @@ export default function TimeOffRequest({ onBack, onSaved }: Props) {
             <option value="">{!employeeId ? 'Pick a staff member first' : loadingTypes ? 'Loading…' : 'Choose a type…'}</option>
             {types.map(t => (
               <option key={t.id} value={t.id}>
-                {t.name}{t.remaining !== null ? ` (${t.remaining} left)` : ''}
+                {t.name}{t.requires_allocation && t.remaining !== null ? ` (${t.remaining} left)` : ''}
               </option>
             ))}
           </select>

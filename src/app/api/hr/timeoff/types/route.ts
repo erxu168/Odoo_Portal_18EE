@@ -48,7 +48,12 @@ export async function GET(req: NextRequest) {
         name: t.name,
         requires_allocation: t.requires_allocation === 'yes',
         remaining: typeof t.virtual_remaining_leaves === 'number' ? t.virtual_remaining_leaves : null,
-      }));
+      }))
+      // Only offer types the employee can actually book: no-allocation types,
+      // or allocation types with a positive balance. (Granting allocations is
+      // not part of this phase, so a 0-balance allocation type would just error.)
+      .filter((t: { requires_allocation: boolean; remaining: number | null }) =>
+        !t.requires_allocation || (t.remaining ?? 0) > 0);
 
     return NextResponse.json({ types });
   } catch (err: unknown) {
