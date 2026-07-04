@@ -17,6 +17,7 @@ import {
   berlinDateTimeToUtcOdoo,
   berlinParts,
   durationHours,
+  nowOdooUtc,
   weekKeyToUtcRange,
 } from '@/lib/shifts-time';
 import type { ShiftEmployee, ShiftSlot } from '@/types/shifts';
@@ -342,6 +343,38 @@ export async function employeeWeekHours(employeeId: number, weekKey: string): Pr
     return start && end ? sum + durationHours(start, end) : sum;
   }, 0);
   return Math.round(total * 100) / 100;
+}
+
+/** employeeId → assigned hours in the current Berlin calendar month (for Minijob €-cap checks). */
+export async function monthHoursMap(companyId: number): Promise<Map<number, number>> {
+  const today = berlinParts(nowOdooUtc()).date;
+  const [y, m] = today.split('-').map(Number);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const first = `${y}-${pad(m)}-01`;
+  const next = m === 12 ? `${y + 1}-01-01` : `${y}-${pad(m + 1)}-01`;
+  const startOdoo = berlinDateTimeToUtcOdoo(first, '00:00');
+  const endOdoo = berlinDateTimeToUtcOdoo(next, '00:00');
+  const rows = (await getOdoo().searchRead(
+    'planning.slot',
+    [
+      ['company_id', '=', companyId],
+      ['start_datetime', '>=', startOdoo],
+      ['start_datetime', '<', endOdoo],
+      ['resource_id', '!=', false],
+    ],
+    ['start_datetime', 'end_datetime', 'employee_id'],
+    { limit: 2000 },
+  )) as OdooRow[];
+  const map = new Map<number, number>();
+  for (const r of rows) {
+    const eid = m2oId(r.employee_id);
+    if (eid === null) continue;
+    const s = str(r.start_datetime);
+    const e = str(r.end_datetime);
+    if (s && e) map.set(eid, (map.get(eid) ?? 0) + durationHours(s, e));
+  }
+  map.forEach((v, k) => map.set(k, Math.round(v * 100) / 100));
+  return map;
 }
 
 /**

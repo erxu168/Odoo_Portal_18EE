@@ -110,6 +110,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const [roles, setRoles] = useState<RoleInfo[]>([]);
   const [employees, setEmployees] = useState<ShiftEmployee[]>([]);
   const [hoursMap, setHoursMap] = useState<Map<number, number>>(new Map());
+  const [monthHours, setMonthHours] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -126,6 +127,14 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
       const roleList: RoleInfo[] = Array.isArray(data.roles) ? data.roles : [];
       setRoles(roleList);
       setEmployees(Array.isArray(data.employees) ? data.employees : []);
+      const mh = new Map<number, number>();
+      const mhObj =
+        data.monthHoursByEmployee && typeof data.monthHoursByEmployee === 'object' ? data.monthHoursByEmployee : {};
+      for (const [k, v] of Object.entries(mhObj)) {
+        const id = Number(k);
+        if (Number.isFinite(id) && typeof v === 'number') mh.set(id, v);
+      }
+      setMonthHours(mh);
       setRoleId(prev => prev ?? (roleList[0]?.id ?? null));
     } catch (err: unknown) {
       console.error('[shifts] roster fetch failed:', err);
@@ -184,6 +193,14 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const pickedOverage = picked && picked.cap !== null && pickedProjected > picked.cap
     ? Math.round((pickedProjected - picked.cap) * 100) / 100
     : 0;
+
+  // Minijob €603/month check (projected month earnings at the person's rate).
+  const MINIJOB_CAP = 603;
+  const pickedMonthEarnings =
+    picked && picked.employmentType === 'minijob'
+      ? Math.round(((monthHours.get(picked.id) ?? 0) + addedHours) * picked.hourlyRate)
+      : 0;
+  const minijobOver = !!picked && picked.employmentType === 'minijob' && pickedMonthEarnings > MINIJOB_CAP;
 
   const sortedPeople = useMemo(() => {
     const eligible = (e: ShiftEmployee) => roleId === null || e.roleIds.includes(roleId);
@@ -386,6 +403,13 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
               <WarnBox>
                 This puts {firstName(picked.name)} at <b>{fmtH(pickedProjected)} of {fmtCap(picked.cap)} hours</b> that week —{' '}
                 <b>{fmtH(pickedOverage)} h over</b> their cap. You can still assign them; the shift will be flagged so you can keep an eye on it.
+              </WarnBox>
+            )}
+
+            {minijobOver && picked && (
+              <WarnBox>
+                Minijob limit: this puts {firstName(picked.name)} at about <b>€{pickedMonthEarnings}</b> this month —{' '}
+                over the <b>€{MINIJOB_CAP}</b> cap. You can still assign them, but it may affect their Minijob status.
               </WarnBox>
             )}
           </div>
