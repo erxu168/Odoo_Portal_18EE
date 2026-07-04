@@ -173,6 +173,10 @@ export function initPurchaseTables() {
   try { db().exec('ALTER TABLE purchase_orders ADD COLUMN cancelled_at TEXT'); } catch (_e) { /* already exists */ }
   // v2: delivery_days for supplier delivery schedule alerts
   try { db().exec("ALTER TABLE purchase_suppliers ADD COLUMN delivery_days TEXT NOT NULL DEFAULT '[]'"); } catch (_e) { /* already exists */ }
+  // v3: staff-submit / manager-approve receiving — delivery-note PDF + submitter stamps
+  try { db().exec('ALTER TABLE purchase_receipts ADD COLUMN delivery_note_pdf TEXT'); } catch (_e) { /* already exists */ }
+  try { db().exec('ALTER TABLE purchase_receipts ADD COLUMN submitted_by INTEGER'); } catch (_e) { /* already exists */ }
+  try { db().exec('ALTER TABLE purchase_receipts ADD COLUMN submitted_at TEXT'); } catch (_e) { /* already exists */ }
 
   // Seed the two long-standing locations so the picker keeps working even before
   // auto-discover has run. id = Odoo stock.location.id (matches existing data).
@@ -606,6 +610,33 @@ export function confirmReceipt(receiptId: number, confirmedBy: number, closeOrde
 
 export function updateReceiptNote(receiptId: number, photo: string) {
   db().prepare('UPDATE purchase_receipts SET delivery_note_photo = ? WHERE id = ?').run(photo, receiptId);
+}
+
+/**
+ * Staff submits a filled receipt with the delivery-note PDF for manager
+ * approval. Moves status pending -> submitted. Does NOT touch stock.
+ */
+export function submitReceipt(receiptId: number, submittedBy: number, pdfDataUrl: string) {
+  const now = nowISO();
+  db().prepare(
+    "UPDATE purchase_receipts SET status = 'submitted', submitted_by = ?, submitted_at = ?, delivery_note_pdf = ? WHERE id = ?"
+  ).run(submittedBy, now, pdfDataUrl, receiptId);
+}
+
+/** Latest receipt status for an order, or null if none. Used to bucket the receive list. */
+export function getLatestReceiptStatus(orderId: number): string | null {
+  const r = db().prepare(
+    'SELECT status FROM purchase_receipts WHERE order_id = ? ORDER BY created_at DESC LIMIT 1'
+  ).get(orderId) as { status?: string } | undefined;
+  return r?.status ?? null;
+}
+
+/** The stored delivery-note PDF (data URL) for a receipt, or null. */
+export function getReceiptPdf(receiptId: number): string | null {
+  const r = db().prepare(
+    'SELECT delivery_note_pdf FROM purchase_receipts WHERE id = ?'
+  ).get(receiptId) as { delivery_note_pdf?: string } | undefined;
+  return r?.delivery_note_pdf ?? null;
 }
 
 // ============================================================
