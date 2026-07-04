@@ -5,9 +5,10 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { listOrders, createReceipt, getReceipt, getReceiptByOrder, updateReceiptLine, confirmReceipt, updateReceiptNote, getOrder } from '@/lib/purchase-db';
+import { listOrders, createReceipt, getReceipt, getReceiptByOrder, updateReceiptLine, confirmReceipt, updateReceiptNote, getOrder, submitReceipt, getLatestReceiptStatus, getReceiptPdf } from '@/lib/purchase-db';
 import { getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+import { imagesToPdf } from '@/lib/purchase-note-pdf';
 
 // Minimum cap on delivery-note payloads (data URL string length). ~15MB b64 ≈ 11MB decoded.
 const MAX_IMAGE_DATA_URL_BYTES = 15 * 1024 * 1024;
@@ -29,6 +30,14 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const locationId = parseInt(searchParams.get('location_id') || '0');
   const orderId = searchParams.get('order_id');
+
+  // Serve the stored delivery-note PDF for a receipt (manager approval view).
+  const notePdfId = searchParams.get('note_pdf');
+  if (notePdfId) {
+    const pdf = getReceiptPdf(parseInt(notePdfId));
+    if (!pdf) return NextResponse.json({ error: 'No delivery note on file' }, { status: 404 });
+    return NextResponse.json({ pdf });
+  }
 
   // Get receipt for a specific order
   if (orderId) {
@@ -82,8 +91,12 @@ export async function GET(request: Request) {
 
   const sentOrders = listOrders(locationId, { status: 'sent' });
   const partialOrders = listOrders(locationId, { status: 'partial' });
+  const pending = [...sentOrders, ...partialOrders].map((o) => {
+    const row = o as Record<string, unknown> & { id: number };
+    return { ...row, receipt_status: getLatestReceiptStatus(row.id) };
+  });
 
-  return NextResponse.json({ pending: [...sentOrders, ...partialOrders] });
+  return NextResponse.json({ pending });
 }
 
 export async function POST(request: Request) {
@@ -115,6 +128,70 @@ export async function POST(request: Request) {
   }
   if (typeof body?.issue_photo === 'string' && body.issue_photo.length > MAX_IMAGE_DATA_URL_BYTES) {
     return NextResponse.json({ error: 'Issue photo too large (max ~11MB decoded). Retake or compress.' }, { status: 413 });
+  }
+
+  if (action === 'submit') {
+    const receiptId = parseInt(body.receipt_id || '0');
+    const photos: unknown = body.photos;
+    if (!receiptId) return NextResponse.json({ error: 'receipt_id required' }, { status: 400 });
+    if (!Array.isArray(photos) || photos.length === 0) {
+      return NextResponse.json({ error: 'At least one delivery-note photo is required' }, { status: 400 });
+    }
+    for (const p of photos) {
+      if (typeof p !== 'string' || !p.startsWith('data:image/')) {
+        return NextResponse.json({ error: 'Each photo must be an image' }, { status: 400 });
+      }
+    }
+    const totalBytes = (photos as string[]).reduce((s, p) => s + p.length, 0);
+    if (totalBytes > MAX_IMAGE_DATA_URL_BYTES * 2) {
+      return NextResponse.json({ error: 'Delivery-note photos too large. Use fewer or smaller photos.' }, { status: 413 });
+    }
+
+    const existing = getReceipt(receiptId);
+    if (!existing) return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
+    if (existing.status === 'confirmed') {
+      return NextResponse.json({ error: 'This delivery was already approved' }, { status: 409 });
+    }
+
+    // Build the PDF. Never block receiving on PDF generation — fall back to the first photo.
+    let pdfDataUrl: string;
+    try {
+      const pdf = await imagesToPdf(photos as string[]);
+      pdfDataUrl = `data:application/pdf;base64,${pdf.toString('base64')}`;
+    } catch (e: unknown) {
+      console.error('[receive/submit] PDF build failed, keeping first photo as fallback', e);
+      pdfDataUrl = (photos as string[])[0];
+    }
+
+    submitReceipt(receiptId, user.id, pdfDataUrl);
+
+    // Attach to the Odoo purchase.order (non-fatal).
+    const order = getOrder(existing.order_id);
+    if (order?.odoo_po_id) {
+      try {
+        const odoo = getOdoo();
+        const isPdf = pdfDataUrl.startsWith('data:application/pdf');
+        const base64Data = pdfDataUrl.replace(/^data:[^;]+;base64,/, '');
+        const attachmentId = await odoo.create('ir.attachment', {
+          name: `Delivery_Note_${order.odoo_po_name || order.id}_${new Date().toISOString().split('T')[0]}.${isPdf ? 'pdf' : 'jpg'}`,
+          type: 'binary',
+          datas: base64Data,
+          res_model: 'purchase.order',
+          res_id: order.odoo_po_id,
+          mimetype: isPdf ? 'application/pdf' : 'image/jpeg',
+        });
+        await odoo.call('purchase.order', 'message_post', [[order.odoo_po_id]], {
+          body: `<p><strong>Delivery recorded by ${esc(user.name)}</strong> — awaiting manager approval. Delivery note attached.</p>`,
+          message_type: 'comment',
+          subtype_xmlid: 'mail.mt_note',
+          attachment_ids: [attachmentId],
+        });
+      } catch (e) {
+        console.error('[receive/submit] Odoo attach failed', e);
+      }
+    }
+
+    return NextResponse.json({ message: 'Submitted for approval' });
   }
 
   if (action === 'confirm') {
