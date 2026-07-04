@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/components/ui/AppHeader";
+import DocumentViewer from "@/components/ui/DocumentViewer";
 import type { EmployeeData } from "@/types/hr";
 import { EMPLOYEE_READ_FIELDS, DOCUMENT_TYPES, calculateOnboardingPercent } from "@/types/hr";
 
@@ -28,6 +29,8 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onContract,
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
   const [deactivating, setDeactivating] = useState(false);
+  const [viewerData, setViewerData] = useState<{ base64: string; mimetype: string; name: string } | null>(null);
+  const [openingDocId, setOpeningDocId] = useState<number | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -78,8 +81,22 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onContract,
   const initials = emp.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const dept = emp.department_id ? (emp.department_id as [number, string])[1] : "";
 
-  function hasDoc(key: string): boolean {
-    return docs.some((d) => d.doc_type_key === key);
+  function docFor(key: string): Doc | undefined {
+    return docs.find((d) => d.doc_type_key === key);
+  }
+
+  async function handleOpenDoc(doc: Doc) {
+    setOpeningDocId(doc.id);
+    try {
+      const res = await fetch("/api/hr/documents/" + doc.id);
+      if (!res.ok) throw new Error("open failed");
+      const data = await res.json();
+      setViewerData({ base64: data.data_base64, mimetype: data.mimetype, name: data.name || doc.name });
+    } catch (_e: unknown) {
+      window.alert("Could not open this document.");
+    } finally {
+      setOpeningDocId(null);
+    }
   }
 
   function handleOffboard() {
@@ -162,26 +179,38 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onContract,
       <STitle text="Documents" />
       <div className="px-5 space-y-2 pb-4">
         {DOCUMENT_TYPES.map((dt) => {
-          const uploaded = hasDoc(dt.key);
+          const doc = docFor(dt.key);
+          const uploaded = !!doc;
+          const opening = uploaded && openingDocId === doc!.id;
           return (
-            <div key={dt.key} className={"flex items-center gap-3 p-3 rounded-xl border " + (uploaded ? "border-green-600 bg-green-50" : "border-gray-200 bg-white")}>
+            <button
+              key={dt.key}
+              type="button"
+              disabled={!uploaded}
+              onClick={uploaded ? () => handleOpenDoc(doc!) : undefined}
+              className={"w-full text-left flex items-center gap-3 p-3 rounded-xl border disabled:cursor-default " + (uploaded ? "border-green-600 bg-green-50 active:bg-green-100" : "border-gray-200 bg-white")}
+            >
               <div className={"w-10 h-10 rounded-lg flex items-center justify-center text-[var(--fs-xl)] " + (uploaded ? "bg-green-100" : "bg-gray-100")}>
                 {dt.icon}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[var(--fs-sm)] font-semibold">{dt.label}</div>
                 {uploaded ? (
-                  <div className="text-[var(--fs-xs)] text-green-600 font-medium">Uploaded</div>
+                  <div className="text-[var(--fs-xs)] text-green-600 font-medium">Uploaded &middot; Tap to view</div>
                 ) : (
                   <div className="text-[var(--fs-xs)] text-gray-400">{dt.required ? "Required - Missing" : "Optional"}</div>
                 )}
               </div>
               {uploaded ? (
-                <span className="text-green-600 text-lg">{"\u2713"}</span>
+                opening ? (
+                  <div className="w-5 h-5 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                )
               ) : dt.required ? (
                 <span className="text-red-500 text-[var(--fs-sm)] font-semibold">!</span>
               ) : null}
-            </div>
+            </button>
           );
         })}
       </div>
@@ -203,6 +232,15 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onContract,
           </button>
         </div>
       </div>
+
+      {viewerData && (
+        <DocumentViewer
+          base64={viewerData.base64}
+          mimetype={viewerData.mimetype}
+          name={viewerData.name}
+          onClose={() => setViewerData(null)}
+        />
+      )}
     </div>
   );
 }
