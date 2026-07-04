@@ -6,6 +6,7 @@
  * On approval, the API route writes inventory_quantity to Odoo.
  */
 import { getDb } from './db';
+import { berlinToday, berlinWeekday } from './berlin-date';
 import type {
   CountingTemplate, CountingSession, CountEntry, QuickCount,
   Frequency, AssignType, SessionStatus,
@@ -137,9 +138,8 @@ function now(): string {
 }
 
 function todayStr(): string {
-  // Use Berlin timezone so day boundary matches the restaurant local time
-  const berlin = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Berlin" }));
-  return `${berlin.getFullYear()}-${String(berlin.getMonth() + 1).padStart(2, "0")}-${String(berlin.getDate()).padStart(2, "0")}`;
+  // Berlin day boundary so it matches restaurant local time (see berlin-date.ts)
+  return berlinToday();
 }
 
 // ===
@@ -193,7 +193,7 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
 function shouldGenerateToday(tmpl: CountingTemplate): boolean {
   if (tmpl.frequency === 'daily') return true;
   if (tmpl.frequency === 'weekly') {
-    const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+    const dayOfWeek = berlinWeekday(); // Berlin weekday, consistent with todayStr()
     const days = tmpl.schedule_days || [];
     // If no days configured, don't generate (misconfigured template)
     if (days.length === 0) return false;

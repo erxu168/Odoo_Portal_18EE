@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { berlinToday } from '@/lib/berlin-date';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
 
 interface MyListsProps {
@@ -23,11 +24,6 @@ const FREQ_LABELS: Record<string, string> = {
   adhoc: 'Ad-hoc',
 };
 
-function getTodayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProps) {
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,8 +38,9 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (locationFilter !== 'all') params.set('location_id', locationFilter);
 
-      // Always filter to today — staff only needs to see today's tasks
-      params.set('date', getTodayStr());
+      // Always filter to today (Berlin) — must match the server's session dates,
+      // regardless of the tablet device's own timezone (see berlin-date.ts)
+      params.set('date', berlinToday());
 
       const [sessRes, locRes] = await Promise.all([
         fetch(`/api/inventory/sessions?${params}`),
