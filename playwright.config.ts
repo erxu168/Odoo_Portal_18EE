@@ -49,5 +49,10 @@ export default defineConfig({
       testMatch: /\.e2e\.spec\.ts/,
       use: { viewport: { width: 390, height: 844 } },
     },
+    {
+      // Pure-function unit tests (no browser, no baseURL). Run: npm run test:unit
+      name: 'unit',
+      testMatch: /\.unit\.spec\.ts/,
+    },
   ],
 });
