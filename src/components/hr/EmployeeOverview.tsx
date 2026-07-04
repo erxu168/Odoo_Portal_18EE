@@ -17,6 +17,12 @@ type Filter = 'all' | 'incomplete' | 'expiring';
 interface CompanyOption { id: number; name: string; }
 interface DeptOption { id: number; name: string; company_id: number | null; }
 
+// Remembers the last-used company/department filter so returning to this list
+// after opening a person (e.g. "Mark as left") keeps the selected restaurant
+// instead of resetting. Module-scoped => persists across remounts within the session.
+let lastCompany: number | null = null;
+let lastDept: number | null = null;
+
 export default function EmployeeOverview({ onBack, onSelect, onAdd }: Props) {
   const [employees, setEmployees] = useState<EmployeeData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,8 +32,8 @@ export default function EmployeeOverview({ onBack, onSelect, onAdd }: Props) {
   // Filter options from Odoo
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [departments, setDepartments] = useState<DeptOption[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState<number | null>(null);
-  const [selectedDept, setSelectedDept] = useState<number | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<number | null>(lastCompany);
+  const [selectedDept, setSelectedDept] = useState<number | null>(lastDept);
 
   // Load filter options once. Companies come from the scoped /api/companies
   // so a manager only sees their own restaurant(s); departments from /api/hr/filters.
@@ -70,10 +76,18 @@ export default function EmployeeOverview({ onBack, onSelect, onAdd }: Props) {
     ? departments.filter(d => d.company_id === selectedCompany)
     : departments;
 
-  // Reset department when company changes
+  // Reset department when company changes. Mirror to the module cache so the
+  // choice survives leaving and returning to this screen.
   function handleCompanyChange(id: number | null) {
     setSelectedCompany(id);
     setSelectedDept(null);
+    lastCompany = id;
+    lastDept = null;
+  }
+
+  function handleDeptChange(id: number | null) {
+    setSelectedDept(id);
+    lastDept = id;
   }
 
   const filtered = search
@@ -119,7 +133,7 @@ export default function EmployeeOverview({ onBack, onSelect, onAdd }: Props) {
         <select
           className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-semibold bg-white text-gray-700 outline-none focus:border-green-600 appearance-none"
           value={selectedDept ?? ''}
-          onChange={e => setSelectedDept(e.target.value ? parseInt(e.target.value) : null)}
+          onChange={e => handleDeptChange(e.target.value ? parseInt(e.target.value) : null)}
         >
           <option value="">All departments</option>
           {visibleDepts.map(d => (
