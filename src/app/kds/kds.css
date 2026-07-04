@@ -104,15 +104,92 @@
 .kds-task-reminder-text { font-size: 42px; font-weight: 800; line-height: 1.15; }
 .kds-task-reminder-due  { font-size: 26px; font-weight: 800; margin-top: 14px; text-transform: uppercase; letter-spacing: 1.5px; }
 .kds-task-reminder.overdue .kds-task-reminder-due { animation: kds-blink 0.8s step-end infinite; }
-/* Only the button is interactive — the rest of the overlay lets taps reach the orders. */
+/* Only the buttons are interactive — the rest of the overlay lets taps reach the orders. */
+.kds-task-reminder-actions {
+  display: flex; gap: 14px; justify-content: center; align-items: center;
+  flex-wrap: wrap; margin-top: 22px;
+}
 .kds-task-reminder-snooze {
   pointer-events: auto;
-  display: inline-block; margin-top: 22px;
+  display: inline-block;
   background: rgba(0,0,0,0.35); color: #fff;
   border: 2px solid rgba(255,255,255,0.75); border-radius: 100px;
   padding: 13px 32px; font-size: 18px; font-weight: 800; cursor: pointer;
 }
 .kds-task-reminder-snooze:active { transform: scale(0.96); }
+.kds-task-reminder-done {
+  pointer-events: auto;
+  display: inline-block;
+  background: #16a34a; color: #fff;
+  border: 2px solid rgba(255,255,255,0.9); border-radius: 100px;
+  padding: 13px 40px; font-size: 18px; font-weight: 800; cursor: pointer;
+}
+.kds-task-reminder-done:active { transform: scale(0.96); }
+.kds-task-reminder-done.disabled {
+  background: rgba(0,0,0,0.25); color: rgba(255,255,255,0.75);
+  border-color: rgba(255,255,255,0.4); cursor: default; font-size: 15px;
+}
+
+/* TASK COMPLETE MODAL — pick a person + PIN pad, dark theme, fully interactive */
+.kds-taskdone-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.6);
+}
+.kds-taskdone-modal {
+  position: relative; box-sizing: border-box;
+  width: min(440px, 92vw); max-height: 90vh; overflow-y: auto;
+  background: #0f172a; color: #fff;
+  border: 1px solid #1e293b; border-radius: 20px;
+  padding: 26px 24px 28px;
+  box-shadow: 0 24px 70px rgba(0,0,0,0.6);
+}
+.kds-taskdone-close {
+  position: absolute; top: 10px; right: 14px;
+  background: none; border: none; color: rgba(255,255,255,0.6);
+  font-size: 30px; line-height: 1; cursor: pointer;
+}
+.kds-taskdone-head { text-align: center; margin-bottom: 18px; }
+.kds-taskdone-title { font-size: 24px; font-weight: 800; }
+.kds-taskdone-details {
+  margin-top: 8px; font-size: 14px; color: #94a3b8; white-space: pre-wrap; line-height: 1.4;
+}
+.kds-taskdone-sub { text-align: center; font-size: 14px; color: #94a3b8; margin-bottom: 16px; }
+.kds-taskdone-empty { text-align: center; font-size: 14px; color: #64748b; padding: 24px 0; }
+.kds-taskdone-staff { display: flex; flex-direction: column; gap: 10px; }
+.kds-taskdone-person {
+  display: flex; align-items: center; gap: 12px;
+  background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+  padding: 12px 14px; cursor: pointer; text-align: left; color: #fff;
+}
+.kds-taskdone-person:active { background: #273449; }
+.kds-taskdone-avatar {
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  background: #334155; color: #cbd5e1;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 800;
+}
+.kds-taskdone-name { font-size: 16px; font-weight: 700; }
+.kds-taskdone-dots { display: flex; justify-content: center; gap: 14px; margin: 8px 0 18px; }
+.kds-taskdone-dot { width: 16px; height: 16px; border-radius: 50%; background: #334155; }
+.kds-taskdone-dot.filled { background: #3b82f6; }
+.kds-taskdone-err { text-align: center; color: #f87171; font-weight: 700; font-size: 14px; margin-bottom: 12px; }
+.kds-taskdone-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.kds-taskdone-key {
+  height: 60px; border-radius: 14px; border: none; cursor: pointer;
+  background: #1e293b; color: #fff; font-size: 24px; font-weight: 800;
+}
+.kds-taskdone-key:active { background: #273449; }
+.kds-taskdone-key.ghost { background: transparent; color: #94a3b8; font-size: 18px; }
+.kds-taskdone-key:disabled { opacity: 0.5; cursor: default; }
+.kds-taskdone-success {
+  text-align: center; padding: 24px 0 8px; font-size: 18px; font-weight: 700; color: #4ade80;
+}
+.kds-taskdone-check {
+  width: 72px; height: 72px; margin: 0 auto 14px;
+  border-radius: 50%; background: #16a34a; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: 900;
+}
 
 /* TOOLBAR — tabs + fire bar in one row */
 .kds-toolbar {

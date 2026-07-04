@@ -10,9 +10,11 @@ import type { ActiveReminder } from '@/lib/kds/taskReminders';
 export default function TaskReminderOverlay({
   reminder,
   onSnooze,
+  onDone,
 }: {
   reminder: ActiveReminder | null;
   onSnooze: (taskId: number) => void;
+  onDone: (taskId: number, name: string) => void;
 }) {
   if (!reminder) return null;
   const dueLabel = reminder.overdue ? 'OVERDUE' : `Due in ${reminder.dueInMin} min`;
@@ -25,12 +27,26 @@ export default function TaskReminderOverlay({
         <div className="kds-task-reminder-icon">{'⚠'}</div>
         <div className="kds-task-reminder-text">{reminder.name}</div>
         <div className="kds-task-reminder-due">{dueLabel}</div>
-        <button
-          className="kds-task-reminder-snooze"
-          onClick={() => onSnooze(reminder.id)}
-        >
-          Snooze 10 min
-        </button>
+        <div className="kds-task-reminder-actions">
+          {reminder.photoRequired ? (
+            <span className="kds-task-reminder-done disabled" aria-disabled="true">
+              Needs photo — tablet
+            </span>
+          ) : (
+            <button
+              className="kds-task-reminder-done"
+              onClick={() => onDone(reminder.id, reminder.name)}
+            >
+              Done
+            </button>
+          )}
+          <button
+            className="kds-task-reminder-snooze"
+            onClick={() => onSnooze(reminder.id)}
+          >
+            Snooze 10 min
+          </button>
+        </div>
       </div>
     </div>
   );

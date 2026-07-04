@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { getKdsSettings } from '@/lib/kds-db';
+import { companyIdForConfig } from '@/lib/kds/company';
 import { KDS_LOCATION_ID } from '@/types/kds';
 
 export const dynamic = 'force-dynamic';
@@ -25,24 +26,29 @@ export async function GET(req: NextRequest) {
 
     const odoo = getOdoo();
 
-    const configs = await odoo.searchRead('pos.config', [['id', '=', configId]], ['company_id'], { limit: 1 });
-    const companyId = configs.length && Array.isArray(configs[0].company_id) ? configs[0].company_id[0] : null;
+    const companyId = await companyIdForConfig(configId);
     if (!companyId) return NextResponse.json({ tasks: [] });
 
     const now = Date.now();
     const lower = toOdooUtc(now - 12 * 60 * 60 * 1000); // ignore tasks overdue by more than 12h
     const upper = toOdooUtc(now + 2 * 60 * 60 * 1000);  // ignore tasks due more than 2h out
 
+    const domain: any[] = [
+      ['list_id.company_id', '=', companyId],
+      ['deadline_datetime', '!=', false],
+      ['completed_at', '=', false],
+      ['deadline_datetime', '>=', lower],
+      ['deadline_datetime', '<=', upper],
+    ];
+    // Scope the feed to the station's chosen department(s), when configured.
+    if (Array.isArray(settings.taskDepartmentIds) && settings.taskDepartmentIds.length) {
+      domain.push(['list_id.department_id', 'in', settings.taskDepartmentIds]);
+    }
+
     const lines = await odoo.searchRead(
       'krawings.task.list.line',
-      [
-        ['list_id.company_id', '=', companyId],
-        ['deadline_datetime', '!=', false],
-        ['completed_at', '=', false],
-        ['deadline_datetime', '>=', lower],
-        ['deadline_datetime', '<=', upper],
-      ],
-      ['id', 'name', 'deadline_datetime'],
+      domain,
+      ['id', 'name', 'deadline_datetime', 'photo_required', 'details'],
       { limit: 100 }
     );
 
@@ -50,6 +56,8 @@ export async function GET(req: NextRequest) {
       id: l.id,
       name: l.name || 'Task',
       deadlineMs: new Date(l.deadline_datetime.replace(' ', 'T') + 'Z').getTime(),
+      photoRequired: !!l.photo_required,
+      details: l.details || null,
     }));
 
     return NextResponse.json({ tasks });

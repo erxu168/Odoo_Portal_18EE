@@ -57,6 +57,18 @@ export default function SettingsPanel() {
         </div>
 
         <div className="kds-settings-section">
+          <div className="kds-settings-section-title">Task Reminders</div>
+          <TaskDepartmentsRow
+            configId={draft.posConfigId}
+            value={draft.taskDepartmentIds}
+            onChange={v => setField('taskDepartmentIds', v)}
+          />
+          <div style={{ fontSize: 11, color: 'var(--muted)', padding: '0 0 4px' }}>
+            Only these departments&rsquo; tasks show on this screen. Leave empty to show all.
+          </div>
+        </div>
+
+        <div className="kds-settings-section">
           <div className="kds-settings-section-title">Sounds</div>
           <ToggleRow label="New order sound" checked={draft.sndNewOrder} onChange={v => setField('sndNewOrder', v)} />
           {draft.sndNewOrder && (
@@ -145,6 +157,56 @@ function PosConfigRow({ value, onChange }: { value: number; onChange: (v: number
         </div>
       )}
     </>
+  );
+}
+
+interface DeptOption { id: number; name: string }
+
+function TaskDepartmentsRow({ configId, value, onChange }: { configId: number; value: number[]; onChange: (v: number[]) => void }) {
+  const [departments, setDepartments] = useState<DeptOption[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!configId) { setDepartments([]); return; }
+    let active = true;
+    setDepartments(null); setErr(null);
+    fetch(`/api/kds/departments?configId=${configId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (!active) return;
+        if (Array.isArray(data.departments)) setDepartments(data.departments);
+        if (data.error) setErr(String(data.error));
+      })
+      .catch(() => { if (active) setErr('Could not reach Odoo'); });
+    return () => { active = false; };
+  }, [configId]);
+
+  function toggle(id: number) {
+    onChange(value.includes(id) ? value.filter(v => v !== id) : [...value, id]);
+  }
+
+  if (!configId) {
+    return <div style={{ fontSize: 11, color: 'var(--muted)', padding: '2px 0' }}>Connect a register to pick departments.</div>;
+  }
+  if (departments === null && !err) {
+    return <div style={{ fontSize: 12, color: 'var(--muted)', padding: '2px 0' }}>Loading…</div>;
+  }
+  if (err && (!departments || departments.length === 0)) {
+    return <div style={{ fontSize: 11, color: 'var(--orange)', padding: '2px 0' }}>Couldn&rsquo;t load departments ({err}).</div>;
+  }
+  if (!departments || departments.length === 0) {
+    return <div style={{ fontSize: 11, color: 'var(--muted)', padding: '2px 0' }}>No departments found for this company.</div>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '2px 0 6px' }}>
+      {departments.map(d => (
+        <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={value.includes(d.id)} onChange={() => toggle(d.id)} />
+          <span>{d.name}</span>
+        </label>
+      ))}
+    </div>
   );
 }
 

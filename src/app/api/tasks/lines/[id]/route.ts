@@ -10,6 +10,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const body = await req.json();
     await updateLine(id, {
       name: body.name,
+      details: body.details ?? null,
       day_part: body.day_part as DayPart,
       deadline_datetime: body.deadline_datetime,
       photo_required: body.photo_required,

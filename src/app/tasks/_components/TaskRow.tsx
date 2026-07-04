@@ -166,6 +166,10 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
           )}
         </div>
 
+        {task.details && (
+          <p className="text-xs text-gray-500 mt-1 whitespace-pre-line leading-snug">{task.details}</p>
+        )}
+
         <div className="flex flex-wrap gap-1.5 mt-1.5">
           {task.deadline_datetime && (
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${

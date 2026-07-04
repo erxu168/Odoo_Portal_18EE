@@ -80,6 +80,7 @@ export interface KdsSettings {
   sndRoundVol: number;
   autoScrollSec: number; // 0 = disabled, otherwise seconds of inactivity before auto-scroll
   posConfigId: number;   // Odoo pos.config ID (0 = use mock data)
+  taskDepartmentIds: number[]; // hr.department IDs whose tasks show on this screen (empty = all)
 }
 
 export const DEFAULT_SETTINGS: KdsSettings = {
@@ -101,6 +102,7 @@ export const DEFAULT_SETTINGS: KdsSettings = {
   sndRoundVol: 0.6,
   autoScrollSec: 10,
   posConfigId: 0,
+  taskDepartmentIds: [],
 };
 
 // -- UI state types --

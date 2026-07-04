@@ -13,6 +13,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
     const lineId = await addAdHocLine(listId, {
       name: body.name,
+      details: body.details ?? null,
       day_part: body.day_part as DayPart,
       deadline_datetime: body.deadline_datetime ?? null,
       photo_required: !!body.photo_required,

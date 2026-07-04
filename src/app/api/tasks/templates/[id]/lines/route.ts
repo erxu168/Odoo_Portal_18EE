@@ -13,6 +13,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
     const lineId = await upsertTemplateLine(templateId, {
       name: body.name,
+      details: body.details ?? null,
       sequence: body.sequence,
       day_part: body.day_part as DayPart,
       deadline_time: body.deadline_time ?? null,

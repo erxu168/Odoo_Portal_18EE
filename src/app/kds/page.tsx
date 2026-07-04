@@ -6,6 +6,7 @@ import { buildTaskGroups, effectiveWait, mostUrgentOrderId, passTier } from '@/l
 import { unlockAudio, playNewOrderSound, playPassAlert, playRoundDone } from '@/lib/kds/soundEngine';
 import { useTaskReminders } from '@/lib/kds/taskReminders';
 import TaskReminderOverlay from '@/components/kds/TaskReminderOverlay';
+import KdsTaskCompleteModal from '@/components/kds/KdsTaskCompleteModal';
 import KdsTopbar from '@/components/kds/KdsTopbar';
 import KdsTabs from '@/components/kds/KdsTabs';
 import FireBar from '@/components/kds/FireBar';
@@ -20,7 +21,8 @@ import SettingsPanel from '@/components/kds/SettingsPanel';
 
 export default function KdsPage() {
   const { orders, currentTab, roundState, firedOrderIds, settings, muted, mode, connected, addToRound } = useKds();
-  const { reminder, dismiss: dismissReminder, snooze: snoozeReminder } = useTaskReminders(settings.posConfigId, muted);
+  const { reminder, dismiss: dismissReminder, snooze: snoozeReminder, complete: completeReminder } = useTaskReminders(settings.posConfigId, muted);
+  const [completeTask, setCompleteTask] = useState<{ id: number; name: string; details?: string | null } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -254,7 +256,18 @@ export default function KdsPage() {
 
       <SettingsPanel />
 
-      <TaskReminderOverlay reminder={reminder} onSnooze={snoozeReminder} />
+      <TaskReminderOverlay
+        reminder={reminder}
+        onSnooze={snoozeReminder}
+        onDone={(id, name) => setCompleteTask({ id, name, details: reminder?.id === id ? reminder?.details ?? null : null })}
+      />
+
+      <KdsTaskCompleteModal
+        configId={settings.posConfigId}
+        task={completeTask}
+        onClose={() => setCompleteTask(null)}
+        onCompleted={(id) => { completeReminder(id); setCompleteTask(null); }}
+      />
 
       {toast && <div className="kds-toast">{toast}</div>}
     </>

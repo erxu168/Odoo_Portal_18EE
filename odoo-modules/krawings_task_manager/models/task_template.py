@@ -103,6 +103,7 @@ class KrawingsTaskTemplate(models.Model):
                     deadline_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
                 line_vals.append((0, 0, {
                     'name': tline.name,
+                    'details': tline.details,
                     'sequence': tline.sequence,
                     'day_part': tline.day_part,
                     'deadline_datetime': deadline_dt,

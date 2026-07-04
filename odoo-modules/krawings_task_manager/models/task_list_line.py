@@ -13,6 +13,10 @@ class KrawingsTaskListLine(models.Model):
         'krawings.task.list', required=True, ondelete='cascade', index=True,
     )
     name = fields.Char(required=True)
+    details = fields.Text(
+        help='Manager-authored instructions / description shown to staff and on '
+             'the KDS. Distinct from the staff note left while doing the task.',
+    )
     sequence = fields.Integer(default=10)
     day_part = fields.Selection(DAY_PART_SELECTION, required=True, default='opening')
     deadline_datetime = fields.Datetime()

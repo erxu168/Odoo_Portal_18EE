@@ -14,6 +14,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     await upsertTemplateLine(templateId, {
       id: lineId,
       name: body.name,
+      details: body.details ?? null,
       sequence: body.sequence,
       day_part: body.day_part as DayPart,
       deadline_time: body.deadline_time,

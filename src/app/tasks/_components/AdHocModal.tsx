@@ -19,6 +19,7 @@ const MODULE_OPTIONS: { value: ModuleLink; label: string }[] = [
 
 export interface AdHocSubmitVals {
   name: string;
+  details: string | null;
   day_part: DayPart;
   deadline_datetime: string | null;
   photo_required: boolean;
@@ -34,6 +35,7 @@ interface Props {
 
 export default function AdHocModal({ date, onClose, onSubmit }: Props) {
   const [name, setName]                       = useState('');
+  const [details, setDetails]                 = useState('');
   const [dayPart, setDayPart]                 = useState<DayPart>('opening');
   const [deadline, setDeadline]               = useState('');
   const [photoRequired, setPhotoRequired]     = useState(false);
@@ -52,6 +54,7 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
       }
       await onSubmit({
         name: name.trim(),
+        details: details.trim() ? details.trim() : null,
         day_part: dayPart,
         deadline_datetime: deadlineIso,
         photo_required: photoRequired,
@@ -72,6 +75,13 @@ export default function AdHocModal({ date, onClose, onSubmit }: Props) {
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Task name</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Deep clean fryer"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Details</label>
+            <textarea value={details} onChange={e => setDetails(e.target.value)}
+              placeholder="Extra instructions / description (optional)"
+              rows={2}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
           </div>
           <div className="grid grid-cols-2 gap-3">

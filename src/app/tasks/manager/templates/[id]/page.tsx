@@ -109,6 +109,7 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
     return {
       id: -tl.id,                    // negative so it can never collide with a real list line
       name: tl.name,
+      details: tl.details,
       sequence: tl.sequence,
       day_part: tl.day_part,
       deadline_datetime,
@@ -392,6 +393,9 @@ export default function TemplateEditPage({ params }: PageProps) {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <p className="font-semibold text-sm text-gray-800">{l.name}</p>
+                          {l.details && (
+                            <p className="text-xs text-gray-500 mt-0.5 whitespace-pre-line leading-snug">{l.details}</p>
+                          )}
                           <p className="text-xs text-gray-400 mt-0.5">
                             {l.deadline_time != null ? `By ${floatToHHMM(l.deadline_time)} · ` : ''}
                             {l.photo_required ? '\u{1F4F8} required · ' : ''}
@@ -479,6 +483,7 @@ interface PendingAttachment {
 
 function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
   const [name, setName]               = useState(line?.name ?? '');
+  const [details, setDetails]         = useState(line?.details ?? '');
   const [dayPart, setDayPart]         = useState<DayPart>(line?.day_part ?? 'opening');
   const [deadline, setDeadline]       = useState(floatToHHMM(line?.deadline_time));
   const [photoRequired, setPhotoReq]  = useState(line?.photo_required ?? false);
@@ -548,6 +553,7 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
+          details: details.trim() ? details.trim() : null,
           day_part: dayPart,
           deadline_time: hhmmToFloat(deadline),
           photo_required: photoRequired,
@@ -603,6 +609,13 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Name</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Inspect restrooms"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Details</label>
+            <textarea value={details} onChange={e => setDetails(e.target.value)}
+              placeholder="Extra instructions / description (optional)"
+              rows={2}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
           </div>
           <div className="grid grid-cols-2 gap-3">

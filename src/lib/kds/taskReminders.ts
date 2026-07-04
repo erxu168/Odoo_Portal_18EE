@@ -11,7 +11,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { playTaskReminder } from './soundEngine';
 
-interface RawTask { id: number; name: string; deadlineMs: number; }
+interface RawTask { id: number; name: string; deadlineMs: number; photoRequired?: boolean; details?: string | null; }
 
 export interface ActiveReminder {
   showId: number;
@@ -19,6 +19,8 @@ export interface ActiveReminder {
   name: string;
   dueInMin: number;
   overdue: boolean;
+  photoRequired?: boolean;
+  details?: string | null;
 }
 
 const LEAD_MS = 30 * 60 * 1000;   // start reminding 30 min before due
@@ -32,6 +34,7 @@ export function useTaskReminders(configId: number, muted: boolean): {
   reminder: ActiveReminder | null;
   dismiss: () => void;
   snooze: (taskId: number) => void;
+  complete: (taskId: number) => void;
 } {
   const [reminder, setReminder] = useState<ActiveReminder | null>(null);
   const tasksRef = useRef<RawTask[]>([]);
@@ -40,6 +43,7 @@ export function useTaskReminders(configId: number, muted: boolean): {
   const lastShowRef = useRef(0);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const snoozedRef = useRef<Map<number, number>>(new Map()); // taskId -> snooze-until ms
+  const doneRef = useRef<Set<number>>(new Set()); // completed this session — never re-pop
   const mutedRef = useRef(muted);
   mutedRef.current = muted;
 
@@ -72,6 +76,14 @@ export function useTaskReminders(configId: number, muted: boolean): {
     setReminder(null);
   }, []);
 
+  const complete = useCallback((taskId: number) => {
+    doneRef.current.add(taskId);
+    // Drop it from the working list so it can't re-pop before the next poll confirms.
+    tasksRef.current = tasksRef.current.filter(t => t.id !== taskId);
+    if (hideTimerRef.current) { clearTimeout(hideTimerRef.current); hideTimerRef.current = null; }
+    setReminder(null);
+  }, []);
+
   // Scheduler: decide when to pop the next due reminder.
   useEffect(() => {
     if (!configId) return;
@@ -79,6 +91,7 @@ export function useTaskReminders(configId: number, muted: boolean): {
       const now = Date.now();
       const activeList = tasksRef.current
         .filter(t => t.deadlineMs - now <= LEAD_MS)        // within window or overdue
+        .filter(t => !doneRef.current.has(t.id))           // skip tasks completed this session
         .filter(t => {                                     // skip snoozed tasks
           const until = snoozedRef.current.get(t.id);
           return !until || now >= until;
@@ -102,6 +115,8 @@ export function useTaskReminders(configId: number, muted: boolean): {
         name: t.name,
         dueInMin: Math.max(0, dueInMin),
         overdue: dueInMin <= 0,
+        photoRequired: !!t.photoRequired,
+        details: t.details ?? null,
       });
       if (!mutedRef.current) playTaskReminder();
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -113,5 +128,5 @@ export function useTaskReminders(configId: number, muted: boolean): {
     };
   }, [configId]);
 
-  return { reminder, dismiss, snooze };
+  return { reminder, dismiss, snooze, complete };
 }

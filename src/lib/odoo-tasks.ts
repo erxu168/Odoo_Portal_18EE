@@ -37,6 +37,7 @@ export interface TaskAttachment {
 export interface TaskListLine {
   id: number;
   name: string;
+  details: string | null;
   sequence: number;
   day_part: DayPart;
   deadline_datetime: string | null;
@@ -113,6 +114,7 @@ export interface RecurrenceRule {
 export interface TaskTemplateLine {
   id: number;
   name: string;
+  details: string | null;
   sequence: number;
   day_part: DayPart;
   deadline_time: number | null;   // Float hours, e.g. 14.5 = 14:30
@@ -235,7 +237,7 @@ const LIST_FIELDS = [
 ];
 
 const LINE_FIELDS = [
-  'id', 'list_id', 'name', 'sequence', 'day_part', 'deadline_datetime',
+  'id', 'list_id', 'name', 'details', 'sequence', 'day_part', 'deadline_datetime',
   'photo_required', 'photo_uploaded', 'photo_instructions',
   'module_link_type', 'state',
   'completed_at', 'completed_by_id', 'completed_by_name',
@@ -288,6 +290,7 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
   const hydratedLines: TaskListLine[] = lines.map((l: any) => ({
     id: l.id,
     name: l.name,
+    details: l.details || null,
     sequence: l.sequence,
     day_part: l.day_part,
     deadline_datetime: odooDtToIso(l.deadline_datetime),
@@ -456,10 +459,11 @@ export async function toggleSubtask(subtaskId: number, done: boolean, employeeId
 
 export async function addAdHocLine(
   listId: number,
-  vals: { name: string; day_part: DayPart; deadline_datetime?: string | null; photo_required?: boolean; photo_instructions?: string | null; module_link_type?: ModuleLink },
+  vals: { name: string; details?: string | null; day_part: DayPart; deadline_datetime?: string | null; photo_required?: boolean; photo_instructions?: string | null; module_link_type?: ModuleLink },
 ): Promise<number> {
   const odooVals: any = {
     name: vals.name,
+    details: vals.details || false,
     day_part: vals.day_part,
     photo_required: !!vals.photo_required,
     photo_instructions: vals.photo_instructions || false,
@@ -475,10 +479,11 @@ export async function addAdHocLine(
 
 export async function updateLine(
   lineId: number,
-  vals: Partial<{ name: string; day_part: DayPart; deadline_datetime: string | null; photo_required: boolean; photo_instructions: string | null; module_link_type: ModuleLink }>,
+  vals: Partial<{ name: string; details: string | null; day_part: DayPart; deadline_datetime: string | null; photo_required: boolean; photo_instructions: string | null; module_link_type: ModuleLink }>,
 ): Promise<void> {
   const odooVals: any = { ...vals };
   if (vals.photo_instructions === null) odooVals.photo_instructions = false;
+  if (vals.details === null) odooVals.details = false;
   if (vals.deadline_datetime) {
     odooVals.deadline_datetime = new Date(vals.deadline_datetime).toISOString().slice(0, 19).replace('T', ' ');
   } else if (vals.deadline_datetime === null) {
@@ -513,7 +518,7 @@ const TEMPLATE_FIELDS = [
 ];
 
 const TEMPLATE_LINE_FIELDS = [
-  'id', 'template_id', 'name', 'sequence', 'day_part', 'deadline_time',
+  'id', 'template_id', 'name', 'details', 'sequence', 'day_part', 'deadline_time',
   'photo_required', 'photo_instructions', 'module_link_type', 'subtask_ids',
   'recurrence_type', 'recurrence_interval', 'recurrence_start_date',
   'recurrence_end_type', 'recurrence_end_date', 'recurrence_count',
@@ -614,6 +619,7 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
   const hydratedLines: TaskTemplateLine[] = lines.map((l: any) => ({
     id: l.id,
     name: l.name,
+    details: l.details || null,
     sequence: l.sequence,
     day_part: l.day_part as DayPart,
     // Odoo Float can't be null — a cleared deadline stores 0.0. Treat any falsy value as "no deadline".
@@ -657,6 +663,7 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
 export interface TemplateLineInput {
   id?: number;       // omit for new lines
   name: string;
+  details?: string | null;
   sequence?: number;
   day_part: DayPart;
   deadline_time?: number | null;
@@ -720,6 +727,7 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
   const vals: any = {
     template_id: templateId,
     name: line.name,
+    details: line.details ?? false,
     sequence: line.sequence ?? 10,
     day_part: line.day_part,
     deadline_time: line.deadline_time ?? false,
