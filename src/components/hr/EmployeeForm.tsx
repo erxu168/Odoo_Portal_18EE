@@ -29,14 +29,16 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
   const [workEmail, setWorkEmail] = useState('');
   const [mobilePhone, setMobilePhone] = useState('');
 
-  // Load pickers (companies scoped to the user) + departments.
+  // Load pickers (companies scoped to the user) + departments. Departments come
+  // from /api/hr/departments (not /api/hr/filters) so brand-new / empty
+  // departments are still selectable when adding staff.
   useEffect(() => {
     Promise.all([
       fetch('/api/companies').then(r => r.json()).catch(() => ({})),
-      fetch('/api/hr/filters').then(r => r.json()).catch(() => ({})),
-    ]).then(([comp, filters]) => {
+      fetch('/api/hr/departments').then(r => r.json()).catch(() => ({})),
+    ]).then(([comp, depts]) => {
       setCompanies(comp.companies || []);
-      setDepartments(filters.departments || []);
+      setDepartments(depts.departments || []);
     });
   }, []);
 

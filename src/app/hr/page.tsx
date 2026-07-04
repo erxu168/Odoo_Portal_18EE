@@ -9,7 +9,11 @@ import MyDocuments from '@/components/hr/MyDocuments';
 import EmployeeOverview from '@/components/hr/EmployeeOverview';
 import EmployeeDetail from '@/components/hr/EmployeeDetail';
 import EmployeeForm from '@/components/hr/EmployeeForm';
+import DepartmentsRoles from '@/components/hr/DepartmentsRoles';
+import DeptRoleForm from '@/components/hr/DeptRoleForm';
 import CandidateStatus from '@/components/hr/CandidateStatus';
+
+type DeptRoleKind = 'department' | 'role';
 
 type Screen =
   | { type: 'dashboard' }
@@ -19,6 +23,8 @@ type Screen =
   | { type: 'employees' }
   | { type: 'employee-detail'; employeeId: number }
   | { type: 'employee-edit'; employeeId: number | null }
+  | { type: 'dept-roles' }
+  | { type: 'dept-role-edit'; kind: DeptRoleKind; recordId: number | null }
   | { type: 'candidate-status' };
 
 export default function HrPage() {
@@ -72,6 +78,7 @@ export default function HrPage() {
     else if (tile === 'profile') navigate({ type: 'profile' });
     else if (tile === 'documents') navigate({ type: 'documents' });
     else if (tile === 'employees') navigate({ type: 'employees' });
+    else if (tile === 'departments') navigate({ type: 'dept-roles' });
   }
 
   switch (screen.type) {
@@ -129,6 +136,25 @@ export default function HrPage() {
               goBack();
             }
           }}
+        />
+      );
+    case 'dept-roles':
+      return (
+        <DepartmentsRoles
+          onBack={goDashboard}
+          onHome={goHome}
+          onAdd={(kind) => navigate({ type: 'dept-role-edit', kind, recordId: null })}
+          onEdit={(kind, id) => navigate({ type: 'dept-role-edit', kind, recordId: id })}
+        />
+      );
+    case 'dept-role-edit':
+      return (
+        <DeptRoleForm
+          kind={screen.kind}
+          recordId={screen.recordId}
+          onBack={goBack}
+          onHome={goHome}
+          onSaved={goBack}
         />
       );
     case 'candidate-status':
