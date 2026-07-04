@@ -465,7 +465,8 @@ export default function PurchasePage() {
     try {
       const r = await fetch(`/api/purchase/receive?note_pdf=${receipt.id}`);
       const d = await r.json();
-      if (d.pdf) setNotePdf(d.pdf);
+      // PdfViewer expects raw base64 (it calls atob directly) — strip the data-URL prefix.
+      if (d.pdf) setNotePdf(String(d.pdf).replace(/^data:[^;]+;base64,/, ''));
     } catch (e) { void e; }
   }
 
