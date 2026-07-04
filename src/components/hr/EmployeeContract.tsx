@@ -69,6 +69,9 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
             setHourlyWage(c.hourly_wage ? String(c.hourly_wage) : '');
             setMonthlyWage(c.wage ? String(c.wage) : '');
           }
+        } else {
+          // New contract: default the start date to today (Berlin) so it can be created in one tap.
+          setDateStart(new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' }));
         }
       })
       .catch(() => setError('Could not load the contract.'))
