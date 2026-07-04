@@ -18,10 +18,11 @@ const baseURL = ENVS[target] ?? ENVS.staging;
 
 export default defineConfig({
   testDir: './tests',
-  // Smoke tests hit a remote server; give pages room to load.
-  timeout: 30_000,
-  expect: { timeout: 10_000 },
-  retries: process.env.CI ? 1 : 0,
+  // Smoke tests hit a remote server; give pages room to load (and absorb a
+  // cold Next.js start right after a deploy/restart).
+  timeout: 60_000,
+  expect: { timeout: 15_000 },
+  retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI
     ? [['html', { open: 'never' }], ['list']]
     : 'list',
