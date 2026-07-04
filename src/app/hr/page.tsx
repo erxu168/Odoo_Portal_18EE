@@ -8,6 +8,7 @@ import MyProfile from '@/components/hr/MyProfile';
 import MyDocuments from '@/components/hr/MyDocuments';
 import EmployeeOverview from '@/components/hr/EmployeeOverview';
 import EmployeeDetail from '@/components/hr/EmployeeDetail';
+import EmployeeForm from '@/components/hr/EmployeeForm';
 import CandidateStatus from '@/components/hr/CandidateStatus';
 
 type Screen =
@@ -17,6 +18,7 @@ type Screen =
   | { type: 'documents' }
   | { type: 'employees' }
   | { type: 'employee-detail'; employeeId: number }
+  | { type: 'employee-edit'; employeeId: number | null }
   | { type: 'candidate-status' };
 
 export default function HrPage() {
@@ -100,6 +102,7 @@ export default function HrPage() {
           onBack={goDashboard}
           onHome={goHome}
           onSelect={(id: number) => navigate({ type: 'employee-detail', employeeId: id })}
+          onAdd={() => navigate({ type: 'employee-edit', employeeId: null })}
         />
       );
     case 'employee-detail':
@@ -108,6 +111,24 @@ export default function HrPage() {
           employeeId={screen.employeeId}
           onBack={goBack}
           onHome={goHome}
+          onEdit={() => navigate({ type: 'employee-edit', employeeId: screen.employeeId })}
+          onDeactivated={goBack}
+        />
+      );
+    case 'employee-edit':
+      return (
+        <EmployeeForm
+          employeeId={screen.employeeId}
+          onBack={goBack}
+          onHome={goHome}
+          onSaved={(id: number, isNew: boolean) => {
+            if (isNew) {
+              setHistory((h) => [...h, { type: 'employees' }]);
+              setScreen({ type: 'employee-detail', employeeId: id });
+            } else {
+              goBack();
+            }
+          }}
         />
       );
     case 'candidate-status':

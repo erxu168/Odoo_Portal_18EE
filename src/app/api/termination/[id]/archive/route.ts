@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { requireRole, AuthError } from '@/lib/auth';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
 const MODEL = 'kw.termination';
@@ -19,6 +20,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    requireRole('manager');
     const { id } = await params;
     const odoo = getOdoo();
     const numId = Number(id);
@@ -53,6 +55,7 @@ export async function POST(
     const updated = await odoo.read(MODEL, [numId], TERMINATION_DETAIL_FIELDS);
     return NextResponse.json({ ok: true, data: updated[0] });
   } catch (err: unknown) {
+    if (err instanceof AuthError) return NextResponse.json({ ok: false, error: err.message }, { status: err.status });
     const message = err instanceof Error ? err.message : String(err);
     console.error('[termination/archive]', message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

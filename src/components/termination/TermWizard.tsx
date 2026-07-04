@@ -21,11 +21,12 @@ interface TermWizardProps {
   onBack: () => void;
   onCreated: (id: number) => void;
   onHome: () => void;
+  preselectEmployeeId?: number;
 }
 
 type Step = 'employee' | 'type' | 'details' | 'preview';
 
-export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProps) {
+export default function TermWizard({ onBack, onCreated, onHome, preselectEmployeeId }: TermWizardProps) {
   const { companyId } = useCompany();
   const [step, setStep] = useState<Step>('employee');
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -56,16 +57,26 @@ export default function TermWizard({ onBack, onCreated, onHome }: TermWizardProp
   useEffect(() => {
     (async () => {
       try {
-        const url = companyId
-          ? `/api/termination/employees?company_id=${companyId}`
-          : '/api/termination/employees';
+        // When deep-linked with a preselected employee, load the full list
+        // (no company filter) so that person is guaranteed to be present.
+        const url = preselectEmployeeId
+          ? '/api/termination/employees'
+          : (companyId ? `/api/termination/employees?company_id=${companyId}` : '/api/termination/employees');
         const res = await fetch(url);
         const json = await res.json();
-        setEmployees(json.data || []);
+        const list: Employee[] = json.data || [];
+        setEmployees(list);
+        if (preselectEmployeeId) {
+          const match = list.find(e => e.id === preselectEmployeeId);
+          if (match) {
+            setSelectedEmployee(match);
+            setStep('type');
+          }
+        }
       } catch { /* ignore */ }
       finally { setLoading(false); }
     })();
-  }, [companyId]);
+  }, [companyId, preselectEmployeeId]);
 
   const departments = useMemo(() => {
     const deptMap = new Map<number, string>();

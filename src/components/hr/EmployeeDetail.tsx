@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import AppHeader from "@/components/ui/AppHeader";
 import type { EmployeeData } from "@/types/hr";
 import { EMPLOYEE_READ_FIELDS, DOCUMENT_TYPES, calculateOnboardingPercent } from "@/types/hr";
@@ -16,12 +17,16 @@ interface Props {
   employeeId: number;
   onBack: () => void;
   onHome: () => void;
+  onEdit: () => void;
+  onDeactivated: () => void;
 }
 
-export default function EmployeeDetail({ employeeId, onBack }: Props) {
+export default function EmployeeDetail({ employeeId, onBack, onEdit, onDeactivated }: Props) {
+  const router = useRouter();
   const [emp, setEmp] = useState<EmployeeData | null>(null);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deactivating, setDeactivating] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -74,6 +79,30 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
 
   function hasDoc(key: string): boolean {
     return docs.some((d) => d.doc_type_key === key);
+  }
+
+  function handleOffboard() {
+    router.push("/termination?employee=" + employeeId);
+  }
+
+  async function handleDeactivate() {
+    if (!emp) return;
+    const ok = window.confirm("Mark " + emp.name + " as left? They will be removed from your active staff. You can reactivate them later.");
+    if (!ok) return;
+    setDeactivating(true);
+    try {
+      const res = await fetch("/api/hr/employee/" + employeeId, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not update.");
+      onDeactivated();
+    } catch (err: unknown) {
+      window.alert(err instanceof Error ? err.message : "Could not update.");
+      setDeactivating(false);
+    }
   }
 
   return (
@@ -156,13 +185,18 @@ export default function EmployeeDetail({ employeeId, onBack }: Props) {
         })}
       </div>
 
-      <div className="px-5 pt-4 pb-8 flex gap-3">
-        <button className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
-          Export DATEV
+      <div className="px-5 pt-4 pb-8 space-y-2.5">
+        <button onClick={onEdit} className="w-full py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85">
+          Edit details
         </button>
-        <button className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85">
-          Approve Data
-        </button>
+        <div className="flex gap-3">
+          <button onClick={handleOffboard} className="flex-1 py-3.5 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
+            Offboard / Terminate
+          </button>
+          <button onClick={handleDeactivate} disabled={deactivating} className="flex-1 py-3.5 bg-white text-red-600 font-bold text-[var(--fs-sm)] rounded-xl border border-red-200 active:opacity-85 disabled:opacity-50">
+            {deactivating ? "…" : "Mark as left"}
+          </button>
+        </div>
       </div>
     </div>
   );

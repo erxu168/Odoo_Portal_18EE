@@ -9,6 +9,7 @@ interface Props {
   onBack: () => void;
   onHome: () => void;
   onSelect: (id: number) => void;
+  onAdd: () => void;
 }
 
 type Filter = 'all' | 'incomplete' | 'expiring';
@@ -16,7 +17,7 @@ type Filter = 'all' | 'incomplete' | 'expiring';
 interface CompanyOption { id: number; name: string; }
 interface DeptOption { id: number; name: string; company_id: number | null; }
 
-export default function EmployeeOverview({ onBack, onSelect }: Props) {
+export default function EmployeeOverview({ onBack, onSelect, onAdd }: Props) {
   const [employees, setEmployees] = useState<EmployeeData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -28,15 +29,16 @@ export default function EmployeeOverview({ onBack, onSelect }: Props) {
   const [selectedCompany, setSelectedCompany] = useState<number | null>(null);
   const [selectedDept, setSelectedDept] = useState<number | null>(null);
 
-  // Load filter options once
+  // Load filter options once. Companies come from the scoped /api/companies
+  // so a manager only sees their own restaurant(s); departments from /api/hr/filters.
   useEffect(() => {
-    fetch('/api/hr/filters')
-      .then(r => r.json())
-      .then(d => {
-        setCompanies(d.companies || []);
-        setDepartments(d.departments || []);
-      })
-      .catch(() => {});
+    Promise.all([
+      fetch('/api/companies').then(r => r.json()).catch(() => ({})),
+      fetch('/api/hr/filters').then(r => r.json()).catch(() => ({})),
+    ]).then(([comp, filters]) => {
+      setCompanies(comp.companies || []);
+      setDepartments(filters.departments || []);
+    });
   }, []);
 
   // Load employees when filters change
@@ -177,6 +179,17 @@ export default function EmployeeOverview({ onBack, onSelect }: Props) {
           );
         })
       )}
+
+      {/* Add staff */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent">
+        <button
+          onClick={onAdd}
+          className="w-full max-w-lg mx-auto flex items-center justify-center gap-2 py-4 bg-green-600 text-white font-bold text-[var(--fs-base)] rounded-xl shadow-lg active:opacity-90"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add staff
+        </button>
+      </div>
     </div>
   );
 }

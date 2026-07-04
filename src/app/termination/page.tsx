@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import TermDashboard from '@/components/termination/TermDashboard';
 import TermList from '@/components/termination/TermList';
@@ -15,8 +15,19 @@ type Screen =
   | { type: 'detail'; id: number };
 
 export default function TerminationPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+      <TerminationInner />
+    </Suspense>
+  );
+}
+
+function TerminationInner() {
   const router = useRouter();
-  const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  // Deep-link from the employee page: /termination?employee=ID starts the
+  // wizard with that person pre-selected.
+  const preselectId = Number(useSearchParams().get('employee')) || null;
+  const [screen, setScreen] = useState<Screen>(preselectId ? { type: 'wizard' } : { type: 'dashboard' });
   const [history, setHistory] = useState<Screen[]>([]);
 
   function navigate(s: Screen) {
@@ -87,6 +98,7 @@ export default function TerminationPage() {
       case 'wizard':
         return (
           <TermWizard
+            preselectEmployeeId={preselectId ?? undefined}
             onBack={goBack}
             onHome={goDashboard}
             onCreated={id => {
