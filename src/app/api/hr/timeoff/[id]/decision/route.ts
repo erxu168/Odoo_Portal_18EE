@@ -40,12 +40,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
     if (decision === 'approve') {
-      await odoo.buttonCall('hr.leave', 'action_approve', [leaveId]);
-      // Double-validation types land in 'validate1' after the first approval — finish them.
-      const after = await odoo.searchRead('hr.leave', [['id', '=', leaveId]], ['state'], { limit: 1 });
-      if (after.length && after[0].state === 'validate1') {
-        await odoo.buttonCall('hr.leave', 'action_validate', [leaveId]);
-      }
+      // NOTE: core hr.leave.action_approve() is broken in this DB — the custom
+      // krawings_vacation override of action_validate(self) dropped the argument
+      // that hr_holidays_attendance.action_approve() passes it, so action_approve
+      // raises a TypeError. Calling action_validate() directly moves the request
+      // straight to 'validate' (approved), which is the state a portal approval wants.
+      await odoo.buttonCall('hr.leave', 'action_validate', [leaveId]);
     } else {
       await odoo.buttonCall('hr.leave', 'action_refuse', [leaveId]);
     }
