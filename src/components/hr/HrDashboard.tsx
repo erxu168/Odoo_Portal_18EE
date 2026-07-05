@@ -29,6 +29,8 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
   const [employee, setEmployee] = useState<EmployeeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isManager, setIsManager] = useState(false);
+  const [role, setRole] = useState<string>('staff');
+  const [allowedModules, setAllowedModules] = useState<string[] | null>(null);
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
   const [savedManagerOrder, setSavedManagerOrder] = useState<string[] | null>(null);
 
@@ -54,6 +56,8 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (d.user?.role) setRole(d.user.role);
+      if (Array.isArray(d.user?.modules)) setAllowedModules(d.user.modules);
       if (d.user?.preferences?.hr_tile_order) setSavedOrder(d.user.preferences.hr_tile_order);
       if (d.user?.preferences?.hr_manager_tile_order) setSavedManagerOrder(d.user.preferences.hr_manager_tile_order);
     }).catch(() => {});
@@ -72,6 +76,9 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
         employee.kw_doc_vertrag_ok,
       ].filter(Boolean).length
     : 0;
+
+  // Termination lives inside HR now (admin-only by default, respects per-user module access).
+  const canSeeTermination = allowedModules == null ? role === 'admin' : allowedModules.includes('termination');
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -197,6 +204,14 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
                       sub: 'Review & book leave',
                       onClick: () => onNavigate('timeoff'),
                     },
+                    ...(canSeeTermination ? [{
+                      id: 'termination',
+                      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>,
+                      bg: 'bg-red-50', border: 'border-red-200', iconBg: 'bg-red-100', iconColor: 'text-red-600',
+                      label: 'Termination',
+                      sub: 'Letters & offboarding',
+                      onClick: () => onNavigate('termination'),
+                    }] : []),
                     {
                       id: 'datev-export',
                       icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,

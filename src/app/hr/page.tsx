@@ -88,6 +88,7 @@ export default function HrPage() {
     else if (tile === 'employees') navigate({ type: 'employees' });
     else if (tile === 'departments') navigate({ type: 'dept-roles' });
     else if (tile === 'timeoff') navigate({ type: 'timeoff' });
+    else if (tile === 'termination') router.push('/termination');
   }
 
   switch (screen.type) {
