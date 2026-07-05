@@ -37,6 +37,7 @@ export default function EmployeeDocumentEdit({ employeeId, docTypeKey, onBack, o
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/hr/documents?employee_id=' + employeeId);
       const data = await res.json();
