@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { PURCHASE_ACCESS_LEVELS } from '@/lib/purchase-permissions';
 
 // Mirrors page.tsx's Supplier so callbacks passing the full record stay assignable.
 interface Supplier {
@@ -52,6 +53,18 @@ export default function ManagePurchasesScreen({
 }: ManagePurchasesScreenProps) {
   return (
     <div className="px-4 py-3">
+      {/* Access levels — makes it explicit who can edit templates (Choco-style tiers) */}
+      <div className="mb-3 p-3 rounded-xl bg-gray-50 border border-gray-200">
+        <div className="text-[12px] font-bold text-[#1A1A1A] mb-1.5">Who can edit these templates?</div>
+        <ul className="space-y-1">
+          {PURCHASE_ACCESS_LEVELS.map((lvl) => (
+            <li key={lvl.role} className="text-[12px] text-[#6B7280]">
+              <span className="font-semibold text-[#1A1A1A]">{lvl.role}</span> — {lvl.summary}
+            </li>
+          ))}
+        </ul>
+      </div>
+
       <div className="flex gap-2 mb-3">
         <button
           onClick={onAddSupplier}
@@ -99,7 +112,7 @@ export default function ManagePurchasesScreen({
       {suppliers.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-[var(--fs-sm)] text-gray-500 mb-4">
-            No suppliers yet. Tap <span className="font-semibold text-blue-600">Add supplier</span> above
+            No suppliers yet. Tap <span className="font-semibold text-[#F5800A]">Add supplier</span> above
             {isAdmin ? <>, or use <span className="font-semibold text-[#6B7280]">Auto-import</span> to pull them all from Odoo.</> : '.'}
           </div>
           {isAdmin && (
@@ -118,7 +131,7 @@ export default function ManagePurchasesScreen({
               onClick={() => onOpenGuide(s)}
               className="flex-1 flex items-center gap-3 p-3.5 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] active:scale-[0.98] transition-transform text-left min-w-0"
             >
-              <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-[14px] font-bold text-blue-600 flex-shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center text-[14px] font-bold text-[#F5800A] flex-shrink-0">
                 {s.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
               </div>
               <div className="flex-1 min-w-0">
