@@ -92,7 +92,7 @@ export default function AddSupplierScreen({
             )}
           </div>
           <p className="text-[11px] text-gray-400 mb-3">
-            Searches Odoo partners where <span className="font-mono">supplier_rank &gt; 0</span>. Type at least 2 characters.
+            Showing all suppliers. Type to filter by name.
           </p>
 
           {searching && (
@@ -128,9 +128,11 @@ export default function AddSupplierScreen({
             </div>
           )}
 
-          {!searching && search.trim().length >= 2 && results.length === 0 && (
+          {!searching && results.length === 0 && (
             <div className="text-[12px] text-gray-500 text-center py-6">
-              No suppliers found in Odoo. Switch to <span className="font-semibold">Create new</span> to add one.
+              {search.trim()
+                ? 'No suppliers match that search.'
+                : 'No suppliers found in Odoo.'}
             </div>
           )}
         </>

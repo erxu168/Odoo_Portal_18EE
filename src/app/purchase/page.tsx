@@ -335,33 +335,42 @@ export default function PurchasePage() {
   // ── Add Supplier state ─────────────────────────────────────
   const [addMode, setAddMode] = useState<'odoo' | 'new'>('odoo');
   const [addSearch, setAddSearch] = useState('');
-  const [addResults, setAddResults] = useState<OdooPartnerResult[]>([]);
+  const [addAll, setAddAll] = useState<OdooPartnerResult[]>([]);          // full supplier list from Odoo
+  const [addResults, setAddResults] = useState<OdooPartnerResult[]>([]);  // filtered view shown to the user
   const [addSearching, setAddSearching] = useState(false);
   const [addSaving, setAddSaving] = useState(false);
   const [addErr, setAddErr] = useState('');
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const addSearchRef = useRef<NodeJS.Timeout | null>(null);
 
   function resetAddForm() {
-    setAddMode('odoo'); setAddSearch(''); setAddResults([]); setAddSearching(false);
+    setAddMode('odoo'); setAddSearch(''); setAddAll([]); setAddResults([]); setAddSearching(false);
     setAddSaving(false); setAddErr(''); setNewName(''); setNewEmail(''); setNewPhone('');
   }
 
-  function searchOdooPartners(q: string) {
-    setAddSearch(q);
-    if (addSearchRef.current) clearTimeout(addSearchRef.current);
-    if (q.trim().length < 2) { setAddResults([]); setAddSearching(false); return; }
+  // Load the full active-supplier list once so the "Pick from Odoo" tab shows a
+  // browsable list by default (~149 suppliers). Filtering is then client-side/instant.
+  async function loadAllSuppliers() {
     setAddSearching(true);
-    addSearchRef.current = setTimeout(async () => {
-      try {
-        const r = await fetch(`/api/purchase/suppliers/search?q=${encodeURIComponent(q)}&limit=20`);
-        const d = await r.json();
-        setAddResults(d.suppliers || []);
-      } catch (e) { console.error('[purchase] searchOdooPartners failed', e); setAddResults([]); }
-      finally { setAddSearching(false); }
-    }, 300);
+    try {
+      const r = await fetch('/api/purchase/suppliers/search?q=&limit=200');
+      const d = await r.json();
+      const list: OdooPartnerResult[] = d.suppliers || [];
+      setAddAll(list);
+      setAddResults(list);
+    } catch (e) {
+      console.error('[purchase] loadAllSuppliers failed', e);
+      setAddAll([]); setAddResults([]);
+    } finally {
+      setAddSearching(false);
+    }
+  }
+
+  function filterSuppliers(q: string) {
+    setAddSearch(q);
+    const needle = q.trim().toLowerCase();
+    setAddResults(needle ? addAll.filter((s) => s.name.toLowerCase().includes(needle)) : addAll);
   }
 
   async function linkOdooPartner(p: OdooPartnerResult) {
@@ -643,7 +652,7 @@ export default function PurchasePage() {
           isAdmin={isAdmin}
           seedMsg={seedMsg}
           autoImportBusy={autoImportBusy}
-          onAddSupplier={() => { resetAddForm(); setScreen('add-supplier'); }}
+          onAddSupplier={() => { resetAddForm(); setScreen('add-supplier'); loadAllSuppliers(); }}
           onInsights={() => setScreen('insights')}
           onOpenGuide={openManageGuide}
           onRequestDelete={requestDeleteSupplier}
@@ -653,13 +662,13 @@ export default function PurchasePage() {
       ) : screen === 'add-supplier' ? (<><Header title="Add supplier" subtitle="Link from Odoo or create new" showBack onBack={() => { resetAddForm(); setScreen('manage'); }} />
         <AddSupplierScreen
           mode={addMode}
-          onModeChange={(m) => { setAddMode(m); setAddErr(''); }}
+          onModeChange={(m) => { setAddMode(m); setAddErr(''); if (m === 'odoo' && addAll.length === 0) loadAllSuppliers(); }}
           errorMsg={addErr}
           search={addSearch}
           results={addResults}
           searching={addSearching}
           saving={addSaving}
-          onSearchChange={searchOdooPartners}
+          onSearchChange={filterSuppliers}
           onLinkPartner={linkOdooPartner}
           newName={newName}
           newEmail={newEmail}

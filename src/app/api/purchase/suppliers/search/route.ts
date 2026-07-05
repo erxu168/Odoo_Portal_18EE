@@ -13,21 +13,19 @@ export async function GET(request: Request) {
   if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { searchParams } = new URL(request.url);
-  const q = searchParams.get('q') || '';
-  const limit = parseInt(searchParams.get('limit') || '20');
-
-  if (!q || q.length < 2) {
-    return NextResponse.json({ suppliers: [], message: 'Enter at least 2 characters to search' });
-  }
+  const q = (searchParams.get('q') || '').trim();
+  const limit = Math.min(parseInt(searchParams.get('limit') || '200') || 200, 500);
 
   try {
     const odoo = getOdoo();
 
-    const domain = [
+    // Empty q -> full active-supplier list (browsable by default). A non-empty q
+    // filters by name. supplier_rank > 0 keeps it to vendors only.
+    const domain: any[] = [
       ['supplier_rank', '>', 0],
-      ['name', 'ilike', q],
       ['active', '=', true],
     ];
+    if (q.length >= 1) domain.push(['name', 'ilike', q]);
 
     const partners = await odoo.searchRead('res.partner', domain, [
       'id', 'name', 'email', 'phone', 'mobile',
