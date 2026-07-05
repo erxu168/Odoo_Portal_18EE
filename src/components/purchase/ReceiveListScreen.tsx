@@ -36,7 +36,7 @@ function OrderRow({ order, onOpen, badge, muted }: {
         <div className="text-[14px] font-bold text-gray-900">{order.supplier_name}</div>
         <div className="text-[11px] text-gray-500 font-mono mt-0.5">{order.odoo_po_name || `#${order.id}`}</div>
       </div>
-      <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold ${badge.className}`}>{badge.text}</span>
+      <span className={`text-[12px] px-3 py-1.5 rounded-full font-semibold whitespace-nowrap flex-shrink-0 ${badge.className}`}>{badge.text}</span>
     </button>
   );
 }
@@ -75,8 +75,8 @@ export default function ReceiveListScreen({ orders, isManager, onOpen }: Receive
             order={order}
             onOpen={onOpen}
             badge={{
-              text: order.status === 'partial' ? 'Partial' : 'Pending',
-              className: 'bg-amber-100 text-amber-800',
+              text: order.status === 'partial' ? 'Continue receiving' : 'Start receiving',
+              className: 'bg-[#F5800A] text-white',
             }}
           />
         ))
