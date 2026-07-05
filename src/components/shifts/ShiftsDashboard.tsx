@@ -1,15 +1,23 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import SortableTileGrid from '@/components/ui/SortableTileGrid';
+import React from 'react';
+import PresenceCard from '@/components/shifts/PresenceCard';
 
 /**
- * Shifts module dashboard — sortable tile grid (same pattern as MfgDashboard).
- * Staff tiles: Open Shifts / My Shifts / My Hours / Requests (badge).
- * Managers additionally get: Create Shift / Manage Shifts / Coverage /
- * Roster & Caps / Approvals (badge).
- * Badges are fetched by the page router (GET /api/shifts/summary) and passed in.
- * The manager-only settings gear lives in the AppHeader action (page.tsx).
+ * Shifts module dashboard.
+ *
+ * Layout (top → bottom):
+ *   1. Live "Right now" presence card — managers only. Surfaces who is clocked
+ *      in directly on the dashboard (replaces the old "Right Now" tile) and taps
+ *      through to the full PresenceBoard.
+ *   2. Grouped tile sections:
+ *        • My Shifts     — everyone: own schedule, hours, claims, cover requests, PIN
+ *        • Plan & Manage — managers: build & run the schedule
+ *        • Admin         — managers: team setup, records & compliance
+ *
+ * Badges (requests / approvals) are fetched by the page router
+ * (GET /api/shifts/summary) and passed in. The manager-only settings gear lives
+ * in the AppHeader action (page.tsx).
  */
 
 interface ShiftsDashboardProps {
@@ -32,19 +40,14 @@ interface Tile {
   badge: number | null;
 }
 
-export default function ShiftsDashboard({ isManager, badges, onNavigate }: ShiftsDashboardProps) {
-  const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
+interface TileGroup {
+  title: string;
+  managerOnly: boolean;
+  tiles: Tile[];
+}
 
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then(r => r.json())
-      .then(d => {
-        if (d.user?.preferences?.shifts_tile_order) setSavedOrder(d.user.preferences.shifts_tile_order);
-      })
-      .catch(() => {});
-  }, []);
-
-  const staffTiles: Tile[] = [
+export default function ShiftsDashboard({ companyId, isManager, badges, onNavigate }: ShiftsDashboardProps) {
+  const myShifts: Tile[] = [
     {
       key: 'open',
       label: 'Open Shifts',
@@ -121,7 +124,7 @@ export default function ShiftsDashboard({ isManager, badges, onNavigate }: Shift
     },
   ];
 
-  const managerTiles: Tile[] = [
+  const planManage: Tile[] = [
     {
       key: 'create',
       label: 'Create Shift',
@@ -152,19 +155,6 @@ export default function ShiftsDashboard({ isManager, badges, onNavigate }: Shift
       badge: null,
     },
     {
-      key: 'presence',
-      label: 'Right Now',
-      sublabel: "Who's in · live",
-      color: 'bg-teal-50 border-teal-200', iconBg: 'bg-teal-100', iconColor: 'text-teal-600',
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="2"/>
-          <path d="M16.24 7.76a6 6 0 010 8.49M7.76 16.24a6 6 0 010-8.49M19.07 4.93a10 10 0 010 14.14M4.93 19.07a10 10 0 010-14.14"/>
-        </svg>
-      ),
-      badge: null,
-    },
-    {
       key: 'coverage',
       label: 'Coverage',
       sublabel: 'Week at a glance',
@@ -172,21 +162,6 @@ export default function ShiftsDashboard({ isManager, badges, onNavigate }: Shift
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-      ),
-      badge: null,
-    },
-    {
-      key: 'roster',
-      label: 'Roster & Caps',
-      sublabel: 'Team, caps & skills',
-      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
-      icon: (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 00-3-3.87"/>
-          <path d="M16 3.13a4 4 0 010 7.75"/>
         </svg>
       ),
       badge: null,
@@ -203,6 +178,24 @@ export default function ShiftsDashboard({ isManager, badges, onNavigate }: Shift
         </svg>
       ),
       badge: badges.approvals > 0 ? badges.approvals : null,
+    },
+  ];
+
+  const admin: Tile[] = [
+    {
+      key: 'roster',
+      label: 'Roster & Caps',
+      sublabel: 'Team, caps & skills',
+      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+          <path d="M16 3.13a4 4 0 010 7.75"/>
+        </svg>
+      ),
+      badge: null,
     },
     {
       key: 'punctuality',
@@ -236,33 +229,47 @@ export default function ShiftsDashboard({ isManager, badges, onNavigate }: Shift
     },
   ];
 
-  const tiles: Tile[] = isManager ? [...staffTiles, ...managerTiles] : staffTiles;
+  const groups: TileGroup[] = [
+    { title: 'My Shifts', managerOnly: false, tiles: myShifts },
+    { title: 'Plan & Manage', managerOnly: true, tiles: planManage },
+    { title: 'Admin', managerOnly: true, tiles: admin },
+  ];
+
+  const visibleGroups = groups.filter((g) => !g.managerOnly || isManager);
 
   return (
-    <div className="px-4 py-5">
-      <SortableTileGrid
-        items={tiles}
-        getItemId={(t) => t.key}
-        storageKey="shifts_tile_order"
-        savedOrder={savedOrder}
-        renderItem={(tile) => (
-          <button
-            onClick={() => onNavigate(tile.key)}
-            className={`relative rounded-2xl border ${tile.color} shadow-sm p-4 text-left w-full active:scale-[0.97] transition-transform`}
-          >
-            <div className={`w-11 h-11 rounded-xl ${tile.iconBg} ${tile.iconColor} flex items-center justify-center mb-3`}>
-              {tile.icon}
-            </div>
-            <div className="text-[var(--fs-md)] font-bold text-gray-900">{tile.label}</div>
-            <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{tile.sublabel}</div>
-            {tile.badge !== null && (
-              <span className="absolute top-3 right-3 min-w-[22px] h-6 px-2 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold flex items-center justify-center">
-                {tile.badge}
-              </span>
-            )}
-          </button>
-        )}
-      />
+    <div className="px-4 py-4 flex flex-col gap-5">
+      {isManager && (
+        <PresenceCard companyId={companyId} onOpen={() => onNavigate('presence')} />
+      )}
+
+      {visibleGroups.map((group) => (
+        <section key={group.title}>
+          <h2 className="text-[var(--fs-xs)] font-semibold text-gray-400 tracking-widest uppercase pb-2 pl-0.5">
+            {group.title}
+          </h2>
+          <div className="grid grid-cols-2 gap-3">
+            {group.tiles.map((tile) => (
+              <button
+                key={tile.key}
+                onClick={() => onNavigate(tile.key)}
+                className={`relative rounded-2xl border ${tile.color} shadow-sm p-4 text-left w-full active:scale-[0.97] transition-transform`}
+              >
+                <div className={`w-11 h-11 rounded-xl ${tile.iconBg} ${tile.iconColor} flex items-center justify-center mb-3`}>
+                  {tile.icon}
+                </div>
+                <div className="text-[var(--fs-md)] font-bold text-gray-900">{tile.label}</div>
+                <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{tile.sublabel}</div>
+                {tile.badge !== null && (
+                  <span className="absolute top-3 right-3 min-w-[22px] h-6 px-2 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold flex items-center justify-center">
+                    {tile.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
