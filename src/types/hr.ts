@@ -29,8 +29,10 @@ export interface EmployeeData {
   name: string;
   nick_name: string | false;
   department_id: [number, string] | false;
+  company_id: [number, string] | false;
   job_title: string | false;
   work_email: string | false;
+  mobile_phone: string | false;
   birthday: string | false;
   gender: Gender | false;
   marital: MaritalStatus;
@@ -89,7 +91,7 @@ export interface EmployeeData {
 }
 
 export const EMPLOYEE_READ_FIELDS: string[] = [
-  'name', 'nick_name', 'department_id', 'job_title', 'work_email',
+  'name', 'nick_name', 'department_id', 'company_id', 'job_title', 'work_email', 'mobile_phone',
   'birthday', 'gender', 'marital', 'country_id', 'place_of_birth',
   'country_of_birth', 'children', 'disabled', 'kw_geburtsname',
   'private_street', 'private_street2', 'private_zip', 'private_city',
