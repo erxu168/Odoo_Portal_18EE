@@ -10,6 +10,7 @@ interface Props {
   onNext: (fields: Record<string, unknown>) => void;
   onPrev: () => void;
   saving: boolean;
+  employeeId?: number; // when a manager edits someone else; omitted = self-service
 }
 
 function formatIban(raw: string): string {
@@ -24,7 +25,7 @@ function maskIban(iban: string): string {
   return masked.replace(/(.{4})/g, '$1 ').trim();
 }
 
-export default function StepBank({ employee, onNext, onPrev, saving }: Props) {
+export default function StepBank({ employee, onNext, onPrev, saving, employeeId }: Props) {
   const [currentIban, setCurrentIban] = useState<string | null>(null);
   const [iban, setIban] = useState('');
   const [loading, setLoading] = useState(true);
@@ -33,7 +34,7 @@ export default function StepBank({ employee, onNext, onPrev, saving }: Props) {
   const ex = FIELD_EXPLAINERS.bank_iban;
 
   useEffect(() => {
-    fetch('/api/hr/bank')
+    fetch('/api/hr/bank' + (employeeId ? '?employee_id=' + employeeId : ''))
       .then(r => r.json())
       .then(d => {
         if (d.iban) {
@@ -43,7 +44,7 @@ export default function StepBank({ employee, onNext, onPrev, saving }: Props) {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [employeeId]);
 
   function handleIbanChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value.replace(/[^A-Za-z0-9]/g, '');
@@ -77,7 +78,7 @@ export default function StepBank({ employee, onNext, onPrev, saving }: Props) {
       const res = await fetch('/api/hr/bank', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ iban: cleaned }),
+        body: JSON.stringify({ iban: cleaned, employee_id: employeeId }),
       });
       const data = await res.json();
       if (!res.ok) {

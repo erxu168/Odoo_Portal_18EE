@@ -1,16 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
+import { getCurrentUser, hasRole } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { parseCompanyIds } from '@/lib/db';
 
-export async function GET() {
-  try {
-    const user = getCurrentUser();
-    if (!user || !user.employee_id) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+/**
+ * Resolve the target employee for a bank read/write.
+ * - No employee_id => the logged-in user's own record (self-service).
+ * - employee_id given => manager/admin editing someone else; requires manager
+ *   role and (for non-admins) the target's company in the allowed set.
+ * Returns { targetId } or { error }.
+ */
+async function resolveTarget(odoo: ReturnType<typeof getOdoo>, employeeIdRaw: unknown) {
+  const user = getCurrentUser();
+  if (!user) return { error: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }) };
+
+  const requested = employeeIdRaw ? Number(employeeIdRaw) : 0;
+  const isOther = requested && requested !== user.employee_id;
+
+  if (isOther) {
+    if (!hasRole(user, 'manager')) {
+      return { error: NextResponse.json({ error: 'Access denied' }, { status: 403 }) };
     }
+    if (user.role !== 'admin') {
+      const emps = await odoo.searchRead('hr.employee', [['id', '=', requested]], ['company_id'], { limit: 1, context: { active_test: false } });
+      if (!emps.length) return { error: NextResponse.json({ error: 'Employee not found' }, { status: 404 }) };
+      const cId = Array.isArray(emps[0].company_id) ? emps[0].company_id[0] : null;
+      const allowed = parseCompanyIds(user.allowed_company_ids);
+      if (cId === null || !allowed.includes(cId)) {
+        return { error: NextResponse.json({ error: 'You can only manage staff in your own restaurant.' }, { status: 403 }) };
+      }
+    }
+    return { targetId: requested };
+  }
 
+  if (!user.employee_id) return { error: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }) };
+  return { targetId: user.employee_id };
+}
+
+export async function GET(req: NextRequest) {
+  try {
     const odoo = getOdoo();
-    const emps = await odoo.searchRead('hr.employee', [['id', '=', user.employee_id]], ['bank_account_id'], { limit: 1 });
+    const employeeId = new URL(req.url).searchParams.get('employee_id');
+    const scope = await resolveTarget(odoo, employeeId);
+    if (scope.error) return scope.error;
+    const targetId = scope.targetId!;
+
+    const emps = await odoo.searchRead('hr.employee', [['id', '=', targetId]], ['bank_account_id'], { limit: 1, context: { active_test: false } });
     if (!emps.length || !emps[0].bank_account_id) {
       return NextResponse.json({ iban: null });
     }
@@ -30,12 +65,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const user = getCurrentUser();
-    if (!user || !user.employee_id) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const { iban } = await req.json();
+    const { iban, employee_id } = await req.json();
     if (!iban || typeof iban !== 'string') {
       return NextResponse.json({ error: 'IBAN is required' }, { status: 400 });
     }
@@ -46,7 +76,11 @@ export async function POST(req: NextRequest) {
     }
 
     const odoo = getOdoo();
-    const emps = await odoo.searchRead('hr.employee', [['id', '=', user.employee_id]], ['bank_account_id', 'address_home_id'], { limit: 1 });
+    const scope = await resolveTarget(odoo, employee_id);
+    if (scope.error) return scope.error;
+    const targetId = scope.targetId!;
+
+    const emps = await odoo.searchRead('hr.employee', [['id', '=', targetId]], ['bank_account_id', 'address_home_id'], { limit: 1, context: { active_test: false } });
     if (!emps.length) {
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
     }
@@ -59,9 +93,9 @@ export async function POST(req: NextRequest) {
       await odoo.write('res.partner.bank', [bankId], { acc_number: cleaned });
     } else if (partnerId) {
       const newBankId = await odoo.create('res.partner.bank', { acc_number: cleaned, partner_id: partnerId });
-      await odoo.write('hr.employee', [user.employee_id], { bank_account_id: newBankId });
+      await odoo.write('hr.employee', [targetId], { bank_account_id: newBankId });
     } else {
-      return NextResponse.json({ error: 'Employee has no private address. Ask your manager to set it up.' }, { status: 400 });
+      return NextResponse.json({ error: 'This employee has no private address on file yet, so a bank account can’t be attached. Add their address first.' }, { status: 400 });
     }
 
     return NextResponse.json({ success: true, iban: cleaned });
