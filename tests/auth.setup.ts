@@ -1,4 +1,6 @@
 import { test as setup, expect } from '@playwright/test';
+import { mkdirSync } from 'fs';
+import { dirname } from 'path';
 
 const AUTH_FILE = '.auth/portal.json';
 
@@ -6,10 +8,15 @@ setup('log in to the portal', async ({ page }) => {
   const email = process.env.SMOKE_EMAIL;
   const password = process.env.SMOKE_PASSWORD;
 
+  // No robot credentials (local dev / CI without secrets): don't fail the whole
+  // run. Write an empty session so dependent projects can still load a storage
+  // state, and skip — the `smoke` tests skip themselves too. Set SMOKE_EMAIL /
+  // SMOKE_PASSWORD (e.g. a robot admin account) to enable the real login smoke.
   if (!email || !password) {
-    throw new Error(
-      'SMOKE_EMAIL and SMOKE_PASSWORD must be set (see .env.smoke.local or GitHub secrets).',
-    );
+    mkdirSync(dirname(AUTH_FILE), { recursive: true });
+    await page.context().storageState({ path: AUTH_FILE });
+    setup.skip(true, 'SMOKE_EMAIL/SMOKE_PASSWORD not set — skipping login smoke');
+    return;
   }
 
   // The login page itself must render — covers the public /login check.

@@ -3,6 +3,9 @@ import { ROUTES } from './routes';
 
 for (const route of ROUTES) {
   test(`page loads cleanly: ${route}`, async ({ page }) => {
+    // Needs a logged-in robot session; skip cleanly when creds aren't provided.
+    test.skip(!process.env.SMOKE_EMAIL || !process.env.SMOKE_PASSWORD, 'no smoke creds');
+
     // Collect uncaught JavaScript errors thrown while the page runs.
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));

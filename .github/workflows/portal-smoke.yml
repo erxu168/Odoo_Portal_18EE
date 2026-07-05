@@ -28,8 +28,11 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
-      - name: Run smoke test
-        run: npm run smoke
+      # Run the pure-function unit tests (always) + the login smoke (auto-skips
+      # unless SMOKE_EMAIL/SMOKE_PASSWORD secrets are set). The heavier
+      # login-based module e2e suites are run manually (npm run test:inventory).
+      - name: Run smoke + unit tests
+        run: npx playwright test --project=unit --project=smoke
         env:
           SMOKE_ENV: ${{ github.event.inputs.environment || 'staging' }}
           SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
