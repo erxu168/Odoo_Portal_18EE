@@ -43,7 +43,7 @@ export default function OrderHistoryScreen({ orders, filter, onFilterChange, onO
           <button
             key={f}
             onClick={() => onFilterChange(f)}
-            className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold whitespace-nowrap flex-shrink-0 capitalize ${filter === f ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}
+            className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold whitespace-nowrap flex-shrink-0 capitalize ${filter === f ? 'bg-[#F5800A] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}
           >
             {f}
           </button>

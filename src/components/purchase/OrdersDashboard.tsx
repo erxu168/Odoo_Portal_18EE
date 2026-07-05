@@ -105,7 +105,7 @@ export default function OrdersDashboard({
       icon: <PlaceOrderIcon />,
       badgeCount: 0,
       badgeColor: '',
-      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
+      color: 'bg-orange-50 border-orange-200', iconBg: 'bg-orange-100', iconColor: 'text-[#F5800A]',
     },
     {
       id: 'cart',
@@ -132,7 +132,7 @@ export default function OrdersDashboard({
       icon: <HistoryIcon />,
       badgeCount: 0,
       badgeColor: '',
-      color: 'bg-blue-50 border-blue-200', iconBg: 'bg-purple-100', iconColor: 'text-blue-600',
+      color: 'bg-gray-50 border-gray-200', iconBg: 'bg-gray-100', iconColor: 'text-gray-600',
     },
   ];
 

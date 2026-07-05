@@ -8,8 +8,8 @@ interface StatusBadgeProps {
 
 const STATUS_MAP: Record<string, [string, string]> = {
   pending_approval: ['bg-amber-100 text-amber-800', 'Awaiting approval'],
-  approved: ['bg-blue-100 text-blue-800', 'Approved'],
-  sent: ['bg-blue-100 text-blue-800', 'Sent'],
+  approved: ['bg-gray-100 text-gray-700', 'Approved'],
+  sent: ['bg-orange-100 text-orange-800', 'Sent'],
   received: ['bg-green-100 text-green-800', 'Delivered'],
   partial: ['bg-amber-100 text-amber-800', 'Partial'],
   cancelled: ['bg-red-100 text-red-800', 'Cancelled'],

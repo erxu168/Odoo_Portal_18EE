@@ -55,7 +55,7 @@ export default function ManagePurchasesScreen({
       <div className="flex gap-2 mb-3">
         <button
           onClick={onAddSupplier}
-          className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-[#2563EB] text-white text-[13px] font-bold shadow-sm active:scale-[0.98] transition-transform"
+          className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl bg-[#F5800A] text-white text-[13px] font-bold shadow-sm active:scale-[0.98] transition-transform"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" />
@@ -77,20 +77,20 @@ export default function ManagePurchasesScreen({
       </div>
 
       {isAdmin && (
-        <div className="mb-3 p-3 rounded-xl bg-purple-50 border border-purple-100">
-          <div className="text-[12px] font-semibold text-purple-900 mb-0.5">Auto-build order lists</div>
-          <div className="text-[11px] text-purple-700 mb-2 leading-snug">
+        <div className="mb-3 p-3 rounded-xl bg-[#FFF4E6] border border-[#F5800A]">
+          <div className="text-[12px] font-semibold text-[#1A1A1A] mb-0.5">Auto-build order lists</div>
+          <div className="text-[11px] text-[#6B7280] mb-2 leading-snug">
             Pulls every supplier you&apos;ve ordered from in the last 12 months and their products from Odoo.
             Safe to re-run — prices refresh, no duplicates.
           </div>
           <button
             onClick={onAutoImport}
             disabled={!!autoImportBusy}
-            className="w-full py-2.5 rounded-lg bg-purple-600 text-white text-[13px] font-bold active:scale-[0.98] transition-transform disabled:opacity-50"
+            className="w-full py-2.5 rounded-lg bg-[#F5800A] text-white text-[13px] font-bold active:scale-[0.98] transition-transform disabled:opacity-50"
           >
             {autoImportBusy ? 'Importing…' : 'Auto-import from order history'}
           </button>
-          {seedMsg && <p className="text-[11px] text-purple-800 mt-2 whitespace-pre-line">{seedMsg}</p>}
+          {seedMsg && <p className="text-[11px] text-[#6B7280] mt-2 whitespace-pre-line">{seedMsg}</p>}
         </div>
       )}
 
@@ -100,7 +100,7 @@ export default function ManagePurchasesScreen({
         <div className="text-center py-12">
           <div className="text-[var(--fs-sm)] text-gray-500 mb-4">
             No suppliers yet. Tap <span className="font-semibold text-blue-600">Add supplier</span> above
-            {isAdmin ? <>, or use <span className="font-semibold text-purple-700">Auto-import</span> to pull them all from Odoo.</> : '.'}
+            {isAdmin ? <>, or use <span className="font-semibold text-[#6B7280]">Auto-import</span> to pull them all from Odoo.</> : '.'}
           </div>
           {isAdmin && (
             <button

@@ -56,13 +56,13 @@ export default function AddSupplierScreen({
       <div className="flex gap-1.5 mb-3">
         <button
           onClick={() => onModeChange('odoo')}
-          className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors ${mode === 'odoo' ? 'bg-[#2563EB] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}
+          className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors ${mode === 'odoo' ? 'bg-[#F5800A] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}
         >
           Pick from Odoo
         </button>
         <button
           onClick={() => onModeChange('new')}
-          className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors ${mode === 'new' ? 'bg-[#2563EB] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}
+          className={`flex-1 py-2.5 rounded-xl text-[13px] font-semibold transition-colors ${mode === 'new' ? 'bg-[#F5800A] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}
         >
           Create new
         </button>
@@ -118,7 +118,7 @@ export default function AddSupplierScreen({
                     <button
                       onClick={() => onLinkPartner(p)}
                       disabled={saving}
-                      className="h-9 px-3 rounded-lg bg-[#2563EB] text-white text-[12px] font-bold active:bg-blue-700 disabled:opacity-50"
+                      className="h-9 px-3 rounded-lg bg-[#F5800A] text-white text-[12px] font-bold active:bg-[#E86000] disabled:opacity-50"
                     >
                       Add
                     </button>
@@ -169,7 +169,7 @@ export default function AddSupplierScreen({
           <button
             onClick={onCreateNew}
             disabled={saving || !newName.trim()}
-            className="w-full py-3.5 rounded-xl bg-[#2563EB] text-white text-[14px] font-bold shadow-sm active:bg-blue-700 disabled:opacity-50"
+            className="w-full py-3.5 rounded-xl bg-[#F5800A] text-white text-[14px] font-bold shadow-sm active:bg-[#E86000] disabled:opacity-50"
           >
             {saving ? 'Creating in Odoo...' : 'Create supplier'}
           </button>

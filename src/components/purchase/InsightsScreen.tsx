@@ -96,7 +96,7 @@ export default function InsightsScreen({ month, data, loading, onShiftMonth, for
                       <div className="text-[12px] font-mono font-bold text-gray-900">&euro;{s.total.toFixed(2)}</div>
                     </div>
                     <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="absolute inset-y-0 left-0 bg-[#2563EB] rounded-full" style={{ width: `${(s.total / max) * 100}%` }} />
+                      <div className="absolute inset-y-0 left-0 bg-[#F5800A] rounded-full" style={{ width: `${(s.total / max) * 100}%` }} />
                     </div>
                     <div className="text-[10px] text-gray-400 mt-0.5">
                       {s.orders} order{s.orders === 1 ? '' : 's'}

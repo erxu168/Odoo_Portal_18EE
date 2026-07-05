@@ -161,11 +161,11 @@ export default function CartViewScreen({
                             );
                           }
                         }}
-                        className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100"
+                        className="w-11 h-11 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[18px] text-gray-600 active:bg-gray-100"
                       >
                         -
                       </button>
-                      <button onClick={() => onOpenNumpad(item, cart.supplier_id)} className="w-10 h-8 flex items-center justify-center text-[14px] font-bold font-mono text-gray-900">
+                      <button onClick={() => onOpenNumpad(item, cart.supplier_id)} className="w-11 h-11 flex items-center justify-center text-[17px] font-bold font-mono text-gray-900">
                         {item.quantity}
                       </button>
                       <button
@@ -176,7 +176,7 @@ export default function CartViewScreen({
                             cart.supplier_id
                           )
                         }
-                        className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100"
+                        className="w-11 h-11 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[18px] text-gray-600 active:bg-gray-100"
                       >
                         +
                       </button>

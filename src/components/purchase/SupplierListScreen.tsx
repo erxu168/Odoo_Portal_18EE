@@ -47,7 +47,7 @@ export default function SupplierListScreen({
     <div className="px-4 py-3">
       <button
         onClick={onBrowseCatalog}
-        className="w-full flex items-center gap-2.5 px-3.5 py-3 mb-3 rounded-xl bg-gradient-to-r from-[#2563EB] to-[#1E40AF] text-white shadow-sm active:scale-[0.98] transition-transform"
+        className="w-full flex items-center gap-2.5 px-3.5 py-3 mb-3 rounded-xl bg-gradient-to-r from-[#F5800A] to-[#E86000] text-white shadow-sm active:scale-[0.98] transition-transform"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
           <circle cx="11" cy="11" r="8" />
