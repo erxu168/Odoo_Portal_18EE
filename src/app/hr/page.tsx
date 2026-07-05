@@ -10,7 +10,6 @@ import EmployeeOverview from '@/components/hr/EmployeeOverview';
 import EmployeeDetail from '@/components/hr/EmployeeDetail';
 import EmployeeForm from '@/components/hr/EmployeeForm';
 import EmployeeContract from '@/components/hr/EmployeeContract';
-import EmployeeProfileEdit from '@/components/hr/EmployeeProfileEdit';
 import EmployeeSectionEdit, { type SectionKey } from '@/components/hr/EmployeeSectionEdit';
 import EmployeeDocumentEdit from '@/components/hr/EmployeeDocumentEdit';
 import DepartmentsRoles from '@/components/hr/DepartmentsRoles';
@@ -30,7 +29,6 @@ type Screen =
   | { type: 'employee-detail'; employeeId: number }
   | { type: 'employee-edit'; employeeId: number | null }
   | { type: 'employee-contract'; employeeId: number }
-  | { type: 'employee-profile-edit'; employeeId: number }
   | { type: 'employee-section-edit'; employeeId: number; section: SectionKey }
   | { type: 'employee-doc-edit'; employeeId: number; docTypeKey: string }
   | { type: 'dept-roles' }
@@ -142,15 +140,6 @@ export default function HrPage() {
             else navigate({ type: 'employee-section-edit', employeeId: screen.employeeId, section: section as SectionKey });
           }}
           onEditDocument={(docTypeKey) => navigate({ type: 'employee-doc-edit', employeeId: screen.employeeId, docTypeKey })}
-        />
-      );
-    case 'employee-profile-edit':
-      return (
-        <EmployeeProfileEdit
-          employeeId={screen.employeeId}
-          onBack={goBack}
-          onHome={goHome}
-          onDone={goBack}
         />
       );
     case 'employee-section-edit':
