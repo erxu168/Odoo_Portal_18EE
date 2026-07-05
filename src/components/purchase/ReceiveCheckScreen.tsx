@@ -132,34 +132,24 @@ export default function ReceiveCheckScreen({
             <div key={line.id} className="py-3 border-b border-gray-100 last:border-0">
               <div className="flex items-center gap-2.5">
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-gray-900">{line.product_name}</div>
-                  <div className="text-[11px] text-gray-500 font-mono">
+                  <div className="text-[16px] font-semibold text-gray-900 leading-snug">{line.product_name}</div>
+                  <div className="text-[13px] text-gray-500 font-mono mt-0.5">
                     Ordered: {line.ordered_qty} {line.product_uom}
                     {linePrice > 0 && ` · €${linePrice.toFixed(2)}/${line.product_uom}`}
                   </div>
-                  {linePrice > 0 && (
-                    <div className="text-[10px] text-gray-400 font-mono">
-                      Subtotal: &euro;{(line.ordered_qty * linePrice).toFixed(2)}
-                    </div>
-                  )}
                   {line.has_issue === 1 && (
-                    <span className="text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-bold bg-red-100 text-red-800 mt-1 inline-block">
+                    <span className="text-[12px] px-2.5 py-1 rounded-md font-bold bg-red-100 text-red-800 mt-1 inline-block">
                       {line.issue_type || 'Issue'}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {qty !== null && qty > 0 ? (
-                    <div className="flex items-center">
-                      <button onClick={() => onUpdateQty(line.id, Math.max(0, (qty || 0) - 1))} className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100">-</button>
-                      <button onClick={() => onOpenNumpad(line)} className="w-10 h-8 flex items-center justify-center text-[14px] font-bold font-mono text-gray-900">{qty}</button>
-                      <button onClick={() => onUpdateQty(line.id, (qty || 0) + 1)} className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100">+</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => onOpenNumpad(line)} className="h-8 px-3 rounded-lg border border-gray-200 bg-white text-[12px] font-semibold text-gray-500 active:bg-gray-100 font-mono">
-                      {qty === null ? 'Enter qty' : '0'}
-                    </button>
-                  )}
+                  {/* Stepper is always visible; a muted 0 signals "not entered yet". */}
+                  <div className="flex items-center">
+                    <button onClick={() => onUpdateQty(line.id, Math.max(0, (qty ?? 0) - 1))} className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100">-</button>
+                    <button onClick={() => onOpenNumpad(line)} className={`w-10 h-8 flex items-center justify-center text-[14px] font-bold font-mono ${qty === null ? 'text-gray-300' : 'text-gray-900'}`}>{qty ?? 0}</button>
+                    <button onClick={() => onUpdateQty(line.id, (qty ?? 0) + 1)} className="w-8 h-8 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[15px] text-gray-600 active:bg-gray-100">+</button>
+                  </div>
                   {qty !== null && qty === line.ordered_qty && <span className="text-green-500 text-[15px]">&#10003;</span>}
                   {qty !== null && qty !== line.ordered_qty && qty < line.ordered_qty && (
                     <span className="text-red-600 text-[11px] font-bold font-mono">{line.difference}</span>
