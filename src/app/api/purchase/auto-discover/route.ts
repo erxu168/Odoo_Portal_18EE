@@ -25,9 +25,10 @@
  *     dry_run?: boolean }           // if true, returns preview without writes
  */
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
-import { getDb } from '@/lib/db';
+import { getDb, parseCompanyIds } from '@/lib/db';
 import {
   listSuppliers, createSupplier, getSupplier,
   getGuide, createGuide, addGuideItem,
@@ -57,9 +58,27 @@ export async function POST(request: Request) {
   if (!hasRole(user, 'admin')) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
 
   const body = await request.json().catch(() => ({}));
-  const companies: number[] = Array.isArray(body.companies) && body.companies.length > 0
-    ? body.companies.filter((c: any) => Number.isInteger(c) && c > 0)
-    : DEFAULT_COMPANIES;
+
+  // Company scoping: default to the ACTIVE company selected in the header switcher
+  // (kw_company_id cookie), validated against the user's allowed companies — so
+  // auto-import only pulls the company you are currently in and never crosses into
+  // others. An explicit body.companies array still overrides (cross-company admin use).
+  // Fallback order: active cookie -> allowed companies -> DEFAULT_COMPANIES.
+  const allowed = parseCompanyIds(user.allowed_company_ids);
+  let companies: number[];
+  if (Array.isArray(body.companies) && body.companies.length > 0) {
+    companies = body.companies.filter((c: any) => Number.isInteger(c) && c > 0);
+  } else {
+    const activeRaw = cookies().get('kw_company_id')?.value;
+    const active = activeRaw ? parseInt(activeRaw, 10) : NaN;
+    if (Number.isFinite(active) && (allowed.length === 0 || allowed.includes(active))) {
+      companies = [active];
+    } else if (allowed.length > 0) {
+      companies = allowed;
+    } else {
+      companies = DEFAULT_COMPANIES;
+    }
+  }
   const months = Number.isFinite(body.months) && body.months > 0 && body.months <= 60
     ? Math.floor(body.months) : 12;
   const dryRun = body.dry_run === true;
