@@ -18,13 +18,15 @@ interface Props {
   employeeId: number;
   onBack: () => void;
   onHome: () => void;
-  onEdit: () => void;
-  onFullEdit: () => void;
   onContract: () => void;
   onDeactivated: () => void;
+  editMode: boolean;
+  onToggleEditMode: () => void;
+  onEditSection: (section: string) => void;
+  onEditDocument: (docTypeKey: string) => void;
 }
 
-export default function EmployeeDetail({ employeeId, onBack, onEdit, onFullEdit, onContract, onDeactivated }: Props) {
+export default function EmployeeDetail({ employeeId, onBack, onContract, onDeactivated, editMode, onToggleEditMode, onEditSection, onEditDocument }: Props) {
   const router = useRouter();
   const [emp, setEmp] = useState<EmployeeData | null>(null);
   const [docs, setDocs] = useState<Doc[]>([]);
@@ -125,7 +127,24 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onFullEdit,
 
   return (
     <div className="min-h-screen bg-gray-50 pb-8">
-      <AppHeader title={emp.name} showBack onBack={onBack} />
+      <AppHeader
+        title={emp.name}
+        showBack
+        onBack={onBack}
+        action={
+          <button
+            onClick={onToggleEditMode}
+            className="px-3 py-1.5 rounded-lg bg-white/15 text-white font-bold text-[13px] active:bg-white/25"
+          >
+            {editMode ? 'Done' : 'Edit'}
+          </button>
+        }
+      />
+      {editMode && (
+        <div className="px-5 py-2 bg-green-50 text-green-700 text-[var(--fs-xs)] font-semibold text-center">
+          Tap any section or document to edit.
+        </div>
+      )}
 
       <div className="bg-white px-5 py-4 flex items-center gap-3.5 border-b border-gray-200">
         <div className="w-14 h-14 rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold text-[var(--fs-xl)] flex-shrink-0">
@@ -141,39 +160,47 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onFullEdit,
         </div>
       </div>
 
+      <Section title="Basics" onEdit={editMode ? () => onEditSection('basics') : undefined}>
+        <Row label="Role" value={emp.job_title || ''} optional />
+        <Row label="Restaurant" value={emp.company_id ? (emp.company_id as [number, string])[1] : ''} optional />
+        <Row label="Department" value={dept} optional />
+        <Row label="Mobile" value={emp.mobile_phone || ''} optional />
+        <Row label="Work email" value={emp.work_email || ''} optional />
+      </Section>
+
       <STitle text="DATEV / Personalfragebogen" />
-      <Section title="Personal">
-        <Row label="Birthday" value={emp.birthday || ""} mono />
-        <Row label="Gender" value={emp.gender || ""} />
-        <Row label="Nationality" value={emp.country_id ? (emp.country_id as [number, string])[1] : ""} />
-        <Row label="Place of birth" value={emp.place_of_birth || ""} />
-        <Row label="Marital" value={emp.marital || ""} />
-        <Row label="Address" value={[emp.private_street, emp.private_zip, emp.private_city].filter(Boolean).join(", ")} />
+      <Section title="Personal & address" onEdit={editMode ? () => onEditSection('personal') : undefined}>
+        <Row label="Birthday" value={emp.birthday || ''} mono />
+        <Row label="Gender" value={emp.gender || ''} />
+        <Row label="Nationality" value={emp.country_id ? (emp.country_id as [number, string])[1] : ''} />
+        <Row label="Place of birth" value={emp.place_of_birth || ''} />
+        <Row label="Marital" value={emp.marital || ''} />
+        <Row label="Address" value={[emp.private_street, emp.private_zip, emp.private_city].filter(Boolean).join(', ')} />
       </Section>
 
-      <Section title="Tax">
-        <Row label="Tax ID" value={emp.kw_steuer_id || ""} mono />
-        <Row label="Tax class" value={emp.kw_steuerklasse ? "Class " + emp.kw_steuerklasse : ""} />
-        <Row label="Church tax" value={emp.kw_konfession === "--" ? "None" : emp.kw_konfession || ""} />
-        <Row label="IBAN" value={emp.bank_account_id ? "On file" : ""} />
+      <Section title="Tax" onEdit={editMode ? () => onEditSection('tax') : undefined}>
+        <Row label="Tax ID" value={emp.kw_steuer_id || ''} mono />
+        <Row label="Tax class" value={emp.kw_steuerklasse ? 'Class ' + emp.kw_steuerklasse : ''} />
+        <Row label="Church tax" value={emp.kw_konfession === '--' ? 'None' : emp.kw_konfession || ''} />
       </Section>
 
-      <Section title="Insurance">
-        <Row label="SV-Nr." value={emp.ssnid || ""} mono />
-        <Row label="Krankenkasse" value={emp.kw_krankenkasse_name || ""} />
-        <Row label="Type" value={emp.kw_kv_typ || ""} />
+      <Section title="Bank" onEdit={editMode ? () => onEditSection('bank') : undefined}>
+        <Row label="IBAN" value={emp.bank_account_id ? 'On file' : ''} optional />
       </Section>
 
-      <Section title="Residence">
-        <Row label="Permit type" value={emp.kw_aufenthaltstitel_typ || ""} />
-        <Row label="Visa expires" value={emp.visa_expire || ""} mono />
-        <Row label="Permit expires" value={emp.work_permit_expiration_date || ""} mono />
+      <Section title="Insurance" onEdit={editMode ? () => onEditSection('insurance') : undefined}>
+        <Row label="SV-Nr." value={emp.ssnid || ''} mono />
+        <Row label="Krankenkasse" value={emp.kw_krankenkasse_name || ''} />
+        <Row label="Type" value={emp.kw_kv_typ || ''} />
       </Section>
 
-      <Section title="Gastro">
-        <Row label="Health cert. date" value={emp.kw_gesundheitszeugnis_datum || ""} mono />
-        <Row label="Health cert. expires" value={emp.kw_gesundheitszeugnis_ablauf || ""} mono />
-        <Row label="Sofortmeldung" value={emp.kw_sofortmeldung_done ? "Done" : ""} />
+      <Section title="Residence & work" onEdit={editMode ? () => onEditSection('residence') : undefined}>
+        <Row label="Permit type" value={emp.kw_aufenthaltstitel_typ || ''} optional />
+        <Row label="Visa expires" value={emp.visa_expire || ''} mono optional />
+        <Row label="Permit expires" value={emp.work_permit_expiration_date || ''} mono optional />
+        <Row label="Health cert. date" value={emp.kw_gesundheitszeugnis_datum || ''} mono />
+        <Row label="Health cert. expires" value={emp.kw_gesundheitszeugnis_ablauf || ''} mono />
+        <Row label="Sofortmeldung" value={emp.kw_sofortmeldung_done ? 'Done' : ''} />
       </Section>
 
       <STitle text="Documents" />
@@ -186,9 +213,9 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onFullEdit,
             <button
               key={dt.key}
               type="button"
-              disabled={!uploaded}
-              onClick={uploaded ? () => handleOpenDoc(doc!) : undefined}
-              className={"w-full text-left flex items-center gap-3 p-3 rounded-xl border disabled:cursor-default " + (uploaded ? "border-green-600 bg-green-50 active:bg-green-100" : "border-gray-200 bg-white")}
+              disabled={editMode ? false : !uploaded}
+              onClick={editMode ? () => onEditDocument(dt.key) : (uploaded ? () => handleOpenDoc(doc!) : undefined)}
+              className={"w-full text-left flex items-center gap-3 p-3 rounded-xl border disabled:cursor-default " + (uploaded ? "border-green-600 bg-green-50 active:bg-green-100" : (editMode ? "border-gray-300 bg-white active:bg-gray-50" : "border-gray-200 bg-white"))}
             >
               <div className={"w-10 h-10 rounded-lg flex items-center justify-center text-[var(--fs-xl)] " + (uploaded ? "bg-green-100" : "bg-gray-100")}>
                 {dt.icon}
@@ -196,12 +223,14 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onFullEdit,
               <div className="flex-1 min-w-0">
                 <div className="text-[var(--fs-sm)] font-semibold">{dt.label}</div>
                 {uploaded ? (
-                  <div className="text-[var(--fs-xs)] text-green-600 font-medium">Uploaded &middot; Tap to view</div>
+                  <div className="text-[var(--fs-xs)] text-green-600 font-medium">{editMode ? 'Uploaded · Tap to replace' : 'Uploaded · Tap to view'}</div>
                 ) : (
-                  <div className="text-[var(--fs-xs)] text-gray-400">{dt.required ? "Required - Missing" : "Optional"}</div>
+                  <div className="text-[var(--fs-xs)] text-gray-400">{editMode ? (dt.required ? 'Required · Tap to upload' : 'Tap to upload') : (dt.required ? 'Required - Missing' : 'Optional')}</div>
                 )}
               </div>
-              {uploaded ? (
+              {editMode ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4z"/></svg>
+              ) : uploaded ? (
                 opening ? (
                   <div className="w-5 h-5 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
                 ) : (
@@ -216,12 +245,6 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onFullEdit,
       </div>
 
       <div className="px-5 pt-4 pb-8 space-y-2.5">
-        <button onClick={onFullEdit} className="w-full py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85">
-          Edit full profile
-        </button>
-        <button onClick={onEdit} className="w-full py-3.5 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
-          Edit basics (name, role, contact)
-        </button>
         <button onClick={onContract} className="w-full py-3.5 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85 flex items-center justify-center gap-2">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="12" y1="17" x2="8" y2="17"/></svg>
           Contract &amp; hours
@@ -252,22 +275,36 @@ function STitle({ text }: { text: string }) {
   return <div className="px-5 pt-4 pb-1 text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">{text}</div>;
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200 mb-3">
-      <div className="text-[var(--fs-sm)] font-bold text-gray-400 uppercase tracking-wider mb-2">{title}</div>
+function Section({ title, onEdit, children }: { title: string; onEdit?: () => void; children: React.ReactNode }) {
+  const body = (
+    <>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[var(--fs-sm)] font-bold text-gray-400 uppercase tracking-wider">{title}</div>
+        {onEdit && (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4z"/></svg>
+        )}
+      </div>
       {children}
+    </>
+  );
+  return (
+    <div className="mx-5 mb-3">
+      {onEdit ? (
+        <button type="button" onClick={onEdit} className="w-full text-left bg-white rounded-2xl p-4 border border-green-600 active:bg-green-50">{body}</button>
+      ) : (
+        <div className="bg-white rounded-2xl p-4 border border-gray-200">{body}</div>
+      )}
     </div>
   );
 }
 
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Row({ label, value, mono, optional }: { label: string; value: string; mono?: boolean; optional?: boolean }) {
   const missing = !value;
   return (
     <div className="flex justify-between py-1.5 border-b border-gray-50 last:border-b-0">
       <span className="text-[var(--fs-sm)] text-gray-500">{label}</span>
-      <span className={"text-[var(--fs-sm)] font-medium text-right max-w-[55%] " + (mono ? "font-mono " : "") + (missing ? "text-red-500 italic" : "")}>
-        {missing ? "Missing" : value}
+      <span className={"text-[var(--fs-sm)] font-medium text-right max-w-[55%] " + (mono ? "font-mono " : "") + (missing && !optional ? "text-red-500 italic" : "") + (missing && optional ? "text-gray-300" : "")}>
+        {missing ? (optional ? "—" : "Missing") : value}
       </span>
     </div>
   );

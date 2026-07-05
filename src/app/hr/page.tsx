@@ -11,6 +11,8 @@ import EmployeeDetail from '@/components/hr/EmployeeDetail';
 import EmployeeForm from '@/components/hr/EmployeeForm';
 import EmployeeContract from '@/components/hr/EmployeeContract';
 import EmployeeProfileEdit from '@/components/hr/EmployeeProfileEdit';
+import EmployeeSectionEdit, { type SectionKey } from '@/components/hr/EmployeeSectionEdit';
+import EmployeeDocumentEdit from '@/components/hr/EmployeeDocumentEdit';
 import DepartmentsRoles from '@/components/hr/DepartmentsRoles';
 import DeptRoleForm from '@/components/hr/DeptRoleForm';
 import TimeOff from '@/components/hr/TimeOff';
@@ -29,6 +31,8 @@ type Screen =
   | { type: 'employee-edit'; employeeId: number | null }
   | { type: 'employee-contract'; employeeId: number }
   | { type: 'employee-profile-edit'; employeeId: number }
+  | { type: 'employee-section-edit'; employeeId: number; section: SectionKey }
+  | { type: 'employee-doc-edit'; employeeId: number; docTypeKey: string }
   | { type: 'dept-roles' }
   | { type: 'dept-role-edit'; kind: DeptRoleKind; recordId: number | null }
   | { type: 'timeoff' }
@@ -38,6 +42,7 @@ type Screen =
 export default function HrPage() {
   const router = useRouter();
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  const [staffEditMode, setStaffEditMode] = useState(false);
   const [history, setHistory] = useState<Screen[]>([]);
   const [isCandidate, setIsCandidate] = useState(false);
   const [candidateChecked, setCandidateChecked] = useState(false);
@@ -118,7 +123,7 @@ export default function HrPage() {
         <EmployeeOverview
           onBack={goDashboard}
           onHome={goHome}
-          onSelect={(id: number) => navigate({ type: 'employee-detail', employeeId: id })}
+          onSelect={(id: number) => { setStaffEditMode(false); navigate({ type: 'employee-detail', employeeId: id }); }}
           onAdd={() => navigate({ type: 'employee-edit', employeeId: null })}
         />
       );
@@ -128,16 +133,41 @@ export default function HrPage() {
           employeeId={screen.employeeId}
           onBack={goBack}
           onHome={goHome}
-          onEdit={() => navigate({ type: 'employee-edit', employeeId: screen.employeeId })}
-          onFullEdit={() => navigate({ type: 'employee-profile-edit', employeeId: screen.employeeId })}
           onContract={() => navigate({ type: 'employee-contract', employeeId: screen.employeeId })}
           onDeactivated={goBack}
+          editMode={staffEditMode}
+          onToggleEditMode={() => setStaffEditMode((m) => !m)}
+          onEditSection={(section) => {
+            if (section === 'basics') navigate({ type: 'employee-edit', employeeId: screen.employeeId });
+            else navigate({ type: 'employee-section-edit', employeeId: screen.employeeId, section: section as SectionKey });
+          }}
+          onEditDocument={(docTypeKey) => navigate({ type: 'employee-doc-edit', employeeId: screen.employeeId, docTypeKey })}
         />
       );
     case 'employee-profile-edit':
       return (
         <EmployeeProfileEdit
           employeeId={screen.employeeId}
+          onBack={goBack}
+          onHome={goHome}
+          onDone={goBack}
+        />
+      );
+    case 'employee-section-edit':
+      return (
+        <EmployeeSectionEdit
+          employeeId={screen.employeeId}
+          section={screen.section}
+          onBack={goBack}
+          onHome={goHome}
+          onDone={goBack}
+        />
+      );
+    case 'employee-doc-edit':
+      return (
+        <EmployeeDocumentEdit
+          employeeId={screen.employeeId}
+          docTypeKey={screen.docTypeKey}
           onBack={goBack}
           onHome={goHome}
           onDone={goBack}
