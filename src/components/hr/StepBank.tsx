@@ -11,6 +11,7 @@ interface Props {
   onPrev: () => void;
   saving: boolean;
   employeeId?: number; // when a manager edits someone else; omitted = self-service
+  submitLabel?: string;
 }
 
 function formatIban(raw: string): string {
@@ -25,7 +26,7 @@ function maskIban(iban: string): string {
   return masked.replace(/(.{4})/g, '$1 ').trim();
 }
 
-export default function StepBank({ employee, onNext, onPrev, saving, employeeId }: Props) {
+export default function StepBank({ employee, onNext, onPrev, saving, employeeId, submitLabel = 'Continue' }: Props) {
   const [currentIban, setCurrentIban] = useState<string | null>(null);
   const [iban, setIban] = useState('');
   const [loading, setLoading] = useState(true);
@@ -141,7 +142,7 @@ export default function StepBank({ employee, onNext, onPrev, saving, employeeId 
       <div className="px-5 pt-4 pb-8 flex gap-3">
         <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
         <button onClick={handleContinue} disabled={isSaving} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
-          {isSaving ? 'Saving...' : 'Continue'}
+          {isSaving ? 'Saving...' : submitLabel}
         </button>
       </div>
     </div>

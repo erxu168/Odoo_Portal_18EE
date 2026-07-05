@@ -10,9 +10,11 @@ interface Props {
   onNext: (fields: Record<string, unknown>) => void;
   onPrev: () => void;
   saving: boolean;
+  submitLabel?: string;
+  requireAck?: boolean;
 }
 
-export default function StepInsurance({ employee, onNext, onPrev, saving }: Props) {
+export default function StepInsurance({ employee, onNext, onPrev, saving, submitLabel = 'Continue', requireAck = true }: Props) {
   const [svNr, setSvNr] = useState(employee.ssnid || "");
   const [kkName, setKkName] = useState(employee.kw_krankenkasse_name || "");
   const [kvTyp, setKvTyp] = useState(employee.kw_kv_typ || "");
@@ -58,27 +60,31 @@ export default function StepInsurance({ employee, onNext, onPrev, saving }: Prop
             <option value="geringfuegig">Mini-job (employer-only contributions)</option>
           </select>
         </div>
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4 text-[var(--fs-sm)] text-amber-800 flex items-start gap-2">
-          <span className="text-lg leading-none">&#9888;</span>
-          <div>
-            <strong>Important:</strong> Health insurance is mandatory in Germany. You must register with a public health insurer (e.g. TK, AOK, BARMER) or provide proof of other valid health insurance before your first payroll. Without proof of coverage, your employer cannot process your salary. Most employees do not meet the conditions for private insurance (PKV) and must join a public insurer (GKV). For mini-job employees (up to 603 EUR/month as of 2026): your employer pays a flat-rate health contribution, but this does NOT cover you. You must have your own health insurance (e.g. family insurance, student insurance, or voluntary public insurance) and provide proof.
-            <a href="https://www.nomadenberlin.com/working-in-berlin" target="_blank" rel="noopener noreferrer" className="block mt-1.5 text-blue-600 font-semibold no-underline">Learn about health insurance for workers in Berlin &rarr;</a>
-          </div>
-        </div>
-        <label className="flex items-start gap-3 mt-4 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={e => setAcknowledged(e.target.checked)}
-            className="w-5 h-5 mt-0.5 rounded border-gray-300 text-green-600 accent-green-600 flex-shrink-0"
-          />
-          <span className="text-[var(--fs-sm)] text-gray-700">I confirm that I have read and understood the health insurance requirements above and will provide proof of valid health insurance to my employer.</span>
-        </label>
+        {requireAck && (
+          <>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4 text-[var(--fs-sm)] text-amber-800 flex items-start gap-2">
+              <span className="text-lg leading-none">&#9888;</span>
+              <div>
+                <strong>Important:</strong> Health insurance is mandatory in Germany. You must register with a public health insurer (e.g. TK, AOK, BARMER) or provide proof of other valid health insurance before your first payroll. Without proof of coverage, your employer cannot process your salary. Most employees do not meet the conditions for private insurance (PKV) and must join a public insurer (GKV). For mini-job employees (up to 603 EUR/month as of 2026): your employer pays a flat-rate health contribution, but this does NOT cover you. You must have your own health insurance (e.g. family insurance, student insurance, or voluntary public insurance) and provide proof.
+                <a href="https://www.nomadenberlin.com/working-in-berlin" target="_blank" rel="noopener noreferrer" className="block mt-1.5 text-blue-600 font-semibold no-underline">Learn about health insurance for workers in Berlin &rarr;</a>
+              </div>
+            </div>
+            <label className="flex items-start gap-3 mt-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={e => setAcknowledged(e.target.checked)}
+                className="w-5 h-5 mt-0.5 rounded border-gray-300 text-green-600 accent-green-600 flex-shrink-0"
+              />
+              <span className="text-[var(--fs-sm)] text-gray-700">I confirm that I have read and understood the health insurance requirements above and will provide proof of valid health insurance to my employer.</span>
+            </label>
+          </>
+        )}
       </div>
       <div className="px-5 pt-4 pb-8 flex gap-3">
         <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
-        <button onClick={handleSubmit} disabled={saving || !acknowledged} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
-          {saving ? "Saving..." : "Continue"}
+        <button onClick={handleSubmit} disabled={saving || (requireAck && !acknowledged)} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
+          {saving ? "Saving..." : submitLabel}
         </button>
       </div>
     </div>

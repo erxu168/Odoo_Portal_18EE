@@ -10,6 +10,7 @@ interface Props {
   employee: EmployeeData;
   onNext: (fields: Record<string, unknown>) => void;
   saving: boolean;
+  submitLabel?: string;
 }
 
 interface AddressSuggestion {
@@ -55,7 +56,7 @@ function formatPhone(raw: string): string {
   return digits;
 }
 
-export default function StepPersonal({ employee, onNext, saving }: Props) {
+export default function StepPersonal({ employee, onNext, saving, submitLabel = 'Continue' }: Props) {
   const [birthday, setBirthday] = useState(employee.birthday || '');
   const [gender, setGender] = useState(employee.gender || '');
   const [marital, setMarital] = useState(employee.marital || 'single');
@@ -344,7 +345,7 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
       </div>
       <div className="px-5 pt-4 pb-8">
         <button onClick={handleSubmit} disabled={saving} className="w-full py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
-          {saving ? 'Saving...' : 'Continue'}
+          {saving ? 'Saving...' : submitLabel}
         </button>
       </div>
     </div>

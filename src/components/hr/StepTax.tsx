@@ -10,9 +10,10 @@ interface Props {
   onNext: (fields: Record<string, unknown>) => void;
   onPrev: () => void;
   saving: boolean;
+  submitLabel?: string;
 }
 
-export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
+export default function StepTax({ employee, onNext, onPrev, saving, submitLabel = 'Continue' }: Props) {
   const [steuerId, setSteuerId] = useState(employee.kw_steuer_id || '');
   const [idNr, setIdNr] = useState(employee.identification_id || '');
   const [steuerklasse, setSteuerklasse] = useState(employee.kw_steuerklasse || '');
@@ -103,7 +104,7 @@ export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
       <div className="px-5 pt-4 pb-8 flex gap-3">
         <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
         <button onClick={handleSubmit} disabled={saving} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
-          {saving ? 'Saving...' : 'Continue'}
+          {saving ? 'Saving...' : submitLabel}
         </button>
       </div>
     </div>
