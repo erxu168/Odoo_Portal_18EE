@@ -70,7 +70,7 @@ export default function OrderGuideScreen({
             <button
               key={cat}
               onClick={() => onCategoryChange(cat)}
-              className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold whitespace-nowrap flex-shrink-0 ${category === cat ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}
+              className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold whitespace-nowrap flex-shrink-0 ${category === cat ? 'bg-[#F5800A] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}
             >
               {cat}
             </button>
