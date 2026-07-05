@@ -13,9 +13,24 @@ type Tab = 'order' | 'cart' | 'receive' | 'history';
 interface OrdersDashboardProps {
   cartItemCount: number;
   pendingDeliveryCount: number;
+  awaitingApprovalCount: number;
+  isManager: boolean;
   onNavigate: (tab: Tab) => void;
   locationId: number;
 }
+
+const ApprovalIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 11l3 3L22 4" />
+    <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+  </svg>
+);
+
+const ChevronRight = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6" />
+  </svg>
+);
 
 // SVG icons — inline for zero dependencies
 const PlaceOrderIcon = () => (
@@ -67,6 +82,8 @@ interface TileConfig {
 export default function OrdersDashboard({
   cartItemCount,
   pendingDeliveryCount,
+  awaitingApprovalCount,
+  isManager,
   onNavigate,
 }: OrdersDashboardProps) {
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
@@ -122,6 +139,28 @@ export default function OrdersDashboard({
   return (
     <div>
       <div className="px-4 py-4">
+        {/* Approvals banner — surfaces submitted deliveries waiting for a manager */}
+        {awaitingApprovalCount > 0 && (
+          <button
+            onClick={() => onNavigate('receive')}
+            className="w-full flex items-center gap-3 rounded-2xl border border-[#F5800A] bg-[#FFF4E6] p-4 mb-4 text-left active:scale-[0.98] transition-transform shadow-sm"
+          >
+            <div className="w-11 h-11 rounded-xl bg-[#F5800A] text-white flex items-center justify-center flex-shrink-0">
+              <ApprovalIcon />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[16px] font-bold text-[#1A1A1A]">
+                {awaitingApprovalCount} {awaitingApprovalCount === 1 ? 'delivery' : 'deliveries'}{' '}
+                {isManager ? 'need your approval' : 'awaiting approval'}
+              </div>
+              <div className="text-[13px] text-[#6B7280] mt-0.5">
+                {isManager ? 'Tap to review and approve' : 'A manager will review these'}
+              </div>
+            </div>
+            <span className="text-[#F5800A] flex-shrink-0"><ChevronRight /></span>
+          </button>
+        )}
+
         {/* 2×2 grid — drag-and-drop reorderable */}
         <SortableTileGrid
           items={tiles}
