@@ -7,6 +7,7 @@ import StepPersonal from '@/components/hr/StepPersonal';
 import StepTax from '@/components/hr/StepTax';
 import StepInsurance from '@/components/hr/StepInsurance';
 import StepBank from '@/components/hr/StepBank';
+import StepResidenceWork from '@/components/hr/StepResidenceWork';
 import type { EmployeeData } from '@/types/hr';
 
 interface Props {
@@ -110,7 +111,7 @@ export default function EmployeeProfileEdit({ employeeId, onBack, onDone }: Prop
       {step === 2 && <StepInsurance employee={employee} onNext={next} onPrev={prev} saving={saving} />}
       {step === 3 && <StepBank employee={employee} employeeId={employeeId} onNext={next} onPrev={prev} saving={saving} />}
       {step === 4 && (
-        <ResidenceWorkStep
+        <StepResidenceWork
           employee={employee}
           saving={saving}
           onPrev={prev}
@@ -122,123 +123,5 @@ export default function EmployeeProfileEdit({ employeeId, onBack, onDone }: Prop
         <div className="mx-5 mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[var(--fs-sm)]">{error}</div>
       )}
     </div>
-  );
-}
-
-// ---- Residence, work permit, health certificate (not covered by the reused steps) ----
-
-function ResidenceWorkStep({
-  employee, saving, onPrev, onSave,
-}: {
-  employee: EmployeeData;
-  saving: boolean;
-  onPrev: () => void;
-  onSave: (fields: Record<string, unknown>) => void;
-}) {
-  const s = (v: unknown) => (v === false || v === undefined || v === null ? '' : String(v));
-  const e = employee as unknown as Record<string, unknown>;
-
-  const [startDate, setStartDate] = useState(s(e.kw_beschaeftigungsbeginn));
-  const [permitType, setPermitType] = useState(s(e.kw_aufenthaltstitel_typ));
-  const [passport, setPassport] = useState(s(e.passport_id));
-  const [visaNo, setVisaNo] = useState(s(e.visa_no));
-  const [permitNo, setPermitNo] = useState(s(e.permit_no));
-  const [visaExpire, setVisaExpire] = useState(s(e.visa_expire));
-  const [permitExpire, setPermitExpire] = useState(s(e.work_permit_expiration_date));
-  const [healthDate, setHealthDate] = useState(s(e.kw_gesundheitszeugnis_datum));
-  const [healthExpire, setHealthExpire] = useState(s(e.kw_gesundheitszeugnis_ablauf));
-  const [sofortDone, setSofortDone] = useState(e.kw_sofortmeldung_done === true);
-
-  function handleSave() {
-    onSave({
-      kw_beschaeftigungsbeginn: startDate || false,
-      kw_aufenthaltstitel_typ: permitType || false,
-      passport_id: passport || false,
-      visa_no: visaNo || false,
-      permit_no: permitNo || false,
-      visa_expire: visaExpire || false,
-      work_permit_expiration_date: permitExpire || false,
-      kw_gesundheitszeugnis_datum: healthDate || false,
-      kw_gesundheitszeugnis_ablauf: healthExpire || false,
-      kw_sofortmeldung_done: sofortDone,
-    });
-  }
-
-  return (
-    <div className="pb-8">
-      <div className="p-5 flex flex-col gap-4">
-        <Field label="Employment start date">
-          <input type="date" value={startDate} onChange={(ev) => setStartDate(ev.target.value)} className="form-inp" />
-        </Field>
-
-        <div className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 pt-1">Residence / work permit</div>
-        <Field label="Permit type">
-          <input value={permitType} onChange={(ev) => setPermitType(ev.target.value)} placeholder="e.g. Aufenthaltstitel §18a" className="form-inp" />
-        </Field>
-        <Field label="Passport number">
-          <input value={passport} onChange={(ev) => setPassport(ev.target.value)} className="form-inp" />
-        </Field>
-        <div className="flex gap-3">
-          <Field label="Visa number" className="flex-1">
-            <input value={visaNo} onChange={(ev) => setVisaNo(ev.target.value)} className="form-inp" />
-          </Field>
-          <Field label="Visa expires" className="flex-1">
-            <input type="date" value={visaExpire} onChange={(ev) => setVisaExpire(ev.target.value)} className="form-inp" />
-          </Field>
-        </div>
-        <div className="flex gap-3">
-          <Field label="Permit number" className="flex-1">
-            <input value={permitNo} onChange={(ev) => setPermitNo(ev.target.value)} className="form-inp" />
-          </Field>
-          <Field label="Permit expires" className="flex-1">
-            <input type="date" value={permitExpire} onChange={(ev) => setPermitExpire(ev.target.value)} className="form-inp" />
-          </Field>
-        </div>
-
-        <div className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 pt-1">Health certificate (Gesundheitszeugnis)</div>
-        <div className="flex gap-3">
-          <Field label="Issued" className="flex-1">
-            <input type="date" value={healthDate} onChange={(ev) => setHealthDate(ev.target.value)} className="form-inp" />
-          </Field>
-          <Field label="Expires" className="flex-1">
-            <input type="date" value={healthExpire} onChange={(ev) => setHealthExpire(ev.target.value)} className="form-inp" />
-          </Field>
-        </div>
-
-        <label className="flex items-center gap-3 py-1">
-          <input type="checkbox" checked={sofortDone} onChange={(ev) => setSofortDone(ev.target.checked)} className="w-5 h-5 accent-green-600" />
-          <span className="text-[var(--fs-sm)] font-medium text-gray-700">Sofortmeldung submitted</span>
-        </label>
-      </div>
-
-      <div className="px-5 pt-2 pb-8 flex gap-3">
-        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
-        <button onClick={handleSave} disabled={saving} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
-          {saving ? 'Saving…' : 'Save & finish'}
-        </button>
-      </div>
-
-      <style jsx>{`
-        .form-inp {
-          width: 100%;
-          padding: 0.75rem 1rem;
-          border: 1px solid #e5e7eb;
-          border-radius: 0.75rem;
-          background: #fff;
-          font-size: var(--fs-base);
-          outline: none;
-        }
-        .form-inp:focus { border-color: #16a34a; }
-      `}</style>
-    </div>
-  );
-}
-
-function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <label className={'block ' + (className || '')}>
-      <span className="block text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1.5">{label}</span>
-      {children}
-    </label>
   );
 }
