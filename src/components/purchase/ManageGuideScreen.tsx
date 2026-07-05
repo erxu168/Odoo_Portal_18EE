@@ -89,7 +89,7 @@ export default function ManageGuideScreen({
         className="w-full flex items-center justify-between px-3.5 py-3 bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] mb-3 active:bg-gray-50"
       >
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5800A" strokeWidth="2" strokeLinecap="round">
               <rect x="1" y="3" width="15" height="13" />
               <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
@@ -132,7 +132,7 @@ export default function ManageGuideScreen({
                   <button
                     key={d}
                     onClick={() => onOrderDaysChange(active ? orderDays.filter((x) => x !== d) : [...orderDays, d])}
-                    className={`px-3.5 py-2 rounded-lg text-[var(--fs-xs)] font-semibold ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
+                    className={`px-3.5 py-2 rounded-lg text-[var(--fs-xs)] font-semibold ${active ? 'bg-[#F5800A] text-white' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
                   >
                     {d.charAt(0).toUpperCase() + d.slice(1)}
                   </button>
@@ -151,7 +151,7 @@ export default function ManageGuideScreen({
                   <button
                     key={d}
                     onClick={() => onDeliveryDaysChange(active ? deliveryDays.filter((x) => x !== d) : [...deliveryDays, d])}
-                    className={`px-3.5 py-2 rounded-lg text-[var(--fs-xs)] font-semibold ${active ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
+                    className={`px-3.5 py-2 rounded-lg text-[var(--fs-xs)] font-semibold ${active ? 'bg-[#F5800A] text-white' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
                   >
                     {d.charAt(0).toUpperCase() + d.slice(1)}
                   </button>
@@ -173,7 +173,7 @@ export default function ManageGuideScreen({
           <button
             onClick={onSaveConfig}
             disabled={configSaving}
-            className="w-full py-2.5 rounded-xl bg-blue-600 text-white text-[var(--fs-sm)] font-bold active:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="w-full py-2.5 rounded-xl bg-[#F5800A] text-white text-[var(--fs-sm)] font-bold active:bg-[#E86000] disabled:opacity-50 transition-colors"
           >
             {configSaving ? 'Saving...' : 'Save delivery settings'}
           </button>
@@ -181,7 +181,7 @@ export default function ManageGuideScreen({
       )}
 
       {/* Odoo product search */}
-      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-green-500 transition-colors mb-2">
+      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3.5 h-11 focus-within:border-[#F5800A] transition-colors mb-2">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -203,7 +203,7 @@ export default function ManageGuideScreen({
           <button
             key={cat}
             onClick={() => onCategoryChange(cat)}
-            className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold whitespace-nowrap flex-shrink-0 ${category === cat ? 'bg-green-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}
+            className={`px-4 py-2.5 rounded-full text-[var(--fs-xs)] font-semibold whitespace-nowrap flex-shrink-0 ${category === cat ? 'bg-[#F5800A] text-white' : 'bg-white text-gray-500 border border-gray-200'}`}
           >
             {cat}
           </button>
@@ -214,18 +214,18 @@ export default function ManageGuideScreen({
         <div className="mb-4">
           <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
             {searching ? 'Searching...' : `${searchResults.length} results`}
-            {searchResults.length > 0 && ' \u2014 tap + to add'}
+            {searchResults.length > 0 && ' \u2014 tap \u2605 to add to the template'}
           </div>
           {searching && (
             <div className="flex justify-center py-4">
-              <div className="w-6 h-6 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-gray-300 border-t-[#F5800A] rounded-full animate-spin" />
             </div>
           )}
           {!searching && searchResults.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5">
               {searchResults.map((product) => (
                 <div key={product.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
-                  <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center text-[12px] flex-shrink-0">&#128230;</div>
+                  <div className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center text-[12px] flex-shrink-0">&#128230;</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold text-gray-900 truncate">{product.name}</div>
                     <div className="text-[11px] text-gray-500 font-mono">{product.uom} &bull; &euro;{product.price.toFixed(2)} &bull; {product.category_name}</div>
@@ -233,9 +233,10 @@ export default function ManageGuideScreen({
                   <button
                     onClick={() => onAddProduct(product)}
                     disabled={addingId === product.id}
-                    className="w-9 h-9 rounded-lg bg-green-500 flex items-center justify-center text-white text-[18px] font-bold shadow-sm active:bg-green-600 flex-shrink-0 disabled:opacity-50"
+                    aria-label="Add to template"
+                    className="w-11 h-11 rounded-lg bg-[#F5800A] flex items-center justify-center text-white text-[18px] shadow-sm active:bg-[#E86000] flex-shrink-0 disabled:opacity-50"
                   >
-                    {addingId === product.id ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '+'}
+                    {addingId === product.id ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '★'}
                   </button>
                 </div>
               ))}
