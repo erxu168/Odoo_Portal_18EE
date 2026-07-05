@@ -607,8 +607,8 @@ export default function PurchasePage() {
   const manageIconBtn = (
     <button
       onClick={() => setScreen('manage')}
-      title="Manage guides & settings"
-      aria-label="Manage guides & settings"
+      title="Order Templates"
+      aria-label="Order Templates"
       className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center text-white/80 active:bg-white/20 transition-colors"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -637,7 +637,7 @@ export default function PurchasePage() {
           onOpenNumpad={openNumpad}
           onViewCart={() => changeTab('cart')}
         /></>
-      ) : screen === 'manage' ? (<><Header title="Manage Purchases" subtitle="Guides, suppliers, settings" showBack onBack={() => setScreen('dashboard')} />
+      ) : screen === 'manage' ? (<><Header title="Order Templates" subtitle="Your reusable order lists & suppliers" showBack onBack={() => setScreen('dashboard')} />
         <ManagePurchasesScreen
           suppliers={suppliers}
           isAdmin={isAdmin}
@@ -783,7 +783,7 @@ export default function PurchasePage() {
       ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><OrderHistoryScreen orders={orders} filter={historyFilter} onFilterChange={setHistoryFilter} onOpen={openOrderDetail} /></>
       ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={isManager ? manageIconBtn : undefined} />
         <PurchaseAlerts suppliers={suppliers} />
-        <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} awaitingApprovalCount={pendingDeliveries.filter((o) => o.receipt_status === 'submitted').length} isManager={isManager} onNavigate={changeTab} locationId={locationId} />
+        <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} awaitingApprovalCount={pendingDeliveries.filter((o) => o.receipt_status === 'submitted').length} isManager={isManager} onNavigate={changeTab} onManageTemplates={() => setScreen('manage')} locationId={locationId} />
       </>)}
       <Numpad open={numpadOpen} value={numpadValue} onChange={setNumpadValue} label={numpadProduct?.product_name} sublabel={numpadProduct?.product_uom} onConfirm={handleNumpadConfirm} onClose={() => { setNumpadOpen(false); setRecvNumpadLineId(0); setCartNumpadItem(null); }} />
       {confirmDialog && <ConfirmDialog title={confirmDialog.title} message={confirmDialog.message} confirmLabel={confirmDialog.confirmLabel} cancelLabel={confirmDialog.cancelLabel} variant={confirmDialog.variant} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}

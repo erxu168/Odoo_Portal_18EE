@@ -16,8 +16,18 @@ interface OrdersDashboardProps {
   awaitingApprovalCount: number;
   isManager: boolean;
   onNavigate: (tab: Tab) => void;
+  onManageTemplates?: () => void;
   locationId: number;
 }
+
+const TemplatesIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+    <rect x="9" y="3" width="6" height="4" rx="1" />
+    <line x1="9" y1="12" x2="15" y2="12" />
+    <line x1="9" y1="16" x2="13" y2="16" />
+  </svg>
+);
 
 const ApprovalIcon = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -85,6 +95,7 @@ export default function OrdersDashboard({
   awaitingApprovalCount,
   isManager,
   onNavigate,
+  onManageTemplates,
 }: OrdersDashboardProps) {
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
 
@@ -158,6 +169,23 @@ export default function OrdersDashboard({
               </div>
             </div>
             <span className="text-[#F5800A] flex-shrink-0"><ChevronRight /></span>
+          </button>
+        )}
+
+        {/* Order Templates — reusable order lists (managers build/edit these) */}
+        {isManager && onManageTemplates && (
+          <button
+            onClick={onManageTemplates}
+            className="w-full flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 mb-4 text-left active:scale-[0.98] transition-transform shadow-sm"
+          >
+            <div className="w-11 h-11 rounded-xl bg-orange-100 text-[#F5800A] flex items-center justify-center flex-shrink-0">
+              <TemplatesIcon />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[16px] font-bold text-[#1A1A1A]">Order Templates</div>
+              <div className="text-[13px] text-[#6B7280] mt-0.5">Build &amp; edit your reusable order lists</div>
+            </div>
+            <span className="text-gray-300 flex-shrink-0"><ChevronRight /></span>
           </button>
         )}
 

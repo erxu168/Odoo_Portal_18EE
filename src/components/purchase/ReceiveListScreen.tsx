@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
+import SearchInput from './SearchInput';
 
 interface PendingOrder {
   id: number;
@@ -42,44 +43,71 @@ function OrderRow({ order, onOpen, badge, muted }: {
 }
 
 export default function ReceiveListScreen({ orders, isManager, onOpen }: ReceiveListScreenProps) {
-  const toReceive = orders.filter((o) => o.receipt_status !== 'submitted');
-  const awaitingApproval = orders.filter((o) => o.receipt_status === 'submitted');
+  const [search, setSearch] = useState('');
+  const q = search.trim().toLowerCase();
+  const match = (o: PendingOrder) =>
+    !q ||
+    (o.supplier_name || '').toLowerCase().includes(q) ||
+    (o.odoo_po_name || '').toLowerCase().includes(q);
+
+  const toReceive = orders.filter((o) => o.receipt_status !== 'submitted' && match(o));
+  const awaitingApproval = orders.filter((o) => o.receipt_status === 'submitted' && match(o));
+  const nothingMatches = !!q && toReceive.length === 0 && awaitingApproval.length === 0;
 
   return (
     <div className="px-4 py-3">
-      {awaitingApproval.length > 0 && (
-        <div className="mb-4">
-          <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Awaiting approval</div>
-          {awaitingApproval.map((order) => (
-            <OrderRow
-              key={order.id}
-              order={order}
-              onOpen={isManager ? onOpen : () => { /* staff can't approve */ }}
-              muted={!isManager}
-              badge={{ text: isManager ? 'Approve' : 'Waiting', className: 'bg-[#FFF4E6] text-[#F5800A]' }}
-            />
-          ))}
+      {orders.length > 0 && (
+        <div className="mb-3">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search deliveries by supplier…" />
         </div>
       )}
 
-      <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">To receive</div>
-      {toReceive.length === 0 ? (
+      {nothingMatches ? (
         <div className="text-center py-16">
-          <div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">No pending deliveries</div>
-          <div className="text-[var(--fs-sm)] text-gray-500">Sent orders will appear here.</div>
+          <div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">No matches</div>
+          <div className="text-[var(--fs-sm)] text-gray-500">Nothing found for &ldquo;{search}&rdquo;.</div>
         </div>
       ) : (
-        toReceive.map((order) => (
-          <OrderRow
-            key={order.id}
-            order={order}
-            onOpen={onOpen}
-            badge={{
-              text: order.status === 'partial' ? 'Continue receiving' : 'Start receiving',
-              className: 'bg-[#F5800A] text-white',
-            }}
-          />
-        ))
+        <>
+          {awaitingApproval.length > 0 && (
+            <div className="mb-4">
+              <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">Awaiting approval</div>
+              {awaitingApproval.map((order) => (
+                <OrderRow
+                  key={order.id}
+                  order={order}
+                  onOpen={isManager ? onOpen : () => { /* staff can't approve */ }}
+                  muted={!isManager}
+                  badge={{ text: isManager ? 'Approve' : 'Waiting', className: 'bg-[#FFF4E6] text-[#F5800A]' }}
+                />
+              ))}
+            </div>
+          )}
+
+          {(toReceive.length > 0 || !q) && (
+            <>
+              <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">To receive</div>
+              {toReceive.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="text-[var(--fs-lg)] font-semibold text-gray-900 mb-1">No pending deliveries</div>
+                  <div className="text-[var(--fs-sm)] text-gray-500">Sent orders will appear here.</div>
+                </div>
+              ) : (
+                toReceive.map((order) => (
+                  <OrderRow
+                    key={order.id}
+                    order={order}
+                    onOpen={onOpen}
+                    badge={{
+                      text: order.status === 'partial' ? 'Continue receiving' : 'Start receiving',
+                      className: 'bg-[#F5800A] text-white',
+                    }}
+                  />
+                ))
+              )}
+            </>
+          )}
+        </>
       )}
     </div>
   );
