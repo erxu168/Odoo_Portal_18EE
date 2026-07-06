@@ -9,6 +9,8 @@ interface GuideItem {
   product_uom: string;
   price: number;
   category_name: string;
+  par_level?: number;
+  product_code?: string;
 }
 
 interface OdooProduct {
@@ -338,7 +340,11 @@ export default function ManageGuideScreen({
                 <div key={item.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{item.product_name}</div>
-                    <div className="text-[11px] text-gray-500 font-mono">&euro;{item.price.toFixed(2)}/{item.product_uom}</div>
+                    <div className="text-[11px] text-gray-500 font-mono">
+                      &euro;{item.price.toFixed(2)}/{item.product_uom}
+                      {item.product_code ? ` · #${item.product_code}` : ''}
+                      {item.par_level ? ` · par ${item.par_level}` : ''}
+                    </div>
                   </div>
                   <button
                     onClick={() => onRemoveItem(item.id)}

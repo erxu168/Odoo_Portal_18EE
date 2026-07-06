@@ -13,7 +13,7 @@ interface CreateProductSheetProps {
   saving: boolean;
   error: string;
   onClose: () => void;
-  onCreate: (payload: { name: string; uom_id: number; price: number; categ_id: number }) => void;
+  onCreate: (payload: { name: string; uom_id: number; price: number; categ_id: number; default_code: string; par_level: number }) => void;
 }
 
 export default function CreateProductSheet({
@@ -23,6 +23,8 @@ export default function CreateProductSheet({
   const [uomId, setUomId] = useState<number>(0);
   const [priceStr, setPriceStr] = useState('');
   const [categId, setCategId] = useState<number>(0);
+  const [productCode, setProductCode] = useState('');
+  const [parLevelStr, setParLevelStr] = useState('');
 
   // Reset the form each time the sheet opens (prefill the name from the search box).
   useEffect(() => {
@@ -31,6 +33,8 @@ export default function CreateProductSheet({
       setUomId(units[0]?.id || 0);
       setCategId(categories[0]?.id || 0);
       setPriceStr('');
+      setProductCode('');
+      setParLevelStr('');
     }
   }, [open, initialName, units, categories]);
 
@@ -94,8 +98,30 @@ export default function CreateProductSheet({
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
 
+        <div className="flex gap-2 mb-4">
+          <div className="flex-1 min-w-0">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Product code <span className="normal-case font-normal">(supplier)</span></label>
+            <input
+              value={productCode}
+              onChange={(e) => setProductCode(e.target.value)}
+              placeholder="e.g. ART-1234"
+              className="w-full bg-white border border-gray-200 rounded-lg px-3 h-11 text-[var(--fs-base)] text-gray-900 outline-none focus:border-[#F5800A]"
+            />
+          </div>
+          <div className="flex-1 min-w-0">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Par level <span className="normal-case font-normal">(target)</span></label>
+            <input
+              value={parLevelStr}
+              onChange={(e) => setParLevelStr(e.target.value)}
+              inputMode="decimal"
+              placeholder="0"
+              className="w-full bg-white border border-gray-200 rounded-lg px-3 h-11 text-[var(--fs-base)] text-gray-900 outline-none focus:border-[#F5800A]"
+            />
+          </div>
+        </div>
+
         <button
-          onClick={() => onCreate({ name: name.trim(), uom_id: uomId, price: parseFloat(priceStr) || 0, categ_id: categId })}
+          onClick={() => onCreate({ name: name.trim(), uom_id: uomId, price: parseFloat(priceStr) || 0, categ_id: categId, default_code: productCode.trim(), par_level: parseFloat(parLevelStr) || 0 })}
           disabled={!canSubmit}
           className="w-full py-3.5 rounded-xl bg-[#F5800A] text-white text-[var(--fs-base)] font-bold active:bg-[#E86000] disabled:opacity-50"
         >

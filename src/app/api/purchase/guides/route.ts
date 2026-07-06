@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
-  const { supplier_id, location_id, product_id, product_name, product_uom, price, price_source, category_name } = body;
+  const { supplier_id, location_id, product_id, product_name, product_uom, price, price_source, category_name, par_level, product_code } = body;
 
   if (!supplier_id || !location_id || !product_id) {
     return NextResponse.json({ error: 'supplier_id, location_id, product_id required' }, { status: 400 });
@@ -47,6 +47,8 @@ export async function POST(request: Request) {
   const itemId = addGuideItem(guide.id, {
     product_id, product_name: product_name || '', product_uom: product_uom || 'Units',
     price: price || 0, price_source: price_source || 'manual', category_name: category_name || '',
+    par_level: typeof par_level === 'number' ? par_level : 0,
+    product_code: typeof product_code === 'string' ? product_code : '',
   });
 
   return NextResponse.json({ id: itemId, message: 'Item added to guide' }, { status: 201 });

@@ -30,7 +30,7 @@ import InsightsScreen from '@/components/purchase/InsightsScreen';
 
 // Types
 interface Supplier { id: number; name: string; email: string; phone?: string; product_count: number; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number; send_method: string; }
-interface GuideItem { id: number; product_id: number; product_name: string; product_uom: string; price: number; price_source: string; category_name: string; }
+interface GuideItem { id: number; product_id: number; product_name: string; product_uom: string; price: number; price_source: string; category_name: string; par_level?: number; product_code?: string; }
 interface CartSummary { id: number; supplier_id: number; supplier_name: string; item_count: number; total: number; items: any[]; send_method: string; min_order_value: number; approval_required: number; }
 interface Order { id: number; supplier_id: number; supplier_name: string; odoo_po_name: string | null; status: string; total_amount: number; created_at: string; lines?: any[]; delivery_date: string | null; order_note: string; location_id: number; sent_at?: string | null; cancelled_at?: string | null; receipt_status?: string | null; receipt_created_at?: string | null; receipt_confirmed_at?: string | null; approved_by?: number | null; }
 interface ReceiptLine { id: number; product_id: number; product_name: string; product_uom: string; ordered_qty: number; received_qty: number | null; difference: number; has_issue: number; issue_type: string | null; issue_notes: string | null; price?: number; subtotal?: number; issue_photo?: string | null; }
@@ -302,18 +302,18 @@ export default function PurchasePage() {
     if (cat !== 'All') { if (mgDebounce.current) clearTimeout(mgDebounce.current); mgDebounce.current = setTimeout(async () => { setMgSearching(true); try { const params = new URLSearchParams(); if (mgSearch) params.set('q', mgSearch); params.set('category', cat); params.set('limit', '40'); const r = await fetch(`/api/purchase/products?${params}`); const d = await r.json(); setMgResults(d.products || []); } catch (e) { void e; setMgResults([]); } finally { setMgSearching(false); } }, 200); } else if (!mgSearch) { setMgResults([]); } else { searchProducts(mgSearch, 'All'); }
   }
 
-  async function addProductToGuide(product: OdooProduct) {
+  async function addProductToGuide(product: OdooProduct & { product_code?: string }, extra?: { par_level?: number; product_code?: string }) {
     setMgAdding(product.id);
-    try { await fetch('/api/purchase/guides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ supplier_id: guideSupplierId, location_id: locationId, product_id: product.id, product_name: product.name, product_uom: product.uom, price: product.price, price_source: 'odoo', category_name: product.category_name }) }); const r = await fetch(`/api/purchase/guides?supplier_id=${guideSupplierId}&location_id=${locationId}`); const d = await r.json(); setGuideItems(d.guide?.items || []); fetchSuppliers(); } catch (e) { void e; } finally { setMgAdding(0); }
+    try { await fetch('/api/purchase/guides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ supplier_id: guideSupplierId, location_id: locationId, product_id: product.id, product_name: product.name, product_uom: product.uom, price: product.price, price_source: 'odoo', category_name: product.category_name, par_level: extra?.par_level ?? 0, product_code: extra?.product_code ?? product.product_code ?? '' }) }); const r = await fetch(`/api/purchase/guides?supplier_id=${guideSupplierId}&location_id=${locationId}`); const d = await r.json(); setGuideItems(d.guide?.items || []); fetchSuppliers(); } catch (e) { void e; } finally { setMgAdding(0); }
   }
 
-  async function createProductAndAddToGuide(payload: { name: string; uom_id: number; price: number; categ_id: number }) {
+  async function createProductAndAddToGuide(payload: { name: string; uom_id: number; price: number; categ_id: number; default_code: string; par_level: number }) {
     setMgCreateSaving(true); setMgCreateErr('');
     try {
       const r = await fetch('/api/purchase/products/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Failed to create product');
-      await addProductToGuide(d.product);
+      await addProductToGuide(d.product, { par_level: payload.par_level, product_code: d.product.product_code });
       setMgCreateOpen(false);
     } catch (e: any) { setMgCreateErr(e.message || 'Failed to create product'); }
     finally { setMgCreateSaving(false); }

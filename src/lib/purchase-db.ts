@@ -177,6 +177,9 @@ export function initPurchaseTables() {
   try { db().exec('ALTER TABLE purchase_receipts ADD COLUMN delivery_note_pdf TEXT'); } catch (_e) { /* already exists */ }
   try { db().exec('ALTER TABLE purchase_receipts ADD COLUMN submitted_by INTEGER'); } catch (_e) { /* already exists */ }
   try { db().exec('ALTER TABLE purchase_receipts ADD COLUMN submitted_at TEXT'); } catch (_e) { /* already exists */ }
+  // v4: Choco-style guide item fields — par level (target stock) + supplier product code
+  try { db().exec("ALTER TABLE purchase_guide_items ADD COLUMN par_level REAL NOT NULL DEFAULT 0"); } catch (_e) { /* already exists */ }
+  try { db().exec("ALTER TABLE purchase_guide_items ADD COLUMN product_code TEXT NOT NULL DEFAULT ''"); } catch (_e) { /* already exists */ }
 
   // Seed the two long-standing locations so the picker keeps working even before
   // auto-discover has run. id = Odoo stock.location.id (matches existing data).
@@ -349,12 +352,13 @@ export function createGuide(supplierId: number, locationId: number, name: string
 export function addGuideItem(guideId: number, item: {
   product_id: number; product_name: string; product_uom: string;
   price: number; price_source: string; category_name: string; sort_order?: number;
+  par_level?: number; product_code?: string;
 }) {
   const result = db().prepare(`
-    INSERT INTO purchase_guide_items (guide_id, product_id, product_name, product_uom, price, price_source, category_name, sort_order)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO purchase_guide_items (guide_id, product_id, product_name, product_uom, price, price_source, category_name, sort_order, par_level, product_code)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(guideId, item.product_id, item.product_name, item.product_uom,
-    item.price, item.price_source, item.category_name, item.sort_order || 0);
+    item.price, item.price_source, item.category_name, item.sort_order || 0, item.par_level || 0, item.product_code || '');
   return result.lastInsertRowid as number;
 }
 
