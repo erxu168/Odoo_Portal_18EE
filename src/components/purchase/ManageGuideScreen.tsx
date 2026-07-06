@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import SortableGuideItems from './SortableGuideItems';
 
 interface GuideItem {
   id: number;
@@ -60,6 +61,7 @@ interface ManageGuideScreenProps {
 
   // Existing guide items
   onRemoveItem: (itemId: number) => void;
+  onReorder: (itemIds: number[]) => void;
 
   // Create a brand-new product (opens the create-product sheet)
   onCreateNew: () => void;
@@ -103,6 +105,7 @@ export default function ManageGuideScreen({
   onClearSearch,
   onAddProduct,
   onRemoveItem,
+  onReorder,
   onCreateNew,
   hasMore,
   loadingMore,
@@ -110,7 +113,6 @@ export default function ManageGuideScreen({
 }: ManageGuideScreenProps) {
   const guideProductIds = new Set(items.map((i) => i.product_id));
   const searchResults = results.filter((p) => !guideProductIds.has(p.id));
-  const guideCats = Array.from(new Set(items.map((i) => i.category_name || 'Other')));
   const allFilterCats = ['All', ...categories.slice(0, 10)];
 
   return (
@@ -347,31 +349,10 @@ export default function ManageGuideScreen({
           <div className="text-[var(--fs-sm)] text-gray-500">No products yet. Search above to add products from Odoo.</div>
         </div>
       ) : (
-        guideCats.map((cat) => (
-          <div key={cat}>
-            <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide pt-2 pb-1">{cat}</div>
-            <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 mb-2">
-              {items.filter((i) => (i.category_name || 'Other') === cat).map((item) => (
-                <div key={item.id} className="flex items-center gap-2.5 py-2.5 border-b border-gray-100 last:border-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{item.product_name}</div>
-                    <div className="text-[11px] text-gray-500 font-mono">
-                      &euro;{item.price.toFixed(2)}/{item.product_uom}
-                      {item.product_code ? ` · #${item.product_code}` : ''}
-                      {item.par_level ? ` · par ${item.par_level}` : ''}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onRemoveItem(item.id)}
-                    className="text-[11px] font-semibold text-red-600 px-3 py-1.5 rounded-lg bg-red-50 border border-red-100 active:bg-red-100 flex-shrink-0"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))
+        <SortableGuideItems items={items} onReorder={onReorder} onRemove={onRemoveItem} />
+      )}
+      {items.length > 0 && (
+        <p className="text-[11px] text-gray-400 text-center pb-2">Drag the handle to match your walk-in order.</p>
       )}
     </div>
   );

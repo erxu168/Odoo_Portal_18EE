@@ -347,6 +347,12 @@ export default function PurchasePage() {
 
   async function removeGuideItemAction(itemId: number) { await fetch(`/api/purchase/guides?item_id=${itemId}`, { method: 'DELETE' }); setGuideItems(prev => prev.filter(i => i.id !== itemId)); fetchSuppliers(); }
 
+  async function reorderGuideItemsAction(itemIds: number[]) {
+    const map = new Map(guideItems.map(i => [i.id, i]));
+    setGuideItems(itemIds.map(id => map.get(id)).filter(Boolean) as GuideItem[]);
+    try { await fetch('/api/purchase/guides', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item_ids: itemIds }) }); } catch (e) { void e; }
+  }
+
   async function deleteSupplier(supplier: Supplier) {
     try {
       await fetch(`/api/purchase/suppliers?id=${supplier.id}`, { method: 'DELETE' });
@@ -799,6 +805,7 @@ export default function PurchasePage() {
           onClearSearch={() => { setMgSearch(''); fetchProducts('', mgCategory, 0, false); }}
           onAddProduct={addProductToGuide}
           onRemoveItem={removeGuideItemAction}
+          onReorder={reorderGuideItemsAction}
           onCreateNew={() => setMgCreateOpen(true)}
           hasMore={mgHasMore}
           loadingMore={mgLoadingMore}

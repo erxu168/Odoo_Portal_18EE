@@ -362,6 +362,15 @@ export function addGuideItem(guideId: number, item: {
   return result.lastInsertRowid as number;
 }
 
+/** Persist a new walk-in order for guide items: sort_order = position in the list. */
+export function reorderGuideItems(itemIds: number[]) {
+  const stmt = db().prepare('UPDATE purchase_guide_items SET sort_order = ? WHERE id = ?');
+  const tx = db().transaction((ids: number[]) => {
+    ids.forEach((id, idx) => stmt.run(idx, id));
+  });
+  tx(itemIds);
+}
+
 export function removeGuideItem(itemId: number) {
   db().prepare('DELETE FROM purchase_guide_items WHERE id = ?').run(itemId);
 }

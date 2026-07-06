@@ -7,7 +7,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
-import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice } from '@/lib/purchase-db';
+import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice, reorderGuideItems } from '@/lib/purchase-db';
 import { getDb } from '@/lib/db';
 
 export async function GET(request: Request) {
@@ -136,6 +136,14 @@ export async function PATCH(request: Request) {
   if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
+
+  // Reorder guide items into a custom walk-in order.
+  if (Array.isArray(body.item_ids)) {
+    const ids = body.item_ids.map((n: unknown) => parseInt(String(n))).filter((n: number) => Number.isInteger(n) && n > 0);
+    reorderGuideItems(ids);
+    return NextResponse.json({ message: 'Reordered' });
+  }
+
   const { item_id, price, price_source } = body;
   if (!item_id) return NextResponse.json({ error: 'item_id required' }, { status: 400 });
 
