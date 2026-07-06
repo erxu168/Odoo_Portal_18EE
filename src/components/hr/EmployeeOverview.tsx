@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import type { EmployeeData } from '@/types/hr';
 import { calculateOnboardingPercent } from '@/types/hr';
+import { useCompany } from '@/lib/company-context';
 
 interface Props {
   onBack: () => void;
@@ -14,81 +15,40 @@ interface Props {
 
 type Filter = 'all' | 'incomplete' | 'expiring';
 
-interface CompanyOption { id: number; name: string; }
-interface DeptOption { id: number; name: string; company_id: number | null; }
-
-// Remembers the last-used company/department filter so returning to this list
-// after opening a person (e.g. "Mark as left") keeps the selected restaurant
-// instead of resetting. Module-scoped => persists across remounts within the session.
-let lastCompany: number | null = null;
-let lastDept: number | null = null;
-
 export default function EmployeeOverview({ onBack, onSelect, onAdd }: Props) {
+  // The active restaurant comes from the header company switcher (useCompany),
+  // so this screen has no company/department dropdowns of its own — it simply
+  // follows the header selection.
+  const { companyId } = useCompany();
   const [employees, setEmployees] = useState<EmployeeData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
-  // Filter options from Odoo
-  const [companies, setCompanies] = useState<CompanyOption[]>([]);
-  const [departments, setDepartments] = useState<DeptOption[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState<number | null>(lastCompany);
-  const [selectedDept, setSelectedDept] = useState<number | null>(lastDept);
-
-  // Load filter options once. Companies come from the scoped /api/companies
-  // so a manager only sees their own restaurant(s); departments from /api/hr/filters.
+  // Load the active company's staff whenever the company (or status filter) changes.
   useEffect(() => {
-    Promise.all([
-      fetch('/api/companies').then(r => r.json()).catch(() => ({})),
-      fetch('/api/hr/filters').then(r => r.json()).catch(() => ({})),
-    ]).then(([comp, filters]) => {
-      setCompanies(comp.companies || []);
-      setDepartments(filters.departments || []);
-    });
-  }, []);
-
-  // Load employees when filters change
-  useEffect(() => {
-    loadEmployees();
-  }, [filter, selectedCompany, selectedDept]);
-
-  async function loadEmployees() {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (filter !== 'all') params.set('filter', filter);
-      if (selectedCompany) params.set('company_id', String(selectedCompany));
-      if (selectedDept) params.set('department_id', String(selectedDept));
-      const res = await fetch('/api/hr/employees?' + params.toString());
-      if (res.ok) {
-        const data = await res.json();
-        setEmployees(data.employees || []);
+    if (!companyId) return; // wait for the header company to resolve
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (filter !== 'all') params.set('filter', filter);
+        params.set('company_id', String(companyId));
+        const res = await fetch('/api/hr/employees?' + params.toString());
+        if (res.ok) {
+          const data = await res.json();
+          if (!cancelled) setEmployees(data.employees || []);
+        }
+      } catch {
+        console.error('Failed to load employees');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch {
-      console.error('Failed to load employees');
-    } finally {
-      setLoading(false);
     }
-  }
-
-  // Departments filtered by selected company
-  const visibleDepts = selectedCompany
-    ? departments.filter(d => d.company_id === selectedCompany)
-    : departments;
-
-  // Reset department when company changes. Mirror to the module cache so the
-  // choice survives leaving and returning to this screen.
-  function handleCompanyChange(id: number | null) {
-    setSelectedCompany(id);
-    setSelectedDept(null);
-    lastCompany = id;
-    lastDept = null;
-  }
-
-  function handleDeptChange(id: number | null) {
-    setSelectedDept(id);
-    lastDept = id;
-  }
+    load();
+    return () => { cancelled = true; };
+  }, [filter, companyId]);
 
   const filtered = search
     ? employees.filter(e => e.name.toLowerCase().includes(search.toLowerCase()))
@@ -118,30 +78,6 @@ export default function EmployeeOverview({ onBack, onSelect, onAdd }: Props) {
         </div>
       </div>
 
-      {/* Company & Department filters */}
-      <div className="px-5 pb-3 flex gap-2">
-        <select
-          className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-semibold bg-white text-gray-700 outline-none focus:border-green-600 appearance-none"
-          value={selectedCompany ?? ''}
-          onChange={e => handleCompanyChange(e.target.value ? parseInt(e.target.value) : null)}
-        >
-          <option value="">All companies</option>
-          {companies.map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        <select
-          className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-[var(--fs-sm)] font-semibold bg-white text-gray-700 outline-none focus:border-green-600 appearance-none"
-          value={selectedDept ?? ''}
-          onChange={e => handleDeptChange(e.target.value ? parseInt(e.target.value) : null)}
-        >
-          <option value="">All departments</option>
-          {visibleDepts.map(d => (
-            <option key={d.id} value={d.id}>{d.name}</option>
-          ))}
-        </select>
-      </div>
-
       {/* Status filter badges */}
       <div className="flex gap-2 px-5 pb-3 overflow-x-auto">
         <FilterBadge label={'All (' + employees.length + ')'} active={filter === 'all'} onClick={() => setFilter('all')} color="green" />
@@ -162,7 +98,6 @@ export default function EmployeeOverview({ onBack, onSelect, onAdd }: Props) {
           const initials = emp.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
           const deptFull = emp.department_id ? (emp.department_id as [number, string])[1] : '';
           const dept = deptFull.includes(' / ') ? deptFull.split(' / ').pop()! : deptFull;
-          const company = (emp as any).company_id ? ((emp as any).company_id as [number, string])[1] : '';
           const visaDays = emp.visa_expire ? Math.round((new Date(emp.visa_expire).getTime() - Date.now()) / 86400000) : null;
           const pctColor = pct === 100 ? 'text-green-600' : pct > 0 ? 'text-amber-600' : 'text-red-500';
 
@@ -179,7 +114,7 @@ export default function EmployeeOverview({ onBack, onSelect, onAdd }: Props) {
               <div className="flex-1 min-w-0">
                 <div className="text-[var(--fs-md)] font-bold text-gray-900">{emp.name}</div>
                 <div className="text-[var(--fs-xs)] text-gray-500">
-                  {[dept, company].filter(Boolean).join(' \u00b7 ')}
+                  {dept}
                   {visaDays !== null && visaDays <= 90 && visaDays > 0 && (
                     <span className="text-red-500 font-semibold"> &middot; Visa exp. {Math.round(visaDays)}d</span>
                   )}
