@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { usePoll } from '@/lib/use-poll';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Badge, EmptyState, SearchBar, SectionTitle, Spinner } from '@/components/shifts/ui';
@@ -284,6 +285,14 @@ export default function Approvals({ companyId, onBack }: ApprovalsProps) {
   useEffect(() => {
     if (companyId) fetchApprovals();
   }, [companyId, fetchApprovals]);
+
+  // Live refresh so new requests / sick reports appear without a reload; paused
+  // while the manager is inside a detail view or an undo confirm.
+  usePoll(
+    () => { if (companyId) void fetchApprovals(true); },
+    35000,
+    view.kind === 'list' && confirmUndo === null,
+  );
 
   async function postAction(url: string, body: Record<string, unknown>): Promise<boolean> {
     setActing(true);

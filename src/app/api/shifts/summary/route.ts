@@ -101,6 +101,14 @@ export async function GET(request: Request) {
         if (!req.askAll || req.fromEmployeeId === employeeId) return false;
         return isEligible(me, req.liveSlot, req.snapshotRoleId);
       }).length;
+
+      // Plus: covers I accepted that are waiting on the manager — so the person
+      // who said yes still sees a badge for the thing they're waiting on.
+      const acceptedPending = listCoverRequests({ companyId, status: ['pending_manager'] });
+      const acceptedExpired = await expirePending(acceptedPending, settings);
+      requestCount += acceptedExpired.filter(
+        req => req.status === 'pending_manager' && req.acceptedByEmployeeId === employeeId,
+      ).length;
     }
 
     const body: {

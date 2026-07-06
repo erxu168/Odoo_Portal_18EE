@@ -12,6 +12,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { usePoll } from '@/lib/use-poll';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Badge, EmptyState, SearchBar, SectionTitle, Sheet, Spinner, WeekNav } from '@/components/shifts/ui';
@@ -191,8 +192,8 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
     if (toastTimer.current) clearTimeout(toastTimer.current);
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/shifts/mine?company_id=${companyId}&week=${weekKey}`);
@@ -220,15 +221,23 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
       });
     } catch (err: unknown) {
       console.error('[shifts] Failed to load my shifts:', err);
-      setError(err instanceof Error ? err.message : 'Could not load your shifts');
+      if (!silent) setError(err instanceof Error ? err.message : 'Could not load your shifts');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [companyId, weekKey]);
 
   useEffect(() => {
     if (employeeId !== null) void load();
   }, [load, employeeId]);
+
+  // Live refresh so a cover decision / new assignment appears without reloading;
+  // paused while a sheet or confirm dialog is open.
+  usePoll(
+    () => { if (employeeId !== null) void load(true); },
+    35000,
+    sheetSlot === null && cancelReq === null && !confirmSick,
+  );
 
   function closeSheet() {
     setSheetSlot(null);

@@ -13,6 +13,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { usePoll } from '@/lib/use-poll';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Badge, EmptyState, SearchBar, SectionTitle, Sheet, Spinner } from '@/components/shifts/ui';
@@ -154,8 +155,8 @@ export default function RequestsInbox({ companyId, employeeId, onBack }: Request
     if (toastTimer.current) clearTimeout(toastTimer.current);
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await fetch(`/api/shifts/requests?company_id=${companyId}`);
@@ -165,15 +166,23 @@ export default function RequestsInbox({ companyId, employeeId, onBack }: Request
       setOutgoing(Array.isArray(data.outgoing) ? data.outgoing : []);
     } catch (err: unknown) {
       console.error('[shifts] Failed to load requests:', err);
-      setError(err instanceof Error ? err.message : 'Could not load requests');
+      if (!silent) setError(err instanceof Error ? err.message : 'Could not load requests');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [companyId]);
 
   useEffect(() => {
     if (employeeId !== null) void load();
   }, [load, employeeId]);
+
+  // Live refresh so a manager's decision lands without a manual reload; paused
+  // while a sheet/dialog is open so nothing jumps mid-action.
+  usePoll(
+    () => { if (employeeId !== null) void load(true); },
+    35000,
+    selected === null && declineReq === null && cancelReq === null,
+  );
 
   function closeSheet() {
     setSelected(null);
