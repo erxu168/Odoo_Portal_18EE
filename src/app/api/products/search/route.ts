@@ -10,12 +10,14 @@ import { requireAuth, AuthError } from '@/lib/auth';
 export async function GET(req: NextRequest) {
   try {
     requireAuth();
-    const q = req.nextUrl.searchParams.get('q') || '';
+    const q = (req.nextUrl.searchParams.get('q') || '').trim();
     const limit = parseInt(req.nextUrl.searchParams.get('limit') || '20');
+    const offset = parseInt(req.nextUrl.searchParams.get('offset') || '0') || 0;
     const odoo = getOdoo();
 
+    // Empty q -> full product list (browsable by default). A non-empty q filters by name.
     const domain: any[] = [['type', '!=', 'service']];
-    if (q.length >= 2) {
+    if (q.length >= 1) {
       domain.push(['name', 'ilike', q]);
     }
 
@@ -23,7 +25,7 @@ export async function GET(req: NextRequest) {
       'product.product',
       domain,
       ['id', 'name', 'uom_id', 'categ_id'],
-      { limit, order: 'name asc' },
+      { limit, offset, order: 'name asc' },
     );
 
     return NextResponse.json({

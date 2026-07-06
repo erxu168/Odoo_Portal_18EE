@@ -16,6 +16,8 @@ interface ProductHit {
   uom_name: string;
 }
 
+const PAGE = 30;
+
 export default function AddIngredientSheet({
   moId, open, onClose, onAdded,
 }: AddIngredientSheetProps) {
@@ -25,37 +27,60 @@ export default function AddIngredientSheet({
   const [qty, setQty] = useState('');
   const [saving, setSaving] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
       setQuery(''); setResults([]); setPicked(null); setQty(''); setError(null);
+      setHasMore(false); setOffset(0);
     }
   }, [open]);
 
+  // Load the product list by default (empty query = all), then filter as you type.
   useEffect(() => {
-    if (!query || picked) { setResults([]); return; }
-    if (query.trim().length < 2) { setResults([]); return; }
+    if (!open || picked) return;
     const ctl = new AbortController();
     setSearching(true);
     const t = setTimeout(async () => {
       try {
         const res = await fetch(
-          `/api/products/search?q=${encodeURIComponent(query)}&limit=20`,
+          `/api/products/search?q=${encodeURIComponent(query)}&limit=${PAGE}&offset=0`,
           { signal: ctl.signal },
         );
         const data = await res.json();
-        setResults(data.products || []);
+        const list: ProductHit[] = data.products || [];
+        setResults(list);
+        setHasMore(list.length === PAGE);
+        setOffset(list.length);
       } catch {
         // aborts and net errors silently fall through
       } finally {
         setSearching(false);
       }
-    }, 200);
+    }, query ? 250 : 0);
     return () => { ctl.abort(); clearTimeout(t); };
-  }, [query, picked]);
+  }, [query, picked, open]);
 
   if (!open) return null;
+
+  async function loadMore() {
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/api/products/search?q=${encodeURIComponent(query)}&limit=${PAGE}&offset=${offset}`);
+      const data = await res.json();
+      const list: ProductHit[] = data.products || [];
+      setResults((prev) => [...prev, ...list]);
+      setHasMore(list.length === PAGE);
+      setOffset((o) => o + list.length);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   async function handleAdd() {
     setError(null);
@@ -114,18 +139,18 @@ export default function AddIngredientSheet({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search ingredient…"
+              placeholder="Search or browse ingredients…"
               className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-3 focus:border-orange-500 focus:outline-none"
               autoFocus
             />
             {searching && (
-              <div className="mb-2 text-xs text-gray-500">Searching…</div>
+              <div className="mb-2 text-xs text-gray-500">Loading…</div>
             )}
-            {!searching && query.trim().length >= 2 && results.length === 0 && (
+            {!searching && results.length === 0 && (
               <div className="mb-2 text-xs text-gray-500">No matches.</div>
             )}
             {results.length > 0 && (
-              <ul className="mb-3 max-h-56 overflow-y-auto rounded-lg border border-gray-200">
+              <ul className="mb-3 max-h-72 overflow-y-auto rounded-lg border border-gray-200">
                 {results.map((p) => (
                   <li
                     key={p.id}
@@ -136,6 +161,17 @@ export default function AddIngredientSheet({
                     <div className="text-xs text-gray-500">{p.uom_name}</div>
                   </li>
                 ))}
+                {hasMore && (
+                  <li className="p-2">
+                    <button
+                      onClick={loadMore}
+                      disabled={loadingMore}
+                      className="w-full rounded-lg bg-gray-100 py-2 text-sm font-semibold text-gray-600 active:bg-gray-200 disabled:opacity-50"
+                    >
+                      {loadingMore ? 'Loading…' : 'Load more'}
+                    </button>
+                  </li>
+                )}
               </ul>
             )}
           </>

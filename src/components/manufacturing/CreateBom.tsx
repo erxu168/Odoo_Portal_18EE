@@ -59,16 +59,15 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
   function searchProducts(q: string) {
     setProductSearch(q);
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    if (q.length < 2) { setProductResults([]); return; }
     searchTimer.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}&limit=15`);
+        const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}&limit=50`);
         const data = await res.json();
         setProductResults(data.products || []);
       } catch (_e) { setProductResults([]); }
       finally { setSearching(false); }
-    }, 300);
+    }, q ? 300 : 0);
   }
 
   function selectProduct(p: any) {
@@ -80,16 +79,15 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
   function searchIngredients(q: string) {
     setIngSearch(q);
     if (ingTimer.current) clearTimeout(ingTimer.current);
-    if (q.length < 2) { setIngResults([]); return; }
     ingTimer.current = setTimeout(async () => {
       setIngSearching(true);
       try {
-        const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}&limit=15`);
+        const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}&limit=50`);
         const data = await res.json();
         setIngResults(data.products || []);
       } catch (_e) { setIngResults([]); }
       finally { setIngSearching(false); }
-    }, 300);
+    }, q ? 300 : 0);
   }
 
   function addIngredient(p: any) {
@@ -106,6 +104,12 @@ export default function CreateBom({ onBack, onCreated }: CreateBomProps) {
     setIngSearch('');
     setIngResults([]);
   }
+
+  // Browse the full product list by default (no need to type first).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!selectedProduct) searchProducts(''); }, [selectedProduct]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (showIngSearch) searchIngredients(''); }, [showIngSearch]);
 
   function updateLineQty(id: number, val: string) {
     setLines(prev => prev.map(l => l.id === id ? { ...l, product_qty: parseFloat(val) || 0 } : l));
