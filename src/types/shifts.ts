@@ -134,3 +134,15 @@ export interface ShiftNotification {
   readAt: string | null;
   createdAt: string;
 }
+
+/** A reusable shift template (name + times + optional role/headcount), per company. */
+export interface ShiftTemplate {
+  id: number;
+  companyId: number;
+  name: string;
+  startHHMM: string;
+  endHHMM: string;
+  roleId: number | null;
+  headcount: number;
+  createdAt: string;
+}

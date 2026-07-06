@@ -17,6 +17,7 @@ import type {
   CoverRequest,
   ShiftNotification,
   ShiftSettings,
+  ShiftTemplate,
   SickReport,
   SlotSnapshot,
 } from '@/types/shifts';
@@ -116,6 +117,18 @@ function ensureTables(): void {
       confirmed_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_confirm_company ON shift_confirmations(company_id);
+
+    CREATE TABLE IF NOT EXISTS shift_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      start_hhmm TEXT NOT NULL,
+      end_hhmm TEXT NOT NULL,
+      role_id INTEGER,
+      headcount INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_template_company ON shift_templates(company_id);
   `);
   _initialized = true;
 }
@@ -571,4 +584,67 @@ export function markNotificationsRead(employeeId: number, ids: number[]): void {
       `UPDATE shift_notifications SET read_at = ? WHERE employee_id = ? AND read_at IS NULL AND id IN (${placeholders})`
     )
     .run(nowISO(), employeeId, ...ids);
+}
+
+// -- Shift templates (reusable "quick start" shifts) ----------------------------
+
+interface TemplateRow {
+  id: number;
+  company_id: number;
+  name: string;
+  start_hhmm: string;
+  end_hhmm: string;
+  role_id: number | null;
+  headcount: number;
+  created_at: string;
+}
+
+function mapTemplate(r: TemplateRow): ShiftTemplate {
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    name: r.name,
+    startHHMM: r.start_hhmm,
+    endHHMM: r.end_hhmm,
+    roleId: r.role_id,
+    headcount: r.headcount,
+    createdAt: r.created_at,
+  };
+}
+
+/** All templates for a company, newest first. */
+export function listShiftTemplates(companyId: number): ShiftTemplate[] {
+  ensureTables();
+  const rows = getDb()
+    .prepare('SELECT * FROM shift_templates WHERE company_id = ? ORDER BY id DESC')
+    .all(companyId) as TemplateRow[];
+  return rows.map(mapTemplate);
+}
+
+/** Create a template; returns the new id. */
+export function createShiftTemplate(v: {
+  companyId: number;
+  name: string;
+  startHHMM: string;
+  endHHMM: string;
+  roleId: number | null;
+  headcount: number;
+}): number {
+  ensureTables();
+  const info = getDb()
+    .prepare(
+      `INSERT INTO shift_templates (company_id, name, start_hhmm, end_hhmm, role_id, headcount, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(v.companyId, v.name, v.startHHMM, v.endHHMM, v.roleId, v.headcount, nowISO());
+  return Number(info.lastInsertRowid);
+}
+
+/** Delete a template, scoped to its company. Returns true if a row was removed. */
+export function deleteShiftTemplate(id: number, companyId: number): boolean {
+  ensureTables();
+  const info = getDb()
+    .prepare('DELETE FROM shift_templates WHERE id = ? AND company_id = ?')
+    .run(id, companyId);
+  return info.changes > 0;
 }
