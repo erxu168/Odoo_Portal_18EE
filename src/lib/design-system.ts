@@ -120,7 +120,7 @@ export const ds = {
   filterTabInactive: 'px-3 py-1.5 rounded-full text-[12px] font-semibold whitespace-nowrap border bg-white border-gray-200 text-gray-500 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-400',
 
   // ── Buttons ──
-  btnPrimary:   'w-full bg-green-600 hover:bg-green-700 active:bg-orange-700 text-white font-semibold rounded-xl py-3.5 text-[14px] transition-colors shadow-lg shadow-green-600/30',
+  btnPrimary:   'w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold rounded-xl py-3.5 text-[14px] transition-colors shadow-lg shadow-green-600/30',
   btnSecondary: 'w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-semibold rounded-xl py-3.5 text-[14px] active:bg-gray-50',
   btnGhost:     'text-[13px] font-semibold text-green-700 active:opacity-70',
   btnBack:      'flex items-center gap-1 text-[13px] font-semibold text-green-700 active:opacity-70',
