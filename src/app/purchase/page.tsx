@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCompany } from '@/lib/company-context';
+import { whatsappLink } from '@/lib/purchase-order-message';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Numpad from '@/components/ui/Numpad';
@@ -63,6 +64,7 @@ export default function PurchasePage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [sentInfo, setSentInfo] = useState<{ whatsappUrl?: string; emailed?: boolean; sendMethod?: string }>({});
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [guideItems, setGuideItems] = useState<GuideItem[]>([]);
@@ -199,7 +201,13 @@ export default function PurchasePage() {
 
   async function sendOrder(cart: CartSummary) {
     setSending(true);
-    try { await fetch('/api/purchase/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cart_id: cart.id, delivery_date: deliveryDate || null, order_note: orderNote }) }); await fetchCart(); setDeliveryDate(''); setOrderNote(''); setReviewCart(null); setScreen('sent'); } catch (e) { void e; } finally { setSending(false); }
+    try {
+      const r = await fetch('/api/purchase/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cart_id: cart.id, delivery_date: deliveryDate || null, order_note: orderNote }) });
+      const d = await r.json().catch(() => ({}));
+      const waUrl = (d.send_method === 'whatsapp' && d.supplier_phone && d.order_text) ? whatsappLink(d.supplier_phone, d.order_text) : '';
+      setSentInfo({ whatsappUrl: waUrl, emailed: !!d.emailed, sendMethod: d.send_method });
+      await fetchCart(); setDeliveryDate(''); setOrderNote(''); setReviewCart(null); setScreen('sent');
+    } catch (e) { void e; } finally { setSending(false); }
   }
 
   // Wraps sendOrder with the confirm-dialog copy the Review screen used to own.
@@ -833,7 +841,7 @@ export default function PurchasePage() {
             onSend={requestSendOrder}
           />
         )}</>
-      ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSentScreen onPlaceAnother={() => changeTab('order')} onHistory={() => changeTab('history')} onHome={goHome} /></>
+      ) : screen === 'sent' ? (<><Header title="Purchase" /><OrderSentScreen whatsappUrl={sentInfo.whatsappUrl} emailed={sentInfo.emailed} sendMethod={sentInfo.sendMethod} onPlaceAnother={() => changeTab('order')} onHistory={() => changeTab('history')} onHome={goHome} /></>
       ) : screen === 'order-detail' ? (<><Header title="Order details" showBack onBack={() => { setScreen('history'); }} />
         <OrderDetailScreen
           order={selectedOrder}

@@ -24,6 +24,22 @@ const transporter = nodemailer.createTransport({
 const FROM = process.env.SMTP_FROM || 'noreply@krawings.de';
 const PORTAL_URL = process.env.PORTAL_URL || 'http://89.167.124.0:3000';
 
+/** True only when SMTP credentials are actually configured (so callers can skip gracefully). */
+export function isEmailConfigured(): boolean {
+  return !!(process.env.SMTP_USER && process.env.SMTP_PASSWORD);
+}
+
+/** Email a composed purchase order to a supplier. Throws on SMTP failure (caller should catch). */
+export async function sendOrderEmail(toEmail: string, subject: string, textBody: string, htmlBody: string) {
+  await transporter.sendMail({
+    from: `"Krawings Portal" <${FROM}>`,
+    to: toEmail,
+    subject,
+    text: textBody,
+    html: htmlBody,
+  });
+}
+
 /**
  * Send a password reset email with a time-limited link.
  */

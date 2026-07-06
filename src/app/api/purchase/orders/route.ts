@@ -7,6 +7,8 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { createOrder, listOrders, getOrder, updateOrderStatus, clearCart, getCartWithItems, getSupplier, countPendingApprovals, checkDuplicateOrder } from '@/lib/purchase-db';
 import { getOdoo } from '@/lib/odoo';
+import { isEmailConfigured, sendOrderEmail } from '@/lib/email';
+import { buildOrderText, buildOrderHtml } from '@/lib/purchase-order-message';
 import { LOCATIONS } from '@/types/purchase';
 
 export async function GET(request: Request) {
@@ -103,10 +105,44 @@ export async function POST(request: Request) {
   clearCart(cart_id);
 
   const order = getOrder(orderId);
+
+  // Deliver the order to the supplier over their chosen channel.
+  // Email: sent server-side now (if configured). WhatsApp: the client opens a wa.me
+  // deep link pre-filled with this message (returned below). 'manual' = neither.
+  const msgOpts = {
+    supplierName: supplier.name,
+    orderRef: order?.odoo_po_name || null,
+    deliveryDate: delivery_date || null,
+    note: order_note || null,
+    lines: cart.items.map((i: any) => ({ product_name: i.product_name, quantity: i.quantity, product_uom: i.product_uom })),
+  };
+  const orderText = buildOrderText(msgOpts);
+
+  let emailed = false;
+  let emailSkippedReason: string | null = null;
+  if (orderStatus === 'approved' && supplier.send_method === 'email') {
+    if (!supplier.email) emailSkippedReason = 'no supplier email on file';
+    else if (!isEmailConfigured()) emailSkippedReason = 'email not configured on the server';
+    else {
+      try {
+        await sendOrderEmail(
+          supplier.email,
+          `New order${order?.odoo_po_name ? ` ${order.odoo_po_name}` : ''} — ${supplier.name}`,
+          orderText,
+          buildOrderHtml(msgOpts),
+        );
+        emailed = true;
+      } catch (e) {
+        console.error('[orders] supplier email failed', e);
+        emailSkippedReason = 'email send failed';
+      }
+    }
+  }
+
   const message = needsApproval
     ? 'Order queued for approval'
     : poCreated
-      ? 'Order sent'
+      ? (emailed ? 'Order sent & emailed to supplier' : 'Order sent')
       : 'Order saved locally, but Odoo sync failed — contact admin to retry';
   return NextResponse.json({
     order,
@@ -114,6 +150,12 @@ export async function POST(request: Request) {
     duplicate_warning: isDuplicate,
     odoo_sync_failed: orderStatus === 'approved' && !poCreated,
     odoo_error: odooError,
+    // For the client to offer a "Send on WhatsApp" hand-off.
+    send_method: supplier.send_method,
+    supplier_phone: supplier.phone || '',
+    order_text: orderText,
+    emailed,
+    email_skipped_reason: emailSkippedReason,
   }, { status: orderStatus === 'approved' && !poCreated ? 502 : 201 });
 }
 
