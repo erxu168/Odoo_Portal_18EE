@@ -10,7 +10,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { invalidateActiveRequestsForSlot } from '@/lib/shifts-guards';
 import { deleteSlot, fetchEmployees, fetchSlot, recomputeWeekFlags, updateSlot } from '@/lib/shifts-odoo';
-import { berlinISOWeekKey } from '@/lib/shifts-time';
+import { notifyEmployee } from '@/lib/shifts-notify';
+import { berlinISOWeekKey, fmtDay, fmtTimeRange } from '@/lib/shifts-time';
 import { isValidDateStr, normalizeHHMM, requireManagerCompany, serverError } from '../../_manager';
 
 export const dynamic = 'force-dynamic';
@@ -108,6 +109,39 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       }
     }
 
+    // Tell affected staff their PUBLISHED shift changed (drafts stay silent —
+    // staff can't see them yet). Never let a notify failure fail the edit.
+    try {
+      if (before.state === 'published') {
+        const beforeEmp = before.employeeId;
+        const afterEmp = after?.employeeId ?? null;
+        const roleName = (after ?? before).roleName || '';
+        if (beforeEmp !== null && beforeEmp !== afterEmp) {
+          await notifyEmployee(beforeEmp, companyId, 'shift_changed', {
+            day: fmtDay(before.start), time: fmtTimeRange(before.start, before.end), roleName,
+            message: 'This shift is no longer yours — a manager reassigned it.',
+          });
+        }
+        if (after && afterEmp !== null && afterEmp !== beforeEmp) {
+          await notifyEmployee(afterEmp, companyId, 'shift_changed', {
+            day: fmtDay(after.start), time: fmtTimeRange(after.start, after.end), roleName,
+            message: 'You were added to this shift.',
+          });
+        }
+        const detailsChanged =
+          updates.date !== undefined || updates.startHHMM !== undefined ||
+          updates.endHHMM !== undefined || updates.roleId !== undefined;
+        if (after && afterEmp !== null && afterEmp === beforeEmp && detailsChanged) {
+          await notifyEmployee(afterEmp, companyId, 'shift_changed', {
+            day: fmtDay(after.start), time: fmtTimeRange(after.start, after.end), roleName,
+            message: 'Your shift was updated — check the new time.',
+          });
+        }
+      }
+    } catch (err: unknown) {
+      console.warn('[shifts] change notify failed (ignored):', err instanceof Error ? err.message : String(err));
+    }
+
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     return serverError('PUT slots/[id]', err);
@@ -142,6 +176,18 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     if (slot.employeeId !== null) {
       await recomputeWeekFlags(companyId, berlinISOWeekKey(slot.start), [slot.employeeId]);
+    }
+
+    // Tell the assigned staff their PUBLISHED shift was cancelled.
+    try {
+      if (slot.state === 'published' && slot.employeeId !== null) {
+        await notifyEmployee(slot.employeeId, companyId, 'shift_cancelled', {
+          day: fmtDay(slot.start), time: fmtTimeRange(slot.start, slot.end), roleName: slot.roleName || '',
+          message: 'This shift was cancelled.',
+        });
+      }
+    } catch (err: unknown) {
+      console.warn('[shifts] cancel notify failed (ignored):', err instanceof Error ? err.message : String(err));
     }
 
     return NextResponse.json({ ok: true });

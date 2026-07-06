@@ -26,6 +26,8 @@ const PUSH_TITLES: Record<string, string> = {
   cover_invalidated: 'Cover request no longer valid',
   sick_reported: 'Sick report',
   shift_published: 'New shifts published',
+  shift_changed: 'Shift updated',
+  shift_cancelled: 'Shift cancelled',
 };
 
 function buildPushPayload(type: string, payload: object): PushPayload {
