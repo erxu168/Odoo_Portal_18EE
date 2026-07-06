@@ -298,7 +298,7 @@ export default function ManageGuideScreen({
       <div className="mb-4">
           <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
             {searching ? 'Searching...' : `${searchResults.length} results`}
-            {searchResults.length > 0 && ' \u2014 tap \u2605 to add to the template'}
+            {searchResults.length > 0 && ' \u2014 tap + to add to the template'}
           </div>
           {searching && (
             <div className="flex justify-center py-4">
@@ -320,7 +320,7 @@ export default function ManageGuideScreen({
                     aria-label="Add to template"
                     className="w-11 h-11 rounded-lg bg-[#F5800A] flex items-center justify-center text-white text-[18px] shadow-sm active:bg-[#E86000] flex-shrink-0 disabled:opacity-50"
                   >
-                    {addingId === product.id ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : '★'}
+                    {addingId === product.id ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>}
                   </button>
                 </div>
               ))}
