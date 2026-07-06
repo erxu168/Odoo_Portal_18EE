@@ -92,13 +92,41 @@ function WarnBox({ children }: { children: React.ReactNode }) {
   );
 }
 
+const lastTimesKey = (companyId: number) => `kw_last_shift_time_${companyId}`;
+function readLastTimes(companyId: number): { start: string; end: string } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(lastTimesKey(companyId));
+    if (raw) {
+      const o = JSON.parse(raw);
+      if (typeof o?.start === 'string' && typeof o?.end === 'string') return { start: o.start, end: o.end };
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+function saveLastTimes(companyId: number, start: string, end: string): void {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(lastTimesKey(companyId), JSON.stringify({ start, end })); } catch { /* ignore */ }
+}
+
+/** "Mon 7 Jul" weekday label for a YYYY-MM-DD string (UTC-safe). */
+function weekdayLabel(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', {
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
+  });
+}
+
 export default function CreateShift({ companyId, isManager, onBack, prefill, onCreated }: CreateShiftProps) {
   const todayBerlin = useMemo(() => berlinParts(nowOdooUtc()).date, []);
+  const lastTimes = useMemo(() => readLastTimes(companyId), [companyId]);
 
-  // Form state
+  // Form state — times default to the last shift you made (restaurant shifts
+  // cluster around a few times), falling back to a sensible dinner shift.
   const [date, setDate] = useState(prefill?.date || todayBerlin);
-  const [start, setStart] = useState(prefill?.startHHMM || '16:00');
-  const [end, setEnd] = useState(prefill?.endHHMM || '22:00');
+  const [start, setStart] = useState(prefill?.startHHMM || lastTimes?.start || '16:00');
+  const [end, setEnd] = useState(prefill?.endHHMM || lastTimes?.end || '22:00');
   const [roleId, setRoleId] = useState<number | null>(prefill?.roleId ?? null);
   const [count, setCount] = useState(1);
   const [mode, setMode] = useState<'open' | 'pick'>('open');
@@ -247,6 +275,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`);
+      saveLastTimes(companyId, start, end); // remember for next time
       onCreated();
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Network error');
@@ -284,7 +313,12 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
           <div className={`${ds.card} p-4 flex flex-col gap-3`}>
             <div>
               <div className={LBL}>Date</div>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={ds.input} />
+              <input type="date" min={todayBerlin} value={date} onChange={e => setDate(e.target.value)} className={ds.input} />
+              {date && (
+                <div className={`${HINT} mt-1.5 ${date < todayBerlin ? 'text-red-600 font-semibold' : ''}`}>
+                  {date < todayBerlin ? `⚠ ${weekdayLabel(date)} is in the past` : weekdayLabel(date)}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -341,7 +375,14 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                   +
                 </button>
               </div>
-              {count > 1 && <div className={`${HINT} mt-1.5`}>{count} people = {count} open shifts per selected day.</div>}
+              {count > 1 && mode === 'open' && (
+                <div className={`${HINT} mt-1.5`}>{count} people = {count} open shifts per selected day.</div>
+              )}
+              {count > 1 && mode === 'pick' && (
+                <div className={`${HINT} mt-1.5 text-amber-700 font-semibold`}>
+                  ⚠ This makes {count} identical shifts, all on {picked?.name || 'this person'} at the same time — usually you want 1.
+                </div>
+              )}
             </div>
           </div>
 
