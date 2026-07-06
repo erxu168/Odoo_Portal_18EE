@@ -100,6 +100,9 @@ export default function PurchasePage() {
   const [mgCreateErr, setMgCreateErr] = useState('');
   const [mgSearching, setMgSearching] = useState(false);
   const [mgAdding, setMgAdding] = useState<number>(0);
+  const [mgOffset, setMgOffset] = useState(0);
+  const [mgHasMore, setMgHasMore] = useState(false);
+  const [mgLoadingMore, setMgLoadingMore] = useState(false);
   const mgDebounce = useRef<NodeJS.Timeout | null>(null);
 
   // Supplier config editing state (Manage screen)
@@ -289,18 +292,41 @@ export default function PurchasePage() {
     setMgConfigSaved(false);
     try { const r = await fetch(`/api/purchase/guides?supplier_id=${supplier.id}&location_id=${locationId}`); const d = await r.json(); setGuideItems(d.guide?.items || []); } catch (e) { void e; setGuideItems([]); }
     try { const r = await fetch('/api/purchase/products?q=&limit=1'); const d = await r.json(); setMgCategories((d.categories || []).map((c: any) => c.name)); setMgCatOptions((d.categories || []).map((c: any) => ({ id: c.id, name: c.name }))); setMgUnits(d.units || []); } catch (e) { void e; }
+    setMgOffset(0); setMgHasMore(false); fetchProducts('', 'All', 0, false);
+  }
+
+  // Paged product fetch for the guide screen. append=false replaces the list
+  // (new search/category/open); append=true adds the next page (Load more).
+  async function fetchProducts(query: string, cat: string, offset: number, append: boolean) {
+    if (append) setMgLoadingMore(true); else setMgSearching(true);
+    try {
+      const params = new URLSearchParams();
+      if (query) params.set('q', query);
+      if (cat && cat !== 'All') params.set('category', cat);
+      params.set('limit', '40');
+      params.set('offset', String(offset));
+      const r = await fetch(`/api/purchase/products?${params}`);
+      const d = await r.json();
+      const list: OdooProduct[] = d.products || [];
+      setMgResults((prev) => (append ? [...prev, ...list] : list));
+      setMgHasMore(list.length === 40);
+      setMgOffset(offset + list.length);
+    } catch (e) { void e; if (!append) setMgResults([]); }
+    finally { if (append) setMgLoadingMore(false); else setMgSearching(false); }
   }
 
   function searchProducts(query: string, category: string) {
     setMgSearch(query); if (mgDebounce.current) clearTimeout(mgDebounce.current);
-    if (!query && category === 'All') { setMgResults([]); return; }
-    mgDebounce.current = setTimeout(async () => { setMgSearching(true); try { const params = new URLSearchParams(); if (query) params.set('q', query); if (category && category !== 'All') params.set('category', category); params.set('limit', '40'); const r = await fetch(`/api/purchase/products?${params}`); const d = await r.json(); setMgResults(d.products || []); } catch (e) { void e; setMgResults([]); } finally { setMgSearching(false); } }, 400);
+    mgDebounce.current = setTimeout(() => { fetchProducts(query, category, 0, false); }, 350);
   }
 
   function handleMgCategoryChange(cat: string) {
     setMgCategory(cat);
-    if (cat !== 'All') { if (mgDebounce.current) clearTimeout(mgDebounce.current); mgDebounce.current = setTimeout(async () => { setMgSearching(true); try { const params = new URLSearchParams(); if (mgSearch) params.set('q', mgSearch); params.set('category', cat); params.set('limit', '40'); const r = await fetch(`/api/purchase/products?${params}`); const d = await r.json(); setMgResults(d.products || []); } catch (e) { void e; setMgResults([]); } finally { setMgSearching(false); } }, 200); } else if (!mgSearch) { setMgResults([]); } else { searchProducts(mgSearch, 'All'); }
+    if (mgDebounce.current) clearTimeout(mgDebounce.current);
+    mgDebounce.current = setTimeout(() => { fetchProducts(mgSearch, cat, 0, false); }, 150);
   }
+
+  function loadMoreProducts() { fetchProducts(mgSearch, mgCategory, mgOffset, true); }
 
   async function addProductToGuide(product: OdooProduct & { product_code?: string }, extra?: { par_level?: number; product_code?: string }) {
     setMgAdding(product.id);
@@ -770,10 +796,13 @@ export default function PurchasePage() {
           categories={mgCategories}
           onSearchChange={(q) => searchProducts(q, mgCategory)}
           onCategoryChange={handleMgCategoryChange}
-          onClearSearch={() => { setMgSearch(''); setMgResults([]); }}
+          onClearSearch={() => { setMgSearch(''); fetchProducts('', mgCategory, 0, false); }}
           onAddProduct={addProductToGuide}
           onRemoveItem={removeGuideItemAction}
           onCreateNew={() => setMgCreateOpen(true)}
+          hasMore={mgHasMore}
+          loadingMore={mgLoadingMore}
+          onLoadMore={loadMoreProducts}
         />
         <CreateProductSheet
           open={mgCreateOpen}

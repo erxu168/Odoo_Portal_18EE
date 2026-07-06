@@ -16,6 +16,7 @@ export async function GET(request: Request) {
   const q = searchParams.get('q') || '';
   const category = searchParams.get('category') || '';
   const limit = parseInt(searchParams.get('limit') || '40');
+  const offset = parseInt(searchParams.get('offset') || '0') || 0;
 
   try {
     const odoo = getOdoo();
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
     const products = await odoo.searchRead('product.product',
       domain,
       ['id', 'name', 'uom_id', 'categ_id', 'list_price', 'type', 'active'],
-      { limit, order: 'categ_id, name' }
+      { limit, offset, order: 'categ_id, name' }
     );
 
     // Also fetch categories for filter pills

@@ -63,6 +63,11 @@ interface ManageGuideScreenProps {
 
   // Create a brand-new product (opens the create-product sheet)
   onCreateNew: () => void;
+
+  // Load-more paging for the product list
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
 }
 
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -99,6 +104,9 @@ export default function ManageGuideScreen({
   onAddProduct,
   onRemoveItem,
   onCreateNew,
+  hasMore,
+  loadingMore,
+  onLoadMore,
 }: ManageGuideScreenProps) {
   const guideProductIds = new Set(items.map((i) => i.product_id));
   const searchResults = results.filter((p) => !guideProductIds.has(p.id));
@@ -285,8 +293,7 @@ export default function ManageGuideScreen({
         + Create new product
       </button>
 
-      {(search || category !== 'All') && (
-        <div className="mb-4">
+      <div className="mb-4">
           <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">
             {searching ? 'Searching...' : `${searchResults.length} results`}
             {searchResults.length > 0 && ' \u2014 tap \u2605 to add to the template'}
@@ -317,14 +324,22 @@ export default function ManageGuideScreen({
               ))}
             </div>
           )}
+          {!searching && hasMore && (
+            <button
+              onClick={onLoadMore}
+              disabled={loadingMore}
+              className="w-full mt-2.5 py-2.5 rounded-xl bg-gray-100 text-gray-600 text-[var(--fs-sm)] font-semibold active:bg-gray-200 disabled:opacity-50"
+            >
+              {loadingMore ? 'Loading...' : 'Load more'}
+            </button>
+          )}
           {!searching && searchResults.length === 0 && results.length > 0 && (
             <div className="text-[12px] text-gray-500 text-center py-4">All matching products are already in the guide.</div>
           )}
-          {!searching && results.length === 0 && (search || category !== 'All') && (
-            <div className="text-[12px] text-gray-500 text-center py-4">No products found. Try a different search.</div>
+          {!searching && results.length === 0 && (
+            <div className="text-[12px] text-gray-500 text-center py-4">No products found. Try a different search, or create a new product above.</div>
           )}
         </div>
-      )}
 
       <div className="text-[11px] font-bold tracking-wide uppercase text-gray-400 pb-2">In guide ({items.length})</div>
       {items.length === 0 ? (
