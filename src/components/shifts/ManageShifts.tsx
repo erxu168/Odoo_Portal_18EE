@@ -501,11 +501,16 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   // ---- Chip + cell renderers ------------------------------------------------
   const chip = (s: ShiftSlot, mode: ChipMode, block: boolean) => {
     const isOpen = !s.employeeId;
-    const cls = isOpen
+    const base = isOpen
       ? 'bg-white border border-dashed border-gray-400 text-gray-600'
       : s.overCap
         ? 'bg-red-100 text-red-800'
         : 'bg-blue-100 text-blue-800';
+    // Drafts (not yet published) read as faded with an amber dashed outline so a
+    // manager can tell live vs still-pending shifts at a glance.
+    const cls = s.state === 'draft'
+      ? `${base} opacity-70 outline-dashed outline-1 outline-offset-[-2px] outline-amber-500`
+      : base;
     return (
       <button
         key={s.id}
@@ -686,6 +691,10 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       <span className="flex items-center gap-1.5">
         <span className="w-3.5 h-3.5 rounded bg-white border-[1.5px] border-dashed border-gray-400" />
         Open — waiting to be claimed
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="w-3.5 h-3.5 rounded bg-blue-100 opacity-70 outline-dashed outline-1 outline-amber-500" />
+        Draft — not published yet
       </span>
       <span className="flex items-center gap-1.5">
         <span className="w-3.5 h-3.5 rounded bg-red-100 border border-red-200" />
@@ -1025,7 +1034,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       {confirm === 'publish' && (
         <ConfirmDialog
           title="Publish this week?"
-          message={`Staff will see all ${draftCount} draft shift${draftCount === 1 ? '' : 's'}. Everyone assigned to one gets notified.`}
+          message={`Publish ${draftCount} draft shift${draftCount === 1 ? '' : 's'} so staff can see ${draftCount === 1 ? 'it' : 'them'}. Already-published shifts stay exactly as they are; everyone newly assigned gets notified.`}
           confirmLabel="Publish week"
           onConfirm={() => void doPublish()}
           onCancel={() => setConfirm(null)}
