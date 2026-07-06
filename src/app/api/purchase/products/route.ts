@@ -42,6 +42,14 @@ export async function GET(request: Request) {
       { limit: 50, order: 'name' }
     );
 
+    // Common units for the "create new product" form (curated subset of uom.uom).
+    const COMMON_UNITS = ['Units', 'kg', 'g', 'mg', 'L', 'ml', 'Dozen', 'lb', 'oz', 't'];
+    const uomRows = await odoo.searchRead('uom.uom', [], ['id', 'name'], { limit: 300 });
+    const units = (uomRows as any[])
+      .filter((u) => COMMON_UNITS.includes(u.name))
+      .map((u) => ({ id: u.id, name: u.name }))
+      .sort((a, b) => COMMON_UNITS.indexOf(a.name) - COMMON_UNITS.indexOf(b.name));
+
     const formatted = (products || []).map((p: any) => ({
       id: p.id,
       name: p.name,
@@ -58,7 +66,7 @@ export async function GET(request: Request) {
       full_name: c.complete_name,
     }));
 
-    return NextResponse.json({ products: formatted, categories: categoryList });
+    return NextResponse.json({ products: formatted, categories: categoryList, units });
   } catch (e: any) {
     console.error('Failed to search Odoo products:', e);
     return NextResponse.json({ error: e.message || 'Failed to search products', products: [], categories: [] }, { status: 500 });

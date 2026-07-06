@@ -24,11 +24,12 @@ import SupplierListScreen from '@/components/purchase/SupplierListScreen';
 import OrderDetailScreen from '@/components/purchase/OrderDetailScreen';
 import ManagePurchasesScreen from '@/components/purchase/ManagePurchasesScreen';
 import AddSupplierScreen from '@/components/purchase/AddSupplierScreen';
+import CreateProductSheet from '@/components/purchase/CreateProductSheet';
 import CatalogScreen from '@/components/purchase/CatalogScreen';
 import InsightsScreen from '@/components/purchase/InsightsScreen';
 
 // Types
-interface Supplier { id: number; name: string; email: string; product_count: number; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number; send_method: string; }
+interface Supplier { id: number; name: string; email: string; phone?: string; product_count: number; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number; send_method: string; }
 interface GuideItem { id: number; product_id: number; product_name: string; product_uom: string; price: number; price_source: string; category_name: string; }
 interface CartSummary { id: number; supplier_id: number; supplier_name: string; item_count: number; total: number; items: any[]; send_method: string; min_order_value: number; approval_required: number; }
 interface Order { id: number; supplier_id: number; supplier_name: string; odoo_po_name: string | null; status: string; total_amount: number; created_at: string; lines?: any[]; delivery_date: string | null; order_note: string; location_id: number; sent_at?: string | null; cancelled_at?: string | null; receipt_status?: string | null; receipt_created_at?: string | null; receipt_confirmed_at?: string | null; approved_by?: number | null; }
@@ -92,6 +93,11 @@ export default function PurchasePage() {
   const [mgCategory, setMgCategory] = useState('All');
   const [mgResults, setMgResults] = useState<OdooProduct[]>([]);
   const [mgCategories, setMgCategories] = useState<string[]>([]);
+  const [mgCatOptions, setMgCatOptions] = useState<{ id: number; name: string }[]>([]);
+  const [mgUnits, setMgUnits] = useState<{ id: number; name: string }[]>([]);
+  const [mgCreateOpen, setMgCreateOpen] = useState(false);
+  const [mgCreateSaving, setMgCreateSaving] = useState(false);
+  const [mgCreateErr, setMgCreateErr] = useState('');
   const [mgSearching, setMgSearching] = useState(false);
   const [mgAdding, setMgAdding] = useState<number>(0);
   const mgDebounce = useRef<NodeJS.Timeout | null>(null);
@@ -102,6 +108,13 @@ export default function PurchasePage() {
   const [mgLeadTime, setMgLeadTime] = useState(1);
   const [mgConfigSaving, setMgConfigSaving] = useState(false);
   const [mgConfigOpen, setMgConfigOpen] = useState(false);
+  const [mgConfigSaved, setMgConfigSaved] = useState(false);
+  const [mgName, setMgName] = useState('');
+  const [mgEmail, setMgEmail] = useState('');
+  const [mgPhone, setMgPhone] = useState('');
+  const [mgSendMethod, setMgSendMethod] = useState('email');
+  const mgCfgRef = useRef({ order: [] as string[], delivery: [] as string[], lead: 1, name: '', email: '', phone: '', send: 'email' });
+  const mgSaveTimer = useRef<NodeJS.Timeout | null>(null);
 
   const [deliveryDate, setDeliveryDate] = useState('');
   const [orderNote, setOrderNote] = useState('');
@@ -265,11 +278,17 @@ export default function PurchasePage() {
   async function openManageGuide(supplier: Supplier) {
     setGuideSupplierId(supplier.id); setGuideSupplierName(supplier.name); setMgSearch(''); setMgCategory('All'); setMgResults([]); setScreen('manage-guide'); setMgConfigOpen(false);
     // Populate supplier config
-    try { setMgOrderDays(JSON.parse(supplier.order_days || '[]')); } catch { setMgOrderDays([]); }
-    try { setMgDeliveryDays(JSON.parse(supplier.delivery_days || '[]')); } catch { setMgDeliveryDays([]); }
-    setMgLeadTime(supplier.lead_time_days || 1);
+    let od: string[] = []; try { od = JSON.parse(supplier.order_days || '[]'); } catch { od = []; }
+    let dd: string[] = []; try { dd = JSON.parse(supplier.delivery_days || '[]'); } catch { dd = []; }
+    const lt = supplier.lead_time_days || 1;
+    const sName = supplier.name || ''; const sEmail = supplier.email || '';
+    const sPhone = (supplier as { phone?: string }).phone || ''; const sSend = supplier.send_method || 'email';
+    setMgOrderDays(od); setMgDeliveryDays(dd); setMgLeadTime(lt);
+    setMgName(sName); setMgEmail(sEmail); setMgPhone(sPhone); setMgSendMethod(sSend);
+    mgCfgRef.current = { order: od, delivery: dd, lead: lt, name: sName, email: sEmail, phone: sPhone, send: sSend };
+    setMgConfigSaved(false);
     try { const r = await fetch(`/api/purchase/guides?supplier_id=${supplier.id}&location_id=${locationId}`); const d = await r.json(); setGuideItems(d.guide?.items || []); } catch (e) { void e; setGuideItems([]); }
-    try { const r = await fetch('/api/purchase/products?q=&limit=1'); const d = await r.json(); setMgCategories((d.categories || []).map((c: any) => c.name)); } catch (e) { void e; }
+    try { const r = await fetch('/api/purchase/products?q=&limit=1'); const d = await r.json(); setMgCategories((d.categories || []).map((c: any) => c.name)); setMgCatOptions((d.categories || []).map((c: any) => ({ id: c.id, name: c.name }))); setMgUnits(d.units || []); } catch (e) { void e; }
   }
 
   function searchProducts(query: string, category: string) {
@@ -286,6 +305,18 @@ export default function PurchasePage() {
   async function addProductToGuide(product: OdooProduct) {
     setMgAdding(product.id);
     try { await fetch('/api/purchase/guides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ supplier_id: guideSupplierId, location_id: locationId, product_id: product.id, product_name: product.name, product_uom: product.uom, price: product.price, price_source: 'odoo', category_name: product.category_name }) }); const r = await fetch(`/api/purchase/guides?supplier_id=${guideSupplierId}&location_id=${locationId}`); const d = await r.json(); setGuideItems(d.guide?.items || []); fetchSuppliers(); } catch (e) { void e; } finally { setMgAdding(0); }
+  }
+
+  async function createProductAndAddToGuide(payload: { name: string; uom_id: number; price: number; categ_id: number }) {
+    setMgCreateSaving(true); setMgCreateErr('');
+    try {
+      const r = await fetch('/api/purchase/products/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Failed to create product');
+      await addProductToGuide(d.product);
+      setMgCreateOpen(false);
+    } catch (e: any) { setMgCreateErr(e.message || 'Failed to create product'); }
+    finally { setMgCreateSaving(false); }
   }
 
   async function removeGuideItemAction(itemId: number) { await fetch(`/api/purchase/guides?item_id=${itemId}`, { method: 'DELETE' }); setGuideItems(prev => prev.filter(i => i.id !== itemId)); fetchSuppliers(); }
@@ -547,22 +578,36 @@ export default function PurchasePage() {
     finally { setAddSaving(false); }
   }
 
-  async function saveSupplierConfig() {
-    setMgConfigSaving(true);
-    try {
-      await fetch('/api/purchase/suppliers', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: guideSupplierId,
-          order_days: JSON.stringify(mgOrderDays),
-          delivery_days: JSON.stringify(mgDeliveryDays),
-          lead_time_days: mgLeadTime,
-        }),
-      });
-      fetchSuppliers();
-    } catch (e) { void e; }
-    finally { setMgConfigSaving(false); }
+  // Save-as-you-go: persist delivery settings on every change (debounced), so
+  // there is no separate "Save" button. mgCfgRef holds the latest values to
+  // avoid stale-closure reads inside the debounced timer.
+  function persistSupplierConfig(next: Partial<{ order: string[]; delivery: string[]; lead: number; name: string; email: string; phone: string; send: string }>) {
+    mgCfgRef.current = { ...mgCfgRef.current, ...next };
+    if (mgSaveTimer.current) clearTimeout(mgSaveTimer.current);
+    setMgConfigSaving(true); setMgConfigSaved(false);
+    mgSaveTimer.current = setTimeout(async () => {
+      const cfg = mgCfgRef.current;
+      try {
+        await fetch('/api/purchase/suppliers', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: guideSupplierId,
+            order_days: JSON.stringify(cfg.order),
+            delivery_days: JSON.stringify(cfg.delivery),
+            lead_time_days: cfg.lead,
+            email: cfg.email,
+            phone: cfg.phone,
+            send_method: cfg.send,
+            // Only persist name when non-empty so a mid-edit blank never wipes it.
+            ...(cfg.name.trim() ? { name: cfg.name.trim() } : {}),
+          }),
+        });
+        fetchSuppliers();
+        setMgConfigSaved(true);
+      } catch (e) { void e; }
+      finally { setMgConfigSaving(false); }
+    }, 600);
   }
 
   async function runSeed() { setSeedMsg('Seeding...'); try { const r = await fetch('/api/purchase/seed', { method: 'POST' }); const d = await r.json(); setSeedMsg(d.message || 'Done'); fetchSuppliers(); } catch (e: any) { setSeedMsg(`Error: ${e.message}`); } }
@@ -704,11 +749,19 @@ export default function PurchasePage() {
           deliveryDays={mgDeliveryDays}
           leadTime={mgLeadTime}
           configSaving={mgConfigSaving}
+          configSaved={mgConfigSaved}
           onToggleConfig={() => setMgConfigOpen(!mgConfigOpen)}
-          onOrderDaysChange={setMgOrderDays}
-          onDeliveryDaysChange={setMgDeliveryDays}
-          onLeadTimeChange={setMgLeadTime}
-          onSaveConfig={saveSupplierConfig}
+          onOrderDaysChange={(days) => { setMgOrderDays(days); persistSupplierConfig({ order: days }); }}
+          onDeliveryDaysChange={(days) => { setMgDeliveryDays(days); persistSupplierConfig({ delivery: days }); }}
+          onLeadTimeChange={(n) => { setMgLeadTime(n); persistSupplierConfig({ lead: n }); }}
+          name={mgName}
+          email={mgEmail}
+          phone={mgPhone}
+          sendMethod={mgSendMethod}
+          onNameChange={(v) => { setMgName(v); if (v.trim()) setGuideSupplierName(v); persistSupplierConfig({ name: v }); }}
+          onEmailChange={(v) => { setMgEmail(v); persistSupplierConfig({ email: v }); }}
+          onPhoneChange={(v) => { setMgPhone(v); persistSupplierConfig({ phone: v }); }}
+          onSendMethodChange={(v) => { setMgSendMethod(v); persistSupplierConfig({ send: v }); }}
           search={mgSearch}
           category={mgCategory}
           searching={mgSearching}
@@ -720,6 +773,17 @@ export default function PurchasePage() {
           onClearSearch={() => { setMgSearch(''); setMgResults([]); }}
           onAddProduct={addProductToGuide}
           onRemoveItem={removeGuideItemAction}
+          onCreateNew={() => setMgCreateOpen(true)}
+        />
+        <CreateProductSheet
+          open={mgCreateOpen}
+          initialName={mgSearch}
+          units={mgUnits}
+          categories={mgCatOptions}
+          saving={mgCreateSaving}
+          error={mgCreateErr}
+          onClose={() => { setMgCreateOpen(false); setMgCreateErr(''); }}
+          onCreate={createProductAndAddToGuide}
         /></>
       ) : screen === 'review' ? (<><Header title="Review order" subtitle={reviewCart?.supplier_name} showBack onBack={() => { setScreen('cart'); }} />
         {reviewCart && (

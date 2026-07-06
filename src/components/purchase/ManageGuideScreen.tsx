@@ -28,11 +28,21 @@ interface ManageGuideScreenProps {
   deliveryDays: string[];
   leadTime: number;
   configSaving: boolean;
+  configSaved: boolean;
   onToggleConfig: () => void;
   onOrderDaysChange: (days: string[]) => void;
   onDeliveryDaysChange: (days: string[]) => void;
   onLeadTimeChange: (n: number) => void;
-  onSaveConfig: () => void;
+
+  // Supplier details (edit + save-as-you-go)
+  name: string;
+  email: string;
+  phone: string;
+  sendMethod: string;
+  onNameChange: (v: string) => void;
+  onEmailChange: (v: string) => void;
+  onPhoneChange: (v: string) => void;
+  onSendMethodChange: (v: string) => void;
 
   // Product search (Odoo)
   search: string;
@@ -48,6 +58,9 @@ interface ManageGuideScreenProps {
 
   // Existing guide items
   onRemoveItem: (itemId: number) => void;
+
+  // Create a brand-new product (opens the create-product sheet)
+  onCreateNew: () => void;
 }
 
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -59,11 +72,19 @@ export default function ManageGuideScreen({
   deliveryDays,
   leadTime,
   configSaving,
+  configSaved,
   onToggleConfig,
   onOrderDaysChange,
   onDeliveryDaysChange,
   onLeadTimeChange,
-  onSaveConfig,
+  name,
+  email,
+  phone,
+  sendMethod,
+  onNameChange,
+  onEmailChange,
+  onPhoneChange,
+  onSendMethodChange,
   search,
   category,
   searching,
@@ -75,6 +96,7 @@ export default function ManageGuideScreen({
   onClearSearch,
   onAddProduct,
   onRemoveItem,
+  onCreateNew,
 }: ManageGuideScreenProps) {
   const guideProductIds = new Set(items.map((i) => i.product_id));
   const searchResults = results.filter((p) => !guideProductIds.has(p.id));
@@ -121,6 +143,54 @@ export default function ManageGuideScreen({
 
       {configOpen && (
         <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 py-3 mb-3 -mt-1">
+          {/* Supplier details */}
+          <div className="mb-3">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Supplier name</label>
+            <input
+              value={name}
+              onChange={(e) => onNameChange(e.target.value)}
+              placeholder="Supplier name"
+              className="w-full bg-white border border-gray-200 rounded-lg px-3 h-10 text-[var(--fs-sm)] text-gray-900 outline-none focus:border-[#F5800A] mb-2.5"
+            />
+            <div className="flex gap-2">
+              <div className="flex-1 min-w-0">
+                <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => onEmailChange(e.target.value)}
+                  placeholder="orders@supplier.com"
+                  className="w-full bg-white border border-gray-200 rounded-lg px-3 h-10 text-[var(--fs-sm)] text-gray-900 outline-none focus:border-[#F5800A]"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Phone</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => onPhoneChange(e.target.value)}
+                  placeholder="+49 ..."
+                  className="w-full bg-white border border-gray-200 rounded-lg px-3 h-10 text-[var(--fs-sm)] text-gray-900 outline-none focus:border-[#F5800A]"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="mb-3">
+            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">
+              Order method <span className="normal-case font-normal">(how orders reach this supplier)</span>
+            </label>
+            <div className="flex gap-1.5">
+              {([['email', 'Email'], ['whatsapp', 'WhatsApp'], ['manual', 'Manual']] as const).map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => onSendMethodChange(val)}
+                  className={`flex-1 px-3 py-2 rounded-lg text-[var(--fs-xs)] font-semibold ${sendMethod === val ? 'bg-[#F5800A] text-white' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="mb-3">
             <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">
               Order days <span className="normal-case font-normal">(when staff must place orders)</span>
@@ -170,13 +240,9 @@ export default function ManageGuideScreen({
               <span className="text-[var(--fs-xs)] text-gray-400 ml-1">{leadTime === 1 ? 'day' : 'days'}</span>
             </div>
           </div>
-          <button
-            onClick={onSaveConfig}
-            disabled={configSaving}
-            className="w-full py-2.5 rounded-xl bg-[#F5800A] text-white text-[var(--fs-sm)] font-bold active:bg-[#E86000] disabled:opacity-50 transition-colors"
-          >
-            {configSaving ? 'Saving...' : 'Save delivery settings'}
-          </button>
+          <div className={`text-[var(--fs-xs)] pt-1 ${configSaved && !configSaving ? 'text-green-600' : 'text-gray-400'}`}>
+            {configSaving ? 'Saving…' : configSaved ? '✓ Saved' : 'Changes save automatically'}
+          </div>
         </div>
       )}
 
@@ -209,6 +275,13 @@ export default function ManageGuideScreen({
           </button>
         ))}
       </div>
+
+      <button
+        onClick={onCreateNew}
+        className="w-full mb-3 py-2.5 rounded-xl border border-dashed border-[#F5800A] text-[#F5800A] text-[var(--fs-sm)] font-semibold active:bg-orange-50"
+      >
+        + Create new product
+      </button>
 
       {(search || category !== 'All') && (
         <div className="mb-4">
