@@ -209,6 +209,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const [sheetError, setSheetError] = useState<string | null>(null);
 
   const [confirm, setConfirm] = useState<'publish' | 'copy' | 'delete' | null>(null);
+  const [lastWeekCount, setLastWeekCount] = useState<number | null>(null);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -478,6 +479,18 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Could not publish the week');
     }
+  }
+
+  // Peek at last week so the confirm can say how many shifts will be copied.
+  async function openCopyConfirm() {
+    setLastWeekCount(null);
+    setConfirm('copy');
+    try {
+      const prev = offsetWeekKey(weekKey, -1);
+      const res = await fetch(`/api/shifts/manage?company_id=${companyId}&week=${prev}`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.slots)) setLastWeekCount(data.slots.length);
+    } catch { /* preview only — ignore */ }
   }
 
   async function doCopyLastWeek() {
@@ -901,7 +914,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             New shift
           </button>
           <button
-            onClick={() => setConfirm('copy')}
+            onClick={() => void openCopyConfirm()}
             className="flex-1 bg-white border border-gray-200 text-gray-700 font-semibold rounded-xl py-3 text-[var(--fs-sm)] active:bg-gray-50"
           >
             Copy last week
@@ -1043,7 +1056,13 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       {confirm === 'copy' && (
         <ConfirmDialog
           title="Copy last week?"
-          message="Every shift from last week is copied into this week as drafts — same times, roles and people. Nothing is visible to staff until you publish."
+          message={
+            lastWeekCount === null
+              ? 'Checking last week…'
+              : lastWeekCount === 0
+                ? 'Last week has no shifts to copy.'
+                : `Copy the ${lastWeekCount} shift${lastWeekCount === 1 ? '' : 's'} from last week into this week as drafts — same times, roles and people. Nothing is visible to staff until you publish.`
+          }
           confirmLabel="Copy last week"
           onConfirm={() => void doCopyLastWeek()}
           onCancel={() => setConfirm(null)}
