@@ -56,6 +56,9 @@ const TABS = [
  */
 
 const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/hr', '/kiosk'];
+// Wide routes get an edge-to-edge bar (tabs stay centered) instead of a
+// phone-width box floating over wide content.
+const WIDE_ROUTES = ['/shifts'];
 
 export default function AppTabBar() {
   const router = useRouter();
@@ -65,6 +68,7 @@ export default function AppTabBar() {
   if (hidden || HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
     return null;
   }
+  const isWide = WIDE_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
 
   function isActive(tab: typeof TABS[0]) {
     if (tab.href === '/') return pathname === '/';
@@ -72,7 +76,8 @@ export default function AppTabBar() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 max-w-lg mx-auto">
+    <div className={`fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 ${isWide ? '' : 'max-w-lg mx-auto'}`}>
+      <div className={isWide ? 'max-w-lg mx-auto' : ''}>
       <div className="flex h-16">
         {TABS.map(tab => {
           const active = isActive(tab);
@@ -93,6 +98,7 @@ export default function AppTabBar() {
         })}
       </div>
       <div className="h-[env(safe-area-inset-bottom)]" />
+      </div>
     </div>
   );
 }
