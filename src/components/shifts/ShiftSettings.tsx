@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import { SectionTitle, Spinner, ToggleSwitch } from '@/components/shifts/ui';
+import RolesDeptManager from '@/components/shifts/RolesDeptManager';
 import { ds } from '@/lib/design-system';
 
 /**
@@ -226,8 +227,12 @@ export default function ShiftSettings({ companyId, onBack }: ShiftSettingsProps)
               />
             </div>
 
+            <div className="pt-2">
+              <RolesDeptManager companyId={companyId} />
+            </div>
+
             <p className="text-[var(--fs-xs)] text-gray-400 text-center px-6 pt-4 leading-snug">
-              Settings apply to this company only.
+              Settings and roles/departments apply to this company only.
             </p>
 
             {saveError && (
