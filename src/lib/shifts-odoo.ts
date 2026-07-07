@@ -172,16 +172,20 @@ export async function fetchEmployees(companyId: number): Promise<ShiftEmployee[]
     }
   }
 
-  // Batch-read current-contract hourly rate (WAJ staff have none → fallback).
+  // Batch-read current-contract hourly rate + contracted weekly hours (WAJ staff
+  // have no contract → rate falls back, target stays null).
   const contractIds = rows
     .map(r => m2oId(r.contract_id))
     .filter((id): id is number => id !== null);
   const rateMap = new Map<number, number>();
+  const targetMap = new Map<number, number>();
   if (contractIds.length > 0) {
     const contracts = (await odoo.read('hr.contract', contractIds,
       ['wage', 'wage_type', 'hourly_wage', 'kw_agreed_weekly_hours'])) as OdooRow[];
     for (const c of contracts) {
       rateMap.set(c.id as number, contractHourlyRate(c));
+      const weekly = num(c.kw_agreed_weekly_hours);
+      if (weekly > 0) targetMap.set(c.id as number, weekly);
     }
   }
 
@@ -202,6 +206,7 @@ export async function fetchEmployees(companyId: number): Promise<ShiftEmployee[]
       roleIds: resourceId !== null ? roleMap.get(resourceId) ?? [] : [],
       employmentType:
         et === 'minijob' || et === 'midijob' || et === 'fulltime' ? et : null,
+      weeklyTarget: contractId !== null ? targetMap.get(contractId) ?? null : null,
       hourlyRate: contractId !== null ? rateMap.get(contractId) ?? MIN_WAGE_EUR : MIN_WAGE_EUR,
       hasContract: contractId !== null,
     };
@@ -343,6 +348,33 @@ export async function employeeWeekHours(employeeId: number, weekKey: string): Pr
     const start = str(r.start_datetime);
     const end = str(r.end_datetime);
     return start && end ? sum + durationHours(start, end) : sum;
+  }, 0);
+  return Math.round(total * 100) / 100;
+}
+
+/** One employee's total assigned hours in the current Berlin calendar month (self €-cap view). */
+export async function employeeMonthHours(employeeId: number): Promise<number> {
+  const today = berlinParts(nowOdooUtc()).date;
+  const [y, m] = today.split('-').map(Number);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const first = `${y}-${pad(m)}-01`;
+  const next = m === 12 ? `${y + 1}-01-01` : `${y}-${pad(m + 1)}-01`;
+  const startOdoo = berlinDateTimeToUtcOdoo(first, '00:00');
+  const endOdoo = berlinDateTimeToUtcOdoo(next, '00:00');
+  const rows = (await getOdoo().searchRead(
+    'planning.slot',
+    [
+      ['employee_id', '=', employeeId],
+      ['start_datetime', '>=', startOdoo],
+      ['start_datetime', '<', endOdoo],
+    ],
+    ['start_datetime', 'end_datetime'],
+    { limit: 1000 },
+  )) as OdooRow[];
+  const total = rows.reduce((sum, r) => {
+    const s = str(r.start_datetime);
+    const e = str(r.end_datetime);
+    return s && e ? sum + durationHours(s, e) : sum;
   }, 0);
   return Math.round(total * 100) / 100;
 }

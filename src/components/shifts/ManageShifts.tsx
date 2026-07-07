@@ -327,6 +327,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
               skill: null,
               roleIds: [],
               employmentType: null,
+              weeklyTarget: null,
               hourlyRate: 13.9, // min-wage fallback; real rate comes from the roster response
               hasContract: false,
               hours: 0,

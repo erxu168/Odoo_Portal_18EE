@@ -42,6 +42,8 @@ export interface ShiftEmployee {
   roleIds: number[];
   /** German classification from hr.employee.x_employment_type; null = unclassified */
   employmentType: 'minijob' | 'midijob' | 'fulltime' | null;
+  /** Contracted weekly hours (hr.contract.kw_agreed_weekly_hours); null = none on file */
+  weeklyTarget: number | null;
   /** €/h from the current contract; falls back to the statutory minimum wage */
   hourlyRate: number;
   /** false when the employee has no contract on file (rate is the fallback) */

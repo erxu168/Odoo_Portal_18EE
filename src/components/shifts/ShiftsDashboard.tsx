@@ -1,16 +1,19 @@
 'use client';
 
 import React from 'react';
-import PresenceCard from '@/components/shifts/PresenceCard';
+import ManagerKpiStack from '@/components/shifts/ManagerKpiStack';
+import StaffKpiStack from '@/components/shifts/StaffKpiStack';
 
 /**
- * Shifts module dashboard.
+ * Planning module dashboard.
  *
  * Layout (top → bottom):
- *   1. Live "Right now" presence card — managers only. Surfaces who is clocked
- *      in directly on the dashboard (replaces the old "Right Now" tile) and taps
- *      through to the full PresenceBoard.
- *   2. Grouped tile sections:
+ *   1. Role-aware KPI stack — different jobs for different people:
+ *        • Managers → ManagerKpiStack: on-shift-now, week coverage, team hours &
+ *          cost, punctuality hot-spots (an ops board: now → today → week ahead).
+ *        • Staff    → StaffKpiStack: next shift, hours this week/month vs their
+ *          contracted target or Minijob cap, open shifts, requests, on-time %.
+ *   2. Grouped tile sections (navigation):
  *        • My Shifts     — everyone: own schedule, hours, claims, cover requests, PIN
  *        • Plan & Manage — managers: build & run the schedule
  *        • Admin         — managers: team setup, records & compliance
@@ -239,8 +242,10 @@ export default function ShiftsDashboard({ companyId, isManager, badges, onNaviga
 
   return (
     <div className="px-4 py-4 flex flex-col gap-5 max-w-5xl mx-auto w-full">
-      {isManager && (
-        <PresenceCard companyId={companyId} onOpen={() => onNavigate('presence')} />
+      {isManager ? (
+        <ManagerKpiStack companyId={companyId} onNavigate={onNavigate} />
+      ) : (
+        <StaffKpiStack companyId={companyId} onNavigate={onNavigate} />
       )}
 
       {visibleGroups.map((group) => (
