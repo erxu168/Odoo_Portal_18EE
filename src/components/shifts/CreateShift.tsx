@@ -599,6 +599,12 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                   ? `Create & assign to ${firstName(picked.name)}`
                   : 'Create shift'}
             </button>
+            <button
+              onClick={onBack}
+              className="w-full py-2.5 rounded-xl text-[var(--fs-sm)] font-semibold text-gray-500 active:text-gray-700"
+            >
+              Cancel
+            </button>
             {picked && pickedOverage > 0 && (
               <button
                 onClick={() => {
