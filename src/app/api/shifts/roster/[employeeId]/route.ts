@@ -1,9 +1,10 @@
 /**
  * PUT /api/shifts/roster/[employeeId] — manager edits cap, skill and roles.
  *
- * Body: {company_id, cap?:number|null, skill?:'1'|'2'|'3'|null, role_ids?:number[]}.
+ * Body: {company_id, cap?, skill?, department_id?:number|null, role_ids?, ...}.
  * cap → hr.employee.x_max_weekly_hours (null → 0 = no cap);
  * skill → hr.employee.x_skill_level (null → false);
+ * department_id → hr.employee.department_id (standard field; null → false);
  * role_ids → resource.resource.role_ids via [[6, 0, ids]].
  * A cap change recomputes x_over_cap_flag for the current AND next week.
  */
@@ -74,6 +75,20 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
       }
     }
 
+    // department_id is a STANDARD hr.employee field (writable) — validate here and
+    // write it separately below so it isn't lost if the addon-only fields fail.
+    let departmentWrite: number | false | undefined;
+    if ('department_id' in body) {
+      const dep = body.department_id;
+      if (dep === null) {
+        departmentWrite = false;
+      } else if (typeof dep === 'number' && Number.isInteger(dep) && dep > 0) {
+        departmentWrite = dep;
+      } else {
+        return NextResponse.json({ error: 'department_id must be null or a department id' }, { status: 400 });
+      }
+    }
+
     let roleIds: number[] | null = null;
     if ('role_ids' in body) {
       if (!Array.isArray(body.role_ids) || !body.role_ids.every(r => typeof r === 'number' && Number.isInteger(r) && r > 0)) {
@@ -108,6 +123,10 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
         // addon. Where it's absent (e.g. production before the addon update), skip
         // this write so roles + PIN still save instead of failing the whole request.
       }
+    }
+    // Standard field — write on its own so an addon-field failure above doesn't drop it.
+    if (departmentWrite !== undefined) {
+      await odoo.write('hr.employee', [employeeId], { department_id: departmentWrite });
     }
     if (roleIds !== null && employee.resourceId !== null) {
       await odoo.write('resource.resource', [employee.resourceId], { role_ids: [[6, 0, roleIds]] });

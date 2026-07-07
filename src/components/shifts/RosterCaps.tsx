@@ -69,6 +69,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
   const { companyName } = useCompany();
   const [employees, setEmployees] = useState<ShiftEmployee[]>([]);
   const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -77,6 +78,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
   const [editing, setEditing] = useState<ShiftEmployee | null>(null);
   const [capStr, setCapStr] = useState('');
   const [skill, setSkill] = useState<SkillLevel | null>(null);
+  const [deptId, setDeptId] = useState<number | null>(null);
   const [roleIds, setRoleIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -94,6 +96,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setEmployees(Array.isArray(data.employees) ? data.employees : []);
       setRoles(Array.isArray(data.roles) ? data.roles : []);
+      setDepartments(Array.isArray(data.departments) ? data.departments : []);
       setPinnedIds(new Set(Array.isArray(data.pinnedEmployeeIds) ? data.pinnedEmployeeIds : []));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -122,6 +125,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
     setEditing(e);
     setCapStr(e.cap !== null ? String(e.cap % 1 === 0 ? e.cap.toFixed(0) : e.cap) : '');
     setSkill(e.skill);
+    setDeptId(e.departmentId);
     setRoleIds(e.roleIds);
     setEmpType(e.employmentType);
     setNeedsConfirm(false);
@@ -160,6 +164,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
           company_id: companyId,
           cap: capNum,
           skill,
+          department_id: deptId,
           role_ids: roleIds,
           employment_type: empType,
           pin: /^\d{4}$/.test(pinStr) ? pinStr : undefined,
@@ -270,6 +275,25 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
                 </div>
               </div>
             </div>
+
+            {departments.length > 0 && (
+              <div>
+                <div className={ds.label}>Department</div>
+                <select
+                  value={deptId ?? ''}
+                  onChange={e => setDeptId(e.target.value === '' ? null : Number(e.target.value))}
+                  className={ds.input}
+                >
+                  <option value="">No department</option>
+                  {departments.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+                <p className="text-[var(--fs-sm)] text-gray-500 mt-1.5 leading-snug">
+                  Used to group shifts and to narrow who you assign when planning by department.
+                </p>
+              </div>
+            )}
 
             <div>
               <div className={ds.label}>Employment type</div>
