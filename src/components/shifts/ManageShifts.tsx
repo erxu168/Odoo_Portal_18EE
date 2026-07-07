@@ -228,7 +228,8 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   );
   const [viewMode, setViewMode] = useState<ViewMode>(focusDate ? 'day' : 'week');
   const [day, setDay] = useState<string>(focusDate || todayBerlin);
-  const [grouping, setGrouping] = useState<Grouping>('staff');
+  // Fixed hierarchy: always Department → Role → Person (name on each shift).
+  const [grouping] = useState<Grouping>('dept');
 
   const [data, setData] = useState<ManageData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -259,6 +260,22 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   // Month view (calendar grid) — its own multi-week aggregation.
   const [monthAnchor, setMonthAnchor] = useState<string>(() => (focusDate || todayBerlin).slice(0, 7));
   const [monthSlots, setMonthSlots] = useState<Map<string, ShiftSlot[]>>(new Map());
+  // On phones the month grid is too narrow for chips — tap a day to reveal its
+  // shifts in a readable list below. isNarrow drives that (grid tap = select).
+  const [monthSelectedDay, setMonthSelectedDay] = useState<string>(todayBerlin);
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(max-width: 639px)');
+    const on = () => setIsNarrow(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  // Keep the selected day inside the shown month.
+  useEffect(() => {
+    setMonthSelectedDay(todayBerlin.slice(0, 7) === monthAnchor ? todayBerlin : `${monthAnchor}-01`);
+  }, [monthAnchor, todayBerlin]);
 
   // Inline quick-add sheet (create a shift without leaving Manage).
   const [qaDate, setQaDate] = useState<string | null>(null);
@@ -1247,17 +1264,6 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             ]}
             onChange={setViewMode}
           />
-          {viewMode !== 'month' && (
-            <Seg<Grouping>
-              value={grouping}
-              options={[
-                { key: 'staff', label: 'By staff' },
-                { key: 'role', label: 'By role' },
-                { key: 'dept', label: 'By dept' },
-              ]}
-              onChange={setGrouping}
-            />
-          )}
         </div>
 
         {loading ? (
@@ -1287,10 +1293,14 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                   <div
                     key={date}
                     role="button"
-                    onClick={() => openQuickAdd(date)}
-                    aria-label={`Add shift on ${dayLabel(date)}`}
+                    onClick={() => (isNarrow ? setMonthSelectedDay(date) : openQuickAdd(date))}
+                    aria-label={isNarrow ? `Show shifts on ${dayLabel(date)}` : `Add shift on ${dayLabel(date)}`}
                     className={`rounded-lg border min-h-[60px] sm:min-h-[104px] flex flex-col p-1 gap-1 cursor-pointer transition-colors ${
-                      isToday ? 'border-green-500 ring-1 ring-green-500' : 'border-gray-200'
+                      isNarrow && date === monthSelectedDay
+                        ? 'border-green-600 ring-2 ring-green-600'
+                        : isToday
+                          ? 'border-green-500 ring-1 ring-green-500'
+                          : 'border-gray-200'
                     } ${inMonth ? 'bg-white active:bg-gray-50' : 'bg-gray-50'}`}
                   >
                     <div className="flex items-center justify-end px-0.5">
@@ -1327,8 +1337,28 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 );
               })}
             </div>
+
+            {/* Phones: tapped-day detail with real shifts (chips don't fit in cells) */}
+            <div className="sm:hidden mt-4">
+              <div className="text-[var(--fs-sm)] font-bold text-gray-900 mb-2">
+                {dayLabel(monthSelectedDay)}
+                {monthSelectedDay === todayBerlin && <span className="text-gray-400 font-semibold"> · today</span>}
+              </div>
+              {(monthSlots.get(monthSelectedDay) ?? []).length === 0 ? (
+                <div className="text-[var(--fs-sm)] text-gray-400">No shifts on this day yet.</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {(monthSlots.get(monthSelectedDay) ?? []).map(s => monthChip(s))}
+                </div>
+              )}
+              <button onClick={() => openQuickAdd(monthSelectedDay)} className={`${ds.btnSecondary} mt-2.5`}>
+                + Add a shift on {dayLabel(monthSelectedDay)}
+              </button>
+            </div>
+
             <div className="mt-3 text-[var(--fs-xs)] text-gray-500">
-              Tap a shift to edit it, or an empty space in a day to add one.
+              <span className="sm:hidden">Tap a day to see its shifts below.</span>
+              <span className="hidden sm:inline">Tap a shift to edit it, or an empty space in a day to add one.</span>
             </div>
           </div>
         ) : !hasAnything ? (
