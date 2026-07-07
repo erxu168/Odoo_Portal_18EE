@@ -2,12 +2,14 @@
 
 /**
  * Shifts — Manage Shifts (manager).
- * Week navigation + Week/Day toggle + grouping toggle (By staff / By role / By dept).
- * Mobile (<md): compact per-day list; md+: full 7-day CSS grid with chips
- * (assigned = blue, open = dashed, over-cap = red with "!"). Totals row per
- * day + week split into assigned vs open. Tap a chip to edit/reassign in a
- * bottom sheet; tap an empty cell/day to create a prefilled shift. Footer:
- * New shift · Copy last week · Publish week (drafts become visible to staff).
+ * Day / Week / Month views. Week & Day add a grouping toggle (By staff / By role
+ * / By dept); Month is a calendar grid (day cell shows shift count + amber dot
+ * for open shifts, tap a day to quick-add). Mobile (<md): compact per-day list;
+ * md+: full 7-day CSS grid with chips (assigned = blue, open = dashed, over-cap
+ * = red with "!"). Tap a chip to edit/reassign in a bottom sheet; tap an empty
+ * cell/day to quick-add a shift inline (no view switch) — the quick-add sheet
+ * posts to /api/shifts/slots and refreshes in place, with a "More options" link
+ * to the full Create Shift form. Footer: New shift · Copy last week · Publish.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -45,7 +47,7 @@ interface ManageShiftsProps {
 }
 
 type Grouping = 'staff' | 'role' | 'dept';
-type ViewMode = 'week' | 'day';
+type ViewMode = 'week' | 'day' | 'month';
 type ChipMode = 'time' | 'person';
 
 interface ManageEmployee extends ShiftEmployee {
@@ -61,6 +63,7 @@ interface RoleInfo {
 interface ManageData {
   employees: ManageEmployee[];
   roles: RoleInfo[];
+  departments: RoleInfo[];
   slots: ShiftSlot[];
   totals: { perDay: number[]; assigned: number; open: number } | null;
   pendingRequestSlotIds: number[];
@@ -115,6 +118,40 @@ function weekLabel(weekKey: string): string {
 /** "Mon 6 Jul" from a pure "YYYY-MM-DD" date (noon UTC = same Berlin date). */
 function dayLabel(date: string): string {
   return fmtDay(`${date} 12:00:00`);
+}
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/** "YYYY-MM-DD" + n days (pure calendar arithmetic, UTC-safe). */
+function addDaysStr(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+/** Shift a "YYYY-MM" month anchor by delta months. */
+function shiftMonth(anchor: string, delta: number): string {
+  const [y, m] = anchor.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** "July 2026" for a "YYYY-MM" anchor. */
+function monthLabel(anchor: string): string {
+  const [y, m] = anchor.split('-').map(Number);
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+/** The 42 dates (6 weeks, Mon-first) of the calendar grid for a "YYYY-MM" month. */
+function monthGridCells(anchor: string): string[] {
+  const first = `${anchor}-01`;
+  const firstDow = (new Date(`${first}T12:00:00Z`).getUTCDay() + 6) % 7; // 0=Mon
+  const gridStart = addDaysStr(first, -firstDow);
+  const cells: string[] = [];
+  for (let i = 0; i < 42; i++) cells.push(addDaysStr(gridStart, i));
+  return cells;
 }
 
 /** "16:00" → "16", "09:30" → "9:30" — compact chip times like the mock. */
@@ -217,6 +254,21 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const [copyDaySheet, setCopyDaySheet] = useState(false);
   const [copyTargets, setCopyTargets] = useState<Set<string>>(new Set());
 
+  // Month view (calendar grid) — its own multi-week aggregation.
+  const [monthAnchor, setMonthAnchor] = useState<string>(() => (focusDate || todayBerlin).slice(0, 7));
+  const [monthAgg, setMonthAgg] = useState<Map<string, { shifts: number; open: number; hours: number }>>(new Map());
+
+  // Inline quick-add sheet (create a shift without leaving Manage).
+  const [qaDate, setQaDate] = useState<string | null>(null);
+  const [qaStart, setQaStart] = useState('16:00');
+  const [qaEnd, setQaEnd] = useState('22:00');
+  const [qaDeptId, setQaDeptId] = useState<number | null>(null);
+  const [qaRoleId, setQaRoleId] = useState<number | null>(null);
+  const [qaAssignId, setQaAssignId] = useState<number | null>(null);
+  const [qaCount, setQaCount] = useState(1);
+  const [qaSaving, setQaSaving] = useState(false);
+  const [qaError, setQaError] = useState<string | null>(null);
+
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [undo, setUndo] = useState<{ body: Record<string, unknown>; label: string } | null>(null);
@@ -263,6 +315,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       setData({
         employees: Array.isArray(raw.employees) ? raw.employees : [],
         roles: Array.isArray(raw.roles) ? raw.roles : [],
+        departments: Array.isArray(raw.departments) ? raw.departments : [],
         slots: Array.isArray(raw.slots) ? raw.slots : [],
         totals,
         pendingRequestSlotIds: Array.isArray(raw.pendingRequestSlotIds) ? raw.pendingRequestSlotIds : [],
@@ -278,6 +331,43 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   useEffect(() => {
     if (companyId) void load();
   }, [companyId, load]);
+
+  // Month view spans several ISO weeks — fetch each week that the grid touches
+  // and aggregate shift/open counts per day. Runs only while month view is open.
+  const loadMonth = useCallback(async () => {
+    const cells = monthGridCells(monthAnchor);
+    const weekKeys = Array.from(new Set(cells.map(d => berlinISOWeekKey(`${d} 12:00:00`))));
+    try {
+      const results = await Promise.all(
+        weekKeys.map(wk =>
+          fetch(`/api/shifts/manage?company_id=${companyId}&week=${wk}`)
+            .then(r => (r.ok ? r.json() : { slots: [] }))
+            .catch(() => ({ slots: [] })),
+        ),
+      );
+      const agg = new Map<string, { shifts: number; open: number; hours: number }>();
+      const seen = new Set<number>();
+      for (const r of results) {
+        for (const s of Array.isArray(r.slots) ? r.slots : []) {
+          if (seen.has(s.id)) continue;
+          seen.add(s.id);
+          const dt = berlinParts(s.start).date;
+          const cur = agg.get(dt) ?? { shifts: 0, open: 0, hours: 0 };
+          cur.shifts += 1;
+          if (!s.employeeId) cur.open += 1;
+          cur.hours += typeof s.hours === 'number' ? s.hours : 0;
+          agg.set(dt, cur);
+        }
+      }
+      setMonthAgg(agg);
+    } catch (err: unknown) {
+      console.warn('[shifts] month load failed:', err instanceof Error ? err.message : String(err));
+    }
+  }, [companyId, monthAnchor]);
+
+  useEffect(() => {
+    if (companyId && viewMode === 'month') void loadMonth();
+  }, [companyId, viewMode, loadMonth]);
 
   const pendingSet = useMemo(() => new Set(data?.pendingRequestSlotIds ?? []), [data]);
 
@@ -478,6 +568,53 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
     return true;
+  }
+
+  // ---- Inline quick-add (create a shift without leaving Manage) --------------
+
+  /** Open the quick-add sheet for a date, optionally seeded with role/person. */
+  function openQuickAdd(date: string, ctx?: { roleId?: number | null; employeeId?: number | null }) {
+    const depts = data?.departments ?? [];
+    setQaDate(date);
+    setQaError(null);
+    setQaStart('16:00');
+    setQaEnd('22:00');
+    setQaCount(1);
+    setQaDeptId(depts.length === 1 ? depts[0].id : null);
+    setQaRoleId(ctx?.roleId ?? null);
+    setQaAssignId(ctx?.employeeId ?? null);
+  }
+
+  async function submitQuickAdd() {
+    if (qaDate === null) return;
+    const depts = data?.departments ?? [];
+    if (depts.length > 0 && qaDeptId === null) {
+      setQaError('Pick a department for this shift.');
+      return;
+    }
+    setQaSaving(true);
+    setQaError(null);
+    try {
+      const body: Record<string, unknown> = {
+        company_id: companyId,
+        date: qaDate,
+        start: qaStart,
+        end: qaEnd,
+        role_id: qaRoleId,
+        department_id: qaDeptId,
+        count: qaCount,
+      };
+      if (qaAssignId !== null) body.assign_employee_id = qaAssignId;
+      await createFromBody(body);
+      setQaDate(null);
+      showToast(qaCount > 1 ? `${qaCount} shifts added as drafts` : 'Shift added as a draft');
+      void load();
+      if (viewMode === 'month') void loadMonth();
+    } catch (err: unknown) {
+      setQaError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setQaSaving(false);
+    }
   }
 
   async function doDuplicate() {
@@ -697,7 +834,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const gridCell = (key: string, date: string, cellSlots: ShiftSlot[], mode: ChipMode, roleId?: number | null) => (
     <div
       key={key}
-      onClick={() => onCreateShift({ date, ...(roleId !== null && roleId !== undefined ? { roleId } : {}) })}
+      onClick={() => openQuickAdd(date, roleId !== null && roleId !== undefined ? { roleId } : undefined)}
       className="bg-white p-1 flex flex-col gap-1 min-h-[56px] cursor-pointer active:bg-gray-50"
     >
       {cellSlots.map(s => chip(s, mode, true))}
@@ -822,7 +959,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             {totals.perDay[i] > 0 ? `${fmtH(totals.perDay[i])} h` : '—'}
           </span>
           <button
-            onClick={() => onCreateShift({ date })}
+            onClick={() => openQuickAdd(date)}
             aria-label={`Add shift on ${dayLabel(date)}`}
             className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 text-[var(--fs-md)] font-bold flex items-center justify-center active:bg-gray-200"
           >
@@ -921,31 +1058,57 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       <AppHeader supertitle="Planning" title="Manage Shifts" subtitle="Plan, publish & reassign" showBack onBack={onBack} />
 
       <div className="pt-3 pb-36 max-w-6xl mx-auto w-full">
-        <WeekNav
-          weekKey={weekKey}
-          label={weekLabel(weekKey)}
-          onPrev={() => setWeekKey(k => offsetWeekKey(k, -1))}
-          onNext={() => setWeekKey(k => offsetWeekKey(k, 1))}
-        />
+        {viewMode === 'month' ? (
+          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-2.5 py-2 mx-4 mb-3">
+            <button
+              onClick={() => setMonthAnchor(a => shiftMonth(a, -1))}
+              aria-label="Previous month"
+              className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200 flex-shrink-0"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><polyline points="15 18 9 12 15 6" /></svg>
+            </button>
+            <div className="flex-1 text-center text-[var(--fs-md)] font-bold text-gray-900 truncate">
+              {monthLabel(monthAnchor)}
+              {monthAnchor === todayBerlin.slice(0, 7) && <span className="text-gray-400 font-semibold"> · this month</span>}
+            </div>
+            <button
+              onClick={() => setMonthAnchor(a => shiftMonth(a, 1))}
+              aria-label="Next month"
+              className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200 flex-shrink-0"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+          </div>
+        ) : (
+          <WeekNav
+            weekKey={weekKey}
+            label={weekLabel(weekKey)}
+            onPrev={() => setWeekKey(k => offsetWeekKey(k, -1))}
+            onNext={() => setWeekKey(k => offsetWeekKey(k, 1))}
+          />
+        )}
 
         <div className="px-4 pb-3 flex flex-wrap items-center gap-2">
           <Seg<ViewMode>
             value={viewMode}
             options={[
-              { key: 'week', label: 'Week' },
               { key: 'day', label: 'Day' },
+              { key: 'week', label: 'Week' },
+              { key: 'month', label: 'Month' },
             ]}
             onChange={setViewMode}
           />
-          <Seg<Grouping>
-            value={grouping}
-            options={[
-              { key: 'staff', label: 'By staff' },
-              { key: 'role', label: 'By role' },
-              { key: 'dept', label: 'By dept' },
-            ]}
-            onChange={setGrouping}
-          />
+          {viewMode !== 'month' && (
+            <Seg<Grouping>
+              value={grouping}
+              options={[
+                { key: 'staff', label: 'By staff' },
+                { key: 'role', label: 'By role' },
+                { key: 'dept', label: 'By dept' },
+              ]}
+              onChange={setGrouping}
+            />
+          )}
         </div>
 
         {loading ? (
@@ -957,6 +1120,50 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             <button onClick={() => void load()} className="px-6 py-3 bg-green-600 text-white text-[var(--fs-sm)] font-bold rounded-xl active:bg-green-700">
               Retry
             </button>
+          </div>
+        ) : viewMode === 'month' ? (
+          <div className="px-4">
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1.5">
+              {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map(d => (
+                <div key={d} className="text-center text-[var(--fs-xs)] font-bold uppercase text-gray-400">{d}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
+              {monthGridCells(monthAnchor).map(date => {
+                const inMonth = date.slice(0, 7) === monthAnchor;
+                const agg = monthAgg.get(date);
+                const isToday = date === todayBerlin;
+                return (
+                  <button
+                    key={date}
+                    onClick={() => openQuickAdd(date)}
+                    aria-label={`Add shift on ${dayLabel(date)}`}
+                    className={`aspect-square rounded-lg border flex flex-col items-stretch justify-between p-1.5 transition-colors ${
+                      isToday ? 'border-green-500 ring-1 ring-green-500' : 'border-gray-200'
+                    } ${inMonth ? 'bg-white active:bg-gray-50' : 'bg-gray-50'}`}
+                  >
+                    <span className={`self-end text-[var(--fs-xs)] font-bold tabular-nums ${
+                      !inMonth ? 'text-gray-300' : isToday ? 'text-green-700' : 'text-gray-700'
+                    }`}>
+                      {Number(date.slice(8, 10))}
+                    </span>
+                    {agg && agg.shifts > 0 ? (
+                      <span className="self-start flex items-center gap-0.5 text-[var(--fs-xs)] font-bold tabular-nums text-gray-800">
+                        {agg.shifts}
+                        {agg.open > 0 && <span className="text-amber-500" aria-hidden="true">●</span>}
+                      </span>
+                    ) : inMonth ? (
+                      <span className="self-start text-[var(--fs-md)] leading-none text-gray-300">+</span>
+                    ) : (
+                      <span className="self-start" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-3 text-[var(--fs-xs)] text-gray-500">
+              Tap a day to add a shift. <span className="text-amber-500 font-bold">●</span> = has open shifts.
+            </div>
           </div>
         ) : !hasAnything ? (
           <EmptyState
@@ -1055,7 +1262,15 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 safe-bottom z-[60]">
         <div className="max-w-6xl mx-auto flex gap-2">
           <button
-            onClick={() => onCreateShift(viewMode === 'day' ? { date: day } : undefined)}
+            onClick={() =>
+              openQuickAdd(
+                viewMode === 'month'
+                  ? todayBerlin.slice(0, 7) === monthAnchor
+                    ? todayBerlin
+                    : `${monthAnchor}-01`
+                  : day,
+              )
+            }
             className="flex-1 bg-white border border-gray-200 text-gray-700 font-semibold rounded-xl py-3 text-[var(--fs-sm)] active:bg-gray-50"
           >
             New shift
@@ -1078,6 +1293,118 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       </div>
 
       {/* Slot edit / assign sheet */}
+      {/* Inline quick-add — create a shift without leaving Manage */}
+      <Sheet open={qaDate !== null} onClose={() => setQaDate(null)}>
+        {qaDate && (
+          <div className="flex flex-col gap-3">
+            <div>
+              <div className="text-[var(--fs-lg)] font-bold text-gray-900">Add shift</div>
+              <div className="text-[var(--fs-sm)] text-gray-500">{dayLabel(qaDate)}</div>
+            </div>
+
+            {(data?.departments ?? []).length > 0 && (
+              <div>
+                <div className={LBL}>Department</div>
+                <select
+                  value={qaDeptId ?? ''}
+                  onChange={e => setQaDeptId(e.target.value === '' ? null : Number(e.target.value))}
+                  className={ds.input}
+                >
+                  <option value="">Choose a department…</option>
+                  {(data?.departments ?? []).map(dp => (
+                    <option key={dp.id} value={dp.id}>{dp.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <div className={LBL}>Role</div>
+              <select
+                value={qaRoleId ?? ''}
+                onChange={e => setQaRoleId(e.target.value === '' ? null : Number(e.target.value))}
+                className={ds.input}
+              >
+                <option value="">Any role</option>
+                {(data?.roles ?? []).map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className={LBL}>Start</div>
+                <input type="time" value={qaStart} onChange={e => setQaStart(e.target.value)} className={ds.input} />
+              </div>
+              <div>
+                <div className={LBL}>End</div>
+                <input type="time" value={qaEnd} onChange={e => setQaEnd(e.target.value)} className={ds.input} />
+              </div>
+            </div>
+
+            <div>
+              <div className={LBL}>People needed</div>
+              <div className="inline-flex items-center border border-gray-200 rounded-xl overflow-hidden h-12 bg-white">
+                <button
+                  onClick={() => setQaCount(c => Math.max(1, c - 1))}
+                  aria-label="Fewer people"
+                  className="w-12 h-12 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-r border-gray-200"
+                >
+                  −
+                </button>
+                <span className="min-w-[56px] text-center font-mono text-[var(--fs-xl)] font-semibold text-gray-900 tabular-nums">{qaCount}</span>
+                <button
+                  onClick={() => setQaCount(c => Math.min(10, c + 1))}
+                  aria-label="More people"
+                  className="w-12 h-12 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] font-semibold active:bg-gray-100 border-l border-gray-200"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div className={LBL}>Assigned to</div>
+              <select
+                value={qaAssignId ?? ''}
+                onChange={e => setQaAssignId(e.target.value === '' ? null : Number(e.target.value))}
+                className={ds.input}
+              >
+                <option value="">Leave open</option>
+                {employees.map(e => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {qaError && (
+              <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-[var(--fs-sm)] text-red-700">
+                {qaError}
+              </div>
+            )}
+
+            <button onClick={() => void submitQuickAdd()} disabled={qaSaving} className={`${ds.btnPrimary} disabled:opacity-50`}>
+              {qaSaving ? 'Adding…' : qaCount > 1 ? `Add ${qaCount} shifts` : 'Add shift'}
+            </button>
+            <button
+              onClick={() => {
+                const d = qaDate;
+                setQaDate(null);
+                if (d) onCreateShift({ date: d, ...(qaRoleId !== null ? { roleId: qaRoleId } : {}) });
+              }}
+              className={ds.btnSecondary}
+            >
+              More options (recurring, template…)
+            </button>
+            <button onClick={() => setQaDate(null)} className={ds.btnSecondary}>Cancel</button>
+            <div className="text-[var(--fs-xs)] text-gray-400 text-center">
+              Saved as a draft — publish to show staff.
+            </div>
+          </div>
+        )}
+      </Sheet>
+
       <Sheet open={editSlot !== null} onClose={closeSheet}>
         {editSlot && (
           <div className="flex flex-col gap-3">
