@@ -462,7 +462,7 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
             <SearchBar value={search} onChange={setSearch} placeholder="Search your shifts…" />
           </div>
 
-          <div className="px-4 pb-24">
+          <div className="px-4 pb-24 max-w-2xl mx-auto w-full">
             {loading ? (
               <Spinner />
             ) : (

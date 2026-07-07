@@ -117,7 +117,7 @@ export default function MyHours({ companyId, employeeId, onBack }: MyHoursProps)
             <SearchBar value={search} onChange={setSearch} placeholder="Search weeks…" />
           </div>
 
-          <div className="px-4 pb-24">
+          <div className="px-4 pb-24 max-w-2xl mx-auto w-full">
             <SectionTitle>Week by week</SectionTitle>
 
             {loading ? (

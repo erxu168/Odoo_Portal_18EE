@@ -86,7 +86,7 @@ export default function MyPin({ companyId, onBack }: MyPinProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader supertitle="Shifts" title="Clock PIN" showBack onBack={onBack} />
-      <div className="px-4 pt-4 pb-24 max-w-md mx-auto">
+      <div className="px-4 pt-4 pb-24 max-w-md mx-auto w-full">
         {loading ? (
           <Spinner />
         ) : error ? (

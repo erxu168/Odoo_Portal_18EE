@@ -200,7 +200,7 @@ export default function OpenShiftsList({ companyId, employeeId, onBack }: OpenSh
             <SearchBar value={search} onChange={setSearch} placeholder="Search open shifts…" />
           </div>
 
-          <div className="px-4 pb-24">
+          <div className="px-4 pb-24 max-w-2xl mx-auto w-full">
             <SectionTitle>
               {`This week · ${fmtH(weekHours)}${cap !== null ? ` / ${fmtCap(cap)}` : ''} h`}
             </SectionTitle>

@@ -185,7 +185,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
         <SearchBar value={search} onChange={setSearch} placeholder="Search team…" />
       </div>
 
-      <div className="px-4 pb-24">
+      <div className="px-4 pb-24 max-w-4xl mx-auto w-full">
         {loading ? (
           <Spinner />
         ) : error ? (

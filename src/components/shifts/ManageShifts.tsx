@@ -781,7 +781,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     <div className="min-h-screen bg-gray-50">
       <AppHeader supertitle="Shifts" title="Manage Shifts" subtitle="Plan, publish & reassign" showBack onBack={onBack} />
 
-      <div className="pt-3 pb-36 max-w-5xl mx-auto w-full">
+      <div className="pt-3 pb-36 max-w-6xl mx-auto w-full">
         <WeekNav
           weekKey={weekKey}
           label={weekLabel(weekKey)}
@@ -906,7 +906,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
 
       {/* Footer actions */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 safe-bottom z-[60]">
-        <div className="max-w-5xl mx-auto flex gap-2">
+        <div className="max-w-6xl mx-auto flex gap-2">
           <button
             onClick={() => onCreateShift(viewMode === 'day' ? { date: day } : undefined)}
             className="flex-1 bg-white border border-gray-200 text-gray-700 font-semibold rounded-xl py-3 text-[var(--fs-sm)] active:bg-gray-50"

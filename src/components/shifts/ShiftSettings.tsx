@@ -131,7 +131,7 @@ export default function ShiftSettings({ companyId, onBack }: ShiftSettingsProps)
     <div className="min-h-screen bg-gray-50">
       <AppHeader supertitle="Shifts" title="Shift Settings" showBack onBack={onBack} />
 
-      <div className="pb-36">
+      <div className="pb-36 max-w-xl mx-auto w-full">
         {loading ? (
           <Spinner />
         ) : error ? (
@@ -240,7 +240,7 @@ export default function ShiftSettings({ companyId, onBack }: ShiftSettingsProps)
       </div>
 
       {form && !loading && !error && (
-        <div className="fixed bottom-0 left-0 right-0 z-[60] bg-white border-t border-gray-200 max-w-lg mx-auto px-4 py-3 safe-bottom">
+        <div className="fixed bottom-0 left-0 right-0 z-[60] bg-white border-t border-gray-200 max-w-xl mx-auto px-4 py-3 safe-bottom">
           <button onClick={handleSave} disabled={saving} className={`${ds.btnPrimary} disabled:opacity-50`}>
             {saving ? 'Saving…' : 'Save settings'}
           </button>

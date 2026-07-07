@@ -353,7 +353,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
           </button>
         </div>
       ) : (
-        <div className="px-4 pt-4 pb-48 flex flex-col gap-3 max-w-lg mx-auto w-full">
+        <div className="px-4 pt-4 pb-48 flex flex-col gap-3 max-w-xl mx-auto w-full">
           {/* NAME (+ reuse a saved shift template) */}
           <div className={`${ds.card} p-4`}>
             <div className={LBL}>Shift name</div>
@@ -586,7 +586,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
       {/* Footer */}
       {!loading && !error && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 safe-bottom z-[60]">
-          <div className="max-w-lg mx-auto flex flex-col gap-2">
+          <div className="max-w-xl mx-auto flex flex-col gap-2">
             {submitError && (
               <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-[var(--fs-sm)] text-red-700">
                 {submitError}

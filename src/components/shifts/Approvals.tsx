@@ -426,7 +426,7 @@ export default function Approvals({ companyId, onBack }: ApprovalsProps) {
           showBack
           onBack={() => openView({ kind: 'list' })}
         />
-        <div className="px-4 pt-4 pb-36 flex flex-col gap-3">
+        <div className="px-4 pt-4 pb-36 flex flex-col gap-3 max-w-2xl mx-auto w-full">
           <div className={`${CARD} p-3.5 flex items-center gap-2.5`}>
             <Avatar name={item.fromName} />
             <svg
@@ -502,7 +502,7 @@ export default function Approvals({ companyId, onBack }: ApprovalsProps) {
           {errorBanner()}
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 z-[60] bg-white border-t border-gray-200 max-w-lg mx-auto px-4 py-3 safe-bottom flex flex-col gap-2">
+        <div className="fixed bottom-0 left-0 right-0 z-[60] bg-white border-t border-gray-200 max-w-2xl mx-auto px-4 py-3 safe-bottom flex flex-col gap-2">
           {mode === 'pending' ? (
             <>
               <button
@@ -558,7 +558,7 @@ export default function Approvals({ companyId, onBack }: ApprovalsProps) {
           showBack
           onBack={() => openView({ kind: 'list' })}
         />
-        <div className="px-4 pt-4 pb-36 flex flex-col gap-3">
+        <div className="px-4 pt-4 pb-36 flex flex-col gap-3 max-w-2xl mx-auto w-full">
           <div className={`${CARD} p-3.5 flex items-center gap-3`}>
             <Avatar name={item.employeeName} />
             <div className="flex-1 min-w-0">
@@ -586,7 +586,7 @@ export default function Approvals({ companyId, onBack }: ApprovalsProps) {
           {errorBanner()}
         </div>
 
-        <div className="fixed bottom-0 left-0 right-0 z-[60] bg-white border-t border-gray-200 max-w-lg mx-auto px-4 py-3 safe-bottom flex flex-col gap-2">
+        <div className="fixed bottom-0 left-0 right-0 z-[60] bg-white border-t border-gray-200 max-w-2xl mx-auto px-4 py-3 safe-bottom flex flex-col gap-2">
           <button
             onClick={() => handleSickResolve(item, 'reopen')}
             disabled={acting}
@@ -635,7 +635,7 @@ export default function Approvals({ companyId, onBack }: ApprovalsProps) {
         <SearchBar value={search} onChange={setSearch} placeholder="Search requests…" />
       </div>
 
-      <div className="pb-24">
+      <div className="pb-24 max-w-2xl mx-auto w-full">
         {loading ? (
           <Spinner />
         ) : error ? (

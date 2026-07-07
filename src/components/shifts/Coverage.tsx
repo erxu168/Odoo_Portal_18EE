@@ -144,7 +144,7 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
         />
       </div>
 
-      <div className="px-4 pb-24 flex flex-col gap-3">
+      <div className="px-4 pb-24 flex flex-col gap-3 max-w-4xl mx-auto w-full">
         {loading ? (
           <Spinner />
         ) : error ? (

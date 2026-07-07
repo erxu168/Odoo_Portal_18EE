@@ -238,7 +238,7 @@ export default function ShiftsDashboard({ companyId, isManager, badges, onNaviga
   const visibleGroups = groups.filter((g) => !g.managerOnly || isManager);
 
   return (
-    <div className="px-4 py-4 flex flex-col gap-5">
+    <div className="px-4 py-4 flex flex-col gap-5 max-w-5xl mx-auto w-full">
       {isManager && (
         <PresenceCard companyId={companyId} onOpen={() => onNavigate('presence')} />
       )}
@@ -248,7 +248,7 @@ export default function ShiftsDashboard({ companyId, isManager, badges, onNaviga
           <h2 className="text-[var(--fs-xs)] font-semibold text-gray-400 tracking-widest uppercase pb-2 pl-0.5">
             {group.title}
           </h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {group.tiles.map((tile) => (
               <button
                 key={tile.key}

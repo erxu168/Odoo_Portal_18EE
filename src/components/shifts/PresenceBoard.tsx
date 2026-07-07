@@ -82,7 +82,7 @@ export default function PresenceBoard({ companyId, onBack }: PresenceProps) {
     <div className="min-h-screen bg-gray-50">
       <AppHeader supertitle="Shifts" title="Right Now" showBack onBack={onBack} />
 
-      <div className="px-4 pt-4 pb-24 flex flex-col gap-3">
+      <div className="px-4 pt-4 pb-24 flex flex-col gap-3 max-w-2xl mx-auto w-full">
         {loading ? (
           <Spinner />
         ) : error ? (

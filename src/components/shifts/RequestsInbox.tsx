@@ -277,7 +277,7 @@ export default function RequestsInbox({ companyId, employeeId, onBack }: Request
             <SearchBar value={search} onChange={setSearch} placeholder="Search requests…" />
           </div>
 
-          <div className="px-4 pb-24">
+          <div className="px-4 pb-24 max-w-2xl mx-auto w-full">
             {loading ? (
               <Spinner />
             ) : incoming.length === 0 && outgoing.length === 0 ? (
