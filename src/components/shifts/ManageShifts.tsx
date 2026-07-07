@@ -213,6 +213,8 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [undo, setUndo] = useState<{ body: Record<string, unknown>; label: string } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -220,6 +222,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   }, []);
   useEffect(() => () => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
   }, []);
 
   const days = useMemo(() => weekKeyDays(weekKey), [weekKey]);
@@ -444,22 +447,75 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     }
   }
 
-  async function doDelete() {
+  /** A POST /api/shifts/slots body from the current edit-sheet values (one shift). */
+  function editSheetToCreateBody(): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      company_id: companyId, date: editDate, start: editStart, end: editEnd,
+      role_id: editRoleId, note: editNote.trim(), count: 1,
+    };
+    if (assignId !== null) body.assign_employee_id = assignId;
+    return body;
+  }
+
+  async function createFromBody(body: Record<string, unknown>): Promise<boolean> {
+    const res = await fetch('/api/shifts/slots', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+    return true;
+  }
+
+  async function doDuplicate() {
     if (!editSlot) return;
-    setConfirm(null);
     setSaving(true);
     setSheetError(null);
     try {
-      const res = await fetch(`/api/shifts/slots/${editSlot.id}?company_id=${companyId}`, { method: 'DELETE' });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+      await createFromBody(editSheetToCreateBody());
       closeSheet();
-      showToast('Shift deleted');
+      showToast('Shift duplicated — a copy was added as a draft');
       void load();
     } catch (err: unknown) {
       setSheetError(err instanceof Error ? err.message : 'Network error');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function doDelete() {
+    if (!editSlot) return;
+    setConfirm(null);
+    setSaving(true);
+    setSheetError(null);
+    const restoreBody = editSheetToCreateBody(); // capture before we clear the sheet
+    try {
+      const res = await fetch(`/api/shifts/slots/${editSlot.id}?company_id=${companyId}`, { method: 'DELETE' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+      closeSheet();
+      // Offer a 6s Undo instead of a plain toast.
+      setUndo({ body: restoreBody, label: 'Shift deleted' });
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+      undoTimer.current = setTimeout(() => setUndo(null), 6000);
+      void load();
+    } catch (err: unknown) {
+      setSheetError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function undoDelete() {
+    if (!undo) return;
+    const body = undo.body;
+    setUndo(null);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    try {
+      await createFromBody(body);
+      showToast('Shift restored');
+      void load();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not restore the shift');
     }
   }
 
@@ -1034,6 +1090,9 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             <button onClick={() => void saveSlot()} disabled={saving} className={`${ds.btnPrimary} disabled:opacity-50`}>
               {saving ? 'Saving…' : 'Save changes'}
             </button>
+            <button onClick={() => void doDuplicate()} disabled={saving} className={`${ds.btnSecondary} disabled:opacity-50`}>
+              Duplicate this shift
+            </button>
             <button onClick={() => setConfirm('delete')} disabled={saving} className={`${ds.btnDanger} disabled:opacity-50`}>
               Delete shift
             </button>
@@ -1074,16 +1133,24 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           title="Delete this shift?"
           message={`${fmtDay(editSlot.start)} · ${fmtTimeRange(editSlot.start, editSlot.end)}${
             editSlot.employeeName ? ` — assigned to ${editSlot.employeeName}` : ''
-          }. This can’t be undone.`}
+          }. You’ll get a few seconds to undo.`}
           confirmLabel="Delete shift"
           onConfirm={() => void doDelete()}
           onCancel={() => setConfirm(null)}
         />
       )}
 
-      {toast && (
+      {toast && !undo && (
         <div className="fixed bottom-24 left-1/2 z-[120] -translate-x-1/2 rounded-full bg-gray-900 px-5 py-3 text-[var(--fs-base)] text-white shadow-lg whitespace-nowrap">
           {toast}
+        </div>
+      )}
+      {undo && (
+        <div className="fixed bottom-24 left-1/2 z-[120] -translate-x-1/2 flex items-center gap-4 rounded-full bg-gray-900 px-5 py-3 text-white shadow-lg whitespace-nowrap">
+          <span className="text-[var(--fs-base)]">{undo.label}</span>
+          <button onClick={() => void undoDelete()} className="text-[var(--fs-base)] font-bold text-green-400 active:text-green-300">
+            Undo
+          </button>
         </div>
       )}
     </div>
