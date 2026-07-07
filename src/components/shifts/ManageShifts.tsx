@@ -263,6 +263,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const [notifyOnPublish, setNotifyOnPublish] = useState(true);
   const [upcoming, setUpcoming] = useState<{ count: number; weeks: number } | null>(null); // all future drafts
   const [quickMenu, setQuickMenu] = useState<ShiftSlot | null>(null);
+  const [deleteSeries, setDeleteSeries] = useState<{ slot: ShiftSlot; count: number } | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longFired = useRef(false);
   const [copyDaySheet, setCopyDaySheet] = useState(false);
@@ -739,29 +740,6 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     }
   }
 
-  async function doDelete() {
-    if (!editSlot) return;
-    setConfirm(null);
-    setSaving(true);
-    setSheetError(null);
-    const restoreBody = editSheetToCreateBody(); // capture before we clear the sheet
-    try {
-      const res = await fetch(`/api/shifts/slots/${editSlot.id}?company_id=${companyId}`, { method: 'DELETE' });
-      const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
-      closeSheet();
-      // Offer a 6s Undo instead of a plain toast.
-      setUndo({ body: restoreBody, label: 'Shift deleted' });
-      if (undoTimer.current) clearTimeout(undoTimer.current);
-      undoTimer.current = setTimeout(() => setUndo(null), 6000);
-      void load();
-    } catch (err: unknown) {
-      setSheetError(err instanceof Error ? err.message : 'Network error');
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function undoDelete() {
     if (!undo) return;
     const body = undo.body;
@@ -815,8 +793,45 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       if (undoTimer.current) clearTimeout(undoTimer.current);
       undoTimer.current = setTimeout(() => setUndo(null), 6000);
       void load();
+      if (viewMode === 'month') void loadMonth();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Could not delete the shift');
+    }
+  }
+
+  // Deleting a shift: if it repeats on other days (same name/time/role/assignee),
+  // offer "just this day" vs "this and all future" (Apple-Calendar style).
+  async function startDelete(slot: ShiftSlot) {
+    let count = 1;
+    try {
+      const res = await fetch('/api/shifts/delete-series', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, slot_id: slot.id, dry_run: true }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && typeof d.count === 'number') count = d.count;
+    } catch { /* fall back to a single delete */ }
+    if (count > 1) setDeleteSeries({ slot, count });
+    else void deleteSlotDirect(slot);
+  }
+
+  async function doDeleteSeries(slot: ShiftSlot) {
+    setDeleteSeries(null);
+    try {
+      const res = await fetch('/api/shifts/delete-series', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, slot_id: slot.id }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+      const n = typeof d.deleted === 'number' ? d.deleted : 0;
+      showToast(`Deleted ${n} shift${n === 1 ? '' : 's'}`);
+      void load();
+      if (viewMode === 'month') void loadMonth();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not delete the shifts');
     }
   }
 
@@ -1858,7 +1873,11 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             <button onClick={() => void doDuplicate()} disabled={saving} className={`${ds.btnSecondary} disabled:opacity-50`}>
               Duplicate this shift
             </button>
-            <button onClick={() => setConfirm('delete')} disabled={saving} className={`${ds.btnDanger} disabled:opacity-50`}>
+            <button
+              onClick={() => { const s = editSlot; closeSheet(); if (s) void startDelete(s); }}
+              disabled={saving}
+              className={`${ds.btnDanger} disabled:opacity-50`}
+            >
               Delete shift
             </button>
             <button onClick={closeSheet} className={ds.btnSecondary}>
@@ -1937,18 +1956,31 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           onCancel={() => setConfirm(null)}
         />
       )}
-      {confirm === 'delete' && editSlot && (
-        <ConfirmDialog
-          variant="danger"
-          title="Delete this shift?"
-          message={`${fmtDay(editSlot.start)} · ${fmtTimeRange(editSlot.start, editSlot.end)}${
-            editSlot.employeeName ? ` — assigned to ${editSlot.employeeName}` : ''
-          }. You’ll get a few seconds to undo.`}
-          confirmLabel="Delete shift"
-          onConfirm={() => void doDelete()}
-          onCancel={() => setConfirm(null)}
-        />
-      )}
+      {/* Repeating-shift delete: this day only vs this and all future occurrences */}
+      <Sheet open={deleteSeries !== null} onClose={() => setDeleteSeries(null)}>
+        {deleteSeries && (
+          <div className="flex flex-col gap-3">
+            <div className="text-[var(--fs-lg)] font-bold text-gray-900">Delete a repeating shift</div>
+            <div className="text-[var(--fs-sm)] text-gray-500">
+              “{deleteSeries.slot.note || 'This shift'}” also appears on other days (same time
+              {deleteSeries.slot.roleName ? ` · ${deleteSeries.slot.roleName}` : ''}). What should be deleted?
+            </div>
+            <button
+              onClick={() => { const s = deleteSeries.slot; setDeleteSeries(null); void deleteSlotDirect(s); }}
+              className={ds.btnSecondary}
+            >
+              Just {fmtDay(deleteSeries.slot.start)}
+            </button>
+            <button
+              onClick={() => void doDeleteSeries(deleteSeries.slot)}
+              className={ds.btnDanger}
+            >
+              This and all {deleteSeries.count} upcoming
+            </button>
+            <button onClick={() => setDeleteSeries(null)} className={ds.btnSecondary}>Cancel</button>
+          </div>
+        )}
+      </Sheet>
 
       {/* Quick actions on a shift (long-press / right-click) */}
       <Sheet open={quickMenu !== null} onClose={() => setQuickMenu(null)}>
@@ -1962,7 +1994,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             </div>
             <button onClick={() => { const s = quickMenu; setQuickMenu(null); openSheet(s); }} className={ds.btnSecondary}>Edit</button>
             <button onClick={() => { const s = quickMenu; setQuickMenu(null); void duplicateSlot(s); }} className={ds.btnSecondary}>Duplicate</button>
-            <button onClick={() => { const s = quickMenu; setQuickMenu(null); void deleteSlotDirect(s); }} className={ds.btnDanger}>Delete</button>
+            <button onClick={() => { const s = quickMenu; setQuickMenu(null); void startDelete(s); }} className={ds.btnDanger}>Delete</button>
           </div>
         )}
       </Sheet>
