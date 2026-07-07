@@ -251,17 +251,18 @@ export async function createSlot(v: {
   endHHMM: string;
   roleId: number | null;
   resourceId: number | null;
-  departmentId?: number | null;
   note: string;
 }): Promise<number> {
   const endDate = v.endHHMM <= v.startHHMM ? addDays(v.date, 1) : v.date;
+  // NOTE: planning.slot.department_id is a readonly related field
+  // (employee_id.department_id) — it cannot be written. The manager's chosen
+  // department is stored portal-side (shift_slot_department) instead.
   const vals: Record<string, unknown> = {
     company_id: v.companyId,
     start_datetime: berlinDateTimeToUtcOdoo(v.date, v.startHHMM),
     end_datetime: berlinDateTimeToUtcOdoo(endDate, v.endHHMM),
     role_id: v.roleId ?? false,
     resource_id: v.resourceId ?? false,
-    department_id: v.departmentId ?? false,
     name: v.note || false,
     state: 'draft',
   };
@@ -284,7 +285,6 @@ export async function updateSlot(
     endHHMM: string;
     roleId: number | null;
     resourceId: number | null | false;
-    departmentId: number | null;
     note: string;
     state: 'draft' | 'published';
   }>,
@@ -305,7 +305,6 @@ export async function updateSlot(
   }
   if (v.roleId !== undefined) vals.role_id = v.roleId ?? false;
   if (v.resourceId !== undefined) vals.resource_id = v.resourceId ? v.resourceId : false;
-  if (v.departmentId !== undefined) vals.department_id = v.departmentId ?? false;
   if (v.note !== undefined) vals.name = v.note || false;
   if (v.state !== undefined) vals.state = v.state;
 

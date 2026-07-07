@@ -9,6 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createSlot, fetchEmployees, recomputeWeekFlags } from '@/lib/shifts-odoo';
+import { setSlotDepartments } from '@/lib/shifts-db';
 import { berlinDateTimeToUtcOdoo, berlinISOWeekKey } from '@/lib/shifts-time';
 import { isValidDateStr, normalizeHHMM, requireManagerCompany, serverError } from '../_manager';
 
@@ -75,9 +76,15 @@ export async function POST(req: NextRequest) {
     for (const day of days) {
       for (let i = 0; i < countRaw; i++) {
         created.push(
-          await createSlot({ companyId, date: day, startHHMM, endHHMM, roleId, resourceId, departmentId, note }),
+          await createSlot({ companyId, date: day, startHHMM, endHHMM, roleId, resourceId, note }),
         );
       }
+    }
+
+    // Persist the manager's chosen department (portal-side; the Odoo field is
+    // readonly). Applies to open and assigned shifts alike.
+    if (departmentId !== null) {
+      setSlotDepartments(companyId, created, departmentId);
     }
 
     // Direct-assigned drafts count toward week hours → recompute flags per week.

@@ -9,6 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { invalidateActiveRequestsForSlot } from '@/lib/shifts-guards';
+import { deleteSlotDepartment, setSlotDepartment } from '@/lib/shifts-db';
 import { deleteSlot, fetchEmployees, fetchSlot, recomputeWeekFlags, updateSlot } from '@/lib/shifts-odoo';
 import { notifyEmployee } from '@/lib/shifts-notify';
 import { berlinISOWeekKey, fmtDay, fmtTimeRange } from '@/lib/shifts-time';
@@ -58,10 +59,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if ('role_id' in body) {
       updates.roleId = typeof body.role_id === 'number' && body.role_id > 0 ? body.role_id : null;
     }
-    if ('department_id' in body) {
-      updates.departmentId =
-        typeof body.department_id === 'number' && body.department_id > 0 ? body.department_id : null;
-    }
+    // Department is stored portal-side (Odoo field is readonly), so it is applied
+    // separately from the Odoo updateSlot below rather than via `updates`.
+    const hasDeptChange = 'department_id' in body;
+    const newDepartmentId = hasDeptChange
+      ? typeof body.department_id === 'number' && body.department_id > 0
+        ? body.department_id
+        : null
+      : null;
     if ('note' in body) {
       updates.note = typeof body.note === 'string' ? body.note.trim() : '';
     }
@@ -89,8 +94,17 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       }
     }
 
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(updates).length === 0 && !hasDeptChange) {
       return NextResponse.json({ ok: true }); // nothing to change
+    }
+
+    // Department override is portal-side and doesn't touch Odoo/flags/requests.
+    if (hasDeptChange) {
+      setSlotDepartment(companyId, slotId, newDepartmentId);
+    }
+    // Department-only change: nothing else to do.
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ ok: true });
     }
 
     // Invalidate any active cover request BEFORE changing the slot.
@@ -165,8 +179,9 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     const slot = await fetchSlot(slotId);
     if (!slot) {
-      // Already gone — clean up any dangling request and report success.
+      // Already gone — clean up any dangling request/override and report success.
       await invalidateActiveRequestsForSlot(slotId, 'The shift was deleted.');
+      deleteSlotDepartment(slotId);
       return NextResponse.json({ ok: true });
     }
     if (slot.companyId !== companyId) {
@@ -177,6 +192,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     await invalidateActiveRequestsForSlot(slotId, 'The shift was deleted.');
 
     await deleteSlot(slotId);
+    deleteSlotDepartment(slotId); // drop the portal department override
 
     if (slot.employeeId !== null) {
       await recomputeWeekFlags(companyId, berlinISOWeekKey(slot.start), [slot.employeeId]);

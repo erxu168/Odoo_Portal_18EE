@@ -7,9 +7,9 @@
  * a ⚠). Pending requests are lazy-expired before being counted.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getShiftSettings, listCoverRequests } from '@/lib/shifts-db';
+import { getShiftSettings, listCoverRequests, slotDepartments } from '@/lib/shifts-db';
 import { lazyExpireIfDue } from '@/lib/shifts-guards';
-import { fetchEmployees, fetchRoles, fetchWeekSlots, weekHoursMap } from '@/lib/shifts-odoo';
+import { fetchDepartments, fetchEmployees, fetchRoles, fetchWeekSlots, weekHoursMap } from '@/lib/shifts-odoo';
 import { berlinParts, weekKeyDays } from '@/lib/shifts-time';
 import { requireManagerCompany, resolveWeekKey, round2, serverError } from '../_manager';
 
@@ -26,12 +26,25 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid week' }, { status: 400 });
     }
 
-    const [slots, employees, roles, hoursMap] = await Promise.all([
+    const [slots, employees, roles, departments, hoursMap] = await Promise.all([
       fetchWeekSlots(companyId, weekKey),
       fetchEmployees(companyId),
       fetchRoles(companyId),
+      fetchDepartments(companyId),
       weekHoursMap(companyId, weekKey),
     ]);
+
+    // Overlay the manager's chosen department (portal-side) onto each slot — the
+    // Odoo department_id is a readonly relation and empty for open shifts.
+    const deptOverride = slotDepartments(companyId, slots.map(s => s.id));
+    const deptNameById = new Map(departments.map(d => [d.id, d.name]));
+    for (const s of slots) {
+      const ov = deptOverride.get(s.id);
+      if (ov !== undefined) {
+        s.departmentId = ov;
+        s.departmentName = deptNameById.get(ov) ?? s.departmentName;
+      }
+    }
 
     const days = weekKeyDays(weekKey);
     const dayIndex = new Map(days.map((d, i) => [d, i]));
@@ -72,6 +85,7 @@ export async function GET(req: NextRequest) {
       days,
       employees: employeesOut,
       roles,
+      departments,
       slots,
       totals: { perDay, assigned: round2(assigned), open: round2(open) },
       pendingRequestSlotIds,

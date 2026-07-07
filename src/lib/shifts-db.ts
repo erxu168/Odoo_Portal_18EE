@@ -129,8 +129,70 @@ function ensureTables(): void {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_template_company ON shift_templates(company_id);
+
+    CREATE TABLE IF NOT EXISTS shift_slot_department (
+      slot_id INTEGER PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      department_id INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_slot_dept_company ON shift_slot_department(company_id);
   `);
   _initialized = true;
+}
+
+// -- Slot department (manager's chosen dept; slot.department_id is readonly) -----
+
+/**
+ * Set (or clear, when departmentId is null) the manager-chosen department for a
+ * slot. planning.slot.department_id is a readonly Odoo relation derived from the
+ * assignee, so the portal keeps the authoritative choice here — works for open
+ * (unassigned) shifts too.
+ */
+export function setSlotDepartment(companyId: number, slotId: number, departmentId: number | null): void {
+  ensureTables();
+  const db = getDb();
+  if (departmentId === null) {
+    db.prepare('DELETE FROM shift_slot_department WHERE slot_id=?').run(slotId);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO shift_slot_department (slot_id, company_id, department_id)
+     VALUES (?,?,?)
+     ON CONFLICT(slot_id) DO UPDATE SET company_id=excluded.company_id, department_id=excluded.department_id`,
+  ).run(slotId, companyId, departmentId);
+}
+
+/** Set the same department on many slots at once (used when creating a batch). */
+export function setSlotDepartments(companyId: number, slotIds: number[], departmentId: number | null): void {
+  if (slotIds.length === 0) return;
+  ensureTables();
+  const db = getDb();
+  const tx = db.transaction((ids: number[]) => {
+    for (const id of ids) setSlotDepartment(companyId, id, departmentId);
+  });
+  tx(slotIds);
+}
+
+/** slot_id → department_id for the given slots (only those with an override set). */
+export function slotDepartments(companyId: number, slotIds: number[]): Map<number, number> {
+  ensureTables();
+  const map = new Map<number, number>();
+  if (slotIds.length === 0) return map;
+  const placeholders = slotIds.map(() => '?').join(',');
+  const rows = getDb()
+    .prepare(
+      `SELECT slot_id, department_id FROM shift_slot_department
+       WHERE company_id=? AND slot_id IN (${placeholders})`,
+    )
+    .all(companyId, ...slotIds) as { slot_id: number; department_id: number }[];
+  for (const r of rows) map.set(r.slot_id, r.department_id);
+  return map;
+}
+
+/** Remove a slot's department override (call on slot delete). */
+export function deleteSlotDepartment(slotId: number): void {
+  ensureTables();
+  getDb().prepare('DELETE FROM shift_slot_department WHERE slot_id=?').run(slotId);
 }
 
 // -- Shift confirmations (staff "I'll be there") --------------------------------
