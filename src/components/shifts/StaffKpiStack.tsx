@@ -229,7 +229,9 @@ export default function StaffKpiStack({
                       : `${hoursLabel(Math.max(0, weekly.limit - weekly.hours))} left`
                   : 'Scheduled'}
               </div>
-              <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{weekSub}</div>
+              {weekly.limit !== null && (
+                <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{weekSub}</div>
+              )}
             </div>
           </div>
         </KpiCard>
