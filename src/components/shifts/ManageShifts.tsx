@@ -249,6 +249,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const [confirm, setConfirm] = useState<'publish' | 'copy' | 'delete' | null>(null);
   const [lastWeekCount, setLastWeekCount] = useState<number | null>(null);
   const [notifyOnPublish, setNotifyOnPublish] = useState(true);
+  const [upcoming, setUpcoming] = useState<{ count: number; weeks: number } | null>(null); // all future drafts
   const [quickMenu, setQuickMenu] = useState<ShiftSlot | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longFired = useRef(false);
@@ -257,7 +258,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
 
   // Month view (calendar grid) — its own multi-week aggregation.
   const [monthAnchor, setMonthAnchor] = useState<string>(() => (focusDate || todayBerlin).slice(0, 7));
-  const [monthAgg, setMonthAgg] = useState<Map<string, { shifts: number; open: number; hours: number }>>(new Map());
+  const [monthSlots, setMonthSlots] = useState<Map<string, ShiftSlot[]>>(new Map());
 
   // Inline quick-add sheet (create a shift without leaving Manage).
   const [qaDate, setQaDate] = useState<string | null>(null);
@@ -335,8 +336,9 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     if (companyId) void load();
   }, [companyId, load]);
 
-  // Month view spans several ISO weeks — fetch each week that the grid touches
-  // and aggregate shift/open counts per day. Runs only while month view is open.
+  // Month view spans several ISO weeks — fetch each week the grid touches and
+  // keep the actual slots per day (so cells can show real shifts, not just a
+  // count). Runs only while month view is open.
   const loadMonth = useCallback(async () => {
     const cells = monthGridCells(monthAnchor);
     const weekKeys = Array.from(new Set(cells.map(d => berlinISOWeekKey(`${d} 12:00:00`))));
@@ -348,21 +350,20 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             .catch(() => ({ slots: [] })),
         ),
       );
-      const agg = new Map<string, { shifts: number; open: number; hours: number }>();
+      const map = new Map<string, ShiftSlot[]>();
       const seen = new Set<number>();
       for (const r of results) {
-        for (const s of Array.isArray(r.slots) ? r.slots : []) {
+        for (const s of (Array.isArray(r.slots) ? r.slots : []) as ShiftSlot[]) {
           if (seen.has(s.id)) continue;
           seen.add(s.id);
           const dt = berlinParts(s.start).date;
-          const cur = agg.get(dt) ?? { shifts: 0, open: 0, hours: 0 };
-          cur.shifts += 1;
-          if (!s.employeeId) cur.open += 1;
-          cur.hours += typeof s.hours === 'number' ? s.hours : 0;
-          agg.set(dt, cur);
+          const arr = map.get(dt) ?? [];
+          arr.push(s);
+          map.set(dt, arr);
         }
       }
-      setMonthAgg(agg);
+      map.forEach(arr => arr.sort((a, b) => a.start.localeCompare(b.start)));
+      setMonthSlots(map);
     } catch (err: unknown) {
       console.warn('[shifts] month load failed:', err instanceof Error ? err.message : String(err));
     }
@@ -777,6 +778,24 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     }
   }
 
+  // Open the publish sheet and peek at how many drafts exist across ALL upcoming
+  // weeks (so we can offer "publish everything", not just this week).
+  function openPublishConfirm() {
+    setUpcoming(null);
+    setConfirm('publish');
+    (async () => {
+      try {
+        const res = await fetch('/api/shifts/publish-upcoming', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company_id: companyId, dry_run: true }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.ok && typeof d.count === 'number') setUpcoming({ count: d.count, weeks: d.weeks ?? 1 });
+      } catch { /* preview only — ignore */ }
+    })();
+  }
+
   async function doPublish() {
     setConfirm(null);
     try {
@@ -792,6 +811,25 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       void load();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Could not publish the week');
+    }
+  }
+
+  async function doPublishUpcoming() {
+    setConfirm(null);
+    try {
+      const res = await fetch('/api/shifts/publish-upcoming', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, notify: notifyOnPublish }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+      const n = typeof d.published === 'number' ? d.published : 0;
+      showToast(`Published ${n} shift${n === 1 ? '' : 's'} across ${d.weeks ?? 1} week${(d.weeks ?? 1) === 1 ? '' : 's'}${notifyOnPublish ? ' — staff notified' : ''}`);
+      void load();
+      if (viewMode === 'month') void loadMonth();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not publish upcoming shifts');
     }
   }
 
@@ -871,6 +909,50 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             {s.overCap ? ' !' : ''}
           </span>
         )}
+        {pendingSet.has(s.id) && (
+          <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 border border-white" />
+        )}
+      </button>
+    );
+  };
+
+  // Compact chip for the Month calendar: person name for assigned shifts, the
+  // ROLE for open ones (no row context there), plus time. Same colours + tap
+  // behaviour (edit / long-press quick menu) as the week-grid chip.
+  const monthChip = (s: ShiftSlot) => {
+    const isOpen = !s.employeeId;
+    const base = isOpen
+      ? 'bg-white border border-dashed border-gray-400 text-gray-600'
+      : s.overCap
+        ? 'bg-red-100 text-red-800'
+        : 'bg-blue-100 text-blue-800';
+    const cls = s.state === 'draft'
+      ? `${base} opacity-70 outline-dashed outline-1 outline-offset-[-2px] outline-amber-500`
+      : base;
+    const title = isOpen ? s.roleName || 'Open' : firstName(s.employeeName);
+    let sub = chipTime(s) + (s.overCap ? ' !' : '');
+    if (isOpen && s.roleName) sub = `Open · ${sub}`;
+    else if (!isOpen && s.roleName) sub = `${sub} · ${s.roleName}`;
+    return (
+      <button
+        key={s.id}
+        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setQuickMenu(s); }}
+        onPointerDown={() => {
+          longFired.current = false;
+          if (pressTimer.current) clearTimeout(pressTimer.current);
+          pressTimer.current = setTimeout(() => { longFired.current = true; setQuickMenu(s); }, 450);
+        }}
+        onPointerUp={() => { if (pressTimer.current) clearTimeout(pressTimer.current); }}
+        onPointerLeave={() => { if (pressTimer.current) clearTimeout(pressTimer.current); }}
+        onClick={e => {
+          e.stopPropagation();
+          if (longFired.current) { longFired.current = false; return; }
+          openSheet(s);
+        }}
+        className={`relative w-full rounded px-1.5 py-1 text-left leading-tight ${cls}`}
+      >
+        <span className="block truncate text-[var(--fs-xs)] font-bold">{title}</span>
+        <span className="block truncate text-[11px] font-semibold tabular-nums opacity-80">{sub}</span>
         {pendingSet.has(s.id) && (
           <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-500 border border-white" />
         )}
@@ -1198,38 +1280,55 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
               {monthGridCells(monthAnchor).map(date => {
                 const inMonth = date.slice(0, 7) === monthAnchor;
-                const agg = monthAgg.get(date);
+                const slots = monthSlots.get(date) ?? [];
+                const openCount = slots.filter(s => !s.employeeId).length;
                 const isToday = date === todayBerlin;
                 return (
-                  <button
+                  <div
                     key={date}
+                    role="button"
                     onClick={() => openQuickAdd(date)}
                     aria-label={`Add shift on ${dayLabel(date)}`}
-                    className={`aspect-square rounded-lg border flex flex-col items-stretch justify-between p-1.5 transition-colors ${
+                    className={`rounded-lg border min-h-[60px] sm:min-h-[104px] flex flex-col p-1 gap-1 cursor-pointer transition-colors ${
                       isToday ? 'border-green-500 ring-1 ring-green-500' : 'border-gray-200'
                     } ${inMonth ? 'bg-white active:bg-gray-50' : 'bg-gray-50'}`}
                   >
-                    <span className={`self-end text-[var(--fs-xs)] font-bold tabular-nums ${
-                      !inMonth ? 'text-gray-300' : isToday ? 'text-green-700' : 'text-gray-700'
-                    }`}>
-                      {Number(date.slice(8, 10))}
-                    </span>
-                    {agg && agg.shifts > 0 ? (
-                      <span className="self-start flex items-center gap-0.5 text-[var(--fs-xs)] font-bold tabular-nums text-gray-800">
-                        {agg.shifts}
-                        {agg.open > 0 && <span className="text-amber-500" aria-hidden="true">●</span>}
+                    <div className="flex items-center justify-end px-0.5">
+                      <span className={`text-[var(--fs-xs)] font-bold tabular-nums ${
+                        !inMonth ? 'text-gray-300' : isToday ? 'text-green-700' : 'text-gray-700'
+                      }`}>
+                        {Number(date.slice(8, 10))}
                       </span>
-                    ) : inMonth ? (
-                      <span className="self-start text-[var(--fs-md)] leading-none text-gray-300">+</span>
-                    ) : (
-                      <span className="self-start" />
+                    </div>
+
+                    {/* Phones: compact count + open dot (chips don't fit) */}
+                    {slots.length > 0 && (
+                      <div className="sm:hidden mt-auto self-start flex items-center gap-0.5 text-[var(--fs-xs)] font-bold tabular-nums text-gray-800">
+                        {slots.length}
+                        {openCount > 0 && <span className="text-amber-500" aria-hidden="true">●</span>}
+                      </div>
                     )}
-                  </button>
+
+                    {/* Tablet / desktop: real shift chips */}
+                    {slots.length > 0 && (
+                      <div className="hidden sm:flex flex-col gap-1 min-w-0">
+                        {slots.slice(0, 3).map(s => monthChip(s))}
+                        {slots.length > 3 && (
+                          <button
+                            onClick={e => { e.stopPropagation(); setViewMode('day'); setDay(date); }}
+                            className="text-[var(--fs-xs)] font-semibold text-green-700 text-left px-1 active:opacity-70"
+                          >
+                            +{slots.length - 3} more
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
             <div className="mt-3 text-[var(--fs-xs)] text-gray-500">
-              Tap a day to add a shift. <span className="text-amber-500 font-bold">●</span> = has open shifts.
+              Tap a shift to edit it, or an empty space in a day to add one.
             </div>
           </div>
         ) : !hasAnything ? (
@@ -1349,7 +1448,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             Copy last week
           </button>
           <button
-            onClick={() => setConfirm('publish')}
+            onClick={openPublishConfirm}
             disabled={draftCount === 0}
             className="flex-1 bg-green-600 text-white font-semibold rounded-xl py-3 text-[var(--fs-sm)] active:bg-green-700 shadow-lg shadow-green-600/30 disabled:opacity-50"
           >
@@ -1680,7 +1779,19 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             </div>
             <ToggleSwitch on={notifyOnPublish} onToggle={() => setNotifyOnPublish(v => !v)} />
           </div>
-          <button onClick={() => void doPublish()} className={ds.btnPrimary}>Publish week</button>
+          <button onClick={() => void doPublish()} className={ds.btnPrimary}>
+            Publish this week ({draftCount})
+          </button>
+          {upcoming && upcoming.weeks > 1 && (
+            <button onClick={() => void doPublishUpcoming()} className={ds.btnSecondary}>
+              Publish all {upcoming.count} upcoming · {upcoming.weeks} weeks
+            </button>
+          )}
+          {upcoming && upcoming.weeks > 1 && (
+            <div className="text-[var(--fs-xs)] text-gray-400 text-center -mt-1">
+              You’ve got drafts in {upcoming.weeks} weeks — publish just this one or all of them.
+            </div>
+          )}
           <button onClick={() => setConfirm(null)} className={ds.btnSecondary}>Not yet</button>
         </div>
       </Sheet>
