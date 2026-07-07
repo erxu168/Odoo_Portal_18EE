@@ -132,6 +132,15 @@ function addDays(dateStr: string, n: number): string {
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
 }
 
+/** JS weekday index (0=Sun..6=Sat) for a YYYY-MM-DD string (UTC-safe). */
+function weekdayIndex(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+/** Mon-first weekday chips: [jsIndex, label]. */
+const WEEKDAY_CHIPS: [number, string][] = [[1, 'Mo'], [2, 'Tu'], [3, 'We'], [4, 'Th'], [5, 'Fr'], [6, 'Sa'], [0, 'Su']];
+
 export default function CreateShift({ companyId, isManager, onBack, prefill, onCreated }: CreateShiftProps) {
   const todayBerlin = useMemo(() => berlinParts(nowOdooUtc()).date, []);
   const lastTimes = useMemo(() => readLastTimes(companyId), [companyId]);
@@ -147,8 +156,9 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const [pickedId, setPickedId] = useState<number | null>(null);
   const [copySelected, setCopySelected] = useState<Set<string>>(new Set(prefill?.date ? [prefill.date] : [todayBerlin]));
   const [note, setNote] = useState('');
-  const [repeat, setRepeat] = useState<'none' | 'daily' | 'weekly'>('none');
+  const [repeat, setRepeat] = useState<'none' | 'daily' | 'weekly' | 'custom'>('none');
   const [until, setUntil] = useState('');
+  const [repeatDays, setRepeatDays] = useState<Set<number>>(new Set());
 
   // Data
   const [roles, setRoles] = useState<RoleInfo[]>([]);
@@ -230,18 +240,41 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const weekOfDate = date ? berlinISOWeekKey(`${date} 12:00:00`) : null;
   const weekDates = useMemo(() => (weekOfDate ? weekKeyDays(weekOfDate) : []), [weekOfDate]);
 
-  // Recurrence: dates from the shift date through "until" (daily or same-weekday weekly).
+  // Recurrence: dates from the shift date through "until".
   const recurrence = useMemo(() => {
     if (repeat === 'none' || !until || until < date) return [] as string[];
-    const step = repeat === 'daily' ? 1 : 7;
     const out: string[] = [];
+    if (repeat === 'custom') {
+      if (repeatDays.size === 0) return out;
+      let cur = date;
+      for (let i = 0; i < 200 && cur <= until; i++) {
+        if (repeatDays.has(weekdayIndex(cur))) out.push(cur);
+        cur = addDays(cur, 1);
+      }
+      return out;
+    }
+    const step = repeat === 'daily' ? 1 : 7;
     let cur = date;
-    for (let i = 0; i < 180 && cur <= until; i++) {
+    for (let i = 0; i < 200 && cur <= until; i++) {
       out.push(cur);
       cur = addDays(cur, step);
     }
     return out;
-  }, [repeat, until, date]);
+  }, [repeat, until, date, repeatDays]);
+
+  function setRepeatMode(mode: 'none' | 'daily' | 'weekly' | 'custom') {
+    setRepeat(mode);
+    // Seed custom weekdays with the shift's own weekday the first time.
+    if (mode === 'custom' && repeatDays.size === 0 && date) setRepeatDays(new Set([weekdayIndex(date)]));
+  }
+  function toggleRepeatDay(wd: number) {
+    setRepeatDays(prev => {
+      const next = new Set(prev);
+      if (next.has(wd)) next.delete(wd);
+      else next.add(wd);
+      return next;
+    });
+  }
 
   // Live week hours for everyone, for the week the shift lands in.
   useEffect(() => {
@@ -573,13 +606,13 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
           {/* REPEAT */}
           <div className={`${ds.card} p-4 flex flex-col gap-3`}>
             <div className={LBL}>Repeat</div>
-            <div className="flex gap-2">
-              {([['none', 'Doesn’t repeat'], ['daily', 'Every day'], ['weekly', 'Every week']] as const).map(([v, label]) => (
+            <div className="flex flex-wrap gap-2">
+              {([['none', 'Doesn’t repeat'], ['daily', 'Every day'], ['weekly', 'Every week'], ['custom', 'Custom days']] as const).map(([v, label]) => (
                 <button
                   key={v}
                   type="button"
-                  onClick={() => setRepeat(v)}
-                  className={`flex-1 py-2 rounded-full text-[var(--fs-sm)] font-semibold transition-colors ${
+                  onClick={() => setRepeatMode(v)}
+                  className={`px-3.5 py-2 rounded-full text-[var(--fs-sm)] font-semibold transition-colors ${
                     repeat === v ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 active:bg-gray-200'
                   }`}
                 >
@@ -587,6 +620,23 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                 </button>
               ))}
             </div>
+            {repeat === 'custom' && (
+              <div className="flex gap-1.5">
+                {WEEKDAY_CHIPS.map(([wd, l]) => (
+                  <button
+                    key={wd}
+                    type="button"
+                    onClick={() => toggleRepeatDay(wd)}
+                    aria-pressed={repeatDays.has(wd)}
+                    className={`flex-1 py-2 rounded-lg text-[var(--fs-xs)] font-bold transition-colors ${
+                      repeatDays.has(wd) ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-500 active:bg-gray-200'
+                    }`}
+                  >
+                    {l}
+                  </button>
+                ))}
+              </div>
+            )}
             {repeat !== 'none' && (
               <>
                 <div>
@@ -595,8 +645,10 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                 </div>
                 <div className={HINT}>
                   {recurrence.length > 0
-                    ? `Creates ${recurrence.length} shift${recurrence.length === 1 ? '' : 's'} — ${repeat === 'daily' ? 'every day' : `every ${weekdayName(date)}`} through ${weekdayLabel(until)}.`
-                    : 'Pick an end date after the shift date.'}
+                    ? `Creates ${recurrence.length} shift${recurrence.length === 1 ? '' : 's'} — ${repeat === 'daily' ? 'every day' : repeat === 'weekly' ? `every ${weekdayName(date)}` : 'on the chosen days'} through ${weekdayLabel(until)}.`
+                    : repeat === 'custom' && repeatDays.size === 0
+                      ? 'Pick at least one weekday.'
+                      : 'Pick an end date after the shift date.'}
                 </div>
               </>
             )}
