@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     if (!weekKey) {
       return NextResponse.json({ error: 'Invalid week' }, { status: 400 });
     }
+    const notify = body.notify !== false; // default: notify assigned staff
 
     const slots = await fetchWeekSlots(companyId, weekKey);
     const drafts = slots.filter(s => s.state === 'draft');
@@ -39,28 +40,30 @@ export async function POST(req: NextRequest) {
       { state: 'published' },
     );
 
-    // One shift_published notification per distinct assigned employee.
-    const byEmployee = new Map<number, ShiftSlot[]>();
-    for (const slot of drafts) {
-      if (slot.employeeId === null) continue;
-      const list = byEmployee.get(slot.employeeId) ?? [];
-      list.push(slot);
-      byEmployee.set(slot.employeeId, list);
-    }
-    const entries = Array.from(byEmployee.entries());
-    for (const [employeeId, employeeSlots] of entries) {
-      const first = employeeSlots[0];
-      await notifyEmployee(employeeId, companyId, 'shift_published', {
-        day: fmtDay(first.start),
-        time: fmtTimeRange(first.start, first.end),
-        roleName: first.roleName,
-        weekKey,
-        count: employeeSlots.length,
-        message:
-          employeeSlots.length === 1
-            ? 'A new shift was published for you.'
-            : `${employeeSlots.length} new shifts were published for you.`,
-      });
+    // One shift_published notification per distinct assigned employee (unless silent).
+    if (notify) {
+      const byEmployee = new Map<number, ShiftSlot[]>();
+      for (const slot of drafts) {
+        if (slot.employeeId === null) continue;
+        const list = byEmployee.get(slot.employeeId) ?? [];
+        list.push(slot);
+        byEmployee.set(slot.employeeId, list);
+      }
+      const entries = Array.from(byEmployee.entries());
+      for (const [employeeId, employeeSlots] of entries) {
+        const first = employeeSlots[0];
+        await notifyEmployee(employeeId, companyId, 'shift_published', {
+          day: fmtDay(first.start),
+          time: fmtTimeRange(first.start, first.end),
+          roleName: first.roleName,
+          weekKey,
+          count: employeeSlots.length,
+          message:
+            employeeSlots.length === 1
+              ? 'A new shift was published for you.'
+              : `${employeeSlots.length} new shifts were published for you.`,
+        });
+      }
     }
 
     return NextResponse.json({ ok: true, published: drafts.length });

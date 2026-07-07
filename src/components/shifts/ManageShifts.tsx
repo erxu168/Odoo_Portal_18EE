@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import { Badge, EmptyState, Sheet, Spinner, WeekNav } from '@/components/shifts/ui';
+import { Badge, EmptyState, Sheet, Spinner, ToggleSwitch, WeekNav } from '@/components/shifts/ui';
 import { ds } from '@/lib/design-system';
 import {
   berlinParts,
@@ -210,6 +210,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
 
   const [confirm, setConfirm] = useState<'publish' | 'copy' | 'delete' | null>(null);
   const [lastWeekCount, setLastWeekCount] = useState<number | null>(null);
+  const [notifyOnPublish, setNotifyOnPublish] = useState(true);
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -529,12 +530,12 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       const res = await fetch('/api/shifts/publish-week', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_id: companyId, week: weekKey }),
+        body: JSON.stringify({ company_id: companyId, week: weekKey, notify: notifyOnPublish }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
       const n = typeof d.published === 'number' ? d.published : draftCount;
-      showToast(`Published ${n} shift${n === 1 ? '' : 's'} — staff can see them now`);
+      showToast(`Published ${n} shift${n === 1 ? '' : 's'}${notifyOnPublish ? ' — staff notified' : ' — no notifications sent'}`);
       void load();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Could not publish the week');
@@ -1137,6 +1138,13 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             </div>
           )}
 
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-[var(--fs-sm)] font-semibold text-gray-900">Notify assigned staff</div>
+              <div className="text-[var(--fs-xs)] text-gray-400">Turn off to publish quietly — no messages sent.</div>
+            </div>
+            <ToggleSwitch on={notifyOnPublish} onToggle={() => setNotifyOnPublish(v => !v)} />
+          </div>
           <button onClick={() => void doPublish()} className={ds.btnPrimary}>Publish week</button>
           <button onClick={() => setConfirm(null)} className={ds.btnSecondary}>Not yet</button>
         </div>
