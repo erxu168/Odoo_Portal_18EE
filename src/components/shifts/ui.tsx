@@ -81,6 +81,7 @@ export function WeekNav({ weekKey, label, onPrev, onNext }: {
   weekKey: string; label: string; onPrev: () => void; onNext: () => void;
 }) {
   const isCurrentWeek = weekKey === currentWeekKey();
+  const weekNum = Number(weekKey.match(/-W(\d+)/)?.[1] ?? 0);
   return (
     <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-2.5 py-2 mx-4 mb-3">
       <button onClick={onPrev} aria-label="Previous week"
@@ -91,6 +92,7 @@ export function WeekNav({ weekKey, label, onPrev, onNext }: {
       </button>
       <div className="flex-1 text-center text-[var(--fs-md)] font-bold text-gray-900 min-w-0 truncate">
         {label}
+        {weekNum > 0 && <span className="text-gray-400 font-semibold"> {'·'} Week {weekNum}</span>}
         {isCurrentWeek && <span className="text-gray-400 font-semibold"> {'·'} this week</span>}
       </div>
       <button onClick={onNext} aria-label="Next week"
