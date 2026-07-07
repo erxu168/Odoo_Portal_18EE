@@ -268,6 +268,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const [qaRoleIds, setQaRoleIds] = useState<Set<number>>(new Set());
   const [qaMode, setQaMode] = useState<'open' | 'pick'>('open');
   const [qaPeopleIds, setQaPeopleIds] = useState<Set<number>>(new Set());
+  const [qaMinSkill, setQaMinSkill] = useState<'1' | '2' | '3'>('1'); // open-shift skill gate
   const [qaSaving, setQaSaving] = useState(false);
   const [qaError, setQaError] = useState<string | null>(null);
 
@@ -586,6 +587,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     setQaRoleIds(ctx?.roleId != null ? new Set([ctx.roleId]) : new Set());
     setQaMode(ctx?.employeeId != null ? 'pick' : 'open');
     setQaPeopleIds(ctx?.employeeId != null ? new Set([ctx.employeeId]) : new Set());
+    setQaMinSkill('1');
   }
 
   function toggleQaRole(id: number) {
@@ -641,6 +643,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           count: 1,
         };
         if (c.personId !== null) body.assign_employee_id = c.personId;
+        else if (qaMinSkill !== '1') body.min_skill = qaMinSkill;
         await createFromBody(body);
       }
       setQaDate(null);
@@ -1411,7 +1414,26 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 </button>
               </div>
               {qaMode === 'open' ? (
-                <div className={HINT}>One open shift per selected role — staff can claim it once published.</div>
+                <div className="flex flex-col gap-2">
+                  <div className={HINT}>One open shift per selected role — staff can claim it once published.</div>
+                  <div>
+                    <div className={LBL}>Who can take it</div>
+                    <div className="flex gap-2">
+                      {([['1', 'Anyone'], ['2', 'Associate & up'], ['3', 'Team Lead only']] as const).map(([v, label]) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setQaMinSkill(v)}
+                          className={`flex-1 py-2 rounded-xl text-[var(--fs-sm)] font-semibold border transition-colors ${
+                            qaMinSkill === v ? 'border-green-600 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-500'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               ) : employees.length === 0 ? (
                 <div className={HINT}>Nobody on the roster yet.</div>
               ) : (

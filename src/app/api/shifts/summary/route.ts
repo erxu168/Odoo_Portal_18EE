@@ -13,9 +13,9 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { getShiftSettings, listCoverRequests, listSickReports } from '@/lib/shifts-db';
+import { getShiftSettings, listCoverRequests, listSickReports, slotMinSkills } from '@/lib/shifts-db';
 import { lazyExpireIfDue } from '@/lib/shifts-guards';
-import { fetchEmployees, fetchSlot } from '@/lib/shifts-odoo';
+import { fetchEmployees, fetchSlot, meetsMinSkill } from '@/lib/shifts-odoo';
 import { nowOdooUtc } from '@/lib/shifts-time';
 import type { CoverRequest, ShiftEmployee, ShiftSettings, ShiftSlot } from '@/types/shifts';
 
@@ -64,12 +64,14 @@ export async function GET(request: Request) {
 
     const me = employeeId !== null ? employees.find(e => e.id === employeeId) : undefined;
 
-    // Staff: open eligible shifts.
+    // Staff: open eligible shifts (role + skill gate).
     let openCount = 0;
     if (me && me.resourceId !== null) {
+      const minSkillMap = slotMinSkills(companyId, openRows.map(r => r.id as number));
       openCount = openRows.filter(r => {
         const roleId = Array.isArray(r.role_id) && typeof r.role_id[0] === 'number' ? r.role_id[0] : null;
-        return roleId === null || me.roleIds.includes(roleId);
+        const roleOk = roleId === null || me.roleIds.includes(roleId);
+        return roleOk && meetsMinSkill(me.skill, minSkillMap.get(r.id as number) ?? null);
       }).length;
     }
 

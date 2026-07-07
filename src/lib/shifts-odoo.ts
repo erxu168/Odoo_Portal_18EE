@@ -65,6 +65,18 @@ export const MIN_WAGE_EUR = 13.9;
 /** Minijob monthly earnings cap (€) — derived from the min wage (× ~130/3 h). */
 export const MINIJOB_CAP_EUR = Math.round((MIN_WAGE_EUR * 130) / 3); // 603
 
+/**
+ * Does a person's skill level meet an open shift's minimum?
+ * Levels: '1' Trainee < '2' Associate < '3' Team Lead. null/'1' minimum = anyone.
+ * A person with no skill set counts as level 1 (only qualifies for "anyone").
+ */
+export function meetsMinSkill(personSkill: '1' | '2' | '3' | null, minSkill: string | null): boolean {
+  if (!minSkill || minSkill === '1') return true;
+  const need = Number(minSkill);
+  const have = personSkill ? Number(personSkill) : 1;
+  return have >= need;
+}
+
 /** Hourly rate from an hr.contract row: hourly wage direct, else monthly→hourly. */
 function contractHourlyRate(c: OdooRow): number {
   if (c.wage_type === 'hourly' && num(c.hourly_wage) > 0) return num(c.hourly_wage);

@@ -16,9 +16,11 @@ import {
   employeeWeekHours,
   fetchEmployees,
   fetchSlot,
+  meetsMinSkill,
   recomputeWeekFlags,
   updateSlot,
 } from '@/lib/shifts-odoo';
+import { slotMinSkill } from '@/lib/shifts-db';
 import { berlinISOWeekKey, fmtDay, fmtTimeRange, odooToDate } from '@/lib/shifts-time';
 
 export const dynamic = 'force-dynamic';
@@ -83,6 +85,15 @@ export async function POST(request: Request) {
     }
     if (slot.roleId !== null && !me.roleIds.includes(slot.roleId)) {
       return NextResponse.json({ error: 'You cannot work this role' }, { status: 403 });
+    }
+    // Skill gate: an open shift may require a minimum level to claim.
+    const minSkill = slotMinSkill(companyId, slot.id);
+    if (!meetsMinSkill(me.skill, minSkill)) {
+      const label = minSkill === '3' ? 'Team Lead' : 'Associate';
+      return NextResponse.json(
+        { error: `This shift needs ${label} level or above.` },
+        { status: 403 },
+      );
     }
 
     // Live cap projection for the shift's week.

@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createSlot, fetchEmployees, recomputeWeekFlags } from '@/lib/shifts-odoo';
-import { setSlotDepartments } from '@/lib/shifts-db';
+import { setSlotDepartments, setSlotMinSkills } from '@/lib/shifts-db';
 import { berlinDateTimeToUtcOdoo, berlinISOWeekKey } from '@/lib/shifts-time';
 import { isValidDateStr, normalizeHHMM, requireManagerCompany, serverError } from '../_manager';
 
@@ -39,6 +39,8 @@ export async function POST(req: NextRequest) {
     const roleId = typeof body.role_id === 'number' && body.role_id > 0 ? body.role_id : null;
     const departmentId =
       typeof body.department_id === 'number' && body.department_id > 0 ? body.department_id : null;
+    // Minimum skill to CLAIM an open shift ('2' Associate | '3' Team Lead; else anyone).
+    const minSkill = body.min_skill === '2' || body.min_skill === '3' ? body.min_skill : null;
     const countRaw = body.count === undefined ? 1 : Number(body.count);
     if (!Number.isInteger(countRaw) || countRaw < 1 || countRaw > MAX_COUNT) {
       return NextResponse.json({ error: `count must be between 1 and ${MAX_COUNT}` }, { status: 400 });
@@ -85,6 +87,11 @@ export async function POST(req: NextRequest) {
     // readonly). Applies to open and assigned shifts alike.
     if (departmentId !== null) {
       setSlotDepartments(companyId, created, departmentId);
+    }
+    // Minimum skill to claim — only meaningful for open shifts (assigned ones are
+    // already filled), but store as set; claim/open enforce it.
+    if (minSkill !== null && assignEmployeeId === null) {
+      setSlotMinSkills(companyId, created, minSkill);
     }
 
     // Direct-assigned drafts count toward week hours → recompute flags per week.

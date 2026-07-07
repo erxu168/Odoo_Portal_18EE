@@ -23,7 +23,15 @@ interface OpenShiftsListProps {
   onHome: () => void;
 }
 
-type OpenShift = ShiftSlot & { eligible: boolean };
+type OpenShift = ShiftSlot & {
+  eligible: boolean;
+  minSkill?: string | null;
+  reason?: 'role' | 'skill' | null;
+};
+
+function skillLabel(minSkill: string | null | undefined): string {
+  return minSkill === '3' ? 'Team Lead' : 'Associate';
+}
 
 interface ClaimWarning {
   projected: number;
@@ -243,7 +251,12 @@ export default function OpenShiftsList({ companyId, employeeId, onBack }: OpenSh
                             )}
                           </div>
                           {s.eligible ? (
-                            <Badge variant="green">Open</Badge>
+                            <span className="flex items-center gap-1.5 flex-shrink-0">
+                              {s.minSkill && <Badge variant="amber">{skillLabel(s.minSkill)}+</Badge>}
+                              <Badge variant="green">Open</Badge>
+                            </span>
+                          ) : s.reason === 'skill' ? (
+                            <Badge variant="gray">Needs {skillLabel(s.minSkill)}</Badge>
                           ) : (
                             <Badge variant="gray">Not your role</Badge>
                           )}

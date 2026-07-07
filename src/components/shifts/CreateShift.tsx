@@ -160,6 +160,8 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const [departmentId, setDepartmentId] = useState<number | null>(null);
   const [mode, setMode] = useState<'open' | 'pick'>('open');
   const [pickedIds, setPickedIds] = useState<Set<number>>(new Set());
+  // Minimum skill to claim an open shift ('1' = anyone). Only used in "open" mode.
+  const [minSkill, setMinSkill] = useState<'1' | '2' | '3'>('1');
   const [copySelected, setCopySelected] = useState<Set<string>>(new Set(prefill?.date ? [prefill.date] : [todayBerlin]));
   const [note, setNote] = useState('');
   const [repeat, setRepeat] = useState<'none' | 'daily' | 'weekly' | 'custom'>('none');
@@ -422,6 +424,8 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
           copy_days: occurrenceDates.slice(1),
         };
         if (c.personId !== null) body.assign_employee_id = c.personId;
+        else if (minSkill !== '1') body.min_skill = minSkill; // open shift skill gate
+
         const res = await fetch('/api/shifts/slots', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -618,7 +622,31 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
             </div>
 
             {mode === 'open' ? (
-              <div className={HINT}>Open shifts appear in staff “Open Shifts” once published.</div>
+              <div className="flex flex-col gap-2">
+                <div className={HINT}>Open shifts appear in staff “Open Shifts” once published.</div>
+                <div>
+                  <div className={LBL}>Who can take it</div>
+                  <div className="flex gap-2">
+                    {([['1', 'Anyone'], ['2', 'Associate & up'], ['3', 'Team Lead only']] as const).map(([v, label]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setMinSkill(v)}
+                        className={`flex-1 py-2 rounded-xl text-[var(--fs-sm)] font-semibold border transition-colors ${
+                          minSkill === v ? 'border-green-600 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-500'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {minSkill !== '1' && (
+                    <div className={`${HINT} mt-1.5`}>
+                      Only {minSkill === '3' ? 'Team Leads' : 'Associates and Team Leads'} will be able to claim it.
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : sortedPeople.length === 0 ? (
               <div className={HINT}>Nobody on the roster yet — add people in Roster &amp; Caps.</div>
             ) : (

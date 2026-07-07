@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { invalidateActiveRequestsForSlot } from '@/lib/shifts-guards';
-import { deleteSlotDepartment, setSlotDepartment } from '@/lib/shifts-db';
+import { deleteSlotDepartment, deleteSlotMinSkill, setSlotDepartment, setSlotMinSkill } from '@/lib/shifts-db';
 import { deleteSlot, fetchEmployees, fetchSlot, recomputeWeekFlags, updateSlot } from '@/lib/shifts-odoo';
 import { notifyEmployee } from '@/lib/shifts-notify';
 import { berlinISOWeekKey, fmtDay, fmtTimeRange } from '@/lib/shifts-time';
@@ -67,6 +67,13 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         ? body.department_id
         : null
       : null;
+    // Minimum skill to claim (portal-side, open shifts).
+    const hasSkillChange = 'min_skill' in body;
+    const newMinSkill = hasSkillChange
+      ? body.min_skill === '2' || body.min_skill === '3'
+        ? (body.min_skill as string)
+        : null
+      : null;
     if ('note' in body) {
       updates.note = typeof body.note === 'string' ? body.note.trim() : '';
     }
@@ -94,15 +101,18 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       }
     }
 
-    if (Object.keys(updates).length === 0 && !hasDeptChange) {
+    if (Object.keys(updates).length === 0 && !hasDeptChange && !hasSkillChange) {
       return NextResponse.json({ ok: true }); // nothing to change
     }
 
-    // Department override is portal-side and doesn't touch Odoo/flags/requests.
+    // Portal-side overrides don't touch Odoo/flags/requests.
     if (hasDeptChange) {
       setSlotDepartment(companyId, slotId, newDepartmentId);
     }
-    // Department-only change: nothing else to do.
+    if (hasSkillChange) {
+      setSlotMinSkill(companyId, slotId, newMinSkill);
+    }
+    // Override-only change: nothing else to do.
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ ok: true });
     }
@@ -182,6 +192,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       // Already gone — clean up any dangling request/override and report success.
       await invalidateActiveRequestsForSlot(slotId, 'The shift was deleted.');
       deleteSlotDepartment(slotId);
+      deleteSlotMinSkill(slotId);
       return NextResponse.json({ ok: true });
     }
     if (slot.companyId !== companyId) {
@@ -193,6 +204,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
 
     await deleteSlot(slotId);
     deleteSlotDepartment(slotId); // drop the portal department override
+    deleteSlotMinSkill(slotId); // and the min-skill requirement
 
     if (slot.employeeId !== null) {
       await recomputeWeekFlags(companyId, berlinISOWeekKey(slot.start), [slot.employeeId]);

@@ -18,12 +18,13 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
-import { listCoverRequests } from '@/lib/shifts-db';
+import { listCoverRequests, slotMinSkills } from '@/lib/shifts-db';
 import { getOdoo } from '@/lib/odoo';
 import {
   employeeMonthHours,
   employeeWeekHours,
   fetchEmployees,
+  meetsMinSkill,
   MIN_WAGE_EUR,
   MINIJOB_CAP_EUR,
 } from '@/lib/shifts-odoo';
@@ -204,12 +205,14 @@ export async function GET(request: Request) {
       };
     }
 
-    // --- Open shifts I can claim ----------------------------------------------
+    // --- Open shifts I can claim (role + skill gate) --------------------------
     let openEligible = 0;
     if (me && me.resourceId !== null) {
+      const minSkillMap = slotMinSkills(companyId, openRows.map(r => r.id as number));
       openEligible = openRows.filter(r => {
         const roleId = m2oId(r.role_id);
-        return roleId === null || me.roleIds.includes(roleId);
+        const roleOk = roleId === null || me.roleIds.includes(roleId);
+        return roleOk && meetsMinSkill(me.skill, minSkillMap.get(r.id as number) ?? null);
       }).length;
     }
 

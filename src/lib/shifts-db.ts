@@ -136,8 +136,74 @@ function ensureTables(): void {
       department_id INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_slot_dept_company ON shift_slot_department(company_id);
+
+    CREATE TABLE IF NOT EXISTS shift_slot_min_skill (
+      slot_id INTEGER PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      min_skill TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_slot_skill_company ON shift_slot_min_skill(company_id);
   `);
   _initialized = true;
+}
+
+// -- Slot minimum skill (open shifts: only ≥ level staff may claim) --------------
+
+/**
+ * Set (or clear, when minSkill is null) the minimum skill level required to
+ * claim an open slot. '1' (Trainee = anyone) is treated as no requirement and
+ * clears the row; store only '2' (Associate+) or '3' (Team Lead).
+ */
+export function setSlotMinSkill(companyId: number, slotId: number, minSkill: string | null): void {
+  ensureTables();
+  const db = getDb();
+  if (minSkill === null || minSkill === '1') {
+    db.prepare('DELETE FROM shift_slot_min_skill WHERE slot_id=?').run(slotId);
+    return;
+  }
+  db.prepare(
+    `INSERT INTO shift_slot_min_skill (slot_id, company_id, min_skill)
+     VALUES (?,?,?)
+     ON CONFLICT(slot_id) DO UPDATE SET company_id=excluded.company_id, min_skill=excluded.min_skill`,
+  ).run(slotId, companyId, minSkill);
+}
+
+/** Apply the same minimum skill to many slots at once (batch create). */
+export function setSlotMinSkills(companyId: number, slotIds: number[], minSkill: string | null): void {
+  if (slotIds.length === 0) return;
+  ensureTables();
+  const db = getDb();
+  const tx = db.transaction((ids: number[]) => {
+    for (const id of ids) setSlotMinSkill(companyId, id, minSkill);
+  });
+  tx(slotIds);
+}
+
+/** slot_id → required min skill ('2'|'3') for the given slots (only those set). */
+export function slotMinSkills(companyId: number, slotIds: number[]): Map<number, string> {
+  ensureTables();
+  const map = new Map<number, string>();
+  if (slotIds.length === 0) return map;
+  const placeholders = slotIds.map(() => '?').join(',');
+  const rows = getDb()
+    .prepare(
+      `SELECT slot_id, min_skill FROM shift_slot_min_skill
+       WHERE company_id=? AND slot_id IN (${placeholders})`,
+    )
+    .all(companyId, ...slotIds) as { slot_id: number; min_skill: string }[];
+  for (const r of rows) map.set(r.slot_id, r.min_skill);
+  return map;
+}
+
+/** One slot's required min skill, or null. */
+export function slotMinSkill(companyId: number, slotId: number): string | null {
+  return slotMinSkills(companyId, [slotId]).get(slotId) ?? null;
+}
+
+/** Remove a slot's min-skill requirement (call on slot delete). */
+export function deleteSlotMinSkill(slotId: number): void {
+  ensureTables();
+  getDb().prepare('DELETE FROM shift_slot_min_skill WHERE slot_id=?').run(slotId);
 }
 
 // -- Slot department (manager's chosen dept; slot.department_id is readonly) -----
