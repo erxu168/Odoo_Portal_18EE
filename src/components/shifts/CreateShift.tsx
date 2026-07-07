@@ -347,24 +347,28 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
     });
   }
 
-  const canSubmit = !submitting && !!date && durH !== null && count >= 1 && (mode === 'open' || pickedId !== null);
+  const canSubmit = !submitting && !!date && durH !== null && count >= 1
+    && (mode === 'open' || pickedId !== null)
+    && (repeat === 'none' || recurrence.length > 0);
 
   async function submit() {
     if (!canSubmit) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
+      // Exact list of dates to create on (recurrence, or the base day + same-week copies).
+      const occurrenceDates = repeat !== 'none'
+        ? recurrence
+        : Array.from(new Set([date, ...copySelected])).sort();
       const body: Record<string, unknown> = {
         company_id: companyId,
-        date,
+        date: occurrenceDates[0] ?? date,
         start,
         end,
         role_id: roleId,
         count,
         note: note.trim(),
-        copy_days: repeat !== 'none'
-          ? recurrence.filter(d => d !== date)
-          : Array.from(copySelected).filter(d => d !== date),
+        copy_days: occurrenceDates.slice(1),
       };
       if (mode === 'pick' && pickedId !== null) body.assign_employee_id = pickedId;
       const res = await fetch('/api/shifts/slots', {
