@@ -359,7 +359,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
       // Exact list of dates to create on (recurrence, or the base day + same-week copies).
       const occurrenceDates = repeat !== 'none'
         ? recurrence
-        : Array.from(new Set([date, ...copySelected])).sort();
+        : Array.from(new Set([date, ...Array.from(copySelected)])).sort();
       const body: Record<string, unknown> = {
         company_id: companyId,
         date: occurrenceDates[0] ?? date,
