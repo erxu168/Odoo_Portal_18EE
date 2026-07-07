@@ -119,6 +119,19 @@ function weekdayLabel(dateStr: string): string {
   });
 }
 
+/** Full weekday name ("Tuesday") for a YYYY-MM-DD string (UTC-safe). */
+function weekdayName(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
+}
+
+/** "YYYY-MM-DD" + n days (pure calendar arithmetic, UTC-safe). */
+function addDays(dateStr: string, n: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
 export default function CreateShift({ companyId, isManager, onBack, prefill, onCreated }: CreateShiftProps) {
   const todayBerlin = useMemo(() => berlinParts(nowOdooUtc()).date, []);
   const lastTimes = useMemo(() => readLastTimes(companyId), [companyId]);
@@ -134,6 +147,8 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const [pickedId, setPickedId] = useState<number | null>(null);
   const [copySelected, setCopySelected] = useState<Set<string>>(new Set(prefill?.date ? [prefill.date] : [todayBerlin]));
   const [note, setNote] = useState('');
+  const [repeat, setRepeat] = useState<'none' | 'daily' | 'weekly'>('none');
+  const [until, setUntil] = useState('');
 
   // Data
   const [roles, setRoles] = useState<RoleInfo[]>([]);
@@ -215,6 +230,19 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const weekOfDate = date ? berlinISOWeekKey(`${date} 12:00:00`) : null;
   const weekDates = useMemo(() => (weekOfDate ? weekKeyDays(weekOfDate) : []), [weekOfDate]);
 
+  // Recurrence: dates from the shift date through "until" (daily or same-weekday weekly).
+  const recurrence = useMemo(() => {
+    if (repeat === 'none' || !until || until < date) return [] as string[];
+    const step = repeat === 'daily' ? 1 : 7;
+    const out: string[] = [];
+    let cur = date;
+    for (let i = 0; i < 180 && cur <= until; i++) {
+      out.push(cur);
+      cur = addDays(cur, step);
+    }
+    return out;
+  }, [repeat, until, date]);
+
   // Live week hours for everyone, for the week the shift lands in.
   useEffect(() => {
     if (!companyId || !weekOfDate) return;
@@ -250,7 +278,8 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const picked = mode === 'pick' && pickedId !== null ? employees.find(e => e.id === pickedId) ?? null : null;
 
   // Projection: existing week hours + every shift this form will create for them.
-  const addedHours = durH !== null ? durH * count * Math.max(copySelected.size, 1) : 0;
+  const occurrences = repeat !== 'none' ? Math.max(recurrence.length, 1) : Math.max(copySelected.size, 1);
+  const addedHours = durH !== null ? durH * count * occurrences : 0;
   const pickedBase = picked ? hoursMap.get(picked.id) ?? 0 : 0;
   const pickedProjected = Math.round((pickedBase + addedHours) * 100) / 100;
   const pickedOverage = picked && picked.cap !== null && pickedProjected > picked.cap
@@ -300,7 +329,9 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
         role_id: roleId,
         count,
         note: note.trim(),
-        copy_days: Array.from(copySelected).filter(d => d !== date),
+        copy_days: repeat !== 'none'
+          ? recurrence.filter(d => d !== date)
+          : Array.from(copySelected).filter(d => d !== date),
       };
       if (mode === 'pick' && pickedId !== null) body.assign_employee_id = pickedId;
       const res = await fetch('/api/shifts/slots', {
@@ -539,7 +570,40 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
             )}
           </div>
 
-          {/* COPY TO MORE DAYS */}
+          {/* REPEAT */}
+          <div className={`${ds.card} p-4 flex flex-col gap-3`}>
+            <div className={LBL}>Repeat</div>
+            <div className="flex gap-2">
+              {([['none', 'Doesn’t repeat'], ['daily', 'Every day'], ['weekly', 'Every week']] as const).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setRepeat(v)}
+                  className={`flex-1 py-2 rounded-full text-[var(--fs-sm)] font-semibold transition-colors ${
+                    repeat === v ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {repeat !== 'none' && (
+              <>
+                <div>
+                  <div className={LBL}>Until</div>
+                  <input type="date" min={date} value={until} onChange={e => setUntil(e.target.value)} className={ds.input} />
+                </div>
+                <div className={HINT}>
+                  {recurrence.length > 0
+                    ? `Creates ${recurrence.length} shift${recurrence.length === 1 ? '' : 's'} — ${repeat === 'daily' ? 'every day' : `every ${weekdayName(date)}`} through ${weekdayLabel(until)}.`
+                    : 'Pick an end date after the shift date.'}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* COPY TO MORE DAYS (only when not repeating) */}
+          {repeat === 'none' && (
           <div className={`${ds.card} p-4 flex flex-col gap-3`}>
             <div>
               <div className={LBL}>Copy to more days (optional)</div>
@@ -567,6 +631,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
             </div>
             <div className={HINT}>Same time and role on each selected day.</div>
           </div>
+          )}
 
           {/* SAVE AS TEMPLATE */}
           <div className={`${ds.card} p-4 flex items-center justify-between gap-3`}>
@@ -595,9 +660,11 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
             <button onClick={() => void submit()} disabled={!canSubmit} className={`${ds.btnPrimary} disabled:opacity-50`}>
               {submitting
                 ? 'Creating…'
-                : picked
-                  ? `Create & assign to ${firstName(picked.name)}`
-                  : 'Create shift'}
+                : occurrences > 1
+                  ? `Create ${occurrences} shifts${picked ? ` for ${firstName(picked.name)}` : ''}`
+                  : picked
+                    ? `Create & assign to ${firstName(picked.name)}`
+                    : 'Create shift'}
             </button>
             <button
               onClick={onBack}
