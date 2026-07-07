@@ -47,6 +47,8 @@ interface DeptInfo {
 const LBL = 'text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-400 mb-1.5';
 const HINT = 'text-[var(--fs-xs)] text-gray-400';
 const DAY_ABBR = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+/** Blank "Until" on a repeat = keep repeating for this rolling window (~8 weeks). */
+const DEFAULT_REPEAT_DAYS = 56;
 
 function fmtH(n: number): string {
   return n.toFixed(1);
@@ -254,12 +256,15 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
 
   // Recurrence: dates from the shift date through "until".
   const recurrence = useMemo(() => {
-    if (repeat === 'none' || !until || until < date) return [] as string[];
+    if (repeat === 'none') return [] as string[];
+    // "Until" is optional — blank (or invalid) means keep repeating for a rolling
+    // horizon (shifts are real records, so we materialise a sensible window).
+    const effUntil = until && until >= date ? until : addDays(date, DEFAULT_REPEAT_DAYS);
     const out: string[] = [];
     if (repeat === 'custom') {
       if (repeatDays.size === 0) return out;
       let cur = date;
-      for (let i = 0; i < 200 && cur <= until; i++) {
+      for (let i = 0; i < 200 && cur <= effUntil; i++) {
         if (repeatDays.has(weekdayIndex(cur))) out.push(cur);
         cur = addDays(cur, 1);
       }
@@ -267,7 +272,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
     }
     const step = repeat === 'daily' ? 1 : 7;
     let cur = date;
-    for (let i = 0; i < 200 && cur <= until; i++) {
+    for (let i = 0; i < 200 && cur <= effUntil; i++) {
       out.push(cur);
       cur = addDays(cur, step);
     }
@@ -739,15 +744,14 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
             {repeat !== 'none' && (
               <>
                 <div>
-                  <div className={LBL}>Until</div>
+                  <div className={LBL}>Until (optional)</div>
                   <input type="date" min={date} value={until} onChange={e => setUntil(e.target.value)} className={ds.input} />
+                  <div className={`${HINT} mt-1`}>Leave blank to keep repeating.</div>
                 </div>
                 <div className={HINT}>
                   {recurrence.length > 0
-                    ? `Creates ${recurrence.length} shift${recurrence.length === 1 ? '' : 's'} — ${repeat === 'daily' ? 'every day' : repeat === 'weekly' ? `every ${weekdayName(date)}` : 'on the chosen days'} through ${weekdayLabel(until)}.`
-                    : repeat === 'custom' && repeatDays.size === 0
-                      ? 'Pick at least one weekday.'
-                      : 'Pick an end date after the shift date.'}
+                    ? `Creates ${recurrence.length} shift${recurrence.length === 1 ? '' : 's'} — ${repeat === 'daily' ? 'every day' : repeat === 'weekly' ? `every ${weekdayName(date)}` : 'on the chosen days'} through ${weekdayLabel(recurrence[recurrence.length - 1])}${until && until >= date ? '' : ' (no end date — rolling ~8 weeks; add a date to change)'}.`
+                    : 'Pick at least one weekday.'}
                 </div>
               </>
             )}
