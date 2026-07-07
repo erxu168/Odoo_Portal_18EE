@@ -21,6 +21,8 @@ interface OpenShiftsListProps {
   employeeId: number | null;
   onBack: () => void;
   onHome: () => void;
+  /** navigate to My Shifts (post-claim confirmation) */
+  onOpenMine?: () => void;
 }
 
 type OpenShift = ShiftSlot & {
@@ -62,13 +64,14 @@ function WarnBox({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function OpenShiftsList({ companyId, employeeId, onBack }: OpenShiftsListProps) {
+export default function OpenShiftsList({ companyId, employeeId, onBack, onOpenMine }: OpenShiftsListProps) {
   const [shifts, setShifts] = useState<OpenShift[]>([]);
   const [weekHours, setWeekHours] = useState(0);
   const [cap, setCap] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [claimed, setClaimed] = useState(false); // show the post-claim confirmation bar
 
   const [selected, setSelected] = useState<OpenShift | null>(null);
   const [warn, setWarn] = useState<ClaimWarning | null>(null);
@@ -143,6 +146,7 @@ export default function OpenShiftsList({ companyId, employeeId, onBack }: OpenSh
         return;
       }
       closeSheet();
+      setClaimed(true); // sticky confirmation with a way to see it in My Shifts
       showToast('The shift is yours');
       void load();
     } catch (err: unknown) {
@@ -209,6 +213,21 @@ export default function OpenShiftsList({ companyId, employeeId, onBack }: OpenSh
           </div>
 
           <div className="px-4 pb-24 max-w-2xl mx-auto w-full">
+            {claimed && (
+              <div className="mt-2 flex items-center gap-3 rounded-xl bg-green-50 border border-green-200 px-3.5 py-3">
+                <span className="text-[var(--fs-sm)] font-semibold text-green-800 flex-1">
+                  ✓ The shift is yours — it’s in your schedule now.
+                </span>
+                {onOpenMine && (
+                  <button
+                    onClick={onOpenMine}
+                    className="px-3.5 py-2 rounded-lg bg-green-600 text-white text-[var(--fs-sm)] font-bold active:bg-green-700 flex-shrink-0"
+                  >
+                    View my shifts
+                  </button>
+                )}
+              </div>
+            )}
             <SectionTitle>
               {`This week · ${fmtH(weekHours)}${cap !== null ? ` / ${fmtCap(cap)}` : ''} h`}
             </SectionTitle>
@@ -244,7 +263,7 @@ export default function OpenShiftsList({ companyId, employeeId, onBack }: OpenSh
                               {fmtTimeRange(s.start, s.end)}
                             </div>
                             <div className="text-[var(--fs-sm)] text-gray-500 truncate">
-                              {`${s.roleName || 'Any role'} · ${fmtH(s.hours)} h`}
+                              {`${s.roleName || 'Any role'}${s.departmentName ? ` · ${s.departmentName}` : ''} · ${fmtH(s.hours)} h`}
                             </div>
                             {s.note && (
                               <div className="text-[var(--fs-xs)] text-gray-400 truncate">{s.note}</div>
@@ -279,7 +298,7 @@ export default function OpenShiftsList({ companyId, employeeId, onBack }: OpenSh
                 {`${fmtDay(selected.start)} · ${fmtTimeRange(selected.start, selected.end)}`}
               </div>
               <div className="text-[var(--fs-sm)] text-gray-500">
-                {`${selected.roleName || 'Any role'} · ${fmtH(selected.hours)} hours`}
+                {`${selected.roleName || 'Any role'}${selected.departmentName ? ` · ${selected.departmentName}` : ''} · ${fmtH(selected.hours)} hours`}
               </div>
             </div>
 

@@ -203,3 +203,51 @@ export function fmtDay(odooDt: string): string {
 export function fmtTimeRange(startOdoo: string, endOdoo: string): string {
   return `${berlinParts(startOdoo).hhmm}–${berlinParts(endOdoo).hhmm}`;
 }
+
+// -- ArbZG assign-time checks -----------------------------------------------------
+
+export const ARBZG_REST_MIN_H = 11; // §5 rest between shifts
+export const ARBZG_DAILY_MAX_H = 10; // §3 daily maximum
+
+/**
+ * ArbZG conflicts a NEW shift (Berlin date + wall-clock times) would create for
+ * a person, given their existing shifts (Odoo UTC strings). Returns plain-
+ * English warnings: rest gap < 11h against a neighbouring shift, or the new
+ * shift itself exceeding 10h. Overnight (end <= start) rolls to the next day.
+ */
+export function arbzgConflicts(
+  existing: { start: string; end: string }[],
+  date: string,
+  startHHMM: string,
+  endHHMM: string,
+): string[] {
+  const out: string[] = [];
+  const startUtc = berlinDateTimeToUtcOdoo(date, startHHMM);
+  const endDate = endHHMM <= startHHMM ? addDaysToDateStr(date, 1) : date;
+  const endUtc = berlinDateTimeToUtcOdoo(endDate, endHHMM);
+  const s = odooToDate(startUtc).getTime();
+  const e = odooToDate(endUtc).getTime();
+
+  if ((e - s) / HOUR_MS > ARBZG_DAILY_MAX_H + 1e-9) {
+    out.push(`${Math.round(((e - s) / HOUR_MS) * 10) / 10}h shift — over the ${ARBZG_DAILY_MAX_H}h daily maximum`);
+  }
+  for (const ex of existing) {
+    const exS = odooToDate(ex.start).getTime();
+    const exE = odooToDate(ex.end).getTime();
+    // Rest gap to a shift ending before this one starts…
+    if (exE <= s) {
+      const gap = (s - exE) / HOUR_MS;
+      if (gap < ARBZG_REST_MIN_H) {
+        out.push(`only ${Math.round(gap * 10) / 10}h rest after their ${fmtDay(ex.start)} shift (min ${ARBZG_REST_MIN_H}h)`);
+      }
+    }
+    // …and to a shift starting after this one ends.
+    if (exS >= e) {
+      const gap = (exS - e) / HOUR_MS;
+      if (gap < ARBZG_REST_MIN_H) {
+        out.push(`only ${Math.round(gap * 10) / 10}h rest before their ${fmtDay(ex.start)} shift (min ${ARBZG_REST_MIN_H}h)`);
+      }
+    }
+  }
+  return out;
+}

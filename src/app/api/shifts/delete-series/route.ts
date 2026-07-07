@@ -14,7 +14,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { invalidateActiveRequestsForSlot } from '@/lib/shifts-guards';
-import { deleteSlotDepartment, deleteSlotMinSkill } from '@/lib/shifts-db';
+import {
+  deleteSlotDepartment,
+  deleteSlotMinSkill,
+  slotDepartments,
+  slotMinSkill,
+  slotMinSkills,
+} from '@/lib/shifts-db';
 import { deleteSlot, fetchSlot, recomputeWeekFlags } from '@/lib/shifts-odoo';
 import { notifyEmployee } from '@/lib/shifts-notify';
 import { berlinISOWeekKey, berlinParts, fmtDay, fmtTimeRange } from '@/lib/shifts-time';
@@ -69,12 +75,24 @@ export async function POST(req: NextRequest) {
       { limit: 1000, order: 'start_datetime asc' },
     )) as OdooRow[];
 
-    // Keep only exact wall-clock time matches (DST-safe).
-    const matches = rows.filter(
+    // Keep only exact wall-clock time matches (DST-safe)...
+    const timeMatches = rows.filter(
       r =>
         berlinParts(str(r.start_datetime)).hhmm === refStartHHMM &&
         berlinParts(str(r.end_datetime)).hhmm === refEndHHMM,
     );
+    // ...and the SAME portal department + min-skill as the reference, so two
+    // look-alike shifts on different stations/levels are never merged into one
+    // "series" (which would wipe both).
+    const refDept = slotDepartments(companyId, [ref.id]).get(ref.id) ?? null;
+    const refSkill = slotMinSkill(companyId, ref.id);
+    const candIds = timeMatches.map(r => r.id as number);
+    const deptOv = slotDepartments(companyId, candIds);
+    const skillOv = slotMinSkills(companyId, candIds);
+    const matches = timeMatches.filter(r => {
+      const id = r.id as number;
+      return (deptOv.get(id) ?? null) === refDept && (skillOv.get(id) ?? null) === (refSkill ?? null);
+    });
     const ids = matches.map(r => r.id as number);
     if (!ids.includes(slotId)) ids.push(slotId);
 

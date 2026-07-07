@@ -502,7 +502,7 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
                                 {`${fmtDay(s.start)} · ${fmtTimeRange(s.start, s.end)}`}
                               </div>
                               <div className="text-[var(--fs-sm)] text-gray-500 truncate">
-                                {req ? requestStatusLine(req) : `${s.roleName || 'Any role'} · ${fmtH(s.hours)} h`}
+                                {req ? requestStatusLine(req) : `${s.roleName || 'Any role'}${s.departmentName ? ` · ${s.departmentName}` : ''} · ${fmtH(s.hours)} h`}
                               </div>
                             </div>
                             {req ? (
@@ -536,7 +536,7 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
                                 {`${fmtDay(s.start)} · ${fmtTimeRange(s.start, s.end)}`}
                               </div>
                               <div className="text-[var(--fs-sm)] text-gray-500 truncate">
-                                {`${s.roleName || 'Any role'} · ${fmtH(s.hours)} h`}
+                                {`${s.roleName || 'Any role'}${s.departmentName ? ` · ${s.departmentName}` : ''} · ${fmtH(s.hours)} h`}
                               </div>
                             </div>
                             <Badge variant="orange">Pending</Badge>
@@ -563,7 +563,7 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
                 {`${fmtDay(sheetSlot.start)} · ${fmtTimeRange(sheetSlot.start, sheetSlot.end)}`}
               </div>
               <div className="text-[var(--fs-sm)] text-gray-500">
-                {`${sheetSlot.roleName || 'Any role'} · ${fmtH(sheetSlot.hours)} hours`}
+                {`${sheetSlot.roleName || 'Any role'}${sheetSlot.departmentName ? ` · ${sheetSlot.departmentName}` : ''} · ${fmtH(sheetSlot.hours)} hours`}
               </div>
             </div>
 

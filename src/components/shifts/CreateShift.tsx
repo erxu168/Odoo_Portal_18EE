@@ -14,7 +14,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import { Badge, EmptyState, Spinner, ToggleSwitch } from '@/components/shifts/ui';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { ds } from '@/lib/design-system';
-import { berlinISOWeekKey, berlinParts, nowOdooUtc, weekKeyDays } from '@/lib/shifts-time';
+import { arbzgConflicts, berlinISOWeekKey, berlinParts, nowOdooUtc, weekKeyDays } from '@/lib/shifts-time';
 import type { ShiftEmployee, ShiftTemplate } from '@/types/shifts';
 
 interface CreatePrefill {
@@ -45,7 +45,7 @@ interface DeptInfo {
 }
 
 const LBL = 'text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-400 mb-1.5';
-const HINT = 'text-[var(--fs-xs)] text-gray-400';
+const HINT = 'text-[var(--fs-xs)] text-gray-500';
 const DAY_ABBR = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 /** Blank "Until" on a repeat = keep repeating for this rolling window (~8 weeks). */
 const DEFAULT_REPEAT_DAYS = 56;
@@ -175,6 +175,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const [departments, setDepartments] = useState<DeptInfo[]>([]);
   const [employees, setEmployees] = useState<ShiftEmployee[]>([]);
   const [hoursMap, setHoursMap] = useState<Map<number, number>>(new Map());
+  const [weekSlotsByEmp, setWeekSlotsByEmp] = useState<Map<number, { start: string; end: string }[]>>(new Map());
   const [monthHours, setMonthHours] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -308,6 +309,16 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
           if (e && typeof e.id === 'number') m.set(e.id, typeof e.hours === 'number' ? e.hours : 0);
         }
         setHoursMap(m);
+        // Keep each person's existing week shifts for ArbZG rest/long-day checks.
+        const sm = new Map<number, { start: string; end: string }[]>();
+        for (const s of Array.isArray(data.slots) ? data.slots : []) {
+          if (s && typeof s.employeeId === 'number' && s.employeeId) {
+            const arr = sm.get(s.employeeId) ?? [];
+            arr.push({ start: s.start, end: s.end });
+            sm.set(s.employeeId, arr);
+          }
+        }
+        setWeekSlotsByEmp(sm);
       } catch (err: unknown) {
         console.warn('[shifts] week hours fetch failed:', err instanceof Error ? err.message : String(err));
       }
@@ -357,6 +368,18 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
       p.employmentType === 'minijob' &&
       ((monthHours.get(p.id) ?? 0) + addedHoursPerPerson) * p.hourlyRate > MINIJOB_CAP,
   );
+
+  // ArbZG (rest < 11h to a neighbouring shift; > 10h day) per picked person, for
+  // the base date — surfaced where the manager actually assigns.
+  const arbzgPicked = useMemo(() => {
+    if (!date || durH === null || pickedList.length === 0) return [] as { name: string; issues: string[] }[];
+    const out: { name: string; issues: string[] }[] = [];
+    for (const p of pickedList) {
+      const issues = arbzgConflicts(weekSlotsByEmp.get(p.id) ?? [], date, start, end);
+      if (issues.length > 0) out.push({ name: firstName(p.name), issues });
+    }
+    return out;
+  }, [date, start, end, durH, pickedList, weekSlotsByEmp]);
 
   const inDept = useCallback(
     (e: ShiftEmployee) => departmentId === null || e.departmentId === departmentId,
@@ -511,7 +534,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                         type="button"
                         onClick={() => setDeleteTpl(t)}
                         aria-label={`Delete template ${t.name}`}
-                        className="absolute top-1/2 -translate-y-1/2 right-1 w-6 h-6 rounded-full flex items-center justify-center text-green-700/50 active:text-red-600"
+                        className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-8 rounded-full flex items-center justify-center text-green-700/50 active:text-red-600 after:absolute after:-inset-1.5 after:content-['']"
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
                       </button>
@@ -705,6 +728,13 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                 cap this month. You can still assign them, but it may affect their Minijob status.
               </WarnBox>
             )}
+
+            {arbzgPicked.map(w => (
+              <WarnBox key={w.name}>
+                Working-time law (ArbZG): <b>{w.name}</b> — {w.issues.join('; ')}. You can still assign, but this
+                may not be legal.
+              </WarnBox>
+            ))}
           </div>
 
           {/* REPEAT */}

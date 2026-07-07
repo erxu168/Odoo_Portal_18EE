@@ -261,6 +261,15 @@ export function deleteSlotDepartment(slotId: number): void {
   getDb().prepare('DELETE FROM shift_slot_department WHERE slot_id=?').run(slotId);
 }
 
+/** How many slot department-overrides point at this department (delete guard). */
+export function countSlotsUsingDepartment(companyId: number, departmentId: number): number {
+  ensureTables();
+  const row = getDb()
+    .prepare('SELECT COUNT(*) AS c FROM shift_slot_department WHERE company_id=? AND department_id=?')
+    .get(companyId, departmentId) as { c: number };
+  return row.c;
+}
+
 // -- Shift confirmations (staff "I'll be there") --------------------------------
 
 /** Record a staff confirmation for a slot (idempotent per slot). */

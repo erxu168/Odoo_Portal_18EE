@@ -28,6 +28,7 @@ const PUSH_TITLES: Record<string, string> = {
   shift_published: 'New shifts published',
   shift_changed: 'Shift updated',
   shift_cancelled: 'Shift cancelled',
+  claim_over_cap: 'Over-cap shift claimed',
 };
 
 function buildPushPayload(type: string, payload: object): PushPayload {

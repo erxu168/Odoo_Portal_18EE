@@ -18,6 +18,7 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Badge, EmptyState, Sheet, Spinner, ToggleSwitch, WeekNav } from '@/components/shifts/ui';
 import { ds } from '@/lib/design-system';
 import {
+  arbzgConflicts,
   berlinParts,
   currentWeekKey,
   berlinISOWeekKey,
@@ -99,7 +100,7 @@ interface DeptPersonSection {
 type SubGroup = 'role' | 'person';
 
 const LBL = 'text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-400 mb-1.5';
-const HINT = 'text-[var(--fs-xs)] text-gray-400';
+const HINT = 'text-[var(--fs-xs)] text-gray-500';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function fmtH(n: number): string {
@@ -558,6 +559,26 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
 
   const draftCount = (data?.slots ?? []).filter(s => s.state === 'draft').length;
   const qaShiftCount = qaDate ? quickAddCombos().length : 0; // shifts the quick-add will make
+  // ArbZG check for the quick-add: picked people's existing shifts vs the new times.
+  // Only covers the loaded week — the create screen re-checks with its own fetch.
+  const qaArbzg = useMemo(() => {
+    if (!qaDate || qaMode !== 'pick' || qaPeopleIds.size === 0) return [] as { name: string; issues: string[] }[];
+    const byEmp = new Map<number, { start: string; end: string }[]>();
+    for (const s of data?.slots ?? []) {
+      if (s.employeeId) {
+        const arr = byEmp.get(s.employeeId) ?? [];
+        arr.push({ start: s.start, end: s.end });
+        byEmp.set(s.employeeId, arr);
+      }
+    }
+    const out: { name: string; issues: string[] }[] = [];
+    for (const e of data?.employees ?? []) {
+      if (!qaPeopleIds.has(e.id)) continue;
+      const issues = arbzgConflicts(byEmp.get(e.id) ?? [], qaDate, qaStart, qaEnd);
+      if (issues.length > 0) out.push({ name: firstName(e.name), issues });
+    }
+    return out;
+  }, [qaDate, qaMode, qaPeopleIds, qaStart, qaEnd, data]);
   // Pre-publish review: people over their weekly cap, and still-open (unassigned) drafts.
   const overCapPeople = (data?.employees ?? []).filter(e => e.overCap || (e.cap !== null && e.hours > e.cap));
   const openDraftCount = (data?.slots ?? []).filter(s => s.state === 'draft' && !s.employeeId).length;
@@ -952,8 +973,9 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       ? `${base} opacity-70 outline-dashed outline-1 outline-offset-[-2px] outline-amber-500`
       : base;
     // Lead with the shift name (note) when one is set, so it's easy to spot.
+    // Status is never colour-only: over-cap and draft carry text tokens too.
     const who = isOpen ? 'Open' : firstName(s.employeeName);
-    const t = chipTime(s) + (s.overCap ? ' !' : '');
+    const t = chipTime(s) + (s.overCap ? ' · over' : '');
     let line1: string;
     let line2 = '';
     if (s.note) {
@@ -963,8 +985,9 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       line1 = who;
       line2 = t;
     } else {
-      line1 = t;
+      line1 = (isOpen ? 'Open · ' : '') + t;
     }
+    if (s.state === 'draft') line2 = line2 ? `${line2} · draft` : 'draft';
     return (
       <button
         key={s.id}
@@ -981,18 +1004,19 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           if (longFired.current) { longFired.current = false; return; }
           openSheet(s);
         }}
-        className={`relative ${block ? 'w-full' : ''} rounded-md px-1.5 py-1 text-[var(--fs-xs)] font-bold leading-tight text-center ${cls}`}
+        className={`relative ${block ? 'w-full' : ''} rounded-md px-2 py-1.5 min-h-[44px] flex flex-col items-center justify-center text-[var(--fs-xs)] font-bold leading-tight text-center ${cls}`}
       >
         {block ? (
           <>
-            <span className="block truncate">{line1}</span>
-            {line2 && <span className="block truncate tabular-nums whitespace-nowrap">{line2}</span>}
+            <span className="block truncate max-w-full">{line1}</span>
+            {line2 && <span className="block truncate max-w-full tabular-nums whitespace-nowrap">{line2}</span>}
           </>
         ) : (
           <span className="tabular-nums whitespace-nowrap">
-            {s.note ? `${s.note} · ` : mode === 'person' ? `${who} ` : ''}
+            {s.note ? `${s.note} · ` : mode === 'person' ? `${who} ` : isOpen ? 'Open · ' : ''}
             {chipTime(s)}
-            {s.overCap ? ' !' : ''}
+            {s.overCap ? ' · over' : ''}
+            {s.state === 'draft' ? ' · draft' : ''}
           </span>
         )}
         {pendingSet.has(s.id) && (
@@ -1017,10 +1041,11 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       : base;
     const whoOrRole = isOpen ? s.roleName || 'Open' : firstName(s.employeeName);
     const title = s.note || whoOrRole;
-    let sub = chipTime(s) + (s.overCap ? ' !' : '');
+    let sub = chipTime(s) + (s.overCap ? ' · over' : '');
     if (s.note) sub = `${whoOrRole} · ${sub}`;
     else if (isOpen && s.roleName) sub = `Open · ${sub}`;
     else if (!isOpen && s.roleName) sub = `${sub} · ${s.roleName}`;
+    if (s.state === 'draft') sub = `${sub} · draft`;
     return (
       <button
         key={s.id}
@@ -1037,7 +1062,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           if (longFired.current) { longFired.current = false; return; }
           openSheet(s);
         }}
-        className={`relative w-full rounded px-1.5 py-1 text-left leading-tight ${cls}`}
+        className={`relative w-full rounded px-2 py-1.5 min-h-[44px] text-left leading-tight ${cls}`}
       >
         <span className="block truncate text-[var(--fs-xs)] font-bold">{title}</span>
         <span className="block truncate text-[11px] font-semibold tabular-nums opacity-80">{sub}</span>
@@ -1095,7 +1120,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         <button
           onClick={onAdd}
           aria-label={`Add shift for ${title}`}
-          className="w-7 h-7 rounded-lg bg-gray-100 text-gray-600 text-[var(--fs-md)] font-bold flex items-center justify-center active:bg-gray-200 flex-shrink-0"
+          className="relative w-9 h-9 rounded-lg bg-gray-100 text-gray-600 text-[var(--fs-md)] font-bold flex items-center justify-center active:bg-gray-200 flex-shrink-0 after:absolute after:-inset-1.5 after:content-['']"
         >
           +
         </button>
@@ -1218,7 +1243,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           <button
             onClick={() => openQuickAdd(date)}
             aria-label={`Add shift on ${dayLabel(date)}`}
-            className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 text-[var(--fs-md)] font-bold flex items-center justify-center active:bg-gray-200"
+            className="w-11 h-11 rounded-lg bg-gray-100 text-gray-600 text-[var(--fs-md)] font-bold flex items-center justify-center active:bg-gray-200"
           >
             +
           </button>
@@ -1410,11 +1435,13 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                       </span>
                     </div>
 
-                    {/* Phones: compact count + open dot (chips don't fit) */}
+                    {/* Phones: compact count + open marker (chips don't fit) */}
                     {slots.length > 0 && (
                       <div className="sm:hidden mt-auto self-start flex items-center gap-0.5 text-[var(--fs-xs)] font-bold tabular-nums text-gray-800">
                         {slots.length}
-                        {openCount > 0 && <span className="text-amber-500" aria-hidden="true">●</span>}
+                        {openCount > 0 && (
+                          <span className="text-amber-600" aria-label={`${openCount} open`}>●</span>
+                        )}
                       </div>
                     )}
 
@@ -1738,6 +1765,13 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 </div>
               )}
             </div>
+
+            {qaArbzg.map(w => (
+              <WarnBox key={w.name}>
+                Working-time law (ArbZG): <b>{w.name}</b> — {w.issues.join('; ')}. You can still assign, but this
+                may not be legal.
+              </WarnBox>
+            ))}
 
             {qaError && (
               <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-[var(--fs-sm)] text-red-700">

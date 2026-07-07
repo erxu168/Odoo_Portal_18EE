@@ -51,12 +51,30 @@ type Screen =
   | { type: 'punctuality' }
   | { type: 'settings' };
 
+// Deterministic navigation: each screen has ONE parent (create/manage flows nest
+// under manage). Back always goes there — no in-memory history stack to desync.
+const PARENT: Record<Screen['type'], Screen['type']> = {
+  dashboard: 'dashboard',
+  open: 'dashboard',
+  mine: 'dashboard',
+  hours: 'dashboard',
+  requests: 'dashboard',
+  mypin: 'dashboard',
+  create: 'manage',
+  manage: 'dashboard',
+  coverage: 'dashboard',
+  roster: 'dashboard',
+  approvals: 'dashboard',
+  presence: 'dashboard',
+  timesheet: 'dashboard',
+  punctuality: 'dashboard',
+  settings: 'dashboard',
+};
+
 export default function ShiftsPage() {
   const router = useRouter();
   const { companyId } = useCompany();
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
-  // History is only ever read inside functional updaters, so no direct binding.
-  const [, setHistory] = useState<Screen[]>([]);
   const [role, setRole] = useState<string | null>(null);
   const [employeeId, setEmployeeId] = useState<number | null>(null);
   const [badges, setBadges] = useState<{ requests: number; approvals: number }>({ requests: 0, approvals: 0 });
@@ -104,20 +122,11 @@ export default function ShiftsPage() {
   }, [screen.type, fetchSummary]);
 
   function navigate(s: Screen) {
-    setHistory((h) => [...h, screen]);
     setScreen(s);
   }
 
   function goBack() {
-    setHistory((h) => {
-      const prev = h[h.length - 1];
-      if (prev) {
-        setScreen(prev);
-        return h.slice(0, -1);
-      }
-      setScreen({ type: 'dashboard' });
-      return [];
-    });
+    setScreen(prev => (prev.type === 'dashboard' ? prev : { type: PARENT[prev.type] } as Screen));
   }
 
   function goHome() {
@@ -125,9 +134,29 @@ export default function ShiftsPage() {
   }
 
   function goDashboard() {
-    setHistory([]);
     setScreen({ type: 'dashboard' });
   }
+
+  // Hardware/browser Back steps within the module instead of exiting it: push a
+  // state entry on every non-dashboard screen and translate popstate to goBack.
+  const screenTypeRef = React.useRef(screen.type);
+  useEffect(() => {
+    screenTypeRef.current = screen.type;
+  }, [screen.type]);
+  useEffect(() => {
+    if (screen.type !== 'dashboard') {
+      window.history.pushState({ shifts: screen.type }, '');
+    }
+  }, [screen]);
+  useEffect(() => {
+    const onPop = () => {
+      if (screenTypeRef.current !== 'dashboard') {
+        setScreen(prev => (prev.type === 'dashboard' ? prev : { type: PARENT[prev.type] } as Screen));
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   function handleTileNav(key: string) {
     if (key === 'open') navigate({ type: 'open' });
@@ -185,7 +214,7 @@ export default function ShiftsPage() {
           </>
         );
       case 'open':
-        return <OpenShiftsList {...common} />;
+        return <OpenShiftsList {...common} onOpenMine={() => navigate({ type: 'mine' })} />;
       case 'mine':
         return <MyShifts {...common} onOpenRequests={() => navigate({ type: 'requests' })} />;
       case 'hours':
@@ -199,10 +228,7 @@ export default function ShiftsPage() {
           <CreateShift
             {...common}
             prefill={screen.prefill}
-            onCreated={() => {
-              setHistory([{ type: 'dashboard' }]);
-              setScreen({ type: 'manage' });
-            }}
+            onCreated={() => setScreen({ type: 'manage' })}
           />
         );
       case 'manage':

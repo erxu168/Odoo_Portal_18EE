@@ -12,9 +12,9 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
-import { confirmedSlotIds, getShiftSettings, listCoverRequests } from '@/lib/shifts-db';
+import { confirmedSlotIds, getShiftSettings, listCoverRequests, slotDepartments } from '@/lib/shifts-db';
 import { lazyExpireIfDue } from '@/lib/shifts-guards';
-import { fetchEmployees, fetchSlot, fetchWeekSlots, weekHoursMap } from '@/lib/shifts-odoo';
+import { fetchDepartments, fetchEmployees, fetchSlot, fetchWeekSlots, weekHoursMap } from '@/lib/shifts-odoo';
 import {
   berlinParts,
   currentWeekKey,
@@ -86,6 +86,18 @@ export async function GET(request: Request) {
 
     // Staff only ever see published shifts — drafts are invisible until publish.
     const mineSlots = weekSlots.filter(s => s.employeeId === employeeId && s.state === 'published');
+    // Overlay the manager-chosen department so staff see where they're posted.
+    const deptOv = slotDepartments(companyId, mineSlots.map(s => s.id));
+    if (deptOv.size > 0) {
+      const deptNameById = new Map((await fetchDepartments(companyId)).map(d => [d.id, d.name]));
+      for (const s of mineSlots) {
+        const ov = deptOv.get(s.id);
+        if (ov !== undefined) {
+          s.departmentId = ov;
+          s.departmentName = deptNameById.get(ov) ?? s.departmentName;
+        }
+      }
+    }
     const confirmedIds = confirmedSlotIds(companyId);
     const myConfirmed = mineSlots.filter(s => confirmedIds.has(s.id)).map(s => s.id);
     const days = weekKeyDays(weekKey).map(date => ({

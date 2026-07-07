@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import { SectionTitle, Spinner, ToggleSwitch } from '@/components/shifts/ui';
 import RolesDeptManager from '@/components/shifts/RolesDeptManager';
-import { ds } from '@/lib/design-system';
 
 /**
  * Shift Settings — manager-only, per company.
@@ -100,26 +99,28 @@ export default function ShiftSettings({ companyId, onBack }: ShiftSettingsProps)
     if (companyId) fetchSettings();
   }, [companyId, fetchSettings]);
 
-  function update(patch: Partial<SettingsForm>) {
-    setForm(f => (f ? { ...f, ...patch } : f));
-  }
-
-  async function handleSave() {
+  // Instant save (matches the roles/departments editor): each change PUTs
+  // immediately and shows a brief "Saved" toast — no separate Save button to
+  // forget on the way out.
+  async function update(patch: Partial<SettingsForm>) {
     if (!form) return;
+    const next = { ...form, ...patch };
+    setForm(next);
     setSaving(true);
     setSaveError(null);
     try {
       const res = await fetch(`/api/shifts/settings?company_id=${companyId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_id: companyId, ...form }),
+        body: JSON.stringify({ company_id: companyId, ...next }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setSavedToast(true);
-      setTimeout(() => setSavedToast(false), 2500);
+      setTimeout(() => setSavedToast(false), 1800);
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Network error');
+      void fetchSettings(); // resync to what's actually stored
     } finally {
       setSaving(false);
     }
@@ -244,18 +245,9 @@ export default function ShiftSettings({ companyId, onBack }: ShiftSettingsProps)
         ) : null}
       </div>
 
-      {form && !loading && !error && (
-        <div className="fixed bottom-0 left-0 right-0 z-[60] bg-white border-t border-gray-200 max-w-xl mx-auto px-4 py-3 safe-bottom">
-          <button onClick={handleSave} disabled={saving} className={`${ds.btnPrimary} disabled:opacity-50`}>
-            {saving ? 'Saving…' : 'Save settings'}
-          </button>
-          <div className="h-[env(safe-area-inset-bottom)]" />
-        </div>
-      )}
-
-      {savedToast && (
-        <div className="fixed bottom-24 left-1/2 z-[110] -translate-x-1/2 rounded-full bg-gray-900 px-5 py-3 text-[var(--fs-sm)] font-semibold text-white shadow-lg">
-          Settings saved
+      {savedToast && !saving && (
+        <div className="fixed bottom-10 left-1/2 z-[110] -translate-x-1/2 rounded-full bg-gray-900 px-5 py-3 text-[var(--fs-sm)] font-semibold text-white shadow-lg">
+          Saved
         </div>
       )}
     </div>

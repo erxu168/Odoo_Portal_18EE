@@ -7,6 +7,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
+import { countSlotsUsingDepartment } from '@/lib/shifts-db';
 import { requireManagerCompany, serverError } from '../../_manager';
 
 export const dynamic = 'force-dynamic';
@@ -65,6 +66,15 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       const n = used.length === 200 ? '200+' : String(used.length);
       return NextResponse.json(
         { error: `${n} staff member${used.length === 1 ? ' is' : 's are'} in this department. Move them first.` },
+        { status: 409 },
+      );
+    }
+    // Also block while any shift is tagged with this department (open shifts have
+    // no employee, so the check above misses them) — avoids dangling overrides.
+    const onShifts = countSlotsUsingDepartment(auth.companyId, id);
+    if (onShifts > 0) {
+      return NextResponse.json(
+        { error: `This department is on ${onShifts} shift${onShifts === 1 ? '' : 's'}. Change those first.` },
         { status: 409 },
       );
     }

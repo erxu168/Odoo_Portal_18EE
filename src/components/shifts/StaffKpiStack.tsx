@@ -319,7 +319,8 @@ export default function StaffKpiStack({
             My requests
           </div>
         </KpiCard>
-        <KpiCard onClick={() => onNavigate('mine')} ariaLabel="My punctuality" className="p-3 text-center">
+        {/* No punctuality detail screen exists for staff — keep this a plain stat. */}
+        <KpiCard className="p-3 text-center">
           <div className="text-[var(--fs-xxl)] font-extrabold tabular-nums text-gray-900">
             {data.punctuality && data.punctuality.onTimePct !== null
               ? `${data.punctuality.onTimePct}%`

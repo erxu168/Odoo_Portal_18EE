@@ -10,8 +10,8 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { employeeWeekHours, fetchEmployees, meetsMinSkill } from '@/lib/shifts-odoo';
-import { slotMinSkills } from '@/lib/shifts-db';
+import { employeeWeekHours, fetchDepartments, fetchEmployees, meetsMinSkill } from '@/lib/shifts-odoo';
+import { slotDepartments, slotMinSkills } from '@/lib/shifts-db';
 import { currentWeekKey, durationHours, nowOdooUtc } from '@/lib/shifts-time';
 import type { ShiftSlot } from '@/types/shifts';
 
@@ -109,13 +109,19 @@ export async function GET(request: Request) {
     };
 
     const mapped = rows.map(mapSlot);
-    const minSkillMap = slotMinSkills(companyId, mapped.map(s => s.id));
+    const slotIds = mapped.map(s => s.id);
+    const minSkillMap = slotMinSkills(companyId, slotIds);
+    // Overlay the portal department (Odoo's field is empty for open shifts).
+    const deptMap = slotDepartments(companyId, slotIds);
+    const deptNameById = new Map((await fetchDepartments(companyId)).map(d => [d.id, d.name]));
     const shifts = mapped.map(slot => {
       const minSkill = minSkillMap.get(slot.id) ?? null;
+      const deptOv = deptMap.get(slot.id);
+      const departmentName = deptOv !== undefined ? deptNameById.get(deptOv) ?? '' : slot.departmentName;
       const roleOk = canWork(slot.roleId);
       const skillOk = meetsMinSkill(me?.skill ?? null, minSkill);
       const reason: 'role' | 'skill' | null = !roleOk ? 'role' : !skillOk ? 'skill' : null;
-      return { ...slot, minSkill, eligible: roleOk && skillOk, reason };
+      return { ...slot, departmentName, minSkill, eligible: roleOk && skillOk, reason };
     });
     // Eligible first, then by start (rows are already start-ordered).
     shifts.sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.start.localeCompare(b.start));

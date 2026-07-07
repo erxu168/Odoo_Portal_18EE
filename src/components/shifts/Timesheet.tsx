@@ -16,12 +16,14 @@ interface TEntry {
   checkIn: string;
   checkOut: string | null;
   hours: number;
+  incomplete?: boolean;
 }
 interface TEmp {
   employeeId: number;
   employeeName: string;
   entries: TEntry[];
   totalHours: number;
+  incompleteCount?: number;
 }
 interface TimesheetProps {
   companyId: number;
@@ -76,10 +78,17 @@ export default function Timesheet({ companyId, onBack }: TimesheetProps) {
   }, [companyId, fetchTimesheet]);
 
   function exportCsv() {
-    const rows: string[][] = [['Employee', 'Date', 'Start', 'End', 'Hours']];
+    const rows: string[][] = [['Employee', 'Date', 'Start', 'End', 'Hours', 'Status']];
     for (const e of employees) {
       for (const en of e.entries) {
-        rows.push([e.employeeName, en.date, hhmm(en.checkIn), hhmm(en.checkOut), en.hours.toFixed(2)]);
+        rows.push([
+          e.employeeName,
+          en.date,
+          hhmm(en.checkIn),
+          hhmm(en.checkOut),
+          en.hours.toFixed(2),
+          en.incomplete ? 'INCOMPLETE — no clock-out' : 'complete',
+        ]);
       }
     }
     const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
@@ -96,6 +105,7 @@ export default function Timesheet({ companyId, onBack }: TimesheetProps) {
 
   const totalHours = Math.round(employees.reduce((s, e) => s + e.totalHours, 0) * 100) / 100;
   const entryCount = employees.reduce((s, e) => s + e.entries.length, 0);
+  const incompleteCount = employees.reduce((s, e) => s + (e.incompleteCount ?? 0), 0);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -137,6 +147,16 @@ export default function Timesheet({ companyId, onBack }: TimesheetProps) {
               <StatChip value={totalHours} label="Hours" />
             </div>
 
+            {incompleteCount > 0 && (
+              <div className="flex gap-2.5 bg-amber-100 rounded-xl px-3.5 py-3 text-[var(--fs-sm)] leading-relaxed text-amber-800">
+                <span aria-hidden="true">⚠</span>
+                <div>
+                  <b>{incompleteCount} record{incompleteCount === 1 ? '' : 's'} without a clock-out</b> — hours
+                  shown are partial and the record is not audit-complete. Marked below and in the CSV.
+                </div>
+              </div>
+            )}
+
             <button
               onClick={exportCsv}
               disabled={entryCount === 0}
@@ -174,6 +194,11 @@ export default function Timesheet({ companyId, onBack }: TimesheetProps) {
                           {hhmm(en.checkIn)} – {hhmm(en.checkOut)}
                         </div>
                       </div>
+                      {en.incomplete && (
+                        <span className="text-[var(--fs-xs)] px-2 py-0.5 rounded-md font-bold whitespace-nowrap bg-amber-100 text-amber-800 flex-shrink-0">
+                          still clocked in
+                        </span>
+                      )}
                       <div className="text-[var(--fs-sm)] text-gray-700 tabular-nums flex-shrink-0">
                         {en.hours.toFixed(2)}h
                       </div>

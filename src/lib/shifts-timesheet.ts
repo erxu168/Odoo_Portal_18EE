@@ -16,8 +16,10 @@ export interface TimesheetEntry {
   /** Odoo UTC-naive */
   checkIn: string;
   checkOut: string | null;
-  /** Odoo-computed net worked hours */
+  /** Odoo-computed net worked hours (partial while still clocked in) */
   hours: number;
+  /** true when there is no clock-out yet — the record is NOT audit-complete */
+  incomplete: boolean;
 }
 
 export interface TimesheetEmployee {
@@ -25,11 +27,15 @@ export interface TimesheetEmployee {
   employeeName: string;
   entries: TimesheetEntry[];
   totalHours: number;
+  /** number of this employee's entries with no clock-out */
+  incompleteCount: number;
 }
 
 export interface TimesheetResult {
   weekKey: string;
   employees: TimesheetEmployee[];
+  /** total entries across the week with no clock-out (drives the §17 warning) */
+  incompleteCount: number;
 }
 
 export async function fetchWeekTimesheet(companyId: number, weekKey: string): Promise<TimesheetResult> {
@@ -49,21 +55,26 @@ export async function fetchWeekTimesheet(companyId: number, weekKey: string): Pr
         employeeName: nameMap.get(r.employeeId) ?? `Employee #${r.employeeId}`,
         entries: [],
         totalHours: 0,
+        incompleteCount: 0,
       };
       byEmp.set(r.employeeId, te);
     }
+    const incomplete = r.checkOut === null;
     te.entries.push({
       date: berlinParts(r.checkIn).date,
       checkIn: r.checkIn,
       checkOut: r.checkOut,
       hours: r.workedHours,
+      incomplete,
     });
     te.totalHours += r.workedHours;
+    if (incomplete) te.incompleteCount += 1;
   }
 
   const employeesOut = Array.from(byEmp.values())
     .map(e => ({ ...e, totalHours: Math.round(e.totalHours * 100) / 100 }))
     .sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+  const incompleteCount = employeesOut.reduce((n, e) => n + e.incompleteCount, 0);
 
-  return { weekKey, employees: employeesOut };
+  return { weekKey, employees: employeesOut, incompleteCount };
 }
