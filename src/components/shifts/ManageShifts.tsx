@@ -579,13 +579,16 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   // ---- Inline quick-add (create a shift without leaving Manage) --------------
 
   /** Open the quick-add sheet for a date, optionally seeded with role/person. */
-  function openQuickAdd(date: string, ctx?: { roleId?: number | null; employeeId?: number | null }) {
+  function openQuickAdd(
+    date: string,
+    ctx?: { roleId?: number | null; employeeId?: number | null; departmentId?: number | null },
+  ) {
     const depts = data?.departments ?? [];
     setQaDate(date);
     setQaError(null);
     setQaStart('16:00');
     setQaEnd('22:00');
-    setQaDeptId(depts.length === 1 ? depts[0].id : null);
+    setQaDeptId(ctx?.departmentId ?? (depts.length === 1 ? depts[0].id : null));
     setQaRoleIds(ctx?.roleId != null ? new Set([ctx.roleId]) : new Set());
     setQaMode(ctx?.employeeId != null ? 'pick' : 'open');
     setQaPeopleIds(ctx?.employeeId != null ? new Set([ctx.employeeId]) : new Set());
@@ -885,12 +888,26 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     </div>
   );
 
-  const labelCell = (key: string, title: string, sub: string, subOver = false) => (
-    <div key={key} className="bg-white px-3 py-2 flex flex-col justify-center min-w-0">
-      <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{title}</div>
-      <div className={`text-[var(--fs-xs)] tabular-nums ${subOver ? 'text-red-600 font-bold' : 'text-gray-500'}`}>{sub}</div>
+  const labelCell = (key: string, title: string, sub: string, subOver = false, onAdd?: () => void) => (
+    <div key={key} className="bg-white px-3 py-2 flex items-center gap-2 min-w-0">
+      <div className="flex-1 min-w-0 flex flex-col justify-center">
+        <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{title}</div>
+        <div className={`text-[var(--fs-xs)] tabular-nums ${subOver ? 'text-red-600 font-bold' : 'text-gray-500'}`}>{sub}</div>
+      </div>
+      {onAdd && (
+        <button
+          onClick={onAdd}
+          aria-label={`Add shift for ${title}`}
+          className="w-7 h-7 rounded-lg bg-gray-100 text-gray-600 text-[var(--fs-md)] font-bold flex items-center justify-center active:bg-gray-200 flex-shrink-0"
+        >
+          +
+        </button>
+      )}
     </div>
   );
+
+  const deptIdByName = (name: string): number | null =>
+    (data?.departments ?? []).find(d => d.name === name)?.id ?? null;
 
   const capText = (emp: ManageEmployee) =>
     emp.cap === null ? `${fmtH(emp.hours)} h · no cap` : `${fmtH(emp.hours)} / ${fmtCap(emp.cap)} h`;
@@ -902,12 +919,14 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         <>
           {view.staffRows.map(r => (
             <React.Fragment key={`st-${r.emp.id}`}>
-              {labelCell(`stl-${r.emp.id}`, r.emp.name, capText(r.emp), isOver(r.emp))}
+              {labelCell(`stl-${r.emp.id}`, r.emp.name, capText(r.emp), isOver(r.emp), () =>
+                openQuickAdd(day, { employeeId: r.emp.id, departmentId: r.emp.departmentId }),
+              )}
               {days.map(d => gridCell(`stc-${r.emp.id}-${d}`, d, r.byDay[d] || [], 'time'))}
             </React.Fragment>
           ))}
           <React.Fragment key="open-row">
-            {labelCell('opl', 'Open shifts', `${view.openCount} unclaimed`)}
+            {labelCell('opl', 'Open shifts', `${view.openCount} unclaimed`, false, () => openQuickAdd(day))}
             {days.map(d => gridCell(`opc-${d}`, d, view.openByDay[d] || [], 'time'))}
           </React.Fragment>
         </>
@@ -921,7 +940,9 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
               {labelCell(
                 `rol-${r.roleId ?? 0}`,
                 r.name,
-                `${r.shifts} shift${r.shifts === 1 ? '' : 's'} · ${r.open} gap${r.open === 1 ? '' : 's'}`
+                `${r.shifts} shift${r.shifts === 1 ? '' : 's'} · ${r.open} gap${r.open === 1 ? '' : 's'}`,
+                false,
+                () => openQuickAdd(day, { roleId: r.roleId }),
               )}
               {days.map(d => gridCell(`roc-${r.roleId ?? 0}-${d}`, d, r.byDay[d] || [], 'person', r.roleId))}
             </React.Fragment>
@@ -941,7 +962,9 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 {labelCell(
                   `dpl-${sec.name}-${r.roleId ?? 0}`,
                   r.name,
-                  `${r.shifts} shift${r.shifts === 1 ? '' : 's'} · ${r.open} open`
+                  `${r.shifts} shift${r.shifts === 1 ? '' : 's'} · ${r.open} open`,
+                  false,
+                  () => openQuickAdd(day, { roleId: r.roleId, departmentId: deptIdByName(sec.name) }),
                 )}
                 {days.map(d => gridCell(`dpc-${sec.name}-${r.roleId ?? 0}-${d}`, d, r.byDay[d] || [], 'person', r.roleId))}
               </React.Fragment>
@@ -1342,8 +1365,16 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         {qaDate && (
           <div className="flex flex-col gap-3">
             <div>
-              <div className="text-[var(--fs-lg)] font-bold text-gray-900">Add shift</div>
-              <div className="text-[var(--fs-sm)] text-gray-500">{dayLabel(qaDate)}</div>
+              <div className="text-[var(--fs-lg)] font-bold text-gray-900 mb-2">Add shift</div>
+              <div className={LBL}>Date</div>
+              <input
+                type="date"
+                min={todayBerlin}
+                value={qaDate}
+                onChange={e => e.target.value && setQaDate(e.target.value)}
+                className={ds.input}
+              />
+              <div className={`${HINT} mt-1`}>{dayLabel(qaDate)}</div>
             </div>
 
             {(data?.departments ?? []).length > 0 && (
