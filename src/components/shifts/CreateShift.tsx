@@ -155,11 +155,11 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const [date, setDate] = useState(prefill?.date || todayBerlin);
   const [start, setStart] = useState(prefill?.startHHMM || lastTimes?.start || '16:00');
   const [end, setEnd] = useState(prefill?.endHHMM || lastTimes?.end || '22:00');
-  const [roleId, setRoleId] = useState<number | null>(prefill?.roleId ?? null);
+  // Multi-add: each ticked role → one open shift; each ticked person → one shift.
+  const [roleIds, setRoleIds] = useState<Set<number>>(new Set(prefill?.roleId != null ? [prefill.roleId] : []));
   const [departmentId, setDepartmentId] = useState<number | null>(null);
-  const [count, setCount] = useState(1);
   const [mode, setMode] = useState<'open' | 'pick'>('open');
-  const [pickedId, setPickedId] = useState<number | null>(null);
+  const [pickedIds, setPickedIds] = useState<Set<number>>(new Set());
   const [copySelected, setCopySelected] = useState<Set<string>>(new Set(prefill?.date ? [prefill.date] : [todayBerlin]));
   const [note, setNote] = useState('');
   const [repeat, setRepeat] = useState<'none' | 'daily' | 'weekly' | 'custom'>('none');
@@ -206,7 +206,6 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
         if (Number.isFinite(id) && typeof v === 'number') mh.set(id, v);
       }
       setMonthHours(mh);
-      setRoleId(prev => prev ?? (roleList[0]?.id ?? null));
     } catch (err: unknown) {
       console.error('[shifts] roster fetch failed:', err);
       setError(err instanceof Error ? err.message : 'Could not load roles and people');
@@ -235,8 +234,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
     setNote(t.name);
     setStart(t.startHHMM);
     setEnd(t.endHHMM);
-    if (t.roleId !== null) setRoleId(t.roleId);
-    setCount(t.headcount >= 1 ? t.headcount : 1);
+    if (t.roleId !== null) setRoleIds(new Set([t.roleId]));
     setSaveAsTemplate(false); // already saved
   }
 
@@ -320,32 +318,50 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const durH = durationFromTimes(start, end);
   const overnight = durH !== null && (hhmmToMin(end) ?? 0) <= (hhmmToMin(start) ?? 0);
 
-  const picked = mode === 'pick' && pickedId !== null ? employees.find(e => e.id === pickedId) ?? null : null;
+  const selectedRoles = useMemo(() => Array.from(roleIds), [roleIds]);
+  const pickedList = useMemo(
+    () => (mode === 'pick' ? employees.filter(e => pickedIds.has(e.id)) : []),
+    [mode, employees, pickedIds],
+  );
 
-  // Projection: existing week hours + every shift this form will create for them.
+  function toggleRole(id: number) {
+    setRoleIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+  function togglePicked(id: number) {
+    setPickedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  }
+
+  // Shifts this form will create: (roles or 1) × (people, in pick mode) × occurrences.
   const occurrences = repeat !== 'none' ? Math.max(recurrence.length, 1) : Math.max(copySelected.size, 1);
-  const addedHours = durH !== null ? durH * count * occurrences : 0;
-  const pickedBase = picked ? hoursMap.get(picked.id) ?? 0 : 0;
-  const pickedProjected = Math.round((pickedBase + addedHours) * 100) / 100;
-  const pickedOverage = picked && picked.cap !== null && pickedProjected > picked.cap
-    ? Math.round((pickedProjected - picked.cap) * 100) / 100
-    : 0;
+  const roleFactor = Math.max(selectedRoles.length, 1);
+  const perOccurrence = mode === 'pick' ? pickedList.length * roleFactor : roleFactor;
+  const totalShifts = perOccurrence * occurrences;
 
-  // Minijob €603/month check (projected month earnings at the person's rate).
+  // Per-person projection for the cap / Minijob warnings — each person gets one
+  // shift per selected role per occurrence.
   const MINIJOB_CAP = 603;
-  const pickedMonthEarnings =
-    picked && picked.employmentType === 'minijob'
-      ? Math.round(((monthHours.get(picked.id) ?? 0) + addedHours) * picked.hourlyRate)
-      : 0;
-  const minijobOver = !!picked && picked.employmentType === 'minijob' && pickedMonthEarnings > MINIJOB_CAP;
+  const addedHoursPerPerson = durH !== null ? durH * roleFactor * occurrences : 0;
+  const overCapPicked = pickedList.filter(p => {
+    if (p.cap === null) return false;
+    return (hoursMap.get(p.id) ?? 0) + addedHoursPerPerson > p.cap + 1e-9;
+  });
+  const minijobPicked = pickedList.filter(
+    p =>
+      p.employmentType === 'minijob' &&
+      ((monthHours.get(p.id) ?? 0) + addedHoursPerPerson) * p.hourlyRate > MINIJOB_CAP,
+  );
 
   const inDept = useCallback(
     (e: ShiftEmployee) => departmentId === null || e.departmentId === departmentId,
     [departmentId],
   );
 
+  const roleOk = useCallback(
+    (e: ShiftEmployee) => selectedRoles.length === 0 || selectedRoles.some(r => e.roleIds.includes(r)),
+    [selectedRoles],
+  );
+
   const sortedPeople = useMemo(() => {
-    const roleOk = (e: ShiftEmployee) => roleId === null || e.roleIds.includes(roleId);
     return [...employees].sort((a, b) => {
       // Department match first (the picked dept narrows the list), then role, then name.
       const da = inDept(a) ? 0 : 1;
@@ -356,7 +372,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
       if (ra !== rb) return ra - rb;
       return a.name.localeCompare(b.name);
     });
-  }, [employees, roleId, inDept]);
+  }, [employees, roleOk, inDept]);
 
   function toggleCopyDay(d: string) {
     if (d === date) return; // the shift's own day is locked on
@@ -371,8 +387,8 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   // Department is required whenever the company has departments set up (never
   // hard-blocks a company that has none).
   const needDept = departments.length > 0;
-  const canSubmit = !submitting && !!date && durH !== null && count >= 1
-    && (mode === 'open' || pickedId !== null)
+  const canSubmit = !submitting && !!date && durH !== null
+    && (mode === 'open' || pickedIds.size > 0)
     && (repeat === 'none' || recurrence.length > 0)
     && (!needDept || departmentId !== null);
 
@@ -385,33 +401,43 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
       const occurrenceDates = repeat !== 'none'
         ? recurrence
         : Array.from(new Set([date, ...Array.from(copySelected)])).sort();
-      const body: Record<string, unknown> = {
-        company_id: companyId,
-        date: occurrenceDates[0] ?? date,
-        start,
-        end,
-        role_id: roleId,
-        department_id: departmentId,
-        count,
-        note: note.trim(),
-        copy_days: occurrenceDates.slice(1),
-      };
-      if (mode === 'pick' && pickedId !== null) body.assign_employee_id = pickedId;
-      const res = await fetch('/api/shifts/slots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`);
+      // One create call per (role, person) combo — each spans all occurrence dates.
+      const roles: (number | null)[] = selectedRoles.length > 0 ? selectedRoles : [null];
+      const combos: { roleId: number | null; personId: number | null }[] = [];
+      if (mode === 'pick') {
+        for (const p of Array.from(pickedIds)) for (const r of roles) combos.push({ roleId: r, personId: p });
+      } else {
+        for (const r of roles) combos.push({ roleId: r, personId: null });
+      }
+      for (const c of combos) {
+        const body: Record<string, unknown> = {
+          company_id: companyId,
+          date: occurrenceDates[0] ?? date,
+          start,
+          end,
+          role_id: c.roleId,
+          department_id: departmentId,
+          count: 1,
+          note: note.trim(),
+          copy_days: occurrenceDates.slice(1),
+        };
+        if (c.personId !== null) body.assign_employee_id = c.personId;
+        const res = await fetch('/api/shifts/slots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`);
+      }
       saveLastTimes(companyId, start, end); // remember for next time
       if (saveAsTemplate && note.trim()) {
-        // Also save this shift as a reusable template (best-effort).
+        // Also save this shift as a reusable template (best-effort; first role).
         try {
           await fetch('/api/shifts/templates', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ company_id: companyId, name: note.trim(), start, end, role_id: roleId, headcount: count }),
+            body: JSON.stringify({ company_id: companyId, name: note.trim(), start, end, role_id: selectedRoles[0] ?? null, headcount: 1 }),
           });
         } catch { /* template save is a convenience — ignore */ }
       }
@@ -540,46 +566,33 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
               </div>
             )}
             <div>
-              <div className={LBL}>Role</div>
-              <select
-                value={roleId ?? ''}
-                onChange={e => {
-                  setRoleId(e.target.value === '' ? null : Number(e.target.value));
-                }}
-                className={ds.input}
-              >
-                {roles.length === 0 && <option value="">Any role</option>}
-                {roles.map(r => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div className={LBL}>People needed</div>
-              <div className="inline-flex items-center border border-gray-200 rounded-xl overflow-hidden h-12 bg-white">
-                <button
-                  onClick={() => setCount(c => Math.max(1, c - 1))}
-                  aria-label="Fewer people"
-                  className="w-12 h-12 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-r border-gray-200"
-                >
-                  −
-                </button>
-                <span className="min-w-[56px] text-center font-mono text-[var(--fs-xl)] font-semibold text-gray-900 tabular-nums">{count}</span>
-                <button
-                  onClick={() => setCount(c => Math.min(10, c + 1))}
-                  aria-label="More people"
-                  className="w-12 h-12 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] font-semibold active:bg-gray-100 border-l border-gray-200"
-                >
-                  +
-                </button>
+              <div className={LBL}>
+                Roles {selectedRoles.length > 0 && <span className="text-gray-400 normal-case">· each makes a shift</span>}
               </div>
-              {count > 1 && mode === 'open' && (
-                <div className={`${HINT} mt-1.5`}>{count} people = {count} open shifts per selected day.</div>
-              )}
-              {count > 1 && mode === 'pick' && (
-                <div className={`${HINT} mt-1.5 text-amber-700 font-semibold`}>
-                  ⚠ This makes {count} identical shifts, all on {picked?.name || 'this person'} at the same time — usually you want 1.
+              {roles.length === 0 ? (
+                <div className="text-[var(--fs-sm)] text-gray-400">No roles set up — the shift will have no role.</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {roles.map(r => {
+                    const on = roleIds.has(r.id);
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => toggleRole(r.id)}
+                        aria-pressed={on}
+                        className={`px-3.5 py-2 rounded-full text-[var(--fs-sm)] font-semibold border transition-colors ${
+                          on ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'
+                        }`}
+                      >
+                        {r.name}
+                      </button>
+                    );
+                  })}
                 </div>
+              )}
+              {mode === 'open' && selectedRoles.length > 1 && (
+                <div className={`${HINT} mt-1.5`}>Creates one open shift per role.</div>
               )}
             </div>
           </div>
@@ -599,7 +612,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                   onClick={() => setMode('pick')}
                   className={`flex-1 py-2 rounded-full text-[var(--fs-sm)] font-semibold transition-colors ${mode === 'pick' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
                 >
-                  Pick a person
+                  Pick people
                 </button>
               </div>
             </div>
@@ -611,20 +624,23 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
             ) : (
               <div className="flex flex-col gap-1.5">
                 {sortedPeople.map(e => {
-                  const isPicked = pickedId === e.id;
+                  const isPicked = pickedIds.has(e.id);
                   const h = hoursMap.get(e.id) ?? 0;
-                  const eligibleForRole = roleId === null || e.roleIds.includes(roleId);
+                  const eligibleForRole = roleOk(e);
                   const matchesDept = inDept(e);
                   return (
                     <button
                       key={e.id}
-                      onClick={() => setPickedId(isPicked ? null : e.id)}
+                      onClick={() => togglePicked(e.id)}
+                      aria-pressed={isPicked}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${
                         isPicked ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white active:bg-gray-50'
                       } ${!matchesDept && !isPicked ? 'opacity-55' : ''}`}
                     >
-                      <span className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 text-[var(--fs-xs)] font-bold flex items-center justify-center flex-shrink-0">
-                        {initials(e.name)}
+                      <span className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 ${isPicked ? 'bg-green-600 border-green-600' : 'border-gray-300'}`}>
+                        {isPicked && (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                        )}
                       </span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-[var(--fs-sm)] font-bold text-gray-900 truncate">{e.name}</span>
@@ -643,17 +659,17 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
               </div>
             )}
 
-            {picked && pickedOverage > 0 && picked.cap !== null && (
+            {overCapPicked.length > 0 && (
               <WarnBox>
-                This puts {firstName(picked.name)} at <b>{fmtH(pickedProjected)} of {fmtCap(picked.cap)} hours</b> that week —{' '}
-                <b>{fmtH(pickedOverage)} h over</b> their cap. You can still assign them; the shift will be flagged so you can keep an eye on it.
+                Over the weekly cap: {overCapPicked.map(p => firstName(p.name)).join(', ')}. You can still
+                assign {overCapPicked.length === 1 ? 'them' : 'them'}; those shifts are flagged so you can keep an eye on it.
               </WarnBox>
             )}
 
-            {minijobOver && picked && (
+            {minijobPicked.length > 0 && (
               <WarnBox>
-                Minijob limit: this puts {firstName(picked.name)} at about <b>€{pickedMonthEarnings}</b> this month —{' '}
-                over the <b>€{MINIJOB_CAP}</b> cap. You can still assign them, but it may affect their Minijob status.
+                Minijob limit: {minijobPicked.map(p => firstName(p.name)).join(', ')} may go over the <b>€{MINIJOB_CAP}</b>/month
+                cap this month. You can still assign them, but it may affect their Minijob status.
               </WarnBox>
             )}
           </div>
@@ -767,10 +783,10 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
             <button onClick={() => void submit()} disabled={!canSubmit} className={`${ds.btnPrimary} disabled:opacity-50`}>
               {submitting
                 ? 'Creating…'
-                : occurrences > 1
-                  ? `Create ${occurrences} shifts${picked ? ` for ${firstName(picked.name)}` : ''}`
-                  : picked
-                    ? `Create & assign to ${firstName(picked.name)}`
+                : totalShifts > 1
+                  ? `Create ${totalShifts} shifts`
+                  : mode === 'pick' && pickedList.length === 1
+                    ? `Create & assign to ${firstName(pickedList[0].name)}`
                     : 'Create shift'}
             </button>
             <button
@@ -779,11 +795,11 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
             >
               Cancel
             </button>
-            {picked && pickedOverage > 0 && (
+            {overCapPicked.length > 0 && (
               <button
                 onClick={() => {
                   setMode('open');
-                  setPickedId(null);
+                  setPickedIds(new Set());
                 }}
                 className="w-full py-2.5 rounded-xl text-[var(--fs-sm)] font-semibold text-gray-500 bg-gray-100 active:bg-gray-200"
               >

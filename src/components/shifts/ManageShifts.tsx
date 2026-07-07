@@ -88,6 +88,7 @@ interface DeptSection {
 }
 
 const LBL = 'text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-400 mb-1.5';
+const HINT = 'text-[var(--fs-xs)] text-gray-400';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function fmtH(n: number): string {
@@ -263,9 +264,10 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const [qaStart, setQaStart] = useState('16:00');
   const [qaEnd, setQaEnd] = useState('22:00');
   const [qaDeptId, setQaDeptId] = useState<number | null>(null);
-  const [qaRoleId, setQaRoleId] = useState<number | null>(null);
-  const [qaAssignId, setQaAssignId] = useState<number | null>(null);
-  const [qaCount, setQaCount] = useState(1);
+  // Multi-add: each ticked role → one open shift; each ticked person → one shift.
+  const [qaRoleIds, setQaRoleIds] = useState<Set<number>>(new Set());
+  const [qaMode, setQaMode] = useState<'open' | 'pick'>('open');
+  const [qaPeopleIds, setQaPeopleIds] = useState<Set<number>>(new Set());
   const [qaSaving, setQaSaving] = useState(false);
   const [qaError, setQaError] = useState<string | null>(null);
 
@@ -494,6 +496,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   }, [data, days]);
 
   const draftCount = (data?.slots ?? []).filter(s => s.state === 'draft').length;
+  const qaShiftCount = qaDate ? quickAddCombos().length : 0; // shifts the quick-add will make
   // Pre-publish review: people over their weekly cap, and still-open (unassigned) drafts.
   const overCapPeople = (data?.employees ?? []).filter(e => e.overCap || (e.cap !== null && e.hours > e.cap));
   const openDraftCount = (data?.slots ?? []).filter(s => s.state === 'draft' && !s.employeeId).length;
@@ -579,10 +582,37 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     setQaError(null);
     setQaStart('16:00');
     setQaEnd('22:00');
-    setQaCount(1);
     setQaDeptId(depts.length === 1 ? depts[0].id : null);
-    setQaRoleId(ctx?.roleId ?? null);
-    setQaAssignId(ctx?.employeeId ?? null);
+    setQaRoleIds(ctx?.roleId != null ? new Set([ctx.roleId]) : new Set());
+    setQaMode(ctx?.employeeId != null ? 'pick' : 'open');
+    setQaPeopleIds(ctx?.employeeId != null ? new Set([ctx.employeeId]) : new Set());
+  }
+
+  function toggleQaRole(id: number) {
+    setQaRoleIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+  function toggleQaPerson(id: number) {
+    setQaPeopleIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }
+
+  /** The (role, person) pairs the quick-add will create — one shift each. */
+  function quickAddCombos(): { roleId: number | null; personId: number | null }[] {
+    const roles: (number | null)[] = qaRoleIds.size > 0 ? Array.from(qaRoleIds) : [null];
+    const people = qaMode === 'pick' ? Array.from(qaPeopleIds) : [];
+    if (people.length > 0) {
+      const out: { roleId: number | null; personId: number | null }[] = [];
+      for (const p of people) for (const r of roles) out.push({ roleId: r, personId: p });
+      return out;
+    }
+    return roles.map(r => ({ roleId: r, personId: null }));
   }
 
   async function submitQuickAdd() {
@@ -592,22 +622,29 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       setQaError('Pick a department for this shift.');
       return;
     }
+    if (qaMode === 'pick' && qaPeopleIds.size === 0) {
+      setQaError('Pick at least one person, or choose “Leave open”.');
+      return;
+    }
+    const combos = quickAddCombos();
     setQaSaving(true);
     setQaError(null);
     try {
-      const body: Record<string, unknown> = {
-        company_id: companyId,
-        date: qaDate,
-        start: qaStart,
-        end: qaEnd,
-        role_id: qaRoleId,
-        department_id: qaDeptId,
-        count: qaCount,
-      };
-      if (qaAssignId !== null) body.assign_employee_id = qaAssignId;
-      await createFromBody(body);
+      for (const c of combos) {
+        const body: Record<string, unknown> = {
+          company_id: companyId,
+          date: qaDate,
+          start: qaStart,
+          end: qaEnd,
+          role_id: c.roleId,
+          department_id: qaDeptId,
+          count: 1,
+        };
+        if (c.personId !== null) body.assign_employee_id = c.personId;
+        await createFromBody(body);
+      }
       setQaDate(null);
-      showToast(qaCount > 1 ? `${qaCount} shifts added as drafts` : 'Shift added as a draft');
+      showToast(combos.length > 1 ? `${combos.length} shifts added as drafts` : 'Shift added as a draft');
       void load();
       if (viewMode === 'month') void loadMonth();
     } catch (err: unknown) {
@@ -1319,17 +1356,29 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             )}
 
             <div>
-              <div className={LBL}>Role</div>
-              <select
-                value={qaRoleId ?? ''}
-                onChange={e => setQaRoleId(e.target.value === '' ? null : Number(e.target.value))}
-                className={ds.input}
-              >
-                <option value="">Any role</option>
-                {(data?.roles ?? []).map(r => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
-              </select>
+              <div className={LBL}>Roles {qaRoleIds.size > 0 && <span className="text-gray-400 normal-case">· each makes a shift</span>}</div>
+              {(data?.roles ?? []).length === 0 ? (
+                <div className="text-[var(--fs-sm)] text-gray-400">No roles set up — the shift will have no role.</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {(data?.roles ?? []).map(r => {
+                    const on = qaRoleIds.has(r.id);
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => toggleQaRole(r.id)}
+                        aria-pressed={on}
+                        className={`px-3.5 py-2 rounded-full text-[var(--fs-sm)] font-semibold border transition-colors ${
+                          on ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-gray-200 text-gray-600 active:bg-gray-50'
+                        }`}
+                      >
+                        {r.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1344,38 +1393,53 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             </div>
 
             <div>
-              <div className={LBL}>People needed</div>
-              <div className="inline-flex items-center border border-gray-200 rounded-xl overflow-hidden h-12 bg-white">
+              <div className={LBL}>Assign</div>
+              <div className="flex bg-gray-100 rounded-full p-1 mb-2">
                 <button
-                  onClick={() => setQaCount(c => Math.max(1, c - 1))}
-                  aria-label="Fewer people"
-                  className="w-12 h-12 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] active:bg-gray-100 border-r border-gray-200"
+                  type="button"
+                  onClick={() => setQaMode('open')}
+                  className={`flex-1 py-2 rounded-full text-[var(--fs-sm)] font-semibold transition-colors ${qaMode === 'open' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
                 >
-                  −
+                  Leave open
                 </button>
-                <span className="min-w-[56px] text-center font-mono text-[var(--fs-xl)] font-semibold text-gray-900 tabular-nums">{qaCount}</span>
                 <button
-                  onClick={() => setQaCount(c => Math.min(10, c + 1))}
-                  aria-label="More people"
-                  className="w-12 h-12 flex items-center justify-center text-gray-600 text-[var(--fs-xl)] font-semibold active:bg-gray-100 border-l border-gray-200"
+                  type="button"
+                  onClick={() => setQaMode('pick')}
+                  className={`flex-1 py-2 rounded-full text-[var(--fs-sm)] font-semibold transition-colors ${qaMode === 'pick' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
                 >
-                  +
+                  Pick people
                 </button>
               </div>
-            </div>
-
-            <div>
-              <div className={LBL}>Assigned to</div>
-              <select
-                value={qaAssignId ?? ''}
-                onChange={e => setQaAssignId(e.target.value === '' ? null : Number(e.target.value))}
-                className={ds.input}
-              >
-                <option value="">Leave open</option>
-                {employees.map(e => (
-                  <option key={e.id} value={e.id}>{e.name}</option>
-                ))}
-              </select>
+              {qaMode === 'open' ? (
+                <div className={HINT}>One open shift per selected role — staff can claim it once published.</div>
+              ) : employees.length === 0 ? (
+                <div className={HINT}>Nobody on the roster yet.</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {employees.map(e => {
+                    const on = qaPeopleIds.has(e.id);
+                    return (
+                      <button
+                        key={e.id}
+                        type="button"
+                        onClick={() => toggleQaPerson(e.id)}
+                        aria-pressed={on}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                          on ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white active:bg-gray-50'
+                        }`}
+                      >
+                        <span className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 ${on ? 'bg-green-600 border-green-600' : 'border-gray-300'}`}>
+                          {on && (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                          )}
+                        </span>
+                        <span className="flex-1 min-w-0 text-[var(--fs-sm)] font-bold text-gray-900 truncate">{e.name}</span>
+                      </button>
+                    );
+                  })}
+                  <div className={`${HINT} mt-0.5`}>One shift per person you pick.</div>
+                </div>
+              )}
             </div>
 
             {qaError && (
@@ -1385,13 +1449,14 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             )}
 
             <button onClick={() => void submitQuickAdd()} disabled={qaSaving} className={`${ds.btnPrimary} disabled:opacity-50`}>
-              {qaSaving ? 'Adding…' : qaCount > 1 ? `Add ${qaCount} shifts` : 'Add shift'}
+              {qaSaving ? 'Adding…' : qaShiftCount > 1 ? `Add ${qaShiftCount} shifts` : 'Add shift'}
             </button>
             <button
               onClick={() => {
                 const d = qaDate;
+                const firstRole = qaRoleIds.size > 0 ? Array.from(qaRoleIds)[0] : null;
                 setQaDate(null);
-                if (d) onCreateShift({ date: d, ...(qaRoleId !== null ? { roleId: qaRoleId } : {}) });
+                if (d) onCreateShift({ date: d, ...(firstRole !== null ? { roleId: firstRole } : {}) });
               }}
               className={ds.btnSecondary}
             >
