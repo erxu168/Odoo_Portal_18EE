@@ -6,7 +6,7 @@ import CompanySelector from './CompanySelector';
 import AppDrawer from './AppDrawer';
 import { useTopBar } from './TopBarContext';
 
-const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password'];
+const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/kiosk'];
 
 export default function AppTopBar() {
   const pathname = usePathname();

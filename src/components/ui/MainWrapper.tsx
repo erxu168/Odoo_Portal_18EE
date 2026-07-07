@@ -9,7 +9,7 @@ import { usePathname } from 'next/navigation';
  */
 
 const FULL_SCREEN_ROUTES = ['/recipes', '/hr'];
-const FULL_VIEWPORT_ROUTES = ['/kds'];
+const FULL_VIEWPORT_ROUTES = ['/kds', '/kiosk'];
 
 export default function MainWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

@@ -84,7 +84,23 @@ export default function KioskPage() {
     return () => clearTimeout(t);
   }, [screen, loadStaff]);
 
+  const enterFullscreen = useCallback(() => {
+    const el = document.documentElement;
+    if (!document.fullscreenElement && el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    }
+  }, []);
+
+  // Trap the browser Back gesture so a punch can't accidentally leave the clock.
+  useEffect(() => {
+    history.pushState(null, '', location.href);
+    const onPop = () => history.pushState(null, '', location.href);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   function pickPerson(s: KioskStaff) {
+    enterFullscreen(); // first tap is a user gesture — a good moment to go full screen
     setSelected(s);
     setPin('');
     setPinError(false);

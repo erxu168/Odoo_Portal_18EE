@@ -55,7 +55,7 @@ const TABS = [
  * Bottom tab bar. Hidden on auth pages and full-screen module pages (recipes, etc.)
  */
 
-const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/hr'];
+const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/hr', '/kiosk'];
 
 export default function AppTabBar() {
   const router = useRouter();
