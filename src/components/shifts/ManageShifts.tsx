@@ -394,6 +394,10 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   }, [data, days]);
 
   const draftCount = (data?.slots ?? []).filter(s => s.state === 'draft').length;
+  // Pre-publish review: people over their weekly cap, and still-open (unassigned) drafts.
+  const overCapPeople = (data?.employees ?? []).filter(e => e.overCap || (e.cap !== null && e.hours > e.cap));
+  const openDraftCount = (data?.slots ?? []).filter(s => s.state === 'draft' && !s.employeeId).length;
+  const publishConcerns = overCapPeople.length + (openDraftCount > 0 ? 1 : 0);
   const weekTotalsLabel = `${fmtH(totals.assigned + totals.open)} h · ${fmtH(totals.assigned)} assigned + ${fmtH(totals.open)} open`;
 
   // ---- Slot sheet -----------------------------------------------------------
@@ -1103,15 +1107,41 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         )}
       </Sheet>
 
-      {confirm === 'publish' && (
-        <ConfirmDialog
-          title="Publish this week?"
-          message={`Publish ${draftCount} draft shift${draftCount === 1 ? '' : 's'} so staff can see ${draftCount === 1 ? 'it' : 'them'}. Already-published shifts stay exactly as they are; everyone newly assigned gets notified.`}
-          confirmLabel="Publish week"
-          onConfirm={() => void doPublish()}
-          onCancel={() => setConfirm(null)}
-        />
-      )}
+      <Sheet open={confirm === 'publish'} onClose={() => setConfirm(null)}>
+        <div className="flex flex-col gap-3">
+          <div className="text-[var(--fs-lg)] font-bold text-gray-900">Publish this week</div>
+          <div className="text-[var(--fs-sm)] text-gray-500">
+            {draftCount} draft shift{draftCount === 1 ? '' : 's'} will become visible to staff and everyone newly assigned gets notified. Already-published shifts stay exactly as they are.
+          </div>
+
+          {publishConcerns > 0 ? (
+            <div className="flex flex-col gap-2">
+              <div className={LBL}>Before you publish</div>
+              {overCapPeople.map(e => (
+                <div key={e.id} className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-[var(--fs-sm)] text-red-800">
+                  <span aria-hidden="true">⚠</span>
+                  <span><b>{e.name}</b> is over their weekly hours{e.cap !== null ? ` (${fmtH(e.hours)} / ${fmtCap(e.cap)} h)` : ''}.</span>
+                </div>
+              ))}
+              {openDraftCount > 0 && (
+                <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-[var(--fs-sm)] text-amber-800">
+                  <span aria-hidden="true">🕒</span>
+                  <span>{openDraftCount} shift{openDraftCount === 1 ? '' : 's'} still open — no one is assigned yet.</span>
+                </div>
+              )}
+              <div className="text-[var(--fs-xs)] text-gray-400">You can still publish — these are reminders, not blockers.</div>
+            </div>
+          ) : (
+            <div className="rounded-lg bg-green-50 border border-green-100 px-3 py-2 text-[var(--fs-sm)] text-green-800">
+              ✓ No over-cap people and no unfilled shifts. Good to go.
+            </div>
+          )}
+
+          <button onClick={() => void doPublish()} className={ds.btnPrimary}>Publish week</button>
+          <button onClick={() => setConfirm(null)} className={ds.btnSecondary}>Not yet</button>
+        </div>
+      </Sheet>
+
       {confirm === 'copy' && (
         <ConfirmDialog
           title="Copy last week?"
