@@ -46,7 +46,6 @@ interface ManageShiftsProps {
   onCreateShift: (prefill?: CreatePrefill) => void;
 }
 
-type Grouping = 'staff' | 'role' | 'dept';
 type ViewMode = 'week' | 'day' | 'month';
 type ChipMode = 'time' | 'person';
 
@@ -86,6 +85,18 @@ interface DeptSection {
   name: string;
   roles: RoleRow[];
 }
+
+interface DeptPersonRow {
+  key: string; // "e<id>" for a person, "open" for unassigned
+  label: string;
+  byDay: Record<string, ShiftSlot[]>;
+}
+interface DeptPersonSection {
+  name: string;
+  people: DeptPersonRow[];
+}
+
+type SubGroup = 'role' | 'person';
 
 const LBL = 'text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-400 mb-1.5';
 const HINT = 'text-[var(--fs-xs)] text-gray-400';
@@ -228,8 +239,8 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   );
   const [viewMode, setViewMode] = useState<ViewMode>(focusDate ? 'day' : 'week');
   const [day, setDay] = useState<string>(focusDate || todayBerlin);
-  // Fixed hierarchy: always Department → Role → Person (name on each shift).
-  const [grouping] = useState<Grouping>('dept');
+  // Always grouped by Department; the sub-level toggles between Role and Person.
+  const [subGroup, setSubGroup] = useState<SubGroup>('role');
 
   const [data, setData] = useState<ManageData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -287,6 +298,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const [qaMode, setQaMode] = useState<'open' | 'pick'>('open');
   const [qaPeopleIds, setQaPeopleIds] = useState<Set<number>>(new Set());
   const [qaMinSkill, setQaMinSkill] = useState<'1' | '2' | '3'>('1'); // open-shift skill gate
+  const [qaNote, setQaNote] = useState(''); // optional shift name
   const [qaSaving, setQaSaving] = useState(false);
   const [qaError, setQaError] = useState<string | null>(null);
 
@@ -414,6 +426,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     const roleByKey = new Map<number, RoleRow>(roleRows.map(r => [r.roleId as number, r]));
 
     const deptMap = new Map<string, Map<number, RoleRow>>();
+    const deptPersonMap = new Map<string, Map<string, DeptPersonRow>>();
 
     for (const s of slots) {
       const d = berlinParts(s.start).date;
@@ -483,20 +496,48 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       dr.shifts++;
       if (isOpen) dr.open++;
       push(dr.byDay, d, s);
+
+      // By department → person (rows are people; "Open" collects unassigned)
+      const personKey = s.employeeId ? `e${s.employeeId}` : 'open';
+      const personLabel = s.employeeId ? s.employeeName || 'Unknown' : 'Open';
+      let deptPeople = deptPersonMap.get(deptName);
+      if (!deptPeople) {
+        deptPeople = new Map();
+        deptPersonMap.set(deptName, deptPeople);
+      }
+      let pr = deptPeople.get(personKey);
+      if (!pr) {
+        pr = { key: personKey, label: personLabel, byDay: {} };
+        deptPeople.set(personKey, pr);
+      }
+      push(pr.byDay, d, s);
     }
 
+    const sortDept = (a: [string, unknown], b: [string, unknown]) => {
+      if (a[0] === 'No department') return 1;
+      if (b[0] === 'No department') return -1;
+      return a[0].localeCompare(b[0]);
+    };
+
     const deptSections: DeptSection[] = Array.from(deptMap.entries())
-      .sort((a, b) => {
-        if (a[0] === 'No department') return 1;
-        if (b[0] === 'No department') return -1;
-        return a[0].localeCompare(b[0]);
-      })
+      .sort(sortDept)
       .map(([name, rMap]) => ({
         name,
         roles: Array.from(rMap.values()).sort((x, y) => x.name.localeCompare(y.name)),
       }));
 
-    return { staffRows, openByDay, openCount, roleRows, deptSections };
+    const deptPersonSections: DeptPersonSection[] = Array.from(deptPersonMap.entries())
+      .sort(sortDept)
+      .map(([name, pMap]) => ({
+        name,
+        people: Array.from(pMap.values()).sort((x, y) => {
+          if (x.key === 'open') return 1; // Open last
+          if (y.key === 'open') return -1;
+          return x.label.localeCompare(y.label);
+        }),
+      }));
+
+    return { staffRows, openByDay, openCount, roleRows, deptSections, deptPersonSections };
   }, [data]);
 
   const totals = useMemo(() => {
@@ -611,6 +652,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     setQaMode(ctx?.employeeId != null ? 'pick' : 'open');
     setQaPeopleIds(ctx?.employeeId != null ? new Set([ctx.employeeId]) : new Set());
     setQaMinSkill('1');
+    setQaNote('');
   }
 
   function toggleQaRole(id: number) {
@@ -663,6 +705,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           end: qaEnd,
           role_id: c.roleId,
           department_id: qaDeptId,
+          note: qaNote.trim(),
           count: 1,
         };
         if (c.personId !== null) body.assign_employee_id = c.personId;
@@ -893,6 +936,20 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     const cls = s.state === 'draft'
       ? `${base} opacity-70 outline-dashed outline-1 outline-offset-[-2px] outline-amber-500`
       : base;
+    // Lead with the shift name (note) when one is set, so it's easy to spot.
+    const who = isOpen ? 'Open' : firstName(s.employeeName);
+    const t = chipTime(s) + (s.overCap ? ' !' : '');
+    let line1: string;
+    let line2 = '';
+    if (s.note) {
+      line1 = s.note;
+      line2 = (mode === 'person' ? `${who} · ` : '') + t;
+    } else if (mode === 'person') {
+      line1 = who;
+      line2 = t;
+    } else {
+      line1 = t;
+    }
     return (
       <button
         key={s.id}
@@ -911,17 +968,14 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         }}
         className={`relative ${block ? 'w-full' : ''} rounded-md px-1.5 py-1 text-[var(--fs-xs)] font-bold leading-tight text-center ${cls}`}
       >
-        {mode === 'person' && block ? (
+        {block ? (
           <>
-            <span className="block truncate">{isOpen ? 'Open' : firstName(s.employeeName)}</span>
-            <span className="tabular-nums whitespace-nowrap">
-              {chipTime(s)}
-              {s.overCap ? ' !' : ''}
-            </span>
+            <span className="block truncate">{line1}</span>
+            {line2 && <span className="block truncate tabular-nums whitespace-nowrap">{line2}</span>}
           </>
         ) : (
           <span className="tabular-nums whitespace-nowrap">
-            {mode === 'person' ? `${isOpen ? 'Open' : firstName(s.employeeName)} ` : ''}
+            {s.note ? `${s.note} · ` : mode === 'person' ? `${who} ` : ''}
             {chipTime(s)}
             {s.overCap ? ' !' : ''}
           </span>
@@ -946,9 +1000,11 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     const cls = s.state === 'draft'
       ? `${base} opacity-70 outline-dashed outline-1 outline-offset-[-2px] outline-amber-500`
       : base;
-    const title = isOpen ? s.roleName || 'Open' : firstName(s.employeeName);
+    const whoOrRole = isOpen ? s.roleName || 'Open' : firstName(s.employeeName);
+    const title = s.note || whoOrRole;
     let sub = chipTime(s) + (s.overCap ? ' !' : '');
-    if (isOpen && s.roleName) sub = `Open · ${sub}`;
+    if (s.note) sub = `${whoOrRole} · ${sub}`;
+    else if (isOpen && s.roleName) sub = `Open · ${sub}`;
     else if (!isOpen && s.roleName) sub = `${sub} · ${s.roleName}`;
     return (
       <button
@@ -975,6 +1031,33 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         )}
       </button>
     );
+  };
+
+  // Group a day's slots by Department → (Role or Person) — mobile month detail.
+  const renderGroupedSlots = (slots: ShiftSlot[]): React.ReactNode => {
+    const byDept = new Map<string, Map<string, ShiftSlot[]>>();
+    for (const s of slots) {
+      const dept = s.departmentName || 'No department';
+      const sub = subGroup === 'person'
+        ? s.employeeId ? s.employeeName || 'Unknown' : 'Open'
+        : s.roleName || 'No role';
+      const subMap = byDept.get(dept) ?? new Map<string, ShiftSlot[]>();
+      const list = subMap.get(sub) ?? [];
+      list.push(s);
+      subMap.set(sub, list);
+      byDept.set(dept, subMap);
+    }
+    return Array.from(byDept.entries()).map(([dept, subMap]) => (
+      <div key={dept} className="flex flex-col gap-1">
+        <div className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mt-1.5">{dept}</div>
+        {Array.from(subMap.entries()).map(([sub, rs]) => (
+          <div key={sub} className="flex flex-col gap-1 pl-0.5">
+            <div className="text-[var(--fs-xs)] font-semibold text-gray-500">{sub}</div>
+            {rs.map(s => monthChip(s))}
+          </div>
+        ))}
+      </div>
+    ));
   };
 
   const gridCell = (key: string, date: string, cellSlots: ShiftSlot[], mode: ChipMode, roleId?: number | null) => (
@@ -1008,42 +1091,39 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const deptIdByName = (name: string): number | null =>
     (data?.departments ?? []).find(d => d.name === name)?.id ?? null;
 
-  const capText = (emp: ManageEmployee) =>
-    emp.cap === null ? `${fmtH(emp.hours)} h · no cap` : `${fmtH(emp.hours)} / ${fmtCap(emp.cap)} h`;
-  const isOver = (emp: ManageEmployee) => emp.overCap || (emp.cap !== null && emp.hours > emp.cap);
+  const pShiftCount = (p: DeptPersonRow) => Object.values(p.byDay).reduce((n, a) => n + a.length, 0);
+  const deptHeader = (name: string) => (
+    <div className="col-span-full bg-gray-100 px-3 py-1.5 text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-600">
+      {name}
+    </div>
+  );
 
   function gridRows(): React.ReactNode {
-    if (grouping === 'staff') {
+    if (subGroup === 'person') {
       return (
         <>
-          {view.staffRows.map(r => (
-            <React.Fragment key={`st-${r.emp.id}`}>
-              {labelCell(`stl-${r.emp.id}`, r.emp.name, capText(r.emp), isOver(r.emp), () =>
-                openQuickAdd(day, { employeeId: r.emp.id, departmentId: r.emp.departmentId }),
-              )}
-              {days.map(d => gridCell(`stc-${r.emp.id}-${d}`, d, r.byDay[d] || [], 'time'))}
-            </React.Fragment>
-          ))}
-          <React.Fragment key="open-row">
-            {labelCell('opl', 'Open shifts', `${view.openCount} unclaimed`, false, () => openQuickAdd(day))}
-            {days.map(d => gridCell(`opc-${d}`, d, view.openByDay[d] || [], 'time'))}
-          </React.Fragment>
-        </>
-      );
-    }
-    if (grouping === 'role') {
-      return (
-        <>
-          {view.roleRows.map(r => (
-            <React.Fragment key={`ro-${r.roleId ?? 0}`}>
-              {labelCell(
-                `rol-${r.roleId ?? 0}`,
-                r.name,
-                `${r.shifts} shift${r.shifts === 1 ? '' : 's'} · ${r.open} gap${r.open === 1 ? '' : 's'}`,
-                false,
-                () => openQuickAdd(day, { roleId: r.roleId }),
-              )}
-              {days.map(d => gridCell(`roc-${r.roleId ?? 0}-${d}`, d, r.byDay[d] || [], 'person', r.roleId))}
+          {view.deptPersonSections.map(sec => (
+            <React.Fragment key={`dpp-${sec.name}`}>
+              {deptHeader(sec.name)}
+              {sec.people.map(p => {
+                const n = pShiftCount(p);
+                return (
+                  <React.Fragment key={`dppr-${sec.name}-${p.key}`}>
+                    {labelCell(
+                      `dppl-${sec.name}-${p.key}`,
+                      p.label,
+                      `${n} shift${n === 1 ? '' : 's'}`,
+                      false,
+                      () =>
+                        openQuickAdd(day, {
+                          employeeId: p.key === 'open' ? null : Number(p.key.slice(1)),
+                          departmentId: deptIdByName(sec.name),
+                        }),
+                    )}
+                    {days.map(d => gridCell(`dppc-${sec.name}-${p.key}-${d}`, d, p.byDay[d] || [], 'time'))}
+                  </React.Fragment>
+                );
+              })}
             </React.Fragment>
           ))}
         </>
@@ -1053,9 +1133,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       <>
         {view.deptSections.map(sec => (
           <React.Fragment key={`dp-${sec.name}`}>
-            <div className="col-span-full bg-gray-100 px-3 py-1.5 text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-600">
-              {sec.name}
-            </div>
+            {deptHeader(sec.name)}
             {sec.roles.map(r => (
               <React.Fragment key={`dpr-${sec.name}-${r.roleId ?? 0}`}>
                 {labelCell(
@@ -1084,17 +1162,19 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
 
   function renderDayRows(date: string): React.ReactNode {
     const rows: React.ReactNode[] = [];
-    if (grouping === 'staff') {
-      for (const r of view.staffRows) {
-        const s = r.byDay[date] || [];
-        if (s.length) rows.push(mobileRow(`mst-${r.emp.id}`, r.emp.name, s, 'time'));
-      }
-      const open = view.openByDay[date] || [];
-      if (open.length) rows.push(mobileRow('mopen', 'Open', open, 'time'));
-    } else if (grouping === 'role') {
-      for (const r of view.roleRows) {
-        const s = r.byDay[date] || [];
-        if (s.length) rows.push(mobileRow(`mro-${r.roleId ?? 0}`, r.name, s, 'person'));
+    const deptSubHeader = (name: string) => (
+      <div key={`mdh-${name}`} className="px-4 pt-2 pb-0.5 text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400">
+        {name}
+      </div>
+    );
+    if (subGroup === 'person') {
+      for (const sec of view.deptPersonSections) {
+        const secRows = sec.people
+          .map(p => ({ p, s: p.byDay[date] || [] }))
+          .filter(x => x.s.length > 0);
+        if (!secRows.length) continue;
+        rows.push(deptSubHeader(sec.name));
+        for (const x of secRows) rows.push(mobileRow(`mdpp-${sec.name}-${x.p.key}`, x.p.label, x.s, 'time'));
       }
     } else {
       for (const sec of view.deptSections) {
@@ -1102,11 +1182,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           .map(r => ({ r, s: r.byDay[date] || [] }))
           .filter(x => x.s.length > 0);
         if (!secRows.length) continue;
-        rows.push(
-          <div key={`mdh-${sec.name}`} className="px-4 pt-2 pb-0.5 text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400">
-            {sec.name}
-          </div>
-        );
+        rows.push(deptSubHeader(sec.name));
         for (const x of secRows) rows.push(mobileRow(`mdp-${sec.name}-${x.r.roleId ?? 0}`, x.r.name, x.s, 'person'));
       }
     }
@@ -1264,6 +1340,14 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             ]}
             onChange={setViewMode}
           />
+          <Seg<SubGroup>
+            value={subGroup}
+            options={[
+              { key: 'role', label: 'By role' },
+              { key: 'person', label: 'By person' },
+            ]}
+            onChange={setSubGroup}
+          />
         </div>
 
         {loading ? (
@@ -1347,8 +1431,8 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
               {(monthSlots.get(monthSelectedDay) ?? []).length === 0 ? (
                 <div className="text-[var(--fs-sm)] text-gray-400">No shifts on this day yet.</div>
               ) : (
-                <div className="flex flex-col gap-1.5">
-                  {(monthSlots.get(monthSelectedDay) ?? []).map(s => monthChip(s))}
+                <div className="flex flex-col gap-2">
+                  {renderGroupedSlots(monthSlots.get(monthSelectedDay) ?? [])}
                 </div>
               )}
               <button onClick={() => openQuickAdd(monthSelectedDay)} className={`${ds.btnSecondary} mt-2.5`}>
@@ -1416,7 +1500,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                   style={{ gridTemplateColumns: 'minmax(170px,1.3fr) repeat(7, minmax(92px,1fr))' }}
                 >
                   <div className="bg-gray-50 px-3 py-2 flex items-end text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-500">
-                    {grouping === 'staff' ? 'Team' : grouping === 'role' ? 'Role' : 'Department / Role'}
+                    {subGroup === 'person' ? 'Department / Person' : 'Department / Role'}
                   </div>
                   {days.map(d => {
                     const [wd, dn] = dayLabel(d).split(' ');
@@ -1504,6 +1588,18 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 className={ds.input}
               />
               <div className={`${HINT} mt-1`}>{dayLabel(qaDate)}</div>
+            </div>
+
+            <div>
+              <div className={LBL}>Shift name (optional)</div>
+              <input
+                type="text"
+                value={qaNote}
+                onChange={e => setQaNote(e.target.value)}
+                placeholder="e.g. Opening, Dinner"
+                maxLength={40}
+                className={ds.input}
+              />
             </div>
 
             {(data?.departments ?? []).length > 0 && (
