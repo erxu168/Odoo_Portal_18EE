@@ -211,6 +211,11 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const [confirm, setConfirm] = useState<'publish' | 'copy' | 'delete' | null>(null);
   const [lastWeekCount, setLastWeekCount] = useState<number | null>(null);
   const [notifyOnPublish, setNotifyOnPublish] = useState(true);
+  const [quickMenu, setQuickMenu] = useState<ShiftSlot | null>(null);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longFired = useRef(false);
+  const [copyDaySheet, setCopyDaySheet] = useState(false);
+  const [copyTargets, setCopyTargets] = useState<Set<string>>(new Set());
 
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -224,6 +229,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   useEffect(() => () => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     if (undoTimer.current) clearTimeout(undoTimer.current);
+    if (pressTimer.current) clearTimeout(pressTimer.current);
   }, []);
 
   const days = useMemo(() => weekKeyDays(weekKey), [weekKey]);
@@ -524,6 +530,66 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     }
   }
 
+  /** A create body from an EXISTING slot — used by grid quick actions and copy-day. */
+  function slotToCreateBody(s: ShiftSlot): Record<string, unknown> {
+    const b: Record<string, unknown> = {
+      company_id: companyId,
+      date: berlinParts(s.start).date,
+      start: berlinParts(s.start).hhmm,
+      end: berlinParts(s.end).hhmm,
+      role_id: s.roleId,
+      note: s.note ?? '',
+      count: 1,
+    };
+    if (s.employeeId !== null) b.assign_employee_id = s.employeeId;
+    return b;
+  }
+
+  async function duplicateSlot(s: ShiftSlot) {
+    try {
+      await createFromBody(slotToCreateBody(s));
+      showToast('Shift duplicated — a copy was added as a draft');
+      void load();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not duplicate the shift');
+    }
+  }
+
+  async function deleteSlotDirect(s: ShiftSlot) {
+    const restoreBody = slotToCreateBody(s);
+    try {
+      const res = await fetch(`/api/shifts/slots/${s.id}?company_id=${companyId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+      }
+      setUndo({ body: restoreBody, label: 'Shift deleted' });
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+      undoTimer.current = setTimeout(() => setUndo(null), 6000);
+      void load();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not delete the shift');
+    }
+  }
+
+  /** Copy every shift on the current `day` onto the chosen target dates. */
+  async function copyDayTo(targets: string[]) {
+    const src = (data?.slots ?? []).filter(s => berlinParts(s.start).date === day);
+    if (src.length === 0 || targets.length === 0) return;
+    try {
+      for (const s of src) {
+        const b = slotToCreateBody(s);
+        b.date = targets[0];
+        b.copy_days = targets.slice(1);
+        await createFromBody(b);
+      }
+      showToast(`Copied ${src.length} shift${src.length === 1 ? '' : 's'} to ${targets.length} day${targets.length === 1 ? '' : 's'}`);
+      void load();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not copy the day');
+    }
+  }
+
   async function doPublish() {
     setConfirm(null);
     try {
@@ -588,8 +654,17 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     return (
       <button
         key={s.id}
+        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setQuickMenu(s); }}
+        onPointerDown={() => {
+          longFired.current = false;
+          if (pressTimer.current) clearTimeout(pressTimer.current);
+          pressTimer.current = setTimeout(() => { longFired.current = true; setQuickMenu(s); }, 450);
+        }}
+        onPointerUp={() => { if (pressTimer.current) clearTimeout(pressTimer.current); }}
+        onPointerLeave={() => { if (pressTimer.current) clearTimeout(pressTimer.current); }}
         onClick={e => {
           e.stopPropagation();
+          if (longFired.current) { longFired.current = false; return; }
           openSheet(s);
         }}
         className={`relative ${block ? 'w-full' : ''} rounded-md px-1.5 py-1 text-[var(--fs-xs)] font-bold leading-tight text-center ${cls}`}
@@ -908,6 +983,14 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             </div>
             <div className="text-[var(--fs-sm)] text-gray-500 px-1 tabular-nums">{weekTotalsLabel}</div>
             {dayCard(day, Math.max(days.indexOf(day), 0))}
+            {(data?.slots ?? []).some(s => berlinParts(s.start).date === day) && (
+              <button
+                onClick={() => { setCopyTargets(new Set()); setCopyDaySheet(true); }}
+                className="self-start text-[var(--fs-sm)] font-semibold text-green-700 active:opacity-70"
+              >
+                Copy this day to other days →
+              </button>
+            )}
             {legend}
           </div>
         ) : (
@@ -1177,6 +1260,59 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           onCancel={() => setConfirm(null)}
         />
       )}
+
+      {/* Quick actions on a shift (long-press / right-click) */}
+      <Sheet open={quickMenu !== null} onClose={() => setQuickMenu(null)}>
+        {quickMenu && (
+          <div className="flex flex-col gap-2">
+            <div>
+              <div className="text-[var(--fs-md)] font-bold text-gray-900">
+                {fmtDay(quickMenu.start)} · {fmtTimeRange(quickMenu.start, quickMenu.end)}
+              </div>
+              <div className="text-[var(--fs-sm)] text-gray-500">{quickMenu.employeeName || 'Open shift'}</div>
+            </div>
+            <button onClick={() => { const s = quickMenu; setQuickMenu(null); openSheet(s); }} className={ds.btnSecondary}>Edit</button>
+            <button onClick={() => { const s = quickMenu; setQuickMenu(null); void duplicateSlot(s); }} className={ds.btnSecondary}>Duplicate</button>
+            <button onClick={() => { const s = quickMenu; setQuickMenu(null); void deleteSlotDirect(s); }} className={ds.btnDanger}>Delete</button>
+          </div>
+        )}
+      </Sheet>
+
+      {/* Copy this day to other days */}
+      <Sheet open={copyDaySheet} onClose={() => setCopyDaySheet(false)}>
+        <div className="flex flex-col gap-3">
+          <div className="text-[var(--fs-lg)] font-bold text-gray-900">Copy {dayLabel(day)} to…</div>
+          <div className="text-[var(--fs-sm)] text-gray-500">Every shift on this day is copied (as drafts) to the days you pick.</div>
+          <div className="flex flex-wrap gap-2">
+            {days.filter(d => d !== day).map(d => {
+              const on = copyTargets.has(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setCopyTargets(prev => {
+                    const n = new Set(prev);
+                    if (n.has(d)) n.delete(d); else n.add(d);
+                    return n;
+                  })}
+                  className={`px-3 py-2 rounded-full text-[var(--fs-sm)] font-semibold transition-colors ${
+                    on ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 active:bg-gray-200'
+                  }`}
+                >
+                  {dayLabel(d)}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            disabled={copyTargets.size === 0}
+            onClick={() => { void copyDayTo(Array.from(copyTargets)); setCopyDaySheet(false); setCopyTargets(new Set()); }}
+            className={`${ds.btnPrimary} disabled:opacity-50`}
+          >
+            Copy to {copyTargets.size} day{copyTargets.size === 1 ? '' : 's'}
+          </button>
+        </div>
+      </Sheet>
 
       {toast && !undo && (
         <div className="fixed bottom-24 left-1/2 z-[120] -translate-x-1/2 rounded-full bg-gray-900 px-5 py-3 text-[var(--fs-base)] text-white shadow-lg whitespace-nowrap">
