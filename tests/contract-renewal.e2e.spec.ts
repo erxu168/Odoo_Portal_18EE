@@ -34,7 +34,7 @@ test('renew a contract: old one becomes Ended history, new one is Running', asyn
 
   await login(page, MGR.email, MGR.password);
 
-  // --- Seed a throwaway employee in the manager's company ---
+  // --- Seed a throwaway employee in the manager's company (JSON read once) ---
   const depsRes = await page.request.get('/api/hr/departments');
   const deps = (await depsRes.json()).departments || [];
   const dep = deps.find((d: { company_id: number | null }) => d.company_id) || deps[0];
@@ -42,17 +42,9 @@ test('renew a contract: old one becomes Ended history, new one is Running', asyn
   const createRes = await page.request.post('/api/hr/employees', {
     data: { name: NAME, company_id: dep.company_id, department_id: dep.id },
   });
-  expect(createRes.ok()).toBeTruthy();
-  const empId = (await createRes.json()).id || (await createRes.json()).employee_id;
-  expect(empId, 'seed returned an employee id').toBeTruthy();
+  expect(createRes.ok(), 'seed employee').toBeTruthy();
 
-  // --- Give them an initial running contract (start in the past, 30 h/week) ---
-  const firstContract = await page.request.put(`/api/hr/employee/${empId}/contract`, {
-    data: { date_start: '2025-01-01', weekly_hours: 30, days_per_week: 5, state: 'open' },
-  });
-  expect(firstContract.ok(), 'seed initial contract').toBeTruthy();
-
-  // --- Open the employee's Contract & hours screen ---
+  // --- Open the new employee's Contract & hours screen ---
   await page.goto('/hr');
   await page.getByText('Employees', { exact: true }).first().click();
   const searchBox = page.getByPlaceholder('Search employees...');
@@ -64,7 +56,18 @@ test('renew a contract: old one becomes Ended history, new one is Running', asyn
   await expect(contractBtn).toBeVisible({ timeout: 20_000 });
   await contractBtn.click();
 
-  // One contract only => no history card yet, and the carried hours are showing.
+  // --- Create the initial contract via the UI: start 01.01.2025, 30 h/week ---
+  await expect(page.getByText(/no contract on file yet/i)).toBeVisible({ timeout: 20_000 });
+  await page.locator('input[type="date"]').first().fill('2025-01-01'); // Start date
+  await page.getByPlaceholder('e.g. 20').fill('30');                   // hours / week
+  await page.getByPlaceholder('e.g. 5').fill('5');                     // days / week
+  await page.getByRole('button', { name: /create contract/i }).click();
+
+  // Back on the employee page; reopen the contract screen.
+  await expect(contractBtn).toBeVisible({ timeout: 20_000 });
+  await contractBtn.click();
+
+  // One contract only => no history card yet, and the hours round-tripped.
   await expect(page.getByPlaceholder('e.g. 20')).toHaveValue('30', { timeout: 20_000 });
   await expect(page.getByText('Contract history')).toHaveCount(0);
 
