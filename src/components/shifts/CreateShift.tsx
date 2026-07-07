@@ -11,7 +11,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
-import { Badge, EmptyState, Sheet, Spinner } from '@/components/shifts/ui';
+import { Badge, EmptyState, Spinner, ToggleSwitch } from '@/components/shifts/ui';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { ds } from '@/lib/design-system';
 import { berlinISOWeekKey, berlinParts, nowOdooUtc, weekKeyDays } from '@/lib/shifts-time';
@@ -146,11 +146,9 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Reusable "quick start" templates.
+  // Reusable shift templates.
   const [templates, setTemplates] = useState<ShiftTemplate[]>([]);
-  const [showSaveTpl, setShowSaveTpl] = useState(false);
-  const [tplName, setTplName] = useState('');
-  const [tplBusy, setTplBusy] = useState(false);
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
   const [deleteTpl, setDeleteTpl] = useState<ShiftTemplate | null>(null);
 
   const loadRoster = useCallback(async () => {
@@ -197,30 +195,12 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   }, [companyId, loadTemplates]);
 
   function applyTemplate(t: ShiftTemplate) {
+    setNote(t.name);
     setStart(t.startHHMM);
     setEnd(t.endHHMM);
     if (t.roleId !== null) setRoleId(t.roleId);
     setCount(t.headcount >= 1 ? t.headcount : 1);
-  }
-
-  async function saveTemplate() {
-    const name = tplName.trim();
-    if (!name) return;
-    setTplBusy(true);
-    try {
-      const res = await fetch('/api/shifts/templates', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_id: companyId, name, start, end, role_id: roleId, headcount: count }),
-      });
-      if (res.ok) {
-        setShowSaveTpl(false);
-        setTplName('');
-        await loadTemplates();
-      }
-    } catch { /* ignore */ } finally {
-      setTplBusy(false);
-    }
+    setSaveAsTemplate(false); // already saved
   }
 
   async function removeTemplate(t: ShiftTemplate) {
@@ -331,6 +311,16 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`);
       saveLastTimes(companyId, start, end); // remember for next time
+      if (saveAsTemplate && note.trim()) {
+        // Also save this shift as a reusable template (best-effort).
+        try {
+          await fetch('/api/shifts/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ company_id: companyId, name: note.trim(), start, end, role_id: roleId, headcount: count }),
+          });
+        } catch { /* template save is a convenience — ignore */ }
+      }
       onCreated();
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : 'Network error');
@@ -364,39 +354,42 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
         </div>
       ) : (
         <div className="px-4 pt-4 pb-48 flex flex-col gap-3 max-w-lg mx-auto w-full">
-          {/* QUICK START (reusable templates) */}
+          {/* NAME (+ reuse a saved shift template) */}
           <div className={`${ds.card} p-4`}>
-            <div className={LBL}>Quick start</div>
-            <div className="flex flex-wrap gap-2">
-              {templates.map(t => (
-                <div key={t.id} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => applyTemplate(t)}
-                    className="pl-3.5 pr-8 py-2 rounded-full bg-green-50 border border-green-200 text-green-800 text-[var(--fs-sm)] font-semibold active:bg-green-100"
-                  >
-                    {t.name} · {t.startHHMM}–{t.endHHMM}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTpl(t)}
-                    aria-label={`Delete template ${t.name}`}
-                    className="absolute top-1/2 -translate-y-1/2 right-1 w-6 h-6 rounded-full flex items-center justify-center text-green-700/50 active:text-red-600"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                  </button>
+            <div className={LBL}>Shift name</div>
+            <input
+              type="text"
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder="e.g. Dinner"
+              maxLength={40}
+              className={ds.input}
+            />
+            {templates.length > 0 && (
+              <>
+                <div className={`${LBL} mt-3`}>Or reuse a shift template</div>
+                <div className="flex flex-wrap gap-2">
+                  {templates.map(t => (
+                    <div key={t.id} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => applyTemplate(t)}
+                        className="pl-3.5 pr-8 py-2 rounded-full bg-green-50 border border-green-200 text-green-800 text-[var(--fs-sm)] font-semibold active:bg-green-100"
+                      >
+                        {t.name} · {t.startHHMM}–{t.endHHMM}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTpl(t)}
+                        aria-label={`Delete template ${t.name}`}
+                        className="absolute top-1/2 -translate-y-1/2 right-1 w-6 h-6 rounded-full flex items-center justify-center text-green-700/50 active:text-red-600"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-              <button
-                type="button"
-                onClick={() => { setTplName(''); setShowSaveTpl(true); }}
-                className="px-3.5 py-2 rounded-full border border-dashed border-gray-300 text-gray-500 text-[var(--fs-sm)] font-semibold active:bg-gray-50"
-              >
-                ＋ Save these times
-              </button>
-            </div>
-            {templates.length === 0 && (
-              <div className={`${HINT} mt-2`}>Save times you use a lot (e.g. &ldquo;Dinner 16&ndash;22&rdquo;) and reuse them in one tap.</div>
+              </>
             )}
           </div>
 
@@ -575,16 +568,17 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
             <div className={HINT}>Same time and role on each selected day.</div>
           </div>
 
-          {/* NOTE */}
-          <div className={`${ds.card} p-4`}>
-            <div className={LBL}>Note (optional)</div>
-            <input
-              type="text"
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              placeholder="e.g. Delivery day — extra prep"
-              className={ds.input}
-            />
+          {/* SAVE AS TEMPLATE */}
+          <div className={`${ds.card} p-4 flex items-center justify-between gap-3`}>
+            <div className="min-w-0">
+              <div className="text-[var(--fs-md)] font-semibold text-gray-900">Save as a shift template</div>
+              <div className={HINT}>
+                {note.trim()
+                  ? `Reuse "${note.trim()}" (${start}–${end}) in one tap next time.`
+                  : 'Add a shift name above to save this as a template.'}
+              </div>
+            </div>
+            <ToggleSwitch on={saveAsTemplate} onToggle={() => setSaveAsTemplate(v => !v)} disabled={!note.trim()} />
           </div>
         </div>
       )}
@@ -624,35 +618,6 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
         </div>
       )}
 
-      {/* Save-as-template sheet */}
-      <Sheet open={showSaveTpl} onClose={() => setShowSaveTpl(false)}>
-        <div className="flex flex-col gap-3">
-          <div className="text-[var(--fs-lg)] font-bold text-gray-900">Save as a template</div>
-          <div className="text-[var(--fs-sm)] text-gray-500">
-            Reuse {start}&ndash;{end}
-            {roleId ? ` · ${roles.find(r => r.id === roleId)?.name ?? ''}` : ''}
-            {count > 1 ? ` · ${count} people` : ''} with one tap next time.
-          </div>
-          <div>
-            <div className={LBL}>Template name</div>
-            <input
-              type="text"
-              value={tplName}
-              onChange={e => setTplName(e.target.value)}
-              placeholder="e.g. Dinner"
-              maxLength={40}
-              className={ds.input}
-            />
-          </div>
-          <button
-            onClick={() => void saveTemplate()}
-            disabled={tplBusy || !tplName.trim()}
-            className={`${ds.btnPrimary} disabled:opacity-50`}
-          >
-            {tplBusy ? 'Saving…' : 'Save template'}
-          </button>
-        </div>
-      </Sheet>
 
       {deleteTpl && (
         <ConfirmDialog
