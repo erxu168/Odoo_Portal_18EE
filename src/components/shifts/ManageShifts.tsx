@@ -559,9 +559,11 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   function editSheetToCreateBody(): Record<string, unknown> {
     const body: Record<string, unknown> = {
       company_id: companyId, date: editDate, start: editStart, end: editEnd,
-      role_id: editRoleId, note: editNote.trim(), count: 1,
+      role_id: editRoleId, department_id: editSlot?.departmentId ?? null,
+      note: editNote.trim(), count: 1,
     };
     if (assignId !== null) body.assign_employee_id = assignId;
+    else if (editSlot?.minSkill) body.min_skill = editSlot.minSkill;
     return body;
   }
 
@@ -718,10 +720,12 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       start: berlinParts(s.start).hhmm,
       end: berlinParts(s.end).hhmm,
       role_id: s.roleId,
+      department_id: s.departmentId, // carry the portal department override
       note: s.note ?? '',
       count: 1,
     };
     if (s.employeeId !== null) b.assign_employee_id = s.employeeId;
+    else if (s.minSkill) b.min_skill = s.minSkill; // carry the open-shift skill gate
     return b;
   }
 

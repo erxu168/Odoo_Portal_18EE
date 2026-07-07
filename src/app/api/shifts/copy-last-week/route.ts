@@ -9,6 +9,12 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createSlot, fetchWeekSlots, recomputeWeekFlags } from '@/lib/shifts-odoo';
+import {
+  setSlotDepartment,
+  setSlotMinSkill,
+  slotDepartments,
+  slotMinSkills,
+} from '@/lib/shifts-db';
 import { berlinParts, offsetWeekKey, weekKeyDays } from '@/lib/shifts-time';
 import type { ShiftSlot } from '@/types/shifts';
 import { requireManagerCompany, resolveWeekKey, serverError } from '../_manager';
@@ -43,6 +49,9 @@ export async function POST(req: NextRequest) {
       fetchWeekSlots(companyId, prevWeekKey),
       fetchWeekSlots(companyId, weekKey),
     ]);
+    // Portal overrides on last week's slots — carried onto the copies below.
+    const prevDeptOverride = slotDepartments(companyId, prevSlots.map(s => s.id));
+    const prevSkillOverride = slotMinSkills(companyId, prevSlots.map(s => s.id));
 
     // Count identical slots already in the target week; each match consumes one copy.
     const existingCount = new Map<string, number>();
@@ -72,7 +81,7 @@ export async function POST(req: NextRequest) {
       }
 
       // createSlot re-applies the overnight rule (end <= start → next day).
-      await createSlot({
+      const newId = await createSlot({
         companyId,
         date: targetDate,
         startHHMM: start.hhmm,
@@ -81,6 +90,11 @@ export async function POST(req: NextRequest) {
         resourceId: slot.resourceId,
         note: slot.note,
       });
+      // Carry the portal overrides onto the copy.
+      const deptOv = prevDeptOverride.get(slot.id);
+      if (deptOv !== undefined) setSlotDepartment(companyId, newId, deptOv);
+      const skillOv = prevSkillOverride.get(slot.id);
+      if (skillOv !== undefined && slot.resourceId === null) setSlotMinSkill(companyId, newId, skillOv);
       created++;
       if (slot.resourceId !== null) createdAssigned = true;
     }

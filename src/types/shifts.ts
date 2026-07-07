@@ -23,6 +23,8 @@ export interface ShiftSlot {
   /** hr.department id stored on the slot (planning.slot.department_id); null = none */
   departmentId: number | null;
   departmentName: string;
+  /** Portal override: min skill to claim ('2'|'3'); set by the manage overlay only. */
+  minSkill?: string | null;
   note: string;
   overCap: boolean;
   /** Duration in hours = end − start, computed portal-side. NEVER allocated_hours. */

@@ -7,7 +7,7 @@
  * a ⚠). Pending requests are lazy-expired before being counted.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getShiftSettings, listCoverRequests, slotDepartments } from '@/lib/shifts-db';
+import { getShiftSettings, listCoverRequests, slotDepartments, slotMinSkills } from '@/lib/shifts-db';
 import { lazyExpireIfDue } from '@/lib/shifts-guards';
 import { fetchDepartments, fetchEmployees, fetchRoles, fetchWeekSlots, weekHoursMap } from '@/lib/shifts-odoo';
 import { berlinParts, weekKeyDays } from '@/lib/shifts-time';
@@ -36,7 +36,9 @@ export async function GET(req: NextRequest) {
 
     // Overlay the manager's chosen department (portal-side) onto each slot — the
     // Odoo department_id is a readonly relation and empty for open shifts.
-    const deptOverride = slotDepartments(companyId, slots.map(s => s.id));
+    const slotIds = slots.map(s => s.id);
+    const deptOverride = slotDepartments(companyId, slotIds);
+    const skillOverride = slotMinSkills(companyId, slotIds);
     const deptNameById = new Map(departments.map(d => [d.id, d.name]));
     for (const s of slots) {
       const ov = deptOverride.get(s.id);
@@ -44,6 +46,7 @@ export async function GET(req: NextRequest) {
         s.departmentId = ov;
         s.departmentName = deptNameById.get(ov) ?? s.departmentName;
       }
+      s.minSkill = skillOverride.get(s.id) ?? null;
     }
 
     const days = weekKeyDays(weekKey);
