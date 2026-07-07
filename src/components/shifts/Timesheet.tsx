@@ -99,7 +99,7 @@ export default function Timesheet({ companyId, onBack }: TimesheetProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="Shifts" title="Timesheets" showBack onBack={onBack} />
+      <AppHeader supertitle="Planning" title="Timesheets" showBack onBack={onBack} />
 
       <div className="pt-4">
         <WeekNav

@@ -68,7 +68,7 @@ export default function ShiftsDashboard({ companyId, isManager, badges, onNaviga
     {
       key: 'mine',
       label: 'My Shifts',
-      sublabel: 'Your schedule',
+      sublabel: 'Your shifts',
       color: 'bg-blue-50 border-blue-200', iconBg: 'bg-blue-100', iconColor: 'text-blue-600',
       icon: (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -227,7 +227,7 @@ export default function RequestsInbox({ companyId, employeeId, onBack }: Request
   if (employeeId === null) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <AppHeader supertitle="Shifts" title="Requests" showBack onBack={onBack} />
+        <AppHeader supertitle="Planning" title="Requests" showBack onBack={onBack} />
         <EmptyState
           icon="🔗"
           title="Account not linked"
@@ -256,7 +256,7 @@ export default function RequestsInbox({ companyId, employeeId, onBack }: Request
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        supertitle="Shifts"
+        supertitle="Planning"
         title="Requests"
         subtitle="Cover requests to and from you"
         showBack

@@ -72,7 +72,7 @@ export default function Punctuality({ companyId, onBack }: PunctualityProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="Shifts" title="Punctuality" showBack onBack={onBack} />
+      <AppHeader supertitle="Planning" title="Punctuality" showBack onBack={onBack} />
 
       <div className="pt-4">
         <WeekNav

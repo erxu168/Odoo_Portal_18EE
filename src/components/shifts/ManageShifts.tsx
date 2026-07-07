@@ -905,7 +905,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   if (!isManager) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <AppHeader supertitle="Shifts" title="Manage Shifts" showBack onBack={onBack} />
+        <AppHeader supertitle="Planning" title="Manage Shifts" showBack onBack={onBack} />
         <EmptyState icon="🔒" title="Managers only" body="The schedule is managed by managers." />
       </div>
     );
@@ -915,7 +915,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="Shifts" title="Manage Shifts" subtitle="Plan, publish & reassign" showBack onBack={onBack} />
+      <AppHeader supertitle="Planning" title="Manage Shifts" subtitle="Plan, publish & reassign" showBack onBack={onBack} />
 
       <div className="pt-3 pb-36 max-w-6xl mx-auto w-full">
         <WeekNav

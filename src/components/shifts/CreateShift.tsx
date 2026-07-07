@@ -400,7 +400,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   if (!isManager) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <AppHeader supertitle="Shifts" title="New Shift" showBack onBack={onBack} />
+        <AppHeader supertitle="Planning" title="New Shift" showBack onBack={onBack} />
         <EmptyState icon="🔒" title="Managers only" body="Creating shifts is a manager task." />
       </div>
     );
@@ -408,7 +408,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="Shifts" title="New Shift" showBack onBack={onBack} />
+      <AppHeader supertitle="Planning" title="New Shift" showBack onBack={onBack} />
 
       {loading ? (
         <Spinner />

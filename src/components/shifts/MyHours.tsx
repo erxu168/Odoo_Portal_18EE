@@ -76,7 +76,7 @@ export default function MyHours({ companyId, employeeId, onBack }: MyHoursProps)
   if (employeeId === null) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <AppHeader supertitle="Shifts" title="My Hours" showBack onBack={onBack} />
+        <AppHeader supertitle="Planning" title="My Hours" showBack onBack={onBack} />
         <EmptyState
           icon="🔗"
           title="Account not linked"
@@ -96,7 +96,7 @@ export default function MyHours({ companyId, employeeId, onBack }: MyHoursProps)
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        supertitle="Shifts"
+        supertitle="Planning"
         title="My Hours"
         subtitle="Your weekly totals"
         showBack

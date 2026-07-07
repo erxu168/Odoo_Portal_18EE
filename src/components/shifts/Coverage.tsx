@@ -133,7 +133,7 @@ export default function Coverage({ companyId, onBack, onOpenDay }: CoverageProps
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="Shifts" title="Coverage" showBack onBack={onBack} />
+      <AppHeader supertitle="Planning" title="Coverage" showBack onBack={onBack} />
 
       <div className="pt-4">
         <WeekNav

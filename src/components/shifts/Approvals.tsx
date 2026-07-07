@@ -421,7 +421,7 @@ export default function Approvals({ companyId, onBack }: ApprovalsProps) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader
-          supertitle="Shifts"
+          supertitle="Planning"
           title="Cover Request"
           showBack
           onBack={() => openView({ kind: 'list' })}
@@ -553,7 +553,7 @@ export default function Approvals({ companyId, onBack }: ApprovalsProps) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader
-          supertitle="Shifts"
+          supertitle="Planning"
           title="Sick Report"
           showBack
           onBack={() => openView({ kind: 'list' })}
@@ -629,7 +629,7 @@ export default function Approvals({ companyId, onBack }: ApprovalsProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="Shifts" title="Approvals" showBack onBack={onBack} />
+      <AppHeader supertitle="Planning" title="Approvals" showBack onBack={onBack} />
 
       <div className="pt-3">
         <SearchBar value={search} onChange={setSearch} placeholder="Search requests…" />

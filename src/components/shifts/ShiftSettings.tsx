@@ -129,7 +129,7 @@ export default function ShiftSettings({ companyId, onBack }: ShiftSettingsProps)
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="Shifts" title="Shift Settings" showBack onBack={onBack} />
+      <AppHeader supertitle="Planning" title="Shift Settings" showBack onBack={onBack} />
 
       <div className="pb-36 max-w-xl mx-auto w-full">
         {loading ? (

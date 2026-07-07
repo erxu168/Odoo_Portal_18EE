@@ -159,8 +159,8 @@ export default function ShiftsPage() {
         return (
           <>
             <AppHeader
-              title="Shifts"
-              subtitle="Schedule, claims & covers"
+              title="Planning"
+              subtitle="Shifts, claims & covers"
               action={isManager ? (
                 <button
                   onClick={() => navigate({ type: 'settings' })}
@@ -233,7 +233,7 @@ export default function ShiftsPage() {
   if (role === null) {
     return (
       <div className="flex flex-col min-h-screen bg-gray-50">
-        <AppHeader title="Shifts" subtitle="Schedule, claims & covers" />
+        <AppHeader title="Planning" subtitle="Shifts, claims & covers" />
         <Spinner />
       </div>
     );

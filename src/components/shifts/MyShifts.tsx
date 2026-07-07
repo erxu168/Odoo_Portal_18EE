@@ -333,7 +333,7 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
   if (employeeId === null) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <AppHeader supertitle="Shifts" title="My Shifts" showBack onBack={onBack} />
+        <AppHeader supertitle="Planning" title="My Shifts" showBack onBack={onBack} />
         <EmptyState
           icon="🔗"
           title="Account not linked"
@@ -394,7 +394,7 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        supertitle="Shifts"
+        supertitle="Planning"
         title="My Shifts"
         subtitle={weekLabel(weekKey)}
         showBack

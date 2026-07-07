@@ -147,7 +147,7 @@ export default function OpenShiftsList({ companyId, employeeId, onBack }: OpenSh
   if (employeeId === null) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <AppHeader supertitle="Shifts" title="Open Shifts" showBack onBack={onBack} />
+        <AppHeader supertitle="Planning" title="Open Shifts" showBack onBack={onBack} />
         <EmptyState
           icon="🔗"
           title="Account not linked"
@@ -179,7 +179,7 @@ export default function OpenShiftsList({ companyId, employeeId, onBack }: OpenSh
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
-        supertitle="Shifts"
+        supertitle="Planning"
         title="Open Shifts"
         subtitle="Shifts nobody has taken yet"
         showBack

@@ -179,7 +179,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="Shifts" title="Roster & Caps" showBack onBack={onBack} />
+      <AppHeader supertitle="Planning" title="Roster & Caps" showBack onBack={onBack} />
 
       <div className="pt-3">
         <SearchBar value={search} onChange={setSearch} placeholder="Search team…" />
