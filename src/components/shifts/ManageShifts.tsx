@@ -353,10 +353,12 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       if (isOpen) rr.open++;
       push(rr.byDay, d, s);
 
-      // By department (from the assigned employee; open/unknown → fallback)
-      const deptName = s.employeeId
-        ? empById.get(s.employeeId)?.departmentName || 'No department'
-        : 'No department';
+      // By department: prefer the department stored on the slot itself (so open
+      // shifts group correctly too); fall back to the assignee's department.
+      const deptName =
+        s.departmentName ||
+        (s.employeeId ? empById.get(s.employeeId)?.departmentName : '') ||
+        'No department';
       let deptRoles = deptMap.get(deptName);
       if (!deptRoles) {
         deptRoles = new Map();

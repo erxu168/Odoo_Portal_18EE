@@ -36,6 +36,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'The shift must be longer than zero hours' }, { status: 400 });
     }
     const roleId = typeof body.role_id === 'number' && body.role_id > 0 ? body.role_id : null;
+    const departmentId =
+      typeof body.department_id === 'number' && body.department_id > 0 ? body.department_id : null;
     const countRaw = body.count === undefined ? 1 : Number(body.count);
     if (!Number.isInteger(countRaw) || countRaw < 1 || countRaw > MAX_COUNT) {
       return NextResponse.json({ error: `count must be between 1 and ${MAX_COUNT}` }, { status: 400 });
@@ -73,7 +75,7 @@ export async function POST(req: NextRequest) {
     for (const day of days) {
       for (let i = 0; i < countRaw; i++) {
         created.push(
-          await createSlot({ companyId, date: day, startHHMM, endHHMM, roleId, resourceId, note }),
+          await createSlot({ companyId, date: day, startHHMM, endHHMM, roleId, resourceId, departmentId, note }),
         );
       }
     }

@@ -39,6 +39,11 @@ interface RoleInfo {
   name: string;
 }
 
+interface DeptInfo {
+  id: number;
+  name: string;
+}
+
 const LBL = 'text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-400 mb-1.5';
 const HINT = 'text-[var(--fs-xs)] text-gray-400';
 const DAY_ABBR = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -151,6 +156,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
   const [start, setStart] = useState(prefill?.startHHMM || lastTimes?.start || '16:00');
   const [end, setEnd] = useState(prefill?.endHHMM || lastTimes?.end || '22:00');
   const [roleId, setRoleId] = useState<number | null>(prefill?.roleId ?? null);
+  const [departmentId, setDepartmentId] = useState<number | null>(null);
   const [count, setCount] = useState(1);
   const [mode, setMode] = useState<'open' | 'pick'>('open');
   const [pickedId, setPickedId] = useState<number | null>(null);
@@ -162,6 +168,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
 
   // Data
   const [roles, setRoles] = useState<RoleInfo[]>([]);
+  const [departments, setDepartments] = useState<DeptInfo[]>([]);
   const [employees, setEmployees] = useState<ShiftEmployee[]>([]);
   const [hoursMap, setHoursMap] = useState<Map<number, number>>(new Map());
   const [monthHours, setMonthHours] = useState<Map<number, number>>(new Map());
@@ -185,6 +192,11 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
       if (!res.ok) throw new Error(typeof data.error === 'string' ? data.error : `HTTP ${res.status}`);
       const roleList: RoleInfo[] = Array.isArray(data.roles) ? data.roles : [];
       setRoles(roleList);
+      const deptList: DeptInfo[] = Array.isArray(data.departments) ? data.departments : [];
+      setDepartments(deptList);
+      // Department is required — pre-pick it when there's only one so the manager
+      // doesn't have to. With several, they must choose (guarded in canSubmit).
+      setDepartmentId(prev => prev ?? (deptList.length === 1 ? deptList[0].id : null));
       setEmployees(Array.isArray(data.employees) ? data.employees : []);
       const mh = new Map<number, number>();
       const mhObj =
@@ -327,15 +339,24 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
       : 0;
   const minijobOver = !!picked && picked.employmentType === 'minijob' && pickedMonthEarnings > MINIJOB_CAP;
 
+  const inDept = useCallback(
+    (e: ShiftEmployee) => departmentId === null || e.departmentId === departmentId,
+    [departmentId],
+  );
+
   const sortedPeople = useMemo(() => {
-    const eligible = (e: ShiftEmployee) => roleId === null || e.roleIds.includes(roleId);
+    const roleOk = (e: ShiftEmployee) => roleId === null || e.roleIds.includes(roleId);
     return [...employees].sort((a, b) => {
-      const ea = eligible(a) ? 0 : 1;
-      const eb = eligible(b) ? 0 : 1;
-      if (ea !== eb) return ea - eb;
+      // Department match first (the picked dept narrows the list), then role, then name.
+      const da = inDept(a) ? 0 : 1;
+      const db = inDept(b) ? 0 : 1;
+      if (da !== db) return da - db;
+      const ra = roleOk(a) ? 0 : 1;
+      const rb = roleOk(b) ? 0 : 1;
+      if (ra !== rb) return ra - rb;
       return a.name.localeCompare(b.name);
     });
-  }, [employees, roleId]);
+  }, [employees, roleId, inDept]);
 
   function toggleCopyDay(d: string) {
     if (d === date) return; // the shift's own day is locked on
@@ -347,9 +368,13 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
     });
   }
 
+  // Department is required whenever the company has departments set up (never
+  // hard-blocks a company that has none).
+  const needDept = departments.length > 0;
   const canSubmit = !submitting && !!date && durH !== null && count >= 1
     && (mode === 'open' || pickedId !== null)
-    && (repeat === 'none' || recurrence.length > 0);
+    && (repeat === 'none' || recurrence.length > 0)
+    && (!needDept || departmentId !== null);
 
   async function submit() {
     if (!canSubmit) return;
@@ -366,6 +391,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
         start,
         end,
         role_id: roleId,
+        department_id: departmentId,
         count,
         note: note.trim(),
         copy_days: occurrenceDates.slice(1),
@@ -493,6 +519,26 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
 
           {/* WHO */}
           <div className={`${ds.card} p-4 flex flex-col gap-3`}>
+            {departments.length > 0 && (
+              <div>
+                <div className={LBL}>Department</div>
+                <select
+                  value={departmentId ?? ''}
+                  onChange={e => setDepartmentId(e.target.value === '' ? null : Number(e.target.value))}
+                  className={ds.input}
+                >
+                  <option value="">Choose a department…</option>
+                  {departments.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+                {departmentId === null && (
+                  <div className={`${HINT} mt-1.5 text-amber-700 font-semibold`}>
+                    Pick a department for this shift.
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <div className={LBL}>Role</div>
               <select
@@ -568,13 +614,14 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                   const isPicked = pickedId === e.id;
                   const h = hoursMap.get(e.id) ?? 0;
                   const eligibleForRole = roleId === null || e.roleIds.includes(roleId);
+                  const matchesDept = inDept(e);
                   return (
                     <button
                       key={e.id}
                       onClick={() => setPickedId(isPicked ? null : e.id)}
                       className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${
                         isPicked ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white active:bg-gray-50'
-                      }`}
+                      } ${!matchesDept && !isPicked ? 'opacity-55' : ''}`}
                     >
                       <span className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 text-[var(--fs-xs)] font-bold flex items-center justify-center flex-shrink-0">
                         {initials(e.name)}
@@ -585,7 +632,11 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                           {e.cap !== null ? `${fmtH(h)} / ${fmtCap(e.cap)} h this week` : `${fmtH(h)} h this week · no cap`}
                         </span>
                       </span>
-                      {!eligibleForRole && <Badge variant="gray">Not this role</Badge>}
+                      {!matchesDept ? (
+                        <Badge variant="gray">Not this dept</Badge>
+                      ) : (
+                        !eligibleForRole && <Badge variant="gray">Not this role</Badge>
+                      )}
                     </button>
                   );
                 })}

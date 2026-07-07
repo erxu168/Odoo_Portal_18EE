@@ -58,6 +58,10 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     if ('role_id' in body) {
       updates.roleId = typeof body.role_id === 'number' && body.role_id > 0 ? body.role_id : null;
     }
+    if ('department_id' in body) {
+      updates.departmentId =
+        typeof body.department_id === 'number' && body.department_id > 0 ? body.department_id : null;
+    }
     if ('note' in body) {
       updates.note = typeof body.note === 'string' ? body.note.trim() : '';
     }

@@ -31,6 +31,7 @@ const SLOT_FIELDS = [
   'role_id',
   'resource_id',
   'employee_id',
+  'department_id',
   'name',
   'company_id',
   'x_over_cap_flag',
@@ -88,6 +89,8 @@ function mapSlot(row: OdooRow): ShiftSlot {
     resourceId: m2oId(row.resource_id),
     employeeId: m2oId(row.employee_id),
     employeeName: m2oName(row.employee_id),
+    departmentId: m2oId(row.department_id),
+    departmentName: m2oName(row.department_id),
     note: str(row.name),
     overCap: row.x_over_cap_flag === true,
     hours: start && end ? durationHours(start, end) : 0,
@@ -224,6 +227,17 @@ export async function fetchRoles(companyId: number): Promise<{ id: number; name:
   return rows.map(r => ({ id: r.id as number, name: str(r.name) }));
 }
 
+/** hr.department list for the company (company-specific + shared departments). */
+export async function fetchDepartments(companyId: number): Promise<{ id: number; name: string }[]> {
+  const rows = (await getOdoo().searchRead(
+    'hr.department',
+    ['|', ['company_id', '=', companyId], ['company_id', '=', false]],
+    ['name'],
+    { limit: 200, order: 'name asc' },
+  )) as OdooRow[];
+  return rows.map(r => ({ id: r.id as number, name: str(r.name) }));
+}
+
 // -- Writes -----------------------------------------------------------------------
 
 /**
@@ -237,6 +251,7 @@ export async function createSlot(v: {
   endHHMM: string;
   roleId: number | null;
   resourceId: number | null;
+  departmentId?: number | null;
   note: string;
 }): Promise<number> {
   const endDate = v.endHHMM <= v.startHHMM ? addDays(v.date, 1) : v.date;
@@ -246,6 +261,7 @@ export async function createSlot(v: {
     end_datetime: berlinDateTimeToUtcOdoo(endDate, v.endHHMM),
     role_id: v.roleId ?? false,
     resource_id: v.resourceId ?? false,
+    department_id: v.departmentId ?? false,
     name: v.note || false,
     state: 'draft',
   };
@@ -268,6 +284,7 @@ export async function updateSlot(
     endHHMM: string;
     roleId: number | null;
     resourceId: number | null | false;
+    departmentId: number | null;
     note: string;
     state: 'draft' | 'published';
   }>,
@@ -288,6 +305,7 @@ export async function updateSlot(
   }
   if (v.roleId !== undefined) vals.role_id = v.roleId ?? false;
   if (v.resourceId !== undefined) vals.resource_id = v.resourceId ? v.resourceId : false;
+  if (v.departmentId !== undefined) vals.department_id = v.departmentId ?? false;
   if (v.note !== undefined) vals.name = v.note || false;
   if (v.state !== undefined) vals.state = v.state;
 

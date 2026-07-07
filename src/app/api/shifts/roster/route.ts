@@ -5,7 +5,7 @@
  * company's planning roles for the edit sheet's role chips.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchEmployees, fetchRoles, monthHoursMap } from '@/lib/shifts-odoo';
+import { fetchDepartments, fetchEmployees, fetchRoles, monthHoursMap } from '@/lib/shifts-odoo';
 import { employeesWithPin } from '@/lib/shifts-db';
 import { requireManagerCompany, serverError } from '../_manager';
 
@@ -17,15 +17,16 @@ export async function GET(req: NextRequest) {
     if (!auth.ok) return auth.res;
     const { companyId } = auth;
 
-    const [employees, roles, monthHours] = await Promise.all([
+    const [employees, roles, departments, monthHours] = await Promise.all([
       fetchEmployees(companyId),
       fetchRoles(companyId),
+      fetchDepartments(companyId),
       monthHoursMap(companyId),
     ]);
     const pinnedEmployeeIds = Array.from(employeesWithPin(companyId));
     const monthHoursByEmployee = Object.fromEntries(monthHours);
 
-    return NextResponse.json({ employees, roles, pinnedEmployeeIds, monthHoursByEmployee });
+    return NextResponse.json({ employees, roles, departments, pinnedEmployeeIds, monthHoursByEmployee });
   } catch (err: unknown) {
     return serverError('GET roster', err);
   }

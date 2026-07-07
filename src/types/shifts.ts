@@ -20,6 +20,9 @@ export interface ShiftSlot {
   /** hr.employee id (readonly related on planning.slot — reads only) */
   employeeId: number | null;
   employeeName: string;
+  /** hr.department id stored on the slot (planning.slot.department_id); null = none */
+  departmentId: number | null;
+  departmentName: string;
   note: string;
   overCap: boolean;
   /** Duration in hours = end − start, computed portal-side. NEVER allocated_hours. */
