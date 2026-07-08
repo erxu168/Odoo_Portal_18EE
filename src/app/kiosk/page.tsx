@@ -1,12 +1,16 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import KioskSettings from '@/components/kiosk/KioskSettings';
+import { loadKioskSettings, type KioskSettings as KioskSettingsT } from '@/lib/kiosk-settings';
 
 /**
- * Tablet time-clock kiosk (no login). The device URL carries the restaurant:
+ * Tablet time-clock kiosk (no login). The restaurant is set on the tablet from the
+ * gear → settings screen (manager/admin login), saved in localStorage. The old
  *   /kiosk?company=6
- * Staff tap their name, enter a 4-digit PIN, and are clocked IN or OUT (auto).
- * Writes Odoo hr.attendance via /api/kiosk/punch. No geolocation (DSGVO).
+ * URL still works as a first-time fallback. Staff tap their name, enter a 4-digit
+ * PIN, and are clocked IN or OUT (auto). Writes Odoo hr.attendance via
+ * /api/kiosk/punch. No geolocation (DSGVO).
  */
 
 interface KioskStaff {
@@ -31,9 +35,31 @@ function firstName(name: string): string {
   return name.split(/\s+/)[0] || name;
 }
 
+// Short confirmation beep, created on the punch (a user gesture) so browsers allow it.
+function beep(): void {
+  try {
+    const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return;
+    const ctx = new Ctor();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.22);
+    osc.onended = () => ctx.close().catch(() => {});
+  } catch {
+    /* audio unavailable — silent */
+  }
+}
+
 export default function KioskPage() {
-  const [companyId, setCompanyId] = useState<number | null>(null);
-  const [ready, setReady] = useState(false);
+  const [settings, setSettings] = useState<KioskSettingsT | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [screen, setScreen] = useState<'grid' | 'pin' | 'done'>('grid');
   const [staff, setStaff] = useState<KioskStaff[]>([]);
   const [selected, setSelected] = useState<KioskStaff | null>(null);
@@ -43,11 +69,12 @@ export default function KioskPage() {
   const [result, setResult] = useState<PunchResult | null>(null);
   const [clock, setClock] = useState('');
 
+  const companyId = settings?.companyId ?? null;
+  const fullscreenLock = settings?.fullscreenLock ?? true;
+  const idleSeconds = settings?.idleSeconds ?? 5;
+
   useEffect(() => {
-    const raw = new URLSearchParams(window.location.search).get('company');
-    const c = raw ? parseInt(raw, 10) : NaN;
-    setCompanyId(Number.isInteger(c) && c > 0 ? c : null);
-    setReady(true);
+    setSettings(loadKioskSettings());
     const tick = () =>
       setClock(new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit' }));
     tick();
@@ -80,9 +107,9 @@ export default function KioskPage() {
       setSelected(null);
       setResult(null);
       loadStaff();
-    }, 5000);
+    }, Math.max(1, idleSeconds) * 1000);
     return () => clearTimeout(t);
-  }, [screen, loadStaff]);
+  }, [screen, idleSeconds, loadStaff]);
 
   const enterFullscreen = useCallback(() => {
     const el = document.documentElement;
@@ -92,15 +119,17 @@ export default function KioskPage() {
   }, []);
 
   // Trap the browser Back gesture so a punch can't accidentally leave the clock.
+  // Only while the full-screen lock is on (otherwise leave navigation normal).
   useEffect(() => {
+    if (!fullscreenLock) return;
     history.pushState(null, '', location.href);
     const onPop = () => history.pushState(null, '', location.href);
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-  }, []);
+  }, [fullscreenLock]);
 
   function pickPerson(s: KioskStaff) {
-    enterFullscreen(); // first tap is a user gesture — a good moment to go full screen
+    if (fullscreenLock) enterFullscreen(); // first tap is a user gesture — a good moment to go full screen
     setSelected(s);
     setPin('');
     setPinError(false);
@@ -120,6 +149,7 @@ export default function KioskPage() {
         });
         const d = await r.json();
         if (r.ok && d.ok) {
+          if (settings?.sound) beep();
           setResult(d as PunchResult);
           setScreen('done');
         } else {
@@ -133,7 +163,7 @@ export default function KioskPage() {
         setBusy(false);
       }
     },
-    [selected, companyId],
+    [selected, companyId, settings?.sound],
   );
 
   function keyPress(digit: string) {
@@ -146,15 +176,41 @@ export default function KioskPage() {
 
   const header = (
     <header className="bg-[#1A1F2E] text-white px-6 py-4 flex items-center justify-between">
-      <div className="text-[22px] font-extrabold tracking-tight">🕒 Time Clock</div>
-      <div className="text-[22px] font-bold tabular-nums">{clock}</div>
+      <div className="min-w-0 flex items-baseline gap-2">
+        <span className="text-[22px] font-extrabold tracking-tight shrink-0">🕒 Time Clock</span>
+        {settings?.tabletName && (
+          <span className="text-[14px] font-semibold text-white/60 truncate">· {settings.tabletName}</span>
+        )}
+      </div>
+      <div className="flex items-center gap-4 shrink-0">
+        <div className="text-[22px] font-bold tabular-nums">{clock}</div>
+        <button
+          onClick={() => setSettingsOpen(true)}
+          aria-label="Kiosk settings"
+          className="w-11 h-11 flex items-center justify-center rounded-full text-white/70 text-xl active:bg-white/10 active:text-white"
+        >
+          ⚙
+        </button>
+      </div>
     </header>
   );
 
-  if (!ready) {
+  const overlay = settingsOpen && settings && (
+    <KioskSettings
+      settings={settings}
+      onChange={next => setSettings(next)}
+      onClose={() => {
+        setSettingsOpen(false);
+        loadStaff();
+      }}
+    />
+  );
+
+  if (!settings) {
     return <div className="min-h-screen bg-gray-50" />;
   }
 
+  // ---- Not set up yet (no restaurant chosen) ----
   if (!companyId) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -163,9 +219,16 @@ export default function KioskPage() {
           <div>
             <div className="text-5xl mb-3">🔧</div>
             <div className="text-xl font-bold text-gray-900 mb-1">This tablet is not set up yet</div>
-            <div className="text-gray-500">Open this clock with the restaurant in the address, e.g. <span className="font-mono">/kiosk?company=6</span></div>
+            <div className="text-gray-500 mb-6">A manager picks the restaurant in settings.</div>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="bg-green-600 text-white px-8 py-3.5 rounded-full text-lg font-bold active:bg-green-700"
+            >
+              ⚙ Set up this tablet
+            </button>
           </div>
         </div>
+        {overlay}
       </div>
     );
   }
@@ -180,7 +243,7 @@ export default function KioskPage() {
       else noteMsg = 'You’re on time';
     } else {
       if (r.note === 'early') { noteMsg = `Left ${r.mins} min early`; noteClass = 'bg-amber-50 text-amber-700'; }
-      else if (r.note === 'overtime') { noteMsg = `${r.mins} min overtime — thanks!`; noteClass = 'bg-blue-50 text-blue-700'; }
+      else if (r.note === 'overtime') { noteMsg = `${r.mins} min overtime — thanks!`; noteClass = 'bg-green-50 text-green-700'; }
       else noteMsg = 'See you!';
     }
     return (
@@ -200,6 +263,7 @@ export default function KioskPage() {
             Done
           </button>
         </div>
+        {overlay}
       </div>
     );
   }
@@ -260,6 +324,7 @@ export default function KioskPage() {
             </button>
           </div>
         </div>
+        {overlay}
       </div>
     );
   }
@@ -296,7 +361,10 @@ export default function KioskPage() {
           </div>
         )}
       </div>
-      <footer className="text-center text-green-600 font-bold py-4">● {workingNow} working now</footer>
+      {settings.showWorkingNow && (
+        <footer className="text-center text-green-600 font-bold py-4">● {workingNow} working now</footer>
+      )}
+      {overlay}
     </div>
   );
 }
