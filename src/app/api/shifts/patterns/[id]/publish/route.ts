@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { createSlot } from '@/lib/shifts-odoo';
+import { createSlot, fetchEmployees } from '@/lib/shifts-odoo';
 import {
   createPublishRun,
   getPattern,
@@ -17,7 +17,9 @@ import {
   setSlotDepartments,
   setSlotMinSkills,
 } from '@/lib/shifts-db';
+import { notifyEmployee } from '@/lib/shifts-notify';
 import { planSlotsForWeek } from '@/lib/shifts-patterns';
+import { weekKeyDays } from '@/lib/shifts-time';
 import { requireManagerCompany, resolveWeekKey, serverError } from '../../../_manager';
 
 export const dynamic = 'force-dynamic';
@@ -97,6 +99,24 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await getOdoo().write('planning.slot', created, { state: 'published' });
     const runId = createPublishRun({ companyId, patternId: pattern.id, weekKey, selectDeadline });
     recordPublishSlots(runId, created);
+
+    // Notify every schedulable staff member: shifts are up to pick. In-app + a
+    // best-effort push. Never let a notification failure break the publish.
+    try {
+      const days = weekKeyDays(weekKey);
+      const weekLabel = `${days[0]} to ${days[6]}`;
+      const staff = await fetchEmployees(companyId);
+      for (const e of staff) {
+        if (e.resourceId === null) continue;
+        await notifyEmployee(e.id, companyId, 'week_published', {
+          weekKey,
+          message: `New shifts are up for the week of ${weekLabel}. Open Planning and pick yours before the deadline.`,
+        });
+      }
+    } catch (notifyErr: unknown) {
+      const m = notifyErr instanceof Error ? notifyErr.message : String(notifyErr);
+      console.warn(`[shifts] publish notify failed (ignored): ${m}`);
+    }
 
     return NextResponse.json({ ok: true, runId, created: created.length });
   } catch (err: unknown) {
