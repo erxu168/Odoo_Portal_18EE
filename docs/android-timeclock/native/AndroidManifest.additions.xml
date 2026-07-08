@@ -1,0 +1,21 @@
+<!--
+  Paste the <receiver> block below INSIDE the existing <application> element in
+  android/app/src/main/AndroidManifest.xml (the one Capacitor generated), next to
+  the <activity android:name=".MainActivity"> block. Do NOT replace the whole file.
+
+  This registers the device-admin receiver so the app can be made device owner for
+  a fully-enforced kiosk (README step 6). It is inert until you actually provision.
+
+  You also need the small resource file res/xml/device_admin.xml (in this folder).
+-->
+<receiver
+    android:name=".KioskDeviceAdminReceiver"
+    android:permission="android.permission.BIND_DEVICE_ADMIN"
+    android:exported="true">
+  <meta-data
+      android:name="android.app.device_admin"
+      android:resource="@xml/device_admin" />
+  <intent-filter>
+    <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+  </intent-filter>
+</receiver>
