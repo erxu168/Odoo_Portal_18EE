@@ -12,7 +12,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import { Badge, EmptyState, SearchBar, SectionTitle, Sheet, Spinner } from '@/components/shifts/ui';
 import { ds } from '@/lib/design-system';
-import { fmtDay, fmtTimeRange } from '@/lib/shifts-time';
+import { berlinParts, fmtDay, fmtTimeRange } from '@/lib/shifts-time';
+import { isWeekendDow } from '@/lib/shifts-weekend';
 import type { ShiftSlot } from '@/types/shifts';
 
 interface OpenShiftsListProps {
@@ -28,8 +29,19 @@ interface OpenShiftsListProps {
 type OpenShift = ShiftSlot & {
   eligible: boolean;
   minSkill?: string | null;
-  reason?: 'role' | 'skill' | null;
+  reason?: 'role' | 'skill' | 'weekend_first' | null;
 };
+
+interface WeekendGateInfo {
+  weekKey: string;
+  required: number;
+  remaining: number;
+  weekendSlotsAvailable: number;
+}
+
+function isWeekendShift(s: ShiftSlot): boolean {
+  return isWeekendDow(berlinParts(s.start).dow);
+}
 
 function skillLabel(minSkill: string | null | undefined): string {
   return minSkill === '3' ? 'Team Lead' : 'Associate';
@@ -68,6 +80,7 @@ export default function OpenShiftsList({ companyId, employeeId, onBack, onOpenMi
   const [shifts, setShifts] = useState<OpenShift[]>([]);
   const [weekHours, setWeekHours] = useState(0);
   const [cap, setCap] = useState<number | null>(null);
+  const [weekendGate, setWeekendGate] = useState<WeekendGateInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -101,6 +114,7 @@ export default function OpenShiftsList({ companyId, employeeId, onBack, onOpenMi
       setShifts(Array.isArray(data.shifts) ? data.shifts : []);
       setWeekHours(typeof data.weekHours === 'number' ? data.weekHours : 0);
       setCap(typeof data.cap === 'number' ? data.cap : null);
+      setWeekendGate(data.weekendGate && typeof data.weekendGate === 'object' ? data.weekendGate : null);
     } catch (err: unknown) {
       console.error('[shifts] Failed to load open shifts:', err);
       setError(err instanceof Error ? err.message : 'Could not load open shifts');
@@ -228,6 +242,22 @@ export default function OpenShiftsList({ companyId, employeeId, onBack, onOpenMi
                 )}
               </div>
             )}
+            {weekendGate && weekendGate.remaining > 0 && (
+              <div className="mt-2 flex gap-2.5 rounded-xl bg-red-50 border border-red-200 px-3.5 py-3">
+                <svg viewBox="0 0 24 24" className="w-[17px] h-[17px] flex-shrink-0 mt-0.5 text-red-600" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <div className="text-[var(--fs-sm)] leading-relaxed text-red-800">
+                  <b>Weekend shifts come first.</b> Claim {weekendGate.remaining} more weekend shift
+                  {weekendGate.remaining === 1 ? '' : 's'} to unlock weekday shifts.
+                  {weekendGate.weekendSlotsAvailable > 0
+                    ? ` ${weekendGate.weekendSlotsAvailable} available below.`
+                    : ''}
+                </div>
+              </div>
+            )}
             <SectionTitle>
               {`This week · ${fmtH(weekHours)}${cap !== null ? ` / ${fmtCap(cap)}` : ''} h`}
             </SectionTitle>
@@ -271,9 +301,14 @@ export default function OpenShiftsList({ companyId, employeeId, onBack, onOpenMi
                           </div>
                           {s.eligible ? (
                             <span className="flex items-center gap-1.5 flex-shrink-0">
+                              {weekendGate && isWeekendShift(s) && (
+                                <Badge variant="orange">Counts toward weekend</Badge>
+                              )}
                               {s.minSkill && <Badge variant="amber">{skillLabel(s.minSkill)}+</Badge>}
                               <Badge variant="green">Open</Badge>
                             </span>
+                          ) : s.reason === 'weekend_first' ? (
+                            <Badge variant="gray">Weekend first</Badge>
                           ) : s.reason === 'skill' ? (
                             <Badge variant="gray">Needs {skillLabel(s.minSkill)}</Badge>
                           ) : (
@@ -315,7 +350,7 @@ export default function OpenShiftsList({ companyId, employeeId, onBack, onOpenMi
               <WarnBox>
                 Taking this puts you at <b>{`${fmtH(warn.projected)} of ${fmtCap(warn.cap)} hours`}</b> that week
                 {' — '}
-                <b>{`${fmtH(warn.overage)} h over`}</b> your cap.
+                <b>{`${fmtH(warn.overage)} h over`}</b> your weekly hours. Your manager will see it.
               </WarnBox>
             )}
 
