@@ -1,6 +1,34 @@
 # Krawings Portal — STATUS
 
-_Last updated: 2026-07-03_
+_Last updated: 2026-07-08_
+
+## 2026-07-08 session — Kiosk: manager-gated on-tablet settings (commit `64904c7`)
+
+The Time Clock kiosk (`/kiosk`) previously only knew its restaurant from the URL
+(`/kiosk?company=6`); a fresh tablet showed a dead-end "not set up" screen. Added a
+**⚙ gear → settings screen** so a manager configures the tablet on-device.
+
+- **Unlock = full portal login** (email + password), verified **server-side** with
+  role ≥ manager. Staff/admin-less accounts get "Only managers can change settings".
+  New route `POST /api/kiosk/admin-login` — returns the user's allowed companies
+  (admins = all) and **sets NO session cookie** (a shared tablet must never stay
+  logged in); auto-relocks on close or 60s idle (pointer + keyboard).
+- **Settings** (localStorage, per device): restaurant (required) + tablet name,
+  full-screen lock, idle-reset seconds, punch sound, and the "working now" footer.
+  The `?company=` URL still works as a first-time fallback. Staff punch flow unchanged.
+- Files: `src/lib/kiosk-settings.ts` (new), `src/app/api/kiosk/admin-login/route.ts`
+  (new), `src/components/kiosk/{KioskSettings,KioskLoginGate,KioskSettingsForm}.tsx`
+  (new), `src/app/kiosk/page.tsx` (gear + settings applied; overlay is a stable
+  top-level sibling so setting the company doesn't remount it). e2e:
+  `tests/kiosk-settings.e2e.spec.ts`. Spec: `docs/superpowers/specs/2026-07-08-kiosk-settings-design.md`.
+- **Security review** (adversarial multi-lens) caught + fixed: rate-limit was
+  IP-only and `X-Forwarded-For`-spoofable → added a **per-email** bucket; the 60s
+  idle-relock never fired (parent re-renders re-armed it) → ref-based stable timer.
+- **Verified on staging** (`portal.krawings.de`): build green; 3/3 Playwright e2e
+  pass (fresh-setup path, staff refused, manager sets restaurant + persists); curl
+  checks confirm 200 + no cookie for a manager, 401 wrong-pw, 403 staff, and 429 by
+  the 6th spoofed-IP guess (per-email cap holds). WAJ = company **6**.
+- **PROD pending** Ethan's go.
 
 ## 2026-07-03 session — Inventory: count drinks in crates + loose bottles (multi-UoM) (commit `8a4be4b`)
 
