@@ -15,7 +15,11 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { getDb } from '@/lib/db';
 import type {
   CoverRequest,
+  PublishRunState,
   ShiftNotification,
+  ShiftPattern,
+  ShiftPatternLine,
+  ShiftPublishRun,
   ShiftSettings,
   ShiftTemplate,
   SickReport,
@@ -143,6 +147,45 @@ function ensureTables(): void {
       min_skill TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_slot_skill_company ON shift_slot_min_skill(company_id);
+
+    CREATE TABLE IF NOT EXISTS shift_pattern (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pattern_company ON shift_pattern(company_id);
+
+    CREATE TABLE IF NOT EXISTS shift_pattern_line (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pattern_id INTEGER NOT NULL,
+      weekday INTEGER NOT NULL,
+      start_hhmm TEXT NOT NULL,
+      end_hhmm TEXT NOT NULL,
+      role_id INTEGER,
+      department_id INTEGER,
+      headcount INTEGER NOT NULL DEFAULT 1,
+      min_skill TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_pattern_line_pattern ON shift_pattern_line(pattern_id);
+
+    CREATE TABLE IF NOT EXISTS shift_publish_run (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      pattern_id INTEGER,
+      week_key TEXT NOT NULL,
+      select_deadline TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_publish_run_company ON shift_publish_run(company_id);
+
+    CREATE TABLE IF NOT EXISTS shift_publish_slot (
+      run_id INTEGER NOT NULL,
+      slot_id INTEGER NOT NULL,
+      PRIMARY KEY (run_id, slot_id)
+    );
   `);
   _initialized = true;
 }
@@ -784,4 +827,233 @@ export function deleteShiftTemplate(id: number, companyId: number): boolean {
     .prepare('DELETE FROM shift_templates WHERE id = ? AND company_id = ?')
     .run(id, companyId);
   return info.changes > 0;
+}
+
+// -- Shift patterns (reusable weekly stencils) + publish runs -------------------
+
+interface PatternRow {
+  id: number;
+  company_id: number;
+  name: string;
+  active: number;
+  created_at: string;
+}
+interface PatternLineRow {
+  id: number;
+  pattern_id: number;
+  weekday: number;
+  start_hhmm: string;
+  end_hhmm: string;
+  role_id: number | null;
+  department_id: number | null;
+  headcount: number;
+  min_skill: string | null;
+}
+
+function mapPatternLine(r: PatternLineRow): ShiftPatternLine {
+  return {
+    weekday: r.weekday,
+    startHHMM: r.start_hhmm,
+    endHHMM: r.end_hhmm,
+    roleId: r.role_id,
+    departmentId: r.department_id,
+    headcount: r.headcount,
+    minSkill: r.min_skill === '2' || r.min_skill === '3' ? r.min_skill : null,
+  };
+}
+
+function insertPatternLines(patternId: number, lines: ShiftPatternLine[]): void {
+  const stmt = getDb().prepare(
+    `INSERT INTO shift_pattern_line
+       (pattern_id, weekday, start_hhmm, end_hhmm, role_id, department_id, headcount, min_skill)
+     VALUES (?,?,?,?,?,?,?,?)`,
+  );
+  for (const l of lines) {
+    stmt.run(
+      patternId,
+      l.weekday,
+      l.startHHMM,
+      l.endHHMM,
+      l.roleId,
+      l.departmentId,
+      Math.max(1, Math.min(20, l.headcount || 1)),
+      l.minSkill,
+    );
+  }
+}
+
+/** Create a pattern with its lines in one transaction; returns the new id. */
+export function createPattern(v: { companyId: number; name: string; lines: ShiftPatternLine[] }): number {
+  ensureTables();
+  const db = getDb();
+  const tx = db.transaction(() => {
+    const info = db
+      .prepare('INSERT INTO shift_pattern (company_id, name, active, created_at) VALUES (?,?,1,?)')
+      .run(v.companyId, v.name, nowISO());
+    const id = Number(info.lastInsertRowid);
+    insertPatternLines(id, v.lines);
+    return id;
+  });
+  return tx();
+}
+
+/** Active patterns for a company (newest first), each with its lines. */
+export function listPatterns(companyId: number): ShiftPattern[] {
+  ensureTables();
+  const db = getDb();
+  const rows = db
+    .prepare('SELECT * FROM shift_pattern WHERE company_id=? AND active=1 ORDER BY id DESC')
+    .all(companyId) as PatternRow[];
+  return rows.map(r => ({
+    id: r.id,
+    companyId: r.company_id,
+    name: r.name,
+    active: r.active === 1,
+    createdAt: r.created_at,
+    lines: (
+      db
+        .prepare('SELECT * FROM shift_pattern_line WHERE pattern_id=? ORDER BY weekday, start_hhmm')
+        .all(r.id) as PatternLineRow[]
+    ).map(mapPatternLine),
+  }));
+}
+
+/** One pattern with its lines, scoped to its company; null if not found. */
+export function getPattern(id: number, companyId: number): ShiftPattern | null {
+  ensureTables();
+  const db = getDb();
+  const r = db
+    .prepare('SELECT * FROM shift_pattern WHERE id=? AND company_id=?')
+    .get(id, companyId) as PatternRow | undefined;
+  if (!r) return null;
+  const lines = (
+    db
+      .prepare('SELECT * FROM shift_pattern_line WHERE pattern_id=? ORDER BY weekday, start_hhmm')
+      .all(id) as PatternLineRow[]
+  ).map(mapPatternLine);
+  return { id: r.id, companyId: r.company_id, name: r.name, active: r.active === 1, createdAt: r.created_at, lines };
+}
+
+/** Rename + replace all lines of a pattern in one transaction. */
+export function replacePatternLines(
+  id: number,
+  companyId: number,
+  name: string,
+  lines: ShiftPatternLine[],
+): boolean {
+  ensureTables();
+  const db = getDb();
+  const tx = db.transaction(() => {
+    const upd = db.prepare('UPDATE shift_pattern SET name=? WHERE id=? AND company_id=?').run(name, id, companyId);
+    if (upd.changes !== 1) return false;
+    db.prepare('DELETE FROM shift_pattern_line WHERE pattern_id=?').run(id);
+    insertPatternLines(id, lines);
+    return true;
+  });
+  return tx();
+}
+
+/** Soft-delete a pattern (active=0). Returns true if a row was updated. */
+export function deletePattern(id: number, companyId: number): boolean {
+  ensureTables();
+  const info = getDb()
+    .prepare('UPDATE shift_pattern SET active=0 WHERE id=? AND company_id=?')
+    .run(id, companyId);
+  return info.changes === 1;
+}
+
+interface RunRow {
+  id: number;
+  company_id: number;
+  pattern_id: number | null;
+  week_key: string;
+  select_deadline: string;
+  state: string;
+  created_at: string;
+}
+function mapRun(r: RunRow): ShiftPublishRun {
+  const st: PublishRunState =
+    r.state === 'locked' || r.state === 'finalized' ? r.state : 'open';
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    patternId: r.pattern_id,
+    weekKey: r.week_key,
+    selectDeadline: r.select_deadline,
+    state: st,
+    createdAt: r.created_at,
+  };
+}
+
+/** Record a publish: pattern → week, with the staff-selection deadline. */
+export function createPublishRun(v: {
+  companyId: number;
+  patternId: number | null;
+  weekKey: string;
+  selectDeadline: string;
+}): number {
+  ensureTables();
+  const info = getDb()
+    .prepare(
+      `INSERT INTO shift_publish_run (company_id, pattern_id, week_key, select_deadline, state, created_at)
+       VALUES (?,?,?,?,'open',?)`,
+    )
+    .run(v.companyId, v.patternId, v.weekKey, v.selectDeadline, nowISO());
+  return Number(info.lastInsertRowid);
+}
+
+/** Map generated slot ids to a run (for lock/gaps/cleanup). Idempotent. */
+export function recordPublishSlots(runId: number, slotIds: number[]): void {
+  if (slotIds.length === 0) return;
+  ensureTables();
+  const db = getDb();
+  const stmt = db.prepare('INSERT OR IGNORE INTO shift_publish_slot (run_id, slot_id) VALUES (?,?)');
+  const tx = db.transaction((ids: number[]) => {
+    for (const s of ids) stmt.run(runId, s);
+  });
+  tx(slotIds);
+}
+
+/** All publish runs for a company, newest first. */
+export function listPublishRuns(companyId: number): ShiftPublishRun[] {
+  ensureTables();
+  return (
+    getDb().prepare('SELECT * FROM shift_publish_run WHERE company_id=? ORDER BY id DESC').all(companyId) as RunRow[]
+  ).map(mapRun);
+}
+
+/** One publish run, scoped to its company; null if not found. */
+export function getPublishRun(id: number, companyId: number): ShiftPublishRun | null {
+  ensureTables();
+  const r = getDb()
+    .prepare('SELECT * FROM shift_publish_run WHERE id=? AND company_id=?')
+    .get(id, companyId) as RunRow | undefined;
+  return r ? mapRun(r) : null;
+}
+
+/** slot ids generated by a run. */
+export function publishRunSlotIds(runId: number): number[] {
+  ensureTables();
+  return (
+    getDb().prepare('SELECT slot_id FROM shift_publish_slot WHERE run_id=?').all(runId) as { slot_id: number }[]
+  ).map(x => x.slot_id);
+}
+
+/** Set a run's lifecycle state. Returns true if a row changed. */
+export function setPublishRunState(id: number, companyId: number, state: PublishRunState): boolean {
+  ensureTables();
+  return (
+    getDb().prepare('UPDATE shift_publish_run SET state=? WHERE id=? AND company_id=?').run(state, id, companyId)
+      .changes === 1
+  );
+}
+
+/** Move a run's selection deadline. Returns true if a row changed. */
+export function setPublishRunDeadline(id: number, companyId: number, selectDeadline: string): boolean {
+  ensureTables();
+  return (
+    getDb()
+      .prepare('UPDATE shift_publish_run SET select_deadline=? WHERE id=? AND company_id=?')
+      .run(selectDeadline, id, companyId).changes === 1
+  );
 }
