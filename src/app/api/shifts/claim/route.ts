@@ -16,12 +16,21 @@ import {
   employeeWeekHours,
   fetchEmployees,
   fetchSlot,
+  fetchWeekSlots,
   meetsMinSkill,
   recomputeWeekFlags,
   updateSlot,
 } from '@/lib/shifts-odoo';
-import { slotMinSkill } from '@/lib/shifts-db';
-import { berlinISOWeekKey, fmtDay, fmtTimeRange, odooToDate } from '@/lib/shifts-time';
+import {
+  getWeekendEnabled,
+  slotMinSkill,
+  slotMinSkills,
+  upsertWeekendHistory,
+  weekendGateUnlockedAt,
+} from '@/lib/shifts-db';
+import { berlinISOWeekKey, berlinParts, fmtDay, fmtTimeRange, odooToDate } from '@/lib/shifts-time';
+import { computeWeekendGate, isWeekendDow } from '@/lib/shifts-weekend';
+import type { CohortEmp, WeekendSlotLite } from '@/lib/shifts-weekend';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,11 +105,66 @@ export async function POST(request: Request) {
       );
     }
 
-    // Live cap projection for the shift's week.
     const weekKey = berlinISOWeekKey(slot.start);
+
+    // Weekend rule: block claiming a WEEKDAY shift until this week's weekend
+    // quota is met. Weekend shifts themselves are never blocked. Once met, the
+    // unlock is persisted (grandfather guard) so it can't be undone by others.
+    if (getWeekendEnabled(companyId) && !isWeekendDow(berlinParts(slot.start).dow)) {
+      const grandfathered = weekendGateUnlockedAt(companyId, employeeId, weekKey) !== null;
+      if (!grandfathered) {
+        const weekSlots = await fetchWeekSlots(companyId, weekKey);
+        const weekendSlots = weekSlots.filter(
+          s => s.state === 'published' && isWeekendDow(berlinParts(s.start).dow),
+        );
+        const wsMinSkill = slotMinSkills(companyId, weekendSlots.map(s => s.id));
+        const lite: WeekendSlotLite[] = weekendSlots.map(s => ({
+          id: s.id,
+          roleId: s.roleId,
+          minSkill: (wsMinSkill.get(s.id) as '2' | '3' | undefined) ?? null,
+          resourceId: s.resourceId,
+        }));
+        const cohort: CohortEmp[] = employees.map(e => ({
+          id: e.id,
+          resourceId: e.resourceId,
+          skill: e.skill,
+          roleIds: e.roleIds,
+        }));
+        const gate = computeWeekendGate(lite, cohort, {
+          id: me.id,
+          resourceId: me.resourceId,
+          skill: me.skill,
+          roleIds: me.roleIds,
+        });
+        if (gate.inCohort && gate.remaining === 0) {
+          upsertWeekendHistory({
+            companyId,
+            employeeId,
+            periodKey: weekKey,
+            quotaRequired: gate.required,
+            weekendWorked: gate.done,
+            gateUnlocked: true,
+          });
+        }
+        if (!gate.gateOpen) {
+          return NextResponse.json(
+            {
+              error: `Claim ${gate.remaining} weekend shift${gate.remaining === 1 ? '' : 's'} first, then you can pick weekday shifts.`,
+              weekend_first: true,
+              remaining: gate.remaining,
+              weekendSlotsAvailable: gate.weekendSlotsAvailable,
+            },
+            { status: 409 },
+          );
+        }
+      }
+    }
+
+    // Live cap projection for the shift's week. The weekly limit is the
+    // manager cap if set, otherwise the person's contracted weekly hours.
     const current = await employeeWeekHours(employeeId, weekKey);
     const projected = round2(current + slot.hours);
-    const cap = me.cap;
+    const cap = me.cap ?? me.weeklyTarget;
     const overCap = cap !== null && projected > cap;
     if (overCap && body.confirm !== true) {
       return NextResponse.json({
