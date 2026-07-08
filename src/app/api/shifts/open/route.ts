@@ -10,9 +10,17 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { employeeWeekHours, fetchDepartments, fetchEmployees, meetsMinSkill } from '@/lib/shifts-odoo';
-import { slotDepartments, slotMinSkills } from '@/lib/shifts-db';
-import { currentWeekKey, durationHours, nowOdooUtc } from '@/lib/shifts-time';
+import { employeeWeekHours, fetchDepartments, fetchEmployees, fetchWeekSlots, meetsMinSkill } from '@/lib/shifts-odoo';
+import {
+  getWeekendEnabled,
+  slotDepartments,
+  slotMinSkills,
+  upsertWeekendHistory,
+  weekendGateUnlockedAt,
+} from '@/lib/shifts-db';
+import { berlinISOWeekKey, berlinParts, currentWeekKey, durationHours, nowOdooUtc } from '@/lib/shifts-time';
+import { computeWeekendGate, isWeekendDow } from '@/lib/shifts-weekend';
+import type { CohortEmp, WeekendSlotLite } from '@/lib/shifts-weekend';
 import type { ShiftSlot } from '@/types/shifts';
 
 export const dynamic = 'force-dynamic';
@@ -120,16 +128,81 @@ export async function GET(request: Request) {
       const departmentName = deptOv !== undefined ? deptNameById.get(deptOv) ?? '' : slot.departmentName;
       const roleOk = canWork(slot.roleId);
       const skillOk = meetsMinSkill(me?.skill ?? null, minSkill);
-      const reason: 'role' | 'skill' | null = !roleOk ? 'role' : !skillOk ? 'skill' : null;
+      const reason = (!roleOk ? 'role' : !skillOk ? 'skill' : null) as
+        | 'role'
+        | 'skill'
+        | 'weekend_first'
+        | null;
       return { ...slot, departmentName, minSkill, eligible: roleOk && skillOk, reason };
     });
+
+    // Weekend rule: each week's weekday slots are gated behind the viewer's
+    // weekend quota for that week. Weekend (Fri/Sat/Sun) slots are never gated —
+    // they are the way to satisfy the requirement.
+    let weekendGate:
+      | { weekKey: string; required: number; remaining: number; weekendSlotsAvailable: number }
+      | null = null;
+    if (me && me.resourceId !== null && getWeekendEnabled(companyId)) {
+      const cohort: CohortEmp[] = employees.map(e => ({
+        id: e.id,
+        resourceId: e.resourceId,
+        skill: e.skill,
+        roleIds: e.roleIds,
+      }));
+      const meCohort: CohortEmp = { id: me.id, resourceId: me.resourceId, skill: me.skill, roleIds: me.roleIds };
+      const weeks = Array.from(new Set(shifts.map(s => berlinISOWeekKey(s.start))));
+      const gateOpenByWeek = new Map<string, boolean>();
+      for (const wk of weeks) {
+        const weekSlots = await fetchWeekSlots(companyId, wk);
+        const weekendSlots = weekSlots.filter(
+          s => s.state === 'published' && isWeekendDow(berlinParts(s.start).dow),
+        );
+        const wsMinSkill = slotMinSkills(companyId, weekendSlots.map(s => s.id));
+        const lite: WeekendSlotLite[] = weekendSlots.map(s => ({
+          id: s.id,
+          roleId: s.roleId,
+          minSkill: (wsMinSkill.get(s.id) as '2' | '3' | undefined) ?? null,
+          resourceId: s.resourceId,
+        }));
+        const gate = computeWeekendGate(lite, cohort, meCohort);
+        const grandfathered = weekendGateUnlockedAt(companyId, employeeId, wk) !== null;
+        const open = gate.gateOpen || grandfathered;
+        gateOpenByWeek.set(wk, open);
+        upsertWeekendHistory({
+          companyId,
+          employeeId,
+          periodKey: wk,
+          quotaRequired: gate.required,
+          weekendWorked: gate.done,
+          gateUnlocked: gate.inCohort && gate.remaining === 0,
+        });
+        if (!open && gate.remaining > 0 && (!weekendGate || wk < weekendGate.weekKey)) {
+          weekendGate = {
+            weekKey: wk,
+            required: gate.required,
+            remaining: gate.remaining,
+            weekendSlotsAvailable: gate.weekendSlotsAvailable,
+          };
+        }
+      }
+      for (const s of shifts) {
+        if (!s.eligible) continue;
+        if (isWeekendDow(berlinParts(s.start).dow)) continue;
+        if (gateOpenByWeek.get(berlinISOWeekKey(s.start)) === false) {
+          s.eligible = false;
+          s.reason = 'weekend_first';
+        }
+      }
+    }
+
     // Eligible first, then by start (rows are already start-ordered).
     shifts.sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.start.localeCompare(b.start));
 
     return NextResponse.json({
       shifts,
       weekHours,
-      cap: me?.cap ?? null,
+      cap: me?.cap ?? me?.weeklyTarget ?? null,
+      weekendGate,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
