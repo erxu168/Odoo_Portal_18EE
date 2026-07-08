@@ -7,7 +7,7 @@
  * their current values; the saved ShiftSettings object is returned.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getShiftSettings, saveShiftSettings } from '@/lib/shifts-db';
+import { getShiftSettings, getWeekendEnabled, saveShiftSettings, setWeekendEnabled } from '@/lib/shifts-db';
 import type { ShiftSettings } from '@/types/shifts';
 import { requireManagerCompany, serverError } from '../_manager';
 
@@ -17,7 +17,10 @@ export async function GET(req: NextRequest) {
   try {
     const auth = requireManagerCompany(req.nextUrl.searchParams.get('company_id'));
     if (!auth.ok) return auth.res;
-    return NextResponse.json(getShiftSettings(auth.companyId));
+    return NextResponse.json({
+      ...getShiftSettings(auth.companyId),
+      weekendEnabled: getWeekendEnabled(auth.companyId),
+    });
   } catch (err: unknown) {
     return serverError('GET settings', err);
   }
@@ -67,7 +70,11 @@ export async function PUT(req: NextRequest) {
     };
     saveShiftSettings(settings);
 
-    return NextResponse.json(settings);
+    if (typeof body.weekendEnabled === 'boolean') {
+      setWeekendEnabled(companyId, body.weekendEnabled);
+    }
+
+    return NextResponse.json({ ...settings, weekendEnabled: getWeekendEnabled(companyId) });
   } catch (err: unknown) {
     return serverError('PUT settings', err);
   }

@@ -26,6 +26,7 @@ interface SettingsForm {
   settleBufferHours: number;
   allowAskAll: boolean;
   allowSickReport: boolean;
+  weekendEnabled: boolean;
 }
 
 const ANSWER_HOURS = [4, 8, 12, 24];
@@ -88,6 +89,7 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
         settleBufferHours: numOr(s.settleBufferHours, 2),
         allowAskAll: bool(s.allowAskAll, true),
         allowSickReport: bool(s.allowSickReport, true),
+        weekendEnabled: bool(s.weekendEnabled, true),
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -224,6 +226,21 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                   <ToggleSwitch
                     on={form.allowSickReport}
                     onToggle={() => update({ allowSickReport: !form.allowSickReport })}
+                  />
+                }
+              />
+            </div>
+
+            <SectionTitle>Weekend rule</SectionTitle>
+            <div className="mx-4 bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] overflow-hidden">
+              <SettingRow
+                title="Weekend shifts first"
+                hint="Staff must claim their fair share of Fri–Sun shifts before they can pick weekday shifts"
+                divider={false}
+                control={
+                  <ToggleSwitch
+                    on={form.weekendEnabled}
+                    onToggle={() => update({ weekendEnabled: !form.weekendEnabled })}
                   />
                 }
               />

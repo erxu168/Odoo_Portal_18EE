@@ -20,6 +20,7 @@ import Timesheet from '@/components/shifts/Timesheet';
 import Punctuality from '@/components/shifts/Punctuality';
 import ShiftSettings from '@/components/shifts/ShiftSettings';
 import PatternManager from '@/components/shifts/PatternManager';
+import StaffAnnouncement from '@/components/shifts/StaffAnnouncement';
 import { Spinner } from '@/components/shifts/ui';
 
 /**
@@ -213,6 +214,11 @@ export default function ShiftsPage() {
               onNavigate={handleTileNav}
               onSettings={() => navigate({ type: 'settings' })}
               onHome={goHome}
+            />
+            <StaffAnnouncement
+              companyId={companyId}
+              employeeId={employeeId}
+              onGoOpen={() => navigate({ type: 'open' })}
             />
           </>
         );
