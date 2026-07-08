@@ -153,3 +153,44 @@ export interface ShiftTemplate {
   headcount: number;
   createdAt: string;
 }
+
+// -- Shift patterns (reusable weekly stencils) + publish runs --------------------
+
+/** Lifecycle of a published week of shifts. */
+export type PublishRunState = 'open' | 'locked' | 'finalized';
+
+/** One line of a weekly pattern: a shift that repeats on a given weekday. */
+export interface ShiftPatternLine {
+  /** 1=Mon … 7=Sun (ISO) */
+  weekday: number;
+  startHHMM: string;
+  endHHMM: string;
+  roleId: number | null;
+  departmentId: number | null;
+  /** how many people this shift needs (1..20) */
+  headcount: number;
+  /** min skill to claim ('2' Associate+ | '3' Team Lead | null = anyone) */
+  minSkill: '2' | '3' | null;
+}
+
+/** A reusable weekly pattern of shifts, per company. */
+export interface ShiftPattern {
+  id: number;
+  companyId: number;
+  name: string;
+  active: boolean;
+  createdAt: string;
+  lines: ShiftPatternLine[];
+}
+
+/** One publish of a pattern into a week, with the staff-selection deadline. */
+export interface ShiftPublishRun {
+  id: number;
+  companyId: number;
+  patternId: number | null;
+  weekKey: string;
+  /** ISO datetime by which staff must have chosen */
+  selectDeadline: string;
+  state: PublishRunState;
+  createdAt: string;
+}
