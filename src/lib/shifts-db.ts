@@ -186,6 +186,25 @@ function ensureTables(): void {
       slot_id INTEGER NOT NULL,
       PRIMARY KEY (run_id, slot_id)
     );
+
+    CREATE TABLE IF NOT EXISTS shift_weekend_config (
+      company_id INTEGER PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS shift_weekend_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      period_key TEXT NOT NULL,
+      quota_required INTEGER NOT NULL DEFAULT 0,
+      weekend_worked INTEGER NOT NULL DEFAULT 0,
+      gate_unlocked_at TEXT,
+      updated_at TEXT NOT NULL,
+      UNIQUE(company_id, employee_id, period_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_wknd_hist_emp ON shift_weekend_history(company_id, employee_id, period_key);
   `);
   _initialized = true;
 }
@@ -1056,4 +1075,65 @@ export function setPublishRunDeadline(id: number, companyId: number, selectDeadl
       .prepare('UPDATE shift_publish_run SET select_deadline=? WHERE id=? AND company_id=?')
       .run(selectDeadline, id, companyId).changes === 1
   );
+}
+
+// -- Weekend rule: per-company on/off + per-person history (grandfather guard) --
+
+/** Is the "weekend shifts first" rule on for this company? Default: on. */
+export function getWeekendEnabled(companyId: number): boolean {
+  ensureTables();
+  const row = getDb()
+    .prepare('SELECT enabled FROM shift_weekend_config WHERE company_id=?')
+    .get(companyId) as { enabled: number } | undefined;
+  return row ? row.enabled === 1 : true;
+}
+
+export function setWeekendEnabled(companyId: number, on: boolean): void {
+  ensureTables();
+  getDb()
+    .prepare(
+      `INSERT INTO shift_weekend_config (company_id, enabled, updated_at) VALUES (?,?,?)
+       ON CONFLICT(company_id) DO UPDATE SET enabled=excluded.enabled, updated_at=excluded.updated_at`,
+    )
+    .run(companyId, on ? 1 : 0, nowISO());
+}
+
+/** When (if ever) this person first met their weekend quota for the period. */
+export function weekendGateUnlockedAt(companyId: number, employeeId: number, periodKey: string): string | null {
+  ensureTables();
+  const row = getDb()
+    .prepare(
+      'SELECT gate_unlocked_at FROM shift_weekend_history WHERE company_id=? AND employee_id=? AND period_key=?',
+    )
+    .get(companyId, employeeId, periodKey) as { gate_unlocked_at: string | null } | undefined;
+  return row?.gate_unlocked_at ?? null;
+}
+
+/**
+ * Record a person's weekend snapshot for a period. gate_unlocked_at is set once
+ * (the first time gateUnlocked is true) and never cleared — the grandfather
+ * guard, so meeting the bar once can't be undone by others' actions.
+ */
+export function upsertWeekendHistory(v: {
+  companyId: number;
+  employeeId: number;
+  periodKey: string;
+  quotaRequired: number;
+  weekendWorked: number;
+  gateUnlocked: boolean;
+}): void {
+  ensureTables();
+  const now = nowISO();
+  getDb()
+    .prepare(
+      `INSERT INTO shift_weekend_history
+         (company_id, employee_id, period_key, quota_required, weekend_worked, gate_unlocked_at, updated_at)
+       VALUES (?,?,?,?,?,?,?)
+       ON CONFLICT(company_id, employee_id, period_key) DO UPDATE SET
+         quota_required=excluded.quota_required,
+         weekend_worked=excluded.weekend_worked,
+         gate_unlocked_at=COALESCE(shift_weekend_history.gate_unlocked_at, excluded.gate_unlocked_at),
+         updated_at=excluded.updated_at`,
+    )
+    .run(v.companyId, v.employeeId, v.periodKey, v.quotaRequired, v.weekendWorked, v.gateUnlocked ? now : null, now);
 }
