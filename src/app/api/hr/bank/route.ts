@@ -80,13 +80,16 @@ export async function POST(req: NextRequest) {
     if (scope.error) return scope.error;
     const targetId = scope.targetId!;
 
-    const emps = await odoo.searchRead('hr.employee', [['id', '=', targetId]], ['bank_account_id', 'address_home_id'], { limit: 1, context: { active_test: false } });
+    // Odoo 18 removed hr.employee.address_home_id. A bank account (res.partner.bank)
+    // now hangs off the employee's related partner, work_contact_id — which Odoo
+    // auto-creates for every employee (verified: 0 employees lack one on staging).
+    const emps = await odoo.searchRead('hr.employee', [['id', '=', targetId]], ['bank_account_id', 'work_contact_id'], { limit: 1, context: { active_test: false } });
     if (!emps.length) {
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
     }
 
     const emp = emps[0];
-    const partnerId = emp.address_home_id ? emp.address_home_id[0] : null;
+    const partnerId = emp.work_contact_id ? emp.work_contact_id[0] : null;
 
     if (emp.bank_account_id) {
       const bankId = emp.bank_account_id[0];
@@ -95,7 +98,7 @@ export async function POST(req: NextRequest) {
       const newBankId = await odoo.create('res.partner.bank', { acc_number: cleaned, partner_id: partnerId });
       await odoo.write('hr.employee', [targetId], { bank_account_id: newBankId });
     } else {
-      return NextResponse.json({ error: 'This employee has no private address on file yet, so a bank account can’t be attached. Add their address first.' }, { status: 400 });
+      return NextResponse.json({ error: 'This employee has no contact record in Odoo yet, so a bank account can’t be attached.' }, { status: 400 });
     }
 
     return NextResponse.json({ success: true, iban: cleaned });
