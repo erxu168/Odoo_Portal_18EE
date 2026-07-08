@@ -61,11 +61,9 @@ test('a manager can set the restaurant and it persists', async ({ page }) => {
   await page.getByRole('button', { name: /Yes, switch restaurant/i }).click();
   await expect(page.getByText('● Current')).toBeVisible();
 
-  // close settings → the clock grid for that company (or its empty state)
+  // close settings → the clock grid for that company (header always renders)
   await page.getByRole('button', { name: /^Done$/ }).click();
-  await expect(
-    page.getByText(/Tap your name to clock in or out|No staff set up for the clock yet/i),
-  ).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('Tap your name to clock in or out')).toBeVisible({ timeout: 20_000 });
 
   // reload → still configured (no "not set up")
   await page.reload();
