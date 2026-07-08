@@ -17,6 +17,7 @@ interface ShiftSettingsProps {
   employeeId: number | null;
   onBack: () => void;
   onHome: () => void;
+  onOpenPatterns?: () => void;
 }
 
 interface SettingsForm {
@@ -64,7 +65,7 @@ function SettingRow({
   );
 }
 
-export default function ShiftSettings({ companyId, onBack }: ShiftSettingsProps) {
+export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: ShiftSettingsProps) {
   const [form, setForm] = useState<SettingsForm | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -227,6 +228,26 @@ export default function ShiftSettings({ companyId, onBack }: ShiftSettingsProps)
                 }
               />
             </div>
+
+            {onOpenPatterns && (
+              <>
+                <SectionTitle>Planning setup</SectionTitle>
+                <button
+                  onClick={onOpenPatterns}
+                  className="mx-4 w-[calc(100%-2rem)] bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] flex items-center gap-3 px-4 py-3.5 active:bg-gray-50"
+                >
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="text-[var(--fs-md)] font-bold text-gray-900">Patterns &amp; publishing</div>
+                    <div className="text-[var(--fs-sm)] text-gray-500 mt-0.5 leading-snug">
+                      Build a weekly pattern once, then publish it with a deadline for staff to pick
+                    </div>
+                  </div>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </button>
+              </>
+            )}
 
             <div className="pt-2">
               <RolesDeptManager companyId={companyId} />
