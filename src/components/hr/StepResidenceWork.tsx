@@ -11,6 +11,22 @@ interface Props {
   submitLabel?: string;
 }
 
+// Valid keys for the Odoo Selection field hr.employee.kw_aufenthaltstitel_typ.
+// Must match Odoo exactly — a free-text value (e.g. "§ 16b Abs. 3 AufenthG") is
+// rejected server-side with "Wrong value for ...". Labels mirror Odoo's German
+// wording with an English gloss, matching the other onboarding selects.
+const PERMIT_TYPES: { value: string; label: string }[] = [
+  { value: 'unbefristet', label: 'Permanent settlement permit (Niederlassungserlaubnis)' },
+  { value: 'befristet', label: 'Temporary residence permit (Aufenthaltserlaubnis)' },
+  { value: 'blau', label: 'EU Blue Card (Blaue Karte EU)' },
+  { value: 'icr', label: 'ICT Card (ICT-Karte)' },
+  { value: 'duldung', label: 'Toleration (Duldung)' },
+  { value: 'gestattung', label: 'Permission to stay (Aufenthaltsgestattung)' },
+  { value: 'visum', label: 'Visa (Visum)' },
+  { value: 'eu_buerger', label: 'EU/EEA citizen — no permit needed (EU/EWR-Bürger)' },
+  { value: 'deutsch', label: 'German citizen (Deutsche Staatsangehörigkeit)' },
+];
+
 /**
  * Residence, work permit and health-certificate fields. Extracted from the old
  * EmployeeProfileEdit wizard so it can be reused as a standalone section editor.
@@ -54,7 +70,11 @@ export default function StepResidenceWork({ employee, saving, onPrev, onSave, su
 
         <div className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 pt-1">Residence / work permit</div>
         <Field label="Permit type">
-          <input value={permitType} onChange={(ev) => setPermitType(ev.target.value)} placeholder="e.g. Aufenthaltstitel §18a" className="form-inp" />
+          <select value={permitType} onChange={(ev) => setPermitType(ev.target.value)} className="form-inp">
+            <option value="">Select type…</option>
+            {PERMIT_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <span className="block text-[var(--fs-xs)] text-gray-400 mt-1.5">For a student permit (§ 16b AufenthG), choose Temporary residence permit.</span>
         </Field>
         <Field label="Passport number">
           <input value={passport} onChange={(ev) => setPassport(ev.target.value)} className="form-inp" />
