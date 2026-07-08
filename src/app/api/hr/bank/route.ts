@@ -95,8 +95,21 @@ export async function POST(req: NextRequest) {
       const bankId = emp.bank_account_id[0];
       await odoo.write('res.partner.bank', [bankId], { acc_number: cleaned });
     } else if (partnerId) {
-      const newBankId = await odoo.create('res.partner.bank', { acc_number: cleaned, partner_id: partnerId });
-      await odoo.write('hr.employee', [targetId], { bank_account_id: newBankId });
+      // res.partner.bank.create is unreachable via JSON-RPC on this instance: the
+      // hr_payroll_account override of create() is missing @api.model_create_multi,
+      // so Odoo's call_kw misreads the positional args and throws "missing 1 required
+      // positional argument: 'vals_list'". Create the bank through the partner's
+      // bank_ids one2many instead — an internal ORM create that isn't affected — then
+      // link it to the employee.
+      const before = await odoo.searchRead('res.partner.bank', [['partner_id', '=', partnerId]], ['id']);
+      const beforeIds = new Set(before.map((b) => b.id));
+      await odoo.write('res.partner', [partnerId], { bank_ids: [[0, 0, { acc_number: cleaned }]] });
+      const after = await odoo.searchRead('res.partner.bank', [['partner_id', '=', partnerId]], ['id'], { order: 'id desc' });
+      const created = after.find((b) => !beforeIds.has(b.id));
+      if (!created) {
+        return NextResponse.json({ error: 'Bank account could not be created in Odoo.' }, { status: 500 });
+      }
+      await odoo.write('hr.employee', [targetId], { bank_account_id: created.id });
     } else {
       return NextResponse.json({ error: 'This employee has no contact record in Odoo yet, so a bank account can’t be attached.' }, { status: 400 });
     }
