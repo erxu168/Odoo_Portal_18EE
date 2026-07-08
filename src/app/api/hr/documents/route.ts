@@ -52,7 +52,13 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ documents: enriched });
+    // Working-student flag drives whether the student-only doc types are shown.
+    const empRow = await odoo.searchRead('hr.employee', [['id', '=', targetId]], ['is_university_student'], {
+      limit: 1, context: { active_test: false },
+    });
+    const isUniversityStudent = !!(empRow.length && empRow[0].is_university_student);
+
+    return NextResponse.json({ documents: enriched, is_university_student: isUniversityStudent });
   } catch (err: unknown) {
     console.error('GET /api/hr/documents error:', err);
     return NextResponse.json(

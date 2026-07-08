@@ -45,9 +45,11 @@ export default function StepResidenceWork({ employee, saving, onPrev, onSave, su
   const [healthDate, setHealthDate] = useState(s(e.kw_gesundheitszeugnis_datum));
   const [healthExpire, setHealthExpire] = useState(s(e.kw_gesundheitszeugnis_ablauf));
   const [sofortDone, setSofortDone] = useState(e.kw_sofortmeldung_done === true);
+  const [isStudent, setIsStudent] = useState(e.is_university_student === true);
 
   function handleSave() {
     onSave({
+      is_university_student: isStudent,
       kw_beschaeftigungsbeginn: startDate || false,
       kw_aufenthaltstitel_typ: permitType || false,
       passport_id: passport || false,
@@ -67,6 +69,14 @@ export default function StepResidenceWork({ employee, saving, onPrev, onSave, su
         <Field label="Employment start date">
           <input type="date" value={startDate} onChange={(ev) => setStartDate(ev.target.value)} className="form-inp" />
         </Field>
+
+        <label className="flex items-start gap-3 py-1">
+          <input type="checkbox" checked={isStudent} onChange={(ev) => setIsStudent(ev.target.checked)} className="w-5 h-5 mt-0.5 accent-green-600 flex-shrink-0" />
+          <span className="text-[var(--fs-sm)] font-medium text-gray-700">
+            Working student (Werkstudent)
+            <span className="block text-[var(--fs-xs)] text-gray-400 font-normal">Turns on the student documents (enrolment certificate, student ID) for this person.</span>
+          </span>
+        </label>
 
         <div className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 pt-1">Residence / work permit</div>
         <Field label="Permit type">

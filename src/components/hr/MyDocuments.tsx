@@ -30,6 +30,7 @@ interface Props {
 export default function MyDocuments({ onBack }: Props) {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isStudent, setIsStudent] = useState(false);
   const [thumbnails, setThumbnails] = useState<Record<number, ThumbnailData>>({});
 
   // Document viewer
@@ -58,6 +59,7 @@ export default function MyDocuments({ onBack }: Props) {
       if (res.ok) {
         const data = await res.json();
         setDocs(data.documents || []);
+        setIsStudent(data.is_university_student === true);
       }
     } catch (_e: unknown) {
       console.error("Failed to load docs");
@@ -214,7 +216,8 @@ export default function MyDocuments({ onBack }: Props) {
 
   // --- Render: Main documents list ---
   const required = DOCUMENT_TYPES.filter((dt) => dt.required);
-  const optional = DOCUMENT_TYPES.filter((dt) => !dt.required);
+  // Student-only docs show only for working students.
+  const optional = DOCUMENT_TYPES.filter((dt) => !dt.required && (!dt.studentOnly || isStudent));
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">

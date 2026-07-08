@@ -205,7 +205,7 @@ export default function EmployeeDetail({ employeeId, onBack, onContract, onDeact
 
       <STitle text="Documents" />
       <div className="px-5 space-y-2 pb-4">
-        {DOCUMENT_TYPES.map((dt) => {
+        {DOCUMENT_TYPES.filter((dt) => !dt.studentOnly || (emp as unknown as { is_university_student?: boolean }).is_university_student === true).map((dt) => {
           const doc = docFor(dt.key);
           const uploaded = !!doc;
           const opening = uploaded && openingDocId === doc!.id;

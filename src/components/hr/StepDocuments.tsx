@@ -139,8 +139,10 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
   }
 
   // Rote Karte excluded from normal required loop (rendered inside RoteKarteInfo)
+  const isStudent = (employee as unknown as { is_university_student?: boolean }).is_university_student === true;
   const requiredOther = DOCUMENT_TYPES.filter((dt) => dt.required && dt.key !== "gesundheitszeugnis");
-  const optional = DOCUMENT_TYPES.filter((dt) => !dt.required);
+  // Student-only docs (enrolment certificate, student ID) show only for working students.
+  const optional = DOCUMENT_TYPES.filter((dt) => !dt.required && (!dt.studentOnly || isStudent));
   const roteKarteUploaded = getDocsForType("gesundheitszeugnis").length;
 
   const hasPhoto = photoPreview || photoSaved;

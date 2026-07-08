@@ -18,7 +18,7 @@ const BASICS = new Set(['name', 'company_id', 'department_id', 'job_title', 'wor
 // incl. `false` for cleared values). Mirrors the self-service WRITABLE set.
 const DATEV = new Set([
   'nick_name', 'birthday', 'gender', 'marital', 'country_id', 'place_of_birth',
-  'country_of_birth', 'children', 'disabled', 'kw_geburtsname',
+  'country_of_birth', 'children', 'disabled', 'is_university_student', 'kw_geburtsname',
   'private_street', 'private_street2', 'private_zip', 'private_city',
   'private_country_id', 'private_email', 'private_phone',
   'emergency_contact', 'emergency_phone', 'kw_emergency_relation',

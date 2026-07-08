@@ -41,6 +41,7 @@ export interface EmployeeData {
   country_of_birth: [number, string] | false;
   children: number;
   disabled: boolean;
+  is_university_student: boolean;
   kw_geburtsname: string | false;
   private_street: string | false;
   private_street2: string | false;
@@ -93,7 +94,7 @@ export interface EmployeeData {
 export const EMPLOYEE_READ_FIELDS: string[] = [
   'name', 'nick_name', 'department_id', 'company_id', 'job_title', 'work_email', 'mobile_phone',
   'birthday', 'gender', 'marital', 'country_id', 'place_of_birth',
-  'country_of_birth', 'children', 'disabled', 'kw_geburtsname',
+  'country_of_birth', 'children', 'disabled', 'is_university_student', 'kw_geburtsname',
   'private_street', 'private_street2', 'private_zip', 'private_city',
   'private_country_id', 'private_email', 'private_phone',
   'emergency_contact', 'emergency_phone', 'kw_emergency_relation',
@@ -137,6 +138,8 @@ export interface DocumentType {
   label: string;
   labelDe: string;
   required: boolean;
+  /** Shown only when the employee is a working student (is_university_student). */
+  studentOnly?: boolean;
   helpText: string;
   helpUrl: string;
   icon: string;
@@ -151,6 +154,10 @@ export const DOCUMENT_TYPES: DocumentType[] = [
   { key: 'krankenkasse', tagId: 50, label: 'Health Insurance Certificate', labelDe: 'Krankenkassenbescheinigung', required: false, helpText: 'Membership confirmation from your health insurance provider.', helpUrl: 'https://www.nomadenberlin.com/working-in-berlin', icon: '\ud83c\udfe5' },
   { key: 'lohnsteuer', tagId: 51, label: 'Previous Tax Certificate', labelDe: 'Lohnsteuerbescheinigung', required: false, helpText: 'From your previous employer if you are changing jobs.', helpUrl: 'https://allaboutberlin.com/glossary/Steuerklasse', icon: '\ud83d\udcd1' },
   { key: 'vertrag', tagId: 52, label: 'Employment Contract', labelDe: 'Arbeitsvertrag', required: true, helpText: 'Your signed employment contract. Usually handled via Odoo Sign.', helpUrl: 'https://www.welcome-hub-germany.com/blog/working-in-germany', icon: '\ud83d\udcdd' },
+  { key: 'gesundheitskarte', tagId: 56, label: 'Health Insurance Card', labelDe: 'Gesundheitskarte', required: false, helpText: 'A copy of your electronic health insurance card (elektronische Gesundheitskarte).', helpUrl: 'https://www.nomadenberlin.com/working-in-berlin', icon: '\ud83d\udcb3' },
+  { key: 'meldebescheinigung', tagId: 57, label: 'Address Registration', labelDe: 'Meldebescheinigung', required: false, helpText: 'Your Meldebescheinigung from the B\u00fcrgeramt confirming your registered address (Anmeldung).', helpUrl: 'https://allaboutberlin.com/guides/anmeldung-in-berlin', icon: '\ud83c\udfe0' },
+  { key: 'immatrikulation', tagId: 54, label: 'Enrollment Certificate', labelDe: 'Immatrikulationsbescheinigung', required: false, studentOnly: true, helpText: 'For working students (Werkstudenten): current proof of enrolment from your university.', helpUrl: 'https://www.study-in-germany.de/en/', icon: '\ud83c\udf93' },
+  { key: 'studentenausweis', tagId: 55, label: 'Student ID', labelDe: 'Studentenausweis', required: false, studentOnly: true, helpText: 'For working students: a copy of your valid student ID card.', helpUrl: 'https://www.study-in-germany.de/en/', icon: '\ud83e\udeaa' },
 ];
 
 export interface FieldExplainer {
