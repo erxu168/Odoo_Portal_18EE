@@ -195,6 +195,10 @@ export default function KioskPage() {
     </header>
   );
 
+  // The settings overlay is rendered ONCE as a stable sibling of whatever content
+  // branch is showing (below). Keeping it out of the branch divs means switching
+  // branches — e.g. not-set-up → grid after a manager picks the restaurant — does
+  // not remount it and drop the unlocked state.
   const overlay = settingsOpen && settings && (
     <KioskSettings
       settings={settings}
@@ -206,13 +210,14 @@ export default function KioskPage() {
     />
   );
 
-  if (!settings) {
-    return <div className="min-h-screen bg-gray-50" />;
-  }
+  let content: React.ReactNode;
 
-  // ---- Not set up yet (no restaurant chosen) ----
-  if (!companyId) {
-    return (
+  if (!settings) {
+    // First paint before settings load — keep it blank (avoids a flash of "not set up").
+    content = <div className="min-h-screen bg-gray-50" />;
+  } else if (!companyId) {
+    // ---- Not set up yet (no restaurant chosen) ----
+    content = (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {header}
         <div className="flex-1 flex items-center justify-center p-8 text-center">
@@ -228,13 +233,10 @@ export default function KioskPage() {
             </button>
           </div>
         </div>
-        {overlay}
       </div>
     );
-  }
-
-  // ---- Confirmation ----
-  if (screen === 'done' && result) {
+  } else if (screen === 'done' && result) {
+    // ---- Confirmation ----
     const r = result;
     let noteMsg = '';
     let noteClass = 'bg-green-50 text-green-700';
@@ -246,7 +248,7 @@ export default function KioskPage() {
       else if (r.note === 'overtime') { noteMsg = `${r.mins} min overtime — thanks!`; noteClass = 'bg-green-50 text-green-700'; }
       else noteMsg = 'See you!';
     }
-    return (
+    content = (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {header}
         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
@@ -263,15 +265,12 @@ export default function KioskPage() {
             Done
           </button>
         </div>
-        {overlay}
       </div>
     );
-  }
-
-  // ---- PIN entry ----
-  if (screen === 'pin' && selected) {
+  } else if (screen === 'pin' && selected) {
+    // ---- PIN entry ----
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
-    return (
+    content = (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {header}
         <div className="flex-1 flex flex-col items-center p-6">
@@ -324,47 +323,52 @@ export default function KioskPage() {
             </button>
           </div>
         </div>
-        {overlay}
+      </div>
+    );
+  } else {
+    // ---- Staff grid ----
+    const workingNow = staff.filter(s => s.clockedIn).length;
+    content = (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        {header}
+        <div className="flex-1 p-6">
+          <div className="text-center text-gray-600 text-lg font-semibold mb-6">Tap your name to clock in or out</div>
+          {staff.length === 0 ? (
+            <div className="text-center text-gray-400 mt-16 text-lg">
+              No staff set up for the clock yet.
+              <div className="text-base mt-1">A manager assigns PINs in Roster &amp; Caps.</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 max-w-4xl mx-auto">
+              {staff.map(s => (
+                <button
+                  key={s.employeeId}
+                  onClick={() => pickPerson(s)}
+                  className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-transform"
+                >
+                  <div className="w-20 h-20 rounded-full bg-gray-200 text-gray-600 text-2xl font-bold flex items-center justify-center">
+                    {initials(s.name)}
+                  </div>
+                  <div className="text-[17px] font-bold text-gray-900 text-center leading-tight">{s.name}</div>
+                  <div className={`text-sm font-bold ${s.clockedIn ? 'text-green-600' : 'text-gray-400'}`}>
+                    {s.clockedIn ? '● Working' : '○ Off'}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {settings.showWorkingNow && (
+          <footer className="text-center text-green-600 font-bold py-4">● {workingNow} working now</footer>
+        )}
       </div>
     );
   }
 
-  // ---- Staff grid ----
-  const workingNow = staff.filter(s => s.clockedIn).length;
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {header}
-      <div className="flex-1 p-6">
-        <div className="text-center text-gray-600 text-lg font-semibold mb-6">Tap your name to clock in or out</div>
-        {staff.length === 0 ? (
-          <div className="text-center text-gray-400 mt-16 text-lg">
-            No staff set up for the clock yet.
-            <div className="text-base mt-1">A manager assigns PINs in Roster &amp; Caps.</div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 max-w-4xl mx-auto">
-            {staff.map(s => (
-              <button
-                key={s.employeeId}
-                onClick={() => pickPerson(s)}
-                className="bg-white border border-gray-200 rounded-2xl p-5 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-transform"
-              >
-                <div className="w-20 h-20 rounded-full bg-gray-200 text-gray-600 text-2xl font-bold flex items-center justify-center">
-                  {initials(s.name)}
-                </div>
-                <div className="text-[17px] font-bold text-gray-900 text-center leading-tight">{s.name}</div>
-                <div className={`text-sm font-bold ${s.clockedIn ? 'text-green-600' : 'text-gray-400'}`}>
-                  {s.clockedIn ? '● Working' : '○ Off'}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      {settings.showWorkingNow && (
-        <footer className="text-center text-green-600 font-bold py-4">● {workingNow} working now</footer>
-      )}
+    <>
+      {content}
       {overlay}
-    </div>
+    </>
   );
 }

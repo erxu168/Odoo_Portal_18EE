@@ -22,7 +22,7 @@ const STAFF = {
 async function openLoginGate(page: Page) {
   await page.goto('/kiosk');
   await page.getByRole('button', { name: 'Kiosk settings' }).click();
-  await expect(page.getByRole('heading', { name: /Manager sign-in/i })).toBeVisible();
+  await expect(page.getByText(/Manager sign-in/i)).toBeVisible();
 }
 
 test('fresh kiosk shows a setup path, not a dead end', async ({ page }) => {
@@ -37,8 +37,9 @@ test('a staff-level account is refused from settings', async ({ page }) => {
   await page.getByPlaceholder('Password').fill(STAFF.password);
   await page.getByRole('button', { name: /Unlock settings/i }).click();
   await expect(page.getByText(/Only managers can change settings/i)).toBeVisible({ timeout: 20_000 });
-  // never reached the options screen
-  await expect(page.getByRole('heading', { name: /Tablet settings/i })).toHaveCount(0);
+  // never reached the options screen ("Signed in as …" only renders once unlocked)
+  await expect(page.getByText(/Signed in as/i)).toHaveCount(0);
+  await expect(page.getByTestId('kiosk-company')).toHaveCount(0);
 });
 
 test('a manager can set the restaurant and it persists', async ({ page }) => {
@@ -47,7 +48,7 @@ test('a manager can set the restaurant and it persists', async ({ page }) => {
   await page.getByPlaceholder('Password').fill(MGR.password);
   await page.getByRole('button', { name: /Unlock settings/i }).click();
 
-  await expect(page.getByRole('heading', { name: /Tablet settings/i })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/Tablet settings/i)).toBeVisible({ timeout: 20_000 });
 
   // pick What a Jerk if offered, otherwise the first restaurant in the list
   const companies = page.getByTestId('kiosk-company');
