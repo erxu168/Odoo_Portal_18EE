@@ -10,29 +10,71 @@
  *   PORTAL_URL=http://89.167.124.0:3000
  */
 import nodemailer from 'nodemailer';
+import { resolveCompanySetting } from '@/lib/db';
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.strato.de',
-  port: parseInt(process.env.SMTP_PORT || '465'),
-  secure: true, // SSL on port 465
-  auth: {
-    user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASSWORD || '',
-  },
-});
+export interface EmailConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  from: string;
+}
 
-const FROM = process.env.SMTP_FROM || 'noreply@krawings.de';
+/**
+ * Resolve SMTP config for a company: admin-set per-company settings → the
+ * "default (all restaurants)" settings (company 0) → env vars → Strato defaults.
+ * Works with any SMTP provider (Strato, Gmail app-password, custom, …).
+ */
+export function getEmailConfig(companyId?: number): EmailConfig {
+  const s = (key: string) => resolveCompanySetting(companyId, key);
+  const host = s('smtp_host') || process.env.SMTP_HOST || 'smtp.strato.de';
+  const port = parseInt(s('smtp_port') || process.env.SMTP_PORT || '465', 10);
+  const secureRaw = s('smtp_secure');
+  const secure = secureRaw !== null ? secureRaw === '1' : port === 465; // 465=SSL, 587=STARTTLS
+  const user = s('smtp_user') || process.env.SMTP_USER || '';
+  const pass = s('smtp_password') || process.env.SMTP_PASSWORD || '';
+  const from = s('smtp_from') || process.env.SMTP_FROM || user || 'noreply@krawings.de';
+  return { host, port, secure, user, pass, from };
+}
+
+function getTransporter(companyId?: number) {
+  const c = getEmailConfig(companyId);
+  return nodemailer.createTransport({
+    host: c.host,
+    port: c.port,
+    secure: c.secure,
+    auth: { user: c.user, pass: c.pass },
+  });
+}
+
+function getFrom(companyId?: number): string {
+  return getEmailConfig(companyId).from;
+}
+
 const PORTAL_URL = process.env.PORTAL_URL || 'http://89.167.124.0:3000';
 
-/** True only when SMTP credentials are actually configured (so callers can skip gracefully). */
-export function isEmailConfigured(): boolean {
-  return !!(process.env.SMTP_USER && process.env.SMTP_PASSWORD);
+/** True only when SMTP credentials are configured (per-company, default, or env). */
+export function isEmailConfigured(companyId?: number): boolean {
+  const c = getEmailConfig(companyId);
+  return !!(c.user && c.pass);
+}
+
+/** Send a test email to verify a company's SMTP settings. Throws the SMTP error on failure. */
+export async function sendTestEmail(toEmail: string, companyId?: number): Promise<void> {
+  await getTransporter(companyId).sendMail({
+    from: `"Krawings Portal" <${getFrom(companyId)}>`,
+    to: toEmail,
+    subject: 'Krawings Portal — test email',
+    text: 'This is a test email from the Krawings Portal. If you received this, your email settings are working.',
+    html: '<p>This is a <b>test email</b> from the Krawings Portal. If you received this, your email settings are working. ✅</p>',
+  });
 }
 
 /** Email a composed purchase order to a supplier. Throws on SMTP failure (caller should catch). */
-export async function sendOrderEmail(toEmail: string, subject: string, textBody: string, htmlBody: string) {
-  await transporter.sendMail({
-    from: `"Krawings Portal" <${FROM}>`,
+export async function sendOrderEmail(toEmail: string, subject: string, textBody: string, htmlBody: string, companyId?: number) {
+  await getTransporter(companyId).sendMail({
+    from: `"Krawings Portal" <${getFrom(companyId)}>`,
     to: toEmail,
     subject,
     text: textBody,
@@ -43,11 +85,11 @@ export async function sendOrderEmail(toEmail: string, subject: string, textBody:
 /**
  * Send a password reset email with a time-limited link.
  */
-export async function sendPasswordResetEmail(toEmail: string, toName: string, resetToken: string) {
+export async function sendPasswordResetEmail(toEmail: string, toName: string, resetToken: string, companyId?: number) {
   const resetUrl = `${PORTAL_URL}/reset-password?token=${resetToken}`;
 
-  await transporter.sendMail({
-    from: `"Krawings Portal" <${FROM}>`,
+  await getTransporter(companyId).sendMail({
+    from: `"Krawings Portal" <${getFrom(companyId)}>`,
     to: toEmail,
     subject: 'Reset your Krawings Portal password',
     text: [
@@ -92,11 +134,12 @@ export async function sendCandidateWelcomeEmail(
   toName: string,
   tempPassword: string,
   jobName: string,
+  companyId?: number,
 ) {
   const loginUrl = `${PORTAL_URL}/login`;
 
-  await transporter.sendMail({
-    from: `"Krawings Portal" <${FROM}>`,
+  await getTransporter(companyId).sendMail({
+    from: `"Krawings Portal" <${getFrom(companyId)}>`,
     to: toEmail,
     subject: 'Your Krawings Portal access is ready',
     text: [
@@ -144,9 +187,9 @@ export async function sendCandidateWelcomeEmail(
 /**
  * Send a staff member their portal invite link (push-provisioning model).
  */
-export async function sendStaffInviteEmail(toEmail: string, toName: string, inviteUrl: string) {
-  await transporter.sendMail({
-    from: `"Krawings Portal" <${FROM}>`,
+export async function sendStaffInviteEmail(toEmail: string, toName: string, inviteUrl: string, companyId?: number) {
+  await getTransporter(companyId).sendMail({
+    from: `"Krawings Portal" <${getFrom(companyId)}>`,
     to: toEmail,
     subject: 'Set up your Krawings Staff Portal account',
     text: [

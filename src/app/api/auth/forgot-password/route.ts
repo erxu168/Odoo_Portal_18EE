@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getUserByEmail, createPasswordResetToken } from '@/lib/db';
+import { getUserByEmail, createPasswordResetToken, parseCompanyIds } from '@/lib/db';
 import { sendPasswordResetEmail } from '@/lib/email';
 
 /**
@@ -21,9 +21,12 @@ export async function POST(request: Request) {
       // Create a reset token (expires in 1 hour)
       const token = createPasswordResetToken(user.id);
 
+      // Send from the user's own restaurant mailbox where possible.
+      const companyId = parseCompanyIds(user.allowed_company_ids)[0];
+
       // Send email
       try {
-        await sendPasswordResetEmail(user.email, user.name, token);
+        await sendPasswordResetEmail(user.email, user.name, token, companyId);
       } catch (emailErr) {
         console.error('Failed to send reset email:', emailErr);
         return NextResponse.json(

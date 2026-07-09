@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import EmailSettings from '@/components/admin/EmailSettings';
 
 // Treat blank / non-numeric input as zero so +/- buttons and saves never produce NaN.
 function num(s: string): number {
@@ -159,6 +160,8 @@ export default function AdminSettingsPage() {
       )}
 
       <div className="px-4 py-4 pb-24 flex flex-col gap-4">
+        <EmailSettings />
+
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
             <div className="text-[14px] font-bold text-gray-900">Weight Tolerance</div>

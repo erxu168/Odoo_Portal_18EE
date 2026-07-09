@@ -39,6 +39,7 @@ export interface EmployeeLite {
   id: number;
   name: string;
   email: string | null;
+  companyId?: number;
 }
 
 export function generateInviteToken(): string {
@@ -92,7 +93,7 @@ export async function storeInviteForEmployee(
   let emailSent = false;
   if (sendEmail && emp.email) {
     try {
-      await sendStaffInviteEmail(emp.email, emp.name, link);
+      await sendStaffInviteEmail(emp.email, emp.name, link, emp.companyId);
       emailSent = true;
     } catch (err: unknown) {
       console.error('[staff-invite] welcome email failed:', err);
@@ -173,7 +174,7 @@ export async function createStaffInvite(
   const employees = await odoo.searchRead(
     'hr.employee',
     [['id', '=', employeeId]],
-    ['name', 'work_email', 'private_email', 'mobile_phone'],
+    ['name', 'work_email', 'private_email', 'mobile_phone', 'company_id'],
     { limit: 1 },
   );
   if (!employees || employees.length === 0) {
@@ -183,8 +184,9 @@ export async function createStaffInvite(
   const emp = employees[0];
   const name: string = emp.name || 'Team member';
   const email: string | null = emp.work_email || emp.private_email || null;
+  const companyId: number | undefined = Array.isArray(emp.company_id) ? (emp.company_id[0] as number) : undefined;
 
-  const { inviteId, link, emailSent } = await storeInviteForEmployee({ id: employeeId, name, email }, actor, sendEmail);
+  const { inviteId, link, emailSent } = await storeInviteForEmployee({ id: employeeId, name, email, companyId }, actor, sendEmail);
 
   return {
     ok: true,

@@ -82,6 +82,16 @@ function initTables(db: Database.Database) {
       updated_at TEXT
     );
 
+    -- Per-company settings (email/SMTP now; branding, notifications, etc. later).
+    -- company_id = 0 is the shared "default (all restaurants)" fallback.
+    CREATE TABLE IF NOT EXISTS company_settings (
+      company_id INTEGER NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      updated_at TEXT,
+      PRIMARY KEY (company_id, key)
+    );
+
     CREATE TABLE IF NOT EXISTS bom_tolerance (
       bom_id INTEGER PRIMARY KEY,
       tolerance_pct REAL NOT NULL DEFAULT 5,
@@ -424,6 +434,57 @@ export function verifyPasswordResetToken(token: string): number | null {
 export function deletePasswordResetToken(token: string) {
   const db = getDb();
   db.prepare('DELETE FROM password_reset_tokens WHERE token = ?').run(token);
+}
+
+// -- Portal settings (global key/value) + per-company settings ------------------
+
+export function getSetting(key: string): string | null {
+  const row = getDb().prepare('SELECT value FROM portal_settings WHERE key = ?').get(key) as { value: string } | undefined;
+  return row ? row.value : null;
+}
+
+export function setSetting(key: string, value: string): void {
+  getDb()
+    .prepare(
+      'INSERT INTO portal_settings (key, value, updated_at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at',
+    )
+    .run(key, value, new Date().toISOString());
+}
+
+/** One company's value for a key (companyId 0 = the shared default for all restaurants). */
+export function getCompanySetting(companyId: number, key: string): string | null {
+  const row = getDb()
+    .prepare('SELECT value FROM company_settings WHERE company_id=? AND key=?')
+    .get(companyId, key) as { value: string } | undefined;
+  return row ? row.value : null;
+}
+
+export function setCompanySetting(companyId: number, key: string, value: string): void {
+  getDb()
+    .prepare(
+      'INSERT INTO company_settings (company_id, key, value, updated_at) VALUES (?,?,?,?) ON CONFLICT(company_id, key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at',
+    )
+    .run(companyId, key, value, new Date().toISOString());
+}
+
+/** All settings for a company as a key→value map. */
+export function getCompanySettings(companyId: number): Record<string, string> {
+  const rows = getDb()
+    .prepare('SELECT key, value FROM company_settings WHERE company_id=?')
+    .all(companyId) as { key: string; value: string }[];
+  const out: Record<string, string> = {};
+  for (const r of rows) out[r.key] = r.value;
+  return out;
+}
+
+/** Resolve a per-company setting: this company → default company (0) → null. */
+export function resolveCompanySetting(companyId: number | undefined, key: string): string | null {
+  if (companyId && companyId > 0) {
+    const v = getCompanySetting(companyId, key);
+    if (v !== null && v !== '') return v;
+  }
+  const g = getCompanySetting(0, key);
+  return g !== null && g !== '' ? g : null;
 }
 
 // -- Audit Log --
