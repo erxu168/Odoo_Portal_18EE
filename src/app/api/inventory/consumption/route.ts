@@ -11,7 +11,9 @@ export const dynamic = 'force-dynamic';
  * appear in the counting lists so it stays fast and relevant.
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, listTemplates } from '@/lib/inventory-db';
 
@@ -20,7 +22,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) {
+  if (!roleCan(user.role, 'inventory.consumption.view', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Manager access required' }, { status: 403 });
   }
 

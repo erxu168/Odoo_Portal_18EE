@@ -22,6 +22,8 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { registerDraftProduct, isDraftProduct } from '@/lib/inventory-db';
 
@@ -115,6 +117,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'inventory.product.create', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   try {
     const body = await request.json();

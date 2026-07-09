@@ -9,6 +9,8 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap } from '@/lib/inventory-db';
 import { logAudit } from '@/lib/db';
 
@@ -43,7 +45,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) {
+  if (!roleCan(user.role, 'inventory.template.manage', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -74,7 +76,7 @@ export async function PUT(request: Request) {
   if (!id || !status) return NextResponse.json({ error: 'id and status required' }, { status: 400 });
 
   // Staff can submit; managers can approve/reject/reopen
-  if (['approved', 'rejected'].includes(status) && !hasRole(user, 'manager')) {
+  if (['approved', 'rejected'].includes(status) && !roleCan(user.role, 'inventory.review.approve', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -126,7 +128,7 @@ export async function PUT(request: Request) {
 
   // Recount: manager reopens a rejected session so staff can try again
   if (status === 'pending') {
-    if (!hasRole(user, 'manager')) {
+    if (!roleCan(user.role, 'inventory.review.approve', getPermissionOverrides())) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const session = getSession(id);

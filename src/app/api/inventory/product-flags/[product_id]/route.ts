@@ -8,7 +8,9 @@ export const dynamic = 'force-dynamic';
  * (or 0) to clear the pack size so the product is counted in base units.
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { initInventoryTables, setProductFlag, setProductCrateSize, setProductPackLabel } from '@/lib/inventory-db';
 
 export async function PUT(
@@ -17,7 +19,7 @@ export async function PUT(
 ) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) {
+  if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Manager access required' }, { status: 403 });
   }
 

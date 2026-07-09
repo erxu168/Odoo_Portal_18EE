@@ -6,7 +6,9 @@ export const dynamic = 'force-dynamic';
  * POST — create a new template (manager/admin only)
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { createTemplate, listTemplates, updateTemplate, generateSessionForTemplate } from '@/lib/inventory-db';
 
 
@@ -29,7 +31,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) {
+  if (!roleCan(user.role, 'inventory.template.manage', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Forbidden \u2014 manager role required' }, { status: 403 });
   }
 
@@ -67,7 +69,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) {
+  if (!roleCan(user.role, 'inventory.template.manage', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
