@@ -14,8 +14,10 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
   const [stats, setStats] = useState({ pending: 0, submitted: 0, quickPending: 0, templates: 0 });
   const [loading, setLoading] = useState(true);
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
+  const [capabilities, setCapabilities] = useState<string[]>([]);
 
   const canManage = userRole === 'manager' || userRole === 'admin';
+  const can = (k: string) => capabilities.includes(k);
 
   useEffect(() => {
     fetchStats();
@@ -24,6 +26,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
       if (d.user?.preferences?.inventory_tile_order) setSavedOrder(d.user.preferences.inventory_tile_order);
+      if (Array.isArray(d.user?.capabilities)) setCapabilities(d.user.capabilities);
     }).catch(() => {});
   }, []);
 
@@ -103,7 +106,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     },
-    ...(canManage ? [{
+    ...(can('inventory.template.manage') ? [{
       id: 'manage',
       label: 'Manage Lists',
       color: 'bg-purple-50 border-purple-200', iconBg: 'bg-purple-100', iconColor: 'text-purple-600',
@@ -116,7 +119,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     }] : []),
-    ...(canManage ? [{
+    ...(can('inventory.consumption.view') ? [{
       id: 'consumption',
       label: 'Consumption',
       color: 'bg-green-50 border-green-200', iconBg: 'bg-green-100', iconColor: 'text-green-600',
@@ -128,7 +131,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     }] : []),
-    ...(canManage ? [{
+    ...(can('inventory.review.approve') ? [{
       id: 'review',
       label: 'Review',
       color: 'bg-amber-50 border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
@@ -155,7 +158,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     }] : []),
-    ...(canManage ? [{
+    ...(can('inventory.productsettings.manage') ? [{
       id: 'product-settings',
       label: 'Product settings',
       color: 'bg-white border-gray-200', iconBg: 'bg-blue-50', iconColor: 'text-blue-600',

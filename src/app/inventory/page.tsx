@@ -30,14 +30,17 @@ export default function InventoryPage() {
   const router = useRouter();
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
   const [userRole, setUserRole] = useState<string>('staff');
+  const [capabilities, setCapabilities] = useState<string[]>([]);
 
   useEffect(() => {
     fetch('/api/auth/me').then((r) => r.json()).then((d) => {
       if (d.user?.role) setUserRole(d.user.role);
+      if (Array.isArray(d.user?.capabilities)) setCapabilities(d.user.capabilities);
     }).catch(() => {});
   }, []);
 
   const canManage = userRole === 'manager' || userRole === 'admin';
+  const can = (k: string) => capabilities.includes(k);
 
   function goHome() { router.push('/'); }
   function goDashboard() { setScreen({ type: 'dashboard' }); }
@@ -91,7 +94,7 @@ export default function InventoryPage() {
     );
   }
 
-  if (screen.type === 'manage' && canManage) {
+  if (screen.type === 'manage' && can('inventory.template.manage')) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <AppHeader title="Manage Lists" subtitle="Create and manage counting templates" showBack onBack={goDashboard} />
@@ -100,7 +103,7 @@ export default function InventoryPage() {
     );
   }
 
-  if (screen.type === 'consumption' && canManage) {
+  if (screen.type === 'consumption' && can('inventory.consumption.view')) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <ConsumptionReport onBack={goDashboard} />
@@ -108,7 +111,7 @@ export default function InventoryPage() {
     );
   }
 
-  if (screen.type === 'product-settings' && canManage) {
+  if (screen.type === 'product-settings' && can('inventory.productsettings.manage')) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <ProductSettings onBack={goDashboard} />
@@ -125,7 +128,7 @@ export default function InventoryPage() {
     );
   }
 
-  if (screen.type === 'review' && canManage) {
+  if (screen.type === 'review' && can('inventory.review.approve')) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <AppHeader title="Review" subtitle="Approve or reject submitted counts" showBack onBack={goDashboard} />
