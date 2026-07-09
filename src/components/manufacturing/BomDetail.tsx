@@ -45,6 +45,7 @@ export default function BomDetail({ bomId, onBack, onCreateMo, onOpenHistory }: 
   const [error, setError] = useState<string | null>(null);
   const [expandedSubBoms, setExpandedSubBoms] = useState<Set<number>>(new Set());
   const [canEdit, setCanEdit] = useState(false);
+  const [canCreateMo, setCanCreateMo] = useState(false);
   const [versionCount, setVersionCount] = useState<number>(1);
   const [versionLabel, setVersionLabel] = useState<string | null>(null);
 
@@ -113,8 +114,12 @@ export default function BomDetail({ bomId, onBack, onCreateMo, onOpenHistory }: 
   useEffect(() => {
     fetch('/api/auth/me')
       .then(r => r.json())
-      .then(d => setCanEdit(d.user?.role === 'manager' || d.user?.role === 'admin'))
-      .catch(() => setCanEdit(false));
+      .then(d => {
+        const caps: string[] = d.user?.capabilities ?? [];
+        setCanEdit(caps.includes('manufacturing.shelflife.edit'));
+        setCanCreateMo(caps.includes('manufacturing.mo.create'));
+      })
+      .catch(() => { setCanEdit(false); setCanCreateMo(false); });
   }, []);
 
   async function fetchBomDetail() {
@@ -1073,12 +1078,14 @@ export default function BomDetail({ bomId, onBack, onCreateMo, onOpenHistory }: 
           )}
 
           {/* Bottom actions */}
-          <div className="px-4 pb-8">
-            <button onClick={() => onCreateMo(bomId)}
-              className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform">
-              Create manufacturing order
-            </button>
-          </div>
+          {canCreateMo && (
+            <div className="px-4 pb-8">
+              <button onClick={() => onCreateMo(bomId)}
+                className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform">
+                Create manufacturing order
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
