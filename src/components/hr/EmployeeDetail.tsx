@@ -196,6 +196,7 @@ export default function EmployeeDetail({ employeeId, onBack, onContract, onDeact
 
       <Section title="Residence & work" onEdit={editMode ? () => onEditSection('residence') : undefined}>
         <Row label="Permit type" value={emp.kw_aufenthaltstitel_typ || ''} optional />
+        <Row label="Exact permit / paragraph" value={emp.kw_aufenthaltstitel_paragraph || ''} optional />
         <Row label="Visa expires" value={emp.visa_expire || ''} mono optional />
         <Row label="Permit expires" value={emp.work_permit_expiration_date || ''} mono optional />
         <Row label="Health cert. date" value={emp.kw_gesundheitszeugnis_datum || ''} mono />

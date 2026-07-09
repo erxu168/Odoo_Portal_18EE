@@ -37,6 +37,7 @@ export default function StepResidenceWork({ employee, saving, onPrev, onSave, su
 
   const [startDate, setStartDate] = useState(s(e.kw_beschaeftigungsbeginn));
   const [permitType, setPermitType] = useState(s(e.kw_aufenthaltstitel_typ));
+  const [permitParagraph, setPermitParagraph] = useState(s(e.kw_aufenthaltstitel_paragraph));
   const [passport, setPassport] = useState(s(e.passport_id));
   const [visaNo, setVisaNo] = useState(s(e.visa_no));
   const [permitNo, setPermitNo] = useState(s(e.permit_no));
@@ -52,6 +53,7 @@ export default function StepResidenceWork({ employee, saving, onPrev, onSave, su
       is_university_student: isStudent,
       kw_beschaeftigungsbeginn: startDate || false,
       kw_aufenthaltstitel_typ: permitType || false,
+      kw_aufenthaltstitel_paragraph: permitParagraph || false,
       passport_id: passport || false,
       visa_no: visaNo || false,
       permit_no: permitNo || false,
@@ -85,6 +87,9 @@ export default function StepResidenceWork({ employee, saving, onPrev, onSave, su
             {PERMIT_TYPES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <span className="block text-[var(--fs-xs)] text-gray-400 mt-1.5">For a student permit (§ 16b AufenthG), choose Temporary residence permit.</span>
+        </Field>
+        <Field label="Exact permit / paragraph (optional)">
+          <input value={permitParagraph} onChange={(ev) => setPermitParagraph(ev.target.value)} placeholder="e.g. § 16b Abs. 3 AufenthG" className="form-inp" />
         </Field>
         <Field label="Passport number">
           <input value={passport} onChange={(ev) => setPassport(ev.target.value)} className="form-inp" />

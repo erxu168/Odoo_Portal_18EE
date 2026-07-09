@@ -26,7 +26,7 @@ const DATEV = new Set([
   'ssnid', 'kw_krankenkasse_name', 'kw_kv_typ',
   'kw_beschaeftigungsbeginn', 'kw_wochenarbeitszeit', 'kw_taetigkeit_ba',
   'kw_befristung', 'kw_befristung_bis', 'kw_probezeit_bis',
-  'kw_aufenthaltstitel_typ', 'passport_id', 'visa_no', 'permit_no',
+  'kw_aufenthaltstitel_typ', 'kw_aufenthaltstitel_paragraph', 'passport_id', 'visa_no', 'permit_no',
   'visa_expire', 'work_permit_expiration_date',
   'kw_gesundheitszeugnis_datum', 'kw_gesundheitszeugnis_ablauf',
   'kw_sofortmeldung_done', 'kw_sofortmeldung_datum',

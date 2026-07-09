@@ -69,6 +69,7 @@ export interface EmployeeData {
   kw_befristung_bis: string | false;
   kw_probezeit_bis: string | false;
   kw_aufenthaltstitel_typ: AufenthaltstitelTyp | false;
+  kw_aufenthaltstitel_paragraph: string | false;
   passport_id: string | false;
   visa_no: string | false;
   permit_no: string | false;
@@ -103,7 +104,7 @@ export const EMPLOYEE_READ_FIELDS: string[] = [
   'ssnid', 'kw_krankenkasse_name', 'kw_kv_typ',
   'kw_beschaeftigungsbeginn', 'kw_wochenarbeitszeit', 'kw_taetigkeit_ba',
   'kw_befristung', 'kw_befristung_bis', 'kw_probezeit_bis',
-  'kw_aufenthaltstitel_typ', 'passport_id', 'visa_no', 'permit_no',
+  'kw_aufenthaltstitel_typ', 'kw_aufenthaltstitel_paragraph', 'passport_id', 'visa_no', 'permit_no',
   'visa_expire', 'work_permit_expiration_date',
   'kw_gesundheitszeugnis_datum', 'kw_gesundheitszeugnis_ablauf',
   'kw_sofortmeldung_done', 'kw_sofortmeldung_datum',
