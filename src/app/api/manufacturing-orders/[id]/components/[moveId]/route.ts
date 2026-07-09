@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireAuth, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 
 const EDITABLE_STATES = ['draft', 'confirmed', 'progress'];
 
@@ -36,7 +36,7 @@ export async function PATCH(
   { params }: { params: { id: string; moveId: string } },
 ) {
   try {
-    requireAuth();
+    requireCapability('manufacturing.mo.components');
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: err.message }, { status: 401 });
@@ -76,7 +76,7 @@ export async function DELETE(
   { params }: { params: { id: string; moveId: string } },
 ) {
   try {
-    requireAuth();
+    requireCapability('manufacturing.mo.components');
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: err.message }, { status: 401 });

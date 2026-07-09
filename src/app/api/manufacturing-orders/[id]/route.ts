@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireAuth, requireRole, AuthError } from '@/lib/auth';
+import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 
 // Walk the wizard chain Odoo returns from button_mark_done. A wizard's
 // confirm method can itself return ANOTHER wizard — e.g. action_close_mo
@@ -366,7 +366,7 @@ export async function PATCH(
   { params }: { params: { id: string } },
 ) {
   try {
-    requireRole('manager');
+    requireCapability('manufacturing.mo.manage');
     const odoo = getOdoo();
     const moId = parseInt(params.id);
     const body = await request.json();

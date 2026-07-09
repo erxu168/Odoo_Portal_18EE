@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireAuth, requireRole, AuthError } from '@/lib/auth';
+import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 
 /**
  * GET /api/boms/operations?id=X
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    requireRole('manager');
+    requireCapability('manufacturing.bom.edit');
     const opId = parseInt(req.nextUrl.searchParams.get('id') || '0');
     if (!opId) return NextResponse.json({ ok: false, error: 'Missing id' }, { status: 400 });
 

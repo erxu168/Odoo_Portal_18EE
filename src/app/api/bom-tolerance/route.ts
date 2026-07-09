@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
-import { requireAuth, requireRole, AuthError } from '@/lib/auth';
+import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
  */
 export async function PUT(request: Request) {
   try {
-    requireRole('manager');
+    requireCapability('manufacturing.tolerance.manage');
     const db = getDb();
     const body = await request.json();
     const bomId = body.bom_id;

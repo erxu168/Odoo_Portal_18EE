@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { getCurrentUser, hasRole, requireAuth, requireRole, AuthError } from '@/lib/auth';
+import { getCurrentUser, hasRole, requireAuth, requireCapability, AuthError } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -192,7 +192,7 @@ export async function GET(request: Request) {
  */
 export async function POST(req: NextRequest) {
   try {
-    requireRole('manager');
+    requireCapability('manufacturing.bom.create');
     const odoo = getOdoo();
     const body = await req.json();
 

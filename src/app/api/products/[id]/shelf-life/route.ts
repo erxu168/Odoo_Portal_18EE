@@ -7,7 +7,9 @@
  */
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,7 +50,7 @@ export async function PATCH(
 ) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) {
+  if (!roleCan(user.role, 'manufacturing.shelflife.edit', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Manager role required' }, { status: 403 });
   }
 

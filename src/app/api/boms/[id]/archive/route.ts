@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { getCurrentUser, hasRole } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,7 +15,7 @@ export async function PATCH(
     if (!user) {
       return NextResponse.json({ ok: false, error: 'Not signed in' }, { status: 401 });
     }
-    if (!hasRole(user, 'manager')) {
+    if (!roleCan(user.role, 'manufacturing.bom.archive', getPermissionOverrides())) {
       return NextResponse.json({ ok: false, error: 'Only managers can archive recipes' }, { status: 403 });
     }
 

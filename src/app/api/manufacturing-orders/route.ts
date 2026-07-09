@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireAuth, requireRole, AuthError } from '@/lib/auth';
+import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import type { CreateMoRequest } from '@/types/manufacturing';
 
 /**
@@ -91,7 +91,7 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    requireRole('manager');
+    requireCapability('manufacturing.mo.create');
     const odoo = getOdoo();
     const body: CreateMoRequest = await request.json();
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireAuth, requireRole, AuthError } from '@/lib/auth';
+import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import type { ComponentAvailability } from '@/types/manufacturing';
 
 /**
@@ -249,7 +249,7 @@ export async function PATCH(
   { params }: { params: { id: string } },
 ) {
   try {
-    requireRole('manager');
+    requireCapability('manufacturing.bom.edit');
     const bomId = parseInt(params.id);
     const odoo = getOdoo();
     const body = await req.json();
