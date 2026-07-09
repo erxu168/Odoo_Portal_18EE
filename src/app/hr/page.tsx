@@ -8,6 +8,7 @@ import MyProfile from '@/components/hr/MyProfile';
 import MyDocuments from '@/components/hr/MyDocuments';
 import EmployeeOverview from '@/components/hr/EmployeeOverview';
 import EmployeeDetail from '@/components/hr/EmployeeDetail';
+import HrOverview from '@/components/hr/HrOverview';
 import EmployeeForm from '@/components/hr/EmployeeForm';
 import EmployeeContract from '@/components/hr/EmployeeContract';
 import EmployeeSectionEdit, { type SectionKey } from '@/components/hr/EmployeeSectionEdit';
@@ -26,6 +27,7 @@ type Screen =
   | { type: 'profile' }
   | { type: 'documents' }
   | { type: 'employees' }
+  | { type: 'overview' }
   | { type: 'employee-detail'; employeeId: number }
   | { type: 'employee-edit'; employeeId: number | null }
   | { type: 'employee-contract'; employeeId: number }
@@ -89,6 +91,7 @@ export default function HrPage() {
     else if (tile === 'profile') navigate({ type: 'profile' });
     else if (tile === 'documents') navigate({ type: 'documents' });
     else if (tile === 'employees') navigate({ type: 'employees' });
+    else if (tile === 'overview') navigate({ type: 'overview' });
     else if (tile === 'departments') navigate({ type: 'dept-roles' });
     else if (tile === 'timeoff') navigate({ type: 'timeoff' });
     else if (tile === 'termination') router.push('/termination');
@@ -116,6 +119,14 @@ export default function HrPage() {
       );
     case 'documents':
       return <MyDocuments onBack={goDashboard} onHome={goHome} />;
+    case 'overview':
+      return (
+        <HrOverview
+          onBack={goDashboard}
+          onHome={goHome}
+          onOpenEmployee={(id: number) => { setStaffEditMode(false); navigate({ type: 'employee-detail', employeeId: id }); }}
+        />
+      );
     case 'employees':
       return (
         <EmployeeOverview

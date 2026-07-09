@@ -74,7 +74,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     if (!employeeId) return NextResponse.json({ error: 'Invalid employee id' }, { status: 400 });
 
     const odoo = getOdoo();
-    const emp = await loadEmployeeScoped(odoo, employeeId, ['name', 'company_id', 'contract_id']);
+    const emp = await loadEmployeeScoped(odoo, employeeId, ['name', 'company_id', 'contract_id', 'kw_kv_typ']);
     if (!emp) return NextResponse.json({ error: 'Employee not found' }, { status: 404 });
 
     const companyId = Array.isArray(emp.company_id) ? emp.company_id[0] : null;
@@ -109,6 +109,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         name: emp.name,
         company_id: companyId,
         company_name: Array.isArray(emp.company_id) ? emp.company_id[1] : '',
+        kv_typ: emp.kw_kv_typ || null, // insurance type; 'geringfuegig' = Minijob (drives the pay guardrail)
       },
       contract,
       contracts,

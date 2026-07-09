@@ -107,6 +107,7 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
   const [wageType, setWageType] = useState<'hourly' | 'monthly'>('hourly');
   const [hourlyWage, setHourlyWage] = useState('');
   const [monthlyWage, setMonthlyWage] = useState('');
+  const [kvTyp, setKvTyp] = useState<string>(''); // employee insurance type; 'geringfuegig' = Minijob (pay guardrail)
 
   // Signed hard-copy contract (scan/photo) attached to the loaded contract.
   const [hasSignedPdf, setHasSignedPdf] = useState(false);
@@ -140,6 +141,7 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
       .then(d => {
         if (d.error) { setLoadError(d.error); return; }
         setEmpName(d.employee?.name || '');
+        setKvTyp(d.employee?.kv_typ || '');
         const admin = !!d.canEditPay;
         setCanEditPay(admin);
         setContractTypes(d.options?.contractTypes || []);
@@ -385,6 +387,33 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
                     onChange={e => setMonthlyWage(e.target.value)} placeholder="e.g. 2500.00" className="form-inp" />
                 </Field>
               )}
+              {(() => {
+                // German labour-law guardrails (2026): MiLoG minimum wage €13.90/h;
+                // Minijob monthly cap €603. Informational only — never blocks saving.
+                const MIN_WAGE = 13.9, MINIJOB_CAP = 603;
+                const hw = Number(hourlyWage) || 0;
+                const mw = Number(monthlyWage) || 0;
+                const wh = Number(weeklyHours) || 0;
+                const estMonthly = wageType === 'monthly' ? mw : hw * wh * (52 / 12);
+                const warns: string[] = [];
+                if (wageType === 'hourly' && hw > 0 && hw < MIN_WAGE) {
+                  warns.push(`Below the German minimum wage (€${MIN_WAGE.toFixed(2)}/h, 2026).`);
+                }
+                if (kvTyp === 'geringfuegig' && estMonthly > MINIJOB_CAP) {
+                  warns.push(`≈ €${Math.round(estMonthly)}/month — above the €${MINIJOB_CAP} Minijob limit (2026). Reduce hours/pay or change the insurance type.`);
+                }
+                if (warns.length) {
+                  return (
+                    <div className="px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[var(--fs-xs)] text-amber-800 flex flex-col gap-1">
+                      {warns.map((w, i) => <div key={i}>{'⚠ ' + w}</div>)}
+                    </div>
+                  );
+                }
+                if (wageType === 'hourly' && hw > 0 && wh > 0) {
+                  return <div className="text-[var(--fs-xs)] text-gray-400 px-1">{`≈ €${Math.round(estMonthly)}/month gross at ${wh} h/week.`}</div>;
+                }
+                return null;
+              })()}
             </Card>
           ) : (
             <p className="text-[var(--fs-xs)] text-gray-400 px-1">Pay details are managed by an admin.</p>
