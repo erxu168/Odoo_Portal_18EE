@@ -10,7 +10,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { employeeWeekHours, fetchDepartments, fetchEmployees, fetchWeekSlots, meetsMinSkill } from '@/lib/shifts-odoo';
+import { employeeWeekHours, fetchDepartments, fetchEmployees, fetchWeekSlots, meetsMinSkill, onLeaveEmployeeIds } from '@/lib/shifts-odoo';
 import {
   getWeekendEnabled,
   slotDepartments,
@@ -18,7 +18,7 @@ import {
   upsertWeekendHistory,
   weekendGateUnlockedAt,
 } from '@/lib/shifts-db';
-import { berlinISOWeekKey, berlinParts, currentWeekKey, durationHours, nowOdooUtc } from '@/lib/shifts-time';
+import { berlinISOWeekKey, berlinParts, currentWeekKey, durationHours, nowOdooUtc, weekKeyDays } from '@/lib/shifts-time';
 import { computeWeekendGate, isWeekendDow } from '@/lib/shifts-weekend';
 import type { CohortEmp, WeekendSlotLite } from '@/lib/shifts-weekend';
 import type { ShiftSlot } from '@/types/shifts';
@@ -164,7 +164,12 @@ export async function GET(request: Request) {
           minSkill: (wsMinSkill.get(s.id) as '2' | '3' | undefined) ?? null,
           resourceId: s.resourceId,
         }));
-        const gate = computeWeekendGate(lite, cohort, meCohort);
+        // Exclude anyone on approved leave over this weekend from the cohort —
+        // they don't count toward the quota and aren't gated.
+        const wkDays = weekKeyDays(wk);
+        const onLeave = await onLeaveEmployeeIds(cohort.map(e => e.id), wkDays[4], wkDays[6]);
+        const availCohort = onLeave.size ? cohort.filter(e => !onLeave.has(e.id)) : cohort;
+        const gate = computeWeekendGate(lite, availCohort, meCohort);
         const grandfathered = weekendGateUnlockedAt(companyId, employeeId, wk) !== null;
         const open = gate.gateOpen || grandfathered;
         gateOpenByWeek.set(wk, open);

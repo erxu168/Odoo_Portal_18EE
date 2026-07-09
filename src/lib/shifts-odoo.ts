@@ -412,6 +412,36 @@ export async function employeeMonthHours(employeeId: number, refDate?: string): 
   return Math.round(total * 100) / 100;
 }
 
+/**
+ * Employee ids with APPROVED (state='validate') time-off overlapping the given
+ * Berlin date range (inclusive "YYYY-MM-DD"). Used so the weekend rule doesn't
+ * count or gate people who are away.
+ */
+export async function onLeaveEmployeeIds(
+  employeeIds: number[],
+  startDate: string,
+  endDate: string,
+): Promise<Set<number>> {
+  const out = new Set<number>();
+  if (employeeIds.length === 0) return out;
+  const rows = (await getOdoo().searchRead(
+    'hr.leave',
+    [
+      ['employee_id', 'in', employeeIds],
+      ['state', '=', 'validate'],
+      ['request_date_from', '<=', endDate],
+      ['request_date_to', '>=', startDate],
+    ],
+    ['employee_id'],
+    { limit: 1000 },
+  )) as OdooRow[];
+  for (const r of rows) {
+    const eid = Array.isArray(r.employee_id) && typeof r.employee_id[0] === 'number' ? r.employee_id[0] : null;
+    if (eid !== null) out.add(eid);
+  }
+  return out;
+}
+
 /** employeeId → assigned hours in the current Berlin calendar month (for Minijob €-cap checks). */
 export async function monthHoursMap(companyId: number): Promise<Map<number, number>> {
   const today = berlinParts(nowOdooUtc()).date;

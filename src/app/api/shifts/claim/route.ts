@@ -19,6 +19,7 @@ import {
   fetchSlot,
   fetchWeekSlots,
   meetsMinSkill,
+  onLeaveEmployeeIds,
   recomputeWeekFlags,
   updateSlot,
 } from '@/lib/shifts-odoo';
@@ -29,7 +30,7 @@ import {
   upsertWeekendHistory,
   weekendGateUnlockedAt,
 } from '@/lib/shifts-db';
-import { berlinISOWeekKey, berlinParts, fmtDay, fmtTimeRange, odooToDate } from '@/lib/shifts-time';
+import { berlinISOWeekKey, berlinParts, fmtDay, fmtTimeRange, odooToDate, weekKeyDays } from '@/lib/shifts-time';
 import { computeWeekendGate, isWeekendDow } from '@/lib/shifts-weekend';
 import type { CohortEmp, WeekendSlotLite } from '@/lib/shifts-weekend';
 
@@ -131,7 +132,12 @@ export async function POST(request: Request) {
           skill: e.skill,
           roleIds: e.roleIds,
         }));
-        const gate = computeWeekendGate(lite, cohort, {
+        // Anyone on approved leave this weekend is out of the cohort — not
+        // counted toward the quota, not gated.
+        const wkDays = weekKeyDays(weekKey);
+        const onLeave = await onLeaveEmployeeIds(cohort.map(e => e.id), wkDays[4], wkDays[6]);
+        const availCohort = onLeave.size ? cohort.filter(e => !onLeave.has(e.id)) : cohort;
+        const gate = computeWeekendGate(lite, availCohort, {
           id: me.id,
           resourceId: me.resourceId,
           skill: me.skill,

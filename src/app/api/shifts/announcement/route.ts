@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
-import { fetchEmployees, fetchWeekSlots, meetsMinSkill } from '@/lib/shifts-odoo';
+import { fetchEmployees, fetchWeekSlots, meetsMinSkill, onLeaveEmployeeIds } from '@/lib/shifts-odoo';
 import {
   getWeekendEnabled,
   listPublishRuns,
@@ -19,7 +19,7 @@ import {
 import { effectivePublishState } from '@/lib/shifts-patterns';
 import { computeWeekendGate, isWeekendDow } from '@/lib/shifts-weekend';
 import type { CohortEmp, WeekendSlotLite } from '@/lib/shifts-weekend';
-import { berlinParts, odooToDate } from '@/lib/shifts-time';
+import { berlinParts, odooToDate, weekKeyDays } from '@/lib/shifts-time';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,7 +74,11 @@ export async function GET(request: Request) {
         skill: e.skill,
         roleIds: e.roleIds,
       }));
-      const gate = computeWeekendGate(lite, cohort, {
+      // Anyone on approved leave this weekend is out of the cohort.
+      const wkDays = weekKeyDays(openRun.weekKey);
+      const onLeave = await onLeaveEmployeeIds(cohort.map(e => e.id), wkDays[4], wkDays[6]);
+      const availCohort = onLeave.size ? cohort.filter(e => !onLeave.has(e.id)) : cohort;
+      const gate = computeWeekendGate(lite, availCohort, {
         id: me.id,
         resourceId: me.resourceId,
         skill: me.skill,
