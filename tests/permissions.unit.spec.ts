@@ -75,3 +75,15 @@ test('purchase defaults are behavior-preserving', () => {
   // no role gate today (any logged-in user) → all roles
   expect(roleCan('staff', 'purchase.order.send', {})).toBe(true);
 });
+
+test('inventory defaults are behavior-preserving', () => {
+  // hasRole('manager') today → manager+admin, staff blocked
+  expect(roleCan('staff', 'inventory.review.approve', {})).toBe(false);
+  expect(roleCan('manager', 'inventory.review.approve', {})).toBe(true);
+  expect(roleCan('staff', 'inventory.draft.review', {})).toBe(false);
+  expect(roleCan('staff', 'inventory.template.manage', {})).toBe(false);
+  expect(roleCan('staff', 'inventory.consumption.view', {})).toBe(false);
+  expect(roleCan('staff', 'inventory.productsettings.manage', {})).toBe(false);
+  // create-via-scan today has no role gate → all roles
+  expect(roleCan('staff', 'inventory.product.create', {})).toBe(true);
+});

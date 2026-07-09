@@ -6,7 +6,7 @@ type Role = 'staff' | 'manager' | 'admin';
 interface Action { key: string; module: string; label: string; group?: string; defaultRoles: Role[] }
 const ROLES: Role[] = ['staff', 'manager', 'admin'];
 const ROLE_LABEL: Record<Role, string> = { staff: 'Staff', manager: 'Manager', admin: 'Admin' };
-const MODULE_LABEL: Record<string, string> = { shifts: 'Shifts', manufacturing: 'Manufacturing', purchase: 'Purchase' };
+const MODULE_LABEL: Record<string, string> = { shifts: 'Shifts', manufacturing: 'Manufacturing', purchase: 'Purchase', inventory: 'Inventory' };
 
 export default function PermissionsMatrix() {
   const [actions, setActions] = useState<Action[]>([]);

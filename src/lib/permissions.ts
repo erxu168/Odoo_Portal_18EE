@@ -73,6 +73,18 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'purchase.receive.confirm', module: 'purchase', label: 'Approve a receipt into stock',           defaultRoles: ['manager', 'admin'] },
   { key: 'purchase.order.approve',   module: 'purchase', label: 'Approve / reject a queued order',        defaultRoles: ['manager', 'admin'] },
   { key: 'purchase.suppliers.seed',  module: 'purchase', label: 'Seed / auto-import suppliers from Odoo', defaultRoles: ['admin'] },
+
+  // ── Inventory — defaults match today's guards (inline hasRole; no company auth gate) ───
+  // review/draft/template/consumption/product-settings = hasRole('manager') → manager+admin.
+  // Creating a product via scan today has NO role gate (any logged-in) → all roles (now enforceable).
+  // Counting/submitting/quick-count stay all-roles (unchanged, not gated here). locations stays a
+  // company-scoped view (allowed_company_ids filter preserved).
+  { key: 'inventory.review.approve',        module: 'inventory', label: 'Approve / reject / reopen counts (into stock)', defaultRoles: ['manager', 'admin'] },
+  { key: 'inventory.draft.review',          module: 'inventory', label: 'Review draft products (approve / link / reject)', defaultRoles: ['manager', 'admin'] },
+  { key: 'inventory.template.manage',       module: 'inventory', label: 'Create & assign count lists',                     defaultRoles: ['manager', 'admin'] },
+  { key: 'inventory.consumption.view',      module: 'inventory', label: 'View consumption report',                        defaultRoles: ['manager', 'admin'] },
+  { key: 'inventory.productsettings.manage', module: 'inventory', label: 'Edit product settings (packs, photo rule)',      defaultRoles: ['manager', 'admin'] },
+  { key: 'inventory.product.create',        module: 'inventory', label: 'Create a product via scan',                      defaultRoles: ['staff', 'manager', 'admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {
