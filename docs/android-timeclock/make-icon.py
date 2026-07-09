@@ -10,8 +10,8 @@ Then run:  npx @capacitor/assets generate --android
 to expand these into every Android density + adaptive icon.
 
 Requires Pillow:  pip install pillow
-To use a different look, tweak the colours or swap in your own logo as
-icon-foreground.png (transparent PNG, subject centered in the middle ~66%).
+To use a different look, tweak the colours below, or swap in your own logo as
+icon-foreground.png (transparent PNG, subject centred in the middle ~66%).
 """
 from PIL import Image, ImageDraw
 import math, os
@@ -20,54 +20,60 @@ GREEN = (22, 163, 74, 255)   # #16a34a brand green
 NAVY = (26, 31, 46, 255)     # #1A1F2E header navy
 WHITE = (255, 255, 255, 255)
 S = 1024
-C = S // 2
 
 os.makedirs("assets", exist_ok=True)
 
 
-def draw_clock(img, face_r=300):
+def draw_clock(img, cx, cy, R):
+    """Draw a clean clock (white face, navy ticks + 10:10 hands) sized by radius R."""
     d = ImageDraw.Draw(img)
-    d.ellipse([C - face_r, C - face_r, C + face_r, C + face_r], fill=WHITE)
+    d.ellipse([cx - R, cy - R, cx + R, cy + R], fill=WHITE)
     for i in range(12):
         ang = math.radians(i * 30)
         vx, vy = math.sin(ang), -math.cos(ang)
         major = (i % 3 == 0)
-        r_in = face_r - (60 if major else 38)
-        w = 22 if major else 12
-        x1, y1 = C + vx * r_in, C + vy * r_in
-        x2, y2 = C + vx * (face_r - 16), C + vy * (face_r - 16)
-        d.line([x1, y1, x2, y2], fill=NAVY, width=w)
+        r_out = R * 0.92
+        r_in = R * (0.78 if major else 0.84)
+        w = R * (0.075 if major else 0.042)
+        x1, y1 = cx + vx * r_in, cy + vy * r_in
+        x2, y2 = cx + vx * r_out, cy + vy * r_out
+        d.line([x1, y1, x2, y2], fill=NAVY, width=max(2, int(w)))
         for (px, py) in [(x1, y1), (x2, y2)]:
             d.ellipse([px - w / 2, py - w / 2, px + w / 2, py + w / 2], fill=NAVY)
 
-    def hand(length, width, dial_pos):
+    def hand(length_f, width_f, dial_pos):
+        L, W = R * length_f, R * width_f
         ang = math.radians(dial_pos / 12 * 360)
-        ex, ey = C + math.sin(ang) * length, C - math.cos(ang) * length
-        d.line([C, C, ex, ey], fill=NAVY, width=width)
-        d.ellipse([ex - width / 2, ey - width / 2, ex + width / 2, ey + width / 2], fill=NAVY)
+        ex, ey = cx + math.sin(ang) * L, cy - math.cos(ang) * L
+        d.line([cx, cy, ex, ey], fill=NAVY, width=max(2, int(W)))
+        d.ellipse([ex - W / 2, ey - W / 2, ex + W / 2, ey + W / 2], fill=NAVY)
 
-    hand(165, 30, 10)   # hour hand -> ~10
-    hand(238, 22, 2)    # minute hand -> 2  (classic 10:10)
-    d.ellipse([C - 30, C - 30, C + 30, C + 30], fill=NAVY)
-    d.ellipse([C - 10, C - 10, C + 10, C + 10], fill=WHITE)
+    hand(0.52, 0.100, 10)   # hour hand -> ~10
+    hand(0.80, 0.072, 2)    # minute hand -> 2  (classic 10:10)
+    cd = R * 0.10
+    d.ellipse([cx - cd, cy - cd, cx + cd, cy + cd], fill=NAVY)
+    wd = R * 0.033
+    d.ellipse([cx - wd, cy - wd, cx + wd, cy + wd], fill=WHITE)
 
 
+# Foreground: large clock so it fills the adaptive safe-zone after @capacitor/assets'
+# 16.7% inset (transparent background — the green comes from icon-background).
 fg = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-draw_clock(fg, face_r=300)
+draw_clock(fg, S // 2, S // 2, R=430)
 fg.save("assets/icon-foreground.png")
 
+# Background: solid brand green.
 Image.new("RGBA", (S, S), GREEN).save("assets/icon-background.png")
 
+# Legacy (non-adaptive) launchers: green tile + clock, a touch smaller for the mask.
 only = Image.new("RGBA", (S, S), GREEN)
-only.alpha_composite(fg)
+draw_clock(only, S // 2, S // 2, R=360)
 only.save("assets/icon-only.png")
 
+# Launch (splash) screen: green with a centred clock.
 SP = 2732
 sp = Image.new("RGBA", (SP, SP), GREEN)
-clock = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-draw_clock(clock, face_r=330)
-clock = clock.resize((820, 820))
-sp.alpha_composite(clock, ((SP - 820) // 2, (SP - 820) // 2))
+draw_clock(sp, SP // 2, SP // 2, R=430)
 sp.convert("RGB").save("assets/splash.png")
 sp.convert("RGB").save("assets/splash-dark.png")
 
