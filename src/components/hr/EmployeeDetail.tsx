@@ -223,7 +223,7 @@ export default function EmployeeDetail({ employeeId, onBack, onContract, onDeact
               <div className="flex-1 min-w-0">
                 <div className="text-[var(--fs-sm)] font-semibold">{dt.label}</div>
                 {uploaded ? (
-                  <div className="text-[var(--fs-xs)] text-green-600 font-medium">{editMode ? 'Uploaded · Tap to replace' : 'Uploaded · Tap to view'}</div>
+                  <div className="text-[var(--fs-xs)] text-green-600 font-medium">{editMode ? 'Uploaded · Tap to replace or delete' : 'Uploaded · Tap to view'}</div>
                 ) : (
                   <div className="text-[var(--fs-xs)] text-gray-400">{editMode ? (dt.required ? 'Required · Tap to upload' : 'Tap to upload') : (dt.required ? 'Required - Missing' : 'Optional')}</div>
                 )}
