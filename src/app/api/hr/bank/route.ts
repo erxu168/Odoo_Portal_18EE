@@ -45,18 +45,22 @@ export async function GET(req: NextRequest) {
     if (scope.error) return scope.error;
     const targetId = scope.targetId!;
 
-    const emps = await odoo.searchRead('hr.employee', [['id', '=', targetId]], ['bank_account_id'], { limit: 1, context: { active_test: false } });
-    if (!emps.length || !emps[0].bank_account_id) {
-      return NextResponse.json({ iban: null });
+    const emps = await odoo.searchRead('hr.employee', [['id', '=', targetId]], ['bank_account_id', 'de_bank_account_holder'], { limit: 1, context: { active_test: false } });
+    if (!emps.length) {
+      return NextResponse.json({ iban: null, accountHolder: '' });
+    }
+    const accountHolder = emps[0].de_bank_account_holder || '';
+    if (!emps[0].bank_account_id) {
+      return NextResponse.json({ iban: null, accountHolder });
     }
 
     const bankId = emps[0].bank_account_id[0];
     const banks = await odoo.searchRead('res.partner.bank', [['id', '=', bankId]], ['acc_number', 'bank_id'], { limit: 1 });
     if (!banks.length) {
-      return NextResponse.json({ iban: null });
+      return NextResponse.json({ iban: null, accountHolder });
     }
 
-    return NextResponse.json({ iban: banks[0].acc_number || null, bankName: banks[0].bank_id ? banks[0].bank_id[1] : null });
+    return NextResponse.json({ iban: banks[0].acc_number || null, bankName: banks[0].bank_id ? banks[0].bank_id[1] : null, accountHolder });
   } catch (err: unknown) {
     console.error('GET /api/hr/bank error:', err);
     return NextResponse.json({ error: 'Failed to fetch bank info' }, { status: 500 });
@@ -65,20 +69,34 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { iban, employee_id } = await req.json();
-    if (!iban || typeof iban !== 'string') {
-      return NextResponse.json({ error: 'IBAN is required' }, { status: 400 });
+    const { iban, accountHolder, employee_id } = await req.json();
+    const hasIban = typeof iban === 'string' && iban.trim() !== '';
+    const hasHolder = accountHolder !== undefined;
+    if (!hasIban && !hasHolder) {
+      return NextResponse.json({ error: 'Nothing to save' }, { status: 400 });
     }
 
-    const cleaned = iban.replace(/\s+/g, '').toUpperCase();
-    if (!/^[A-Z]{2}\d{2}[A-Z0-9]{4,30}$/.test(cleaned)) {
-      return NextResponse.json({ error: 'Invalid IBAN format' }, { status: 400 });
+    let cleaned = '';
+    if (hasIban) {
+      cleaned = iban.replace(/\s+/g, '').toUpperCase();
+      if (!/^[A-Z]{2}\d{2}[A-Z0-9]{4,30}$/.test(cleaned)) {
+        return NextResponse.json({ error: 'Invalid IBAN format' }, { status: 400 });
+      }
     }
 
     const odoo = getOdoo();
     const scope = await resolveTarget(odoo, employee_id);
     if (scope.error) return scope.error;
     const targetId = scope.targetId!;
+
+    // Account-holder name (plain hr.employee field) — used when the salary account
+    // is not in the employee's own name. Saved whenever provided; false clears it.
+    if (hasHolder) {
+      await odoo.write('hr.employee', [targetId], { de_bank_account_holder: String(accountHolder || '').trim() || false });
+    }
+    if (!hasIban) {
+      return NextResponse.json({ success: true });
+    }
 
     // Odoo 18 removed hr.employee.address_home_id. A bank account (res.partner.bank)
     // now hangs off the employee's related partner, work_contact_id — which Odoo

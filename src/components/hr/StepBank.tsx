@@ -29,6 +29,8 @@ function maskIban(iban: string): string {
 export default function StepBank({ employee, onNext, onPrev, saving, employeeId, submitLabel = 'Continue' }: Props) {
   const [currentIban, setCurrentIban] = useState<string | null>(null);
   const [iban, setIban] = useState('');
+  const [currentHolder, setCurrentHolder] = useState('');
+  const [accountHolder, setAccountHolder] = useState('');
   const [loading, setLoading] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [localSaving, setLocalSaving] = useState(false);
@@ -42,6 +44,8 @@ export default function StepBank({ employee, onNext, onPrev, saving, employeeId,
           setCurrentIban(d.iban);
           setIban(formatIban(d.iban));
         }
+        setCurrentHolder(d.accountHolder || '');
+        setAccountHolder(d.accountHolder || '');
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -57,18 +61,17 @@ export default function StepBank({ employee, onNext, onPrev, saving, employeeId,
 
   async function handleContinue() {
     const cleaned = iban.replace(/\s+/g, '');
+    const ibanChanged = cleaned !== (currentIban || '');
+    const holderChanged = accountHolder.trim() !== currentHolder.trim();
 
-    if (cleaned === currentIban || (!cleaned && !currentIban)) {
+    // Nothing to save.
+    if (!ibanChanged && !holderChanged) {
       onNext({});
       return;
     }
 
-    if (!cleaned) {
-      onNext({});
-      return;
-    }
-
-    if (!/^[A-Z]{2}\d{2}[A-Z0-9]{4,30}$/.test(cleaned)) {
+    // Only validate the IBAN if a (new) one has been entered.
+    if (cleaned && !/^[A-Z]{2}\d{2}[A-Z0-9]{4,30}$/.test(cleaned)) {
       setSaveError('Please enter a valid IBAN (e.g. DE89 3704 0044 0532 0130 00)');
       return;
     }
@@ -76,17 +79,20 @@ export default function StepBank({ employee, onNext, onPrev, saving, employeeId,
     setLocalSaving(true);
     setSaveError(null);
     try {
+      const body: Record<string, unknown> = { employee_id: employeeId, accountHolder };
+      if (cleaned && ibanChanged) body.iban = cleaned;
       const res = await fetch('/api/hr/bank', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ iban: cleaned, employee_id: employeeId }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) {
-        setSaveError(data.error || 'Failed to save IBAN');
+        setSaveError(data.error || 'Failed to save bank details');
         return;
       }
-      setCurrentIban(cleaned);
+      if (cleaned) setCurrentIban(cleaned);
+      setCurrentHolder(accountHolder);
       onNext({});
     } catch {
       setSaveError('Network error. Please try again.');
@@ -126,6 +132,18 @@ export default function StepBank({ employee, onNext, onPrev, saving, employeeId,
             value={iban}
             onChange={handleIbanChange}
             placeholder="DE__ ____ ____ ____ ____ __"
+          />
+        </div>
+
+        <div>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">Account holder (optional)</span>
+          </div>
+          <input
+            className="form-input"
+            value={accountHolder}
+            onChange={e => { setAccountHolder(e.target.value); setSaveError(null); }}
+            placeholder="Only if the account is not in the employee's own name"
           />
         </div>
 
