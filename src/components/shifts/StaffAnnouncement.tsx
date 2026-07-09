@@ -94,6 +94,7 @@ export default function StaffAnnouncement({ companyId, employeeId, onGoOpen }: S
   }
 
   const remaining = ann.weekendRemaining ?? 0;
+  const openCount = ann.openEligible ?? 0;
 
   return (
     <div className="fixed inset-0 z-[130] bg-black/50 flex items-center justify-center p-5" onClick={dismiss}>
@@ -108,6 +109,12 @@ export default function StaffAnnouncement({ companyId, employeeId, onGoOpen }: S
           <div className="rounded-xl bg-red-50 border border-red-200 px-3.5 py-2.5 text-[var(--fs-sm)] text-red-800 mb-3">
             You must take <b>{remaining} weekend shift{remaining === 1 ? '' : 's'}</b> first, then you can pick weekday shifts.
           </div>
+        )}
+        {openCount > 0 && (
+          <p className="text-[var(--fs-sm)] text-gray-600 mb-3">
+            <b>{openCount} shift{openCount === 1 ? '' : 's'}</b> {openCount === 1 ? 'is' : 'are'} open for you to pick
+            {remaining > 0 ? ' after that' : ''}.
+          </p>
         )}
         <button
           onClick={pick}
