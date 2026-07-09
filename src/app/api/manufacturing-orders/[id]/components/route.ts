@@ -12,7 +12,7 @@ export async function POST(
     requireCapability('manufacturing.mo.components');
   } catch (err) {
     if (err instanceof AuthError) {
-      return NextResponse.json({ error: err.message }, { status: 401 });
+      return NextResponse.json({ error: err.message }, { status: err.status });
     }
     throw err;
   }
