@@ -1349,9 +1349,22 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><polyline points="15 18 9 12 15 6" /></svg>
             </button>
-            <div className="flex-1 text-center text-[var(--fs-md)] font-bold text-gray-900 truncate">
-              {monthLabel(monthAnchor)}
-              {monthAnchor === todayBerlin.slice(0, 7) && <span className="text-gray-400 font-semibold"> · this month</span>}
+            {/* Tap the month name to jump to any month via the OS date picker. */}
+            <div className="relative flex-1 min-w-0">
+              <div className="flex items-center justify-center gap-1 text-[var(--fs-md)] font-bold text-gray-900 min-w-0 pointer-events-none">
+                <span className="truncate">
+                  {monthLabel(monthAnchor)}
+                  {monthAnchor === todayBerlin.slice(0, 7) && <span className="text-gray-400 font-semibold"> · this month</span>}
+                </span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 flex-shrink-0"><polyline points="6 9 12 15 18 9" /></svg>
+              </div>
+              <input
+                type="date"
+                value={`${monthAnchor}-01`}
+                onChange={e => { if (e.target.value) setMonthAnchor(e.target.value.slice(0, 7)); }}
+                aria-label="Jump to a month"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
             </div>
             <button
               onClick={() => setMonthAnchor(a => shiftMonth(a, 1))}
@@ -1360,6 +1373,15 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500"><polyline points="9 18 15 12 9 6" /></svg>
             </button>
+            {monthAnchor !== todayBerlin.slice(0, 7) && (
+              <button
+                onClick={() => setMonthAnchor(todayBerlin.slice(0, 7))}
+                aria-label="Go to this month"
+                className="px-3 h-9 rounded-lg bg-green-50 text-green-700 text-[var(--fs-sm)] font-bold flex items-center justify-center active:bg-green-100 flex-shrink-0 whitespace-nowrap"
+              >
+                Today
+              </button>
+            )}
           </div>
         ) : (
           <WeekNav
@@ -1367,6 +1389,8 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             label={weekLabel(weekKey)}
             onPrev={() => setWeekKey(k => offsetWeekKey(k, -1))}
             onNext={() => setWeekKey(k => offsetWeekKey(k, 1))}
+            onJumpDate={d => { setWeekKey(berlinISOWeekKey(`${d} 12:00:00`)); setDay(d); }}
+            onToday={() => { setWeekKey(currentWeekKey()); setDay(todayBerlin); }}
           />
         )}
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { currentWeekKey } from '@/lib/shifts-time';
+import { currentWeekKey, weekKeyDays } from '@/lib/shifts-time';
 
 /**
  * Shared UI components for the shifts module.
@@ -77,11 +77,17 @@ export function Badge({ variant, children }: { variant: BadgeVariant; children: 
 }
 
 // --- Week Navigation (‹ 6 – 12 Jul ›) ---
-export function WeekNav({ weekKey, label, onPrev, onNext }: {
+export function WeekNav({ weekKey, label, onPrev, onNext, onJumpDate, onToday }: {
   weekKey: string; label: string; onPrev: () => void; onNext: () => void;
+  /** Jump to the ISO week of an arbitrary date (from the tap-to-pick date input). */
+  onJumpDate?: (dateStr: string) => void;
+  /** Reset to the current week; only shown when off it. */
+  onToday?: () => void;
 }) {
   const isCurrentWeek = weekKey === currentWeekKey();
   const weekNum = Number(weekKey.match(/-W(\d+)/)?.[1] ?? 0);
+  // Seed the picker on the Monday of the shown week.
+  const pickerValue = weekKeyDays(weekKey)[0];
   return (
     <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-2.5 py-2 mx-4 mb-3">
       <button onClick={onPrev} aria-label="Previous week"
@@ -90,10 +96,30 @@ export function WeekNav({ weekKey, label, onPrev, onNext }: {
           <polyline points="15 18 9 12 15 6"/>
         </svg>
       </button>
-      <div className="flex-1 text-center text-[var(--fs-md)] font-bold text-gray-900 min-w-0 truncate">
-        {label}
-        {weekNum > 0 && <span className="text-gray-400 font-semibold"> {'·'} Week {weekNum}</span>}
-        {isCurrentWeek && <span className="text-gray-400 font-semibold"> {'·'} this week</span>}
+      {/* Tap the title to open the OS date picker and jump to any week. The date
+          input sits transparently over the label so a tap anywhere opens it. */}
+      <div className="relative flex-1 min-w-0">
+        <div className="flex items-center justify-center gap-1 text-[var(--fs-md)] font-bold text-gray-900 min-w-0 pointer-events-none">
+          <span className="truncate">
+            {label}
+            {weekNum > 0 && <span className="text-gray-400 font-semibold"> {'·'} Week {weekNum}</span>}
+            {isCurrentWeek && <span className="text-gray-400 font-semibold"> {'·'} this week</span>}
+          </span>
+          {onJumpDate && (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 flex-shrink-0">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          )}
+        </div>
+        {onJumpDate && (
+          <input
+            type="date"
+            value={pickerValue}
+            onChange={e => { if (e.target.value) onJumpDate(e.target.value); }}
+            aria-label="Jump to a date"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          />
+        )}
       </div>
       <button onClick={onNext} aria-label="Next week"
         className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200 flex-shrink-0">
@@ -101,6 +127,12 @@ export function WeekNav({ weekKey, label, onPrev, onNext }: {
           <polyline points="9 18 15 12 9 6"/>
         </svg>
       </button>
+      {onToday && !isCurrentWeek && (
+        <button onClick={onToday} aria-label="Go to this week"
+          className="px-3 h-9 rounded-lg bg-green-50 text-green-700 text-[var(--fs-sm)] font-bold flex items-center justify-center active:bg-green-100 flex-shrink-0 whitespace-nowrap">
+          Today
+        </button>
+      )}
     </div>
   );
 }
