@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import DocumentUploadWidget from '@/components/ui/DocumentUploadWidget';
 
 interface Props {
   employeeId: number;
@@ -26,6 +27,28 @@ interface ContractRow {
   wage_type?: string;
   hourly_wage?: number;
   wage?: number;
+  has_signed_pdf?: boolean;
+  signed_pdf_name?: string;
+}
+
+// File -> raw base64 (no data-URL prefix), for upload.
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(new Error('Could not read that file.'));
+    r.readAsDataURL(file);
+  });
+}
+
+// Blob -> raw base64 (no data-URL prefix), for the viewer.
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(',')[1] || '');
+    r.onerror = () => reject(new Error('Could not read that file.'));
+    r.readAsDataURL(blob);
+  });
 }
 
 const STATE_OPTIONS: { value: string; label: string }[] = [
@@ -85,6 +108,10 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
   const [hourlyWage, setHourlyWage] = useState('');
   const [monthlyWage, setMonthlyWage] = useState('');
 
+  // Signed hard-copy contract (scan/photo) attached to the loaded contract.
+  const [hasSignedPdf, setHasSignedPdf] = useState(false);
+  const [signedPdfName, setSignedPdfName] = useState('');
+
   // Populate every form field from a contract row.
   const fillForm = useCallback((c: ContractRow, admin: boolean) => {
     setContractId(c.id);
@@ -95,6 +122,8 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
     setWeeklyHours(c.weekly_hours ? String(c.weekly_hours) : '');
     setDaysPerWeek(c.days_per_week ? String(c.days_per_week) : '');
     setCalendarId(c.resource_calendar_id ?? null);
+    setHasSignedPdf(!!c.has_signed_pdf);
+    setSignedPdfName(c.signed_pdf_name || '');
     if (admin) {
       setWageType(c.wage_type === 'monthly' ? 'monthly' : 'hourly');
       setHourlyWage(c.hourly_wage ? String(c.hourly_wage) : '');
@@ -220,6 +249,54 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
     }
   }
 
+  // --- Signed hard-copy contract: upload / view / delete on the loaded contract.
+  async function uploadSignedPdf(file: File) {
+    if (!contractId) { setError('Save the contract first, then attach the signed copy.'); return; }
+    setError(null);
+    try {
+      const data = await fileToBase64(file);
+      const res = await fetch(`/api/hr/employee/${employeeId}/contract/signed-pdf`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contract_id: contractId, filename: file.name, data }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not upload the file.');
+      setHasSignedPdf(true);
+      setSignedPdfName(file.name);
+      setContracts(prev => prev.map(c => c.id === contractId ? { ...c, has_signed_pdf: true, signed_pdf_name: file.name } : c));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not upload the file.');
+    }
+  }
+
+  async function viewSignedPdf() {
+    try {
+      const res = await fetch(`/api/hr/employee/${employeeId}/contract/signed-pdf?contract_id=${contractId}`);
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Could not open the file.'); }
+      const blob = await res.blob();
+      const base64 = await blobToBase64(blob);
+      return { base64, mimetype: blob.type || 'application/pdf', name: signedPdfName || 'signed-contract' };
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not open the file.');
+      throw err;
+    }
+  }
+
+  async function deleteSignedPdf() {
+    setError(null);
+    try {
+      const res = await fetch(`/api/hr/employee/${employeeId}/contract/signed-pdf?contract_id=${contractId}`, { method: 'DELETE' });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Could not remove the file.');
+      setHasSignedPdf(false);
+      setSignedPdfName('');
+      setContracts(prev => prev.map(c => c.id === contractId ? { ...c, has_signed_pdf: false, signed_pdf_name: '' } : c));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not remove the file.');
+      throw err; // keep the confirm dialog open on failure
+    }
+  }
+
   const primaryLabel = renewing ? 'Create new contract' : (noContractYet ? 'Create contract' : 'Save changes');
 
   return (
@@ -312,6 +389,30 @@ export default function EmployeeContract({ employeeId, onBack, onSaved }: Props)
           ) : (
             <p className="text-[var(--fs-xs)] text-gray-400 px-1">Pay details are managed by an admin.</p>
           )}
+
+          <Card title="Signed contract">
+            {contractId && !renewing ? (
+              <>
+                <DocumentUploadWidget
+                  label="Signed contract"
+                  hasDocument={hasSignedPdf}
+                  documentName={signedPdfName}
+                  accept="application/pdf,image/*"
+                  uploadLabel="Upload signed contract (PDF or photo)"
+                  onUpload={uploadSignedPdf}
+                  onView={viewSignedPdf}
+                  onDelete={deleteSignedPdf}
+                />
+                <p className="text-[var(--fs-xs)] text-gray-400 px-1">
+                  Scan or photo of the signed paper contract, kept on file for record keeping.
+                </p>
+              </>
+            ) : (
+              <p className="text-[var(--fs-sm)] text-gray-500 px-1">
+                Save the contract first, then you can attach the signed copy here.
+              </p>
+            )}
+          </Card>
 
           {contracts.length > 1 && (
             <Card title="Contract history">

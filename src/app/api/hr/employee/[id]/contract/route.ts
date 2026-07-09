@@ -18,7 +18,10 @@ import { parseCompanyIds } from '@/lib/db';
 const CONTRACT_STATES = ['draft', 'open', 'close', 'cancel'];
 
 const CONTRACT_FIELDS_BASE = ['id', 'name', 'date_start', 'date_end', 'state',
-  'contract_type_id', 'resource_calendar_id', 'kw_agreed_weekly_hours', 'kw_working_days_per_week'];
+  'contract_type_id', 'resource_calendar_id', 'kw_agreed_weekly_hours', 'kw_working_days_per_week',
+  // Char filename only (lightweight) — its presence tells the UI a signed file exists.
+  // The actual bytes are fetched on demand via contract/signed-pdf.
+  'kw_signed_contract_filename'];
 const CONTRACT_FIELDS_PAY = ['wage_type', 'hourly_wage', 'wage'];
 
 function berlinToday(): string {
@@ -46,6 +49,8 @@ function mapContract(c: Record<string, any>, isAdmin: boolean): Record<string, u
     resource_calendar_id: Array.isArray(c.resource_calendar_id) ? c.resource_calendar_id[0] : null,
     weekly_hours: c.kw_agreed_weekly_hours || 0,
     days_per_week: c.kw_working_days_per_week || 0,
+    has_signed_pdf: !!c.kw_signed_contract_filename,
+    signed_pdf_name: c.kw_signed_contract_filename || '',
   };
   if (isAdmin) {
     out.wage_type = c.wage_type || 'hourly';
