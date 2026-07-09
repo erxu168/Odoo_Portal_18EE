@@ -60,3 +60,7 @@ android/**/.DS_Store
 /playwright/.cache/
 .env.smoke.local
 __pycache__/
+android/
+android-kds/
+android-timeclock/
+.superpowers/
