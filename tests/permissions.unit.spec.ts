@@ -62,3 +62,16 @@ test('manufacturing defaults are behavior-preserving (manager-only writes, all-r
   expect(roleCan('staff', 'manufacturing.mo.components', {})).toBe(true);
   expect(roleCan('staff', 'manufacturing.bom.setcurrent', {})).toBe(true);
 });
+
+test('purchase defaults are behavior-preserving', () => {
+  // hasRole('manager') today → manager+admin, staff blocked
+  expect(roleCan('staff', 'purchase.supplier.manage', {})).toBe(false);
+  expect(roleCan('staff', 'purchase.guide.manage', {})).toBe(false);
+  expect(roleCan('staff', 'purchase.receive.confirm', {})).toBe(false);
+  expect(roleCan('manager', 'purchase.receive.confirm', {})).toBe(true);
+  // hasRole('admin') today → admin only
+  expect(roleCan('manager', 'purchase.suppliers.seed', {})).toBe(false);
+  expect(roleCan('admin', 'purchase.suppliers.seed', {})).toBe(true);
+  // no role gate today (any logged-in user) → all roles
+  expect(roleCan('staff', 'purchase.order.send', {})).toBe(true);
+});

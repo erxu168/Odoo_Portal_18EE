@@ -60,6 +60,19 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'manufacturing.bom.archive',     module: 'manufacturing', label: 'Archive / unarchive a recipe',              defaultRoles: ['manager', 'admin'] },
   { key: 'manufacturing.shelflife.edit',  module: 'manufacturing', label: 'Edit shelf life',                           defaultRoles: ['manager', 'admin'] },
   { key: 'manufacturing.tolerance.manage', module: 'manufacturing', label: 'Set recipe tolerance',                     defaultRoles: ['manager', 'admin'] },
+
+  // ── Purchase — defaults match today's guards (inline hasRole; no company scope) ───
+  // supplier/guide/product/insights/receive-confirm/order-approve = hasRole('manager')
+  // → manager+admin. seed/auto-import = hasRole('admin') → admin. Placing an order today
+  // has NO role gate (any logged-in user) → order.send defaults to all roles (now enforceable).
+  { key: 'purchase.order.send',      module: 'purchase', label: 'Place / send an order to a supplier',   defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'purchase.supplier.manage', module: 'purchase', label: 'Add / edit / remove suppliers',         defaultRoles: ['manager', 'admin'] },
+  { key: 'purchase.guide.manage',    module: 'purchase', label: 'Edit order guides (items, prices)',      defaultRoles: ['manager', 'admin'] },
+  { key: 'purchase.product.manage',  module: 'purchase', label: 'Search & create products',              defaultRoles: ['manager', 'admin'] },
+  { key: 'purchase.insights.view',   module: 'purchase', label: 'View spend insights',                   defaultRoles: ['manager', 'admin'] },
+  { key: 'purchase.receive.confirm', module: 'purchase', label: 'Approve a receipt into stock',           defaultRoles: ['manager', 'admin'] },
+  { key: 'purchase.order.approve',   module: 'purchase', label: 'Approve / reject a queued order',        defaultRoles: ['manager', 'admin'] },
+  { key: 'purchase.suppliers.seed',  module: 'purchase', label: 'Seed / auto-import suppliers from Odoo', defaultRoles: ['admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {
