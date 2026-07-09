@@ -154,22 +154,25 @@ export default function PatternManager({ companyId, onBack }: PatternManagerProp
     setLoading(true);
     setError(null);
     try {
-      const [rosterRes, patternsRes, runsRes, busyRes] = await Promise.all([
+      const [rosterRes, patternsRes, runsRes, busyData] = await Promise.all([
         fetch(`/api/shifts/roster?company_id=${companyId}`),
         fetch(`/api/shifts/patterns?company_id=${companyId}`),
         fetch(`/api/shifts/runs?company_id=${companyId}`),
-        fetch(`/api/shifts/busy?company_id=${companyId}`),
+        // Forecast data is best-effort — resolve to null on any failure so it can
+        // never reject the Promise.all and break the whole editor load.
+        fetch(`/api/shifts/busy?company_id=${companyId}`)
+          .then(r => (r.ok ? r.json() : null))
+          .catch(() => null),
       ]);
       const roster = await rosterRes.json();
       const pat = await patternsRes.json();
       const run = await runsRes.json();
-      const busyData = await busyRes.json().catch(() => null);
       if (!patternsRes.ok) throw new Error(pat.error || 'Could not load patterns');
       setRoles(Array.isArray(roster.roles) ? roster.roles : []);
       setDepartments(Array.isArray(roster.departments) ? roster.departments : []);
       setPatterns(Array.isArray(pat.patterns) ? pat.patterns : []);
       setRuns(Array.isArray(run.runs) ? run.runs : []);
-      if (busyRes.ok && busyData && Array.isArray(busyData.avgGrid)) {
+      if (busyData && Array.isArray(busyData.avgGrid)) {
         setBusy({
           avgGrid: busyData.avgGrid,
           ordersPerPerson: busyData.ordersPerPerson,
