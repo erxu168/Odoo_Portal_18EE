@@ -11,6 +11,27 @@
  */
 import nodemailer from 'nodemailer';
 import { resolveCompanySetting } from '@/lib/db';
+import { getOdoo } from '@/lib/odoo';
+
+/**
+ * Restaurant display name for a company, used for email branding under the
+ * KRAWINGS wordmark. Reads res.company and strips a trailing "(…)" address
+ * suffix. Falls back to a neutral label so an unknown or omitted company never
+ * shows the wrong restaurant's name.
+ */
+async function getCompanyBrandName(companyId?: number): Promise<string> {
+  if (!companyId) return 'Staff Portal';
+  try {
+    const rows = (await getOdoo().read('res.company', [companyId], ['name'])) as Array<Record<string, unknown>>;
+    const raw = rows?.[0]?.name;
+    if (typeof raw === 'string' && raw.trim()) {
+      return raw.replace(/\s*\(.*\)\s*$/, '').trim() || raw.trim();
+    }
+  } catch {
+    /* fall through to neutral label */
+  }
+  return 'Staff Portal';
+}
 
 export interface EmailConfig {
   host: string;
@@ -87,6 +108,7 @@ export async function sendOrderEmail(toEmail: string, subject: string, textBody:
  */
 export async function sendPasswordResetEmail(toEmail: string, toName: string, resetToken: string, companyId?: number) {
   const resetUrl = `${PORTAL_URL}/reset-password?token=${resetToken}`;
+  const brand = await getCompanyBrandName(companyId);
 
   await getTransporter(companyId).sendMail({
     from: `"Krawings Portal" <${getFrom(companyId)}>`,
@@ -104,13 +126,13 @@ export async function sendPasswordResetEmail(toEmail: string, toName: string, re
       '',
       'If you did not request this, ignore this email.',
       '',
-      '— Krawings SSAM Korean BBQ',
+      `— Krawings ${brand}`,
     ].join('\n'),
     html: `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 32px;">
           <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
-          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">SSAM KOREAN BBQ</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">${brand.toUpperCase()}</div>
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Someone requested a password reset for your Krawings Staff Portal account.</p>
@@ -119,7 +141,7 @@ export async function sendPasswordResetEmail(toEmail: string, toName: string, re
         </div>
         <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link expires in 1 hour. If you did not request this, ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
-        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings SSAM Korean BBQ &middot; Staff Portal</p>
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings ${brand} &middot; Staff Portal</p>
       </div>
     `,
   });
@@ -137,6 +159,7 @@ export async function sendCandidateWelcomeEmail(
   companyId?: number,
 ) {
   const loginUrl = `${PORTAL_URL}/login`;
+  const brand = await getCompanyBrandName(companyId);
 
   await getTransporter(companyId).sendMail({
     from: `"Krawings Portal" <${getFrom(companyId)}>`,
@@ -156,13 +179,13 @@ export async function sendCandidateWelcomeEmail(
       '',
       'You can use the portal to track your application status and, once approved, complete your onboarding paperwork.',
       '',
-      '\u2014 Krawings SSAM Korean BBQ',
+      `\u2014 Krawings ${brand}`,
     ].join('\n'),
     html: `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 32px;">
           <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
-          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">SSAM KOREAN BBQ</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">${brand.toUpperCase()}</div>
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Welcome! You have been granted access to the Krawings Staff Portal as part of your application for <strong>${jobName}</strong>.</p>
@@ -177,7 +200,7 @@ export async function sendCandidateWelcomeEmail(
         <p style="color: #6B7280; font-size: 13px; line-height: 1.5;">You will be asked to change your password on first login.</p>
         <p style="color: #6B7280; font-size: 13px; line-height: 1.5;">Use the portal to track your application status. Once approved, you can complete your onboarding paperwork directly in the portal.</p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
-        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings SSAM Korean BBQ &middot; Staff Portal</p>
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings ${brand} &middot; Staff Portal</p>
       </div>
     `,
   });
@@ -188,6 +211,7 @@ export async function sendCandidateWelcomeEmail(
  * Send a staff member their portal invite link (push-provisioning model).
  */
 export async function sendStaffInviteEmail(toEmail: string, toName: string, inviteUrl: string, companyId?: number) {
+  const brand = await getCompanyBrandName(companyId);
   await getTransporter(companyId).sendMail({
     from: `"Krawings Portal" <${getFrom(companyId)}>`,
     to: toEmail,
@@ -202,13 +226,13 @@ export async function sendStaffInviteEmail(toEmail: string, toName: string, invi
       '',
       'If you were not expecting this, you can ignore this email.',
       '',
-      '— Krawings SSAM Korean BBQ',
+      `— Krawings ${brand}`,
     ].join('\n'),
     html: `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 32px;">
           <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
-          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">SSAM KOREAN BBQ</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">${brand.toUpperCase()}</div>
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Welcome to the Krawings Staff Portal! Tap the button below to set up your account and choose a password.</p>
@@ -217,7 +241,7 @@ export async function sendStaffInviteEmail(toEmail: string, toName: string, invi
         </div>
         <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link is just for you and expires in 14 days. If you were not expecting this, you can ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
-        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings SSAM Korean BBQ &middot; Staff Portal</p>
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings ${brand} &middot; Staff Portal</p>
       </div>
     `,
   });
