@@ -194,8 +194,17 @@ export default function OpenShiftsList({ companyId, employeeId, onBack, onOpenMi
     );
   });
 
+  // Group into day sections, earliest day first. The /open API sorts eligible
+  // shifts before ineligible ("weekend first"/locked) ones; combined with the
+  // by-day grouping below that made the date headers jump around (e.g. Fri 31
+  // Jul, Sat 10 Oct, then Mon 13 Jul). Sort by start here so days are always
+  // chronological — and so the consecutive-day grouping is correct regardless
+  // of the order the API returns. start is "YYYY-MM-DD HH:MM:SS" so a string
+  // compare is chronological. A locked shift now sits in its real date slot,
+  // still greyed with its reason badge.
+  const ordered = [...filtered].sort((a, b) => a.start.localeCompare(b.start));
   const groups: { day: string; shifts: OpenShift[] }[] = [];
-  for (const s of filtered) {
+  for (const s of ordered) {
     const day = fmtDay(s.start);
     const last = groups[groups.length - 1];
     if (last && last.day === day) last.shifts.push(s);
