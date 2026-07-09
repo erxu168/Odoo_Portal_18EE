@@ -24,6 +24,26 @@ export type AufenthaltstitelTyp =
   | 'duldung' | 'gestattung' | 'visum'
   | 'eu_buerger' | 'deutsch';
 
+// Ordered options for the residence-permit-type select, and a label lookup for
+// the read views (so they show the friendly name, not the raw key like "befristet").
+// Labels mirror Odoo's German wording with an English gloss.
+export const AUFENTHALTSTITEL_OPTIONS: { value: string; label: string }[] = [
+  { value: 'unbefristet', label: 'Permanent settlement permit (Niederlassungserlaubnis)' },
+  { value: 'befristet', label: 'Temporary residence permit (Aufenthaltserlaubnis)' },
+  { value: 'blau', label: 'EU Blue Card (Blaue Karte EU)' },
+  { value: 'icr', label: 'ICT Card (ICT-Karte)' },
+  { value: 'duldung', label: 'Toleration (Duldung)' },
+  { value: 'gestattung', label: 'Permission to stay (Aufenthaltsgestattung)' },
+  { value: 'visum', label: 'Visa (Visum)' },
+  { value: 'eu_buerger', label: 'EU/EEA citizen — no permit needed (EU/EWR-Bürger)' },
+  { value: 'deutsch', label: 'German citizen (Deutsche Staatsangehörigkeit)' },
+];
+
+export function aufenthaltstitelLabel(key: string | false | null | undefined): string {
+  if (!key) return '';
+  return AUFENTHALTSTITEL_OPTIONS.find((o) => o.value === key)?.label || String(key);
+}
+
 export interface EmployeeData {
   id: number;
   name: string;

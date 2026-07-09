@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import type { EmployeeData } from '@/types/hr';
-import { calculateOnboardingPercent } from '@/types/hr';
+import { calculateOnboardingPercent, aufenthaltstitelLabel } from '@/types/hr';
 
 interface Props {
   onBack: () => void;
@@ -524,7 +524,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
       <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200">
         <EditableRow label="ID number" fieldKey="identification_id" value={(emp as any).identification_id || ''} mono />
         <EditableRow label="Passport" fieldKey="passport_id" value={(emp as any).passport_id || ''} mono />
-        <EditableRow label="Permit type" fieldKey="kw_aufenthaltstitel_typ" value={(emp as any).kw_aufenthaltstitel_typ || ''} type="readonly" />
+        <EditableRow label="Permit type" fieldKey="kw_aufenthaltstitel_typ" value={aufenthaltstitelLabel((emp as any).kw_aufenthaltstitel_typ)} type="readonly" />
         <EditableRow label="Visa expires" fieldKey="visa_expire" value={emp.visa_expire || ''} type="date" mono />
         <EditableRow label="Work permit expires" fieldKey="work_permit_expiration_date" value={(emp as any).work_permit_expiration_date || ''} type="date" mono />
       </div>
