@@ -62,10 +62,16 @@ with **Shifts**.
     64 API route files (82 `manager`, 4 `admin`).
   - **UI:** components read `user.role` / an `isManager` flag to show/hide/enable controls
     (~a dozen components).
-- **Shifts specifically:** gated by a single `isManager = role === 'manager' || role === 'admin'`
-  in `src/app/shifts/page.tsx`, passed as a prop into ~24 components. **Its API routes do not call
-  `requireRole` at all** — so server enforcement for Shifts is currently thin/absent. Wiring Shifts
-  into this system is a genuine security improvement, not just a config nicety.
+- **Shifts specifically:** the UI gates on a single `isManager = role === 'manager' || role === 'admin'`
+  in `src/app/shifts/page.tsx`, passed as a prop into ~24 components. On the server, its manager
+  routes are guarded by a **custom helper `requireManagerCompany(companyId)`** in
+  `src/app/api/shifts/_manager.ts` — which checks **both** `hasRole(user,'manager')` **and** that the
+  `company_id` is in the user's `allowed_company_ids` (admins bypass company). So Shifts IS enforced
+  today, but via company-scoped manager gating, **not** `requireRole`. **Design consequence:** the new
+  system must make only the *role* half configurable and **preserve the company-scope check**, or a
+  manager of one restaurant could act on another's shifts (regression). A few self-service/view routes
+  are cookie-auth-only (ownership-checked), and two (`shift/staff`, `shift/identify`) have no
+  company/role scoping at all — noted for hardening.
 - **Storage:** SQLite via `better-sqlite3` (`src/lib/db.ts`), with an established migration
   pattern (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `CREATE TABLE IF NOT EXISTS`) and existing
   settings tables (`portal_settings`, `company_settings`).
@@ -133,11 +139,15 @@ Add to `src/lib/auth.ts`:
 export function requireCapability(actionKey: string): PortalUser;
 ```
 
-- Replace `requireRole('manager')` at a call site with `requireCapability('shifts.shift.create')`.
-- Because each action's `defaultRoles` is seeded from the site's current `requireRole` value,
-  the swap is **behavior-preserving** on day one.
-- For Shifts, where routes currently have **no** guard, `requireCapability(...)` is **added**
-  (closing the existing gap).
+- For a plain `requireRole('manager')` call site (e.g. Manufacturing), replace it with
+  `requireCapability('<action.key>')`. Because each action's `defaultRoles` is seeded from the
+  site's current `requireRole` value, the swap is **behavior-preserving** on day one.
+- **Composing with company scope (Shifts and any company-scoped module):** where a route uses a
+  *company-scoped* gate like `requireManagerCompany(companyId)`, we do **not** drop it. Instead the
+  helper is refactored to accept a capability key and use `roleCan(role, key, overrides)` for the
+  *role* decision while keeping its existing company-membership check intact. The capability governs
+  *who by role*; the company check governs *which restaurants*. Both must pass. With no key passed,
+  the helper falls back to `hasRole(user,'manager')` so migration is incremental and safe.
 
 ### 5.5 UI enforcement
 
@@ -176,31 +186,40 @@ export function requireCapability(actionKey: string): PortalUser;
 
 Shifts is delivered end-to-end in the first release (engine + screen + Shifts wired + real-browser test).
 
-**Current gating:** one `isManager` flag → ~24 components; **no server guard** on `src/app/api/shifts*`.
+**Current gating (from code audit):** UI = one `isManager` flag → ~24 components (dashboard
+"Plan & Manage"/"Admin" groups are `managerOnly`; the settings gear renders only for managers).
+Server = ~35 manager routes guarded by `requireManagerCompany(companyId)` (manager + company scope);
+~19 self-service/view routes are cookie-auth-only with ownership checks.
 
-**Representative action list** (final list finalized by code audit during implementation; keys illustrative):
+**Action list (finalized from audit — 11 capabilities, each maps to real guarded routes):**
 
-| Action (label) | key | default |
-|---|---|---|
-| View schedule & my shifts | `shifts.schedule.view` | staff, manager, admin |
-| Create / edit a shift | `shifts.shift.manage` | manager, admin |
-| Delete a shift | `shifts.shift.delete` | manager, admin |
-| Assign staff to shifts | `shifts.shift.assign` | manager, admin |
-| Publish a schedule | `shifts.schedule.publish` | manager, admin |
-| Manage shift patterns/templates | `shifts.pattern.manage` | manager, admin |
-| Manage roster caps | `shifts.rostercaps.manage` | manager, admin |
-| Approve requests / swaps / availability | `shifts.requests.approve` | manager, admin |
-| Edit shift settings | `shifts.settings.manage` | manager, admin |
-| Manage roles & department assignment | `shifts.rolesdept.manage` | manager, admin |
-| Request swap / submit availability (self-service) | `shifts.selfservice.submit` | staff, manager, admin |
+| Action (label) | key | default | maps to |
+|---|---|---|---|
+| View schedule & own shifts | `shifts.schedule.view` | staff, manager, admin | summary, me, mine, open, hours, requests |
+| Request swap / claim / confirm / report sick (self-service) | `shifts.selfservice.submit` | staff, manager, admin | claim, confirm, cover-requests(+accept/decline/cancel), sick-reports |
+| Create & edit shifts | `shifts.shift.manage` | manager, admin | slots (POST), slots/[id] (PUT), manage, copy-last-week, templates |
+| Delete a shift / series | `shifts.shift.delete` | manager, admin | slots/[id] (DELETE), delete-series |
+| Publish a schedule | `shifts.schedule.publish` | manager, admin | publish-week, publish-upcoming, patterns/[id]/publish |
+| Manage patterns & runs | `shifts.pattern.manage` | manager, admin | patterns, patterns/[id], runs, runs/[id] |
+| Manage roster caps | `shifts.rostercaps.manage` | manager, admin | roster, roster/[employeeId] |
+| Approve requests / swaps / sick | `shifts.requests.approve` | manager, admin | approvals, approvals/[id]/(approve\|decline\|undo), sick-reports/[id]/resolve |
+| Manage roles & departments | `shifts.rolesdept.manage` | manager, admin | roles(+/[id]), departments(+/[id]) |
+| Edit shift settings | `shifts.settings.manage` | manager, admin | settings |
+| View manager overviews & KPIs | `shifts.overview.view` | manager, admin | coverage, overview, team, punctuality, timesheet, presence, busy |
+
+(Dropped the earlier `shifts.shift.assign` — there is no distinct assign endpoint; assignment happens
+inside create/edit, i.e. `shifts.shift.manage`. Every registry row must map to a real guarded route.)
 
 **Work for Shifts:**
-1. Enumerate the exact actions (audit `src/components/shifts/*` + `src/app/api/shift*`).
-2. Add registry entries with defaults matching current `isManager` behavior.
-3. Add `requireCapability(...)` guards to the Shifts API routes (new enforcement).
-4. Replace the `isManager` prop flow in `src/app/shifts/page.tsx` + components with capabilities.
+1. Add the 11 registry entries above (defaults = current behavior).
+2. Refactor `requireManagerCompany(companyId)` → `requireManagerCompany(companyId, actionKey?)`: use
+   `roleCan(role, actionKey, overrides)` for the role decision, **keep the company-membership check**.
+   Pass the mapped key at each manager route call site.
+3. For the self-service/view routes, add `requireCapability('shifts.selfservice.submit')` /
+   `requireCapability('shifts.schedule.view')` at the top (their ownership/company checks remain).
+4. Replace the `isManager` prop flow in `src/app/shifts/page.tsx` + components with capability checks.
 5. Verify in a real browser on staging with the test users (Hana/staff, Marco/manager) that:
-   - defaults behave exactly like today, and
+   - defaults behave exactly like today (incl. a manager still can't touch another company), and
    - toggling a switch immediately changes what each role can see and do, server included.
 
 ---
