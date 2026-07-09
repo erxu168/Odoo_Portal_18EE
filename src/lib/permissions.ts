@@ -45,6 +45,21 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'shifts.rolesdept.manage',   module: 'shifts', label: 'Manage roles & departments',                          defaultRoles: ['manager', 'admin'] },
   { key: 'shifts.settings.manage',    module: 'shifts', label: 'Edit shift settings',                                 defaultRoles: ['manager', 'admin'] },
   { key: 'shifts.overview.view',      module: 'shifts', label: 'View manager overviews & KPIs',                       defaultRoles: ['manager', 'admin'] },
+
+  // ── Manufacturing (proving-ground module) — defaults match today's guards ───
+  // create/manage/BOM-edit/shelf-life/tolerance/archive are requireRole('manager') today
+  // → manager+admin. components/save-version/set-current are requireAuth (any logged-in
+  // user) today → all roles (behavior-preserving; now enforceable). No company scope here.
+  { key: 'manufacturing.mo.create',       module: 'manufacturing', label: 'Create a manufacturing order',             defaultRoles: ['manager', 'admin'] },
+  { key: 'manufacturing.mo.manage',       module: 'manufacturing', label: 'Confirm / close / cancel / edit orders',    defaultRoles: ['manager', 'admin'] },
+  { key: 'manufacturing.mo.components',   module: 'manufacturing', label: 'Add / edit / remove order ingredients',     defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'manufacturing.mo.saveversion',  module: 'manufacturing', label: 'Save an order as a new recipe version',     defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'manufacturing.bom.create',      module: 'manufacturing', label: 'Create a recipe (BOM)',                     defaultRoles: ['manager', 'admin'] },
+  { key: 'manufacturing.bom.edit',        module: 'manufacturing', label: 'Edit a recipe (BOM) & worksheets',          defaultRoles: ['manager', 'admin'] },
+  { key: 'manufacturing.bom.setcurrent',  module: 'manufacturing', label: 'Set the current recipe version',            defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'manufacturing.bom.archive',     module: 'manufacturing', label: 'Archive / unarchive a recipe',              defaultRoles: ['manager', 'admin'] },
+  { key: 'manufacturing.shelflife.edit',  module: 'manufacturing', label: 'Edit shelf life',                           defaultRoles: ['manager', 'admin'] },
+  { key: 'manufacturing.tolerance.manage', module: 'manufacturing', label: 'Set recipe tolerance',                     defaultRoles: ['manager', 'admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {

@@ -51,3 +51,14 @@ test('every action key is unique and every default is a valid non-empty role sub
     expect(a.defaultRoles.length).toBeGreaterThan(0);
   }
 });
+
+test('manufacturing defaults are behavior-preserving (manager-only writes, all-role reads/edits)', () => {
+  // requireRole('manager') today → manager+admin, staff blocked
+  expect(roleCan('staff', 'manufacturing.mo.create', {})).toBe(false);
+  expect(roleCan('manager', 'manufacturing.mo.create', {})).toBe(true);
+  expect(roleCan('staff', 'manufacturing.bom.edit', {})).toBe(false);
+  expect(roleCan('staff', 'manufacturing.shelflife.edit', {})).toBe(false);
+  // requireAuth() today (any logged-in user) → all roles
+  expect(roleCan('staff', 'manufacturing.mo.components', {})).toBe(true);
+  expect(roleCan('staff', 'manufacturing.bom.setcurrent', {})).toBe(true);
+});
