@@ -20,6 +20,7 @@ import Timesheet from '@/components/shifts/Timesheet';
 import Punctuality from '@/components/shifts/Punctuality';
 import ShiftSettings from '@/components/shifts/ShiftSettings';
 import PatternManager from '@/components/shifts/PatternManager';
+import ManagerOverview from '@/components/shifts/ManagerOverview';
 import StaffAnnouncement from '@/components/shifts/StaffAnnouncement';
 import { Spinner } from '@/components/shifts/ui';
 
@@ -52,7 +53,8 @@ type Screen =
   | { type: 'timesheet' }
   | { type: 'punctuality' }
   | { type: 'settings' }
-  | { type: 'patterns' };
+  | { type: 'patterns' }
+  | { type: 'overview' };
 
 // Deterministic navigation: each screen has ONE parent (create/manage flows nest
 // under manage). Back always goes there — no in-memory history stack to desync.
@@ -73,6 +75,7 @@ const PARENT: Record<Screen['type'], Screen['type']> = {
   punctuality: 'dashboard',
   settings: 'dashboard',
   patterns: 'settings',
+  overview: 'dashboard',
 };
 
 export default function ShiftsPage() {
@@ -170,6 +173,7 @@ export default function ShiftsPage() {
     else if (key === 'mypin') navigate({ type: 'mypin' });
     else if (key === 'create') navigate({ type: 'create' });
     else if (key === 'manage') navigate({ type: 'manage' });
+    else if (key === 'overview') navigate({ type: 'overview' });
     else if (key === 'coverage') navigate({ type: 'coverage' });
     else if (key === 'roster') navigate({ type: 'roster' });
     else if (key === 'approvals') navigate({ type: 'approvals' });
@@ -264,6 +268,8 @@ export default function ShiftsPage() {
         return <ShiftSettings {...common} onOpenPatterns={() => navigate({ type: 'patterns' })} />;
       case 'patterns':
         return <PatternManager {...common} />;
+      case 'overview':
+        return <ManagerOverview {...common} />;
     }
   }
 

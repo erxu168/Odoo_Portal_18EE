@@ -1137,3 +1137,19 @@ export function upsertWeekendHistory(v: {
     )
     .run(v.companyId, v.employeeId, v.periodKey, v.quotaRequired, v.weekendWorked, v.gateUnlocked ? now : null, now);
 }
+
+/** Total weekend shifts each employee worked across the given periods (fairness scorecard). */
+export function weekendWorkedByEmployee(companyId: number, periodKeys: string[]): Map<number, number> {
+  ensureTables();
+  const map = new Map<number, number>();
+  if (periodKeys.length === 0) return map;
+  const ph = periodKeys.map(() => '?').join(',');
+  const rows = getDb()
+    .prepare(
+      `SELECT employee_id, SUM(weekend_worked) AS total FROM shift_weekend_history
+       WHERE company_id=? AND period_key IN (${ph}) GROUP BY employee_id`,
+    )
+    .all(companyId, ...periodKeys) as { employee_id: number; total: number }[];
+  for (const r of rows) map.set(r.employee_id, r.total);
+  return map;
+}
