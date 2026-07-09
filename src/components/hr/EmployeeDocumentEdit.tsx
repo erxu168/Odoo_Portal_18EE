@@ -78,6 +78,16 @@ export default function EmployeeDocumentEdit({ employeeId, docTypeKey, onBack, o
     return { base64: data.data_base64, mimetype: data.mimetype, name: data.name || doc.name };
   }
 
+  async function handleDelete() {
+    if (!doc) return;
+    const res = await fetch('/api/hr/documents/' + doc.id, { method: 'DELETE' });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Could not delete this document');
+    }
+    await load();
+  }
+
   if (!docType) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -106,6 +116,7 @@ export default function EmployeeDocumentEdit({ employeeId, docTypeKey, onBack, o
               documentName={doc?.name}
               onUpload={handleUpload}
               onView={handleView}
+              onDelete={doc ? handleDelete : undefined}
             />
           </div>
         )}
