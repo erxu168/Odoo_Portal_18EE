@@ -164,7 +164,11 @@ export default function StepPersonal({ employee, onNext, saving, submitLabel = '
     if (value.length < 3) { setAddressSuggestions([]); return; }
     addressDebounce.current = setTimeout(async () => {
       try {
-        const res = await fetch('/api/address-autocomplete?q=' + encodeURIComponent(value));
+        const res = await fetch(
+          '/api/address-autocomplete?q=' + encodeURIComponent(value) +
+            '&postcode=' + encodeURIComponent(zip) +
+            '&city=' + encodeURIComponent(city),
+        );
         if (res.ok) {
           const data = await res.json();
           setAddressSuggestions(data.results || []);
@@ -277,11 +281,25 @@ export default function StepPersonal({ employee, onNext, saving, submitLabel = '
           </div>
         </Field>
 
-        {/* Address with autocomplete */}
+        {/* Address — postcode + city first, then a scoped street autocomplete */}
         <div className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 pt-2">Address</div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Postcode" labelDe="PLZ">
+            <input className="form-input font-mono" value={zip} onChange={e => setZip(e.target.value)} placeholder="e.g. 10967" maxLength={5} inputMode="numeric" />
+          </Field>
+          <Field label="City" labelDe="Stadt">
+            <input className="form-input" value={city} onChange={e => setCity(e.target.value)} placeholder="Berlin" />
+          </Field>
+        </div>
         <Field label="Street & number" labelDe="Straße">
           <div className="relative">
-            <input className="form-input" value={street} onChange={e => handleAddressInput(e.target.value)} placeholder="Start typing your address..." />
+            <input
+              className="form-input"
+              value={street}
+              onChange={e => handleAddressInput(e.target.value)}
+              placeholder={zip || city ? 'Start typing the street…' : 'Enter postcode & city above first'}
+              disabled={!zip && !city}
+            />
             {addressSuggestions.length > 0 && (
               <div className="absolute z-10 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                 {addressSuggestions.map((addr, i) => (
@@ -295,14 +313,6 @@ export default function StepPersonal({ employee, onNext, saving, submitLabel = '
             )}
           </div>
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Postcode" labelDe="PLZ">
-            <input className="form-input font-mono" value={zip} onChange={e => setZip(e.target.value)} placeholder="e.g. 10115" maxLength={5} />
-          </Field>
-          <Field label="City" labelDe="Stadt">
-            <input className="form-input" value={city} onChange={e => setCity(e.target.value)} placeholder="Berlin" />
-          </Field>
-        </div>
         <Field label="Country" labelDe="Land">
           <div className="relative">
             <input className="form-input" value={addressCountry} onChange={e => searchAddressCountry(e.target.value)} placeholder="Start typing..." />

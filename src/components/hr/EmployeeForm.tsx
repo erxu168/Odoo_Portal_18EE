@@ -21,6 +21,7 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [justAdded, setJustAdded] = useState<string | null>(null);
 
   const [name, setName] = useState('');
   const [companyId, setCompanyId] = useState<number | null>(null);
@@ -72,8 +73,9 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
     }
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(andNew: boolean) {
     setError(null);
+    setJustAdded(null);
     if (!name.trim()) { setError('Please enter a name.'); return; }
     if (!companyId) { setError('Please choose a restaurant.'); return; }
     if (!departmentId) { setError('Please choose a department.'); return; }
@@ -93,6 +95,17 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
         : await fetch(`/api/hr/employee/${employeeId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not save.');
+      // "Save & add another": stay on the form, clear the person-specific
+      // fields, and keep the restaurant + department for the next entry.
+      if (andNew && isNew) {
+        setJustAdded(payload.name);
+        setName('');
+        setJobTitle('');
+        setWorkEmail('');
+        setMobilePhone('');
+        setSaving(false);
+        return;
+      }
       const savedId = isNew ? data.employee?.id : employeeId;
       onSaved(savedId as number, isNew);
     } catch (err: unknown) {
@@ -111,8 +124,13 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
         </div>
       ) : (
         <div className="p-5 flex flex-col gap-4">
+          {justAdded && (
+            <div className="px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-800 text-[var(--fs-sm)]">
+              ✓ Added <b>{justAdded}</b>. Ready for the next one — the restaurant and department are kept.
+            </div>
+          )}
           <Field label="Full name">
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Maria Schmidt"
+            <input value={name} onChange={e => { setName(e.target.value); setJustAdded(null); }} placeholder="e.g. Maria Schmidt"
               className="form-inp" />
           </Field>
 
@@ -157,10 +175,18 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
 
       {!loading && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent">
-          <button onClick={handleSubmit} disabled={saving}
-            className="w-full max-w-lg mx-auto flex items-center justify-center gap-2 py-4 bg-green-600 text-white font-bold text-[var(--fs-base)] rounded-xl shadow-lg active:opacity-90 disabled:opacity-50">
-            {saving ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : (isNew ? 'Add staff member' : 'Save changes')}
-          </button>
+          <div className="max-w-lg mx-auto flex flex-col gap-2">
+            <button onClick={() => handleSubmit(false)} disabled={saving}
+              className="w-full flex items-center justify-center gap-2 py-4 bg-green-600 text-white font-bold text-[var(--fs-base)] rounded-xl shadow-lg active:opacity-90 disabled:opacity-50">
+              {saving ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : (isNew ? 'Add staff member' : 'Save changes')}
+            </button>
+            {isNew && (
+              <button onClick={() => handleSubmit(true)} disabled={saving}
+                className="w-full py-3.5 bg-white border border-green-600 text-green-700 font-bold text-[var(--fs-sm)] rounded-xl active:bg-green-50 disabled:opacity-50">
+                Save &amp; add another
+              </button>
+            )}
+          </div>
         </div>
       )}
 
