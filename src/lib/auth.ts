@@ -5,7 +5,8 @@
  * Call requireRole('manager') to enforce a minimum role or throw AuthError.
  */
 import { cookies } from 'next/headers';
-import { getSessionUser, type PortalUser } from './db';
+import { getSessionUser, getPermissionOverrides, type PortalUser } from './db';
+import { roleCan } from './permissions';
 
 export const COOKIE_NAME = 'kw_session';
 export const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
@@ -52,6 +53,19 @@ export function requireAuth(): PortalUser {
 export function requireRole(minRole: 'staff' | 'manager' | 'admin'): PortalUser {
   const user = requireAuth();
   if (!hasRole(user, minRole)) throw new AuthError('Forbidden', 403);
+  return user;
+}
+
+/**
+ * Require that the current user's role is allowed a specific action, per the
+ * configurable permission registry + admin overrides. Throws AuthError(403) if not.
+ * Behavior-preserving: with no overrides, an action's default roles = today's guard.
+ */
+export function requireCapability(actionKey: string): PortalUser {
+  const user = requireAuth();
+  if (!roleCan(user.role, actionKey, getPermissionOverrides())) {
+    throw new AuthError('Forbidden', 403);
+  }
   return user;
 }
 

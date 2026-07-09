@@ -23,7 +23,10 @@ export interface PermissionAction {
   defaultRoles: Role[];
 }
 
-export type PermissionOverrides = Record<string, Role[]>;
+// Overrides come from the DB as plain string arrays (unvalidated). The pure
+// functions below validate each entry with isValidRoleArray, so the loose type
+// is intentional — it lets DB output flow in without a cast.
+export type PermissionOverrides = Record<string, string[]>;
 
 /** The action that governs the Permissions screen. Always admin-only, never editable. */
 export const PERMISSIONS_MANAGE_KEY = 'permissions.manage';

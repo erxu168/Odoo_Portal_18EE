@@ -92,6 +92,13 @@ function initTables(db: Database.Database) {
       PRIMARY KEY (company_id, key)
     );
 
+    -- Admin overrides for per-action permissions. action_key missing = use registry default.
+    CREATE TABLE IF NOT EXISTS feature_permissions (
+      action_key TEXT PRIMARY KEY,
+      allowed_roles TEXT NOT NULL,   -- JSON array subset of ["staff","manager","admin"]
+      updated_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS bom_tolerance (
       bom_id INTEGER PRIMARY KEY,
       tolerance_pct REAL NOT NULL DEFAULT 5,
@@ -475,6 +482,43 @@ export function getCompanySettings(companyId: number): Record<string, string> {
   const out: Record<string, string> = {};
   for (const r of rows) out[r.key] = r.value;
   return out;
+}
+
+// -- Feature permission overrides (per-action allowed roles) --------------------
+
+/** All admin overrides as { action_key: string[] }. Missing action = registry default. */
+export function getPermissionOverrides(): Record<string, string[]> {
+  const rows = getDb()
+    .prepare('SELECT action_key, allowed_roles FROM feature_permissions')
+    .all() as { action_key: string; allowed_roles: string }[];
+  const out: Record<string, string[]> = {};
+  for (const r of rows) {
+    try {
+      const arr = JSON.parse(r.allowed_roles);
+      if (Array.isArray(arr)) out[r.action_key] = arr.filter((x): x is string => typeof x === 'string');
+    } catch { /* skip corrupt row */ }
+  }
+  return out;
+}
+
+export function setPermissionOverride(actionKey: string, roles: string[]): void {
+  getDb()
+    .prepare(
+      'INSERT INTO feature_permissions (action_key, allowed_roles, updated_at) VALUES (?,?,?) ' +
+      'ON CONFLICT(action_key) DO UPDATE SET allowed_roles=excluded.allowed_roles, updated_at=excluded.updated_at',
+    )
+    .run(actionKey, JSON.stringify(roles), new Date().toISOString());
+}
+
+export function clearPermissionOverride(actionKey: string): void {
+  getDb().prepare('DELETE FROM feature_permissions WHERE action_key = ?').run(actionKey);
+}
+
+/** Reset a set of actions to their registry defaults (used for per-module / global reset). */
+export function clearPermissionOverrides(actionKeys: string[]): void {
+  if (actionKeys.length === 0) return;
+  const placeholders = actionKeys.map(() => '?').join(',');
+  getDb().prepare(`DELETE FROM feature_permissions WHERE action_key IN (${placeholders})`).run(...actionKeys);
 }
 
 /** Resolve a per-company setting: this company → default company (0) → null. */
