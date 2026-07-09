@@ -16,12 +16,15 @@ export const dynamic = 'force-dynamic';
 const P = {
   enabled: 'krawings_hr_doc_reminder.enabled',
   expiryEnabled: 'krawings_hr_doc_reminder.expiry_enabled',
+  contractEnabled: 'krawings_hr_doc_reminder.contract_enabled',
   hrInbox: 'krawings_hr_doc_reminder.hr_fallback_email',
   leadDays: 'krawings_hr_doc_reminder.expiry_lead_days',
+  contractLeadDays: 'krawings_hr_doc_reminder.contract_lead_days',
   testRecipient: 'krawings_hr_doc_reminder.test_recipient',
 };
 const CRON_REMINDERS = 'ir_cron_document_reminders';
 const CRON_EXPIRY = 'ir_cron_expiry_alerts';
+const CRON_CONTRACT = 'ir_cron_contract_end_alerts';
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 function adminOnly() {
@@ -41,7 +44,7 @@ async function getParam(odoo: ReturnType<typeof getOdoo>, key: string): Promise<
 async function cronIds(odoo: ReturnType<typeof getOdoo>): Promise<Record<string, number>> {
   const rows = await odoo.searchRead(
     'ir.model.data',
-    [['module', '=', 'krawings_hr_doc_reminder'], ['name', 'in', [CRON_REMINDERS, CRON_EXPIRY]]],
+    [['module', '=', 'krawings_hr_doc_reminder'], ['name', 'in', [CRON_REMINDERS, CRON_EXPIRY, CRON_CONTRACT]]],
     ['name', 'res_id'],
   );
   const out: Record<string, number> = {};
@@ -54,15 +57,18 @@ export async function GET() {
   if (gate) return gate;
   try {
     const odoo = getOdoo();
-    const [enabled, expiryEnabled, hrInbox, leadDays, testRecipient] = await Promise.all([
-      getParam(odoo, P.enabled), getParam(odoo, P.expiryEnabled), getParam(odoo, P.hrInbox),
-      getParam(odoo, P.leadDays), getParam(odoo, P.testRecipient),
+    const [enabled, expiryEnabled, contractEnabled, hrInbox, leadDays, contractLeadDays, testRecipient] = await Promise.all([
+      getParam(odoo, P.enabled), getParam(odoo, P.expiryEnabled), getParam(odoo, P.contractEnabled),
+      getParam(odoo, P.hrInbox), getParam(odoo, P.leadDays), getParam(odoo, P.contractLeadDays),
+      getParam(odoo, P.testRecipient),
     ]);
     return NextResponse.json({
       remindersOn: enabled === 'True',
       expiryOn: expiryEnabled === 'True',
+      contractOn: contractEnabled === 'True',
       hrInbox: hrInbox || '',
       leadDays: parseInt(leadDays, 10) || 30,
+      contractLeadDays: parseInt(contractLeadDays, 10) || 45,
       testRecipient: testRecipient || '',
     });
   } catch (err: unknown) {
@@ -78,11 +84,17 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const remindersOn = !!body.remindersOn;
     const expiryOn = !!body.expiryOn;
+    const contractOn = !!body.contractOn;
     const hrInbox = String(body.hrInbox || '').trim();
     const testRecipient = String(body.testRecipient || '').trim();
-    let leadDays = parseInt(String(body.leadDays), 10);
-    if (!Number.isFinite(leadDays) || leadDays < 1) leadDays = 30;
-    if (leadDays > 365) leadDays = 365;
+    const clampDays = (v: unknown, def: number) => {
+      let n = parseInt(String(v), 10);
+      if (!Number.isFinite(n) || n < 1) n = def;
+      if (n > 365) n = 365;
+      return n;
+    };
+    const leadDays = clampDays(body.leadDays, 30);
+    const contractLeadDays = clampDays(body.contractLeadDays, 45);
 
     if (hrInbox && !EMAIL_RE.test(hrInbox)) {
       return NextResponse.json({ error: 'The HR inbox is not a valid email address.' }, { status: 400 });
@@ -95,8 +107,10 @@ export async function PUT(request: Request) {
     await Promise.all([
       odoo.call('ir.config_parameter', 'set_param', [P.enabled, remindersOn ? 'True' : 'False']),
       odoo.call('ir.config_parameter', 'set_param', [P.expiryEnabled, expiryOn ? 'True' : 'False']),
+      odoo.call('ir.config_parameter', 'set_param', [P.contractEnabled, contractOn ? 'True' : 'False']),
       odoo.call('ir.config_parameter', 'set_param', [P.hrInbox, hrInbox]),
       odoo.call('ir.config_parameter', 'set_param', [P.leadDays, String(leadDays)]),
+      odoo.call('ir.config_parameter', 'set_param', [P.contractLeadDays, String(contractLeadDays)]),
       odoo.call('ir.config_parameter', 'set_param', [P.testRecipient, testRecipient]),
     ]);
 
@@ -104,6 +118,7 @@ export async function PUT(request: Request) {
     const ids = await cronIds(odoo);
     if (ids[CRON_REMINDERS]) await odoo.write('ir.cron', [ids[CRON_REMINDERS]], { active: remindersOn });
     if (ids[CRON_EXPIRY]) await odoo.write('ir.cron', [ids[CRON_EXPIRY]], { active: expiryOn });
+    if (ids[CRON_CONTRACT]) await odoo.write('ir.cron', [ids[CRON_CONTRACT]], { active: contractOn });
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

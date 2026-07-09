@@ -40,8 +40,10 @@ export default function ReminderSettings() {
 
   const [remindersOn, setRemindersOn] = useState(false);
   const [expiryOn, setExpiryOn] = useState(false);
+  const [contractOn, setContractOn] = useState(false);
   const [hrInbox, setHrInbox] = useState('');
   const [leadDays, setLeadDays] = useState('30');
+  const [contractLeadDays, setContractLeadDays] = useState('45');
   const [testRecipient, setTestRecipient] = useState('');
 
   useEffect(() => {
@@ -51,8 +53,10 @@ export default function ReminderSettings() {
         if (d.error) { setMsg({ kind: 'err', text: d.error }); return; }
         setRemindersOn(!!d.remindersOn);
         setExpiryOn(!!d.expiryOn);
+        setContractOn(!!d.contractOn);
         setHrInbox(d.hrInbox || '');
         setLeadDays(String(d.leadDays || 30));
+        setContractLeadDays(String(d.contractLeadDays || 45));
         setTestRecipient(d.testRecipient || '');
       })
       .catch(() => setMsg({ kind: 'err', text: 'Could not load settings' }))
@@ -70,7 +74,7 @@ export default function ReminderSettings() {
       const r = await fetch('/api/admin/reminder-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ remindersOn, expiryOn, hrInbox, leadDays: Number(leadDays) || 30, testRecipient }),
+        body: JSON.stringify({ remindersOn, expiryOn, contractOn, hrInbox, leadDays: Number(leadDays) || 30, contractLeadDays: Number(contractLeadDays) || 45, testRecipient }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Save failed');
@@ -106,6 +110,12 @@ export default function ReminderSettings() {
             label="Expiry alerts"
             desc="Warn staff and the HR inbox before a residence permit, visa or food-hygiene card expires."
           />
+          <Toggle
+            on={contractOn}
+            onChange={setContractOn}
+            label="Contract-end reminders"
+            desc="Alert the manager / HR inbox before a fixed-term contract ends, so it can be renewed in time. Staff are not emailed."
+          />
 
           <div className="mt-4">
             <label className={lbl}>HR summary inbox</label>
@@ -113,9 +123,15 @@ export default function ReminderSettings() {
             <p className="text-[var(--fs-xs)] text-gray-400 mt-1">Where the outstanding-staff summaries go (for teams with no manager assigned).</p>
           </div>
 
-          <div className="mt-4">
-            <label className={lbl}>Warn how many days before expiry</label>
-            <input value={leadDays} onChange={e => setLeadDays(e.target.value)} inputMode="numeric" placeholder="30" className={inp} />
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div>
+              <label className={lbl}>Expiry: days before to warn</label>
+              <input value={leadDays} onChange={e => setLeadDays(e.target.value)} inputMode="numeric" placeholder="30" className={inp} />
+            </div>
+            <div>
+              <label className={lbl}>Contract end: days before to warn</label>
+              <input value={contractLeadDays} onChange={e => setContractLeadDays(e.target.value)} inputMode="numeric" placeholder="45" className={inp} />
+            </div>
           </div>
 
           <div className="mt-4">
@@ -127,9 +143,9 @@ export default function ReminderSettings() {
             </p>
           </div>
 
-          {(remindersOn || expiryOn) && !testRecipient.trim() && (
+          {(remindersOn || expiryOn || contractOn) && !testRecipient.trim() && (
             <div className="mt-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[var(--fs-sm)] text-amber-800">
-              These emails go to real staff. Tip: put your own address in Test mode above first to preview a live run safely.
+              These emails go out to real staff and managers. Tip: put your own address in Test mode above first to preview a live run safely.
             </div>
           )}
 
