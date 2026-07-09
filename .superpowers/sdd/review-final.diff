@@ -1,0 +1,1175 @@
+# FINAL whole-branch review — Staff Tap-to-Edit
+# Base (feature start): 47306ea   Head: 9bb3ac7
+# EXCLUDED: unrelated concurrent commit e87f9ec (purchase auto-import), filtered out below.
+
+## Tap-to-edit commits
+9bb3ac7 [REF] hr: remove retired EmployeeProfileEdit 5-step wizard
+e60a95f [IMP] hr: unified tap-to-edit on staff detail (replaces two edit buttons)
+a8fd0ca [ADD] hr: EmployeeDocumentEdit view + upload/replace one document
+f2f5705 [ADD] hr: EmployeeSectionEdit single-section editor
+be27c92 [IMP] hr: make onboarding steps reusable standalone (submitLabel, requireAck)
+9455c04 [REF] hr: extract StepResidenceWork into a reusable component
+b942a07 [IMP] hr: read company_id + mobile_phone on employee for detail view
+
+## Files changed
+ src/app/hr/page.tsx                                |  33 +++--
+ src/components/hr/EmployeeDetail.tsx               | 131 ++++++++++++-------
+ src/components/hr/EmployeeDocumentEdit.tsx         | 122 ++++++++++++++++++
+ src/components/hr/EmployeeSectionEdit.tsx          | 120 ++++++++++++++++++
+ src/components/hr/StepBank.tsx                     |   5 +-
+ src/components/hr/StepInsurance.tsx                |  44 ++++---
+ src/components/hr/StepPersonal.tsx                 |   5 +-
+ ...ployeeProfileEdit.tsx => StepResidenceWork.tsx} | 139 ++-------------------
+ src/components/hr/StepTax.tsx                      |   5 +-
+ src/types/hr.ts                                    |   4 +-
+ 10 files changed, 399 insertions(+), 209 deletions(-)
+
+## Cumulative diff
+diff --git a/src/app/hr/page.tsx b/src/app/hr/page.tsx
+index cefcd33..6e442a6 100644
+--- a/src/app/hr/page.tsx
++++ b/src/app/hr/page.tsx
+@@ -3,48 +3,51 @@
+ import React, { useState } from 'react';
+ import { useRouter } from 'next/navigation';
+ import HrDashboard from '@/components/hr/HrDashboard';
+ import OnboardingWizard from '@/components/hr/OnboardingWizard';
+ import MyProfile from '@/components/hr/MyProfile';
+ import MyDocuments from '@/components/hr/MyDocuments';
+ import EmployeeOverview from '@/components/hr/EmployeeOverview';
+ import EmployeeDetail from '@/components/hr/EmployeeDetail';
+ import EmployeeForm from '@/components/hr/EmployeeForm';
+ import EmployeeContract from '@/components/hr/EmployeeContract';
+-import EmployeeProfileEdit from '@/components/hr/EmployeeProfileEdit';
++import EmployeeSectionEdit, { type SectionKey } from '@/components/hr/EmployeeSectionEdit';
++import EmployeeDocumentEdit from '@/components/hr/EmployeeDocumentEdit';
+ import DepartmentsRoles from '@/components/hr/DepartmentsRoles';
+ import DeptRoleForm from '@/components/hr/DeptRoleForm';
+ import TimeOff from '@/components/hr/TimeOff';
+ import TimeOffRequest from '@/components/hr/TimeOffRequest';
+ import CandidateStatus from '@/components/hr/CandidateStatus';
+ 
+ type DeptRoleKind = 'department' | 'role';
+ 
+ type Screen =
+   | { type: 'dashboard' }
+   | { type: 'onboarding'; step?: number }
+   | { type: 'profile' }
+   | { type: 'documents' }
+   | { type: 'employees' }
+   | { type: 'employee-detail'; employeeId: number }
+   | { type: 'employee-edit'; employeeId: number | null }
+   | { type: 'employee-contract'; employeeId: number }
+-  | { type: 'employee-profile-edit'; employeeId: number }
++  | { type: 'employee-section-edit'; employeeId: number; section: SectionKey }
++  | { type: 'employee-doc-edit'; employeeId: number; docTypeKey: string }
+   | { type: 'dept-roles' }
+   | { type: 'dept-role-edit'; kind: DeptRoleKind; recordId: number | null }
+   | { type: 'timeoff' }
+   | { type: 'timeoff-create' }
+   | { type: 'candidate-status' };
+ 
+ export default function HrPage() {
+   const router = useRouter();
+   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
++  const [staffEditMode, setStaffEditMode] = useState(false);
+   const [history, setHistory] = useState<Screen[]>([]);
+   const [isCandidate, setIsCandidate] = useState(false);
+   const [candidateChecked, setCandidateChecked] = useState(false);
+ 
+   // Check if this user is a candidate (has applicant_id, no employee_id)
+   React.useEffect(() => {
+     fetch('/api/hr/applicant/status')
+       .then((r) => {
+         if (r.ok) {
+           setIsCandidate(true);
+@@ -111,40 +114,56 @@ export default function HrPage() {
+           onEdit={() => navigate({ type: 'onboarding', step: 1 })}
+         />
+       );
+     case 'documents':
+       return <MyDocuments onBack={goDashboard} onHome={goHome} />;
+     case 'employees':
+       return (
+         <EmployeeOverview
+           onBack={goDashboard}
+           onHome={goHome}
+-          onSelect={(id: number) => navigate({ type: 'employee-detail', employeeId: id })}
++          onSelect={(id: number) => { setStaffEditMode(false); navigate({ type: 'employee-detail', employeeId: id }); }}
+           onAdd={() => navigate({ type: 'employee-edit', employeeId: null })}
+         />
+       );
+     case 'employee-detail':
+       return (
+         <EmployeeDetail
+           employeeId={screen.employeeId}
+           onBack={goBack}
+           onHome={goHome}
+-          onEdit={() => navigate({ type: 'employee-edit', employeeId: screen.employeeId })}
+-          onFullEdit={() => navigate({ type: 'employee-profile-edit', employeeId: screen.employeeId })}
+           onContract={() => navigate({ type: 'employee-contract', employeeId: screen.employeeId })}
+           onDeactivated={goBack}
++          editMode={staffEditMode}
++          onToggleEditMode={() => setStaffEditMode((m) => !m)}
++          onEditSection={(section) => {
++            if (section === 'basics') navigate({ type: 'employee-edit', employeeId: screen.employeeId });
++            else navigate({ type: 'employee-section-edit', employeeId: screen.employeeId, section: section as SectionKey });
++          }}
++          onEditDocument={(docTypeKey) => navigate({ type: 'employee-doc-edit', employeeId: screen.employeeId, docTypeKey })}
++        />
++      );
++    case 'employee-section-edit':
++      return (
++        <EmployeeSectionEdit
++          employeeId={screen.employeeId}
++          section={screen.section}
++          onBack={goBack}
++          onHome={goHome}
++          onDone={goBack}
+         />
+       );
+-    case 'employee-profile-edit':
++    case 'employee-doc-edit':
+       return (
+-        <EmployeeProfileEdit
++        <EmployeeDocumentEdit
+           employeeId={screen.employeeId}
++          docTypeKey={screen.docTypeKey}
+           onBack={goBack}
+           onHome={goHome}
+           onDone={goBack}
+         />
+       );
+     case 'employee-contract':
+       return (
+         <EmployeeContract
+           employeeId={screen.employeeId}
+           onBack={goBack}
+diff --git a/src/components/hr/EmployeeDetail.tsx b/src/components/hr/EmployeeDetail.tsx
+index efc835e..611a17f 100644
+--- a/src/components/hr/EmployeeDetail.tsx
++++ b/src/components/hr/EmployeeDetail.tsx
+@@ -11,27 +11,29 @@ interface Doc {
+   id: number;
+   name: string;
+   doc_type_key: string;
+   size_kb: number;
+ }
+ 
+ interface Props {
+   employeeId: number;
+   onBack: () => void;
+   onHome: () => void;
+-  onEdit: () => void;
+-  onFullEdit: () => void;
+   onContract: () => void;
+   onDeactivated: () => void;
++  editMode: boolean;
++  onToggleEditMode: () => void;
++  onEditSection: (section: string) => void;
++  onEditDocument: (docTypeKey: string) => void;
+ }
+ 
+-export default function EmployeeDetail({ employeeId, onBack, onEdit, onFullEdit, onContract, onDeactivated }: Props) {
++export default function EmployeeDetail({ employeeId, onBack, onContract, onDeactivated, editMode, onToggleEditMode, onEditSection, onEditDocument }: Props) {
+   const router = useRouter();
+   const [emp, setEmp] = useState<EmployeeData | null>(null);
+   const [docs, setDocs] = useState<Doc[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [deactivating, setDeactivating] = useState(false);
+   const [viewerData, setViewerData] = useState<{ base64: string; mimetype: string; name: string } | null>(null);
+   const [openingDocId, setOpeningDocId] = useState<number | null>(null);
+ 
+   useEffect(() => {
+     async function load() {
+@@ -118,117 +120,138 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onFullEdit,
+       if (!res.ok) throw new Error(data.error || "Could not update.");
+       onDeactivated();
+     } catch (err: unknown) {
+       window.alert(err instanceof Error ? err.message : "Could not update.");
+       setDeactivating(false);
+     }
+   }
+ 
+   return (
+     <div className="min-h-screen bg-gray-50 pb-8">
+-      <AppHeader title={emp.name} showBack onBack={onBack} />
++      <AppHeader
++        title={emp.name}
++        showBack
++        onBack={onBack}
++        action={
++          <button
++            onClick={onToggleEditMode}
++            className="px-3 py-1.5 rounded-lg bg-white/15 text-white font-bold text-[13px] active:bg-white/25"
++          >
++            {editMode ? 'Done' : 'Edit'}
++          </button>
++        }
++      />
++      {editMode && (
++        <div className="px-5 py-2 bg-green-50 text-green-700 text-[var(--fs-xs)] font-semibold text-center">
++          Tap any section or document to edit.
++        </div>
++      )}
+ 
+       <div className="bg-white px-5 py-4 flex items-center gap-3.5 border-b border-gray-200">
+         <div className="w-14 h-14 rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold text-[var(--fs-xl)] flex-shrink-0">
+           {initials}
+         </div>
+         <div>
+           <div className="text-[var(--fs-xxl)] font-bold">{emp.name}</div>
+           <div className="text-[var(--fs-sm)] text-gray-500">{dept}{emp.kw_beschaeftigungsbeginn ? " \u00B7 Started " + emp.kw_beschaeftigungsbeginn : ""}</div>
+           <div className="flex gap-1.5 mt-1.5">
+             <span className={"inline-flex px-2.5 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold " + (pct === 100 ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700")}>{pct}% complete</span>
+             {docs.length < 5 && <span className="inline-flex px-2.5 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-red-50 text-red-600">Missing docs</span>}
+           </div>
+         </div>
+       </div>
+ 
++      <Section title="Basics" onEdit={editMode ? () => onEditSection('basics') : undefined}>
++        <Row label="Role" value={emp.job_title || ''} optional />
++        <Row label="Restaurant" value={emp.company_id ? (emp.company_id as [number, string])[1] : ''} optional />
++        <Row label="Department" value={dept} optional />
++        <Row label="Mobile" value={emp.mobile_phone || ''} optional />
++        <Row label="Work email" value={emp.work_email || ''} optional />
++      </Section>
++
+       <STitle text="DATEV / Personalfragebogen" />
+-      <Section title="Personal">
+-        <Row label="Birthday" value={emp.birthday || ""} mono />
+-        <Row label="Gender" value={emp.gender || ""} />
+-        <Row label="Nationality" value={emp.country_id ? (emp.country_id as [number, string])[1] : ""} />
+-        <Row label="Place of birth" value={emp.place_of_birth || ""} />
+-        <Row label="Marital" value={emp.marital || ""} />
+-        <Row label="Address" value={[emp.private_street, emp.private_zip, emp.private_city].filter(Boolean).join(", ")} />
++      <Section title="Personal & address" onEdit={editMode ? () => onEditSection('personal') : undefined}>
++        <Row label="Birthday" value={emp.birthday || ''} mono />
++        <Row label="Gender" value={emp.gender || ''} />
++        <Row label="Nationality" value={emp.country_id ? (emp.country_id as [number, string])[1] : ''} />
++        <Row label="Place of birth" value={emp.place_of_birth || ''} />
++        <Row label="Marital" value={emp.marital || ''} />
++        <Row label="Address" value={[emp.private_street, emp.private_zip, emp.private_city].filter(Boolean).join(', ')} />
+       </Section>
+ 
+-      <Section title="Tax">
+-        <Row label="Tax ID" value={emp.kw_steuer_id || ""} mono />
+-        <Row label="Tax class" value={emp.kw_steuerklasse ? "Class " + emp.kw_steuerklasse : ""} />
+-        <Row label="Church tax" value={emp.kw_konfession === "--" ? "None" : emp.kw_konfession || ""} />
+-        <Row label="IBAN" value={emp.bank_account_id ? "On file" : ""} />
++      <Section title="Tax" onEdit={editMode ? () => onEditSection('tax') : undefined}>
++        <Row label="Tax ID" value={emp.kw_steuer_id || ''} mono />
++        <Row label="Tax class" value={emp.kw_steuerklasse ? 'Class ' + emp.kw_steuerklasse : ''} />
++        <Row label="Church tax" value={emp.kw_konfession === '--' ? 'None' : emp.kw_konfession || ''} />
+       </Section>
+ 
+-      <Section title="Insurance">
+-        <Row label="SV-Nr." value={emp.ssnid || ""} mono />
+-        <Row label="Krankenkasse" value={emp.kw_krankenkasse_name || ""} />
+-        <Row label="Type" value={emp.kw_kv_typ || ""} />
++      <Section title="Bank" onEdit={editMode ? () => onEditSection('bank') : undefined}>
++        <Row label="IBAN" value={emp.bank_account_id ? 'On file' : ''} optional />
+       </Section>
+ 
+-      <Section title="Residence">
+-        <Row label="Permit type" value={emp.kw_aufenthaltstitel_typ || ""} />
+-        <Row label="Visa expires" value={emp.visa_expire || ""} mono />
+-        <Row label="Permit expires" value={emp.work_permit_expiration_date || ""} mono />
++      <Section title="Insurance" onEdit={editMode ? () => onEditSection('insurance') : undefined}>
++        <Row label="SV-Nr." value={emp.ssnid || ''} mono />
++        <Row label="Krankenkasse" value={emp.kw_krankenkasse_name || ''} />
++        <Row label="Type" value={emp.kw_kv_typ || ''} />
+       </Section>
+ 
+-      <Section title="Gastro">
+-        <Row label="Health cert. date" value={emp.kw_gesundheitszeugnis_datum || ""} mono />
+-        <Row label="Health cert. expires" value={emp.kw_gesundheitszeugnis_ablauf || ""} mono />
+-        <Row label="Sofortmeldung" value={emp.kw_sofortmeldung_done ? "Done" : ""} />
++      <Section title="Residence & work" onEdit={editMode ? () => onEditSection('residence') : undefined}>
++        <Row label="Permit type" value={emp.kw_aufenthaltstitel_typ || ''} optional />
++        <Row label="Visa expires" value={emp.visa_expire || ''} mono optional />
++        <Row label="Permit expires" value={emp.work_permit_expiration_date || ''} mono optional />
++        <Row label="Health cert. date" value={emp.kw_gesundheitszeugnis_datum || ''} mono />
++        <Row label="Health cert. expires" value={emp.kw_gesundheitszeugnis_ablauf || ''} mono />
++        <Row label="Sofortmeldung" value={emp.kw_sofortmeldung_done ? 'Done' : ''} />
+       </Section>
+ 
+       <STitle text="Documents" />
+       <div className="px-5 space-y-2 pb-4">
+         {DOCUMENT_TYPES.map((dt) => {
+           const doc = docFor(dt.key);
+           const uploaded = !!doc;
+           const opening = uploaded && openingDocId === doc!.id;
+           return (
+             <button
+               key={dt.key}
+               type="button"
+-              disabled={!uploaded}
+-              onClick={uploaded ? () => handleOpenDoc(doc!) : undefined}
+-              className={"w-full text-left flex items-center gap-3 p-3 rounded-xl border disabled:cursor-default " + (uploaded ? "border-green-600 bg-green-50 active:bg-green-100" : "border-gray-200 bg-white")}
++              disabled={editMode ? false : !uploaded}
++              onClick={editMode ? () => onEditDocument(dt.key) : (uploaded ? () => handleOpenDoc(doc!) : undefined)}
++              className={"w-full text-left flex items-center gap-3 p-3 rounded-xl border disabled:cursor-default " + (uploaded ? "border-green-600 bg-green-50 active:bg-green-100" : (editMode ? "border-gray-300 bg-white active:bg-gray-50" : "border-gray-200 bg-white"))}
+             >
+               <div className={"w-10 h-10 rounded-lg flex items-center justify-center text-[var(--fs-xl)] " + (uploaded ? "bg-green-100" : "bg-gray-100")}>
+                 {dt.icon}
+               </div>
+               <div className="flex-1 min-w-0">
+                 <div className="text-[var(--fs-sm)] font-semibold">{dt.label}</div>
+                 {uploaded ? (
+-                  <div className="text-[var(--fs-xs)] text-green-600 font-medium">Uploaded &middot; Tap to view</div>
++                  <div className="text-[var(--fs-xs)] text-green-600 font-medium">{editMode ? 'Uploaded · Tap to replace' : 'Uploaded · Tap to view'}</div>
+                 ) : (
+-                  <div className="text-[var(--fs-xs)] text-gray-400">{dt.required ? "Required - Missing" : "Optional"}</div>
++                  <div className="text-[var(--fs-xs)] text-gray-400">{editMode ? (dt.required ? 'Required · Tap to upload' : 'Tap to upload') : (dt.required ? 'Required - Missing' : 'Optional')}</div>
+                 )}
+               </div>
+-              {uploaded ? (
++              {editMode ? (
++                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4z"/></svg>
++              ) : uploaded ? (
+                 opening ? (
+                   <div className="w-5 h-5 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                 ) : (
+                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                 )
+               ) : dt.required ? (
+                 <span className="text-red-500 text-[var(--fs-sm)] font-semibold">!</span>
+               ) : null}
+             </button>
+           );
+         })}
+       </div>
+ 
+       <div className="px-5 pt-4 pb-8 space-y-2.5">
+-        <button onClick={onFullEdit} className="w-full py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85">
+-          Edit full profile
+-        </button>
+-        <button onClick={onEdit} className="w-full py-3.5 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
+-          Edit basics (name, role, contact)
+-        </button>
+         <button onClick={onContract} className="w-full py-3.5 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85 flex items-center justify-center gap-2">
+           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="12" y1="17" x2="8" y2="17"/></svg>
+           Contract &amp; hours
+         </button>
+         <div className="flex gap-3">
+           <button onClick={handleOffboard} className="flex-1 py-3.5 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
+             Offboard / Terminate
+           </button>
+           <button onClick={handleDeactivate} disabled={deactivating} className="flex-1 py-3.5 bg-white text-red-600 font-bold text-[var(--fs-sm)] rounded-xl border border-red-200 active:opacity-85 disabled:opacity-50">
+             {deactivating ? "…" : "Mark as left"}
+@@ -245,30 +268,44 @@ export default function EmployeeDetail({ employeeId, onBack, onEdit, onFullEdit,
+         />
+       )}
+     </div>
+   );
+ }
+ 
+ function STitle({ text }: { text: string }) {
+   return <div className="px-5 pt-4 pb-1 text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">{text}</div>;
+ }
+ 
+-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+-  return (
+-    <div className="mx-5 bg-white rounded-2xl p-4 border border-gray-200 mb-3">
+-      <div className="text-[var(--fs-sm)] font-bold text-gray-400 uppercase tracking-wider mb-2">{title}</div>
++function Section({ title, onEdit, children }: { title: string; onEdit?: () => void; children: React.ReactNode }) {
++  const body = (
++    <>
++      <div className="flex items-center justify-between mb-2">
++        <div className="text-[var(--fs-sm)] font-bold text-gray-400 uppercase tracking-wider">{title}</div>
++        {onEdit && (
++          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4z"/></svg>
++        )}
++      </div>
+       {children}
++    </>
++  );
++  return (
++    <div className="mx-5 mb-3">
++      {onEdit ? (
++        <button type="button" onClick={onEdit} className="w-full text-left bg-white rounded-2xl p-4 border border-green-600 active:bg-green-50">{body}</button>
++      ) : (
++        <div className="bg-white rounded-2xl p-4 border border-gray-200">{body}</div>
++      )}
+     </div>
+   );
+ }
+ 
+-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
++function Row({ label, value, mono, optional }: { label: string; value: string; mono?: boolean; optional?: boolean }) {
+   const missing = !value;
+   return (
+     <div className="flex justify-between py-1.5 border-b border-gray-50 last:border-b-0">
+       <span className="text-[var(--fs-sm)] text-gray-500">{label}</span>
+-      <span className={"text-[var(--fs-sm)] font-medium text-right max-w-[55%] " + (mono ? "font-mono " : "") + (missing ? "text-red-500 italic" : "")}>
+-        {missing ? "Missing" : value}
++      <span className={"text-[var(--fs-sm)] font-medium text-right max-w-[55%] " + (mono ? "font-mono " : "") + (missing && !optional ? "text-red-500 italic" : "") + (missing && optional ? "text-gray-300" : "")}>
++        {missing ? (optional ? "—" : "Missing") : value}
+       </span>
+     </div>
+   );
+ }
+diff --git a/src/components/hr/EmployeeDocumentEdit.tsx b/src/components/hr/EmployeeDocumentEdit.tsx
+new file mode 100644
+index 0000000..ce01a49
+--- /dev/null
++++ b/src/components/hr/EmployeeDocumentEdit.tsx
+@@ -0,0 +1,122 @@
++'use client';
++
++import React, { useCallback, useEffect, useState } from 'react';
++import AppHeader from '@/components/ui/AppHeader';
++import DocumentUploadWidget from '@/components/ui/DocumentUploadWidget';
++import { DOCUMENT_TYPES } from '@/types/hr';
++
++interface Props {
++  employeeId: number;
++  docTypeKey: string;
++  onBack: () => void;
++  onHome: () => void;
++  onDone: () => void;
++}
++
++interface Doc { id: number; name: string; doc_type_key: string; size_kb: number; }
++
++function fileToBase64(file: File): Promise<string> {
++  return new Promise((resolve, reject) => {
++    const reader = new FileReader();
++    reader.onload = () => resolve((reader.result as string).split(',')[1] || '');
++    reader.onerror = () => reject(new Error('Could not read file'));
++    reader.readAsDataURL(file);
++  });
++}
++
++/**
++ * Manager document editor: view + upload/replace one document type for a staff
++ * member. Upload posts to /api/hr/documents, which archives (does not delete)
++ * the previous file of that type and logs the change to Odoo chatter.
++ */
++export default function EmployeeDocumentEdit({ employeeId, docTypeKey, onBack, onDone }: Props) {
++  const docType = DOCUMENT_TYPES.find((d) => d.key === docTypeKey);
++  const [doc, setDoc] = useState<Doc | null>(null);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState<string | null>(null);
++
++  const load = useCallback(async () => {
++    setLoading(true);
++    try {
++      const res = await fetch('/api/hr/documents?employee_id=' + employeeId);
++      const data = await res.json();
++      if (res.ok) {
++        const found = (data.documents || []).find((d: Doc) => d.doc_type_key === docTypeKey) || null;
++        setDoc(found);
++      } else {
++        setError(data.error || 'Could not load documents.');
++      }
++    } catch {
++      setError('Could not load documents.');
++    } finally {
++      setLoading(false);
++    }
++  }, [employeeId, docTypeKey]);
++
++  useEffect(() => { load(); }, [load]);
++
++  async function handleUpload(file: File) {
++    const base64 = await fileToBase64(file);
++    const res = await fetch('/api/hr/documents', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ employee_id: employeeId, doc_type_key: docTypeKey, filename: file.name, data_base64: base64 }),
++    });
++    if (!res.ok) {
++      const data = await res.json().catch(() => ({}));
++      throw new Error(data.error || 'Upload failed');
++    }
++    await load();
++  }
++
++  async function handleView() {
++    if (!doc) throw new Error('No document');
++    const res = await fetch('/api/hr/documents/' + doc.id);
++    if (!res.ok) throw new Error('Could not open document');
++    const data = await res.json();
++    return { base64: data.data_base64, mimetype: data.mimetype, name: data.name || doc.name };
++  }
++
++  if (!docType) {
++    return (
++      <div className="min-h-screen bg-gray-50">
++        <AppHeader title="Document" showBack onBack={onBack} />
++        <div className="p-5 text-center text-red-500 mt-10">Unknown document type.</div>
++      </div>
++    );
++  }
++
++  return (
++    <div className="min-h-screen bg-gray-50">
++      <AppHeader title={docType.label} subtitle={docType.labelDe} showBack onBack={onBack} />
++      <div className="p-5 space-y-4">
++        <p className="text-[var(--fs-sm)] text-gray-500">{docType.helpText}</p>
++
++        {loading ? (
++          <div className="flex items-center gap-2 py-3">
++            <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
++            <span className="text-[var(--fs-sm)] text-gray-500">Loading…</span>
++          </div>
++        ) : (
++          <div className="bg-white rounded-2xl p-4 border border-gray-200">
++            <DocumentUploadWidget
++              label={docType.label}
++              hasDocument={!!doc}
++              documentName={doc?.name}
++              onUpload={handleUpload}
++              onView={handleView}
++            />
++          </div>
++        )}
++
++        {error && (
++          <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[var(--fs-sm)]">{error}</div>
++        )}
++
++        <button onClick={onDone} className="w-full py-3.5 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
++          Done
++        </button>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/components/hr/EmployeeSectionEdit.tsx b/src/components/hr/EmployeeSectionEdit.tsx
+new file mode 100644
+index 0000000..76108ab
+--- /dev/null
++++ b/src/components/hr/EmployeeSectionEdit.tsx
+@@ -0,0 +1,120 @@
++'use client';
++
++import React, { useState, useCallback, useEffect } from 'react';
++import AppHeader from '@/components/ui/AppHeader';
++import StepPersonal from '@/components/hr/StepPersonal';
++import StepTax from '@/components/hr/StepTax';
++import StepInsurance from '@/components/hr/StepInsurance';
++import StepBank from '@/components/hr/StepBank';
++import StepResidenceWork from '@/components/hr/StepResidenceWork';
++import type { EmployeeData } from '@/types/hr';
++
++export type SectionKey = 'personal' | 'tax' | 'insurance' | 'bank' | 'residence';
++
++const SECTION_TITLES: Record<SectionKey, string> = {
++  personal: 'Personal & address',
++  tax: 'Tax',
++  insurance: 'Insurance',
++  bank: 'Bank',
++  residence: 'Residence & work',
++};
++
++interface Props {
++  employeeId: number;
++  section: SectionKey;
++  onBack: () => void;
++  onHome: () => void;
++  onDone: () => void;
++}
++
++/**
++ * Manager section editor: loads one employee and shows a single editable section,
++ * reusing the onboarding step components. Saves just that section via the
++ * company-scoped /api/hr/employee/[id] (and /api/hr/bank via StepBank itself),
++ * then returns to the detail screen. No wizard, no consents.
++ */
++export default function EmployeeSectionEdit({ employeeId, section, onBack, onDone }: Props) {
++  const [employee, setEmployee] = useState<EmployeeData | null>(null);
++  const [loading, setLoading] = useState(true);
++  const [saving, setSaving] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++
++  const load = useCallback(async () => {
++    try {
++      const res = await fetch(`/api/hr/employee/${employeeId}`);
++      const data = await res.json();
++      if (res.ok) setEmployee(data.employee);
++      else setError(data.error || 'Could not load this employee.');
++    } catch {
++      setError('Could not load this employee.');
++    } finally {
++      setLoading(false);
++    }
++  }, [employeeId]);
++
++  useEffect(() => { load(); }, [load]);
++
++  // Save the given DATEV fields, then return to the detail screen.
++  async function saveAndDone(fields: Record<string, unknown>) {
++    if (!fields || Object.keys(fields).length === 0) { onDone(); return; }
++    setSaving(true);
++    setError(null);
++    try {
++      const res = await fetch(`/api/hr/employee/${employeeId}`, {
++        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
++      });
++      const data = await res.json();
++      if (!res.ok) { setError(data.error || 'Could not save.'); setSaving(false); return; }
++      onDone();
++    } catch {
++      setError('Could not save.');
++      setSaving(false);
++    }
++  }
++
++  if (loading) {
++    return (
++      <div className="min-h-screen bg-gray-50">
++        <AppHeader title={SECTION_TITLES[section]} showBack onBack={onBack} />
++        <div className="flex items-center justify-center h-40">
++          <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
++        </div>
++      </div>
++    );
++  }
++
++  if (!employee) {
++    return (
++      <div className="min-h-screen bg-gray-50">
++        <AppHeader title={SECTION_TITLES[section]} showBack onBack={onBack} />
++        <div className="p-5 text-center text-red-500 mt-10">{error || 'Could not load this employee.'}</div>
++      </div>
++    );
++  }
++
++  return (
++    <div className="min-h-screen bg-gray-50">
++      <AppHeader title={SECTION_TITLES[section]} subtitle={employee.name} showBack onBack={onBack} />
++
++      {section === 'personal' && (
++        <StepPersonal employee={employee} onNext={saveAndDone} saving={saving} submitLabel="Save" />
++      )}
++      {section === 'tax' && (
++        <StepTax employee={employee} onNext={saveAndDone} onPrev={onBack} saving={saving} submitLabel="Save" />
++      )}
++      {section === 'insurance' && (
++        <StepInsurance employee={employee} onNext={saveAndDone} onPrev={onBack} saving={saving} submitLabel="Save" requireAck={false} />
++      )}
++      {section === 'bank' && (
++        <StepBank employee={employee} employeeId={employeeId} onNext={() => onDone()} onPrev={onBack} saving={saving} submitLabel="Save" />
++      )}
++      {section === 'residence' && (
++        <StepResidenceWork employee={employee} saving={saving} onPrev={onBack} onSave={saveAndDone} submitLabel="Save" />
++      )}
++
++      {error && (
++        <div className="mx-5 mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[var(--fs-sm)]">{error}</div>
++      )}
++    </div>
++  );
++}
+diff --git a/src/components/hr/StepBank.tsx b/src/components/hr/StepBank.tsx
+index 7b793a2..442a80b 100644
+--- a/src/components/hr/StepBank.tsx
++++ b/src/components/hr/StepBank.tsx
+@@ -4,35 +4,36 @@ import React, { useState, useEffect } from 'react';
+ import InfoButton from '@/components/hr/InfoButton';
+ import type { EmployeeData } from '@/types/hr';
+ import { FIELD_EXPLAINERS } from '@/types/hr';
+ 
+ interface Props {
+   employee: EmployeeData;
+   onNext: (fields: Record<string, unknown>) => void;
+   onPrev: () => void;
+   saving: boolean;
+   employeeId?: number; // when a manager edits someone else; omitted = self-service
++  submitLabel?: string;
+ }
+ 
+ function formatIban(raw: string): string {
+   const cleaned = raw.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+   return cleaned.replace(/(.{4})/g, '$1 ').trim();
+ }
+ 
+ function maskIban(iban: string): string {
+   const cleaned = iban.replace(/\s+/g, '');
+   if (cleaned.length <= 8) return formatIban(cleaned);
+   const masked = cleaned.slice(0, 4) + cleaned.slice(4, -4).replace(/./g, '\u2022') + cleaned.slice(-4);
+   return masked.replace(/(.{4})/g, '$1 ').trim();
+ }
+ 
+-export default function StepBank({ employee, onNext, onPrev, saving, employeeId }: Props) {
++export default function StepBank({ employee, onNext, onPrev, saving, employeeId, submitLabel = 'Continue' }: Props) {
+   const [currentIban, setCurrentIban] = useState<string | null>(null);
+   const [iban, setIban] = useState('');
+   const [loading, setLoading] = useState(true);
+   const [saveError, setSaveError] = useState<string | null>(null);
+   const [localSaving, setLocalSaving] = useState(false);
+   const ex = FIELD_EXPLAINERS.bank_iban;
+ 
+   useEffect(() => {
+     fetch('/api/hr/bank' + (employeeId ? '?employee_id=' + employeeId : ''))
+       .then(r => r.json())
+@@ -134,16 +135,16 @@ export default function StepBank({ employee, onNext, onPrev, saving, employeeId
+           </div>
+         )}
+ 
+         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[var(--fs-sm)] text-amber-800">
+           <strong>Note:</strong> Bank account changes are reviewed by your manager.
+         </div>
+       </div>
+       <div className="px-5 pt-4 pb-8 flex gap-3">
+         <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
+         <button onClick={handleContinue} disabled={isSaving} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
+-          {isSaving ? 'Saving...' : 'Continue'}
++          {isSaving ? 'Saving...' : submitLabel}
+         </button>
+       </div>
+     </div>
+   );
+ }
+diff --git a/src/components/hr/StepInsurance.tsx b/src/components/hr/StepInsurance.tsx
+index 04ce9cf..8e068f7 100644
+--- a/src/components/hr/StepInsurance.tsx
++++ b/src/components/hr/StepInsurance.tsx
+@@ -3,23 +3,25 @@
+ import React, { useState } from "react";
+ import InfoButton from "@/components/hr/InfoButton";
+ import type { EmployeeData } from "@/types/hr";
+ import { FIELD_EXPLAINERS } from "@/types/hr";
+ 
+ interface Props {
+   employee: EmployeeData;
+   onNext: (fields: Record<string, unknown>) => void;
+   onPrev: () => void;
+   saving: boolean;
++  submitLabel?: string;
++  requireAck?: boolean;
+ }
+ 
+-export default function StepInsurance({ employee, onNext, onPrev, saving }: Props) {
++export default function StepInsurance({ employee, onNext, onPrev, saving, submitLabel = 'Continue', requireAck = true }: Props) {
+   const [svNr, setSvNr] = useState(employee.ssnid || "");
+   const [kkName, setKkName] = useState(employee.kw_krankenkasse_name || "");
+   const [kvTyp, setKvTyp] = useState(employee.kw_kv_typ || "");
+   const [acknowledged, setAcknowledged] = useState(false);
+ 
+   const ex = FIELD_EXPLAINERS;
+ 
+   function handleSubmit() {
+     onNext({
+       ssnid: svNr || false,
+@@ -51,36 +53,40 @@ export default function StepInsurance({ employee, onNext, onPrev, saving }: Prop
+           <div className="flex items-center gap-1.5 mb-1.5">
+             <span className="text-[var(--fs-sm)] font-semibold text-gray-500 uppercase tracking-wide">Insurance type</span>
+           </div>
+           <select className="form-input" value={kvTyp} onChange={e => setKvTyp(e.target.value as any)}>
+             <option value="">Select type...</option>
+             <option value="gesetzlich">Public insurance (Gesetzlich / GKV)</option>
+             <option value="privat">Private insurance (Privat / PKV)</option>
+             <option value="geringfuegig">Mini-job (employer-only contributions)</option>
+           </select>
+         </div>
+-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4 text-[var(--fs-sm)] text-amber-800 flex items-start gap-2">
+-          <span className="text-lg leading-none">&#9888;</span>
+-          <div>
+-            <strong>Important:</strong> Health insurance is mandatory in Germany. You must register with a public health insurer (e.g. TK, AOK, BARMER) or provide proof of other valid health insurance before your first payroll. Without proof of coverage, your employer cannot process your salary. Most employees do not meet the conditions for private insurance (PKV) and must join a public insurer (GKV). For mini-job employees (up to 603 EUR/month as of 2026): your employer pays a flat-rate health contribution, but this does NOT cover you. You must have your own health insurance (e.g. family insurance, student insurance, or voluntary public insurance) and provide proof.
+-            <a href="https://www.nomadenberlin.com/working-in-berlin" target="_blank" rel="noopener noreferrer" className="block mt-1.5 text-blue-600 font-semibold no-underline">Learn about health insurance for workers in Berlin &rarr;</a>
+-          </div>
+-        </div>
+-        <label className="flex items-start gap-3 mt-4 cursor-pointer">
+-          <input
+-            type="checkbox"
+-            checked={acknowledged}
+-            onChange={e => setAcknowledged(e.target.checked)}
+-            className="w-5 h-5 mt-0.5 rounded border-gray-300 text-green-600 accent-green-600 flex-shrink-0"
+-          />
+-          <span className="text-[var(--fs-sm)] text-gray-700">I confirm that I have read and understood the health insurance requirements above and will provide proof of valid health insurance to my employer.</span>
+-        </label>
++        {requireAck && (
++          <>
++            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4 text-[var(--fs-sm)] text-amber-800 flex items-start gap-2">
++              <span className="text-lg leading-none">&#9888;</span>
++              <div>
++                <strong>Important:</strong> Health insurance is mandatory in Germany. You must register with a public health insurer (e.g. TK, AOK, BARMER) or provide proof of other valid health insurance before your first payroll. Without proof of coverage, your employer cannot process your salary. Most employees do not meet the conditions for private insurance (PKV) and must join a public insurer (GKV). For mini-job employees (up to 603 EUR/month as of 2026): your employer pays a flat-rate health contribution, but this does NOT cover you. You must have your own health insurance (e.g. family insurance, student insurance, or voluntary public insurance) and provide proof.
++                <a href="https://www.nomadenberlin.com/working-in-berlin" target="_blank" rel="noopener noreferrer" className="block mt-1.5 text-blue-600 font-semibold no-underline">Learn about health insurance for workers in Berlin &rarr;</a>
++              </div>
++            </div>
++            <label className="flex items-start gap-3 mt-4 cursor-pointer">
++              <input
++                type="checkbox"
++                checked={acknowledged}
++                onChange={e => setAcknowledged(e.target.checked)}
++                className="w-5 h-5 mt-0.5 rounded border-gray-300 text-green-600 accent-green-600 flex-shrink-0"
++              />
++              <span className="text-[var(--fs-sm)] text-gray-700">I confirm that I have read and understood the health insurance requirements above and will provide proof of valid health insurance to my employer.</span>
++            </label>
++          </>
++        )}
+       </div>
+       <div className="px-5 pt-4 pb-8 flex gap-3">
+         <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
+-        <button onClick={handleSubmit} disabled={saving || !acknowledged} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
+-          {saving ? "Saving..." : "Continue"}
++        <button onClick={handleSubmit} disabled={saving || (requireAck && !acknowledged)} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
++          {saving ? "Saving..." : submitLabel}
+         </button>
+       </div>
+     </div>
+   );
+ }
+diff --git a/src/components/hr/StepPersonal.tsx b/src/components/hr/StepPersonal.tsx
+index d0d3dca..5fa222e 100644
+--- a/src/components/hr/StepPersonal.tsx
++++ b/src/components/hr/StepPersonal.tsx
+@@ -3,20 +3,21 @@
+ import React, { useState, useRef, useEffect } from 'react';
+ import InfoButton from '@/components/hr/InfoButton';
+ import type { EmployeeData } from '@/types/hr';
+ import PhoneInput from '@/components/ui/PhoneInput';
+ import { FIELD_EXPLAINERS } from '@/types/hr';
+ 
+ interface Props {
+   employee: EmployeeData;
+   onNext: (fields: Record<string, unknown>) => void;
+   saving: boolean;
++  submitLabel?: string;
+ }
+ 
+ interface AddressSuggestion {
+   street: string;
+   postcode: string;
+   city: string;
+   display: string;
+ }
+ 
+ const RELATIONSHIP_OPTIONS = [
+@@ -48,21 +49,21 @@ function formatPhone(raw: string): string {
+     const cc = digits.slice(0, digits.startsWith('+49') ? 3 : digits.startsWith('+') ? (digits.length > 4 ? 3 : digits.length) : 3);
+     const rest = digits.slice(cc.length);
+     if (rest.length > 3) {
+       return cc + ' ' + rest.slice(0, 3) + ' ' + rest.slice(3);
+     }
+     return cc + ' ' + rest;
+   }
+   return digits;
+ }
+ 
+-export default function StepPersonal({ employee, onNext, saving }: Props) {
++export default function StepPersonal({ employee, onNext, saving, submitLabel = 'Continue' }: Props) {
+   const [birthday, setBirthday] = useState(employee.birthday || '');
+   const [gender, setGender] = useState(employee.gender || '');
+   const [marital, setMarital] = useState(employee.marital || 'single');
+   const [geburtsname, setGeburtsname] = useState(employee.kw_geburtsname || '');
+   const [nickName, setNickName] = useState(employee.nick_name || '');
+   const [placeOfBirth, setPlaceOfBirth] = useState(employee.place_of_birth || '');
+ 
+   // Country of birth (autocomplete against Odoo res.country)
+   const [countryOfBirth, setCountryOfBirth] = useState(employee.country_of_birth ? (employee.country_of_birth as [number, string])[1] : '');
+   const [countryOfBirthId, setCountryOfBirthId] = useState(employee.country_of_birth ? (employee.country_of_birth as [number, string])[0] : 0);
+@@ -337,21 +338,21 @@ export default function StepPersonal({ employee, onNext, saving }: Props) {
+               <option key={o.value} value={o.value}>{o.label}</option>
+             ))}
+           </select>
+         </Field>
+         <Field label="Contact phone">
+           <PhoneInput value={emergPhone} onChange={setEmergPhone} />
+         </Field>
+       </div>
+       <div className="px-5 pt-4 pb-8">
+         <button onClick={handleSubmit} disabled={saving} className="w-full py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
+-          {saving ? 'Saving...' : 'Continue'}
++          {saving ? 'Saving...' : submitLabel}
+         </button>
+       </div>
+     </div>
+   );
+ }
+ 
+ function Field({ label, labelDe, info, children }: { label: string; labelDe?: string; info?: { title: string; text: string; url?: string; urlLabel?: string }; children: React.ReactNode }) {
+   return (
+     <div>
+       <div className="flex items-center gap-1.5 mb-1.5">
+diff --git a/src/components/hr/EmployeeProfileEdit.tsx b/src/components/hr/StepResidenceWork.tsx
+similarity index 53%
+rename from src/components/hr/EmployeeProfileEdit.tsx
+rename to src/components/hr/StepResidenceWork.tsx
+index 33348c9..cbc9a39 100644
+--- a/src/components/hr/EmployeeProfileEdit.tsx
++++ b/src/components/hr/StepResidenceWork.tsx
+@@ -1,147 +1,28 @@
+ 'use client';
+ 
+-import React, { useState, useCallback, useEffect } from 'react';
+-import AppHeader from '@/components/ui/AppHeader';
+-import ProgressBar from '@/components/hr/ProgressBar';
+-import StepPersonal from '@/components/hr/StepPersonal';
+-import StepTax from '@/components/hr/StepTax';
+-import StepInsurance from '@/components/hr/StepInsurance';
+-import StepBank from '@/components/hr/StepBank';
++import React, { useState } from 'react';
+ import type { EmployeeData } from '@/types/hr';
+ 
+ interface Props {
+-  employeeId: number;
+-  onBack: () => void;
+-  onHome: () => void;
+-  onDone: () => void;
+-}
+-
+-const TITLES = ['Personal & address', 'Tax details', 'Health & insurance', 'Bank account', 'Residence & work'];
+-
+-/**
+- * Manager/admin full-record editor for one employee. Reuses the onboarding field
+- * screens (Personal/Tax/Insurance/Bank) but loads + saves against the SPECIFIC
+- * employee via the company-scoped /api/hr/employee/[id] (and /api/hr/bank with
+- * employee_id). Skips the staff-only onboarding ceremony (consents/review).
+- */
+-export default function EmployeeProfileEdit({ employeeId, onBack, onDone }: Props) {
+-  const [step, setStep] = useState(0);
+-  const [employee, setEmployee] = useState<EmployeeData | null>(null);
+-  const [loading, setLoading] = useState(true);
+-  const [saving, setSaving] = useState(false);
+-  const [error, setError] = useState<string | null>(null);
+-
+-  const load = useCallback(async () => {
+-    try {
+-      const res = await fetch(`/api/hr/employee/${employeeId}`);
+-      const data = await res.json();
+-      if (res.ok) setEmployee(data.employee);
+-      else setError(data.error || 'Could not load this employee.');
+-    } catch {
+-      setError('Could not load this employee.');
+-    } finally {
+-      setLoading(false);
+-    }
+-  }, [employeeId]);
+-
+-  useEffect(() => { load(); }, [load]);
+-
+-  async function saveFields(fields: Record<string, unknown>): Promise<boolean> {
+-    if (!fields || Object.keys(fields).length === 0) return true;
+-    setSaving(true);
+-    setError(null);
+-    try {
+-      const res = await fetch(`/api/hr/employee/${employeeId}`, {
+-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
+-      });
+-      const data = await res.json();
+-      if (!res.ok) { setError(data.error || 'Could not save.'); return false; }
+-      await load();
+-      return true;
+-    } catch {
+-      setError('Could not save.');
+-      return false;
+-    } finally {
+-      setSaving(false);
+-    }
+-  }
+-
+-  function next(fields?: Record<string, unknown>) {
+-    const advance = () => setStep((s) => Math.min(s + 1, TITLES.length - 1));
+-    if (fields && Object.keys(fields).length > 0) {
+-      saveFields(fields).then((ok) => { if (ok) advance(); });
+-    } else {
+-      advance();
+-    }
+-  }
+-
+-  function prev() {
+-    if (step > 0) setStep((s) => s - 1);
+-    else onBack();
+-  }
+-
+-  if (loading) {
+-    return (
+-      <div className="min-h-screen bg-gray-50">
+-        <AppHeader title="Edit profile" showBack onBack={onBack} />
+-        <div className="flex items-center justify-center h-40">
+-          <div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+-        </div>
+-      </div>
+-    );
+-  }
+-
+-  if (!employee) {
+-    return (
+-      <div className="min-h-screen bg-gray-50">
+-        <AppHeader title="Edit profile" showBack onBack={onBack} />
+-        <div className="p-5 text-center text-red-500 mt-10">{error || 'Could not load this employee.'}</div>
+-      </div>
+-    );
+-  }
+-
+-  return (
+-    <div className="min-h-screen bg-gray-50">
+-      <AppHeader title={TITLES[step]} subtitle={employee.name} showBack onBack={prev} />
+-      <ProgressBar currentStep={step} totalSteps={TITLES.length} label={`Step ${step + 1} of ${TITLES.length} — ${TITLES[step]}`} />
+-
+-      {step === 0 && <StepPersonal employee={employee} onNext={next} saving={saving} />}
+-      {step === 1 && <StepTax employee={employee} onNext={next} onPrev={prev} saving={saving} />}
+-      {step === 2 && <StepInsurance employee={employee} onNext={next} onPrev={prev} saving={saving} />}
+-      {step === 3 && <StepBank employee={employee} employeeId={employeeId} onNext={next} onPrev={prev} saving={saving} />}
+-      {step === 4 && (
+-        <ResidenceWorkStep
+-          employee={employee}
+-          saving={saving}
+-          onPrev={prev}
+-          onSave={(fields) => { saveFields(fields).then((ok) => { if (ok) onDone(); }); }}
+-        />
+-      )}
+-
+-      {error && (
+-        <div className="mx-5 mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[var(--fs-sm)]">{error}</div>
+-      )}
+-    </div>
+-  );
+-}
+-
+-// ---- Residence, work permit, health certificate (not covered by the reused steps) ----
+-
+-function ResidenceWorkStep({
+-  employee, saving, onPrev, onSave,
+-}: {
+   employee: EmployeeData;
+   saving: boolean;
+   onPrev: () => void;
+   onSave: (fields: Record<string, unknown>) => void;
+-}) {
++  submitLabel?: string;
++}
++
++/**
++ * Residence, work permit and health-certificate fields. Extracted from the old
++ * EmployeeProfileEdit wizard so it can be reused as a standalone section editor.
++ */
++export default function StepResidenceWork({ employee, saving, onPrev, onSave, submitLabel = 'Save & finish' }: Props) {
+   const s = (v: unknown) => (v === false || v === undefined || v === null ? '' : String(v));
+   const e = employee as unknown as Record<string, unknown>;
+ 
+   const [startDate, setStartDate] = useState(s(e.kw_beschaeftigungsbeginn));
+   const [permitType, setPermitType] = useState(s(e.kw_aufenthaltstitel_typ));
+   const [passport, setPassport] = useState(s(e.passport_id));
+   const [visaNo, setVisaNo] = useState(s(e.visa_no));
+   const [permitNo, setPermitNo] = useState(s(e.permit_no));
+   const [visaExpire, setVisaExpire] = useState(s(e.visa_expire));
+   const [permitExpire, setPermitExpire] = useState(s(e.work_permit_expiration_date));
+@@ -207,21 +88,21 @@ function ResidenceWorkStep({
+ 
+         <label className="flex items-center gap-3 py-1">
+           <input type="checkbox" checked={sofortDone} onChange={(ev) => setSofortDone(ev.target.checked)} className="w-5 h-5 accent-green-600" />
+           <span className="text-[var(--fs-sm)] font-medium text-gray-700">Sofortmeldung submitted</span>
+         </label>
+       </div>
+ 
+       <div className="px-5 pt-2 pb-8 flex gap-3">
+         <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
+         <button onClick={handleSave} disabled={saving} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
+-          {saving ? 'Saving…' : 'Save & finish'}
++          {saving ? 'Saving…' : submitLabel}
+         </button>
+       </div>
+ 
+       <style jsx>{`
+         .form-inp {
+           width: 100%;
+           padding: 0.75rem 1rem;
+           border: 1px solid #e5e7eb;
+           border-radius: 0.75rem;
+           background: #fff;
+diff --git a/src/components/hr/StepTax.tsx b/src/components/hr/StepTax.tsx
+index fcf4b9d..46b9322 100644
+--- a/src/components/hr/StepTax.tsx
++++ b/src/components/hr/StepTax.tsx
+@@ -3,23 +3,24 @@
+ import React, { useState } from 'react';
+ import InfoButton from '@/components/hr/InfoButton';
+ import type { EmployeeData } from '@/types/hr';
+ import { FIELD_EXPLAINERS } from '@/types/hr';
+ 
+ interface Props {
+   employee: EmployeeData;
+   onNext: (fields: Record<string, unknown>) => void;
+   onPrev: () => void;
+   saving: boolean;
++  submitLabel?: string;
+ }
+ 
+-export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
++export default function StepTax({ employee, onNext, onPrev, saving, submitLabel = 'Continue' }: Props) {
+   const [steuerId, setSteuerId] = useState(employee.kw_steuer_id || '');
+   const [idNr, setIdNr] = useState(employee.identification_id || '');
+   const [steuerklasse, setSteuerklasse] = useState(employee.kw_steuerklasse || '');
+   const [konfession, setKonfession] = useState(employee.kw_konfession || '--');
+   const [kinder, setKinder] = useState(String(employee.kw_kinderfreibetrag || 0));
+ 
+   function handleSubmit() {
+     onNext({
+       kw_steuer_id: steuerId || false,
+       identification_id: idNr || false,
+@@ -96,16 +97,16 @@ export default function StepTax({ employee, onNext, onPrev, saving }: Props) {
+             <option value="3.5">3.5 — 4 children (3 full + 1 shared)</option>
+             <option value="4">4.0 — 4 children (full allowance)</option>
+             <option value="4.5">4.5 — 5 children (4 full + 1 shared)</option>
+             <option value="5">5.0 — 5 children (full allowance)</option>
+           </select>
+         </div>
+       </div>
+       <div className="px-5 pt-4 pb-8 flex gap-3">
+         <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">Back</button>
+         <button onClick={handleSubmit} disabled={saving} className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
+-          {saving ? 'Saving...' : 'Continue'}
++          {saving ? 'Saving...' : submitLabel}
+         </button>
+       </div>
+     </div>
+   );
+ }
+diff --git a/src/types/hr.ts b/src/types/hr.ts
+index d81287f..8182d63 100644
+--- a/src/types/hr.ts
++++ b/src/types/hr.ts
+@@ -22,22 +22,24 @@ export type Befristung = 'unbefristet' | 'befristet' | 'befristet_aussicht';
+ export type AufenthaltstitelTyp =
+   | 'unbefristet' | 'befristet' | 'blau' | 'icr'
+   | 'duldung' | 'gestattung' | 'visum'
+   | 'eu_buerger' | 'deutsch';
+ 
+ export interface EmployeeData {
+   id: number;
+   name: string;
+   nick_name: string | false;
+   department_id: [number, string] | false;
++  company_id: [number, string] | false;
+   job_title: string | false;
+   work_email: string | false;
++  mobile_phone: string | false;
+   birthday: string | false;
+   gender: Gender | false;
+   marital: MaritalStatus;
+   country_id: [number, string] | false;
+   place_of_birth: string | false;
+   country_of_birth: [number, string] | false;
+   children: number;
+   disabled: boolean;
+   kw_geburtsname: string | false;
+   private_street: string | false;
+@@ -82,21 +84,21 @@ export interface EmployeeData {
+   kw_doc_sv_ausweis_ok: boolean;
+   kw_doc_gesundheitszeugnis_ok: boolean;
+   kw_doc_aufenthaltstitel_ok: boolean;
+   kw_doc_krankenkasse_ok: boolean;
+   kw_doc_lohnsteuer_ok: boolean;
+   kw_doc_vertrag_ok: boolean;
+   kw_doc_count: number;
+ }
+ 
+ export const EMPLOYEE_READ_FIELDS: string[] = [
+-  'name', 'nick_name', 'department_id', 'job_title', 'work_email',
++  'name', 'nick_name', 'department_id', 'company_id', 'job_title', 'work_email', 'mobile_phone',
+   'birthday', 'gender', 'marital', 'country_id', 'place_of_birth',
+   'country_of_birth', 'children', 'disabled', 'kw_geburtsname',
+   'private_street', 'private_street2', 'private_zip', 'private_city',
+   'private_country_id', 'private_email', 'private_phone',
+   'emergency_contact', 'emergency_phone', 'kw_emergency_relation',
+   'bank_account_id', 'identification_id',
+   'kw_steuer_id', 'kw_steuerklasse', 'kw_konfession', 'kw_kinderfreibetrag',
+   'ssnid', 'kw_krankenkasse_name', 'kw_kv_typ',
+   'kw_beschaeftigungsbeginn', 'kw_wochenarbeitszeit', 'kw_taetigkeit_ba',
+   'kw_befristung', 'kw_befristung_bis', 'kw_probezeit_bis',

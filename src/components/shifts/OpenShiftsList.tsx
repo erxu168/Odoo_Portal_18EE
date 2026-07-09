@@ -44,7 +44,7 @@ function isWeekendShift(s: ShiftSlot): boolean {
 }
 
 function skillLabel(minSkill: string | null | undefined): string {
-  return minSkill === '3' ? 'Team Lead' : 'Associate';
+  return minSkill === '3' ? 'Level 3' : 'Level 2';
 }
 
 interface ClaimWarning {

@@ -1745,7 +1745,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                   <div>
                     <div className={LBL}>Who can take it</div>
                     <div className="flex gap-2">
-                      {([['1', 'Anyone'], ['2', 'Associate & up'], ['3', 'Team Lead only']] as const).map(([v, label]) => (
+                      {([['1', 'Anyone'], ['2', 'Level 2+'], ['3', 'Level 3 only']] as const).map(([v, label]) => (
                         <button
                           key={v}
                           type="button"

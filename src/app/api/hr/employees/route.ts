@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     if (body.job_title) vals.job_title = String(body.job_title).trim();
     if (body.work_email) vals.work_email = String(body.work_email).trim();
     if (body.mobile_phone) vals.mobile_phone = String(body.mobile_phone).trim();
-    // Skill level ('1' Trainee | '2' Associate | '3' Team Lead) — decides which
+    // Skill level ('1' | '2' | '3', higher = more senior) — decides which
     // open shifts this person can pick up. Set at creation; editable in Roster.
     if (body.skill === '1' || body.skill === '2' || body.skill === '3') {
       vals.x_skill_level = body.skill;

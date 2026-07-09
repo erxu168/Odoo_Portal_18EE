@@ -55,7 +55,7 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
         employeeVals.x_skill_level = body.skill;
       } else {
         return NextResponse.json(
-          { error: 'skill must be null, "1" (Trainee), "2" (Associate) or "3" (Team Lead)' },
+          { error: 'skill must be null, "1", "2" or "3"' },
           { status: 400 },
         );
       }

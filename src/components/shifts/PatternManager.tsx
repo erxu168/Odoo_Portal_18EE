@@ -521,8 +521,8 @@ export default function PatternManager({ companyId, onBack }: PatternManagerProp
                       onChange={e => patchLine(i, { minSkill: e.target.value as '' | '2' | '3' })}
                     >
                       <option value="">Anyone</option>
-                      <option value="2">Associate+</option>
-                      <option value="3">Team Lead</option>
+                      <option value="2">Level 2+</option>
+                      <option value="3">Level 3</option>
                     </select>
                     <div className="flex items-center gap-1.5 ml-auto">
                       <span className="text-[var(--fs-xs)] font-semibold text-gray-500 uppercase tracking-wide">People</span>

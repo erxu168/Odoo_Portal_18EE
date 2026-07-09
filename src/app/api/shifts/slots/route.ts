@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const roleId = typeof body.role_id === 'number' && body.role_id > 0 ? body.role_id : null;
     const departmentId =
       typeof body.department_id === 'number' && body.department_id > 0 ? body.department_id : null;
-    // Minimum skill to CLAIM an open shift ('2' Associate | '3' Team Lead; else anyone).
+    // Minimum skill to CLAIM an open shift ('2' or '3'; else anyone).
     const minSkill = body.min_skill === '2' || body.min_skill === '3' ? body.min_skill : null;
     const countRaw = body.count === undefined ? 1 : Number(body.count);
     if (!Number.isInteger(countRaw) || countRaw < 1 || countRaw > MAX_COUNT) {

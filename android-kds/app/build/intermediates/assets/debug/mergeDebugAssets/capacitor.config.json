@@ -1,0 +1,13 @@
+{
+  "appId": "de.krawings.kds",
+  "appName": "Krawings KDS",
+  "webDir": "www",
+  "server": {
+    "url": "https://portal.krawings.de/kds",
+    "cleartext": true,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

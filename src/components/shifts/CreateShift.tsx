@@ -655,7 +655,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                 <div>
                   <div className={LBL}>Who can take it</div>
                   <div className="flex gap-2">
-                    {([['1', 'Anyone'], ['2', 'Associate & up'], ['3', 'Team Lead only']] as const).map(([v, label]) => (
+                    {([['1', 'Anyone'], ['2', 'Level 2+'], ['3', 'Level 3 only']] as const).map(([v, label]) => (
                       <button
                         key={v}
                         type="button"
@@ -670,7 +670,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                   </div>
                   {minSkill !== '1' && (
                     <div className={`${HINT} mt-1.5`}>
-                      Only {minSkill === '3' ? 'Team Leads' : 'Associates and Team Leads'} will be able to claim it.
+                      Only {minSkill === '3' ? 'Level 3' : 'Level 2 and Level 3'} staff will be able to claim it.
                     </div>
                   )}
                 </div>

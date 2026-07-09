@@ -99,9 +99,9 @@ export async function POST(request: Request) {
     // Skill gate: an open shift may require a minimum level to claim.
     const minSkill = slotMinSkill(companyId, slot.id);
     if (!meetsMinSkill(me.skill, minSkill)) {
-      const label = minSkill === '3' ? 'Team Lead' : 'Associate';
+      const label = minSkill === '3' ? 'Level 3' : 'Level 2';
       return NextResponse.json(
-        { error: `This shift needs ${label} level or above.` },
+        { error: `This shift needs ${label} or above.` },
         { status: 403 },
       );
     }

@@ -29,15 +29,15 @@ interface RoleOption {
 type SkillLevel = '1' | '2' | '3';
 
 const SKILL_OPTIONS: { value: SkillLevel; title: string; desc: string }[] = [
-  { value: '1', title: 'Trainee', desc: 'Cannot work alone — always paired with someone experienced' },
-  { value: '2', title: 'Associate', desc: 'Can hold a shift on their own' },
-  { value: '3', title: 'Team Lead', desc: 'Works alone and is trained on every task' },
+  { value: '1', title: 'Level 1', desc: 'Cannot work alone — always paired with someone experienced' },
+  { value: '2', title: 'Level 2', desc: 'Can hold a shift on their own' },
+  { value: '3', title: 'Level 3', desc: 'Works alone and is trained on every task' },
 ];
 
 const SKILL_BADGE: Record<SkillLevel, { variant: 'amber' | 'blue' | 'green'; label: string }> = {
-  '1': { variant: 'amber', label: 'Trainee' },
-  '2': { variant: 'blue', label: 'Associate' },
-  '3': { variant: 'green', label: 'Team Lead' },
+  '1': { variant: 'amber', label: 'Level 1' },
+  '2': { variant: 'blue', label: 'Level 2' },
+  '3': { variant: 'green', label: 'Level 3' },
 };
 
 type EmpType = 'minijob' | 'midijob' | 'fulltime';

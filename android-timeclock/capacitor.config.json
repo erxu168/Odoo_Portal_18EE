@@ -1,0 +1,13 @@
+{
+  "appId": "de.krawings.timeclock",
+  "appName": "Krawings Time Clock",
+  "webDir": "www",
+  "server": {
+    "url": "https://portal.krawings.de/kiosk",
+    "cleartext": true,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

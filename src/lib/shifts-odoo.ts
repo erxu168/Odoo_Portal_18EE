@@ -67,7 +67,7 @@ export const MINIJOB_CAP_EUR = Math.round((MIN_WAGE_EUR * 130) / 3); // 603
 
 /**
  * Does a person's skill level meet an open shift's minimum?
- * Levels: '1' Trainee < '2' Associate < '3' Team Lead. null/'1' minimum = anyone.
+ * Levels: '1' < '2' < '3'. null/'1' minimum = anyone.
  * A person with no skill set counts as level 1 (only qualifies for "anyone").
  */
 export function meetsMinSkill(personSkill: '1' | '2' | '3' | null, minSkill: string | null): boolean {

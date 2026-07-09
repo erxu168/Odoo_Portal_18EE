@@ -213,8 +213,8 @@ function ensureTables(): void {
 
 /**
  * Set (or clear, when minSkill is null) the minimum skill level required to
- * claim an open slot. '1' (Trainee = anyone) is treated as no requirement and
- * clears the row; store only '2' (Associate+) or '3' (Team Lead).
+ * claim an open slot. '1' (Level 1 = anyone) is treated as no requirement and
+ * clears the row; store only '2' or '3'.
  */
 export function setSlotMinSkill(companyId: number, slotId: number, minSkill: string | null): void {
   ensureTables();

@@ -41,7 +41,7 @@ export interface ShiftEmployee {
   departmentName: string;
   /** Weekly hour cap from x_max_weekly_hours; null = no cap (0/absent in Odoo) */
   cap: number | null;
-  /** '1' Trainee · '2' Associate · '3' Team Lead */
+  /** skill level: '1' | '2' | '3' (higher = more senior) */
   skill: '1' | '2' | '3' | null;
   /** planning.role ids the employee can work as (resource.resource.role_ids) */
   roleIds: number[];
@@ -169,7 +169,7 @@ export interface ShiftPatternLine {
   departmentId: number | null;
   /** how many people this shift needs (1..20) */
   headcount: number;
-  /** min skill to claim ('2' Associate+ | '3' Team Lead | null = anyone) */
+  /** min skill to claim ('2' = Level 2+ | '3' = Level 3 | null = anyone) */
   minSkill: '2' | '3' | null;
 }
 

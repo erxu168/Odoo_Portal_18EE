@@ -245,9 +245,9 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
               <select value={skill} onChange={e => setSkill(e.target.value as '' | '1' | '2' | '3')}
                 className="form-inp appearance-none">
                 <option value="">Set later (in Planning → Roster)</option>
-                <option value="1">Trainee — can’t work alone</option>
-                <option value="2">Associate — can hold a shift alone</option>
-                <option value="3">Team Lead — trained on everything</option>
+                <option value="1">Level 1 — can’t work alone</option>
+                <option value="2">Level 2 — can hold a shift alone</option>
+                <option value="3">Level 3 — trained on everything</option>
               </select>
               <span className="block text-[var(--fs-xs)] text-gray-400 mt-1">Decides which open shifts this person can pick up.</span>
             </Field>
