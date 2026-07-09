@@ -1,7 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
+import { parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { DOCUMENT_TYPES } from '@/types/hr';
+
+/**
+ * May `user` read/delete the hr.employee document owned by `targetEmployeeId`?
+ * Self is always allowed. Otherwise the caller must be a manager AND — because
+ * portal roles are global — share a company with the target employee, so a
+ * manager of one restaurant cannot reach another restaurant's staff documents.
+ * Admins are cross-company by design (matches the rest of the app).
+ */
+async function canAccessEmployeeDoc(
+  user: NonNullable<ReturnType<typeof getCurrentUser>>,
+  targetEmployeeId: number,
+): Promise<boolean> {
+  if (targetEmployeeId === user.employee_id) return true;
+  if (!hasRole(user, 'manager')) return false;
+  if (user.role === 'admin') return true;
+  const allowed = parseCompanyIds(user.allowed_company_ids);
+  if (allowed.length === 0) return false;
+  const emps = await getOdoo().read('hr.employee', [targetEmployeeId], ['company_id']);
+  const cid = emps?.[0]?.company_id;
+  const companyId = Array.isArray(cid) ? (cid[0] as number) : typeof cid === 'number' ? cid : null;
+  return companyId !== null && allowed.includes(companyId);
+}
 
 /** Maps doc type key → employee field that tracks admin confirmation */
 const DOC_CONFIRMED_FIELD: Record<string, string> = {
@@ -47,7 +70,7 @@ export async function GET(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    if (doc.res_id !== user.employee_id && !hasRole(user, 'manager')) {
+    if (!(await canAccessEmployeeDoc(user, doc.res_id as number))) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
@@ -105,7 +128,7 @@ export async function DELETE(
     }
 
     const targetId = doc.res_id as number;
-    if (targetId !== user.employee_id && !hasRole(user, 'manager')) {
+    if (!(await canAccessEmployeeDoc(user, targetId))) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
