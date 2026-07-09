@@ -29,6 +29,7 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
   const [jobTitle, setJobTitle] = useState('');
   const [workEmail, setWorkEmail] = useState('');
   const [mobilePhone, setMobilePhone] = useState('');
+  const [skill, setSkill] = useState<'' | '1' | '2' | '3'>('');
 
   // Load pickers (companies scoped to the user) + departments. Departments come
   // from /api/hr/departments (not /api/hr/filters) so brand-new / empty
@@ -89,6 +90,7 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
         job_title: jobTitle.trim(),
         work_email: workEmail.trim(),
         mobile_phone: mobilePhone.trim(),
+        ...(isNew && skill ? { skill } : {}),
       };
       const res = isNew
         ? await fetch('/api/hr/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
@@ -149,6 +151,19 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
               {visibleDepts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </Field>
+
+          {isNew && (
+            <Field label="Skill level">
+              <select value={skill} onChange={e => setSkill(e.target.value as '' | '1' | '2' | '3')}
+                className="form-inp appearance-none">
+                <option value="">Set later (in Planning → Roster)</option>
+                <option value="1">Trainee — can’t work alone</option>
+                <option value="2">Associate — can hold a shift alone</option>
+                <option value="3">Team Lead — trained on everything</option>
+              </select>
+              <span className="block text-[var(--fs-xs)] text-gray-400 mt-1">Decides which open shifts this person can pick up.</span>
+            </Field>
+          )}
 
           <Field label="Job role (optional)">
             <input value={jobTitle} onChange={e => setJobTitle(e.target.value)} placeholder="e.g. Kitchen Assistant"
