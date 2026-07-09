@@ -9,7 +9,9 @@
  * DELETE - soft-delete supplier + cleanup its order guide (manager+)
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { listSuppliers, createSupplier, updateSupplier, getSupplier } from '@/lib/purchase-db';
 import { getDb } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
@@ -38,7 +40,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!roleCan(user.role, 'purchase.supplier.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
   let odoo_partner_id = body.odoo_partner_id;
@@ -102,7 +104,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!roleCan(user.role, 'purchase.supplier.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
   const { id, ...updates } = body;
@@ -118,7 +120,7 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!roleCan(user.role, 'purchase.supplier.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { searchParams } = new URL(request.url);
   const id = parseInt(searchParams.get('id') || '0');

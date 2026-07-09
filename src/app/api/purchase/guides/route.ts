@@ -6,7 +6,9 @@
  * PATCH  - update item price (manager+)
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice, reorderGuideItems } from '@/lib/purchase-db';
 import { getDb } from '@/lib/db';
 
@@ -29,7 +31,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!roleCan(user.role, 'purchase.guide.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
   const { supplier_id, location_id, product_id, product_name, product_uom, price, price_source, category_name, par_level, product_code } = body;
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!roleCan(user.role, 'purchase.guide.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { searchParams } = new URL(request.url);
   const itemId = parseInt(searchParams.get('item_id') || '0');
@@ -133,7 +135,7 @@ export async function DELETE(request: Request) {
 export async function PATCH(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!roleCan(user.role, 'purchase.guide.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
 

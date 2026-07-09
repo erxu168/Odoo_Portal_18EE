@@ -5,6 +5,8 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { createOrder, listOrders, getOrder, updateOrderStatus, clearCart, getCartWithItems, getSupplier, countPendingApprovals, checkDuplicateOrder } from '@/lib/purchase-db';
 import { getOdoo } from '@/lib/odoo';
 import { isEmailConfigured, sendOrderEmail } from '@/lib/email';
@@ -39,6 +41,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'purchase.order.send', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
   const { cart_id, delivery_date, order_note } = body;

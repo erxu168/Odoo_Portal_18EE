@@ -4,7 +4,9 @@
  * Admin only. Safe to run multiple times (checks for existing data).
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { listSuppliers, createSupplier, getGuide, createGuide, addGuideItem } from '@/lib/purchase-db';
 import { getOdoo } from '@/lib/odoo';
 
@@ -21,7 +23,7 @@ const FOOD_SUPPLIERS = [
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'admin')) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+  if (!roleCan(user.role, 'purchase.suppliers.seed', getPermissionOverrides())) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
 
   const existing = listSuppliers();
   if ((existing as any[]).length > 0) {

@@ -4,7 +4,9 @@
  * POST - create or update a receipt
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { listOrders, createReceipt, getReceipt, getReceiptByOrder, updateReceiptLine, confirmReceipt, updateReceiptNote, getOrder, submitReceipt, getLatestReceiptStatus, getReceiptPdf } from '@/lib/purchase-db';
 import { getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
@@ -195,7 +197,7 @@ export async function POST(request: Request) {
   }
 
   if (action === 'confirm') {
-    if (!hasRole(user, 'manager')) {
+    if (!roleCan(user.role, 'purchase.receive.confirm', getPermissionOverrides())) {
       return NextResponse.json({ error: 'Manager must confirm receipts' }, { status: 403 });
     }
     const { receipt_id, close_order, delivery_note_photo } = body;

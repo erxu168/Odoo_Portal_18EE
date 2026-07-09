@@ -14,7 +14,9 @@
  * category falls back to 'Other'.
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { getDb } from '@/lib/db';
 
 const COUNTED_STATUSES = ['sent', 'received', 'partial'];
@@ -35,7 +37,7 @@ function currentMonthISO(): string {
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'manager')) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!roleCan(user.role, 'purchase.insights.view', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const { searchParams } = new URL(request.url);
   const locationId = parseInt(searchParams.get('location_id') || '0');

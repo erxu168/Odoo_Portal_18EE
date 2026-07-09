@@ -26,7 +26,9 @@
  */
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { getDb, parseCompanyIds } from '@/lib/db';
 import {
@@ -55,7 +57,7 @@ interface CompanyResult {
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!hasRole(user, 'admin')) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
+  if (!roleCan(user.role, 'purchase.suppliers.seed', getPermissionOverrides())) return NextResponse.json({ error: 'Admin only' }, { status: 403 });
 
   const body = await request.json().catch(() => ({}));
 
