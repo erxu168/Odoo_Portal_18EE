@@ -154,11 +154,11 @@ export async function GET(request: Request) {
       .filter(r => berlinISOWeekKey(str(r.start_datetime)) === weekKey).length;
 
     // --- Weekly hours vs personal limit ---------------------------------------
+    // The manager cap is a MONTHLY limit now (shown in the monthly block); the
+    // weekly line uses the contracted weekly target, or a minijob-derived ceiling.
     let weekly: { hours: number; limit: number | null; kind: 'target' | 'cap' | 'none' };
     if (weeklyTarget && weeklyTarget > 0) {
       weekly = { hours: weekHours, limit: weeklyTarget, kind: 'target' };
-    } else if (cap && cap > 0) {
-      weekly = { hours: weekHours, limit: cap, kind: 'cap' };
     } else if (employmentType === 'minijob' && rate > 0) {
       // No explicit weekly cap → derive a soft weekly ceiling from the €603 month cap.
       weekly = { hours: weekHours, limit: round1(MINIJOB_CAP_EUR / rate / 4.345), kind: 'cap' };
@@ -181,7 +181,17 @@ export async function GET(request: Request) {
         hours: monthHours,
         eurUsed: monthEur,
         eurLimit: MINIJOB_CAP_EUR,
-        hoursLimit: rate > 0 ? round1(MINIJOB_CAP_EUR / rate) : null,
+        // Prefer the manager's explicit monthly cap; else derive hours from €603.
+        hoursLimit: cap && cap > 0 ? cap : rate > 0 ? round1(MINIJOB_CAP_EUR / rate) : null,
+        kind: 'cap',
+        estEarnings: monthEur,
+      };
+    } else if (cap && cap > 0) {
+      monthly = {
+        hours: monthHours,
+        eurUsed: monthEur,
+        eurLimit: null,
+        hoursLimit: cap,
         kind: 'cap',
         estEarnings: monthEur,
       };

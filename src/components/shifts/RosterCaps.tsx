@@ -62,7 +62,7 @@ function initials(name: string): string {
 }
 
 function fmtCap(cap: number): string {
-  return `${cap % 1 === 0 ? cap.toFixed(0) : cap} h/wk`;
+  return `${cap % 1 === 0 ? cap.toFixed(0) : cap} h/mo`;
 }
 
 export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
@@ -331,7 +331,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
             </div>
 
             <div>
-              <div className={ds.label}>Weekly hour cap</div>
+              <div className={ds.label}>Monthly hour cap</div>
               <div className="flex items-center gap-2 max-w-[220px] bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus-within:border-green-600">
                 <input
                   type="number"
@@ -343,7 +343,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
                   placeholder="—"
                   className="w-16 bg-transparent outline-none text-[var(--fs-md)] font-semibold text-gray-900 placeholder-gray-400"
                 />
-                <span className="text-[var(--fs-sm)] text-gray-400 whitespace-nowrap">hours / week</span>
+                <span className="text-[var(--fs-sm)] text-gray-400 whitespace-nowrap">hours / month</span>
               </div>
               <p className="text-[var(--fs-sm)] text-gray-500 mt-1.5 leading-snug">
                 Leave empty for no cap. Staff can still take more — you’ll see a warning flag when they do.

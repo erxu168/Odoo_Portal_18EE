@@ -13,6 +13,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { notifyManagers } from '@/lib/shifts-notify';
 import {
+  employeeMonthHours,
   employeeWeekHours,
   fetchEmployees,
   fetchSlot,
@@ -160,18 +161,30 @@ export async function POST(request: Request) {
       }
     }
 
-    // Live cap projection for the shift's week. The weekly limit is the
-    // manager cap if set, otherwise the person's contracted weekly hours.
-    const current = await employeeWeekHours(employeeId, weekKey);
-    const projected = round2(current + slot.hours);
-    const cap = me.cap ?? me.weeklyTarget;
-    const overCap = cap !== null && projected > cap;
-    if (overCap && body.confirm !== true) {
+    // Hour-limit projection. The manager cap (me.cap) is a MONTHLY limit;
+    // otherwise fall back to the contracted WEEKLY hours. Warn only — never block.
+    let limit: number | null = null;
+    let projected = 0;
+    let period: 'month' | 'week' = 'week';
+    if (me.cap !== null) {
+      period = 'month';
+      limit = me.cap;
+      const monthCurrent = await employeeMonthHours(employeeId, berlinParts(slot.start).date);
+      projected = round2(monthCurrent + slot.hours);
+    } else if (me.weeklyTarget !== null) {
+      period = 'week';
+      limit = me.weeklyTarget;
+      const weekCurrent = await employeeWeekHours(employeeId, weekKey);
+      projected = round2(weekCurrent + slot.hours);
+    }
+    const overLimit = limit !== null && projected > limit;
+    if (overLimit && body.confirm !== true) {
       return NextResponse.json({
         needsConfirm: true,
         projected,
-        cap,
-        overage: round2(projected - (cap ?? 0)),
+        cap: limit,
+        overage: round2(projected - (limit ?? 0)),
+        period,
       });
     }
 
@@ -185,7 +198,7 @@ export async function POST(request: Request) {
 
     await recomputeWeekFlags(companyId, weekKey, [employeeId]);
 
-    if (overCap) {
+    if (overLimit) {
       await notifyManagers(companyId, 'claim_over_cap', {
         day: fmtDay(slot.start),
         time: fmtTimeRange(slot.start, slot.end),
@@ -194,9 +207,9 @@ export async function POST(request: Request) {
         employeeId,
         employeeName: me.name,
         projected,
-        cap,
-        overage: round2(projected - (cap ?? 0)),
-        message: `${me.name} took this shift over their weekly cap.`,
+        cap: limit,
+        overage: round2(projected - (limit ?? 0)),
+        message: `${me.name} took this shift over their ${period === 'month' ? 'monthly' : 'weekly'} hours.`,
       });
     }
 

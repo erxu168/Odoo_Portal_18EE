@@ -51,6 +51,7 @@ interface ClaimWarning {
   projected: number;
   cap: number;
   overage: number;
+  period: 'month' | 'week';
 }
 
 const LBL = 'text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-400 mb-1.5';
@@ -156,6 +157,7 @@ export default function OpenShiftsList({ companyId, employeeId, onBack, onOpenMi
           projected: typeof data.projected === 'number' ? data.projected : 0,
           cap: typeof data.cap === 'number' ? data.cap : 0,
           overage: typeof data.overage === 'number' ? data.overage : 0,
+          period: data.period === 'month' ? 'month' : 'week',
         });
         return;
       }
@@ -357,9 +359,9 @@ export default function OpenShiftsList({ companyId, employeeId, onBack, onOpenMi
 
             {warn && (
               <WarnBox>
-                Taking this puts you at <b>{`${fmtH(warn.projected)} of ${fmtCap(warn.cap)} hours`}</b> that week
+                Taking this puts you at <b>{`${fmtH(warn.projected)} of ${fmtCap(warn.cap)} hours`}</b> this {warn.period}
                 {' — '}
-                <b>{`${fmtH(warn.overage)} h over`}</b> your weekly hours. Your manager will see it.
+                <b>{`${fmtH(warn.overage)} h over`}</b> your {warn.period === 'month' ? 'monthly' : 'weekly'} hours. Your manager will see it.
               </WarnBox>
             )}
 

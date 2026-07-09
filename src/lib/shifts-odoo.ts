@@ -381,9 +381,13 @@ export async function employeeWeekHours(employeeId: number, weekKey: string): Pr
   return Math.round(total * 100) / 100;
 }
 
-/** One employee's total assigned hours in the current Berlin calendar month (self €-cap view). */
-export async function employeeMonthHours(employeeId: number): Promise<number> {
-  const today = berlinParts(nowOdooUtc()).date;
+/**
+ * One employee's total assigned hours in a Berlin calendar month.
+ * refDate ("YYYY-MM-DD", Berlin) selects the month; defaults to the current
+ * month. Used for the monthly hour-cap check and the Minijob €-cap view.
+ */
+export async function employeeMonthHours(employeeId: number, refDate?: string): Promise<number> {
+  const today = refDate || berlinParts(nowOdooUtc()).date;
   const [y, m] = today.split('-').map(Number);
   const pad = (n: number) => String(n).padStart(2, '0');
   const first = `${y}-${pad(m)}-01`;

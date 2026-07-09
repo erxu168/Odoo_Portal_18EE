@@ -201,7 +201,9 @@ export async function GET(request: Request) {
     return NextResponse.json({
       shifts,
       weekHours,
-      cap: me?.cap ?? me?.weeklyTarget ?? null,
+      // Weekly header shows the weekly contract target; the manager cap is a
+      // MONTHLY limit, enforced/shown at claim time instead.
+      cap: me?.weeklyTarget ?? null,
       weekendGate,
     });
   } catch (err: unknown) {
