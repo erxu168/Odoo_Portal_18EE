@@ -133,6 +133,17 @@ export default function PatternManager({ companyId, onBack }: PatternManagerProp
   // Run detail sheet (with gaps + transitions).
   const [runDetail, setRunDetail] = useState<{ run: RunRow; gaps: { open: number; total: number } } | null>(null);
 
+  // Demand-forecast suggested headcount (from Busy Times), shown next to each line.
+  const [busy, setBusy] = useState<{ avgGrid: number[][]; ordersPerPerson: number; minStaff: number } | null>(null);
+  function suggestedHeadcount(weekday: number, startHHMM: string): number | null {
+    if (!busy || weekday < 1 || weekday > 7) return null;
+    const hour = parseInt(startHHMM.split(':')[0], 10);
+    if (!Number.isFinite(hour)) return null;
+    const bucket = Math.min(11, Math.max(0, Math.floor(hour / 2)));
+    const avg = busy.avgGrid[weekday - 1]?.[bucket] ?? 0;
+    return avg > 0 ? Math.max(busy.minStaff, Math.ceil(avg / busy.ordersPerPerson)) : null;
+  }
+
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2200);
@@ -143,19 +154,28 @@ export default function PatternManager({ companyId, onBack }: PatternManagerProp
     setLoading(true);
     setError(null);
     try {
-      const [rosterRes, patternsRes, runsRes] = await Promise.all([
+      const [rosterRes, patternsRes, runsRes, busyRes] = await Promise.all([
         fetch(`/api/shifts/roster?company_id=${companyId}`),
         fetch(`/api/shifts/patterns?company_id=${companyId}`),
         fetch(`/api/shifts/runs?company_id=${companyId}`),
+        fetch(`/api/shifts/busy?company_id=${companyId}`),
       ]);
       const roster = await rosterRes.json();
       const pat = await patternsRes.json();
       const run = await runsRes.json();
+      const busyData = await busyRes.json().catch(() => null);
       if (!patternsRes.ok) throw new Error(pat.error || 'Could not load patterns');
       setRoles(Array.isArray(roster.roles) ? roster.roles : []);
       setDepartments(Array.isArray(roster.departments) ? roster.departments : []);
       setPatterns(Array.isArray(pat.patterns) ? pat.patterns : []);
       setRuns(Array.isArray(run.runs) ? run.runs : []);
+      if (busyRes.ok && busyData && Array.isArray(busyData.avgGrid)) {
+        setBusy({
+          avgGrid: busyData.avgGrid,
+          ordersPerPerson: busyData.ordersPerPerson,
+          minStaff: busyData.minStaff,
+        });
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
     } finally {
@@ -539,6 +559,26 @@ export default function PatternManager({ companyId, onBack }: PatternManagerProp
                       />
                     </div>
                   </div>
+                  {(() => {
+                    const sug = suggestedHeadcount(l.weekday, l.start);
+                    if (sug === null) return null;
+                    return (
+                      <div className="mt-2 flex items-center gap-2 text-[var(--fs-xs)]">
+                        <span className="text-gray-500">
+                          📊 Forecast suggests <b className="text-gray-700">{sug}</b> {sug === 1 ? 'person' : 'people'} for this slot.
+                        </span>
+                        {l.headcount !== sug && (
+                          <button
+                            type="button"
+                            onClick={() => patchLine(i, { headcount: sug })}
+                            className="px-2 py-0.5 rounded-md bg-green-50 border border-green-200 text-green-700 font-semibold active:bg-green-100"
+                          >
+                            Use
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
