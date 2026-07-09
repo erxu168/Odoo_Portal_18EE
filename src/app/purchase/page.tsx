@@ -689,7 +689,8 @@ export default function PurchasePage() {
   }
 
   const isManager = user?.role === 'manager' || user?.role === 'admin';
-  const isAdmin = user?.role === 'admin';
+  // Seed/auto-import suppliers is governed by the configurable capability (defaults to admin).
+  const canSeedSuppliers = (user?.capabilities || []).includes('purchase.suppliers.seed');
   const locName = warehouseCode || currentCompany?.name || 'SSAM';
 
   // Local Header is now a thin wrapper around AppHeader so the canonical
@@ -734,7 +735,7 @@ export default function PurchasePage() {
       ) : screen === 'manage' ? (<><Header title="Order Templates" subtitle="Your reusable order lists & suppliers" showBack onBack={() => setScreen('dashboard')} />
         <ManagePurchasesScreen
           suppliers={suppliers}
-          isAdmin={isAdmin}
+          isAdmin={canSeedSuppliers}
           seedMsg={seedMsg}
           autoImportBusy={autoImportBusy}
           onAddSupplier={() => { resetAddForm(); setScreen('add-supplier'); loadAllSuppliers(); }}
@@ -874,7 +875,7 @@ export default function PurchasePage() {
           suppliers={suppliers}
           search={supplierSearch}
           loading={loading}
-          isAdmin={isAdmin}
+          isAdmin={canSeedSuppliers}
           seedMsg={seedMsg}
           onSearchChange={setSupplierSearch}
           onBrowseCatalog={() => { setCatSearch(''); setCatGroups([]); setScreen('catalog'); }}
