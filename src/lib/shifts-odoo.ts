@@ -18,6 +18,7 @@ import {
   berlinParts,
   durationHours,
   nowOdooUtc,
+  weekKeyDays,
   weekKeyToUtcRange,
 } from '@/lib/shifts-time';
 import type { ShiftEmployee, ShiftSlot } from '@/types/shifts';
@@ -474,21 +475,43 @@ export async function monthHoursMap(companyId: number): Promise<Map<number, numb
   return map;
 }
 
+/** Assigned slots (published + draft) for the Berlin calendar month of refDate ("YYYY-MM-DD"). */
+async function fetchAssignedMonthSlots(companyId: number, refDate: string): Promise<ShiftSlot[]> {
+  const [y, m] = refDate.split('-').map(Number);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const first = `${y}-${pad(m)}-01`;
+  const next = m === 12 ? `${y + 1}-01-01` : `${y}-${pad(m + 1)}-01`;
+  const startOdoo = berlinDateTimeToUtcOdoo(first, '00:00');
+  const endOdoo = berlinDateTimeToUtcOdoo(next, '00:00');
+  const rows = (await getOdoo().searchRead(
+    'planning.slot',
+    [
+      ['company_id', '=', companyId],
+      ['start_datetime', '>=', startOdoo],
+      ['start_datetime', '<', endOdoo],
+      ['resource_id', '!=', false],
+    ],
+    SLOT_FIELDS,
+    { limit: 2000 },
+  )) as OdooRow[];
+  return rows.map(mapSlot);
+}
+
 /**
- * Recompute x_over_cap_flag for a company-week.
- * Flags EVERY slot of an over-cap person-week (cap from live x_max_weekly_hours;
- * no cap → clear). Writes only slots whose current flag differs, batched per
- * flag value (one write for true, one for false). When employeeIds is given,
- * only those employees' slots are touched; totals are still computed live.
- * Call after every mutation that changes assignment or times.
+ * Recompute x_over_cap_flag for one Berlin calendar month.
+ * The hour cap (hr.employee.x_max_weekly_hours) is a MONTHLY limit, so over-cap
+ * is judged on each employee's whole-month assigned total. Flags EVERY assigned
+ * slot of an over-cap person-month (no/zero cap → clear). Writes only slots whose
+ * current flag differs, batched per flag value. When employeeIds is given, only
+ * those employees' slots are written (month totals are still computed live).
  */
-export async function recomputeWeekFlags(
+async function recomputeMonthFlags(
   companyId: number,
-  weekKey: string,
+  refDate: string,
   employeeIds?: number[],
 ): Promise<void> {
   const odoo = getOdoo();
-  const slots = await fetchAssignedWeekSlots(companyId, weekKey);
+  const slots = await fetchAssignedMonthSlots(companyId, refDate);
 
   const byEmployee = new Map<number, { total: number; slots: { id: number; flag: boolean }[] }>();
   for (const slot of slots) {
@@ -534,4 +557,23 @@ export async function recomputeWeekFlags(
 
   if (setTrue.length > 0) await odoo.write('planning.slot', setTrue, { x_over_cap_flag: true });
   if (setFalse.length > 0) await odoo.write('planning.slot', setFalse, { x_over_cap_flag: false });
+}
+
+/**
+ * Recompute x_over_cap_flag after a change in the given week.
+ * The cap is MONTHLY, so this recomputes every calendar month the week touches
+ * (a week can straddle two months) — see recomputeMonthFlags. Signature kept
+ * week-based for its many callers. Call after every mutation that changes
+ * assignment or times.
+ */
+export async function recomputeWeekFlags(
+  companyId: number,
+  weekKey: string,
+  employeeIds?: number[],
+): Promise<void> {
+  const days = weekKeyDays(weekKey); // Mon..Sun ("YYYY-MM-DD")
+  const monthRefs = Array.from(new Set([days[0].slice(0, 7), days[6].slice(0, 7)])).map(mk => `${mk}-01`);
+  for (const refDate of monthRefs) {
+    await recomputeMonthFlags(companyId, refDate, employeeIds);
+  }
 }
