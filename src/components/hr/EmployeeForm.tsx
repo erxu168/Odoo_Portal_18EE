@@ -22,6 +22,12 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justAdded, setJustAdded] = useState<string | null>(null);
+  // After a normal create: show a panel offering the self-onboarding link.
+  const [createdEmp, setCreatedEmp] = useState<{ id: number; name: string } | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const [name, setName] = useState('');
   const [companyId, setCompanyId] = useState<number | null>(null);
@@ -109,11 +115,93 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
         return;
       }
       const savedId = isNew ? data.employee?.id : employeeId;
+      // New staff: stay and offer the self-onboarding link before leaving.
+      if (isNew && savedId) {
+        setCreatedEmp({ id: savedId as number, name: payload.name });
+        setSaving(false);
+        return;
+      }
       onSaved(savedId as number, isNew);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not save.');
       setSaving(false);
     }
+  }
+
+  async function getInvite() {
+    if (!createdEmp) return;
+    setInviting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/hr/staff-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: createdEmp.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not create the link.');
+      setInviteLink(typeof data.link === 'string' ? data.link : null);
+      setInviteMsg(
+        typeof data.message === 'string'
+          ? data.message
+          : data.emailSent
+            ? 'We also emailed the link to them.'
+            : 'No email on file — copy the link and send it to them.',
+      );
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not create the link.');
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  function copyLink() {
+    if (inviteLink && typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  }
+
+  if (createdEmp) {
+    return (
+      <div className="min-h-screen bg-gray-50 pb-28">
+        <AppHeader title="Staff added" showBack onBack={() => onSaved(createdEmp.id, true)} />
+        <div className="p-5 flex flex-col gap-4">
+          <div className="px-4 py-5 bg-green-50 border border-green-200 rounded-2xl text-center">
+            <div className="text-2xl mb-1">✓</div>
+            <div className="font-bold text-gray-900">{createdEmp.name} added</div>
+            <div className="text-[var(--fs-sm)] text-gray-600 mt-1">
+              Send them a link so they can fill in their own details, tax info and documents.
+            </div>
+          </div>
+
+          {inviteLink ? (
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 flex flex-col gap-2.5">
+              <div className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400">Onboarding link</div>
+              <div className="text-[var(--fs-sm)] break-all text-gray-800 bg-gray-50 rounded-lg p-2.5">{inviteLink}</div>
+              <button onClick={copyLink}
+                className="w-full py-3 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-90">
+                {copied ? 'Copied ✓' : 'Copy link'}
+              </button>
+              {inviteMsg && <div className="text-[var(--fs-xs)] text-gray-500">{inviteMsg}</div>}
+            </div>
+          ) : (
+            <button onClick={getInvite} disabled={inviting}
+              className="w-full py-4 bg-green-600 text-white font-bold text-[var(--fs-base)] rounded-xl shadow-lg active:opacity-90 disabled:opacity-50">
+              {inviting ? 'Creating link…' : 'Send onboarding link'}
+            </button>
+          )}
+
+          {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[var(--fs-sm)]">{error}</div>}
+
+          <button onClick={() => onSaved(createdEmp.id, true)}
+            className="w-full py-3.5 bg-white border border-gray-200 text-gray-700 font-bold text-[var(--fs-sm)] rounded-xl active:bg-gray-50">
+            Done
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
