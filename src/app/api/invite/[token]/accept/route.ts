@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 });
   }
 
-  const result = acceptStaffInvite(params.token, email, password);
+  const result = await acceptStaffInvite(params.token, email, password);
 
   if (!result.ok || !result.sessionToken) {
     return NextResponse.json(result.body, { status: result.status });

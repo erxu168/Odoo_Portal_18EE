@@ -90,7 +90,7 @@ export async function POST(request: Request) {
     }
 
     const employees = await odoo.searchRead('hr.employee', domain,
-      ['id', 'name', 'department_id', 'work_email', 'private_email', 'mobile_phone'],
+      ['id', 'name', 'department_id', 'work_email', 'private_email', 'mobile_phone', 'company_id'],
       { limit: 1 }
     );
 
@@ -122,13 +122,15 @@ export async function POST(request: Request) {
     // Use the identifier as the portal email
     const portalEmail = isPhone(id) ? (emp.work_email || emp.private_email || id) : id;
 
-    // Create pending account
+    // Create pending account — assign the employee's company so the account is
+    // never "company-less" (which breaks the header + company-scoped pages).
+    const empCompanyId = Array.isArray(emp.company_id) ? (emp.company_id[0] as number) : null;
     const userId = createUser(
       emp.name,
       portalEmail.toLowerCase().trim(),
       password,
       'staff',
-      { employee_id: emp.id, status: 'pending' }
+      { employee_id: emp.id, status: 'pending', allowed_company_ids: empCompanyId ? [empCompanyId] : [] }
     );
 
     // Get department manager for contact info

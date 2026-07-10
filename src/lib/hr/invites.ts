@@ -212,9 +212,27 @@ export interface AcceptResult {
 }
 
 /**
+ * The employee's Odoo company as a one-element array (empty if the employee has
+ * no company or Odoo is unreachable). Used to give a new portal account a
+ * company — without one the header reads "No companies assigned" and every
+ * company-scoped page (open shifts, etc.) fails with "company_id is required".
+ */
+async function employeeCompanyIds(employeeId: number): Promise<number[]> {
+  try {
+    const emps = await getOdoo().searchRead('hr.employee', [['id', '=', employeeId]], ['company_id'], { limit: 1 });
+    const cid = emps?.[0]?.company_id;
+    const companyId = Array.isArray(cid) ? (cid[0] as number) : typeof cid === 'number' ? cid : null;
+    return companyId ? [companyId] : [];
+  } catch (err: unknown) {
+    console.error('[staff-invite] could not resolve employee company at accept:', err);
+    return [];
+  }
+}
+
+/**
  * Accept an invite: create the linked portal account + a logged-in session.
  */
-export function acceptStaffInvite(token: string, email: string, password: string): AcceptResult {
+export async function acceptStaffInvite(token: string, email: string, password: string): Promise<AcceptResult> {
   const invite = getInviteByTokenHash(hashInviteToken(token || ''));
 
   if (!invite || invite.status !== 'pending') {
@@ -245,6 +263,7 @@ export function acceptStaffInvite(token: string, email: string, password: string
   const userId = createUser(invite.name, cleanEmail, password, 'staff', {
     employee_id: invite.employee_id,
     status: 'active',
+    allowed_company_ids: await employeeCompanyIds(invite.employee_id),
   });
   markInviteAccepted(invite.id);
   const sessionToken = createSession(userId);
