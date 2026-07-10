@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { useCompany } from '@/lib/company-context';
 
 interface Props {
   employeeId: number | null; // null = create
@@ -15,6 +16,8 @@ interface DeptOption { id: number; name: string; company_id: number | null; }
 
 export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
   const isNew = employeeId === null;
+  // The restaurant currently selected in the header switcher.
+  const { companyId: activeCompanyId, companyName: activeCompanyName } = useCompany();
 
   const [companies, setCompanies] = useState<CompanyOption[]>([]);
   const [departments, setDepartments] = useState<DeptOption[]>([]);
@@ -49,6 +52,13 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
       setDepartments(depts.departments || []);
     });
   }, []);
+
+  // New staff default to the restaurant you are currently working in (header
+  // switcher). You can still pick another restaurant you manage — a guardrail
+  // warning appears below the picker when the choice differs from your active one.
+  useEffect(() => {
+    if (isNew && companyId === null && activeCompanyId) setCompanyId(activeCompanyId);
+  }, [isNew, activeCompanyId, companyId]);
 
   // Prefill when editing.
   useEffect(() => {
@@ -230,6 +240,13 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
               <option value="">Choose a restaurant…</option>
               {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
+            {isNew && companyId !== null && activeCompanyId !== 0 && companyId !== activeCompanyId && (
+              <p className="mt-1.5 text-[13px] leading-snug text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+                ⚠️ This person will be added to{' '}
+                <b>{companies.find(c => c.id === companyId)?.name || 'another restaurant'}</b>, not{' '}
+                <b>{activeCompanyName}</b> (the restaurant you are working in now). Make sure that is correct.
+              </p>
+            )}
           </Field>
 
           <Field label="Department">
