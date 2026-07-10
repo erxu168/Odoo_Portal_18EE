@@ -33,6 +33,7 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
   const [allowedModules, setAllowedModules] = useState<string[] | null>(null);
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
   const [savedManagerOrder, setSavedManagerOrder] = useState<string[] | null>(null);
+  const [attentionCount, setAttentionCount] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -45,6 +46,18 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
         // Check if manager by trying employees endpoint
         const mgrRes = await fetch('/api/hr/employees?filter=all');
         setIsManager(mgrRes.ok);
+        // Managers: load the "needs attention" count for the tile badge.
+        if (mgrRes.ok) {
+          try {
+            const ov = await (await fetch('/api/hr/overview')).json();
+            if (!ov.error) {
+              setAttentionCount(
+                (ov.missingDocs?.length || 0) + (ov.expiring?.length || 0) +
+                (ov.contractsEnding?.length || 0) + (ov.sofortmeldung?.length || 0),
+              );
+            }
+          } catch { /* badge is best-effort */ }
+        }
       } catch (_e: unknown) {
         console.error('Failed to load HR dashboard');
       } finally {
@@ -186,6 +199,7 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
                       bg: 'bg-amber-50', border: 'border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
                       label: 'Needs attention',
                       sub: 'Docs, expiries & contracts',
+                      badge: attentionCount > 0 ? String(attentionCount) : undefined,
                       onClick: () => onNavigate('overview'),
                     },
                     {

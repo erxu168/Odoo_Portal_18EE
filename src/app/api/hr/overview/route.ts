@@ -46,7 +46,8 @@ export async function GET() {
     const empDomain: unknown[] = [['active', '=', true]];
     if (allowed) empDomain.push(['company_id', 'in', allowed]);
     const emps = await odoo.searchRead('hr.employee', empDomain,
-      ['id', 'name', 'department_id', 'work_permit_expiration_date', 'visa_expire', 'kw_gesundheitszeugnis_ablauf'],
+      ['id', 'name', 'department_id', 'work_permit_expiration_date', 'visa_expire', 'kw_gesundheitszeugnis_ablauf',
+        'kw_sofortmeldung_done', 'kw_beschaeftigungsbeginn'],
       { limit: 1000, order: 'name asc' });
     const empIds = emps.map((e: Record<string, any>) => e.id as number);
     const today = berlinToday();
@@ -107,10 +108,25 @@ export async function GET() {
       contractsEnding.sort((a, b) => a.days - b.days);
     }
 
+    // --- Sofortmeldung outstanding (immediate registration, due by day 1 in
+    // hospitality). Flag recent/imminent starters not yet marked done. ---
+    const SOFORT_LOOKBACK = 90, SOFORT_LEAD = 3;
+    const sofortmeldung: { id: number; name: string; dept: string; start: string; days: number }[] = [];
+    for (const e of emps) {
+      if (e.kw_sofortmeldung_done) continue;
+      const start = e.kw_beschaeftigungsbeginn as string | false;
+      if (!start) continue;
+      const days = daysUntil(start, today); // days until start; negative = started N days ago
+      if (days <= SOFORT_LEAD && days >= -SOFORT_LOOKBACK) {
+        sofortmeldung.push({ id: e.id as number, name: e.name as string, dept: deptName(e), start, days });
+      }
+    }
+    sofortmeldung.sort((a, b) => a.days - b.days);
+
     return NextResponse.json({
       expiryDays, contractDays,
       totalStaff: emps.length,
-      missingDocs, expiring, contractsEnding,
+      missingDocs, expiring, contractsEnding, sofortmeldung,
     });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });

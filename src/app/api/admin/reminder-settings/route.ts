@@ -17,6 +17,7 @@ const P = {
   enabled: 'krawings_hr_doc_reminder.enabled',
   expiryEnabled: 'krawings_hr_doc_reminder.expiry_enabled',
   contractEnabled: 'krawings_hr_doc_reminder.contract_enabled',
+  sofortEnabled: 'krawings_hr_doc_reminder.sofort_enabled',
   hrInbox: 'krawings_hr_doc_reminder.hr_fallback_email',
   leadDays: 'krawings_hr_doc_reminder.expiry_lead_days',
   contractLeadDays: 'krawings_hr_doc_reminder.contract_lead_days',
@@ -25,6 +26,7 @@ const P = {
 const CRON_REMINDERS = 'ir_cron_document_reminders';
 const CRON_EXPIRY = 'ir_cron_expiry_alerts';
 const CRON_CONTRACT = 'ir_cron_contract_end_alerts';
+const CRON_SOFORT = 'ir_cron_sofortmeldung_alerts';
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 function adminOnly() {
@@ -44,7 +46,7 @@ async function getParam(odoo: ReturnType<typeof getOdoo>, key: string): Promise<
 async function cronIds(odoo: ReturnType<typeof getOdoo>): Promise<Record<string, number>> {
   const rows = await odoo.searchRead(
     'ir.model.data',
-    [['module', '=', 'krawings_hr_doc_reminder'], ['name', 'in', [CRON_REMINDERS, CRON_EXPIRY, CRON_CONTRACT]]],
+    [['module', '=', 'krawings_hr_doc_reminder'], ['name', 'in', [CRON_REMINDERS, CRON_EXPIRY, CRON_CONTRACT, CRON_SOFORT]]],
     ['name', 'res_id'],
   );
   const out: Record<string, number> = {};
@@ -57,15 +59,16 @@ export async function GET() {
   if (gate) return gate;
   try {
     const odoo = getOdoo();
-    const [enabled, expiryEnabled, contractEnabled, hrInbox, leadDays, contractLeadDays, testRecipient] = await Promise.all([
+    const [enabled, expiryEnabled, contractEnabled, sofortEnabled, hrInbox, leadDays, contractLeadDays, testRecipient] = await Promise.all([
       getParam(odoo, P.enabled), getParam(odoo, P.expiryEnabled), getParam(odoo, P.contractEnabled),
-      getParam(odoo, P.hrInbox), getParam(odoo, P.leadDays), getParam(odoo, P.contractLeadDays),
-      getParam(odoo, P.testRecipient),
+      getParam(odoo, P.sofortEnabled), getParam(odoo, P.hrInbox), getParam(odoo, P.leadDays),
+      getParam(odoo, P.contractLeadDays), getParam(odoo, P.testRecipient),
     ]);
     return NextResponse.json({
       remindersOn: enabled === 'True',
       expiryOn: expiryEnabled === 'True',
       contractOn: contractEnabled === 'True',
+      sofortOn: sofortEnabled === 'True',
       hrInbox: hrInbox || '',
       leadDays: parseInt(leadDays, 10) || 30,
       contractLeadDays: parseInt(contractLeadDays, 10) || 45,
@@ -85,6 +88,7 @@ export async function PUT(request: Request) {
     const remindersOn = !!body.remindersOn;
     const expiryOn = !!body.expiryOn;
     const contractOn = !!body.contractOn;
+    const sofortOn = !!body.sofortOn;
     const hrInbox = String(body.hrInbox || '').trim();
     const testRecipient = String(body.testRecipient || '').trim();
     const clampDays = (v: unknown, def: number) => {
@@ -108,6 +112,7 @@ export async function PUT(request: Request) {
       odoo.call('ir.config_parameter', 'set_param', [P.enabled, remindersOn ? 'True' : 'False']),
       odoo.call('ir.config_parameter', 'set_param', [P.expiryEnabled, expiryOn ? 'True' : 'False']),
       odoo.call('ir.config_parameter', 'set_param', [P.contractEnabled, contractOn ? 'True' : 'False']),
+      odoo.call('ir.config_parameter', 'set_param', [P.sofortEnabled, sofortOn ? 'True' : 'False']),
       odoo.call('ir.config_parameter', 'set_param', [P.hrInbox, hrInbox]),
       odoo.call('ir.config_parameter', 'set_param', [P.leadDays, String(leadDays)]),
       odoo.call('ir.config_parameter', 'set_param', [P.contractLeadDays, String(contractLeadDays)]),
@@ -119,6 +124,7 @@ export async function PUT(request: Request) {
     if (ids[CRON_REMINDERS]) await odoo.write('ir.cron', [ids[CRON_REMINDERS]], { active: remindersOn });
     if (ids[CRON_EXPIRY]) await odoo.write('ir.cron', [ids[CRON_EXPIRY]], { active: expiryOn });
     if (ids[CRON_CONTRACT]) await odoo.write('ir.cron', [ids[CRON_CONTRACT]], { active: contractOn });
+    if (ids[CRON_SOFORT]) await odoo.write('ir.cron', [ids[CRON_SOFORT]], { active: sofortOn });
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

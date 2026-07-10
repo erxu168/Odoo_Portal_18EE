@@ -12,6 +12,7 @@ interface Props {
 interface MissingDoc { id: number; name: string; dept: string; missing: string[]; }
 interface Expiring { id: number; name: string; dept: string; items: { label: string; date: string; days: number }[]; }
 interface ContractEnding { id: number | null; name: string; dept: string; date: string; days: number; }
+interface Sofort { id: number; name: string; dept: string; start: string; days: number; }
 interface OverviewData {
   expiryDays: number;
   contractDays: number;
@@ -19,6 +20,7 @@ interface OverviewData {
   missingDocs: MissingDoc[];
   expiring: Expiring[];
   contractsEnding: ContractEnding[];
+  sofortmeldung: Sofort[];
 }
 
 function fmtDate(iso: string): string {
@@ -63,6 +65,13 @@ export default function HrOverview({ onBack, onOpenEmployee }: Props) {
       ) : data ? (
         <div className="p-4 flex flex-col gap-4">
           <p className="text-[var(--fs-xs)] text-gray-400 px-1">Across {data.totalStaff} active staff you manage.</p>
+
+          <Section title="Sofortmeldung outstanding" count={data.sofortmeldung.length} empty="No new starters awaiting Sofortmeldung.">
+            {data.sofortmeldung.map((s) => (
+              <Row key={s.id} name={s.name} dept={s.dept} tone={s.days < 0 ? 'red' : 'amber'} onClick={() => onOpenEmployee(s.id)}
+                detail={s.days < 0 ? `Started ${-s.days}d ago (${fmtDate(s.start)}) — register now` : `Starts ${fmtDate(s.start)} ${daysLabel(s.days)} — register by day 1`} />
+            ))}
+          </Section>
 
           <Section title="Missing documents" count={data.missingDocs.length} empty="Everyone has their mandatory documents.">
             {data.missingDocs.map((m) => (

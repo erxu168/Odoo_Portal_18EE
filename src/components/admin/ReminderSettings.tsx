@@ -41,6 +41,7 @@ export default function ReminderSettings() {
   const [remindersOn, setRemindersOn] = useState(false);
   const [expiryOn, setExpiryOn] = useState(false);
   const [contractOn, setContractOn] = useState(false);
+  const [sofortOn, setSofortOn] = useState(false);
   const [hrInbox, setHrInbox] = useState('');
   const [leadDays, setLeadDays] = useState('30');
   const [contractLeadDays, setContractLeadDays] = useState('45');
@@ -54,6 +55,7 @@ export default function ReminderSettings() {
         setRemindersOn(!!d.remindersOn);
         setExpiryOn(!!d.expiryOn);
         setContractOn(!!d.contractOn);
+        setSofortOn(!!d.sofortOn);
         setHrInbox(d.hrInbox || '');
         setLeadDays(String(d.leadDays || 30));
         setContractLeadDays(String(d.contractLeadDays || 45));
@@ -74,7 +76,7 @@ export default function ReminderSettings() {
       const r = await fetch('/api/admin/reminder-settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ remindersOn, expiryOn, contractOn, hrInbox, leadDays: Number(leadDays) || 30, contractLeadDays: Number(contractLeadDays) || 45, testRecipient }),
+        body: JSON.stringify({ remindersOn, expiryOn, contractOn, sofortOn, hrInbox, leadDays: Number(leadDays) || 30, contractLeadDays: Number(contractLeadDays) || 45, testRecipient }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Save failed');
@@ -116,6 +118,12 @@ export default function ReminderSettings() {
             label="Contract-end reminders"
             desc="Alert the manager / HR inbox before a fixed-term contract ends, so it can be renewed in time. Staff are not emailed."
           />
+          <Toggle
+            on={sofortOn}
+            onChange={setSofortOn}
+            label="Sofortmeldung alerts"
+            desc="Alert the manager / HR inbox about new starters whose Sofortmeldung (immediate registration) is not yet done — legally due by day 1. Checked daily."
+          />
 
           <div className="mt-4">
             <label className={lbl}>HR summary inbox</label>
@@ -143,7 +151,7 @@ export default function ReminderSettings() {
             </p>
           </div>
 
-          {(remindersOn || expiryOn || contractOn) && !testRecipient.trim() && (
+          {(remindersOn || expiryOn || contractOn || sofortOn) && !testRecipient.trim() && (
             <div className="mt-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[var(--fs-sm)] text-amber-800">
               These emails go out to real staff and managers. Tip: put your own address in Test mode above first to preview a live run safely.
             </div>
