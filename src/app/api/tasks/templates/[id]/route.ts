@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireRole, AuthError } from '@/lib/auth';
+import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import {
   getTemplate, updateTemplate, archiveTemplate, unarchiveTemplate,
 } from '@/lib/odoo-tasks';
@@ -21,7 +21,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     const id = parseInt(params.id, 10);
     if (Number.isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     const body = await req.json();
@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     const id = parseInt(params.id, 10);
     if (Number.isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     await archiveTemplate(id);

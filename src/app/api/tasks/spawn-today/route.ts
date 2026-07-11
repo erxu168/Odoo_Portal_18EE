@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { requireRole, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 import { spawnTodayLists } from '@/lib/odoo-tasks';
 
 export async function POST() {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     await spawnTodayLists();
     return NextResponse.json({ ok: true });
   } catch (err) {

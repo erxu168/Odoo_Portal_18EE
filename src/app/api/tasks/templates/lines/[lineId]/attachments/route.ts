@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 import { addTemplateLineAttachment } from '@/lib/odoo-tasks';
 
 export async function POST(req: NextRequest, { params }: { params: { lineId: string } }) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     const lineId = parseInt(params.lineId, 10);
     if (Number.isNaN(lineId)) return NextResponse.json({ error: 'Invalid line id' }, { status: 400 });
     const body = await req.json();

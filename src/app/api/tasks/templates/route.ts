@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireRole, AuthError } from '@/lib/auth';
+import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { listTemplates, createTemplate } from '@/lib/odoo-tasks';
 
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     const body = await req.json();
     if (!body.name || !body.department_id) {
       return NextResponse.json({ error: 'name and department_id required' }, { status: 400 });

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 import { upsertTemplateLine, type DayPart, type ModuleLink } from '@/lib/odoo-tasks';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     const templateId = parseInt(params.id, 10);
     if (Number.isNaN(templateId)) return NextResponse.json({ error: 'Invalid template id' }, { status: 400 });
     const body = await req.json();

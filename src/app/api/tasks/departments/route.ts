@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { requireRole, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { listDepartments } from '@/lib/odoo-tasks';
 
 export async function GET(req: NextRequest) {
   try {
-    const user = requireRole('manager');
+    const user = requireCapability('tasks.template.manage');
     const allowed = parseCompanyIds(user.allowed_company_ids);
 
     // Active-company cookie (set by company-context.tsx) wins by default.

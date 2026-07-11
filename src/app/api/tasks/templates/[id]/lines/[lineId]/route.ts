@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 import { upsertTemplateLine, deleteTemplateLine, type DayPart, type ModuleLink } from '@/lib/odoo-tasks';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     const templateId = parseInt(params.id, 10);
     const lineId = parseInt(params.lineId, 10);
     if (Number.isNaN(templateId) || Number.isNaN(lineId)) {
@@ -33,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     const lineId = parseInt(params.lineId, 10);
     if (Number.isNaN(lineId)) return NextResponse.json({ error: 'Invalid line id' }, { status: 400 });
     await deleteTemplateLine(lineId);

@@ -113,3 +113,11 @@ test('credentials defaults: view=manager+admin, manage=admin', () => {
   expect(roleCan('manager', 'credentials.manage', {})).toBe(false);
   expect(roleCan('admin', 'credentials.manage', {})).toBe(true);
 });
+
+test('tasks manager caps default manager+admin (staff task-doing stays open elsewhere)', () => {
+  for (const k of ['tasks.template.manage', 'tasks.completion.override', 'tasks.manager.view']) {
+    expect(roleCan('staff', k, {})).toBe(false);
+    expect(roleCan('manager', k, {})).toBe(true);
+    expect(roleCan('admin', k, {})).toBe(true);
+  }
+});

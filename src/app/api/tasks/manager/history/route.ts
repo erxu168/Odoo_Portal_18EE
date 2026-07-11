@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 import { getListByDeptAndDate } from '@/lib/odoo-tasks';
 
 export async function GET(req: NextRequest) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.manager.view');
     const dept = parseInt(req.nextUrl.searchParams.get('dept') || '', 10);
     const date = req.nextUrl.searchParams.get('date');
     if (Number.isNaN(dept) || !date) {

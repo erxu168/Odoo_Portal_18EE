@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { requireRole, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getDashboard } from '@/lib/odoo-tasks';
 
 export async function GET() {
   try {
-    const user = requireRole('manager');
+    const user = requireCapability('tasks.manager.view');
     const companies = parseCompanyIds(user.allowed_company_ids);
     const dashboard = await getDashboard(companies);
     return NextResponse.json(dashboard);

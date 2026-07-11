@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireRole, AuthError } from '@/lib/auth';
+import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import { completeLine, uncompleteLine } from '@/lib/odoo-tasks';
 import { resolveAttribution } from '@/lib/shift-attribution';
 
@@ -25,7 +25,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.completion.override');
     const id = parseInt(params.id, 10);
     if (Number.isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     await uncompleteLine(id);

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 import { updateLine, deleteAdHocLine, type DayPart, type ModuleLink } from '@/lib/odoo-tasks';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     const id = parseInt(params.id, 10);
     if (Number.isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     const body = await req.json();
@@ -25,7 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     const id = parseInt(params.id, 10);
     if (Number.isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     await deleteAdHocLine(id);

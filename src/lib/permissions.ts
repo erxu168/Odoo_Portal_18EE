@@ -108,6 +108,12 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   // (hasRole 'admin'). The admins-see-all data-scoping in the GET is preserved.
   { key: 'credentials.view',   module: 'credentials', label: 'View supplier logins',              defaultRoles: ['manager', 'admin'] },
   { key: 'credentials.manage', module: 'credentials', label: 'Add / edit / delete supplier logins', defaultRoles: ['admin'] },
+
+  // ── My Tasks — all manager actions are requireRole('manager') today → manager+admin. Staff
+  // task-doing (complete POST, note, photo, subtask, view today/list) stays requireAuth (all roles).
+  { key: 'tasks.template.manage',     module: 'tasks', label: 'Manage checklists & templates',       defaultRoles: ['manager', 'admin'] },
+  { key: 'tasks.completion.override', module: 'tasks', label: 'Override a task completion',           defaultRoles: ['manager', 'admin'] },
+  { key: 'tasks.manager.view',        module: 'tasks', label: 'View team task dashboard & history',   defaultRoles: ['manager', 'admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {

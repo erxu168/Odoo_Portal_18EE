@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireRole, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 import { ensureListForDeptDate } from '@/lib/odoo-tasks';
 
 export async function POST(req: NextRequest) {
   try {
-    requireRole('manager');
+    requireCapability('tasks.template.manage');
     const body = await req.json();
     const departmentId = parseInt(body.department_id, 10);
     const date = String(body.date || '');
