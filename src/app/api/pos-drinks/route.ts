@@ -9,10 +9,16 @@
  *        Returns { found, product? } so the UI can warn about duplicates.
  * GET  /api/pos-drinks?q=NAME        → search existing WAJ POS drinks by name.
  *        Returns { results: [{ id, name, barcode, price }] } for match-or-attach.
+ * GET  /api/pos-drinks?options=1     → dropdown choices for the drink editor.
+ *        Returns { categories, taxes, uoms } (till sections, sale taxes, units).
+ * GET  /api/pos-drinks?detail=ID     → current editable fields of one drink.
+ *        Returns { product: { id, name, price, uom_id, tax_id, pos_categ_id } }.
  *
  * POST /api/pos-drinks   (manager+ only)
  *   { action: 'attach', product_id, barcode }       → set barcode on an existing product
  *   { action: 'create', barcode, name, list_price } → create a new sellable WAJ drink
+ *   { action: 'update', product_id, name, list_price, uom_id, tax_id, pos_categ_id }
+ *                                                    → edit an existing drink's details
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
@@ -25,6 +31,8 @@ const WAJ_COMPANY_ID = 6;
 const DRINKS_TAX_ID = 224;          // "19% MwSt. (incl.)" — every WAJ drink uses this
 const WAJ_DRINKS_POS_CATEG = 195;   // POS category "WAJ Drinks"
 const DRINKS_CATEG_ID = 28;         // internal product category "Drinks / Soft Drinks"
+const WAJ_POS_CATEGS = [193, 194, 195, 196]; // WAJ Grill / Sides / Drinks / Wraps — the till sections
+const UOM_CATEGORIES = ['Unit', 'Volume']; // sensible units to offer for a drink
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -33,9 +41,52 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const barcode = searchParams.get('barcode');
   const q = searchParams.get('q');
+  const options = searchParams.get('options');
+  const detail = searchParams.get('detail');
 
   try {
     const odoo = getOdoo();
+
+    // Dropdown choices for the editor: till sections, sale taxes, units.
+    if (options) {
+      const [cats, taxes, uoms] = await Promise.all([
+        odoo.searchRead('pos.category', [['id', 'in', WAJ_POS_CATEGS]], ['id', 'name'], { order: 'name' }),
+        odoo.searchRead(
+          'account.tax',
+          [['type_tax_use', '=', 'sale'], ['company_id', '=', WAJ_COMPANY_ID]],
+          ['id', 'name', 'amount'],
+          { order: 'amount desc', limit: 50 },
+        ),
+        odoo.searchRead('uom.uom', [], ['id', 'name', 'category_id'], { limit: 200 }),
+      ]);
+      return NextResponse.json({
+        categories: cats.map((c) => ({ id: c.id, name: c.name })),
+        taxes: taxes.map((t) => ({ id: t.id, name: t.name, amount: t.amount })),
+        uoms: uoms
+          .filter((u) => Array.isArray(u.category_id) && UOM_CATEGORIES.includes(u.category_id[1]))
+          .map((u) => ({ id: u.id, name: u.name, category: u.category_id[1] })),
+      });
+    }
+
+    // Current editable values of a single drink, to pre-fill the edit form.
+    if (detail) {
+      const id = Number(detail);
+      const [p] = await odoo.read(
+        'product.product', [id],
+        ['id', 'name', 'lst_price', 'uom_id', 'taxes_id', 'pos_categ_ids'],
+      );
+      if (!p) return NextResponse.json({ error: 'Drink not found' }, { status: 404 });
+      return NextResponse.json({
+        product: {
+          id: p.id,
+          name: p.name,
+          price: p.lst_price,
+          uom_id: Array.isArray(p.uom_id) ? p.uom_id[0] : null,
+          tax_id: Array.isArray(p.taxes_id) && p.taxes_id.length ? p.taxes_id[0] : null,
+          pos_categ_id: Array.isArray(p.pos_categ_ids) && p.pos_categ_ids.length ? p.pos_categ_ids[0] : null,
+        },
+      });
+    }
 
     // Barcode lookup — does any product already carry this barcode?
     if (barcode) {
@@ -104,10 +155,37 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const action = body.action;
+    const odoo = getOdoo();
+
+    // Edit an existing drink's details. No barcode involved, so this runs
+    // before the barcode guard below.
+    if (action === 'update') {
+      const productId = Number(body.product_id);
+      if (!productId) return NextResponse.json({ error: 'product_id is required' }, { status: 400 });
+      const name: string = (body.name ?? '').toString().trim();
+      const price = Number(body.list_price);
+      if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 });
+      if (!Number.isFinite(price) || price < 0) {
+        return NextResponse.json({ error: 'Price must be a positive number' }, { status: 400 });
+      }
+      const [prod] = await odoo.read('product.product', [productId], ['product_tmpl_id']);
+      if (!prod?.product_tmpl_id) return NextResponse.json({ error: 'Drink not found' }, { status: 404 });
+
+      const vals: Record<string, unknown> = { name, list_price: price };
+      const uomId = Number(body.uom_id);
+      if (Number.isFinite(uomId) && uomId > 0) { vals.uom_id = uomId; vals.uom_po_id = uomId; }
+      const taxId = Number(body.tax_id);
+      if (Number.isFinite(taxId) && taxId > 0) vals.taxes_id = [[6, 0, [taxId]]];
+      const posCategId = Number(body.pos_categ_id);
+      if (Number.isFinite(posCategId) && posCategId > 0) vals.pos_categ_ids = [[6, 0, [posCategId]]];
+
+      await odoo.write('product.template', [prod.product_tmpl_id[0]], vals);
+      return NextResponse.json({ success: true, product: { id: productId, name, price } });
+    }
+
+    // attach/create both work off a scanned barcode.
     const barcode: string = (body.barcode ?? '').toString().trim();
     if (!barcode) return NextResponse.json({ error: 'barcode is required' }, { status: 400 });
-
-    const odoo = getOdoo();
 
     // Guard: never let two products share a barcode (Odoo enforces it too, but
     // we want a friendly message instead of a raw SQL constraint error).
@@ -168,7 +246,7 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json({ error: 'action must be "attach" or "create"' }, { status: 400 });
+    return NextResponse.json({ error: 'action must be "attach", "create" or "update"' }, { status: 400 });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[pos-drinks POST]', msg);

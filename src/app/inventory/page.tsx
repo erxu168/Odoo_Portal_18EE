@@ -12,6 +12,7 @@ import ReviewSubmissions from '@/components/inventory/ReviewSubmissions';
 import MoIngredients from '@/components/inventory/MoIngredients';
 import ProductSettings from '@/components/inventory/ProductSettings';
 import DrinksScanner from '@/components/inventory/DrinksScanner';
+import DrinksEditor from '@/components/inventory/DrinksEditor';
 import ConsumptionReport from '@/components/inventory/ConsumptionReport';
 
 type Screen =
@@ -23,6 +24,7 @@ type Screen =
   | { type: 'mo-ingredients' }
   | { type: 'product-settings' }
   | { type: 'drinks-scanner' }
+  | { type: 'drinks-editor' }
   | { type: 'consumption' }
   | { type: 'session'; sessionId: number };
 
@@ -124,6 +126,15 @@ export default function InventoryPage() {
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <AppHeader title="Drinks Scanner" subtitle="Scan to barcode What a Jerk drinks" showBack onBack={goDashboard} />
         <DrinksScanner />
+      </div>
+    );
+  }
+
+  if (screen.type === 'drinks-editor' && canManage) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <AppHeader title="Edit Drinks" subtitle="Change a drink's name, price, tax, unit or section" showBack onBack={goDashboard} />
+        <DrinksEditor onBack={goDashboard} />
       </div>
     );
   }

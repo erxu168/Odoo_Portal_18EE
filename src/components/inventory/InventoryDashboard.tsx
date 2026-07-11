@@ -158,6 +158,19 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     }] : []),
+    ...(canManage ? [{
+      id: 'drinks-editor',
+      label: 'Edit Drinks',
+      color: 'bg-rose-50 border-rose-200', iconBg: 'bg-rose-100', iconColor: 'text-rose-600',
+      sublabel: 'Name, price, tax, unit',
+      badge: 0,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 20h9" />
+          <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
+        </svg>
+      ),
+    }] : []),
     ...(can('inventory.productsettings.manage') ? [{
       id: 'product-settings',
       label: 'Product settings',
