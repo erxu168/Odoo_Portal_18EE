@@ -106,3 +106,10 @@ test('recipes defaults are behavior-preserving (manager writes, delete=admin)', 
   expect(roleCan('manager', 'recipes.delete', {})).toBe(false);
   expect(roleCan('admin', 'recipes.delete', {})).toBe(true);
 });
+
+test('credentials defaults: view=manager+admin, manage=admin', () => {
+  expect(roleCan('staff', 'credentials.view', {})).toBe(false);
+  expect(roleCan('manager', 'credentials.view', {})).toBe(true);
+  expect(roleCan('manager', 'credentials.manage', {})).toBe(false);
+  expect(roleCan('admin', 'credentials.manage', {})).toBe(true);
+});

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { parseCompanyIds } from '@/lib/db';
 import type { SupplierLogin, SupplierGroup, SupplierLoginRow } from '@/types/credentials';
@@ -8,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const user = getCurrentUser();
-  if (!user || !hasRole(user, 'manager')) {
+  if (!user || !roleCan(user.role, 'credentials.view', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -75,7 +77,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const user = getCurrentUser();
-  if (!user || !hasRole(user, 'admin')) {
+  if (!user || !roleCan(user.role, 'credentials.manage', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

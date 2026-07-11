@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser, hasRole } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 
 export const dynamic = 'force-dynamic';
@@ -9,7 +11,7 @@ export async function PUT(
   { params }: { params: { id: string } },
 ) {
   const user = getCurrentUser();
-  if (!user || !hasRole(user, 'admin')) {
+  if (!user || !roleCan(user.role, 'credentials.manage', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -48,7 +50,7 @@ export async function DELETE(
   { params }: { params: { id: string } },
 ) {
   const user = getCurrentUser();
-  if (!user || !hasRole(user, 'admin')) {
+  if (!user || !roleCan(user.role, 'credentials.manage', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

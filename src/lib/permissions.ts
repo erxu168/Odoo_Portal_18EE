@@ -103,6 +103,11 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'recipes.ingredients.manage', module: 'recipes', label: 'Edit recipe ingredients',          defaultRoles: ['manager', 'admin'] },
   { key: 'recipes.featured.manage',    module: 'recipes', label: 'Manage featured dishes',           defaultRoles: ['manager', 'admin'] },
   { key: 'recipes.delete',             module: 'recipes', label: 'Delete a recipe',                  defaultRoles: ['admin'] },
+
+  // ── Supplier Logins (credentials) — view = manager (hasRole 'manager'); add/edit/delete = admin
+  // (hasRole 'admin'). The admins-see-all data-scoping in the GET is preserved.
+  { key: 'credentials.view',   module: 'credentials', label: 'View supplier logins',              defaultRoles: ['manager', 'admin'] },
+  { key: 'credentials.manage', module: 'credentials', label: 'Add / edit / delete supplier logins', defaultRoles: ['admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {
