@@ -11,6 +11,9 @@ export const dynamic = 'force-dynamic';
  *   → hard delete (cascades to prep_pos_link and prep_item_forecasts)
  */
 import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import {
   getPrepItem,
   updatePrepItem,
@@ -22,6 +25,9 @@ export async function GET(
   _request: Request,
   ctx: { params: { id: string } },
 ) {
+  const user = getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'prep-planner.forecast.view', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const id = parseInt(ctx.params.id, 10);
   if (!Number.isFinite(id)) {
     return NextResponse.json({ error: 'id must be an integer' }, { status: 400 });
@@ -41,6 +47,9 @@ export async function PATCH(
   request: Request,
   ctx: { params: { id: string } },
 ) {
+  const user = getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'prep-planner.item.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const id = parseInt(ctx.params.id, 10);
   if (!Number.isFinite(id)) {
     return NextResponse.json({ error: 'id must be an integer' }, { status: 400 });
@@ -113,6 +122,9 @@ export async function DELETE(
   _request: Request,
   ctx: { params: { id: string } },
 ) {
+  const user = getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'prep-planner.item.delete', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const id = parseInt(ctx.params.id, 10);
   if (!Number.isFinite(id)) {
     return NextResponse.json({ error: 'id must be an integer' }, { status: 400 });

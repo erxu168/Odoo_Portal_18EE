@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic';
  * Phase 2 admin endpoint. Manager/admin only — enforce upstream.
  */
 import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import {
   listPrepItems,
   createPrepItem,
@@ -17,6 +20,9 @@ import {
 } from '@/lib/prep-planner-mapping-db';
 
 export async function GET(request: Request) {
+  const user = getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'prep-planner.forecast.view', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { searchParams } = new URL(request.url);
   const companyIdRaw = searchParams.get('companyId');
   const includeInactive = searchParams.get('includeInactive') === '1';
@@ -37,6 +43,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const user = getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'prep-planner.item.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   let body: unknown;
   try {
     body = await request.json();

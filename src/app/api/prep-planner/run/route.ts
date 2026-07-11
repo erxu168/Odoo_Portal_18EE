@@ -7,7 +7,9 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { runForecastJob } from '@/lib/prep-planner-engine';
-import { getCurrentUser, hasRole } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { logAudit } from '@/lib/db';
 
 export async function POST(request: Request) {
@@ -15,7 +17,7 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  if (!hasRole(user, 'manager')) {
+  if (!roleCan(user.role, 'prep-planner.forecast.run', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Manager role required' }, { status: 403 });
   }
 

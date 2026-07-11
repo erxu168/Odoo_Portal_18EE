@@ -11,6 +11,9 @@ export const dynamic = 'force-dynamic';
  *   → remove a single link
  */
 import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import {
   listAllLinksForCompany,
   upsertLink,
@@ -18,6 +21,9 @@ import {
 } from '@/lib/prep-planner-mapping-db';
 
 export async function GET(request: Request) {
+  const user = getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'prep-planner.forecast.view', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { searchParams } = new URL(request.url);
   const companyIdRaw = searchParams.get('companyId');
   if (!companyIdRaw) {
@@ -37,6 +43,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const user = getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'prep-planner.link.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   let body: unknown;
   try {
     body = await request.json();
@@ -79,6 +88,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const user = getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'prep-planner.link.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { searchParams } = new URL(request.url);
   const idRaw = searchParams.get('id');
   if (!idRaw) {

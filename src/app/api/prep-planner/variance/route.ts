@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic';
  * products that sold on the date but are not linked to any prep item.
  */
 import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { getDb } from '@/lib/db';
 import {
   listPrepItems,
@@ -32,6 +35,9 @@ interface ItemVariance {
 }
 
 export async function GET(request: Request) {
+  const user = getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'prep-planner.forecast.view', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   const { searchParams } = new URL(request.url);
   const companyIdRaw = searchParams.get('companyId');
   const date = searchParams.get('date');
