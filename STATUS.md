@@ -1,6 +1,38 @@
 # Krawings Portal — STATUS
 
-_Last updated: 2026-07-08_
+_Last updated: 2026-07-11_
+
+## 2026-07-11 session — Staff invite email: name the location + tell the manager when it was not sent (commit `5655422`)
+
+End-to-end validated the onboarding flow on staging (`portal.krawings.de`): admin/manager
+invite → `/invite/[token]` set-password → auto-login → staff sees Planning (time &
+attendance), HR → My Documents, HR → My Profile (Odoo `hr.employee`). Auth is portal-local
+(bcrypt in `data/portal.db`), linked to Odoo only by `employee_id`. Current account status:
+**4 active · ~4 invited · ~34 not set up** of 42 employees — plumbing works, rollout hasn't
+happened. Staging SMTP is live (Strato `no-reply@krawings.de`, company 0 default inherited
+by all companies).
+
+Two fixes shipped this session:
+
+- **Invite email names the location.** `sendStaffInviteEmail` now leads with the employee's
+  restaurant (`res.company` name) in the sender name, subject, body and footer, instead of a
+  generic "Krawings Staff Portal" that reads as spam. `invite_all` now threads `company_id`
+  through to the background sender (it was dropped, so bulk invites had no location).
+- **Manager is told when the email was not sent.** `storeInviteForEmployee`/`createStaffInvite`
+  return an explicit `email_status` (`sent | no_address | failed | skipped`); a send failure is
+  no longer indistinguishable from "no address on file". Shared `inviteEmailNotice()` message
+  used by both routes. Admin Staff Access shows green only when actually emailed, else a
+  persistent amber warning + copy-link fallback. Add-staff form: fixed a `data.emailSent` vs
+  `email_sent` camelCase bug that always said "No email on file". `invite_all` reports the
+  no-email count.
+
+Files: `src/lib/email.ts`, `src/lib/hr/invites.ts`, `src/app/api/admin/staff-access/route.ts`,
+`src/app/api/hr/staff-invite/route.ts`, `src/app/admin/staff-access/page.tsx`,
+`src/components/hr/EmployeeForm.tsx`. Build green; deployed to staging (service active, HTTP 200).
+Verified live: inviting a no-email employee shows the amber warning and sends nothing.
+Not yet verified: a real delivered email with the location (needs a live send to a controlled
+address). Test residue on staging: `staff250.onboarding-test@krawings.de` (portal user linked to
+"Ethan-Ruo Xu TEST ACCT" emp 250) + a pending invite on "DEMO Max Mustermann".
 
 ## 2026-07-08 session — Kiosk: manager-gated on-tablet settings (commit `64904c7`)
 
