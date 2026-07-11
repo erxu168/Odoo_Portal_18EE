@@ -26,7 +26,7 @@ import StaffKpiStack from '@/components/shifts/StaffKpiStack';
 interface ShiftsDashboardProps {
   companyId: number;
   isManager: boolean;
-  badges: { requests: number; approvals: number };
+  badges: { requests: number; approvals: number; unconfirmed: number };
   onNavigate: (key: string) => void;
   onSettings: () => void;
   onHome: () => void;
@@ -207,6 +207,21 @@ export default function ShiftsDashboard({ companyId, isManager, badges, onNaviga
         </svg>
       ),
       badge: badges.approvals > 0 ? badges.approvals : null,
+    },
+    {
+      key: 'unconfirmed',
+      label: 'Not yet confirmed',
+      sublabel: 'Who hasn’t confirmed',
+      color: 'bg-amber-50 border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9 11l3 3L22 4"/>
+          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h6"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      ),
+      badge: badges.unconfirmed > 0 ? badges.unconfirmed : null,
     },
   ];
 

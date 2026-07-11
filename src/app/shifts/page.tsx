@@ -22,6 +22,7 @@ import ShiftSettings from '@/components/shifts/ShiftSettings';
 import PatternManager from '@/components/shifts/PatternManager';
 import ManagerOverview from '@/components/shifts/ManagerOverview';
 import BusyTimes from '@/components/shifts/BusyTimes';
+import UnconfirmedBoard from '@/components/shifts/UnconfirmedBoard';
 import StaffAnnouncement from '@/components/shifts/StaffAnnouncement';
 import { Spinner } from '@/components/shifts/ui';
 
@@ -56,7 +57,8 @@ type Screen =
   | { type: 'settings' }
   | { type: 'patterns' }
   | { type: 'overview' }
-  | { type: 'busy' };
+  | { type: 'busy' }
+  | { type: 'unconfirmed' };
 
 // Deterministic navigation: each screen has ONE parent (create/manage flows nest
 // under manage). Back always goes there — no in-memory history stack to desync.
@@ -79,6 +81,7 @@ const PARENT: Record<Screen['type'], Screen['type']> = {
   patterns: 'settings',
   overview: 'dashboard',
   busy: 'dashboard',
+  unconfirmed: 'dashboard',
 };
 
 export default function ShiftsPage() {
@@ -87,7 +90,7 @@ export default function ShiftsPage() {
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
   const [role, setRole] = useState<string | null>(null);
   const [employeeId, setEmployeeId] = useState<number | null>(null);
-  const [badges, setBadges] = useState<{ requests: number; approvals: number }>({ requests: 0, approvals: 0 });
+  const [badges, setBadges] = useState<{ requests: number; approvals: number; unconfirmed: number }>({ requests: 0, approvals: 0, unconfirmed: 0 });
 
   // Who am I? Role decides which tiles/screens exist; employee link is needed
   // for all staff actions (claim, cover requests, sick reports).
@@ -121,6 +124,7 @@ export default function ShiftsPage() {
       setBadges({
         requests: data.staff?.requests ?? 0,
         approvals: data.manager?.approvals ?? 0,
+        unconfirmed: data.manager?.unconfirmed ?? 0,
       });
     } catch (err: unknown) {
       console.warn('[shifts] summary fetch failed:', err instanceof Error ? err.message : String(err));
@@ -178,6 +182,7 @@ export default function ShiftsPage() {
     else if (key === 'manage') navigate({ type: 'manage' });
     else if (key === 'overview') navigate({ type: 'overview' });
     else if (key === 'busy') navigate({ type: 'busy' });
+    else if (key === 'unconfirmed') navigate({ type: 'unconfirmed' });
     else if (key === 'coverage') navigate({ type: 'coverage' });
     else if (key === 'roster') navigate({ type: 'roster' });
     else if (key === 'approvals') navigate({ type: 'approvals' });
@@ -276,6 +281,8 @@ export default function ShiftsPage() {
         return <ManagerOverview {...common} />;
       case 'busy':
         return <BusyTimes {...common} />;
+      case 'unconfirmed':
+        return <UnconfirmedBoard {...common} />;
     }
   }
 

@@ -13,9 +13,9 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { getShiftSettings, listCoverRequests, listSickReports, slotMinSkills } from '@/lib/shifts-db';
+import { confirmedSlotIds, getShiftSettings, listCoverRequests, listSickReports, slotMinSkills } from '@/lib/shifts-db';
 import { lazyExpireIfDue } from '@/lib/shifts-guards';
-import { fetchEmployees, fetchSlot, meetsMinSkill } from '@/lib/shifts-odoo';
+import { fetchEmployees, fetchFutureAssignedSlots, fetchSlot, meetsMinSkill } from '@/lib/shifts-odoo';
 import { nowOdooUtc } from '@/lib/shifts-time';
 import type { CoverRequest, ShiftEmployee, ShiftSettings, ShiftSlot } from '@/types/shifts';
 
@@ -109,7 +109,7 @@ export async function GET(request: Request) {
 
     const body: {
       staff: { open: number; mine: number; requests: number };
-      manager?: { approvals: number; openShifts: number; atRisk: number };
+      manager?: { approvals: number; openShifts: number; atRisk: number; unconfirmed: number };
       settings: { allowSickReport: boolean; allowAskAll: boolean; requireApproval: boolean };
     } = {
       staff: { open: openCount, mine: mineCount, requests: requestCount },
@@ -125,10 +125,19 @@ export async function GET(request: Request) {
       const expired = await expirePending(pendingManager, settings);
       const pendingCount = expired.filter(r => r.status === 'pending_manager').length;
       const sickOpen = listSickReports(companyId, 'open').length;
+      // Unconfirmed only matters (and is only computed) when the feature is on,
+      // so the tile badge stays 0 rather than showing every assigned shift.
+      let unconfirmed = 0;
+      if (settings.requireConfirmation) {
+        const assigned = await fetchFutureAssignedSlots(companyId);
+        const confirmed = confirmedSlotIds(companyId);
+        unconfirmed = assigned.filter(s => !confirmed.has(s.id)).length;
+      }
       body.manager = {
         approvals: pendingCount + sickOpen,
         openShifts: openRows.length,
         atRisk: sickOpen,
+        unconfirmed,
       };
     }
 
