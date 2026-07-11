@@ -19,6 +19,7 @@
  *   { action: 'create', barcode, name, list_price } → create a new sellable WAJ drink
  *   { action: 'update', product_id, name, list_price, uom_id, tax_id, pos_categ_id }
  *                                                    → edit an existing drink's details
+ *   { action: 'delete', product_id }                → archive a drink (hide from till)
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
@@ -186,6 +187,18 @@ export async function POST(request: Request) {
 
       await odoo.write('product.template', [prod.product_tmpl_id[0]], vals);
       return NextResponse.json({ success: true, product: { id: productId, name, price } });
+    }
+
+    // Remove a drink from the till. We ARCHIVE (active=false) rather than hard
+    // delete: Odoo blocks unlink for any product that's been sold, and archiving
+    // is reversible (un-archive in Odoo) while still hiding it everywhere.
+    if (action === 'delete') {
+      const productId = Number(body.product_id);
+      if (!productId) return NextResponse.json({ error: 'product_id is required' }, { status: 400 });
+      const [prod] = await odoo.read('product.product', [productId], ['product_tmpl_id', 'name']);
+      if (!prod?.product_tmpl_id) return NextResponse.json({ error: 'Drink not found' }, { status: 404 });
+      await odoo.write('product.template', [prod.product_tmpl_id[0]], { active: false });
+      return NextResponse.json({ success: true, product: { id: productId, name: prod.name } });
     }
 
     // attach/create both work off a scanned barcode.

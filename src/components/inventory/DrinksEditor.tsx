@@ -9,6 +9,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { SearchBar, Spinner, EmptyState } from './ui';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 
 type Drink = { id: number; name: string; barcode: string | null; price: number };
 type Option = { id: number; name: string };
@@ -28,6 +29,7 @@ export default function DrinksEditor({ onBack }: { onBack: () => void }) {
   const [editing, setEditing] = useState<Drink | null>(null);
   const [form, setForm] = useState<Form>({ name: '', price: '', uom_id: null, tax_id: null, pos_categ_id: null });
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const searchSeq = useRef(0);
 
   function flash(kind: 'ok' | 'err', text: string) {
@@ -109,6 +111,26 @@ export default function DrinksEditor({ onBack }: { onBack: () => void }) {
       backToList();
     } catch (e: unknown) {
       flash('err', e instanceof Error ? e.message : 'Could not save');
+      setPhase('edit');
+    }
+  }
+
+  async function del() {
+    if (!editing) return;
+    setConfirmDelete(false);
+    setPhase('saving');
+    try {
+      const res = await fetch('/api/pos-drinks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', product_id: editing.id }),
+      }).then((r) => r.json());
+      if (!res.success) throw new Error(res.error || 'Could not delete');
+      flash('ok', `Removed → ${editing.name}`);
+      await runSearch(search);
+      backToList();
+    } catch (e: unknown) {
+      flash('err', e instanceof Error ? e.message : 'Could not delete');
       setPhase('edit');
     }
   }
@@ -218,7 +240,27 @@ export default function DrinksEditor({ onBack }: { onBack: () => void }) {
             >
               {saving ? 'Saving…' : 'Save changes'}
             </button>
+
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={saving}
+              className="mt-3 w-full rounded-xl border border-red-200 text-red-600 py-3 text-[var(--fs-base)] font-semibold active:bg-red-50 disabled:opacity-50"
+            >
+              Delete drink
+            </button>
           </div>
+        )}
+
+        {confirmDelete && (
+          <ConfirmDialog
+            title="Delete this drink?"
+            message={`"${editing.name}" will be removed from the till. It won't be sellable anymore, but a manager can restore it in Odoo if needed.`}
+            confirmLabel="Delete"
+            cancelLabel="Keep it"
+            variant="danger"
+            onConfirm={del}
+            onCancel={() => setConfirmDelete(false)}
+          />
         )}
       </div>
     );
