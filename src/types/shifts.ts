@@ -63,6 +63,10 @@ export interface ShiftSettings {
   settleBufferHours: number;
   allowAskAll: boolean;
   allowSickReport: boolean;
+  /** Require staff to confirm ("I'll be there") their assigned published shifts. */
+  requireConfirmation: boolean;
+  /** Hours before a shift by which confirmation is due (drives reminders + overdue). */
+  confirmByHours: number;
 }
 
 /** Snapshot of the slot at cover-request creation time. */

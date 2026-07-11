@@ -27,10 +27,13 @@ interface SettingsForm {
   allowAskAll: boolean;
   allowSickReport: boolean;
   weekendEnabled: boolean;
+  requireConfirmation: boolean;
+  confirmByHours: number;
 }
 
 const ANSWER_HOURS = [4, 8, 12, 24];
 const SETTLE_HOURS = [1, 2, 4, 12];
+const CONFIRM_HOURS = [12, 24, 48];
 
 function bool(v: unknown, fallback: boolean): boolean {
   return typeof v === 'boolean' ? v : fallback;
@@ -90,6 +93,8 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
         allowAskAll: bool(s.allowAskAll, true),
         allowSickReport: bool(s.allowSickReport, true),
         weekendEnabled: bool(s.weekendEnabled, true),
+        requireConfirmation: bool(s.requireConfirmation, false),
+        confirmByHours: numOr(s.confirmByHours, 24),
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -244,6 +249,42 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                   />
                 }
               />
+            </div>
+
+            <SectionTitle>Shift confirmation</SectionTitle>
+            <div className="mx-4 bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] overflow-hidden">
+              <SettingRow
+                title="Require shift confirmation"
+                hint="Staff must tap “I’ll be there” on their shifts; you get a board of who hasn’t confirmed"
+                divider={false}
+                control={
+                  <ToggleSwitch
+                    on={form.requireConfirmation}
+                    onToggle={() => update({ requireConfirmation: !form.requireConfirmation })}
+                  />
+                }
+              />
+              {form.requireConfirmation && (
+                <SettingRow
+                  title="Confirm by"
+                  hint="How long before a shift confirmation is due; after that it’s flagged for you"
+                  divider
+                  control={
+                    <select
+                      aria-label="Confirm by"
+                      className={selectClass}
+                      value={form.confirmByHours}
+                      onChange={e => update({ confirmByHours: Number(e.target.value) })}
+                    >
+                      {hourOptions(CONFIRM_HOURS, form.confirmByHours).map(h => (
+                        <option key={h} value={h}>
+                          {h} hours before
+                        </option>
+                      ))}
+                    </select>
+                  }
+                />
+              )}
             </div>
 
             {onOpenPatterns && (

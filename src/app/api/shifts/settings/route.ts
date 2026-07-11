@@ -47,15 +47,19 @@ export async function PUT(req: NextRequest) {
     const requireApproval = readBool(body.requireApproval, current.requireApproval);
     const allowAskAll = readBool(body.allowAskAll, current.allowAskAll);
     const allowSickReport = readBool(body.allowSickReport, current.allowSickReport);
+    const requireConfirmation = readBool(body.requireConfirmation, current.requireConfirmation);
     const answerDeadlineHours = readHours(body.answerDeadlineHours, current.answerDeadlineHours);
     const settleBufferHours = readHours(body.settleBufferHours, current.settleBufferHours);
+    const confirmByHours = readHours(body.confirmByHours, current.confirmByHours);
 
     if (
       requireApproval === null ||
       allowAskAll === null ||
       allowSickReport === null ||
+      requireConfirmation === null ||
       answerDeadlineHours === null ||
-      settleBufferHours === null
+      settleBufferHours === null ||
+      confirmByHours === null
     ) {
       return NextResponse.json({ error: 'Invalid settings values' }, { status: 400 });
     }
@@ -67,6 +71,8 @@ export async function PUT(req: NextRequest) {
       settleBufferHours,
       allowAskAll,
       allowSickReport,
+      requireConfirmation,
+      confirmByHours,
     };
     saveShiftSettings(settings);
 

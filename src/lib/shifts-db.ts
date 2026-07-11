@@ -13,6 +13,7 @@
  */
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { getDb } from '@/lib/db';
+import type { ReminderStage } from '@/lib/shift-confirm';
 import type {
   CoverRequest,
   PublishRunState,
@@ -91,6 +92,8 @@ function ensureTables(): void {
       settle_buffer_hours REAL NOT NULL DEFAULT 2,
       allow_ask_all INTEGER NOT NULL DEFAULT 1,
       allow_sick_report INTEGER NOT NULL DEFAULT 1,
+      require_confirmation INTEGER NOT NULL DEFAULT 0,
+      confirm_by_hours REAL NOT NULL DEFAULT 24,
       updated_at TEXT
     );
 
@@ -121,6 +124,13 @@ function ensureTables(): void {
       confirmed_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_confirm_company ON shift_confirmations(company_id);
+
+    CREATE TABLE IF NOT EXISTS shift_confirm_reminders (
+      slot_id INTEGER NOT NULL,
+      stage TEXT NOT NULL,
+      sent_at TEXT NOT NULL,
+      PRIMARY KEY (slot_id, stage)
+    );
 
     CREATE TABLE IF NOT EXISTS shift_templates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -206,6 +216,17 @@ function ensureTables(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_wknd_hist_emp ON shift_weekend_history(company_id, employee_id, period_key);
   `);
+
+  // Additive migrations for DBs created before a column existed (fresh DBs get
+  // them from the CREATE above; ADD COLUMN throws "duplicate column" if present).
+  for (const [col, def] of [
+    ['require_confirmation', 'INTEGER NOT NULL DEFAULT 0'],
+    ['confirm_by_hours', 'REAL NOT NULL DEFAULT 24'],
+  ] as const) {
+    try { db.exec(`ALTER TABLE shift_settings ADD COLUMN ${col} ${def}`); }
+    catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
+  }
+
   _initialized = true;
 }
 
@@ -355,6 +376,31 @@ export function confirmedSlotIds(companyId: number): Set<number> {
   return new Set(rows.map(r => r.slot_id));
 }
 
+/** Remove a slot's confirmation (e.g. when it is reassigned to someone else). */
+export function clearConfirmation(slotId: number): void {
+  ensureTables();
+  getDb().prepare('DELETE FROM shift_confirmations WHERE slot_id=?').run(slotId);
+}
+
+/** Reminder stages already sent for a slot (dedup for the confirmation cron). */
+export function reminderStagesSent(slotId: number): ReminderStage[] {
+  ensureTables();
+  return (getDb().prepare('SELECT stage FROM shift_confirm_reminders WHERE slot_id=?').all(slotId) as { stage: string }[])
+    .map(r => r.stage as ReminderStage);
+}
+
+/** Record that a reminder stage has been sent for a slot (at-most-once). */
+export function markReminderSent(slotId: number, stage: ReminderStage): void {
+  ensureTables();
+  getDb().prepare('INSERT OR IGNORE INTO shift_confirm_reminders (slot_id, stage, sent_at) VALUES (?,?,?)').run(slotId, stage, nowISO());
+}
+
+/** Drop a slot's reminder history (on reassign, so the new assignee starts fresh). */
+export function clearConfirmReminders(slotId: number): void {
+  ensureTables();
+  getDb().prepare('DELETE FROM shift_confirm_reminders WHERE slot_id=?').run(slotId);
+}
+
 // -- Kiosk PINs -----------------------------------------------------------------
 
 function hashPin(pin: string): string {
@@ -412,9 +458,11 @@ interface SettingsRow {
   settle_buffer_hours: number;
   allow_ask_all: number;
   allow_sick_report: number;
+  require_confirmation: number;
+  confirm_by_hours: number;
 }
 
-/** Per-company shift settings. Missing row → defaults 1/12/2/1/1. */
+/** Per-company shift settings. Missing row → defaults 1/12/2/1/1, confirmation off/24h. */
 export function getShiftSettings(companyId: number): ShiftSettings {
   ensureTables();
   const row = getDb()
@@ -428,6 +476,8 @@ export function getShiftSettings(companyId: number): ShiftSettings {
       settleBufferHours: 2,
       allowAskAll: true,
       allowSickReport: true,
+      requireConfirmation: false,
+      confirmByHours: 24,
     };
   }
   return {
@@ -437,20 +487,24 @@ export function getShiftSettings(companyId: number): ShiftSettings {
     settleBufferHours: row.settle_buffer_hours,
     allowAskAll: row.allow_ask_all === 1,
     allowSickReport: row.allow_sick_report === 1,
+    requireConfirmation: row.require_confirmation === 1,
+    confirmByHours: row.confirm_by_hours ?? 24,
   };
 }
 
 export function saveShiftSettings(s: ShiftSettings): void {
   ensureTables();
   getDb().prepare(`
-    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(company_id) DO UPDATE SET
       require_approval = excluded.require_approval,
       answer_deadline_hours = excluded.answer_deadline_hours,
       settle_buffer_hours = excluded.settle_buffer_hours,
       allow_ask_all = excluded.allow_ask_all,
       allow_sick_report = excluded.allow_sick_report,
+      require_confirmation = excluded.require_confirmation,
+      confirm_by_hours = excluded.confirm_by_hours,
       updated_at = excluded.updated_at
   `).run(
     s.companyId,
@@ -459,6 +513,8 @@ export function saveShiftSettings(s: ShiftSettings): void {
     s.settleBufferHours,
     s.allowAskAll ? 1 : 0,
     s.allowSickReport ? 1 : 0,
+    s.requireConfirmation ? 1 : 0,
+    s.confirmByHours,
     nowISO(),
   );
 }
