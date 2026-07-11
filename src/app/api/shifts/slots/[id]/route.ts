@@ -9,7 +9,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { invalidateActiveRequestsForSlot } from '@/lib/shifts-guards';
-import { deleteSlotDepartment, deleteSlotMinSkill, setSlotDepartment, setSlotMinSkill } from '@/lib/shifts-db';
+import { clearConfirmation, clearConfirmReminders, deleteSlotDepartment, deleteSlotMinSkill, setSlotDepartment, setSlotMinSkill } from '@/lib/shifts-db';
 import { deleteSlot, fetchEmployees, fetchSlot, recomputeWeekFlags, updateSlot } from '@/lib/shifts-odoo';
 import { notifyEmployee } from '@/lib/shifts-notify';
 import { berlinISOWeekKey, fmtDay, fmtTimeRange } from '@/lib/shifts-time';
@@ -121,6 +121,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     await invalidateActiveRequestsForSlot(slotId, 'The shift was changed by a manager.');
 
     await updateSlot(slotId, updates);
+
+    // A reassignment (release/unassign or a new person) or a time change
+    // invalidates any prior confirmation — the new assignee confirms fresh, and
+    // a released shift must not carry a stale confirmed/overdue state.
+    if ('assign_employee_id' in body || body.date !== undefined || body.start !== undefined || body.end !== undefined) {
+      clearConfirmation(slotId);
+      clearConfirmReminders(slotId);
+    }
 
     // Recompute flags for every affected employee and week (old + new).
     const after = await fetchSlot(slotId);

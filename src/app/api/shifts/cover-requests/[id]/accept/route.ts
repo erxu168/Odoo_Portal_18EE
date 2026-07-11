@@ -16,7 +16,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
-import { casTransition, getCoverRequest, getShiftSettings } from '@/lib/shifts-db';
+import { casTransition, clearConfirmation, clearConfirmReminders, getCoverRequest, getShiftSettings } from '@/lib/shifts-db';
 import { revalidateForAccept } from '@/lib/shifts-guards';
 import { notifyEmployee, notifyManagers } from '@/lib/shifts-notify';
 import { fetchEmployees, fetchSlot, recomputeWeekFlags, updateSlot } from '@/lib/shifts-odoo';
@@ -119,6 +119,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
     // 1) Odoo write FIRST (resource_id = acceptor's resource).
     if (slot.resourceId !== me.resourceId) {
       await updateSlot(slot.id, { resourceId: me.resourceId });
+      // New assignee → the giver's confirmation no longer applies; reset it.
+      clearConfirmation(slot.id);
+      clearConfirmReminders(slot.id);
     }
 
     // 2) SQLite CAS pending_teammate → auto_applied.

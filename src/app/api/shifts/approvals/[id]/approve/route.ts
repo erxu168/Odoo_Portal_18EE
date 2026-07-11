@@ -8,7 +8,7 @@
  * raced CAS is defensively finalized when the slot already belongs to the target.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { casTransition, getCoverRequest } from '@/lib/shifts-db';
+import { casTransition, clearConfirmation, clearConfirmReminders, getCoverRequest } from '@/lib/shifts-db';
 import { revalidateForApprove } from '@/lib/shifts-guards';
 import { notifyEmployee } from '@/lib/shifts-notify';
 import { fetchEmployees, fetchSlot, recomputeWeekFlags, updateSlot } from '@/lib/shifts-odoo';
@@ -60,6 +60,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     // Odoo write FIRST. Skip when a prior half-completed approve already applied it.
     if (slot.resourceId !== toResourceId) {
       await updateSlot(slot.id, { resourceId: toResourceId });
+      // New assignee → reset any prior confirmation so they confirm fresh.
+      clearConfirmation(slot.id);
+      clearConfirmReminders(slot.id);
     }
 
     // SQLite CAS pending_manager → approved.
