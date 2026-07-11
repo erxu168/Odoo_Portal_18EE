@@ -492,6 +492,13 @@ export function getShiftSettings(companyId: number): ShiftSettings {
   };
 }
 
+/** company_ids that currently have shift confirmation switched on (for the cron). */
+export function companiesRequiringConfirmation(): number[] {
+  ensureTables();
+  return (getDb().prepare('SELECT company_id FROM shift_settings WHERE require_confirmation = 1').all() as { company_id: number }[])
+    .map(r => r.company_id);
+}
+
 export function saveShiftSettings(s: ShiftSettings): void {
   ensureTables();
   getDb().prepare(`
