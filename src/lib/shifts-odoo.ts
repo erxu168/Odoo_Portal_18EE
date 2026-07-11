@@ -135,6 +135,22 @@ export async function fetchWeekSlots(companyId: number, weekKey: string): Promis
   return rows.map(mapSlot);
 }
 
+/** Published, ASSIGNED, future shifts for a company (soonest first). */
+export async function fetchFutureAssignedSlots(companyId: number): Promise<ShiftSlot[]> {
+  const rows = (await getOdoo().searchRead(
+    'planning.slot',
+    [
+      ['company_id', '=', companyId],
+      ['state', '=', 'published'],
+      ['resource_id', '!=', false],
+      ['start_datetime', '>', nowOdooUtc()],
+    ],
+    SLOT_FIELDS,
+    { limit: 1000, order: 'start_datetime asc, id asc' },
+  )) as OdooRow[];
+  return rows.map(mapSlot);
+}
+
 /** One slot by id, or null when it no longer exists. */
 export async function fetchSlot(id: number): Promise<ShiftSlot | null> {
   const rows = (await getOdoo().searchRead(
