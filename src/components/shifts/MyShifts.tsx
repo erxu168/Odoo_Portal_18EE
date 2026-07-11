@@ -60,6 +60,7 @@ interface MineSettings {
   allowSickReport: boolean;
   answerDeadlineHours: number;
   requireApproval: boolean;
+  requireConfirmation: boolean;
 }
 
 interface MineDay {
@@ -217,6 +218,7 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
           allowSickReport: settings.allowSickReport !== false,
           answerDeadlineHours: typeof settings.answerDeadlineHours === 'number' ? settings.answerDeadlineHours : 12,
           requireApproval: settings.requireApproval !== false,
+          requireConfirmation: settings.requireConfirmation === true,
         },
       });
     } catch (err: unknown) {
@@ -348,6 +350,7 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
     allowSickReport: true,
     answerDeadlineHours: 12,
     requireApproval: true,
+    requireConfirmation: false,
   };
 
   const dates = data && data.days.length === 7 ? data.days.map(d => d.date) : weekKeyDays(weekKey);
@@ -510,6 +513,8 @@ export default function MyShifts({ companyId, employeeId, onBack, onOpenRequests
                             ) : isFuture ? (
                               (data?.confirmedSlotIds ?? []).includes(s.id) ? (
                                 <Badge variant="green">Confirmed</Badge>
+                              ) : settings.requireConfirmation ? (
+                                <Badge variant="orange">Confirm</Badge>
                               ) : (
                                 <Badge variant="blue">Upcoming</Badge>
                               )

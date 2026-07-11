@@ -204,6 +204,7 @@ export async function GET(request: Request) {
         allowSickReport: settings.allowSickReport,
         answerDeadlineHours: settings.answerDeadlineHours,
         requireApproval: settings.requireApproval,
+        requireConfirmation: settings.requireConfirmation,
       },
     });
   } catch (err: unknown) {
