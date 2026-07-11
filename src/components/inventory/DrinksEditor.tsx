@@ -48,7 +48,7 @@ export default function DrinksEditor({ onBack }: { onBack: () => void }) {
     const seq = ++searchSeq.current;
     setListLoading(true);
     try {
-      const res = await fetch(`/api/pos-drinks?q=${encodeURIComponent(term)}`).then((r) => r.json());
+      const res = await fetch(`/api/pos-drinks?q=${encodeURIComponent(term)}&drinks_only=1`).then((r) => r.json());
       if (seq === searchSeq.current) setDrinks(res.results ?? []);
     } catch {
       /* keep previous list */

@@ -32,6 +32,7 @@ const DRINKS_TAX_ID = 224;          // "19% MwSt. (incl.)" — every WAJ drink u
 const WAJ_DRINKS_POS_CATEG = 195;   // POS category "WAJ Drinks"
 const DRINKS_CATEG_ID = 28;         // internal product category "Drinks / Soft Drinks"
 const WAJ_POS_CATEGS = [193, 194, 195, 196]; // WAJ Grill / Sides / Drinks / Wraps — the till sections
+const WAJ_FOOD_POS_CATEGS = [193, 194, 196]; // Grill / Sides / Wraps — everything that ISN'T a drink
 const UOM_CATEGORIES = ['Unit', 'Volume']; // sensible units to offer for a drink
 
 export async function GET(request: Request) {
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
   const q = searchParams.get('q');
   const options = searchParams.get('options');
   const detail = searchParams.get('detail');
+  const drinksOnly = searchParams.get('drinks_only');
 
   try {
     const odoo = getOdoo();
@@ -118,6 +120,9 @@ export async function GET(request: Request) {
         ['available_in_pos', '=', true],
         ['company_id', '=', WAJ_COMPANY_ID],
       ];
+      // Editor passes drinks_only=1 so food (Grill/Sides/Wraps) is left out —
+      // drinks are anything NOT filed under a food section (incl. untagged bottles).
+      if (drinksOnly) domain.push(['pos_categ_ids', 'not in', WAJ_FOOD_POS_CATEGS]);
       if (term) domain.push(['name', 'ilike', term]);
       const results = await odoo.searchRead(
         'product.product',
