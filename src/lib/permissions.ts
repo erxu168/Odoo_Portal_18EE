@@ -94,6 +94,15 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'prep-planner.item.manage',   module: 'prep-planner', label: 'Create & edit prep items',         defaultRoles: ['manager', 'admin'] },
   { key: 'prep-planner.item.delete',   module: 'prep-planner', label: 'Delete a prep item',               defaultRoles: ['manager', 'admin'] },
   { key: 'prep-planner.link.manage',   module: 'prep-planner', label: 'Link / unlink POS products',       defaultRoles: ['manager', 'admin'] },
+
+  // ── Chef Guide / Production Guide (recipes) — approve/publish/featured/ingredients = manager
+  // (inline hasRole or requireRole today) → manager+admin; delete = admin. View/cook routes stay
+  // all-roles (requireAuth, untouched).
+  { key: 'recipes.approve',            module: 'recipes', label: 'Approve a recipe',                 defaultRoles: ['manager', 'admin'] },
+  { key: 'recipes.publish',            module: 'recipes', label: 'Publish a recipe',                 defaultRoles: ['manager', 'admin'] },
+  { key: 'recipes.ingredients.manage', module: 'recipes', label: 'Edit recipe ingredients',          defaultRoles: ['manager', 'admin'] },
+  { key: 'recipes.featured.manage',    module: 'recipes', label: 'Manage featured dishes',           defaultRoles: ['manager', 'admin'] },
+  { key: 'recipes.delete',             module: 'recipes', label: 'Delete a recipe',                  defaultRoles: ['admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {

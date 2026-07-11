@@ -96,3 +96,13 @@ test('prep-planner defaults are manager+admin (closes an unauth hole)', () => {
     expect(roleCan('admin', k, {})).toBe(true);
   }
 });
+
+test('recipes defaults are behavior-preserving (manager writes, delete=admin)', () => {
+  for (const k of ['recipes.approve', 'recipes.publish', 'recipes.ingredients.manage', 'recipes.featured.manage']) {
+    expect(roleCan('staff', k, {})).toBe(false);
+    expect(roleCan('manager', k, {})).toBe(true);
+  }
+  // delete = admin only (was hasRole('admin'))
+  expect(roleCan('manager', 'recipes.delete', {})).toBe(false);
+  expect(roleCan('admin', 'recipes.delete', {})).toBe(true);
+});
