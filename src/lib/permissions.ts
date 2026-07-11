@@ -85,6 +85,15 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'inventory.consumption.view',      module: 'inventory', label: 'View consumption report',                        defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.productsettings.manage', module: 'inventory', label: 'Edit product settings (packs, photo rule)',      defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.product.create',        module: 'inventory', label: 'Create a product via scan',                      defaultRoles: ['staff', 'manager', 'admin'] },
+
+  // ── Prep Planner — a manager-only module (nav tile minRole=manager). Its item/link/forecast
+  // API routes had NO server auth at all (open hole); gating them to manager+admin matches the
+  // intended manager-only reality AND closes the hole. 'run' was already hasRole('manager').
+  { key: 'prep-planner.forecast.run',  module: 'prep-planner', label: 'Run the prep forecast',            defaultRoles: ['manager', 'admin'] },
+  { key: 'prep-planner.forecast.view', module: 'prep-planner', label: 'View forecasts, items & variance', defaultRoles: ['manager', 'admin'] },
+  { key: 'prep-planner.item.manage',   module: 'prep-planner', label: 'Create & edit prep items',         defaultRoles: ['manager', 'admin'] },
+  { key: 'prep-planner.item.delete',   module: 'prep-planner', label: 'Delete a prep item',               defaultRoles: ['manager', 'admin'] },
+  { key: 'prep-planner.link.manage',   module: 'prep-planner', label: 'Link / unlink POS products',       defaultRoles: ['manager', 'admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {

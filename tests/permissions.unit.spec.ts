@@ -87,3 +87,12 @@ test('inventory defaults are behavior-preserving', () => {
   // create-via-scan today has no role gate → all roles
   expect(roleCan('staff', 'inventory.product.create', {})).toBe(true);
 });
+
+test('prep-planner defaults are manager+admin (closes an unauth hole)', () => {
+  for (const k of ['prep-planner.forecast.run', 'prep-planner.forecast.view',
+    'prep-planner.item.manage', 'prep-planner.item.delete', 'prep-planner.link.manage']) {
+    expect(roleCan('staff', k, {})).toBe(false);
+    expect(roleCan('manager', k, {})).toBe(true);
+    expect(roleCan('admin', k, {})).toBe(true);
+  }
+});
