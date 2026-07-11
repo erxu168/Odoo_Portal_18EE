@@ -8,7 +8,7 @@
  * DELETE { company_id, mode, recipe_id }                          (manager+)  → un-feature
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, requireRole, AuthError } from '@/lib/auth';
+import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
 import {
   initRecipeTables, listFeatured, addFeatured, removeFeatured,
 } from '@/lib/recipe-db';
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const user = requireRole('manager');
+    const user = requireCapability('recipes.featured.manage');
     initRecipeTables();
     const body = await request.json();
     const companyId = parseInt(String(body.company_id), 10);
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    requireRole('manager');
+    requireCapability('recipes.featured.manage');
     initRecipeTables();
     const body = await request.json();
     const companyId = parseInt(String(body.company_id), 10);

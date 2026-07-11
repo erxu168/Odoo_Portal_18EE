@@ -5,14 +5,16 @@
  * Body: { product_tmpl_id?, bom_id?, action: 'publish' | 'unpublish' }
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  if (!hasRole(user, 'manager')) {
+  if (!roleCan(user.role, 'recipes.publish', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Manager role required' }, { status: 403 });
   }
 

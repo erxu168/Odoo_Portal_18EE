@@ -6,12 +6,12 @@
  * DELETE { pivot_id }                                       — remove an ingredient
  */
 import { NextResponse } from 'next/server';
-import { requireRole, AuthError } from '@/lib/auth';
+import { requireCapability, AuthError } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 
 export async function PATCH(request: Request) {
   try {
-    requireRole('manager');
+    requireCapability('recipes.ingredients.manage');
     const body = await request.json();
     const updates = Array.isArray(body.updates) ? body.updates : null;
     if (!updates) return NextResponse.json({ error: 'updates array required' }, { status: 400 });
@@ -34,7 +34,7 @@ export async function PATCH(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    requireRole('manager');
+    requireCapability('recipes.ingredients.manage');
     const body = await request.json();
     const stepId = parseInt(String(body.step_id), 10);
     const productId = parseInt(String(body.product_id), 10);
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    requireRole('manager');
+    requireCapability('recipes.ingredients.manage');
     const body = await request.json();
     const pivotId = parseInt(String(body.pivot_id), 10);
     if (!pivotId) return NextResponse.json({ error: 'pivot_id required' }, { status: 400 });
