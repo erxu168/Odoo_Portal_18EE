@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 import { listEmployeeIdsWithAccounts, listPendingInvites, logAudit } from '@/lib/db';
-import { createStaffInvite, storeInviteForEmployee, sendInviteEmailsInBackground } from '@/lib/hr/invites';
+import { createStaffInvite, storeInviteForEmployee, sendInviteEmailsInBackground, inviteEmailNotice } from '@/lib/hr/invites';
 
 /**
  * GET  /api/admin/staff-access  — list Odoo employees with portal account status.
@@ -17,6 +17,7 @@ interface OdooEmployee {
   private_email?: string | false;
   mobile_phone?: string | false;
   department_id?: [number, string] | false;
+  company_id?: [number, string] | false;
 }
 
 async function fetchEmployees(): Promise<OdooEmployee[]> {
@@ -24,7 +25,7 @@ async function fetchEmployees(): Promise<OdooEmployee[]> {
   return (await odoo.searchRead(
     'hr.employee',
     [['active', '=', true]],
-    ['name', 'work_email', 'private_email', 'mobile_phone', 'department_id'],
+    ['name', 'work_email', 'private_email', 'mobile_phone', 'department_id', 'company_id'],
     { limit: 1000, order: 'name asc' },
   )) as OdooEmployee[];
 }
@@ -95,14 +96,13 @@ export async function POST(request: Request) {
       if (!result.ok) {
         return NextResponse.json({ error: result.body.error }, { status: result.status });
       }
-      const verb = action === 'resend' ? 'Invite re-sent' : 'Invite sent';
+      const status = result.body.email_status || (result.body.email_sent ? 'sent' : 'no_address');
       return NextResponse.json({
-        message: result.body.email_sent
-          ? `${verb} to ${result.body.name}.`
-          : `${verb} for ${result.body.name}. No email on file — use the copy link to share it.`,
+        message: inviteEmailNotice(status, result.body.name || 'This staff member', result.body.email ?? null),
         link: result.body.link,
         share_text: result.body.share_text,
         email_sent: result.body.email_sent,
+        email_status: status,
       });
     }
 
@@ -112,20 +112,21 @@ export async function POST(request: Request) {
       const pendingIds = new Set(listPendingInvites().map((i) => i.employee_id));
 
       const targets = employees.filter((e) => !accountIds.has(e.id) && !pendingIds.has(e.id));
-      const toEmail: { email: string; name: string; link: string }[] = [];
+      const toEmail: { email: string; name: string; link: string; companyId?: number }[] = [];
       let created = 0;
       let failed = 0;
 
       for (const e of targets) {
         try {
           const email = emailOf(e) || null;
+          const companyId = Array.isArray(e.company_id) ? e.company_id[0] : undefined;
           const { link } = await storeInviteForEmployee(
-            { id: e.id, name: e.name || 'Team member', email },
+            { id: e.id, name: e.name || 'Team member', email, companyId },
             actor,
             false,
           );
           created += 1;
-          if (email) toEmail.push({ email, name: e.name || 'Team member', link });
+          if (email) toEmail.push({ email, name: e.name || 'Team member', link, companyId });
         } catch (err: unknown) {
           failed += 1;
           console.error(`[staff-access] invite_all failed for employee ${e.id}:`, err);
@@ -144,12 +145,17 @@ export async function POST(request: Request) {
       });
 
       const skipped = employees.length - targets.length;
+      const noEmail = created - toEmail.length;
       return NextResponse.json({
-        message: `Invited ${created} staff${toEmail.length ? ` (emailing ${toEmail.length})` : ''}. ${skipped} already set up or invited.`,
+        message:
+          `Invited ${created} staff${toEmail.length ? ` (emailing ${toEmail.length})` : ''}.` +
+          `${noEmail ? ` ${noEmail} have no email on file — open each and use "Copy link" to share it.` : ''}` +
+          ` ${skipped} already set up or invited.`,
         created,
         skipped,
         failed,
         emailing: toEmail.length,
+        no_email: noEmail,
       });
     }
 

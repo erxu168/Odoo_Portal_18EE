@@ -58,6 +58,28 @@ export function shareMessage(name: string, link: string): string {
   return `Hi ${name}, welcome to Krawings! Set up your staff portal account here: ${link} (link expires in ${INVITE_TTL_DAYS} days).`;
 }
 
+export type InviteEmailStatus = 'sent' | 'no_address' | 'failed' | 'skipped';
+
+/**
+ * Manager-facing sentence describing what happened with the invite email, so
+ * whoever pressed "Invite" always knows whether they still have to hand the
+ * link over themselves — either because the employee has no address on file or
+ * because the send failed.
+ */
+export function inviteEmailNotice(status: InviteEmailStatus, name: string, email: string | null): string {
+  switch (status) {
+    case 'sent':
+      return `Invite emailed to ${name}${email ? ` at ${email}` : ''}.`;
+    case 'failed':
+      return `Heads up: the invite email to ${email || 'their address'} could not be sent. Copy the link below and share it with ${name} directly, then check the email settings.`;
+    case 'no_address':
+      return `${name} has no email address on file, so no invite email was sent. Copy the link below and share it with them directly.`;
+    case 'skipped':
+    default:
+      return `Invite link created for ${name}. Copy it below to share.`;
+  }
+}
+
 function validatePassword(pw: string): string | null {
   if (!pw || pw.length < 8) return 'Password must be at least 8 characters.';
   if (!/\d/.test(pw)) return 'Password must contain at least one number.';
@@ -73,7 +95,7 @@ export async function storeInviteForEmployee(
   emp: EmployeeLite,
   actor: Actor,
   sendEmail: boolean,
-): Promise<{ inviteId: number; link: string; emailSent: boolean }> {
+): Promise<{ inviteId: number; link: string; emailSent: boolean; emailStatus: InviteEmailStatus }> {
   revokeInvitesForEmployee(emp.id);
 
   const token = generateInviteToken();
@@ -91,12 +113,17 @@ export async function storeInviteForEmployee(
 
   const link = inviteLink(token);
   let emailSent = false;
+  // Default reflects why no mail goes out: not requested → skipped, requested
+  // but the employee has no address → no_address. A real attempt overwrites it.
+  let emailStatus: InviteEmailStatus = sendEmail ? 'no_address' : 'skipped';
   if (sendEmail && emp.email) {
     try {
       await sendStaffInviteEmail(emp.email, emp.name, link, emp.companyId);
       emailSent = true;
+      emailStatus = 'sent';
     } catch (err: unknown) {
       console.error('[staff-invite] welcome email failed:', err);
+      emailStatus = 'failed';
     }
   }
 
@@ -107,10 +134,10 @@ export async function storeInviteForEmployee(
     module: 'staff_access',
     target_type: 'hr.employee',
     target_id: emp.id,
-    detail: `Invite for ${emp.name} (${emp.email || 'no email'}) — emailed=${emailSent}`,
+    detail: `Invite for ${emp.name} (${emp.email || 'no email'}) — email=${emailStatus}`,
   });
 
-  return { inviteId, link, emailSent };
+  return { inviteId, link, emailSent, emailStatus };
 }
 
 /**
@@ -118,11 +145,11 @@ export async function storeInviteForEmployee(
  * returns immediately). Sequential to stay gentle on the SMTP server.
  */
 export async function sendInviteEmailsInBackground(
-  items: { email: string; name: string; link: string }[],
+  items: { email: string; name: string; link: string; companyId?: number }[],
 ): Promise<void> {
   for (const item of items) {
     try {
-      await sendStaffInviteEmail(item.email, item.name, item.link);
+      await sendStaffInviteEmail(item.email, item.name, item.link, item.companyId);
     } catch (err: unknown) {
       console.error(`[staff-invite] bulk email failed for ${item.email}:`, err);
     }
@@ -140,6 +167,7 @@ export interface CreateInviteResult {
     name?: string;
     email?: string | null;
     email_sent?: boolean;
+    email_status?: InviteEmailStatus;
     link?: string;
     share_text?: string;
     portal_user_id?: number;
@@ -186,7 +214,7 @@ export async function createStaffInvite(
   const email: string | null = emp.work_email || emp.private_email || null;
   const companyId: number | undefined = Array.isArray(emp.company_id) ? (emp.company_id[0] as number) : undefined;
 
-  const { inviteId, link, emailSent } = await storeInviteForEmployee({ id: employeeId, name, email, companyId }, actor, sendEmail);
+  const { inviteId, link, emailSent, emailStatus } = await storeInviteForEmployee({ id: employeeId, name, email, companyId }, actor, sendEmail);
 
   return {
     ok: true,
@@ -198,6 +226,7 @@ export async function createStaffInvite(
       name,
       email,
       email_sent: emailSent,
+      email_status: emailStatus,
       link,
       share_text: shareMessage(name, link),
     },

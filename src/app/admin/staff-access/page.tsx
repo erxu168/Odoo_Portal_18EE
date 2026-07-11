@@ -29,6 +29,7 @@ export default function StaffAccessPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [successTone, setSuccessTone] = useState<'success' | 'warning'>('success');
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<Tab>('none');
   const [actionLoading, setActionLoading] = useState<number | null>(null);
@@ -67,8 +68,12 @@ export default function StaffAccessPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Invite failed');
       if (data.share_text) setLinks((prev) => ({ ...prev, [employeeId]: data.share_text }));
+      // Green only when the email actually went out; otherwise an amber warning
+      // that stays put until dismissed, so the admin knows to share the link.
+      const tone = data.email_status === 'sent' ? 'success' : 'warning';
+      setSuccessTone(tone);
       setSuccessMsg(data.message);
-      setTimeout(() => setSuccessMsg(null), 4000);
+      if (tone === 'success') setTimeout(() => setSuccessMsg(null), 4000);
       fetchAll();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Invite failed');
@@ -88,8 +93,10 @@ export default function StaffAccessPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to invite all');
+      const tone = data.no_email ? 'warning' : 'success';
+      setSuccessTone(tone);
       setSuccessMsg(data.message);
-      setTimeout(() => setSuccessMsg(null), 5000);
+      if (tone === 'success') setTimeout(() => setSuccessMsg(null), 5000);
       setShowInviteAll(false);
       fetchAll();
     } catch (err: unknown) {
@@ -137,7 +144,16 @@ export default function StaffAccessPage() {
 
       <div className="px-4 pb-24">
         {successMsg && (
-          <div className="mt-3 mb-1 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-[13px] font-semibold">{successMsg}</div>
+          <div className={`mt-3 mb-1 px-4 py-3 rounded-xl text-[13px] font-semibold border flex items-start justify-between gap-2 ${
+            successTone === 'success'
+              ? 'bg-green-50 border-green-200 text-green-700'
+              : 'bg-amber-50 border-amber-300 text-amber-800'
+          }`}>
+            <span>{successTone === 'warning' ? '⚠ ' : ''}{successMsg}</span>
+            {successTone === 'warning' && (
+              <button onClick={() => setSuccessMsg(null)} className="text-amber-700 font-bold shrink-0">Dismiss</button>
+            )}
+          </div>
         )}
         {error && (
           <div className="mt-3 mb-1 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[13px]">

@@ -212,36 +212,44 @@ export async function sendCandidateWelcomeEmail(
  */
 export async function sendStaffInviteEmail(toEmail: string, toName: string, inviteUrl: string, companyId?: number) {
   const brand = await getCompanyBrandName(companyId);
+  // The restaurant/location name staff will recognise. Falls back to the
+  // umbrella brand only when the employee has no company on file, so the
+  // sender, subject and body always name a place the person actually works at
+  // (a generic "Krawings Staff Portal" reads as spam to new hires).
+  const location = brand && brand !== 'Staff Portal' ? brand : 'Krawings';
   await getTransporter(companyId).sendMail({
-    from: `"Krawings Portal" <${getFrom(companyId)}>`,
+    from: `"${location} Staff Portal" <${getFrom(companyId)}>`,
     to: toEmail,
-    subject: 'Set up your Krawings Staff Portal account',
+    subject: `Set up your ${location} staff portal account`,
     text: [
       `Hi ${toName},`,
       '',
-      'Welcome to the Krawings Staff Portal. Tap the link below to set up your account and choose a password:',
+      `You have been added to the team at ${location}. Welcome!`,
+      '',
+      `This is your staff portal account for ${location} — where you can see your shifts, hours, documents and personal details. Tap the link below to set it up and choose a password:`,
       inviteUrl,
       '',
       'This link is just for you and expires in 14 days.',
       '',
-      'If you were not expecting this, you can ignore this email.',
+      `You are receiving this because a manager at ${location} added you to the staff portal. If you were not expecting it, you can ignore this email.`,
       '',
-      `— Krawings ${brand}`,
+      `— ${location} · Krawings Staff Portal`,
     ].join('\n'),
     html: `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 32px;">
           <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
-          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">${brand.toUpperCase()}</div>
+          <div style="font-size: 13px; color: #16A34A; font-weight: 700; margin-top: 4px; letter-spacing: 0.02em;">${location}</div>
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Welcome to the Krawings Staff Portal! Tap the button below to set up your account and choose a password.</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">You have been added to the team at <strong>${location}</strong>. This is your staff portal account for ${location}, where you can see your shifts, hours, documents and personal details.</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Tap the button below to set up your account and choose a password.</p>
         <div style="text-align: center; margin: 28px 0;">
           <a href="${inviteUrl}" style="display: inline-block; padding: 14px 32px; background-color: #16A34A; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px;">Set up my account</a>
         </div>
-        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link is just for you and expires in 14 days. If you were not expecting this, you can ignore this email.</p>
+        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link is just for you and expires in 14 days. You are receiving this because a manager at ${location} added you to the staff portal. If you were not expecting it, you can ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
-        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings ${brand} &middot; Staff Portal</p>
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${location} · Krawings Staff Portal</p>
       </div>
     `,
   });

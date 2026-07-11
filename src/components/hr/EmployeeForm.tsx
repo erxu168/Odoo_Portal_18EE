@@ -29,6 +29,7 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
   const [createdEmp, setCreatedEmp] = useState<{ id: number; name: string } | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+  const [inviteStatus, setInviteStatus] = useState<'sent' | 'no_address' | 'failed' | 'skipped' | null>(null);
   const [inviting, setInviting] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -151,10 +152,11 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not create the link.');
       setInviteLink(typeof data.link === 'string' ? data.link : null);
+      setInviteStatus(data.email_status || (data.email_sent ? 'sent' : 'no_address'));
       setInviteMsg(
         typeof data.message === 'string'
           ? data.message
-          : data.emailSent
+          : data.email_sent
             ? 'We also emailed the link to them.'
             : 'No email on file — copy the link and send it to them.',
       );
@@ -194,7 +196,18 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
                 className="w-full py-3 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-90">
                 {copied ? 'Copied ✓' : 'Copy link'}
               </button>
-              {inviteMsg && <div className="text-[var(--fs-xs)] text-gray-500">{inviteMsg}</div>}
+              {inviteMsg && (
+                <div
+                  className={`text-[var(--fs-xs)] rounded-lg px-3 py-2 ${
+                    inviteStatus === 'sent'
+                      ? 'text-green-700 bg-green-50 border border-green-200'
+                      : 'text-amber-800 bg-amber-50 border border-amber-300 font-semibold'
+                  }`}
+                >
+                  {inviteStatus !== 'sent' && '⚠ '}
+                  {inviteMsg}
+                </div>
+              )}
             </div>
           ) : (
             <button onClick={getInvite} disabled={inviting}

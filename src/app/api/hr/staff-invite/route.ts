@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, AuthError } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { createStaffInvite } from '@/lib/hr/invites';
+import { createStaffInvite, inviteEmailNotice } from '@/lib/hr/invites';
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,7 +36,14 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await createStaffInvite(employeeId, { id: user.id, name: user.name || user.email }, { sendEmail: true });
-    return NextResponse.json(result.body, { status: result.status });
+    // Tell the manager plainly whether the email went out, so they know when
+    // they still have to hand the link over themselves.
+    const status = result.body.email_status;
+    const message =
+      result.ok && status
+        ? inviteEmailNotice(status, result.body.name || 'This staff member', result.body.email ?? null)
+        : undefined;
+    return NextResponse.json(message ? { ...result.body, message } : result.body, { status: result.status });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('POST /api/hr/staff-invite error:', err);
