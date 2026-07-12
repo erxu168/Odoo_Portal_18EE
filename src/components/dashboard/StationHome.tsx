@@ -25,7 +25,7 @@ function initials(name: string) {
 export default function StationHome() {
   const router = useRouter();
   const { activePerson, openSignIn } = useShift();
-  const { companyId, companyName } = useCompany();
+  const { companyId, companyName, loading: companyLoading } = useCompany();
 
   const [list, setList] = useState<any>(null);
   const [listReady, setListReady] = useState(false);
@@ -43,12 +43,13 @@ export default function StationHome() {
   }, []);
 
   useEffect(() => {
-    if (!companyId) return;
+    if (companyLoading) return;          // company picker still resolving
+    if (!companyId) { setRoster([]); return; } // no company → nothing to show (not a hang)
     fetch(`/api/station/roster?company_id=${companyId}`)
       .then(r => (r.ok ? r.json() : null))
       .then(d => setRoster(d?.roster ?? []))
       .catch(() => setRoster([]));
-  }, [companyId]);
+  }, [companyId, companyLoading]);
 
   // Navigate, gating attributed tools behind "who's working?" when nobody's in.
   function goAttributed(href: string) {
