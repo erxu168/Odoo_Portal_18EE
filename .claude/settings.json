@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m ' *)",
+      "Bash(node -e ' *)",
+      "Bash(brew --version)",
+      "Bash(brew install *)",
+      "Bash(adb version *)",
+      "Bash(scrcpy --version)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/build-check.sh",
+            "timeout": 180
+          }
+        ]
+      }
+    ]
+  }
+}

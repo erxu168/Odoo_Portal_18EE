@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Lock product_qty in the BOM form for ALL companies.
+        v18.0.4.0.0: removed company filter (was company_id == 5).
+    -->
+    <record id="mrp_bom_form_krawings_qty_locked" model="ir.ui.view">
+        <field name="name">mrp.bom.form.krawings.qty.locked</field>
+        <field name="model">mrp.bom</field>
+        <field name="inherit_id" ref="mrp.mrp_bom_form_view"/>
+        <field name="priority">16</field>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='product_qty']" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Adaptive font scale (manufacturing module) ──
+   Scales smoothly from iPhone SE (375px) to tablet.
+   Uses clamp(min, preferred, max).
+   min  = readable floor on smallest phone
+   pref = viewport-proportional target
+   max  = cap on wider screens                         */
+:root {
+  --fs-xxl:  clamp(18px, 4.8vw, 22px);   /* qty numbers        */
+  --fs-xl:   clamp(16px, 4.4vw, 20px);   /* ingredient names   */
+  --fs-lg:   clamp(15px, 3.9vw, 18px);   /* recipe/BOM names   */
+  --fs-md:   clamp(14px, 3.6vw, 17px);   /* step names, tiles  */
+  --fs-base: clamp(13px, 3.3vw, 16px);   /* search, inputs     */
+  --fs-sm:   clamp(12px, 3vw, 14px);     /* detail text, UOM   */
+  --fs-xs:   clamp(11px, 2.7vw, 13px);   /* labels, badges     */
+}
+
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Hide scrollbar on filter chips */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* iOS safe area for bottom action bars */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 12px);
+  }
+}
+
+/* Number input - hide spin buttons */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+/* HR Form Input Styles */
+.form-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 16px;
+  font-family: inherit;
+  background: #ffffff;
+  color: #1a1a1a;
+  outline: none;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.form-input:focus {
+  border-color: #16a34a;
+}
+.form-input::placeholder {
+  color: #9ca3af;
+}
+.form-input:disabled {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+select/* HR Form Input Styles */
+.form-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 16px;
+  font-family: inherit;
+  background: #ffffff;
+  color: #1a1a1a;
+  outline: none;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.form-input:focus {
+  border-color: #16a34a;
+}
+.form-input::placeholder {
+  color: #9ca3af;
+}
+.form-input:disabled {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+select.form-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236b7280'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+
+/* ── Scanner overlay animations ── */
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0.8; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.animate-slideUp {
+  animation: slideUp 300ms ease-out;
+}

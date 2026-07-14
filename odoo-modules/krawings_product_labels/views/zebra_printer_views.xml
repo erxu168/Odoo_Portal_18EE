@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_krawings_zebra_printer_tree" model="ir.ui.view">
+        <field name="name">krawings.zebra.printer.tree</field>
+        <field name="model">krawings.zebra.printer</field>
+        <field name="arch" type="xml">
+            <list string="Zebra Printers">
+                <field name="name"/>
+                <field name="ip_address"/>
+                <field name="port"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_krawings_zebra_printer_form" model="ir.ui.view">
+        <field name="name">krawings.zebra.printer.form</field>
+        <field name="model">krawings.zebra.printer</field>
+        <field name="arch" type="xml">
+            <form string="Zebra Printer">
+                <header>
+                    <button name="action_test_connection"
+                            string="Test Connection"
+                            type="object"
+                            class="oe_highlight"/>
+                    <button name="action_test_print"
+                            string="Test Print"
+                            type="object"/>
+                </header>
+                <sheet>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. What a Jerk - Back Office"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Network">
+                            <field name="ip_address" placeholder="192.168.1.50"/>
+                            <field name="port"/>
+                        </group>
+                        <group string="Assignment">
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="active" invisible="1"/>
+                        </group>
+                    </group>
+                    <group string="Notes">
+                        <field name="note" nolabel="1" placeholder="Location, model, serial..."/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_krawings_zebra_printer_search" model="ir.ui.view">
+        <field name="name">krawings.zebra.printer.search</field>
+        <field name="model">krawings.zebra.printer</field>
+        <field name="arch" type="xml">
+            <search string="Zebra Printers">
+                <field name="name"/>
+                <field name="ip_address"/>
+                <filter string="Archived" name="inactive" domain="[('active','=',False)]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Company" name="group_by_company"
+                            context="{'group_by': 'company_id'}"
+                            groups="base.group_multi_company"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_krawings_zebra_printer" model="ir.actions.act_window">
+        <field name="name">Zebra Printers</field>
+        <field name="res_model">krawings.zebra.printer</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Add your first Zebra label printer
+            </p>
+            <p>
+                Register each Zebra printer on your shop wifi by entering its
+                IP address. Once added, use <b>Test Connection</b> and
+                <b>Test Print</b> to confirm it's wired up.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_krawings_zebra_printer"
+              name="Zebra Printers"
+              parent="stock.menu_stock_config_settings"
+              action="action_krawings_zebra_printer"
+              sequence="90"/>
+
+</odoo>

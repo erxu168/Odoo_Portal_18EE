@@ -1,0 +1,522 @@
+import { NextResponse } from 'next/server';
+import { getOdoo } from '@/lib/odoo';
+import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
+
+// Walk the wizard chain Odoo returns from button_mark_done. A wizard's
+// confirm method can itself return ANOTHER wizard — e.g. action_close_mo
+// re-runs button_mark_done with skip_backorder=True, which can pop a
+// fresh consumption warning. Without recursion the chained wizard is
+// dropped on the floor and the MO silently stays open. Errors bubble so
+// the route handler can surface them.
+const MAX_WIZARD_DEPTH = 5;
+async function processWizardReturn(
+  odoo: ReturnType<typeof getOdoo>,
+  moId: number,
+  ret: unknown,
+  depth = 0,
+): Promise<void> {
+  if (!ret || typeof ret !== 'object') return;
+  const a = ret as { res_model?: string; res_id?: number; context?: Record<string, unknown> };
+  if (!a.res_model) return;
+  if (depth > MAX_WIZARD_DEPTH) {
+    throw new Error(`Could not close MO ${moId}: wizard chain exceeded ${MAX_WIZARD_DEPTH} steps`);
+  }
+
+  const wizModel = a.res_model;
+  let wizIds: number[];
+  if (a.res_id) {
+    // Odoo pre-created the wizard (e.g. backorder) — reuse it instead of
+    // creating a new blank record that loses default field values.
+    wizIds = [a.res_id];
+  } else {
+    const wizCtx = { ...(a.context || {}), active_id: moId, active_ids: [moId] };
+    const wizId = await odoo.create(wizModel, {}, { context: wizCtx });
+    wizIds = Array.isArray(wizId) ? wizId : [wizId];
+  }
+
+  // Skip flags propagate through any nested button_mark_done call the
+  // wizard makes internally — without them, action_confirm can re-pop
+  // the same wizard and we hit MAX_WIZARD_DEPTH.
+  const skipCtx = { skip_consumption: true, skip_immediate: true, skip_backorder: true };
+
+  let next: unknown;
+  if (wizModel === 'mrp.consumption.warning') {
+    next = await odoo.call(wizModel, 'action_confirm', [wizIds], { context: skipCtx });
+  } else if (wizModel === 'mrp.production.backorder') {
+    // action_close_mo finishes the MO without splitting off a backorder.
+    // action_backorder would split + close — not what "Close order" means.
+    next = await odoo.call(wizModel, 'action_close_mo', [wizIds], { context: skipCtx });
+  } else if (wizModel === 'mrp.immediate.production') {
+    next = await odoo.call(wizModel, 'process', [wizIds], { context: skipCtx });
+  } else {
+    throw new Error(`Cannot auto-handle ${wizModel} wizard while closing MO ${moId}. Please close it in Odoo.`);
+  }
+
+  await processWizardReturn(odoo, moId, next, depth + 1);
+}
+
+// Inventory isn't set up yet — we don't query stock.quant or do FIFO.
+// We only satisfy Odoo's "lot required" rule on lot-tracked components
+// so button_mark_done doesn't reject the close: every lot-tracked raw
+// move gets SOME lot (any existing one, or a freshly created
+// placeholder). Stock can go negative; that's accepted until inventory
+// is set up. When inventory comes online, swap this for a real FIFO/
+// reservation flow.
+async function autoAssignComponentLotsForClose(
+  odoo: ReturnType<typeof getOdoo>,
+  moId: number,
+): Promise<void> {
+  const mos = await odoo.read('mrp.production', [moId], [
+    'move_raw_ids', 'name', 'company_id',
+  ]);
+  const rawMoveIds: number[] = mos[0]?.move_raw_ids || [];
+  if (!rawMoveIds.length) return;
+  const moName: string = mos[0]?.name || `MO-${moId}`;
+  const companyId: number | false = mos[0]?.company_id?.[0] || false;
+
+  const moves = await odoo.read('stock.move', rawMoveIds, [
+    'id', 'product_id', 'product_uom', 'quantity', 'state',
+    'move_line_ids', 'location_id', 'location_dest_id', 'name',
+  ]);
+
+  // Drop moves Odoo has already settled or has nothing to consume.
+  const activeMoves = moves.filter((m: any) =>
+    m.state !== 'done' && m.state !== 'cancel' && (m.quantity || 0) > 0,
+  );
+  if (!activeMoves.length) return;
+
+  // One product.product read for every component up front instead of one
+  // read per move. Tracking + display_name come back in a single round-trip.
+  const allProductIds = Array.from(new Set(activeMoves.map((m: any) => m.product_id[0]))) as number[];
+  const products = await odoo.read('product.product', allProductIds, ['tracking', 'display_name']);
+  const productMap = new Map<number, { tracking: string; display_name: string }>();
+  for (const p of products) {
+    productMap.set(p.id, {
+      tracking: p.tracking || 'none',
+      display_name: p.display_name || `product-${p.id}`,
+    });
+  }
+
+  // Only lot/serial-tracked products need our placeholder logic.
+  const trackedMoves = activeMoves.filter((m: any) =>
+    (productMap.get(m.product_id[0])?.tracking || 'none') !== 'none',
+  );
+  if (!trackedMoves.length) return;
+
+  // One stock.move.line read for every tracked move's existing lines —
+  // previously this was N round-trips, one per move.
+  const allLineIds: number[] = trackedMoves.flatMap((m: any) => m.move_line_ids || []);
+  const allLines = allLineIds.length
+    ? await odoo.read('stock.move.line', allLineIds, ['id', 'move_id', 'lot_id', 'quantity'])
+    : [];
+  const linesByMove = new Map<number, any[]>();
+  for (const l of allLines) {
+    const mid = Array.isArray(l.move_id) ? l.move_id[0] : l.move_id;
+    const arr = linesByMove.get(mid) || [];
+    arr.push(l);
+    linesByMove.set(mid, arr);
+  }
+
+  // Find the latest existing lot for each tracked product in parallel —
+  // N parallel searches collapse to one round-trip's latency.
+  const trackedProductIds = Array.from(new Set(trackedMoves.map((m: any) => m.product_id[0]))) as number[];
+  const lotResults = await Promise.all(
+    trackedProductIds.map(pid =>
+      odoo.searchRead(
+        'stock.lot',
+        [['product_id', '=', pid]],
+        ['id'],
+        { order: 'create_date desc, id desc', limit: 1 },
+      ),
+    ),
+  );
+  const lotByProduct = new Map<number, number>();
+  trackedProductIds.forEach((pid, i) => {
+    if (lotResults[i].length) lotByProduct.set(pid, lotResults[i][0].id);
+  });
+
+  // Plan all writes locally before issuing them, then send them in batches.
+  const linesToUnlink: number[] = [];
+  const lotCreates: Array<{ productId: number; vals: Record<string, any> }> = [];
+  const moveLineCreates: Array<{ moveId: number; moveName: string; productId: number; vals: Record<string, any> }> = [];
+
+  for (const move of trackedMoves) {
+    const productId = move.product_id[0];
+    const consumedQty: number = move.quantity || 0;
+    const existingLines = linesByMove.get(move.id) || [];
+
+    let qtyAlreadyAssigned = 0;
+    for (const l of existingLines) {
+      if (l.lot_id) qtyAlreadyAssigned += l.quantity || 0;
+      else linesToUnlink.push(l.id);
+    }
+    const remaining = consumedQty - qtyAlreadyAssigned;
+    if (remaining <= 0.0001) continue;
+
+    if (!lotByProduct.has(productId)) {
+      const display = productMap.get(productId)?.display_name || `product-${productId}`;
+      const safeName = display.replace(/\s+/g, '-').slice(0, 40);
+      const lotVals: Record<string, any> = {
+        name: `${moName}-${safeName}-AUTO`,
+        product_id: productId,
+      };
+      if (companyId) lotVals.company_id = companyId;
+      lotCreates.push({ productId, vals: lotVals });
+      // Mark as "will-have-a-lot" so a second move for the same product
+      // doesn't queue a duplicate create.
+      lotByProduct.set(productId, -1);
+    }
+
+    moveLineCreates.push({
+      moveId: move.id,
+      moveName: move.name,
+      productId,
+      vals: {
+        move_id: move.id,
+        product_id: productId,
+        product_uom_id: move.product_uom[0],
+        location_id: move.location_id[0],
+        location_dest_id: move.location_dest_id[0],
+        quantity: remaining,
+      },
+    });
+  }
+
+  // Batch 1: drop every lot-less existing line in a single round-trip.
+  if (linesToUnlink.length) {
+    await odoo.unlink('stock.move.line', linesToUnlink);
+  }
+
+  // Batch 2: create the missing placeholder lots in parallel; remember
+  // their IDs so the move-line creates can reference them.
+  if (lotCreates.length) {
+    const newLotIds = await Promise.all(lotCreates.map(c => odoo.create('stock.lot', c.vals)));
+    lotCreates.forEach((c, i) => lotByProduct.set(c.productId, newLotIds[i]));
+  }
+
+  // Batch 3: create every move line in parallel.
+  if (moveLineCreates.length) {
+    await Promise.all(moveLineCreates.map(c =>
+      odoo.create('stock.move.line', { ...c.vals, lot_id: lotByProduct.get(c.productId)! }),
+    ));
+    for (const c of moveLineCreates) {
+      console.log(`[MO ${moId}] Assigned lot ${lotByProduct.get(c.productId)} to raw move ${c.moveId} (${c.moveName}) for close — inventory not consulted`);
+    }
+  }
+}
+
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } },
+) {
+  try {
+    requireAuth();
+    const odoo = getOdoo();
+    const moId = parseInt(params.id);
+
+    const mos = await odoo.read('mrp.production', [moId], [
+      'name', 'product_id', 'product_qty', 'product_uom_id',
+      'bom_id', 'state', 'date_start', 'date_finished',
+      'date_deadline', 'user_id', 'qty_producing',
+      'workorder_ids', 'move_raw_ids', 'lot_producing_id',
+    ]);
+
+    if (!mos.length) {
+      return NextResponse.json({ error: 'MO not found' }, { status: 404 });
+    }
+
+    const mo = mos[0];
+
+    // Fetch finished product shelf-life settings + tracking
+    // These fields live on product.template, so we need to go through the variant
+    let shelfLifeChilledDays = 0;
+    let shelfLifeFrozenDays = 0;
+    let shelfLifeAmbientDays = 0;
+    let productTracking = 'none';
+    try {
+      // Step 1: get product_tmpl_id and tracking from product.product
+      const variants = await odoo.read(
+        'product.product',
+        [mo.product_id[0]],
+        ['product_tmpl_id', 'tracking'],
+      );
+      if (variants.length > 0) {
+        productTracking = variants[0].tracking || 'none';
+        if (variants[0].product_tmpl_id) {
+          const tmplId = variants[0].product_tmpl_id[0];
+          // Step 2: read shelf-life fields from product.template
+          const templates = await odoo.read(
+            'product.template',
+            [tmplId],
+            ['x_shelf_life_chilled_days', 'x_shelf_life_frozen_days'],
+          );
+          if (templates.length > 0) {
+            shelfLifeChilledDays = templates[0]?.x_shelf_life_chilled_days || 0;
+            shelfLifeFrozenDays  = templates[0]?.x_shelf_life_frozen_days  || 0;
+          }
+          // Ambient is a newer field — read separately so a missing Odoo
+          // column doesn't wipe out the chilled/frozen values above.
+          try {
+            const ambRows = await odoo.read(
+              'product.template',
+              [tmplId],
+              ['x_shelf_life_ambient_days'],
+            );
+            shelfLifeAmbientDays = ambRows[0]?.x_shelf_life_ambient_days || 0;
+          } catch {
+            // Field not on product.template yet — staff can still pick ambient
+            // and type the expiry date manually.
+          }
+        }
+      }
+    } catch (err) {
+      // Non-fatal: if fields don't exist, default to 0
+      console.warn('Could not fetch product shelf-life fields:', err);
+    }
+
+    const EDITABLE_MO_STATES = ['draft', 'confirmed', 'progress'];
+    const EDITABLE_SAVE_STATES = ['draft', 'confirmed', 'progress', 'to_close'];
+
+    let bomVersionLabel: string | null = null;
+    if (mo.bom_id) {
+      try {
+        const boms = await odoo.read('mrp.bom', [mo.bom_id[0]], ['version_label']);
+        bomVersionLabel = boms[0]?.version_label || null;
+      } catch (err) {
+        console.warn('Could not fetch bom_version_label:', err);
+      }
+    }
+
+    const components = (mo.move_raw_ids?.length
+      ? await odoo.searchRead('stock.move',
+          [['id', 'in', mo.move_raw_ids]],
+          ['product_id', 'product_uom_qty', 'quantity', 'product_uom',
+           'forecast_availability', 'state', 'is_done', 'should_consume_qty',
+           'picked', 'operation_id'])
+      : []).filter((m: any) => m.state !== 'cancel');
+
+    // Fetch product categories for grouping
+    const productIds = components.map((c: any) => c.product_id[0]);
+    const products = productIds.length
+      ? await odoo.read('product.product', productIds, ['categ_id'])
+      : [];
+    const categMap: Record<number, string> = {};
+    for (const p of products) {
+      const fullName = p.categ_id?.[1] || 'Other';
+      // Extract last segment: 'All / RAW MATERIALS / Dry Goods' -> 'Dry Goods'
+      const parts = fullName.split(' / ');
+      categMap[p.id] = parts[parts.length - 1];
+    }
+
+    const moIsEditable = EDITABLE_MO_STATES.includes(mo.state);
+    const enrichedComponents = components.map((c: any) => ({
+      ...c,
+      move_id: c.id,
+      planned_qty: c.product_uom_qty,
+      consumed_qty: c.quantity || 0,
+      // Editability tracks the MO, not each move. Odoo can pre-fill
+      // a move's consumed quantity at reservation time even before
+      // anything is actually cooked, so a per-move guard hides the
+      // pencil from rows the chef expects to be editable.
+      can_edit: moIsEditable,
+      category: categMap[c.product_id[0]] || 'Other',
+    }));
+
+    const workOrders = mo.workorder_ids?.length
+      ? await odoo.searchRead('mrp.workorder',
+          [['id', 'in', mo.workorder_ids]],
+          ['name', 'workcenter_id', 'state', 'duration_expected', 'duration',
+           'date_start', 'date_finished', 'sequence', 'production_id',
+           'move_raw_ids', 'operation_id', 'operation_note'],
+          { order: 'sequence asc' })
+      : [];
+
+    const doneWos = workOrders.filter((wo: any) => wo.state === 'done').length;
+    const totalWos = workOrders.length;
+
+    return NextResponse.json({
+      order: {
+        ...mo,
+        components: enrichedComponents,
+        work_orders: workOrders,
+        progress_percent: totalWos > 0 ? Math.round((doneWos / totalWos) * 100) : 0,
+        // Shelf-life settings from finished product template
+        shelf_life_chilled_days: shelfLifeChilledDays,
+        shelf_life_frozen_days:  shelfLifeFrozenDays,
+        shelf_life_ambient_days: shelfLifeAmbientDays,
+        product_tracking: productTracking,
+        // Component editability flags
+        can_edit_components: EDITABLE_MO_STATES.includes(mo.state),
+        can_save_version: EDITABLE_SAVE_STATES.includes(mo.state) && !!mo.bom_id,
+        bom_version_label: bomVersionLabel,
+      },
+    });
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('GET /api/manufacturing-orders/[id] error:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch manufacturing order' },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } },
+) {
+  try {
+    requireCapability('manufacturing.mo.manage');
+    const odoo = getOdoo();
+    const moId = parseInt(params.id);
+    const body = await request.json();
+
+    if (body.action) {
+      switch (body.action) {
+        case 'confirm':
+          await odoo.buttonCall('mrp.production', 'action_confirm', [moId]);
+          break;
+        case 'mark_done': {
+          // Inventory is not set up yet — assign placeholder/any lot to
+          // every lot-tracked component so Odoo doesn't reject the close
+          // with a "supply Lot/Serial" error. No stock.quant, no FIFO.
+          await autoAssignComponentLotsForClose(odoo, moId);
+
+          const moData = await odoo.read('mrp.production', [moId], [
+            'name', 'product_id', 'lot_producing_id', 'company_id',
+            'qty_producing', 'product_qty',
+          ]);
+          if (moData.length === 0) {
+            return NextResponse.json({ error: 'MO not found' }, { status: 404 });
+          }
+          const currentMo = moData[0];
+          const productId = currentMo.product_id[0];
+
+          // Default qty_producing to product_qty when zero. Odoo 18's
+          // button_mark_done expects a non-zero value; without this the
+          // close either no-ops or pops a wizard and the user is stuck.
+          if (!currentMo.qty_producing || currentMo.qty_producing <= 0) {
+            await odoo.write('mrp.production', [moId], {
+              qty_producing: currentMo.product_qty,
+            });
+          }
+
+          // Auto-create a lot for tracked products when none assigned.
+          const prodData = await odoo.read('product.product', [productId], [
+            'tracking', 'product_tmpl_id',
+          ]);
+          const tracking = prodData[0]?.tracking || 'none';
+
+          if (tracking !== 'none' && !currentMo.lot_producing_id) {
+            const lotName = currentMo.name;
+            const companyId = currentMo.company_id?.[0] || false;
+
+            const existingLots = await odoo.searchRead('stock.lot',
+              [['name', '=', lotName], ['product_id', '=', productId]],
+              ['id'],
+              { limit: 1 },
+            );
+
+            let lotId: number;
+            if (existingLots.length > 0) {
+              lotId = existingLots[0].id;
+            } else {
+              const lotVals: Record<string, any> = {
+                name: lotName,
+                product_id: productId,
+              };
+              if (companyId) lotVals.company_id = companyId;
+
+              try {
+                const tmplId = prodData[0]?.product_tmpl_id?.[0];
+                if (tmplId) {
+                  const tmplData = await odoo.read('product.template', [tmplId], [
+                    'use_expiration_date', 'expiration_time',
+                  ]);
+                  if (tmplData[0]?.use_expiration_date && tmplData[0]?.expiration_time) {
+                    const days = tmplData[0].expiration_time;
+                    const expDate = new Date();
+                    expDate.setDate(expDate.getDate() + Math.floor(days));
+                    const pad = (n: number) => String(n).padStart(2, '0');
+                    lotVals.expiration_date = `${expDate.getFullYear()}-${pad(expDate.getMonth() + 1)}-${pad(expDate.getDate())} 23:59:59`;
+                  }
+                }
+              } catch (expErr) {
+                console.warn('Could not set expiration date on lot:', expErr);
+              }
+
+              lotId = await odoo.create('stock.lot', lotVals);
+            }
+
+            await odoo.write('mrp.production', [moId], { lot_producing_id: lotId });
+            console.log(`[MO ${moId}] Auto-created lot ${lotName} (id=${lotId}) for tracked product`);
+          }
+
+          // Skip flags tell Odoo to bypass the consumption-warning,
+          // immediate-production, and backorder wizards entirely (since
+          // we want to close regardless of inventory mismatches). The
+          // wizard handler stays as a safety net for any wizard Odoo
+          // still decides to return.
+          const result = await odoo.call(
+            'mrp.production',
+            'button_mark_done',
+            [[moId]],
+            { context: { skip_consumption: true, skip_immediate: true, skip_backorder: true } },
+          );
+          await processWizardReturn(odoo, moId, result);
+
+          // Final state check: if the MO didn't actually transition to a
+          // closed state, surface that to the UI instead of pretending it
+          // closed. Without this the user sees a green "done" but the MO
+          // stays in to_close / progress and they hit the same dead end
+          // next time.
+          const after = await odoo.read('mrp.production', [moId], ['state', 'name']);
+          const finalState = after[0]?.state;
+          if (finalState !== 'done' && finalState !== 'cancel') {
+            return NextResponse.json(
+              {
+                error: `Could not close ${after[0]?.name || 'manufacturing order'}: it is still in state "${finalState}". Open it in Odoo to see what's blocking — most likely an incomplete work order or a finished-product lot/serial issue.`,
+              },
+              { status: 409 },
+            );
+          }
+          break;
+        }
+        case 'cancel':
+          await odoo.buttonCall('mrp.production', 'action_cancel', [moId]);
+          break;
+        default:
+          return NextResponse.json(
+            { error: `Unknown action: ${body.action}` },
+            { status: 400 },
+          );
+      }
+    }
+
+    if (body.vals) {
+      await odoo.write('mrp.production', [moId], body.vals);
+    }
+
+    if (body.component_updates) {
+      await Promise.all(body.component_updates.map((update: { move_id: number; consumed_qty: number }) =>
+        odoo.write('stock.move', [update.move_id], {
+          quantity: update.consumed_qty,
+          picked: update.consumed_qty > 0,
+        }),
+      ));
+    }
+
+    const updated = await odoo.read('mrp.production', [moId], [
+      'name', 'state', 'product_qty', 'qty_producing',
+    ]);
+
+    return NextResponse.json({ order: updated[0] });
+  } catch (error: unknown) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status });
+    console.error('PATCH /api/manufacturing-orders/[id] error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update manufacturing order' },
+      { status: 500 },
+    );
+  }
+}

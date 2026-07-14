@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <menuitem id="menu_recipe_guide_root"
+              name="Recipe Guide"
+              parent="mrp.menu_mrp_root"
+              sequence="40"/>
+
+    <menuitem id="menu_recipe_categories"
+              name="Categories"
+              parent="menu_recipe_guide_root"
+              action="action_recipe_category"
+              sequence="10"/>
+
+</odoo>

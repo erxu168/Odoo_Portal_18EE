@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_krawings_task_template_tree" model="ir.ui.view">
+        <field name="name">krawings.task.template.tree</field>
+        <field name="model">krawings.task.template</field>
+        <field name="arch" type="xml">
+            <list string="Task Templates">
+                <field name="name"/>
+                <field name="department_id"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <field name="line_count"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_krawings_task_template_form" model="ir.ui.view">
+        <field name="name">krawings.task.template.form</field>
+        <field name="model">krawings.task.template</field>
+        <field name="arch" type="xml">
+            <form string="Task Template">
+                <header>
+                    <button name="action_spawn_today" type="object" string="Spawn Today" class="btn-primary"/>
+                </header>
+                <sheet>
+                    <widget name="web_ribbon" title="Archived" bg_color="bg-danger" invisible="active"/>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="e.g. Kitchen Tasks"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <field name="department_id"/>
+                        <field name="company_id" groups="base.group_multi_company"/>
+                        <field name="active" invisible="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Tasks">
+                            <field name="line_ids">
+                                <list>
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="day_part"/>
+                                    <field name="name"/>
+                                    <field name="recurrence_type"/>
+                                    <field name="deadline_time" widget="float_time"/>
+                                    <field name="photo_required" widget="boolean_toggle"/>
+                                </list>
+                                <form>
+                                    <group>
+                                        <field name="name"/>
+                                        <field name="day_part"/>
+                                        <field name="sequence"/>
+                                        <field name="deadline_time" widget="float_time"/>
+                                        <field name="photo_required"/>
+                                        <field name="photo_instructions"/>
+                                        <field name="module_link_type"/>
+                                    </group>
+                                    <group string="Recurrence">
+                                        <field name="recurrence_type"/>
+                                        <field name="recurrence_interval"/>
+                                        <field name="recurrence_start_date"/>
+                                        <field name="recurrence_end_type"/>
+                                        <field name="recurrence_end_date" invisible="recurrence_end_type != 'on_date'"/>
+                                        <field name="recurrence_count" invisible="recurrence_end_type != 'after_count'"/>
+                                        <field name="recurrence_one_off_date" invisible="recurrence_type != 'once'"/>
+                                        <field name="recurrence_weekdays" invisible="recurrence_type != 'weekly'"/>
+                                        <field name="recurrence_monthly_mode" invisible="recurrence_type not in ('monthly', 'yearly')"/>
+                                        <field name="recurrence_day_of_month" invisible="recurrence_type not in ('monthly', 'yearly') or recurrence_monthly_mode != 'day_of_month'"/>
+                                        <field name="recurrence_weekday_pos" invisible="recurrence_type not in ('monthly', 'yearly') or recurrence_monthly_mode != 'weekday_of_month'"/>
+                                        <field name="recurrence_weekday" invisible="recurrence_type not in ('monthly', 'yearly') or recurrence_monthly_mode != 'weekday_of_month'"/>
+                                        <field name="recurrence_month" invisible="recurrence_type != 'yearly'"/>
+                                    </group>
+                                    <separator string="Subtasks"/>
+                                    <field name="subtask_ids">
+                                        <list editable="bottom">
+                                            <field name="sequence" widget="handle"/>
+                                            <field name="name"/>
+                                        </list>
+                                    </field>
+                                    <separator string="Recurrence exceptions"/>
+                                    <field name="exception_ids">
+                                        <list editable="bottom">
+                                            <field name="date"/>
+                                            <field name="note"/>
+                                        </list>
+                                    </field>
+                                </form>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_krawings_task_template" model="ir.actions.act_window">
+        <field name="name">Task Templates</field>
+        <field name="res_model">krawings.task.template</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

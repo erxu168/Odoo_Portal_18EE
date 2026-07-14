@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Dedicated access right: close the register even with a cash difference,
+         WITHOUT being a POS Manager. -->
+    <record id="group_pos_close_register" model="res.groups">
+        <field name="name">Close Register (cash difference allowed)</field>
+        <field name="category_id" ref="base.module_category_sales_point_of_sale"/>
+        <field name="comment">Allows closing a POS session / register even when the counted cash differs from the expected amount, without granting POS Manager (admin) rights. Automatically granted to every Point of Sale user.</field>
+    </record>
+
+    <!-- Grant the new right to everyone who can log into the POS.
+         Adding implied_ids to an existing group propagates it to that group's
+         current members, so existing POS / User staff receive it on install. -->
+    <record id="point_of_sale.group_pos_user" model="res.groups">
+        <field name="implied_ids" eval="[(4, ref('group_pos_close_register'))]"/>
+    </record>
+
+</odoo>

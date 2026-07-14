@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_pos_session_form" model="ir.ui.view">
+        <field name="name">pos.session.form.inherit.shift.report</field>
+        <field name="model">pos.session</field>
+        <field name="inherit_id" ref="point_of_sale.view_pos_session_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="after">
+                <div class="alert alert-info" role="alert" invisible="state not in ['closed'] or not shift_report_notes">
+                    <strong>Shift Report:</strong> Details available in the Shift Report tab.
+                </div>
+            </xpath>
+            <xpath expr="//notebook" position="inside">
+                <page name="shift_report" string="Shift Report">
+                    <group>
+                        <field name="shift_report_issues" />
+                        <field name="shift_report_cleaning_done" />
+                        <field name="shift_report_notes" />
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

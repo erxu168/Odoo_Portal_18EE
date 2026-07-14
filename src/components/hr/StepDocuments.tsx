@@ -1,0 +1,315 @@
+"use client";
+
+import React, { useEffect, useState, useRef } from "react";
+import type { EmployeeData } from "@/types/hr";
+import { DOCUMENT_TYPES } from "@/types/hr";
+import DocumentCapture from "@/components/hr/DocumentCapture";
+import RoteKarteInfo from "@/components/hr/RoteKarteInfo";
+import FilePicker from "@/components/ui/FilePicker";
+
+interface Props {
+  employee: EmployeeData;
+  onNext: () => void;
+  onPrev: () => void;
+  onRefresh: () => void;
+}
+
+interface UploadedDoc {
+  id: number;
+  name: string;
+  doc_type_key: string;
+  size_kb: number;
+  create_date: string;
+}
+
+export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: Props) {
+  const [docs, setDocs] = useState<UploadedDoc[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeDocKey, setActiveDocKey] = useState<string | null>(null);
+  
+
+  // Profile photo state
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoSaved, setPhotoSaved] = useState(false);
+
+  useEffect(() => {
+    loadDocs();
+  }, []);
+
+  useEffect(() => {
+    if (employee && (employee as any).image_1920) {
+      setPhotoSaved(true);
+    }
+  }, [employee]);
+
+  async function loadDocs() {
+    try {
+      const res = await fetch("/api/hr/documents");
+      if (res.ok) {
+        const data = await res.json();
+        setDocs(data.documents || []);
+      }
+    } catch (_e: unknown) {
+      console.error("Failed to load documents");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function getDocsForType(key: string): UploadedDoc[] {
+    return docs.filter((d) => d.doc_type_key === key);
+  }
+
+  function handleDocSaved() {
+    setActiveDocKey(null);
+    loadDocs();
+    onRefresh();
+  }
+
+  // Profile photo handlers
+  function handlePhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      compressToSquare(dataUrl).then((compressed) => {
+        setPhotoPreview(compressed);
+        uploadProfilePhoto(compressed);
+      });
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
+  function compressToSquare(dataUrl: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 512;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("No canvas context")); return; }
+        const srcSize = Math.min(img.width, img.height);
+        const sx = (img.width - srcSize) / 2;
+        const sy = (img.height - srcSize) / 2;
+        ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size);
+        const result = canvas.toDataURL("image/jpeg", 0.85);
+        resolve(result);
+      };
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  }
+
+  async function uploadProfilePhoto(dataUrl: string) {
+    setUploadingPhoto(true);
+    try {
+      const base64 = dataUrl.split(",")[1];
+      const res = await fetch("/api/hr/employee", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: { image_1920: base64 } }),
+      });
+      if (res.ok) {
+        setPhotoSaved(true);
+        onRefresh();
+      }
+    } catch (_e: unknown) {
+      console.error("Failed to upload profile photo");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  if (activeDocKey) {
+    const docType = DOCUMENT_TYPES.find((dt) => dt.key === activeDocKey);
+    if (docType) {
+      return (
+        <DocumentCapture
+          docType={docType}
+          onBack={() => setActiveDocKey(null)}
+          onSaved={handleDocSaved}
+        />
+      );
+    }
+  }
+
+  // Rote Karte excluded from normal required loop (rendered inside RoteKarteInfo)
+  const isStudent = (employee as unknown as { is_university_student?: boolean }).is_university_student === true;
+  const requiredOther = DOCUMENT_TYPES.filter((dt) => dt.required && dt.key !== "gesundheitszeugnis");
+  // Student-only docs (enrolment certificate, student ID) show only for working students.
+  const optional = DOCUMENT_TYPES.filter((dt) => !dt.required && (!dt.studentOnly || isStudent));
+  const roteKarteUploaded = getDocsForType("gesundheitszeugnis").length;
+
+  const hasPhoto = photoPreview || photoSaved;
+
+  return (
+    <div className="pb-8">
+      <div className="p-5">
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-4">
+          Tap each card to take photos or upload files. You can add multiple
+          pages per document.
+        </p>
+
+        {/* Profile photo section */}
+        <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
+          Profile photo
+        </div>
+        <div
+          className={
+            "w-full rounded-2xl border-[1.5px] p-4 mb-5 " +
+            (hasPhoto
+              ? "border-green-600 bg-green-50 border-solid"
+              : "border-gray-300 bg-white border-dashed")
+          }
+        >
+          <div className="flex items-center gap-3.5 mb-3">
+            <div
+              className={
+                "w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden " +
+                (hasPhoto ? "bg-green-100" : "bg-gray-100")
+              }
+            >
+              {photoPreview ? (
+                <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
+              ) : photoSaved ? (
+                <img src="/api/hr/employee/photo" alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
+                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[var(--fs-md)] font-bold text-gray-900">Profile Photo</div>
+              {uploadingPhoto ? (
+                <div className="flex items-center gap-2 mt-0.5">
+                  <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-[var(--fs-xs)] text-green-600 font-semibold">Uploading...</span>
+                </div>
+              ) : hasPhoto ? (
+                <div className="text-[var(--fs-xs)] text-green-600 font-semibold mt-0.5">Uploaded &middot; Use buttons below to replace</div>
+              ) : (
+                <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">Take a selfie or choose a photo from your device</div>
+              )}
+            </div>
+            {hasPhoto && <span className="text-green-600 text-xl flex-shrink-0">{"\u2713"}</span>}
+          </div>
+          <FilePicker onFile={(file, dataUrl) => { handlePhotoFile({ target: { files: [file] } } as any); }} accept="image/*" className="w-full flex items-center justify-center gap-2 py-3.5 bg-white border border-gray-200 rounded-xl active:bg-gray-50 active:shadow-lg transition-all disabled:opacity-40">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
+              <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" /><circle cx="12" cy="13" r="4" />
+            </svg>
+            <span className="text-[var(--fs-sm)] font-semibold text-gray-900">{hasPhoto ? 'Change Photo' : 'Add Photo'}</span>
+          </FilePicker>
+        </div>
+        
+        
+
+        {/* Required documents — all under one header */}
+        <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
+          Required documents
+        </div>
+
+        {/* Rote Karte info + upload (first item under Required) */}
+        <RoteKarteInfo
+          onUpload={() => setActiveDocKey("gesundheitszeugnis")}
+          uploadedCount={roteKarteUploaded}
+        />
+
+        {/* Other required docs */}
+        {requiredOther.map((dt) => {
+          const existing = getDocsForType(dt.key);
+          return (
+            <DocCard
+              key={dt.key}
+              docType={dt}
+              uploadedDocs={existing}
+              loading={loading}
+              onTap={() => setActiveDocKey(dt.key)}
+            />
+          );
+        })}
+
+        {/* Additional documents */}
+        <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mt-4 mb-2">
+          Additional documents (if applicable)
+        </div>
+        {optional.map((dt) => {
+          const existing = getDocsForType(dt.key);
+          return (
+            <DocCard
+              key={dt.key}
+              docType={dt}
+              uploadedDocs={existing}
+              loading={loading}
+              onTap={() => setActiveDocKey(dt.key)}
+            />
+          );
+        })}
+
+        {/* Legal consents */}
+      </div>
+
+      <div className="px-5 pt-4 pb-8 flex gap-3">
+        <button onClick={onPrev} className="flex-1 py-4 bg-white text-gray-900 font-bold text-[var(--fs-sm)] rounded-xl border border-gray-200 active:opacity-85">
+          Back
+        </button>
+        <button onClick={onNext}
+          className="flex-1 py-4 bg-green-600 text-white font-bold text-[var(--fs-sm)] rounded-xl active:opacity-85 disabled:opacity-40">
+          Continue
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+interface DocCardProps {
+  docType: (typeof DOCUMENT_TYPES)[number];
+  uploadedDocs: UploadedDoc[];
+  loading: boolean;
+  onTap: () => void;
+}
+
+function DocCard({ docType, uploadedDocs, loading, onTap }: DocCardProps) {
+  const count = uploadedDocs.length;
+  const hasUploads = count > 0;
+
+  return (
+    <button
+      onClick={onTap}
+      disabled={loading}
+      className={
+        "w-full flex items-center gap-3.5 p-4 rounded-2xl border-[1.5px] text-left mb-3 transition-colors active:shadow-lg disabled:opacity-60 " +
+        (hasUploads ? "border-green-600 bg-green-50 border-solid" : "border-gray-300 bg-white border-dashed")
+      }
+    >
+      <div className={"w-12 h-12 rounded-xl flex items-center justify-center text-[24px] flex-shrink-0 " + (hasUploads ? "bg-green-100" : "bg-gray-100")}>
+        {docType.icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[var(--fs-md)] font-bold text-gray-900">{docType.label}</span>
+          <span className="text-[var(--fs-xs)] text-gray-400">({docType.labelDe})</span>
+        </div>
+        {hasUploads ? (
+          <div className="text-[var(--fs-xs)] text-green-600 font-semibold mt-0.5">
+            {count} {count === 1 ? "file" : "files"} uploaded &middot; Tap to view or add more
+          </div>
+        ) : (
+          <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">Tap to capture or upload</div>
+        )}
+      </div>
+      {hasUploads ? (
+        <span className="text-green-600 text-xl flex-shrink-0">{"\u2713"}</span>
+      ) : (
+        <span className="text-gray-300 text-2xl flex-shrink-0">+</span>
+      )}
+    </button>
+  );
+}

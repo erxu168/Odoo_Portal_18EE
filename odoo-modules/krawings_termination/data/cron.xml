@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="cron_check_sign_completion" model="ir.cron">
+        <field name="name">Termination: Check Sign Completion</field>
+        <field name="model_id" ref="model_kw_termination"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_check_sign_completion()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">hours</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+    </record>
+</odoo>

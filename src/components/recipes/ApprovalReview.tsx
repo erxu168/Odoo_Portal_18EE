@@ -1,0 +1,178 @@
+'use client';
+
+import React, { useState, useEffect, useRef } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
+
+interface StepData {
+  id: number; sequence: number; step_type: string; instruction: string;
+  timer_seconds: number; tip: string; image_count: number;
+}
+
+interface Props {
+  versionId: number;
+  recipeName: string;
+  productTmplId?: number;
+  bomId?: number;
+  changeSummary: string;
+  onApprove: () => void;
+  onReject: (reason: string) => void;
+  onBack: () => void;
+  approving: boolean;
+}
+
+const TYPE_EMOJI: Record<string, React.ReactNode> = { prep: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 2l10 10-3 3L3 5z"/><path d="M16 12l6 6-3 3-6-6"/></svg>, cook: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 12c2-2.96 0-7-1-8 0 3.038-1.773 4.741-3 6-1.226 1.26-2 3.24-2 5a6 6 0 1012 0c0-1.532-1.056-3.94-2-5-1.786 3-2.791 3-4 2z"/></svg>, plate: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg> };
+
+// FIX S3: Safe text rendering instead of dangerouslySetInnerHTML
+function renderSafeHtml(html: string): React.ReactNode {
+  if (!html) return null;
+  // Strip all tags except <b>, render bold as <strong>
+  const cleaned = html.replace(/<\/?p>/gi, '').replace(/<br\s*\/?>/gi, ' ');
+  const parts = cleaned.split(/(<b>.*?<\/b>)/gi);
+  return parts.map((part, i) => {
+    const boldMatch = part.match(/^<b>(.*?)<\/b>$/i);
+    if (boldMatch) return <strong key={i} className="font-bold">{boldMatch[1]}</strong>;
+    // Strip any remaining HTML tags
+    const safe = part.replace(/<[^>]*>/g, '');
+    return <span key={i}>{safe}</span>;
+  });
+}
+
+export default function ApprovalReview({ recipeName, productTmplId, bomId, changeSummary, onApprove, onReject, onBack, approving }: Props) {
+  const [steps, setSteps] = useState<StepData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [scrolledAll, setScrolledAll] = useState(false);
+  const [showReject, setShowReject] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const param = productTmplId ? `product_tmpl_id=${productTmplId}` : `bom_id=${bomId}`;
+        const res = await fetch(`/api/recipes/steps?${param}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSteps(data.steps || []);
+          if ((data.steps || []).length <= 3) setScrolledAll(true);
+        }
+      } catch (e) { console.error('Load error:', e); }
+      finally { setLoading(false); }
+    }
+    load();
+  }, [productTmplId, bomId]);
+
+  // FIX L5: Use IntersectionObserver instead of scroll math
+  useEffect(() => {
+    if (!sentinelRef.current || steps.length <= 3) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setScrolledAll(true);
+    }, { threshold: 0.1 });
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [steps]);
+
+  function handleApprove() {
+    setShowApproveConfirm(true);
+  }
+
+  function handleReject() {
+    if (!rejectReason.trim()) return;
+    onReject(rejectReason.trim());
+  }
+
+  const totalTime = steps.reduce((s, st) => s + (st.timer_seconds || 0), 0);
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      <AppHeader title="Review Recipe" subtitle="Pending approval" showBack onBack={onBack} />
+      <div ref={listRef} className="px-5 pt-4 pb-36 flex-1 overflow-y-auto">
+        {changeSummary && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 text-[13px] text-amber-900">{changeSummary}</div>
+        )}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
+          <h2 className="text-[16px] font-bold text-gray-900">{recipeName}</h2>
+          <div className="flex gap-4 mt-2 text-[12px] text-gray-500">
+            <span>{steps.length} steps</span>
+            <span>{totalTime > 0 ? `${Math.ceil(totalTime / 60)} min` : 'No timers'}</span>
+          </div>
+        </div>
+        {loading && (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        {!loading && (
+          <div>
+            {!scrolledAll && steps.length > 3 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3 text-[12px] text-blue-800 text-center">
+                Scroll through all steps to enable approval
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              {steps.map((step, i) => (
+                <div key={step.id} className="bg-white rounded-xl border border-gray-200 p-3.5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[14px] flex-shrink-0">
+                      {TYPE_EMOJI[step.step_type] || <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="8" r="4"/><path d="M20 21v-2a4 4 0 00-8 0v2"/></svg>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[12px] font-bold text-gray-500">Step {i + 1}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 capitalize">{step.step_type}</span>
+                        {step.timer_seconds > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-mono">{Math.ceil(step.timer_seconds / 60)}m</span>}
+                      </div>
+                      <div className="text-[13px] text-gray-800">{renderSafeHtml(step.instruction)}</div>
+                      {step.tip && <div className="text-[11px] text-amber-600 mt-1">{<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 00-4 12.7V17h8v-2.3A7 7 0 0012 2z"/></svg>} {step.tip}</div>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Sentinel element for IntersectionObserver */}
+            <div ref={sentinelRef} className="h-1" />
+          </div>
+        )}
+      </div>
+      <div className="px-5 py-4">
+        {!showReject ? (
+          <div className="flex gap-3">
+            <button onClick={() => setShowReject(true)}
+              className="flex-1 py-3.5 rounded-2xl text-[15px] font-bold text-red-600 border border-red-200 bg-red-50 active:bg-red-100">Reject</button>
+            <button onClick={handleApprove} disabled={!scrolledAll || approving}
+              className={`flex-1 py-3.5 rounded-2xl text-[15px] font-bold text-white transition-all ${
+                scrolledAll && !approving ? 'bg-green-600 active:bg-green-700 shadow-lg' : 'bg-gray-300 cursor-not-allowed'
+              }`}>{approving ? 'Approving...' : scrolledAll ? 'Approve' : 'Scroll to approve'}</button>
+          </div>
+        ) : (
+          <div>
+            <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Reason for rejection (required)..." rows={2}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-[14px] mb-3 resize-none" />
+            <div className="flex gap-3">
+              <button onClick={() => { setShowReject(false); setRejectReason(''); }}
+                className="flex-1 py-3 rounded-2xl text-[14px] font-semibold text-gray-600 border border-gray-200 active:bg-gray-50">Cancel</button>
+              <button onClick={handleReject} disabled={!rejectReason.trim() || approving}
+                className={`flex-1 py-3 rounded-2xl text-[14px] font-bold text-white ${
+                  rejectReason.trim() ? 'bg-red-600 active:bg-red-700' : 'bg-gray-300'
+                }`}>{approving ? 'Rejecting...' : 'Confirm reject'}</button>
+            </div>
+          </div>
+        )}
+      </div>
+      {showApproveConfirm && (
+        <ConfirmDialog
+          title="Approve this recipe?"
+          message="It will be published and visible to all cooks."
+          confirmLabel="Approve"
+          cancelLabel="Cancel"
+          variant="primary"
+          onConfirm={() => { setShowApproveConfirm(false); onApprove(); }}
+          onCancel={() => setShowApproveConfirm(false)}
+        />
+      )}
+    </div>
+  );
+}

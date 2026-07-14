@@ -1,0 +1,190 @@
+'use client';
+
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import AppHeader from '@/components/ui/AppHeader';
+import MoList from '@/components/manufacturing/MoList';
+import MoDetail from '@/components/manufacturing/MoDetail';
+import WoDetail from '@/components/manufacturing/WoDetail';
+import CreateMo from '@/components/manufacturing/CreateMo';
+import MfgDashboard from '@/components/manufacturing/MfgDashboard';
+import PickList from '@/components/manufacturing/PickList';
+import BomList from '@/components/manufacturing/BomList';
+import BomDetail from '@/components/manufacturing/BomDetail';
+import RecipeHistory from '@/components/manufacturing/RecipeHistory';
+import CreateBom from '@/components/manufacturing/CreateBom';
+import PackageLabel from '@/components/manufacturing/PackageLabel';
+import LabelPrint from '@/components/manufacturing/LabelPrint';
+
+type Screen =
+  | { type: 'dashboard' }
+  | { type: 'mo-list'; mode: 'production' | 'completed' }
+  | { type: 'mo-detail'; moId: number }
+  | { type: 'wo-detail'; moId: number; woId: number }
+  | { type: 'create' }
+  | { type: 'pick-list' }
+  | { type: 'bom-list' }
+  | { type: 'create-bom' }
+  | { type: 'bom-detail'; bomId: number }
+  | { type: 'recipe-history'; bomId: number }
+  | { type: 'package'; moId: number }
+  | { type: 'label-print' };
+
+export default function ManufacturingPage() {
+  const router = useRouter();
+  const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  const [history, setHistory] = useState<Screen[]>([]);
+
+  function navigate(s: Screen) {
+    setHistory((h) => [...h, screen]);
+    setScreen(s);
+  }
+
+  function goBack() {
+    setHistory((h) => {
+      const prev = h[h.length - 1];
+      if (prev) {
+        setScreen(prev);
+        return h.slice(0, -1);
+      }
+      setScreen({ type: 'dashboard' });
+      return [];
+    });
+  }
+
+  function goHome() {
+    router.push('/');
+  }
+
+  function goDashboard() {
+    setHistory([]);
+    setScreen({ type: 'dashboard' });
+  }
+
+  function handleDashboardNav(tile: string) {
+    if (tile === 'orders') navigate({ type: 'mo-list', mode: 'production' });
+    else if (tile === 'recipes') navigate({ type: 'bom-list' });
+    else if (tile === 'completed') navigate({ type: 'mo-list', mode: 'completed' });
+    else if (tile === 'pick-list') navigate({ type: 'pick-list' });
+    else if (tile === 'label-print') navigate({ type: 'label-print' });
+  }
+
+  const Header = ({ title, subtitle }: { title: string; subtitle?: string }) => (
+    <AppHeader title={title} subtitle={subtitle} />
+  );
+
+  function renderScreen() {
+    switch (screen.type) {
+      case 'dashboard':
+        return (
+          <>
+            <Header title="Manufacturing" subtitle="Manufacturing & recipes" />
+            <MfgDashboard onNavigate={handleDashboardNav} />
+          </>
+        );
+      case 'mo-list':
+        return (
+          <MoList
+            mode={screen.mode}
+            onSelect={(moId) => navigate({ type: 'mo-detail', moId })}
+            onCreate={() => navigate({ type: 'create' })}
+            onHome={goDashboard}
+          />
+        );
+      case 'mo-detail':
+        return (
+          <MoDetail
+            moId={screen.moId}
+            onBack={goBack}
+            onOpenWo={(woId) => navigate({ type: 'wo-detail', moId: screen.moId, woId })}
+            onPackage={() => navigate({ type: 'package', moId: screen.moId })}
+          />
+        );
+      case 'wo-detail':
+        return (
+          <WoDetail
+            moId={screen.moId}
+            woId={screen.woId}
+            onBack={goBack}
+            onDone={(nextWoId) => {
+              if (nextWoId) {
+                setScreen({ type: 'wo-detail', moId: screen.moId, woId: nextWoId });
+              } else {
+                goBack();
+              }
+            }}
+          />
+        );
+      case 'create':
+        return (
+          <CreateMo
+            onBack={goBack}
+            onCreated={(moId) => {
+              setHistory([{ type: 'dashboard' }, { type: 'mo-list', mode: 'production' }]);
+              setScreen({ type: 'mo-detail', moId });
+            }}
+          />
+        );
+      case 'pick-list':
+        return (
+          <PickList onBack={goDashboard} onHome={goHome} />
+        );
+      case 'bom-list':
+        return (
+          <BomList
+            onSelect={(bom) => navigate({ type: 'bom-detail', bomId: bom.id })}
+            onBack={goDashboard}
+            onCreate={() => navigate({ type: 'create-bom' })}
+          />
+        );
+      case 'create-bom':
+        return (
+          <CreateBom
+            onBack={goBack}
+            onCreated={(bomId) => {
+              setHistory([{ type: 'dashboard' }, { type: 'bom-list' }]);
+              setScreen({ type: 'bom-detail', bomId });
+            }}
+          />
+        );
+      case 'bom-detail':
+        return (
+          <BomDetail
+            bomId={screen.bomId}
+            onBack={goBack}
+            onCreateMo={() => navigate({ type: 'create' })}
+            onOpenHistory={(bid) => navigate({ type: 'recipe-history', bomId: bid })}
+          />
+        );
+      case 'recipe-history':
+        return (
+          <RecipeHistory
+            bomId={screen.bomId}
+            onBack={goBack}
+            onOpenBom={(bid) => navigate({ type: 'bom-detail', bomId: bid })}
+          />
+        );
+      case 'package':
+        return (
+          <PackageLabel
+            moId={screen.moId}
+            onBack={goBack}
+            onDone={goBack}
+          />
+        );
+      case 'label-print':
+        return (
+          <LabelPrint
+            onBack={goDashboard}
+            onDone={goDashboard}
+          />
+        );
+    }
+  }
+
+  return (
+    <div className="flex flex-col min-h-screen bg-gray-50">
+      {renderScreen()}
+    </div>
+  );
+}

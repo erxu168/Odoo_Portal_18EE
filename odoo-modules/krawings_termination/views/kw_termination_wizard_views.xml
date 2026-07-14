@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="kw_termination_wizard_form" model="ir.ui.view">
+        <field name="name">kw.termination.wizard.form</field>
+        <field name="model">kw.termination.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Termination Wizard">
+                <group>
+                    <group string="Employee">
+                        <field name="employee_id"/>
+                        <field name="company_id"/>
+                        <field name="employee_start_date"/>
+                        <field name="tenure_display"/>
+                        <field name="in_probation"/>
+                        <field name="probation_end" invisible="not probation_end"/>
+                    </group>
+                    <group string="Termination">
+                        <field name="termination_type"/>
+                        <field name="calc_method"
+                            invisible="termination_type in ('fristlos', 'aufhebung')"/>
+                        <field name="letter_date"/>
+                        <field name="receipt_date"
+                            invisible="calc_method != 'receipt' or termination_type in ('fristlos', 'aufhebung')"/>
+                    </group>
+                </group>
+
+                <group string="Computed Dates"
+                    invisible="termination_type in ('fristlos', 'aufhebung')">
+                    <group>
+                        <field name="notice_period_text"/>
+                        <field name="last_working_day"/>
+                    </group>
+                </group>
+
+                <!-- Fristlose -->
+                <group string="Incident Details"
+                    invisible="termination_type != 'fristlos'">
+                    <group>
+                        <field name="incident_date"/>
+                        <field name="incident_description"/>
+                    </group>
+                </group>
+
+                <!-- Aufhebung -->
+                <group string="Agreement Details"
+                    invisible="termination_type != 'aufhebung'">
+                    <group>
+                        <field name="agreed_end_date"/>
+                        <field name="include_severance"/>
+                        <field name="severance_amount"
+                            invisible="not include_severance"/>
+                        <field name="garden_leave"/>
+                    </group>
+                    <group>
+                        <field name="zeugnis_grade"/>
+                    </group>
+                </group>
+
+                <!-- Bestaetigung -->
+                <group string="Resignation Details"
+                    invisible="termination_type != 'bestaetigung'">
+                    <group>
+                        <field name="resignation_received_date"/>
+                        <field name="resignation_method"/>
+                        <field name="written_resignation_received"/>
+                    </group>
+                </group>
+
+                <!-- Address -->
+                <group string="Employee Address">
+                    <group>
+                        <field name="address_missing" invisible="1"/>
+                        <field name="employee_street" placeholder="Street and number"/>
+                        <field name="employee_zip" placeholder="ZIP"/>
+                        <field name="employee_city" placeholder="City"/>
+                    </group>
+                </group>
+
+                <footer>
+                    <button name="action_generate" string="Generate PDF"
+                        type="object" class="oe_highlight"/>
+                    <button string="Discard" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_kw_termination_wizard" model="ir.actions.act_window">
+        <field name="name">Termination</field>
+        <field name="res_model">kw.termination.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{'default_employee_id': active_id}</field>
+    </record>
+</odoo>

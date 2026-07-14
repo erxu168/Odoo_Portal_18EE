@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="ir_cron_spawn_daily_task_lists" model="ir.cron">
+            <field name="name">Krawings: spawn daily task lists</field>
+            <field name="model_id" ref="model_krawings_task_template"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_spawn_daily_task_lists()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="active" eval="True"/>
+        </record>
+    </data>
+</odoo>

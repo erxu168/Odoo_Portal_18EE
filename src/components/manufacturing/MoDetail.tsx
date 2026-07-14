@@ -1,0 +1,849 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import AppHeader from '@/components/ui/AppHeader';
+import SaveAsVersionModal from './SaveAsVersionModal';
+import EditStepNoteSheet from './EditStepNoteSheet';
+
+interface MoDetailProps {
+  moId: number;
+  onBack: () => void;
+  onOpenWo: (woId: number) => void;
+  onPackage?: () => void;
+}
+
+interface EditLine {
+  line_id: number; // positive = existing move_id, negative = pending add
+  product_id: number;
+  product_name: string;
+  planned_qty_str: string; // stored as string so users can type "0,5" without re-formatting
+  uom_id: number;
+  uom_name: string;
+  _isNew?: boolean;
+}
+
+function fmtQtyDe(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return '';
+  return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4, useGrouping: false }).format(n);
+}
+
+function parseQty(s: string): number {
+  if (!s || !s.trim()) return 0;
+  const n = Number(s.replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+}
+
+export default function MoDetail({ moId, onBack, onOpenWo, onPackage }: MoDetailProps) {
+  const [mo, setMo] = useState<any>(null);
+  const [workOrders, setWorkOrders] = useState<any[]>([]);
+  const [components, setComponents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [producing, setProducing] = useState(false);
+  const [produceError, setProduceError] = useState<string | null>(null);
+
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [editingStep, setEditingStep] = useState<{ id: number; name: string; idx: number; note: string } | null>(null);
+  const [saveVersionOpen, setSaveVersionOpen] = useState(false);
+  const [versionToast, setVersionToast] = useState<{ version_label: string; bom_id: number } | null>(null);
+
+  // Edit mode state
+  const [moEditMode, setMoEditMode] = useState(false);
+  const [editLines, setEditLines] = useState<EditLine[]>([]);
+  const [removedMoveIds, setRemovedMoveIds] = useState<number[]>([]);
+  const [savingEdits, setSavingEdits] = useState(false);
+  const [editSaveError, setEditSaveError] = useState<string | null>(null);
+  const [editSearchQuery, setEditSearchQuery] = useState('');
+  const [editSearchResults, setEditSearchResults] = useState<any[]>([]);
+  const [editSearching, setEditSearching] = useState(false);
+  const [showEditSearch, setShowEditSearch] = useState(false);
+
+  useEffect(() => { fetchDetail(); }, [moId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (actionError) { const t = setTimeout(() => setActionError(null), 5000); return () => clearTimeout(t); }
+  }, [actionError]);
+
+  useEffect(() => {
+    if (!versionToast) return;
+    const t = setTimeout(() => setVersionToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [versionToast]);
+
+  const pickedKey = `mo-picked-${moId}`;
+
+  async function fetchDetail() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/manufacturing-orders/${moId}`);
+      const data = await res.json();
+      setMo(data.order);
+      setWorkOrders(data.order?.work_orders || []);
+      const comps = data.order?.components || [];
+      // Restore picked state from localStorage
+      try {
+        const saved: Record<string, boolean> = JSON.parse(localStorage.getItem(pickedKey) || '{}');
+        for (const c of comps) {
+          if (saved[c.id] !== undefined) c.picked = saved[c.id];
+        }
+      } catch {}
+      setComponents(comps);
+    } catch (err) {
+      console.error('Failed to fetch MO detail:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleConfirm() {
+    setConfirmLoading(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/manufacturing-orders/${moId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm' }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      await fetchDetail();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to confirm order');
+    } finally {
+      setConfirmLoading(false);
+    }
+  }
+
+  async function handleCancel() {
+    setShowCancelConfirm(false);
+    setCancelLoading(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/manufacturing-orders/${moId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel' }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      onBack();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to cancel order');
+    } finally {
+      setCancelLoading(false);
+    }
+  }
+
+  async function handleProduce() {
+    setProducing(true);
+    setProduceError(null);
+    try {
+      const res = await fetch(`/api/manufacturing-orders/${moId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'mark_done' }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      // Stay on the detail screen and refresh so the user sees the
+      // "Order completed" banner — auto-leaving used to mask close failures.
+      await fetchDetail();
+    } catch (err: unknown) {
+      setProduceError(err instanceof Error ? err.message : 'Failed to produce');
+    } finally {
+      setProducing(false);
+    }
+  }
+
+  function toggleIngredient(comp: any) {
+    setComponents(prev => {
+      const next = prev.map(c =>
+        c.id === comp.id ? { ...c, picked: !c.picked } : c
+      );
+      // Persist picked state to localStorage
+      const saved: Record<string, boolean> = {};
+      for (const c of next) saved[c.id] = !!c.picked;
+      localStorage.setItem(pickedKey, JSON.stringify(saved));
+      return next;
+    });
+  }
+
+  // ── Edit mode functions ───────────────────────────────────────────────────
+
+  function startMoEditing() {
+    setEditLines(components.map((c: any) => ({
+      line_id: c.move_id,
+      product_id: c.product_id?.[0] ?? 0,
+      product_name: c.product_id?.[1] ?? '',
+      planned_qty_str: fmtQtyDe(c.planned_qty ?? c.product_uom_qty ?? 0),
+      uom_id: c.product_uom?.[0] ?? 0,
+      uom_name: c.product_uom?.[1] ?? '',
+    })));
+    setRemovedMoveIds([]);
+    setEditSaveError(null);
+    setShowEditSearch(false);
+    setEditSearchQuery('');
+    setEditSearchResults([]);
+    setMoEditMode(true);
+  }
+
+  function cancelMoEditing() {
+    if (savingEdits) return;
+    setMoEditMode(false);
+    setEditLines([]);
+    setRemovedMoveIds([]);
+    setEditSaveError(null);
+  }
+
+  function updateEditLineQty(line_id: number, raw: string) {
+    // Store the raw string so the user sees exactly what they typed
+    // ("0,", "0,5", etc.). We parse on save.
+    setEditLines(prev => prev.map(l => l.line_id === line_id ? { ...l, planned_qty_str: raw } : l));
+  }
+
+  function adjustEditLineByDelta(line_id: number, sign: 1 | -1) {
+    const line = editLines.find(l => l.line_id === line_id);
+    if (!line) return;
+    const verb = sign > 0 ? 'add' : 'subtract';
+    const raw = window.prompt(`How much to ${verb}? (${line.uom_name})`, '');
+    if (raw === null) return; // user cancelled
+    const delta = parseQty(raw);
+    if (!delta || delta <= 0) {
+      window.alert('Enter a positive number.');
+      return;
+    }
+    const current = parseQty(line.planned_qty_str);
+    const next = current + sign * delta;
+    if (next < 0) {
+      window.alert(`That would make ${line.product_name} negative. Skipped.`);
+      return;
+    }
+    setEditLines(prev => prev.map(l => l.line_id === line_id ? { ...l, planned_qty_str: fmtQtyDe(next) } : l));
+  }
+
+  function removeEditLine(line_id: number) {
+    setEditLines(prev => prev.filter(l => l.line_id !== line_id));
+    if (line_id > 0) setRemovedMoveIds(prev => [...prev, line_id]);
+  }
+
+  function addEditLine(product: { id: number; name: string; uom_id: number; uom_name: string }) {
+    setEditLines(prev => {
+      if (prev.some(l => l.product_id === product.id)) return prev;
+      // Each add picks a fresh negative temp id by reading the current
+      // lowest one in state. Using a module-level counter would collide
+      // across re-renders.
+      const nextId = Math.min(0, ...prev.map(l => l.line_id)) - 1;
+      return [...prev, {
+        line_id: nextId,
+        product_id: product.id,
+        product_name: product.name,
+        planned_qty_str: '',
+        uom_id: product.uom_id,
+        uom_name: product.uom_name,
+        _isNew: true,
+      }];
+    });
+    setShowEditSearch(false);
+    setEditSearchQuery('');
+    setEditSearchResults([]);
+  }
+
+  async function searchEditProducts(q: string) {
+    setEditSearchQuery(q);
+    if (q.trim().length < 2) { setEditSearchResults([]); return; }
+    setEditSearching(true);
+    try {
+      const res = await fetch(`/api/products/search?q=${encodeURIComponent(q)}&limit=20`);
+      const data = await res.json();
+      setEditSearchResults(data.products || []);
+    } catch {
+      setEditSearchResults([]);
+    } finally {
+      setEditSearching(false);
+    }
+  }
+
+  async function saveMoEdits() {
+    setSavingEdits(true);
+    setEditSaveError(null);
+    try {
+      // Build a map of original qtys for comparison
+      const originalQtyById = new Map<number, number>(
+        components.map((c: any) => [c.move_id, c.planned_qty ?? c.product_uom_qty ?? 0]),
+      );
+      // 1) updates to existing lines and new additions
+      for (const l of editLines) {
+        const qty = parseQty(l.planned_qty_str);
+        if (l.line_id > 0) {
+          const orig = originalQtyById.get(l.line_id);
+          if (orig !== qty && qty > 0) {
+            const r = await fetch(`/api/manufacturing-orders/${moId}/components/${l.line_id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ qty }),
+            });
+            if (!r.ok) {
+              const d = await r.json().catch(() => ({}));
+              throw new Error(d.error || `Failed to update ${l.product_name}`);
+            }
+          }
+        } else if (l._isNew) {
+          if (qty <= 0) continue; // skip empty rows
+          const r = await fetch(`/api/manufacturing-orders/${moId}/components`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_id: l.product_id, qty, uom_id: l.uom_id }),
+          });
+          if (!r.ok) {
+            const d = await r.json().catch(() => ({}));
+            throw new Error(d.error || `Failed to add ${l.product_name}`);
+          }
+        }
+      }
+      // 2) removals
+      for (const id of removedMoveIds) {
+        const r = await fetch(`/api/manufacturing-orders/${moId}/components/${id}`, { method: 'DELETE' });
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.error || 'Failed to remove ingredient');
+        }
+      }
+      setMoEditMode(false);
+      setEditLines([]);
+      setRemovedMoveIds([]);
+      await fetchDetail();
+    } catch (err: unknown) {
+      setEditSaveError(err instanceof Error ? err.message : 'Failed to save changes');
+    } finally {
+      setSavingEdits(false);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const fmt = (n: number) => new Intl.NumberFormat('de-DE', { maximumFractionDigits: 4 }).format(n);
+
+  const stateColors: Record<string, string> = {
+    draft: 'bg-gray-100 text-gray-600', confirmed: 'bg-green-50 text-green-800',
+    progress: 'bg-amber-50 text-amber-700', done: 'bg-green-50 text-green-700',
+    to_close: 'bg-blue-50 text-blue-700', cancel: 'bg-red-50 text-red-700',
+  };
+  const stateLabels: Record<string, string> = {
+    draft: 'Draft', confirmed: 'Confirmed', progress: 'In Progress',
+    done: 'Done', to_close: 'To Close', cancel: 'Cancelled',
+  };
+  const woStateColors: Record<string, string> = {
+    ready: 'bg-green-50 text-green-800', progress: 'bg-amber-50 text-amber-700',
+    pending: 'bg-gray-100 text-gray-500', done: 'bg-green-50 text-green-700',
+    waiting: 'bg-gray-100 text-gray-500',
+  };
+  const woStateLabels: Record<string, string> = {
+    ready: 'Ready', progress: 'In Progress', pending: 'Waiting', done: 'Done', waiting: 'Waiting',
+  };
+  const woStepColors: Record<string, string> = {
+    ready: 'bg-green-50 text-green-700', progress: 'bg-amber-50 text-amber-600',
+    pending: 'bg-gray-100 text-gray-400', done: 'bg-green-50 text-green-600',
+    waiting: 'bg-gray-100 text-gray-400',
+  };
+
+  if (loading || !mo) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  const doneWos = workOrders.filter((w) => w.state === 'done').length;
+  const allWosDone = workOrders.length > 0 && workOrders.every((w: any) => w.state === 'done');
+  const isDraft = mo.state === 'draft';
+  const isDone = mo.state === 'done';
+  const isCancelled = mo.state === 'cancel';
+  const isToClose = mo.state === 'to_close';
+  const canCancel = !isDone && !isCancelled;
+  const showProduce = !isDraft && !isDone && !isCancelled && (isToClose || allWosDone || workOrders.length === 0);
+
+  const pickedCount = components.filter((c: any) => c.picked === true).length;
+  const totalComps = components.length;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <AppHeader
+        title={mo.name}
+        showBack
+        onBack={onBack}
+        action={
+          <div className="flex items-center gap-2">
+            {!moEditMode && mo?.can_edit_components && (
+              <button
+                onClick={startMoEditing}
+                className="px-3 py-1.5 rounded-lg bg-white/15 border border-white/20 text-white text-[var(--fs-xs)] font-bold active:bg-white/25"
+              >
+                Edit
+              </button>
+            )}
+            <button
+              onClick={() => window.open(`/api/manufacturing-orders/${moId}/print`, '_blank')}
+              className="w-[clamp(36px,10vw,44px)] h-[clamp(36px,10vw,44px)] rounded-xl bg-white/15 border border-white/20 flex items-center justify-center active:bg-white/25"
+              title="Print"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 6 2 18 2 18 9"/>
+                <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+              </svg>
+            </button>
+            <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-semibold ${stateColors[mo.state] || 'bg-gray-100 text-gray-600'}`}>
+              {stateLabels[mo.state] || mo.state}
+            </span>
+          </div>
+        }
+      />
+
+      {actionError && (
+        <div className="px-4 pt-3">
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-red-700 text-[var(--fs-xs)]">{actionError}</div>
+        </div>
+      )}
+
+      <div className="px-4 pt-5 flex items-baseline gap-2 flex-wrap">
+        <h2 className="text-xl font-bold text-gray-900 leading-tight">{mo.product_id[1]}</h2>
+        {mo.bom_version_label && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-0.5 text-[var(--fs-xs)] font-semibold text-orange-700 border border-orange-200 font-mono">
+            {mo.bom_version_label}
+          </span>
+        )}
+      </div>
+
+      <div className="px-4 py-3">
+        <div className="flex bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex-1 text-center py-3 border-r border-gray-100">
+            <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">QUANTITY</div>
+            <div className="text-lg font-bold text-green-600 mt-0.5 font-mono">{mo.qty_producing} / {mo.product_qty} <span className="text-sm font-normal text-gray-500">{mo.product_uom_id?.[1] || ''}</span></div>
+          </div>
+          <div className="flex-1 text-center py-3 border-r border-gray-100">
+            <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">STEPS</div>
+            <div className="text-lg font-bold text-amber-500 mt-0.5 font-mono">{doneWos} / {workOrders.length}</div>
+          </div>
+          <div className="flex-1 text-center py-3">
+            <div className="text-[var(--fs-xs)] text-gray-400 font-semibold tracking-wider">PICKED</div>
+            <div className="text-lg font-bold text-green-500 mt-0.5 font-mono">{pickedCount} / {totalComps}</div>
+          </div>
+        </div>
+      </div>
+
+      {moEditMode ? (
+        /* ── EDIT MODE ───────────────────────────────────────────────────── */
+        <div className="px-4 pb-4">
+          <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2">
+            Ingredients ({editLines.length})
+          </div>
+          <div className="flex flex-col gap-1 mb-4">
+            {editLines.map(line => (
+              <div key={line.line_id} className="bg-white border border-gray-200 rounded-xl px-3 py-2 flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-[var(--fs-sm)] font-bold text-gray-900 break-words leading-snug">{line.product_name}</div>
+                  <div className="text-[var(--fs-xs)] text-gray-400">{line.uom_name}</div>
+                </div>
+                <button
+                  onClick={() => adjustEditLineByDelta(line.line_id, -1)}
+                  className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center active:bg-gray-200 flex-shrink-0 text-gray-700 font-bold text-lg"
+                  aria-label="Subtract amount"
+                >−</button>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={line.planned_qty_str}
+                  onChange={e => updateEditLineQty(line.line_id, e.target.value)}
+                  className="w-20 px-2 py-2 rounded-lg border border-gray-200 text-[var(--fs-md)] font-bold font-mono text-right text-gray-900 outline-none focus:border-orange-500"
+                />
+                <button
+                  onClick={() => adjustEditLineByDelta(line.line_id, +1)}
+                  className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center active:bg-orange-100 flex-shrink-0 text-orange-600 font-bold text-lg"
+                  aria-label="Add amount"
+                >+</button>
+                <button
+                  onClick={() => removeEditLine(line.line_id)}
+                  className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center active:bg-red-100 flex-shrink-0"
+                  aria-label="Remove ingredient"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-red-500"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Inline product search / add */}
+          {showEditSearch ? (
+            <div className="bg-white border border-orange-200 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={editSearchQuery}
+                  onChange={e => searchEditProducts(e.target.value)}
+                  autoFocus
+                  className="flex-1 px-3 py-2.5 rounded-lg border border-gray-200 text-[var(--fs-sm)] outline-none focus:border-orange-500"
+                />
+                <button
+                  onClick={() => { setShowEditSearch(false); setEditSearchQuery(''); setEditSearchResults([]); }}
+                  className="text-[var(--fs-xs)] font-semibold text-gray-500 px-2"
+                >
+                  Cancel
+                </button>
+              </div>
+              {editSearching && (
+                <div className="text-center py-3">
+                  <div className="w-5 h-5 border-2 border-gray-300 border-t-orange-500 rounded-full animate-spin mx-auto" />
+                </div>
+              )}
+              {editSearchResults.length > 0 && (
+                <div className="max-h-48 overflow-y-auto">
+                  {editSearchResults.map((p: any) => {
+                    const already = editLines.some(l => l.product_id === p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => !already && addEditLine(p)}
+                        disabled={already}
+                        className="w-full text-left px-3 py-2.5 border-b border-gray-100 last:border-0 active:bg-orange-50 disabled:opacity-40"
+                      >
+                        <div className="text-[var(--fs-sm)] font-semibold text-gray-900">{p.name}</div>
+                        <div className="text-[var(--fs-xs)] text-gray-400">{p.uom_name}{already ? ' (already added)' : ''}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {editSearchQuery.trim().length >= 2 && !editSearching && editSearchResults.length === 0 && (
+                <div className="text-[var(--fs-xs)] text-gray-400 text-center py-3">No products found</div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowEditSearch(true)}
+              className="w-full py-3 rounded-xl border-[1.5px] border-dashed border-gray-300 text-[var(--fs-sm)] font-semibold text-gray-500 flex items-center justify-center gap-2 active:bg-gray-50 mb-4"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              Add ingredient
+            </button>
+          )}
+
+          {editSaveError && (
+            <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{editSaveError}</div>
+          )}
+
+          {/* Save / Cancel pair */}
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={cancelMoEditing}
+              disabled={savingEdits}
+              className="flex-1 py-3 rounded-xl bg-white border border-gray-300 text-gray-700 font-bold text-[var(--fs-sm)] active:bg-gray-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={saveMoEdits}
+              disabled={savingEdits}
+              className="flex-1 py-3 rounded-xl bg-orange-500 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-orange-500/30 active:scale-[0.975] transition-transform disabled:opacity-50"
+            >
+              {savingEdits ? 'Saving...' : 'Save changes'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* ── NORMAL MODE ─────────────────────────────────────────────────── */
+        <>
+          <div className="px-4 pb-8">
+            <div className="flex flex-col gap-1 mb-6">
+              <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-500 pb-1.5 flex justify-between items-baseline">
+                <span>Ingredients</span>
+                <span className="font-mono text-gray-400">{pickedCount}/{totalComps}</span>
+              </div>
+              {pickedCount === totalComps && totalComps > 0 && (
+                <div className="flex justify-end mb-0.5 px-1">
+                  <span className="text-[var(--fs-xs)] font-semibold text-green-600">All picked</span>
+                </div>
+              )}
+              {totalComps > 0 && (
+                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden mb-1.5">
+                  <div className="h-full bg-green-500 rounded-full transition-all duration-500"
+                    style={{ width: `${totalComps > 0 ? (pickedCount / totalComps) * 100 : 0}%` }} />
+                </div>
+              )}
+              {(() => {
+                const cats = Array.from(new Set(components.map((c: any) => c.category || 'Other')));
+                return cats.map(cat => {
+                  const catComps = components.filter((c: any) => (c.category || 'Other') === cat);
+                  return (
+                    <div key={cat} className="mb-2">
+                      <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400 pb-1 flex justify-between">
+                        <span>{cat}</span>
+                        <span className="font-mono text-gray-300">{catComps.filter((c: any) => c.picked).length}/{catComps.length}</span>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        {catComps.map((c: any) => {
+                          const required = c.product_uom_qty || 0;
+                          const isPicked = c.picked === true;
+                          const compUom = c.product_uom?.[1] || 'kg';
+                          return (
+                            <button key={c.id} onClick={() => toggleIngredient(c)}
+                              style={{ touchAction: 'manipulation' }}
+                              className={`bg-white border rounded-xl flex overflow-hidden text-left active:scale-[0.98] transition-all ${
+                                isPicked ? 'border-green-300 bg-green-50/40' : 'border-gray-200'
+                              }`}>
+                              <div className={`w-1 flex-shrink-0 ${isPicked ? 'bg-green-500' : 'bg-gray-300'}`} />
+                              <div className="flex-1 flex items-center gap-2 px-2.5 py-1">
+                                <div className={`w-7 h-7 rounded-lg border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                                  isPicked ? 'bg-green-500 border-green-500' : 'border-gray-300 bg-white'
+                                }`}>
+                                  {isPicked ? (
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                                  ) : null}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className={`text-[var(--fs-sm)] font-bold leading-tight ${isPicked ? 'text-green-700 line-through decoration-green-400/60' : 'text-gray-900'}`}>
+                                    {c.product_id[1]}
+                                  </div>
+                                </div>
+                                <div className="flex items-baseline gap-1 flex-shrink-0 pl-2">
+                                  <span className={`text-[var(--fs-md)] font-extrabold tabular-nums font-mono ${isPicked ? 'text-green-600' : 'text-gray-900'}`}>
+                                    {fmt(required)}
+                                  </span>
+                                  <span className={`text-[var(--fs-xs)] font-semibold ${isPicked ? 'text-green-500' : 'text-gray-400'}`}>{compUom}</span>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+              {components.length === 0 && <div className="text-center py-6 text-gray-400 text-[var(--fs-sm)]">No ingredients</div>}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-500 pb-1.5 flex justify-between items-baseline">
+                <span>Steps</span>
+                <span className="font-mono text-gray-400">{workOrders.filter((wo: any) => wo.state === 'done').length}/{workOrders.length}</span>
+              </div>
+              {workOrders.length > 0 ? workOrders.map((wo: any, idx: number) => {
+                const hasNote = wo.operation_note && wo.operation_note !== '<p><br></p>' && wo.operation_note.replace(/<[^>]*>/g, '').trim().length > 0;
+                return (
+                  <button key={wo.id} onClick={() => onOpenWo(wo.id)}
+                    className={`bg-white border rounded-xl overflow-hidden text-left active:scale-[0.98] transition-all ${wo.state === 'progress' ? 'border-green-200 shadow-sm' : 'border-gray-200'}`}>
+                    <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 bg-gray-50/60">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[var(--fs-xs)] font-extrabold flex-shrink-0 ${woStepColors[wo.state] || 'bg-gray-100 text-gray-400'}`}>
+                        {idx + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[var(--fs-md)] font-bold text-gray-900">{wo.name}</div>
+                        <div className="text-[var(--fs-xs)] text-gray-400 font-semibold flex items-center gap-2">
+                          <span>{wo.workcenter_id[1]}</span>
+                          {wo.duration > 0 && (
+                            <span className={`font-semibold ${wo.state === 'done' ? 'text-green-600' : 'text-green-700'}`}>{Math.floor(wo.duration)}m</span>
+                          )}
+                          {wo.duration_expected > 0 && <span>/ {Math.round(wo.duration_expected)}m</span>}
+                        </div>
+                      </div>
+                      <span className={`text-[var(--fs-xs)] px-2.5 py-1 rounded-md font-semibold flex-shrink-0 ${woStateColors[wo.state] || 'bg-gray-100 text-gray-500'}`}>
+                        {woStateLabels[wo.state] || wo.state}
+                      </span>
+                      {mo?.can_edit_components && (
+                        <span
+                          role="button"
+                          aria-label="Edit step instructions"
+                          onClick={(e) => { e.stopPropagation(); setEditingStep({ id: wo.id, name: wo.name, idx: idx + 1, note: wo.operation_note || '' }); }}
+                          className="ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-orange-50 hover:text-orange-600 active:scale-95"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                        </span>
+                      )}
+                    </div>
+                    <div className="px-4 py-3">
+                      {hasNote ? (
+                        <div
+                          className="text-[var(--fs-sm)] text-gray-700 leading-relaxed prose prose-sm max-w-none
+                            [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1
+                            [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1
+                            [&_li]:my-0.5
+                            [&_p]:my-1
+                            [&_strong]:font-bold
+                            [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-2 [&_h1]:mb-1
+                            [&_h2]:text-base [&_h2]:font-bold [&_h2]:mt-2 [&_h2]:mb-1
+                            [&_h3]:text-sm [&_h3]:font-bold [&_h3]:mt-1 [&_h3]:mb-0.5"
+                          dangerouslySetInnerHTML={{ __html: wo.operation_note }}
+                        />
+                      ) : (
+                        <p className="text-[var(--fs-sm)] text-gray-300 italic">No instructions</p>
+                      )}
+                    </div>
+                  </button>
+                );
+              }) : (
+                <div className="text-center py-6 text-gray-400 text-[var(--fs-sm)]">No steps for this order</div>
+              )}
+            </div>
+          </div>
+
+          {produceError && (
+            <div className="px-4 pb-3">
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2 text-red-700 text-[var(--fs-sm)]">{produceError}</div>
+            </div>
+          )}
+
+          {mo?.can_save_version && (
+            <div className="px-4 pb-3">
+              <button
+                onClick={() => setSaveVersionOpen(true)}
+                className="w-full py-3 rounded-xl bg-white border border-orange-300 text-orange-600 font-semibold text-[var(--fs-sm)] active:bg-orange-50 flex items-center justify-center gap-2"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                  <polyline points="17 21 17 13 7 13 7 21"/>
+                  <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                Save as new version
+              </button>
+            </div>
+          )}
+
+          {isDraft && (
+            <div className="px-4 pb-6">
+              <div className="flex gap-2">
+                <button onClick={() => setShowCancelConfirm(true)} disabled={cancelLoading}
+                  className="py-4 px-6 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[var(--fs-sm)] active:bg-red-50 disabled:opacity-50">
+                  {cancelLoading ? '...' : 'Cancel'}
+                </button>
+                <button onClick={handleConfirm} disabled={confirmLoading}
+                  className="flex-1 py-4 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-600/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+                  {confirmLoading ? 'Confirming...' : 'Confirm order'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Confirmed but not ready to produce — show cancel button */}
+          {!isDraft && !isDone && !isCancelled && !showProduce && (
+            <div className="px-4 pb-6">
+              <button onClick={() => setShowCancelConfirm(true)} disabled={cancelLoading}
+                className="w-full py-4 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[var(--fs-sm)] active:bg-red-50 disabled:opacity-50">
+                {cancelLoading ? 'Cancelling...' : 'Cancel'}
+              </button>
+            </div>
+          )}
+
+          {showProduce && (
+            <div className="px-4 pb-6">
+              <div className="flex flex-col gap-2">
+                {/* Package & Label — partial produce with lot tracking */}
+                {onPackage && (
+                  <button onClick={onPackage}
+                    className="w-full py-4 rounded-xl bg-[#2563EB] text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-blue-600/30 active:scale-[0.975] transition-transform flex items-center justify-center gap-2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0022 16z"/>
+                      <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                      <line x1="12" y1="22.08" x2="12" y2="12"/>
+                    </svg>
+                    Package &amp; Label
+                  </button>
+                )}
+                <div className="flex gap-2">
+                  {canCancel && (
+                    <button onClick={() => setShowCancelConfirm(true)} disabled={cancelLoading}
+                      className="py-4 px-6 rounded-xl bg-white border border-red-200 text-red-500 font-bold text-[var(--fs-sm)] active:bg-red-50 disabled:opacity-50">
+                      {cancelLoading ? '...' : 'Cancel'}
+                    </button>
+                  )}
+                  <button onClick={handleProduce} disabled={producing}
+                    className="flex-1 py-4 rounded-xl bg-green-500 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-green-500/30 active:scale-[0.975] transition-transform disabled:opacity-50">
+                    {producing ? 'Finishing...' : isToClose ? 'Close order' : 'Produce & close'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isDone && (
+            <div className="px-4 pb-6">
+              <div className="flex flex-col gap-2">
+                <div className="w-full py-4 rounded-xl bg-green-50 border border-green-200 text-green-700 font-bold text-[var(--fs-md)] text-center">Order completed</div>
+                {onPackage && (
+                  <button onClick={onPackage}
+                    className="w-full py-3 rounded-xl bg-white border border-blue-200 text-blue-600 font-bold text-[var(--fs-sm)] active:bg-blue-50 flex items-center justify-center gap-2">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 6 2 18 2 18 9"/>
+                      <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+                      <rect x="6" y="14" width="12" height="8"/>
+                    </svg>
+                    Reprint Labels
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isCancelled && (
+            <div className="px-4 pb-6">
+              <div className="w-full py-4 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold text-[var(--fs-md)] text-center">Order cancelled</div>
+            </div>
+          )}
+        </>
+      )}
+
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowCancelConfirm(false)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative w-full max-w-lg bg-white rounded-t-2xl px-6 pt-6 pb-24" onClick={(e) => e.stopPropagation()} style={{animation: 'slideUp .25s ease-out'}}>
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-5" />
+            <div className="text-center mb-6">
+              <h3 className="text-lg font-bold text-gray-900">Cancel this order?</h3>
+              <p className="text-sm text-gray-500 mt-2">
+                This will cancel <strong>{mo.product_id[1]}</strong> ({mo.name}).
+                This action cannot be easily undone.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShowCancelConfirm(false)} className="flex-1 py-3.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-[var(--fs-sm)] active:bg-gray-50">Keep order</button>
+              <button onClick={handleCancel} className="flex-1 py-3.5 rounded-xl bg-red-500 text-white font-bold text-[var(--fs-sm)] shadow-lg shadow-red-500/30 active:scale-[0.975] transition-transform">Yes, cancel it</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }`}</style>
+
+      {editingStep && (
+        <EditStepNoteSheet
+          moId={moId}
+          woId={editingStep.id}
+          stepNumber={editingStep.idx}
+          stepName={editingStep.name}
+          initialText={editingStep.note}
+          open={!!editingStep}
+          onClose={() => setEditingStep(null)}
+          onSaved={fetchDetail}
+        />
+      )}
+
+      <SaveAsVersionModal
+        moId={moId}
+        open={saveVersionOpen}
+        productName={mo?.product_id?.[1] || ''}
+        sourceVersionLabel={mo?.bom_version_label || 'v.1'}
+        onClose={() => setSaveVersionOpen(false)}
+        onSaved={(res) => setVersionToast(res)}
+      />
+
+      {versionToast && (
+        <div className="fixed bottom-20 left-1/2 z-[110] -translate-x-1/2 rounded-full bg-gray-900 px-5 py-3 text-sm text-white shadow-lg">
+          Saved as <span className="font-mono font-semibold">{versionToast.version_label}</span>
+        </div>
+      )}
+    </div>
+  );
+}

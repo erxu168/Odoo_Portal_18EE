@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_krawings_task_manager_root"
+              name="Task Manager"
+              sequence="80"/>
+
+    <menuitem id="menu_krawings_task_list"
+              name="Daily Task Lists"
+              parent="menu_krawings_task_manager_root"
+              action="action_krawings_task_list"
+              sequence="10"/>
+
+    <menuitem id="menu_krawings_task_template"
+              name="Templates"
+              parent="menu_krawings_task_manager_root"
+              action="action_krawings_task_template"
+              sequence="20"/>
+</odoo>

@@ -1,0 +1,111 @@
+'use client';
+
+import { useKds } from '@/lib/kds/state';
+import { lookupSource } from '@/types/kds';
+import type { TaskGroup } from '@/types/kds';
+import Timer from './Timer';
+import SourceBadge from './SourceBadge';
+import TakeawayBag from './TakeawayBag';
+import { timerTier, getTableRemaining } from '@/lib/kds/priority';
+import { isAllergenOrAdditiveNote } from '@/lib/kds/notes';
+
+interface TaskCardProps {
+  task: TaskGroup;
+  isPriority: boolean;
+  mostUrgentId: number | null;
+}
+
+export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardProps) {
+  const { toggleItem, orders, settings, productConfig } = useKds();
+  const pct = task.totalQty > 0 ? Math.round((task.servedQty / task.totalQty) * 100) : 0;
+  const r = 14;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  const srcInfo = lookupSource(task.name, productConfig);
+
+  return (
+    <div
+      className={`kds-task-card ${isPriority ? 'is-priority' : ''} ${task.allDone ? 'all-served' : ''}`}
+      style={{ borderTop: `3px solid ${srcInfo?.color || '#64748b'}` }}
+    >
+      {isPriority && <div className="kds-priority-banner">NEXT</div>}
+
+      <div className="kds-task-header">
+        <div className="kds-task-dish">
+          <div>
+            <span className="kds-task-qty">
+              {task.remainQty}<span className="kds-task-qty-unit">x</span>
+            </span>
+          </div>
+          <div>
+            <div className="kds-task-name">{task.name}</div>
+            <SourceBadge dishName={task.name} />
+            {task.entries.length === 1 && <span className="kds-task-solo-tag">SINGLE</span>}
+          </div>
+        </div>
+
+        <svg className="kds-task-ring" width="42" height="42" viewBox="0 0 38 38">
+          <circle cx="19" cy="19" r={r} fill="none" stroke="#1e293b" strokeWidth="3" />
+          <circle
+            cx="19" cy="19" r={r} fill="none"
+            stroke={task.allDone ? 'var(--ready)' : '#3b82f6'}
+            strokeWidth="3" strokeDasharray={circ} strokeDashoffset={offset}
+            strokeLinecap="round" transform="rotate(-90 19 19)"
+          />
+          <text x="19" y="22" textAnchor="middle" fontSize="11" fontWeight="800" fill="var(--text)">
+            {task.servedQty}/{task.totalQty}
+          </text>
+        </svg>
+      </div>
+
+      <div className="kds-task-divider" />
+
+      <div className="kds-serve-queue">
+        <div className="kds-serve-label">Orders</div>
+        {task.entries.map((entry) => {
+          // Highlight EVERY row of the priority order until that order is fully
+          // done. mostUrgentId only advances once the order clears, so the
+          // whole order stays lit while the cook works through it — the
+          // emphasis doesn't hop dish-to-dish as items get ticked.
+          const isPriorityOrder = entry.ticketId === mostUrgentId;
+          const otherItems = isPriorityOrder && !entry.done
+            ? getTableRemaining(orders, entry.ticketId).filter(i => i.name !== task.name)
+            : [];
+          const isTa = entry.type === 'Takeaway';
+          const tier = timerTier(entry.waitMin, entry.type, settings);
+
+          return (
+            <div key={entry.itemId}>
+              <div
+                className={`kds-serve-item ${entry.done ? 'served' : ''} ${isPriorityOrder ? 'is-next' : ''}`}
+                onClick={() => toggleItem(entry.itemId, entry.ticketId)}
+              >
+                <div className={`kds-s-check ${entry.done ? 'checked' : ''}`}>
+                  {entry.done && (
+                    <svg viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="3" width="13" height="13">
+                      <path d="M3 8.5l3.5 3.5 6.5-7" />
+                    </svg>
+                  )}
+                </div>
+                <span className="kds-s-table">{entry.table}</span>
+                <span className="kds-s-qty">{entry.qty}x</span>
+                {isTa && <TakeawayBag size={16} />}
+                {entry.note && !isAllergenOrAdditiveNote(entry.note) && <span className="kds-s-note">{entry.note}</span>}
+                <Timer minutes={entry.waitMin} tier={tier} size="sm" />
+              </div>
+              {isPriorityOrder && !entry.done && otherItems.length > 0 && (
+                <div className="kds-also-needs">
+                  {'\u26A0'} {entry.table} also needs: {otherItems.map(i => `${i.qty}x ${i.name}`).join(', ')}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="kds-task-progress">
+        <div className="kds-task-progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}

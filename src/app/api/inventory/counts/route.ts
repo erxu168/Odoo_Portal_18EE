@@ -1,0 +1,110 @@
+export const dynamic = 'force-dynamic';
+/**
+ * /api/inventory/counts
+ *
+ * GET  — get entries for a session
+ * POST — upsert a count entry (save from numpad/stepper)
+ * DELETE — remove a count entry
+ */
+import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
+import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, setCountPhotos, getCountPhotosMap } from '@/lib/inventory-db';
+import { getOdoo } from '@/lib/odoo';
+import { resolveAttribution } from '@/lib/shift-attribution';
+import { crateTotal } from '@/lib/crate-units';
+
+
+export async function GET(request: Request) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { searchParams } = new URL(request.url);
+  const sessionId = searchParams.get('session_id');
+  if (!sessionId) return NextResponse.json({ error: 'session_id required' }, { status: 400 });
+
+  const entries = getSessionEntries(parseInt(sessionId));
+  const photoMap = getCountPhotosMap('count_entries', entries.map((e: any) => e.id));
+  const hydrated = entries.map((e: any) => ({ ...e, photos: photoMap[e.id] || [] }));
+
+  // Fetch system quantities from Odoo stock.quant for this session's location
+  const systemQtys: Record<number, number> = {};
+  try {
+    const session = getSession(parseInt(sessionId));
+    if (session) {
+      const odoo = getOdoo();
+      const quants = await odoo.searchRead('stock.quant',
+        [['location_id', '=', session.location_id], ['quantity', '>', 0]],
+        ['product_id', 'quantity'],
+        { limit: 1000 },
+      );
+      for (const q of quants) {
+        if (q.product_id) {
+          const pid = Array.isArray(q.product_id) ? q.product_id[0] : q.product_id;
+          systemQtys[pid] = (systemQtys[pid] || 0) + q.quantity;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Failed to fetch system quantities from Odoo:', e);
+  }
+
+  return NextResponse.json({ entries: hydrated, system_qtys: systemQtys });
+}
+
+export async function POST(request: Request) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  initInventoryTables();
+  const body = await request.json();
+  const { session_id, product_id, counted_qty, crate_qty, loose_qty, units_per_crate, system_qty, uom, notes, photos } = body;
+
+  // When a crate split is provided, the base total is computed HERE (server is
+  // the source of truth) so the value written to Odoo can never drift. Odoo
+  // still only ever receives the base-unit total via counted_qty.
+  const hasSplit = units_per_crate != null && Number(units_per_crate) > 0
+    && (crate_qty !== undefined || loose_qty !== undefined);
+  const baseQty = hasSplit
+    ? crateTotal(Number(crate_qty) || 0, Number(loose_qty) || 0, Number(units_per_crate))
+    : counted_qty;
+
+  if (!session_id || !product_id || baseQty === undefined || baseQty === null) {
+    return NextResponse.json({ error: 'session_id, product_id, counted_qty required' }, { status: 400 });
+  }
+
+  upsertCountEntry({
+    session_id, product_id, counted_qty: baseQty,
+    system_qty: system_qty ?? null,
+    uom: uom || 'Units',
+    notes,
+    counted_by: resolveAttribution(user).userId,
+    // undefined (not null) when no split → upsertCountEntry preserves any
+    // existing crate split (e.g. a later photo-only save of a crate product).
+    crate_qty: hasSplit ? (Number(crate_qty) || 0) : undefined,
+    loose_qty: hasSplit ? (Number(loose_qty) || 0) : undefined,
+    units_per_crate: hasSplit ? Number(units_per_crate) : undefined,
+  });
+
+  if (Array.isArray(photos)) {
+    const entries = getSessionEntries(session_id);
+    const entry = entries.find((e: any) => e.product_id === product_id);
+    if (entry) setCountPhotos('count_entries', entry.id, photos);
+  }
+
+  return NextResponse.json({ message: 'Count saved' });
+}
+
+export async function DELETE(request: Request) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { searchParams } = new URL(request.url);
+  const sessionId = searchParams.get('session_id');
+  const productId = searchParams.get('product_id');
+  if (!sessionId || !productId) {
+    return NextResponse.json({ error: 'session_id and product_id required' }, { status: 400 });
+  }
+
+  deleteCountEntry(parseInt(sessionId), parseInt(productId));
+  return NextResponse.json({ message: 'Count removed' });
+}

@@ -1,0 +1,783 @@
+/**
+ * Inventory Module — SQLite Schema & CRUD
+ *
+ * Counting templates, sessions, and entries live here.
+ * Odoo remains source of truth for products, locations, and stock.quant.
+ * On approval, the API route writes inventory_quantity to Odoo.
+ */
+import { getDb } from './db';
+import { berlinToday, berlinWeekday } from './berlin-date';
+import type {
+  CountingTemplate, CountingSession, CountEntry, QuickCount,
+  Frequency, AssignType, SessionStatus,
+} from '@/types/inventory';
+
+// ===
+// SCHEMA INIT
+// ===
+
+export function initInventoryTables() {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS counting_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      frequency TEXT NOT NULL DEFAULT 'adhoc',
+      schedule_days TEXT NOT NULL DEFAULT '[]',
+      location_id INTEGER NOT NULL,
+      category_ids TEXT NOT NULL DEFAULT '[]',
+      product_ids TEXT NOT NULL DEFAULT '[]',
+      assign_type TEXT,
+      assign_id INTEGER,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS counting_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id INTEGER NOT NULL REFERENCES counting_templates(id),
+      scheduled_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      location_id INTEGER NOT NULL,
+      assigned_user_id INTEGER,
+      submitted_at TEXT,
+      reviewed_by INTEGER,
+      reviewed_at TEXT,
+      review_note TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS count_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES counting_sessions(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL,
+      counted_qty REAL NOT NULL,
+      system_qty REAL,
+      diff REAL,
+      uom TEXT NOT NULL DEFAULT 'Units',
+      notes TEXT,
+      counted_by INTEGER NOT NULL,
+      counted_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS quick_counts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL,
+      location_id INTEGER NOT NULL,
+      counted_qty REAL NOT NULL,
+      uom TEXT NOT NULL DEFAULT 'Units',
+      counted_by INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      submitted_at TEXT NOT NULL,
+      reviewed_by INTEGER,
+      reviewed_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_template ON counting_sessions(template_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_status ON counting_sessions(status);
+    CREATE INDEX IF NOT EXISTS idx_sessions_date ON counting_sessions(scheduled_date);
+    CREATE INDEX IF NOT EXISTS idx_entries_session ON count_entries(session_id);
+    CREATE INDEX IF NOT EXISTS idx_entries_product ON count_entries(product_id);
+    CREATE INDEX IF NOT EXISTS idx_quick_status ON quick_counts(status);
+    CREATE INDEX IF NOT EXISTS idx_quick_product ON quick_counts(product_id);
+    CREATE INDEX IF NOT EXISTS idx_quick_counted_by ON quick_counts(counted_by);
+
+    CREATE TABLE IF NOT EXISTS product_drafts (
+      odoo_product_id INTEGER PRIMARY KEY,
+      barcode TEXT NOT NULL,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS product_flags (
+      odoo_product_id INTEGER PRIMARY KEY,
+      requires_photo  INTEGER NOT NULL DEFAULT 0,
+      updated_by      INTEGER,
+      updated_at      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS count_photos (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_table TEXT NOT NULL,
+      source_id    INTEGER NOT NULL,
+      photo        TEXT NOT NULL,
+      created_at   TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_count_photos_source ON count_photos(source_table, source_id);
+  `);
+  migrateInventorySchema(db);
+}
+
+// ===
+// PRODUCT DRAFTS (scan-to-create tracking)
+// ===
+// A product is considered a "pending draft awaiting manager review" only if
+// it was created via the portal's scan-to-count flow AND is still inactive in
+// Odoo. Without this table, barcode-lookup would mistake any archived-with-
+// barcode product for a draft.
+
+export function registerDraftProduct(odooProductId: number, barcode: string, createdBy: number) {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR IGNORE INTO product_drafts (odoo_product_id, barcode, created_by, created_at)
+    VALUES (?, ?, ?, ?)
+  `).run(odooProductId, barcode, createdBy, now());
+}
+
+export function isDraftProduct(odooProductId: number): boolean {
+  const db = getDb();
+  const row = db.prepare(`SELECT 1 FROM product_drafts WHERE odoo_product_id = ?`).get(odooProductId);
+  return !!row;
+}
+
+function now(): string {
+  return new Date().toISOString();
+}
+
+function todayStr(): string {
+  // Berlin day boundary so it matches restaurant local time (see berlin-date.ts)
+  return berlinToday();
+}
+
+// ===
+// SCHEMA MIGRATIONS
+// ===
+
+function migrateInventorySchema(db: ReturnType<typeof getDb>) {
+  // Sessions migrations
+  const sessCols = db.prepare("PRAGMA table_info('counting_sessions')").all() as { name: string }[];
+  const sessColNames = sessCols.map(c => c.name);
+  if (!sessColNames.includes('proof_photo')) {
+    db.exec("ALTER TABLE counting_sessions ADD COLUMN proof_photo TEXT");
+  }
+
+  // Template migrations
+  const tmplCols = db.prepare("PRAGMA table_info('counting_templates')").all() as { name: string }[];
+  const tmplColNames = tmplCols.map(c => c.name);
+  if (!tmplColNames.includes('schedule_days')) {
+    db.exec("ALTER TABLE counting_templates ADD COLUMN schedule_days TEXT NOT NULL DEFAULT '[]'");
+  }
+
+  // Crate/multi-UoM migrations — portal-side crate size + count-line split.
+  // All additive & nullable: existing rows keep working (missing = no crate).
+  const pfCols = db.prepare("PRAGMA table_info('product_flags')").all() as { name: string }[];
+  if (!pfCols.some(c => c.name === 'units_per_crate')) {
+    db.exec("ALTER TABLE product_flags ADD COLUMN units_per_crate REAL");
+  }
+  if (!pfCols.some(c => c.name === 'pack_label')) {
+    // The word staff count in: 'crate', 'bunch', 'piece', 'tray'… (null = 'pack').
+    db.exec("ALTER TABLE product_flags ADD COLUMN pack_label TEXT");
+  }
+  for (const table of ['count_entries', 'quick_counts']) {
+    const cols = (db.prepare(`PRAGMA table_info('${table}')`).all() as { name: string }[]).map(c => c.name);
+    if (!cols.includes('crate_qty')) db.exec(`ALTER TABLE ${table} ADD COLUMN crate_qty REAL`);
+    if (!cols.includes('loose_qty')) db.exec(`ALTER TABLE ${table} ADD COLUMN loose_qty REAL`);
+    if (!cols.includes('units_per_crate')) db.exec(`ALTER TABLE ${table} ADD COLUMN units_per_crate REAL`);
+  }
+}
+
+// ===
+// SCHEDULE HELPERS
+// ===
+
+/**
+ * Check if a template should auto-generate a session for today.
+ * - daily: always yes
+ * - weekly: only if today's weekday is in schedule_days
+ * - monthly: not yet implemented (returns false)
+ * - adhoc: never auto-generate
+ */
+function shouldGenerateToday(tmpl: CountingTemplate): boolean {
+  if (tmpl.frequency === 'daily') return true;
+  if (tmpl.frequency === 'weekly') {
+    const dayOfWeek = berlinWeekday(); // Berlin weekday, consistent with todayStr()
+    const days = tmpl.schedule_days || [];
+    // If no days configured, don't generate (misconfigured template)
+    if (days.length === 0) return false;
+    return days.includes(dayOfWeek);
+  }
+  // adhoc + monthly: no auto-generation
+  return false;
+}
+
+// ===
+// TEMPLATES CRUD
+// ===
+
+export function createTemplate(data: {
+  name: string;
+  frequency: Frequency;
+  schedule_days?: number[];
+  location_id: number;
+  category_ids: number[];
+  product_ids?: number[];
+  assign_type: AssignType;
+  assign_id: number | null;
+  created_by: number;
+}): number {
+  const db = getDb();
+  const ts = now();
+  const r = db.prepare(`
+    INSERT INTO counting_templates (name, frequency, schedule_days, location_id, category_ids, product_ids, assign_type, assign_id, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    data.name, data.frequency, JSON.stringify(data.schedule_days || []),
+    data.location_id,
+    JSON.stringify(data.category_ids), JSON.stringify(data.product_ids || []),
+    data.assign_type, data.assign_id, data.created_by, ts, ts
+  );
+  return r.lastInsertRowid as number;
+}
+
+export function updateTemplate(id: number, data: Partial<{
+  name: string;
+  frequency: Frequency;
+  schedule_days: number[];
+  location_id: number;
+  category_ids: number[];
+  product_ids: number[];
+  assign_type: AssignType;
+  assign_id: number | null;
+  active: boolean;
+}>) {
+  const db = getDb();
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (data.name !== undefined) { sets.push('name = ?'); vals.push(data.name); }
+  if (data.frequency !== undefined) { sets.push('frequency = ?'); vals.push(data.frequency); }
+  if (data.schedule_days !== undefined) { sets.push('schedule_days = ?'); vals.push(JSON.stringify(data.schedule_days)); }
+  if (data.location_id !== undefined) { sets.push('location_id = ?'); vals.push(data.location_id); }
+  if (data.category_ids !== undefined) { sets.push('category_ids = ?'); vals.push(JSON.stringify(data.category_ids)); }
+  if (data.product_ids !== undefined) { sets.push('product_ids = ?'); vals.push(JSON.stringify(data.product_ids)); }
+  if (data.assign_type !== undefined) { sets.push('assign_type = ?'); vals.push(data.assign_type); }
+  if (data.assign_id !== undefined) { sets.push('assign_id = ?'); vals.push(data.assign_id); }
+  if (data.active !== undefined) { sets.push('active = ?'); vals.push(data.active ? 1 : 0); }
+  if (sets.length === 0) return;
+  sets.push('updated_at = ?'); vals.push(now());
+  vals.push(id);
+  db.prepare(`UPDATE counting_templates SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+}
+
+export function getTemplate(id: number): CountingTemplate | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT t.*, u.name as assign_label
+    FROM counting_templates t
+    LEFT JOIN portal_users u ON u.id = t.assign_id AND t.assign_type = 'person'
+    WHERE t.id = ?
+  `).get(id) as Record<string, unknown> | undefined;
+  return row ? parseTemplate(row) : null;
+}
+
+export function listTemplates(filters?: { location_id?: number; active?: boolean }): CountingTemplate[] {
+  const db = getDb();
+  const where: string[] = [];
+  const vals: unknown[] = [];
+  if (filters?.location_id) { where.push('t.location_id = ?'); vals.push(filters.location_id); }
+  if (filters?.active !== undefined) { where.push('t.active = ?'); vals.push(filters.active ? 1 : 0); }
+  const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const rows = db.prepare(`
+    SELECT t.*, u.name as assign_label
+    FROM counting_templates t
+    LEFT JOIN portal_users u ON u.id = t.assign_id AND t.assign_type = 'person'
+    ${clause}
+    ORDER BY t.updated_at DESC
+  `).all(...vals) as Record<string, unknown>[];
+  return rows.map(parseTemplate);
+}
+
+function parseTemplate(row: Record<string, unknown>): CountingTemplate {
+  return {
+    ...(row as unknown as CountingTemplate),
+    category_ids: JSON.parse((row.category_ids as string) || '[]'),
+    product_ids: JSON.parse((row.product_ids as string) || '[]'),
+    schedule_days: JSON.parse((row.schedule_days as string) || '[]'),
+    active: !!row.active,
+  };
+}
+
+// ===
+// SESSIONS CRUD
+// ===
+
+export function createSession(data: {
+  template_id: number;
+  scheduled_date: string;
+  location_id: number;
+  assigned_user_id?: number | null;
+}): number {
+  const db = getDb();
+  const r = db.prepare(`
+    INSERT INTO counting_sessions (template_id, scheduled_date, location_id, assigned_user_id, status, created_at)
+    VALUES (?, ?, ?, ?, 'pending', ?)
+  `).run(data.template_id, data.scheduled_date, data.location_id, data.assigned_user_id || null, now());
+  return r.lastInsertRowid as number;
+}
+
+export function listSessions(filters?: {
+  status?: SessionStatus;
+  template_id?: number;
+  location_id?: number;
+  assigned_user_id?: number;
+  scheduled_date?: string;
+}): CountingSession[] {
+  const db = getDb();
+  const where: string[] = [];
+  const vals: unknown[] = [];
+  if (filters?.status) { where.push('s.status = ?'); vals.push(filters.status); }
+  if (filters?.template_id) { where.push('s.template_id = ?'); vals.push(filters.template_id); }
+  if (filters?.location_id) { where.push('s.location_id = ?'); vals.push(filters.location_id); }
+  if (filters?.assigned_user_id) { where.push('s.assigned_user_id = ?'); vals.push(filters.assigned_user_id); }
+  if (filters?.scheduled_date) { where.push('s.scheduled_date = ?'); vals.push(filters.scheduled_date); }
+  const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  return db.prepare(`
+    SELECT s.*, t.name as template_name, t.frequency as template_frequency,
+           t.product_ids as template_product_ids, t.category_ids as template_category_ids,
+           u.name as assigned_user_name
+    FROM counting_sessions s
+    LEFT JOIN counting_templates t ON t.id = s.template_id
+    LEFT JOIN portal_users u ON u.id = s.assigned_user_id
+    ${clause}
+    ORDER BY s.scheduled_date DESC
+  `).all(...vals) as CountingSession[];
+}
+
+export function getSession(id: number): CountingSession | null {
+  const db = getDb();
+  return db.prepare(`
+    SELECT s.*, t.name as template_name, t.frequency as template_frequency,
+           t.product_ids as template_product_ids, t.category_ids as template_category_ids,
+           u.name as assigned_user_name
+    FROM counting_sessions s
+    LEFT JOIN counting_templates t ON t.id = s.template_id
+    LEFT JOIN portal_users u ON u.id = s.assigned_user_id
+    WHERE s.id = ?
+  `).get(id) as CountingSession | null;
+}
+
+export function saveSessionProofPhoto(id: number, photo: string) {
+  const db = getDb();
+  db.prepare('UPDATE counting_sessions SET proof_photo = ? WHERE id = ?').run(photo, id);
+}
+
+export function updateSessionStatus(id: number, status: SessionStatus, extra?: {
+  reviewed_by?: number;
+  review_note?: string;
+}) {
+  const db = getDb();
+  const ts = now();
+  if (status === 'submitted') {
+    db.prepare('UPDATE counting_sessions SET status = ?, submitted_at = ? WHERE id = ?').run(status, ts, id);
+  } else if (status === 'approved' || status === 'rejected') {
+    db.prepare('UPDATE counting_sessions SET status = ?, reviewed_by = ?, reviewed_at = ?, review_note = ? WHERE id = ?')
+      .run(status, extra?.reviewed_by || null, ts, extra?.review_note || null, id);
+  } else {
+    db.prepare('UPDATE counting_sessions SET status = ? WHERE id = ?').run(status, id);
+  }
+}
+
+/**
+ * Generate counting sessions for today from all active templates.
+ * Respects frequency + schedule_days:
+ * - daily: generates every day
+ * - weekly: only on days listed in schedule_days
+ * - adhoc/monthly: skipped (adhoc = manual, monthly = not yet implemented)
+ * Skips templates that already have a session for today.
+ */
+export function generateTodaySessions(): { created: number; skipped: number } {
+  const db = getDb();
+  const today = todayStr();
+
+  const templates = listTemplates({ active: true });
+  let created = 0;
+  let skipped = 0;
+
+  for (const tmpl of templates) {
+    // Check if this template should generate today based on frequency + schedule
+    if (!shouldGenerateToday(tmpl)) {
+      skipped++;
+      continue;
+    }
+
+    const existing = db.prepare(
+      'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+    ).get(tmpl.id, today);
+
+    if (existing) {
+      skipped++;
+      continue;
+    }
+
+    let assignedUserId: number | null = null;
+    if (tmpl.assign_type === 'person' && tmpl.assign_id) {
+      assignedUserId = tmpl.assign_id;
+    }
+
+    createSession({
+      template_id: tmpl.id,
+      scheduled_date: today,
+      location_id: tmpl.location_id,
+      assigned_user_id: assignedUserId,
+    });
+    created++;
+  }
+
+  return { created, skipped };
+}
+
+/**
+ * Generate a single session for today from a specific template.
+ * Respects frequency + schedule_days.
+ * Returns the session ID, or null if not scheduled today or already exists.
+ */
+export function generateSessionForTemplate(templateId: number): number | null {
+  const db = getDb();
+  const today = todayStr();
+
+  const tmpl = getTemplate(templateId);
+  if (!tmpl || !tmpl.active) return null;
+
+  // Check if this template should generate today
+  if (!shouldGenerateToday(tmpl)) return null;
+
+  const existing = db.prepare(
+    'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+  ).get(templateId, today) as { id: number } | undefined;
+
+  if (existing) return existing.id;
+
+  let assignedUserId: number | null = null;
+  if (tmpl.assign_type === 'person' && tmpl.assign_id) {
+    assignedUserId = tmpl.assign_id;
+  }
+
+  return createSession({
+    template_id: templateId,
+    scheduled_date: today,
+    location_id: tmpl.location_id,
+    assigned_user_id: assignedUserId,
+  });
+}
+
+// ===
+// COUNT ENTRIES
+// ===
+
+export function upsertCountEntry(data: {
+  session_id: number;
+  product_id: number;
+  counted_qty: number;               // always the base-unit total (bottles)
+  system_qty?: number | null;
+  uom: string;
+  notes?: string;
+  counted_by: number;
+  crate_qty?: number | null;         // audit trail: crates as entered
+  loose_qty?: number | null;         // audit trail: loose base units as entered
+  units_per_crate?: number | null;   // snapshot of the crate size at count time
+}) {
+  const db = getDb();
+  const existing = db.prepare(
+    'SELECT id FROM count_entries WHERE session_id = ? AND product_id = ?'
+  ).get(data.session_id, data.product_id) as { id: number } | undefined;
+
+  const diff = data.system_qty != null ? data.counted_qty - data.system_qty : null;
+
+  // Preserve an existing crate/loose split when a save doesn't carry crate
+  // fields (e.g. a photo-only re-save of a crate product). Passing any crate
+  // field (even null) is treated as an explicit set/clear.
+  const hasCrateData = data.crate_qty !== undefined || data.loose_qty !== undefined || data.units_per_crate !== undefined;
+  let crateQty: number | null;
+  let looseQty: number | null;
+  let upc: number | null;
+  if (hasCrateData) {
+    crateQty = data.crate_qty ?? null;
+    looseQty = data.loose_qty ?? null;
+    upc = data.units_per_crate ?? null;
+  } else if (existing) {
+    const prev = db.prepare('SELECT crate_qty, loose_qty, units_per_crate FROM count_entries WHERE id = ?').get(existing.id) as
+      { crate_qty: number | null; loose_qty: number | null; units_per_crate: number | null } | undefined;
+    crateQty = prev?.crate_qty ?? null;
+    looseQty = prev?.loose_qty ?? null;
+    upc = prev?.units_per_crate ?? null;
+  } else {
+    crateQty = null;
+    looseQty = null;
+    upc = null;
+  }
+
+  if (existing) {
+    db.prepare(`
+      UPDATE count_entries SET counted_qty = ?, system_qty = ?, diff = ?, uom = ?, notes = ?,
+        crate_qty = ?, loose_qty = ?, units_per_crate = ?, counted_at = ?
+      WHERE id = ?
+    `).run(data.counted_qty, data.system_qty ?? null, diff, data.uom, data.notes || null,
+      crateQty, looseQty, upc, now(), existing.id);
+  } else {
+    db.prepare(`
+      INSERT INTO count_entries (session_id, product_id, counted_qty, system_qty, diff, uom, notes,
+        crate_qty, loose_qty, units_per_crate, counted_by, counted_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(data.session_id, data.product_id, data.counted_qty, data.system_qty ?? null, diff, data.uom, data.notes || null,
+      crateQty, looseQty, upc, data.counted_by, now());
+  }
+}
+
+export function deleteCountEntry(session_id: number, product_id: number) {
+  const db = getDb();
+  // Find the entry ids first so we can delete their photos
+  const rows = db.prepare(
+    'SELECT id FROM count_entries WHERE session_id = ? AND product_id = ?'
+  ).all(session_id, product_id) as { id: number }[];
+  for (const r of rows) deleteCountPhotos('count_entries', r.id);
+  db.prepare('DELETE FROM count_entries WHERE session_id = ? AND product_id = ?')
+    .run(session_id, product_id);
+}
+
+export function getSessionEntries(session_id: number): CountEntry[] {
+  const db = getDb();
+  return db.prepare('SELECT * FROM count_entries WHERE session_id = ? ORDER BY counted_at DESC').all(session_id) as CountEntry[];
+}
+
+// ===
+// QUICK COUNTS
+// ===
+
+export function createQuickCount(data: {
+  product_id: number;
+  location_id: number;
+  counted_qty: number;               // always the base-unit total (bottles)
+  uom: string;
+  counted_by: number;
+  crate_qty?: number | null;
+  loose_qty?: number | null;
+  units_per_crate?: number | null;
+}): number {
+  const db = getDb();
+  const r = db.prepare(`
+    INSERT INTO quick_counts (product_id, location_id, counted_qty, uom, counted_by, status, submitted_at,
+      crate_qty, loose_qty, units_per_crate)
+    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+  `).run(data.product_id, data.location_id, data.counted_qty, data.uom, data.counted_by, now(),
+    data.crate_qty ?? null, data.loose_qty ?? null, data.units_per_crate ?? null);
+  return r.lastInsertRowid as number;
+}
+
+export function listQuickCounts(filters?: { status?: string; counted_by?: number }): QuickCount[] {
+  const db = getDb();
+  const where: string[] = [];
+  const vals: unknown[] = [];
+  if (filters?.status) { where.push('q.status = ?'); vals.push(filters.status); }
+  if (filters?.counted_by) { where.push('q.counted_by = ?'); vals.push(filters.counted_by); }
+  const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  return db.prepare(`
+    SELECT q.*, u.name as counted_by_name
+    FROM quick_counts q
+    LEFT JOIN portal_users u ON u.id = q.counted_by
+    ${clause}
+    ORDER BY q.submitted_at DESC
+  `).all(...vals) as QuickCount[];
+}
+
+export function approveQuickCount(id: number, reviewed_by: number) {
+  const db = getDb();
+  db.prepare('UPDATE quick_counts SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
+    .run('approved', reviewed_by, now(), id);
+}
+
+/**
+ * Reassign every count line (quick_counts + count_entries) that points to
+ * `fromProductId` so it points to `toProductId` instead. Used when a
+ * manager links a draft product to an existing product during review.
+ *
+ * Returns the total number of rows changed.
+ */
+export function reassignCountsForProduct(fromProductId: number, toProductId: number): number {
+  const db = getDb();
+  let changed = 0;
+  changed += db.prepare('UPDATE quick_counts SET product_id = ? WHERE product_id = ?')
+    .run(toProductId, fromProductId).changes;
+  changed += db.prepare('UPDATE count_entries SET product_id = ? WHERE product_id = ?')
+    .run(toProductId, fromProductId).changes;
+  return changed;
+}
+
+/**
+ * Delete every count line (quick_counts + count_entries) that points to
+ * `productId`. Used when a manager rejects a draft product during review.
+ *
+ * Returns the total number of rows deleted.
+ */
+export function deleteCountsForProduct(productId: number): number {
+  const db = getDb();
+
+  const quickRows = db.prepare(
+    'SELECT id FROM quick_counts WHERE product_id = ?'
+  ).all(productId) as { id: number }[];
+  for (const r of quickRows) deleteCountPhotos('quick_counts', r.id);
+
+  const entryRows = db.prepare(
+    'SELECT id FROM count_entries WHERE product_id = ?'
+  ).all(productId) as { id: number }[];
+  for (const r of entryRows) deleteCountPhotos('count_entries', r.id);
+
+  let deleted = 0;
+  deleted += db.prepare('DELETE FROM quick_counts WHERE product_id = ?').run(productId).changes;
+  deleted += db.prepare('DELETE FROM count_entries WHERE product_id = ?').run(productId).changes;
+  return deleted;
+}
+
+// ===
+// PRODUCT FLAGS (per-product counting requirements)
+// ===
+
+export interface ProductFlag {
+  odoo_product_id: number;
+  requires_photo: boolean;
+  units_per_crate: number | null;  // base units per counted pack/piece; null = count in base units
+  pack_label: string | null;       // what staff count in: 'crate' | 'bunch' | 'piece' | 'tray'… (null → 'pack')
+  updated_by: number | null;
+  updated_at: string | null;
+}
+
+export function getProductFlags(ids?: number[]): ProductFlag[] {
+  const db = getDb();
+  let rows: any[];
+  if (ids && ids.length > 0) {
+    const placeholders = ids.map(() => '?').join(',');
+    rows = db.prepare(
+      `SELECT * FROM product_flags WHERE odoo_product_id IN (${placeholders})`
+    ).all(...ids);
+  } else {
+    rows = db.prepare('SELECT * FROM product_flags').all();
+  }
+  return rows.map(r => ({
+    odoo_product_id: r.odoo_product_id,
+    requires_photo: !!r.requires_photo,
+    units_per_crate: r.units_per_crate != null ? Number(r.units_per_crate) : null,
+    pack_label: r.pack_label ?? null,
+    updated_by: r.updated_by,
+    updated_at: r.updated_at,
+  }));
+}
+
+export function setProductFlag(
+  productId: number,
+  requiresPhoto: boolean,
+  userId: number,
+) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO product_flags (odoo_product_id, requires_photo, updated_by, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(odoo_product_id) DO UPDATE SET
+      requires_photo = excluded.requires_photo,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(productId, requiresPhoto ? 1 : 0, userId, now());
+}
+
+/**
+ * Set (or clear) a product's crate size. Pass null to clear it — that product
+ * then falls back to counting in base units. Upsert leaves requires_photo
+ * untouched (defaults to 0 only when creating a brand-new row).
+ */
+export function setProductCrateSize(
+  productId: number,
+  unitsPerCrate: number | null,
+  userId: number,
+) {
+  const db = getDb();
+  const size = unitsPerCrate != null && unitsPerCrate > 0 ? unitsPerCrate : null;
+  db.prepare(`
+    INSERT INTO product_flags (odoo_product_id, units_per_crate, updated_by, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(odoo_product_id) DO UPDATE SET
+      units_per_crate = excluded.units_per_crate,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(productId, size, userId, now());
+}
+
+/**
+ * Set (or clear) the word staff count a product in ('crate' | 'bunch' |
+ * 'piece' | 'tray'…). Pass null/'' to clear. Leaves the size + photo flag
+ * untouched (defaults on a brand-new row only).
+ */
+export function setProductPackLabel(
+  productId: number,
+  packLabel: string | null,
+  userId: number,
+) {
+  const db = getDb();
+  const label = packLabel && packLabel.trim() ? packLabel.trim().toLowerCase() : null;
+  db.prepare(`
+    INSERT INTO product_flags (odoo_product_id, pack_label, updated_by, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(odoo_product_id) DO UPDATE SET
+      pack_label = excluded.pack_label,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(productId, label, userId, now());
+}
+
+// ===
+// COUNT PHOTOS (per-line photo proof)
+// ===
+
+export type PhotoSource = 'count_entries' | 'quick_counts';
+
+/**
+ * Replace the full set of photos for a given count line. Deletes any
+ * existing photos then inserts the provided set. Pass an empty array
+ * to clear photos for a line.
+ */
+export function setCountPhotos(source: PhotoSource, sourceId: number, photos: string[]) {
+  const db = getDb();
+  const ts = now();
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM count_photos WHERE source_table = ? AND source_id = ?')
+      .run(source, sourceId);
+    const insert = db.prepare(
+      'INSERT INTO count_photos (source_table, source_id, photo, created_at) VALUES (?, ?, ?, ?)'
+    );
+    for (const p of photos) insert.run(source, sourceId, p, ts);
+  });
+  tx();
+}
+
+/**
+ * Get all photos for a single count line.
+ */
+export function getCountPhotos(source: PhotoSource, sourceId: number): string[] {
+  const db = getDb();
+  return (db.prepare(
+    'SELECT photo FROM count_photos WHERE source_table = ? AND source_id = ? ORDER BY id'
+  ).all(source, sourceId) as { photo: string }[]).map(r => r.photo);
+}
+
+/**
+ * Bulk fetch: returns { sourceId → string[] } for the given line IDs.
+ */
+export function getCountPhotosMap(source: PhotoSource, sourceIds: number[]): Record<number, string[]> {
+  if (sourceIds.length === 0) return {};
+  const db = getDb();
+  const placeholders = sourceIds.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT source_id, photo FROM count_photos WHERE source_table = ? AND source_id IN (${placeholders}) ORDER BY id`
+  ).all(source, ...sourceIds) as { source_id: number; photo: string }[];
+  const map: Record<number, string[]> = {};
+  for (const r of rows) {
+    if (!map[r.source_id]) map[r.source_id] = [];
+    map[r.source_id].push(r.photo);
+  }
+  return map;
+}
+
+export function deleteCountPhotos(source: PhotoSource, sourceId: number) {
+  const db = getDb();
+  db.prepare('DELETE FROM count_photos WHERE source_table = ? AND source_id = ?')
+    .run(source, sourceId);
+}

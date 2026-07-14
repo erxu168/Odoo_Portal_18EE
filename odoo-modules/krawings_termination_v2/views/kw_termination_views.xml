@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="kw_termination_view_list" model="ir.ui.view">
+        <field name="name">kw.termination.list</field>
+        <field name="model">kw.termination</field>
+        <field name="arch" type="xml">
+            <list string="Terminations" default_order="letter_date desc">
+                <field name="employee_name"/>
+                <field name="company_id"/>
+                <field name="termination_type"/>
+                <field name="letter_date"/>
+                <field name="last_working_day"/>
+                <field name="delivery_method"/>
+                <field name="delivery_confirmed" widget="boolean"/>
+                <field name="state" widget="badge"
+                    decoration-success="state in ('signed', 'delivered')"
+                    decoration-warning="state == 'draft'"
+                    decoration-info="state == 'confirmed'"
+                    decoration-muted="state in ('archived', 'cancelled')"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="kw_termination_view_form" model="ir.ui.view">
+        <field name="name">kw.termination.form</field>
+        <field name="model">kw.termination</field>
+        <field name="arch" type="xml">
+            <form string="Termination">
+                <header>
+                    <field name="state" widget="statusbar"
+                        statusbar_visible="draft,confirmed,signed,delivered,archived"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_open_pdf" type="object"
+                            class="oe_stat_button" icon="fa-file-pdf-o"
+                            invisible="not pdf_attachment_id">
+                            <span>PDF</span>
+                        </button>
+                    </div>
+                    <group>
+                        <group string="K&#252;ndigung">
+                            <field name="employee_id"/>
+                            <field name="company_id" readonly="1"/>
+                            <field name="termination_type"/>
+                            <field name="calc_method"
+                                invisible="termination_type in ('fristlos', 'aufhebung')"/>
+                            <field name="letter_date"/>
+                            <field name="receipt_date"
+                                invisible="calc_method != 'receipt'"/>
+                        </group>
+                        <group string="Fristen">
+                            <field name="employee_start_date"/>
+                            <field name="tenure_years" widget="float" digits="[4,1]"/>
+                            <field name="in_probation"/>
+                            <field name="probation_end" invisible="not probation_end"/>
+                            <field name="notice_period_text"/>
+                            <field name="last_working_day"/>
+                        </group>
+                    </group>
+
+                    <group string="Vorfall" invisible="termination_type != 'fristlos'">
+                        <field name="incident_date"/>
+                        <field name="incident_description"/>
+                    </group>
+
+                    <group string="Aufhebungsvertrag" invisible="termination_type != 'aufhebung'">
+                        <group>
+                            <field name="include_severance"/>
+                            <field name="severance_amount" invisible="not include_severance"/>
+                            <field name="garden_leave"/>
+                        </group>
+                    </group>
+
+                    <group string="Eigene K&#252;ndigung" invisible="termination_type != 'bestaetigung'">
+                        <field name="resignation_received_date"/>
+                    </group>
+
+                    <group string="Adresse">
+                        <group>
+                            <field name="employee_street"/>
+                            <field name="employee_zip"/>
+                            <field name="employee_city"/>
+                        </group>
+                    </group>
+
+                    <group string="Zustellung" invisible="state in ('draft', 'confirmed')">
+                        <group>
+                            <field name="delivery_method"/>
+                            <field name="delivery_date"/>
+                            <field name="delivery_tracking_number"
+                                invisible="delivery_method not in ('einschreiben_rueckschein', 'einwurf_einschreiben')"/>
+                            <field name="delivery_witness"
+                                invisible="delivery_method not in ('personal', 'bote')"/>
+                        </group>
+                        <group>
+                            <field name="delivery_confirmed"/>
+                            <field name="delivery_confirmed_date" invisible="not delivery_confirmed"/>
+                            <field name="delivery_proof_attachment_id"/>
+                            <field name="delivery_notes"/>
+                        </group>
+                    </group>
+
+                    <group string="Dokumente" invisible="state == 'draft'">
+                        <group>
+                            <field name="pdf_attachment_id"/>
+                            <field name="signed_pdf_attachment_id" invisible="not signed_pdf_attachment_id"/>
+                        </group>
+                        <group>
+                            <field name="sent_to_accountant"/>
+                            <field name="sent_to_accountant_date" invisible="not sent_to_accountant"/>
+                        </group>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="kw_termination_view_search" model="ir.ui.view">
+        <field name="name">kw.termination.search</field>
+        <field name="model">kw.termination</field>
+        <field name="arch" type="xml">
+            <search string="Terminations">
+                <field name="employee_name"/>
+                <field name="company_id"/>
+                <filter name="filter_draft" string="Entwurf" domain="[('state', '=', 'draft')]"/>
+                <filter name="filter_confirmed" string="Best&#228;tigt" domain="[('state', '=', 'confirmed')]"/>
+                <filter name="filter_signed" string="Unterschrieben" domain="[('state', '=', 'signed')]"/>
+                <filter name="filter_delivered" string="Zugestellt" domain="[('state', '=', 'delivered')]"/>
+                <separator/>
+                <filter name="filter_not_delivered" string="Noch nicht zugestellt"
+                    domain="[('state', '=', 'signed'), ('delivery_date', '=', False)]"/>
+                <group expand="0" string="Gruppieren">
+                    <filter name="groupby_type" string="Art" context="{'group_by': 'termination_type'}"/>
+                    <filter name="groupby_state" string="Status" context="{'group_by': 'state'}"/>
+                    <filter name="groupby_company" string="Unternehmen" context="{'group_by': 'company_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_kw_termination" model="ir.actions.act_window">
+        <field name="name">K&#252;ndigungen</field>
+        <field name="res_model">kw.termination</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="kw_termination_view_search"/>
+    </record>
+</odoo>

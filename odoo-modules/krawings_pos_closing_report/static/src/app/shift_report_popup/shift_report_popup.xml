@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="krawings_pos_closing_report.ShiftReportPopup">
+        <div class="popup popup-textarea popup-shift-report">
+            <div class="modal-header">
+                <h4 class="modal-title"><t t-esc="props.title" /></h4>
+            </div>
+            <main class="modal-body overflow-auto">
+                <div class="d-flex flex-column gap-3 mb-4 mt-3">
+                    <p>Please fill out your shift report before closing the session.</p>
+
+                    <div class="form-group text-start">
+                        <label class="form-label" for="shift_report_issues">Any issues during the shift? (Ops, customers, tech...)</label>
+                        <textarea class="form-control"
+                                  id="shift_report_issues"
+                                  rows="3"
+                                  t-model="state.issues"></textarea>
+                    </div>
+
+                    <div class="form-group text-start form-check mt-2 mb-2">
+                        <input class="form-check-input form-control-lg" type="checkbox" id="shift_report_cleaning" t-model="state.cleaning_done"/>
+                        <label class="form-check-label fs-5 ms-2" for="shift_report_cleaning">
+                            I have completed the cleaning &amp; closing checklist.
+                        </label>
+                    </div>
+
+                    <div class="form-group text-start">
+                        <label class="form-label" for="shift_report_notes">Other Notes</label>
+                        <textarea class="form-control"
+                                  id="shift_report_notes"
+                                  rows="3"
+                                  t-model="state.notes"></textarea>
+                    </div>
+                </div>
+            </main>
+            <footer class="modal-footer justify-content-end">
+                <button class="btn btn-primary btn-lg" t-on-click="confirm">Confirm</button>
+                <button class="btn btn-secondary btn-lg" t-on-click="cancel">Cancel</button>
+            </footer>
+        </div>
+    </t>
+</templates>

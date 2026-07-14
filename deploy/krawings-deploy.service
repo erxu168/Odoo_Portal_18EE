@@ -1,0 +1,15 @@
+[Unit]
+Description=Krawings Portal Deploy Webhook
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/krawings-portal/deploy
+ExecStart=/usr/bin/node /opt/krawings-portal/deploy/webhook.js
+Restart=always
+RestartSec=5
+Environment=DEPLOY_SECRET=krawings-deploy-2026
+
+[Install]
+WantedBy=multi-user.target

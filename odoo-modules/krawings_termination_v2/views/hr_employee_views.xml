@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="hr_employee_view_form_inherit_termination" model="ir.ui.view">
+        <field name="name">hr.employee.form.termination.v2</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_terminations" type="object"
+                    class="oe_stat_button" icon="fa-ban"
+                    groups="hr.group_hr_manager">
+                    <field name="termination_count" widget="statinfo"
+                        string="Terminations"/>
+                </button>
+            </xpath>
+        </field>
+    </record>
+</odoo>
