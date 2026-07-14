@@ -68,8 +68,26 @@ function ensureTables() {
       done_at INTEGER
     );
 
+    -- Permanent prep-time archive. Unlike kds_completed_orders (pruned after
+    -- 3 days) this is NEVER pruned, so day-of-week prep trends build up over
+    -- time. One row per order, written when the order is marked done.
+    CREATE TABLE IF NOT EXISTS kds_prep_history (
+      order_id   INTEGER PRIMARY KEY,
+      company_id INTEGER,
+      config_id  INTEGER,
+      day        TEXT,      -- Berlin YYYY-MM-DD of the order
+      started_at INTEGER,   -- pos.order date_order, epoch ms
+      ready_at   INTEGER,
+      done_at    INTEGER,
+      prep_ms    INTEGER,   -- done_at - started_at
+      updated_at INTEGER
+    );
+
     CREATE INDEX IF NOT EXISTS idx_kds_product_config_odoo
       ON kds_product_config(location_id, odoo_product_id);
+
+    CREATE INDEX IF NOT EXISTS idx_kds_prep_history_co_day
+      ON kds_prep_history(company_id, day);
   `);
   // Migrate: add auto_scroll_sec if missing
   const cols = db.prepare("PRAGMA table_info('kds_settings')").all() as { name: string }[];
@@ -274,6 +292,52 @@ export function clearOrderStage(orderId: number): void {
   ensureTables();
   const db = getDb();
   db.prepare('DELETE FROM kds_completed_orders WHERE order_id = ?').run(orderId);
+}
+
+// -- Permanent prep-time archive (for the Sales dashboard "Kitchen" tab) --
+
+/** 'done' stages from the live (3-day) table within a millisecond window. */
+export function getRecentDoneStages(startMs: number, endMs: number): { order_id: number; done_at: number }[] {
+  ensureTables();
+  const db = getDb();
+  return db.prepare(
+    "SELECT order_id, done_at FROM kds_completed_orders WHERE stage = 'done' AND done_at >= ? AND done_at <= ?"
+  ).all(startMs, endMs) as { order_id: number; done_at: number }[];
+}
+
+/** Archived prep rows for a company between two Berlin day strings (inclusive). */
+export function getPrepHistory(companyId: number, startDay: string, endDay: string): { order_id: number; prep_ms: number; done_at: number }[] {
+  ensureTables();
+  const db = getDb();
+  return db.prepare(
+    'SELECT order_id, prep_ms, done_at FROM kds_prep_history WHERE company_id = ? AND day >= ? AND day <= ? AND prep_ms IS NOT NULL'
+  ).all(companyId, startDay, endDay) as { order_id: number; prep_ms: number; done_at: number }[];
+}
+
+/** Upsert a permanent prep-time record. Never pruned. */
+export function recordPrep(row: {
+  orderId: number; companyId: number; configId: number | null; day: string;
+  startedAt: number; readyAt: number | null; doneAt: number; prepMs: number;
+}): void {
+  ensureTables();
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO kds_prep_history (order_id, company_id, config_id, day, started_at, ready_at, done_at, prep_ms, updated_at)
+    VALUES (@orderId, @companyId, @configId, @day, @startedAt, @readyAt, @doneAt, @prepMs, @updatedAt)
+    ON CONFLICT(order_id) DO UPDATE SET
+      company_id = excluded.company_id,
+      config_id  = excluded.config_id,
+      day        = excluded.day,
+      started_at = excluded.started_at,
+      ready_at   = COALESCE(kds_prep_history.ready_at, excluded.ready_at),
+      done_at    = excluded.done_at,
+      prep_ms    = excluded.prep_ms,
+      updated_at = excluded.updated_at
+  `).run({
+    orderId: row.orderId, companyId: row.companyId, configId: row.configId, day: row.day,
+    startedAt: row.startedAt, readyAt: row.readyAt, doneAt: row.doneAt, prepMs: row.prepMs,
+    updatedAt: Date.now(),
+  });
 }
 
 // Heuristic seed for newly-synced products. Manager can override later via UI.
