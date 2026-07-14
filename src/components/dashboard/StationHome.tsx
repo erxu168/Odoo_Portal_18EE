@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useShift } from '@/lib/shift-context';
 import { useCompany } from '@/lib/company-context';
 
 /**
@@ -24,7 +23,6 @@ function initials(name: string) {
 
 export default function StationHome() {
   const router = useRouter();
-  const { activePerson, openSignIn } = useShift();
   const { companyId, companyName, loading: companyLoading } = useCompany();
 
   const [list, setList] = useState<any>(null);
@@ -51,11 +49,8 @@ export default function StationHome() {
       .catch(() => setRoster([]));
   }, [companyId, companyLoading]);
 
-  // Navigate, gating attributed tools behind "who's working?" when nobody's in.
-  function goAttributed(href: string) {
-    if (!activePerson) openSignIn(() => router.push(href));
-    else router.push(href);
-  }
+  // Whoever is here has already signed in at the PIN gate (StationGate), so
+  // navigation is direct — their work is already credited to them.
   function goGuide() {
     try {
       sessionStorage.setItem('kw_recipes_reset', '1');
@@ -97,7 +92,7 @@ export default function StationHome() {
       {/* Tasks hero */}
       <div className="px-4 -mt-3">
         <button
-          onClick={() => goAttributed('/tasks')}
+          onClick={() => router.push('/tasks')}
           className="w-full text-left bg-white border border-gray-200 rounded-2xl shadow-sm p-5 active:scale-[0.99] transition-transform"
         >
           <div className="flex items-center justify-between mb-3">
@@ -145,7 +140,7 @@ export default function StationHome() {
           icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>}
         />
         <StationTile
-          label="Inventory" onClick={() => goAttributed('/inventory')} accent="#2563EB"
+          label="Inventory" onClick={() => router.push('/inventory')} accent="#2563EB"
           icon={<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>}
         />
         <StationTile

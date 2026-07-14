@@ -17,6 +17,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Badge, EmptyState, Sheet, Spinner, ToggleSwitch, WeekNav } from '@/components/shifts/ui';
 import { ds } from '@/lib/design-system';
+import { computeSweep, minutesToHHMM } from '@/lib/shift-timeline';
 import {
   arbzgConflicts,
   berlinParts,
@@ -228,6 +229,216 @@ function Seg<T extends string>({ value, options, onChange }: {
           {o.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+interface DayTimelineProps {
+  date: string;
+  slots: ShiftSlot[];
+  pendingIds: number[];
+  onOpenSheet: (s: ShiftSlot) => void;
+  onCreateShift: (prefill: { date: string; startHHMM: string; endHHMM: string }) => void;
+}
+
+const TL_FALLBACK = { start: 10 * 60, end: 24 * 60 }; // drag window for an empty day
+const TL_HOLD_MS = 350;
+const TL_TOUCH_SLOP = 8;
+const TL_MOUSE_THRESHOLD = 4;
+
+/**
+ * The Day timeline: one bar per shift on a horizontal hour axis, PLUS
+ * drag-to-create — drag across empty timeline space to sweep a time range and
+ * open the New Shift form prefilled with it. Touch arms on a brief hold (so a
+ * swipe still scrolls); mouse drags immediately. A plain tap creates nothing.
+ * A module-level component (not a nested render fn) so its gesture hooks are legal.
+ */
+function DayTimeline({ date, slots, pendingIds, onOpenSheet, onCreateShift }: DayTimelineProps) {
+  const daySlots = useMemo(
+    () => slots
+      .filter(s => berlinParts(s.start).date === date)
+      .slice()
+      .sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end)),
+    [slots, date],
+  );
+  const pendingSet = useMemo(() => new Set(pendingIds), [pendingIds]);
+
+  const spans = daySlots.map(s => {
+    const startMin = hhmmToMin(berlinParts(s.start).hhmm) ?? 0;
+    let endMin = hhmmToMin(berlinParts(s.end).hhmm) ?? startMin;
+    if (endMin <= startMin) endMin += 24 * 60;
+    return { startMin, endMin };
+  });
+  let rangeStart: number;
+  let rangeEnd: number;
+  if (daySlots.length > 0) {
+    rangeStart = Math.floor(Math.min(...spans.map(x => x.startMin)) / 60) * 60;
+    rangeEnd = Math.ceil(Math.max(...spans.map(x => x.endMin)) / 60) * 60;
+    if (rangeEnd - rangeStart < 6 * 60) rangeEnd = rangeStart + 6 * 60;
+  } else {
+    rangeStart = TL_FALLBACK.start;
+    rangeEnd = TL_FALLBACK.end;
+  }
+  const span = rangeEnd - rangeStart;
+  const pct = (m: number) => `${((m - rangeStart) / span) * 100}%`;
+  const hours: number[] = [];
+  for (let m = rangeStart; m <= rangeEnd; m += 60) hours.push(m);
+  const hourLabel = (m: number) => String(Math.floor(m / 60) % 24);
+
+  const nowB = berlinParts(nowOdooUtc());
+  let nowMin: number | null = null;
+  if (nowB.date === date) {
+    const nm = hhmmToMin(nowB.hhmm) ?? -1;
+    if (nm >= rangeStart && nm <= rangeEnd) nowMin = nm;
+  }
+
+  // --- drag-to-create gesture ---
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [ghost, setGhost] = useState<{ startMin: number; endMin: number } | null>(null);
+  const g = useRef<{
+    state: 'idle' | 'pending-touch' | 'pending-mouse' | 'creating' | 'scroll';
+    pointerId: number; anchorMin: number; downX: number; downY: number;
+    holdTimer: ReturnType<typeof setTimeout> | null;
+  }>({ state: 'idle', pointerId: -1, anchorMin: 0, downX: 0, downY: 0, holdTimer: null });
+
+  const minFromX = (clientX: number): number => {
+    const el = contentRef.current;
+    if (!el) return rangeStart;
+    const rect = el.getBoundingClientRect();
+    const frac = rect.width > 0 ? (clientX - rect.left) / rect.width : 0;
+    return rangeStart + Math.min(1, Math.max(0, frac)) * span;
+  };
+  const reset = () => {
+    if (g.current.holdTimer) clearTimeout(g.current.holdTimer);
+    g.current = { state: 'idle', pointerId: -1, anchorMin: 0, downX: 0, downY: 0, holdTimer: null };
+    setGhost(null);
+  };
+  const activate = () => {
+    g.current.state = 'creating';
+    try { contentRef.current?.setPointerCapture(g.current.pointerId); } catch { /* Safari */ }
+    setGhost(computeSweep(g.current.anchorMin, g.current.anchorMin, rangeStart, rangeEnd));
+  };
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('[data-shift-bar]')) return; // a bar owns it
+    if (g.current.state !== 'idle') return;
+    g.current = {
+      state: e.pointerType === 'mouse' ? 'pending-mouse' : 'pending-touch',
+      pointerId: e.pointerId, anchorMin: minFromX(e.clientX), downX: e.clientX, downY: e.clientY, holdTimer: null,
+    };
+    if (e.pointerType !== 'mouse') {
+      g.current.holdTimer = setTimeout(() => { if (g.current.state === 'pending-touch') activate(); }, TL_HOLD_MS);
+    }
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const st = g.current;
+    if (st.pointerId !== e.pointerId) return;
+    const dx = Math.abs(e.clientX - st.downX);
+    const dy = Math.abs(e.clientY - st.downY);
+    if (st.state === 'pending-touch' && (dx > TL_TOUCH_SLOP || dy > TL_TOUCH_SLOP)) {
+      if (st.holdTimer) clearTimeout(st.holdTimer);
+      st.state = 'scroll'; // a real swipe → leave it to native scroll
+    } else if (st.state === 'pending-mouse' && dx > TL_MOUSE_THRESHOLD) {
+      activate();
+    }
+    if (g.current.state === 'creating') {
+      setGhost(computeSweep(st.anchorMin, minFromX(e.clientX), rangeStart, rangeEnd));
+    }
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (g.current.pointerId === e.pointerId && g.current.state === 'creating' && ghost) {
+      onCreateShift({ date, startHHMM: minutesToHHMM(ghost.startMin), endHHMM: minutesToHHMM(ghost.endMin) });
+    }
+    reset();
+  };
+
+  // Non-passive touchmove so iOS scroll can be suppressed once armed.
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const onTouchMove = (ev: TouchEvent) => { if (g.current.state === 'creating') ev.preventDefault(); };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
+  }, []);
+  useEffect(() => () => { if (g.current.holdTimer) clearTimeout(g.current.holdTimer); }, [date]);
+
+  const surfaceMinH = daySlots.length > 0 ? undefined : '132px';
+
+  return (
+    <div className="px-3 pb-3 pt-1">
+      <div className="overflow-x-auto" style={{ touchAction: 'pan-x' }}>
+        <div
+          ref={contentRef}
+          className="relative select-none"
+          style={{ minWidth: `${Math.max(320, (span / 60) * 64)}px`, touchAction: 'pan-x' }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={reset}
+          onLostPointerCapture={reset}
+        >
+          <div className="relative h-5 mb-1">
+            {hours.map((m, idx) => {
+              const edge = idx === 0 ? 'translate-x-0' : idx === hours.length - 1 ? '-translate-x-full' : '-translate-x-1/2';
+              return (
+                <div key={m} className={`absolute top-0 text-[var(--fs-xs)] text-gray-400 tabular-nums ${edge}`} style={{ left: pct(m) }}>
+                  {hourLabel(m)}
+                </div>
+              );
+            })}
+          </div>
+          <div className="relative flex flex-col gap-1.5" style={{ minHeight: surfaceMinH }}>
+            <div className="absolute inset-0 pointer-events-none">
+              {hours.map(m => (
+                <div key={m} className="absolute top-0 bottom-0 border-l border-gray-100" style={{ left: pct(m) }} />
+              ))}
+              {nowMin !== null && (
+                <div className="absolute top-0 bottom-0 border-l-2 border-green-500" style={{ left: pct(nowMin) }} />
+              )}
+              {ghost && (
+                <div
+                  className="absolute top-0 bottom-0 rounded-md bg-green-500/25 border border-green-500 flex items-center justify-center text-[var(--fs-xs)] font-bold text-green-800 tabular-nums whitespace-nowrap overflow-hidden"
+                  style={{ left: pct(ghost.startMin), width: `${((ghost.endMin - ghost.startMin) / span) * 100}%` }}
+                >
+                  {minutesToHHMM(ghost.startMin)}–{minutesToHHMM(ghost.endMin)}
+                </div>
+              )}
+            </div>
+            {daySlots.map((s, i) => {
+              const { startMin, endMin } = spans[i];
+              const isOpen = !s.employeeId;
+              const barCls = isOpen
+                ? 'bg-white border border-dashed border-gray-400 text-gray-600'
+                : s.overCap
+                  ? 'bg-red-100 border border-red-200 text-red-800'
+                  : 'bg-blue-100 border border-blue-200 text-blue-800';
+              const draftCls = s.state === 'draft'
+                ? ' opacity-70 outline-dashed outline-1 outline-offset-[-2px] outline-amber-500'
+                : '';
+              const who = isOpen ? 'Open' : firstName(s.employeeName);
+              const label = `${s.note ? `${s.note} · ` : ''}${who} · ${chipTime(s)}`
+                + `${s.overCap ? ' · over' : ''}${s.state === 'draft' ? ' · draft' : ''}`;
+              return (
+                <div key={s.id} className="relative h-11">
+                  <button
+                    data-shift-bar="1"
+                    onClick={() => onOpenSheet(s)}
+                    title={label}
+                    className={`absolute top-0 h-11 rounded-md px-2 flex items-center text-[var(--fs-xs)] font-bold leading-tight overflow-hidden active:brightness-95 ${barCls}${draftCls}`}
+                    style={{ left: pct(startMin), width: `max(44px, ${((endMin - startMin) / span) * 100}%)` }}
+                  >
+                    <span className="truncate">{label}</span>
+                    {pendingSet.has(s.id) && (
+                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500 border border-white" />
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="text-[var(--fs-xs)] text-gray-400 pt-2">Drag on the timeline to add a shift.</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1204,106 +1415,14 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   // its start→end), stacked by start time. Bars reuse the chip status colours and
   // open the same edit sheet on tap. Scrolls sideways on a phone.
   function dayTimeline(date: string): React.ReactNode {
-    const slots = (data?.slots ?? [])
-      .filter(s => berlinParts(s.start).date === date)
-      .slice()
-      .sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
-    if (slots.length === 0) {
-      return (
-        <div className="px-4 py-6 text-[var(--fs-sm)] text-gray-400 text-center">
-          No shifts this day — tap + to add one
-        </div>
-      );
-    }
-
-    // Minutes-from-midnight; a shift whose end wall-clock ≤ start wraps past midnight.
-    const spans = slots.map(s => {
-      const startMin = hhmmToMin(berlinParts(s.start).hhmm) ?? 0;
-      let endMin = hhmmToMin(berlinParts(s.end).hhmm) ?? startMin;
-      if (endMin <= startMin) endMin += 24 * 60;
-      return { startMin, endMin };
-    });
-    const rangeStart = Math.floor(Math.min(...spans.map(x => x.startMin)) / 60) * 60;
-    let rangeEnd = Math.ceil(Math.max(...spans.map(x => x.endMin)) / 60) * 60;
-    if (rangeEnd - rangeStart < 6 * 60) rangeEnd = rangeStart + 6 * 60; // min 6h span
-    const span = rangeEnd - rangeStart;
-    const pct = (m: number) => `${((m - rangeStart) / span) * 100}%`;
-
-    const hours: number[] = [];
-    for (let m = rangeStart; m <= rangeEnd; m += 60) hours.push(m);
-    const hourLabel = (m: number) => String(Math.floor(m / 60) % 24);
-
-    // "Now" marker only when viewing today and within range.
-    const nowB = berlinParts(nowOdooUtc());
-    let nowMin: number | null = null;
-    if (nowB.date === date) {
-      const nm = hhmmToMin(nowB.hhmm) ?? -1;
-      if (nm >= rangeStart && nm <= rangeEnd) nowMin = nm;
-    }
-
     return (
-      <div className="px-3 pb-3 pt-1">
-        <div className="overflow-x-auto">
-          <div className="relative" style={{ minWidth: `${Math.max(320, (span / 60) * 64)}px` }}>
-            {/* hour labels — edges aligned inward so the first/last aren't clipped */}
-            <div className="relative h-5 mb-1">
-              {hours.map((m, idx) => {
-                const edge = idx === 0 ? 'translate-x-0' : idx === hours.length - 1 ? '-translate-x-full' : '-translate-x-1/2';
-                return (
-                  <div
-                    key={m}
-                    className={`absolute top-0 text-[var(--fs-xs)] text-gray-400 tabular-nums ${edge}`}
-                    style={{ left: pct(m) }}
-                  >
-                    {hourLabel(m)}
-                  </div>
-                );
-              })}
-            </div>
-            {/* rows with gridlines + now line behind the bars */}
-            <div className="relative flex flex-col gap-1.5">
-              <div className="absolute inset-0 pointer-events-none">
-                {hours.map(m => (
-                  <div key={m} className="absolute top-0 bottom-0 border-l border-gray-100" style={{ left: pct(m) }} />
-                ))}
-                {nowMin !== null && (
-                  <div className="absolute top-0 bottom-0 border-l-2 border-green-500" style={{ left: pct(nowMin) }} />
-                )}
-              </div>
-              {slots.map((s, i) => {
-                const { startMin, endMin } = spans[i];
-                const isOpen = !s.employeeId;
-                const barCls = isOpen
-                  ? 'bg-white border border-dashed border-gray-400 text-gray-600'
-                  : s.overCap
-                    ? 'bg-red-100 border border-red-200 text-red-800'
-                    : 'bg-blue-100 border border-blue-200 text-blue-800';
-                const draftCls = s.state === 'draft'
-                  ? ' opacity-70 outline-dashed outline-1 outline-offset-[-2px] outline-amber-500'
-                  : '';
-                const who = isOpen ? 'Open' : firstName(s.employeeName);
-                const label = `${s.note ? `${s.note} · ` : ''}${who} · ${chipTime(s)}`
-                  + `${s.overCap ? ' · over' : ''}${s.state === 'draft' ? ' · draft' : ''}`;
-                return (
-                  <div key={s.id} className="relative h-11">
-                    <button
-                      onClick={() => openSheet(s)}
-                      title={label}
-                      className={`absolute top-0 h-11 rounded-md px-2 flex items-center text-[var(--fs-xs)] font-bold leading-tight overflow-hidden active:brightness-95 ${barCls}${draftCls}`}
-                      style={{ left: pct(startMin), width: `max(44px, ${((endMin - startMin) / span) * 100}%)` }}
-                    >
-                      <span className="truncate">{label}</span>
-                      {pendingSet.has(s.id) && (
-                        <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500 border border-white" />
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
+      <DayTimeline
+        date={date}
+        slots={data?.slots ?? []}
+        pendingIds={data?.pendingRequestSlotIds ?? []}
+        onOpenSheet={openSheet}
+        onCreateShift={onCreateShift}
+      />
     );
   }
 
