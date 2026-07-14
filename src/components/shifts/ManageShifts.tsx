@@ -1200,6 +1200,110 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     </div>
   );
 
+  // Day TIMELINE: a horizontal time axis for the day, one bar per shift (sized by
+  // its start→end), stacked by start time. Bars reuse the chip status colours and
+  // open the same edit sheet on tap. Scrolls sideways on a phone.
+  function dayTimeline(date: string): React.ReactNode {
+    const slots = (data?.slots ?? [])
+      .filter(s => berlinParts(s.start).date === date)
+      .slice()
+      .sort((a, b) => a.start.localeCompare(b.start) || a.end.localeCompare(b.end));
+    if (slots.length === 0) {
+      return (
+        <div className="px-4 py-6 text-[var(--fs-sm)] text-gray-400 text-center">
+          No shifts this day — tap + to add one
+        </div>
+      );
+    }
+
+    // Minutes-from-midnight; a shift whose end wall-clock ≤ start wraps past midnight.
+    const spans = slots.map(s => {
+      const startMin = hhmmToMin(berlinParts(s.start).hhmm) ?? 0;
+      let endMin = hhmmToMin(berlinParts(s.end).hhmm) ?? startMin;
+      if (endMin <= startMin) endMin += 24 * 60;
+      return { startMin, endMin };
+    });
+    const rangeStart = Math.floor(Math.min(...spans.map(x => x.startMin)) / 60) * 60;
+    let rangeEnd = Math.ceil(Math.max(...spans.map(x => x.endMin)) / 60) * 60;
+    if (rangeEnd - rangeStart < 6 * 60) rangeEnd = rangeStart + 6 * 60; // min 6h span
+    const span = rangeEnd - rangeStart;
+    const pct = (m: number) => `${((m - rangeStart) / span) * 100}%`;
+
+    const hours: number[] = [];
+    for (let m = rangeStart; m <= rangeEnd; m += 60) hours.push(m);
+    const hourLabel = (m: number) => String(Math.floor(m / 60) % 24);
+
+    // "Now" marker only when viewing today and within range.
+    const nowB = berlinParts(nowOdooUtc());
+    let nowMin: number | null = null;
+    if (nowB.date === date) {
+      const nm = hhmmToMin(nowB.hhmm) ?? -1;
+      if (nm >= rangeStart && nm <= rangeEnd) nowMin = nm;
+    }
+
+    return (
+      <div className="px-3 pb-3 pt-1">
+        <div className="overflow-x-auto">
+          <div className="relative" style={{ minWidth: `${Math.max(320, (span / 60) * 64)}px` }}>
+            {/* hour labels */}
+            <div className="relative h-5 mb-1">
+              {hours.map(m => (
+                <div
+                  key={m}
+                  className="absolute top-0 text-[var(--fs-xs)] text-gray-400 tabular-nums -translate-x-1/2"
+                  style={{ left: pct(m) }}
+                >
+                  {hourLabel(m)}
+                </div>
+              ))}
+            </div>
+            {/* rows with gridlines + now line behind the bars */}
+            <div className="relative flex flex-col gap-1.5">
+              <div className="absolute inset-0 pointer-events-none">
+                {hours.map(m => (
+                  <div key={m} className="absolute top-0 bottom-0 border-l border-gray-100" style={{ left: pct(m) }} />
+                ))}
+                {nowMin !== null && (
+                  <div className="absolute top-0 bottom-0 border-l-2 border-green-500" style={{ left: pct(nowMin) }} />
+                )}
+              </div>
+              {slots.map((s, i) => {
+                const { startMin, endMin } = spans[i];
+                const isOpen = !s.employeeId;
+                const barCls = isOpen
+                  ? 'bg-white border border-dashed border-gray-400 text-gray-600'
+                  : s.overCap
+                    ? 'bg-red-100 border border-red-200 text-red-800'
+                    : 'bg-blue-100 border border-blue-200 text-blue-800';
+                const draftCls = s.state === 'draft'
+                  ? ' opacity-70 outline-dashed outline-1 outline-offset-[-2px] outline-amber-500'
+                  : '';
+                const who = isOpen ? 'Open' : firstName(s.employeeName);
+                const label = `${s.note ? `${s.note} · ` : ''}${who} · ${chipTime(s)}`
+                  + `${s.overCap ? ' · over' : ''}${s.state === 'draft' ? ' · draft' : ''}`;
+                return (
+                  <div key={s.id} className="relative h-11">
+                    <button
+                      onClick={() => openSheet(s)}
+                      title={label}
+                      className={`absolute top-0 h-11 rounded-md px-2 flex items-center text-[var(--fs-xs)] font-bold leading-tight overflow-hidden active:brightness-95 ${barCls}${draftCls}`}
+                      style={{ left: pct(startMin), width: `max(44px, ${((endMin - startMin) / span) * 100}%)` }}
+                    >
+                      <span className="truncate">{label}</span>
+                      {pendingSet.has(s.id) && (
+                        <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500 border border-white" />
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   function renderDayRows(date: string): React.ReactNode {
     const rows: React.ReactNode[] = [];
     const deptSubHeader = (name: string) => (
@@ -1249,7 +1353,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           </button>
         </span>
       </div>
-      <div className="pb-1">{renderDayRows(date)}</div>
+      <div className="pb-1">{viewMode === 'day' ? dayTimeline(date) : renderDayRows(date)}</div>
     </div>
   );
 
@@ -1404,14 +1508,16 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             ]}
             onChange={setViewMode}
           />
-          <Seg<SubGroup>
-            value={subGroup}
-            options={[
-              { key: 'role', label: 'By role' },
-              { key: 'person', label: 'By person' },
-            ]}
-            onChange={setSubGroup}
-          />
+          {viewMode !== 'day' && (
+            <Seg<SubGroup>
+              value={subGroup}
+              options={[
+                { key: 'role', label: 'By role' },
+                { key: 'person', label: 'By person' },
+              ]}
+              onChange={setSubGroup}
+            />
+          )}
         </div>
 
         {loading ? (
