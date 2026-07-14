@@ -298,8 +298,9 @@ function DayTimeline({ date, slots, pendingIds, onOpenSheet, onCreateShift }: Da
   const g = useRef<{
     state: 'idle' | 'pending-touch' | 'pending-mouse' | 'creating' | 'scroll';
     pointerId: number; anchorMin: number; downX: number; downY: number;
+    moved: boolean; sweep: { startMin: number; endMin: number } | null;
     holdTimer: ReturnType<typeof setTimeout> | null;
-  }>({ state: 'idle', pointerId: -1, anchorMin: 0, downX: 0, downY: 0, holdTimer: null });
+  }>({ state: 'idle', pointerId: -1, anchorMin: 0, downX: 0, downY: 0, moved: false, sweep: null, holdTimer: null });
 
   const minFromX = (clientX: number): number => {
     const el = contentRef.current;
@@ -310,13 +311,15 @@ function DayTimeline({ date, slots, pendingIds, onOpenSheet, onCreateShift }: Da
   };
   const reset = () => {
     if (g.current.holdTimer) clearTimeout(g.current.holdTimer);
-    g.current = { state: 'idle', pointerId: -1, anchorMin: 0, downX: 0, downY: 0, holdTimer: null };
+    g.current = { state: 'idle', pointerId: -1, anchorMin: 0, downX: 0, downY: 0, moved: false, sweep: null, holdTimer: null };
     setGhost(null);
   };
   const activate = () => {
     g.current.state = 'creating';
     try { contentRef.current?.setPointerCapture(g.current.pointerId); } catch { /* Safari */ }
-    setGhost(computeSweep(g.current.anchorMin, g.current.anchorMin, rangeStart, rangeEnd));
+    const sweep = computeSweep(g.current.anchorMin, g.current.anchorMin, rangeStart, rangeEnd);
+    g.current.sweep = sweep;
+    setGhost(sweep);
   };
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -324,7 +327,8 @@ function DayTimeline({ date, slots, pendingIds, onOpenSheet, onCreateShift }: Da
     if (g.current.state !== 'idle') return;
     g.current = {
       state: e.pointerType === 'mouse' ? 'pending-mouse' : 'pending-touch',
-      pointerId: e.pointerId, anchorMin: minFromX(e.clientX), downX: e.clientX, downY: e.clientY, holdTimer: null,
+      pointerId: e.pointerId, anchorMin: minFromX(e.clientX), downX: e.clientX, downY: e.clientY,
+      moved: false, sweep: null, holdTimer: null,
     };
     if (e.pointerType !== 'mouse') {
       g.current.holdTimer = setTimeout(() => { if (g.current.state === 'pending-touch') activate(); }, TL_HOLD_MS);
@@ -342,12 +346,22 @@ function DayTimeline({ date, slots, pendingIds, onOpenSheet, onCreateShift }: Da
       activate();
     }
     if (g.current.state === 'creating') {
-      setGhost(computeSweep(st.anchorMin, minFromX(e.clientX), rangeStart, rangeEnd));
+      if (dx > TL_MOUSE_THRESHOLD) g.current.moved = true; // a genuine drag happened
+      const sweep = computeSweep(st.anchorMin, minFromX(e.clientX), rangeStart, rangeEnd);
+      g.current.sweep = sweep;
+      setGhost(sweep);
     }
   };
   const onPointerUp = (e: React.PointerEvent) => {
-    if (g.current.pointerId === e.pointerId && g.current.state === 'creating' && ghost) {
-      onCreateShift({ date, startHHMM: minutesToHHMM(ghost.startMin), endHHMM: minutesToHHMM(ghost.endMin) });
+    const st = g.current;
+    // Commit only a real drag (not a stationary hold), reading the authoritative
+    // sweep from the ref (React state is async). A start at/after midnight is the
+    // display-only overnight zone → belongs to the next day, so skip it here.
+    if (st.pointerId === e.pointerId && st.state === 'creating' && st.moved) {
+      const sweep = computeSweep(st.anchorMin, minFromX(e.clientX), rangeStart, rangeEnd);
+      if (sweep.startMin < 24 * 60) {
+        onCreateShift({ date, startHHMM: minutesToHHMM(sweep.startMin), endHHMM: minutesToHHMM(sweep.endMin) });
+      }
     }
     reset();
   };
@@ -366,16 +380,16 @@ function DayTimeline({ date, slots, pendingIds, onOpenSheet, onCreateShift }: Da
 
   return (
     <div className="px-3 pb-3 pt-1">
-      <div className="overflow-x-auto" style={{ touchAction: 'pan-x' }}>
+      <div className="overflow-x-auto" style={{ touchAction: 'pan-x pan-y' }}>
         <div
           ref={contentRef}
           className="relative select-none"
-          style={{ minWidth: `${Math.max(320, (span / 60) * 64)}px`, touchAction: 'pan-x' }}
+          style={{ minWidth: `${Math.max(320, (span / 60) * 64)}px`, touchAction: 'pan-x pan-y' }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={reset}
-          onLostPointerCapture={reset}
+          onLostPointerCapture={e => { if (e.target === contentRef.current) reset(); }}
         >
           <div className="relative h-5 mb-1">
             {hours.map((m, idx) => {
