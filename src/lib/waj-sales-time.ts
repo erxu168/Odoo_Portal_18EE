@@ -189,8 +189,13 @@ export function computeBounds(range: Range, anchorDay: string, nowMs: number): B
     yoyLabel = 'vs same month last year';
     sub = labelMonth(mf);
   } else if (range === 'ytd') {
-    const yr = anchor.slice(0, 4);
-    startDay = `${yr}-01-01`; endExcl = dayShift(`${yr}-${todayMD}`, 1); // independent of the stepped anchor day
+    const yr = Number(anchor.slice(0, 4));
+    // Year-to-date endpoint = today's month/day within the selected year,
+    // clamped (handles today === Feb 29 in a non-leap selected year).
+    const mm = Number(todayMD.slice(0, 2)), dd = Number(todayMD.slice(3, 5));
+    const clampD = Math.min(dd, new Date(Date.UTC(yr, mm, 0)).getUTCDate());
+    const ytdPoint = `${yr}-${String(mm).padStart(2, '0')}-${String(clampD).padStart(2, '0')}`;
+    startDay = `${yr}-01-01`; endExcl = dayShift(ytdPoint, 1);
     yoyLabel = 'vs last year (YTD)';
     gran = 'month'; sub = `${yr} · year to date`;
   } else { // year

@@ -152,7 +152,8 @@ export function OverviewTab({ d }: { d: SalesPayload }) {
   const yoyAvg = d.yoyOrders ? d.yoySales / d.yoyOrders : 0;
   // Baseline presence is decided by the order count (a real but zero-revenue
   // baseline is not "no data"), while the % uses the revenue baseline.
-  const mk = (cur: number, base: number, baseOrders: number, label: string): Delta => ({ pct: base > 0 ? ((cur - base) / base) * 100 : 0, label, hasBase: baseOrders > 0 });
+  // Needs orders AND a positive baseline: a % change from a non-positive base is undefined.
+  const mk = (cur: number, base: number, baseOrders: number, label: string): Delta => ({ pct: base > 0 ? ((cur - base) / base) * 100 : 0, label, hasBase: baseOrders > 0 && base > 0 });
   const best = d.dow && d.dow.length ? d.dow.reduce((b, r) => (r[1] > b[1] ? r : b)) : null;
   return (
     <>
@@ -172,12 +173,15 @@ export function OverviewTab({ d }: { d: SalesPayload }) {
 
 export function ProductsTab({ d, sort, setSort }: { d: SalesPayload; sort: 'revenue' | 'qty'; setSort: (s: 'revenue' | 'qty') => void }) {
   const fd = d.foodRev + d.drinkRev;
-  const foodPct = fd ? Math.round((d.foodRev / fd) * 100) : 0;
+  // Refunds can push a subtotal negative; only show the split when both are
+  // non-negative and there is net revenue, and clamp the percentage.
+  const showSplit = d.foodRev >= 0 && d.drinkRev >= 0 && fd > 0;
+  const foodPct = showSplit ? Math.max(0, Math.min(100, Math.round((d.foodRev / fd) * 100))) : 0;
   return (
     <>
       <div className="card">
         <div className="card-head"><span className="card-title">Food vs drink</span><span className="card-hint">by amount</span></div>
-        {fd > 0
+        {showSplit
           ? <SplitBar aLabel="Food" aPct={foodPct} aAmt={eur0.format(d.foodRev)} bLabel="Drink" bPct={100 - foodPct} bAmt={eur0.format(d.drinkRev)} />
           : <div className="empty">No sales in this period.</div>}
       </div>

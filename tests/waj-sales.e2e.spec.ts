@@ -31,15 +31,24 @@ test('manager can open the What a Jerk sales dashboard and use every tab/range',
     await expect(page.locator('.errbox')).toHaveCount(0);
   }
 
-  // Year picker: pick the previous year and confirm it still loads (no error).
+  // Year picker: pick the previous year and confirm the fetch for that year loads.
   await page.getByRole('button', { name: 'Month', exact: true }).click();
   const yearSel = page.locator('.yearsel select');
   const prevYear = String(new Date().getFullYear() - 1);
-  await yearSel.selectOption(prevYear);
+  await Promise.all([
+    page.waitForResponse(r => r.url().includes('/api/sales') && r.url().includes(`anchor=${prevYear}-`)),
+    yearSel.selectOption(prevYear),
+  ]);
   await expect(page.getByText('Total sales')).toBeVisible();
   await expect(page.locator('.errbox')).toHaveCount(0);
 
-  await page.screenshot({ path: 'test-results/waj-sales-manager.png', fullPage: true });
+  // Back to the current year, Menu tab: categories + food-vs-drink render.
+  await yearSel.selectOption(String(new Date().getFullYear()));
+  await page.getByRole('tab', { name: 'Menu' }).click();
+  await expect(page.getByText('Food vs drink')).toBeVisible();
+  await expect(page.getByText('By category')).toBeVisible();
+  await expect(page.locator('.errbox')).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/waj-sales-menu.png', fullPage: true });
 });
 
 test('manager API returns What a Jerk-scoped data', async ({ page }) => {

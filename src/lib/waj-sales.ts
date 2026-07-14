@@ -321,7 +321,7 @@ async function computeKitchen(companyId: number, b: Bounds): Promise<{
   coverage: number; prepDow: [string, number][] | null; kitchenHasData: boolean;
 }> {
   const startDay = berlinDayOf(b.curStartMs);
-  const endDay = berlinDayOf(b.curEndMs);
+  const endDay = berlinDayOf(b.curEndMs - 1); // curEndMs is exclusive; use the last included instant
 
   // 1) permanent archive rows for the period
   const hist = getPrepHistory(companyId, startDay, endDay);
@@ -334,7 +334,7 @@ async function computeKitchen(companyId: number, b: Bounds): Promise<{
   }
 
   // 2) supplement from the live 3-day KDS table for orders not yet archived
-  const recent = getRecentDoneStages(b.curStartMs, b.curEndMs);
+  const recent = getRecentDoneStages(b.curStartMs, b.curEndMs - 1);
   const need = recent.filter(r => !seen.has(r.order_id));
   if (need.length) {
     const rows = await fetchAll('pos.order',
