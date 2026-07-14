@@ -1245,17 +1245,20 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       <div className="px-3 pb-3 pt-1">
         <div className="overflow-x-auto">
           <div className="relative" style={{ minWidth: `${Math.max(320, (span / 60) * 64)}px` }}>
-            {/* hour labels */}
+            {/* hour labels — edges aligned inward so the first/last aren't clipped */}
             <div className="relative h-5 mb-1">
-              {hours.map(m => (
-                <div
-                  key={m}
-                  className="absolute top-0 text-[var(--fs-xs)] text-gray-400 tabular-nums -translate-x-1/2"
-                  style={{ left: pct(m) }}
-                >
-                  {hourLabel(m)}
-                </div>
-              ))}
+              {hours.map((m, idx) => {
+                const edge = idx === 0 ? 'translate-x-0' : idx === hours.length - 1 ? '-translate-x-full' : '-translate-x-1/2';
+                return (
+                  <div
+                    key={m}
+                    className={`absolute top-0 text-[var(--fs-xs)] text-gray-400 tabular-nums ${edge}`}
+                    style={{ left: pct(m) }}
+                  >
+                    {hourLabel(m)}
+                  </div>
+                );
+              })}
             </div>
             {/* rows with gridlines + now line behind the bars */}
             <div className="relative flex flex-col gap-1.5">
