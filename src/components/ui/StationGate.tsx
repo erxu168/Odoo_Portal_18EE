@@ -36,10 +36,13 @@ export default function StationGate({ serverShared }: { serverShared: boolean })
   const signedInCompany = useRef<number | null>(null); // company the actor PIN'd into
 
   // Sign out AND drop the persisted activity stamp + company binding. Used by
-  // Done, idle expiry, tablet logout and company switch.
+  // Done, idle expiry, tablet logout and company switch. Also tells the server to
+  // delete the acting token + clear the httpOnly cookie (fire-and-forget; the
+  // token is station-bound and expires regardless).
   const endSession = useCallback(() => {
     signedInCompany.current = null;
     try { localStorage.removeItem(LS_ACT); localStorage.removeItem(LS_CO); } catch { /* ignore */ }
+    fetch('/api/station/sign-out', { method: 'POST', keepalive: true }).catch(() => {});
     signOut();
   }, [signOut]);
 

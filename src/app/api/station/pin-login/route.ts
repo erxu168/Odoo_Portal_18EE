@@ -8,10 +8,13 @@
  * Access scope stays whatever the station account allows (kitchen tools only).
  */
 import { NextResponse } from 'next/server';
-import { getCurrentUser } from '@/lib/auth';
-import { parseCompanyIds } from '@/lib/db';
+import { cookies } from 'next/headers';
+import { getCurrentUser, COOKIE_NAME } from '@/lib/auth';
+import { parseCompanyIds, createStationActor } from '@/lib/db';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { findUserByPinInCompany } from '@/lib/station-auth';
+
+const ACTOR_TTL_MS = 12 * 60 * 60 * 1000; // hard cap; idle sign-out clears it much sooner
 
 export const dynamic = 'force-dynamic';
 
@@ -52,7 +55,21 @@ export async function POST(request: Request) {
 
     const match = findUserByPinInCompany(companyId, pin);
     if (match.status === 'ok') {
-      return NextResponse.json({ ok: true, user: match.user });
+      // Mint a server-stored acting token bound to THIS tablet LOGIN SESSION, and
+      // hand it back as an httpOnly cookie. The client can't read or forge it, so
+      // attribution can't be spoofed by editing a client cookie, and it dies with
+      // the session (logout/relogin invalidates it).
+      const stationSession = cookies().get(COOKIE_NAME)?.value || '';
+      const token = createStationActor(stationSession, device.id, match.user.id, match.user.employee_id ?? null, companyId, ACTOR_TTL_MS);
+      const res = NextResponse.json({ ok: true, user: match.user });
+      res.cookies.set('kw_actor', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: ACTOR_TTL_MS / 1000,
+      });
+      return res;
     }
     if (match.status === 'ambiguous') {
       return NextResponse.json({ error: 'That PIN is shared by more than one person — see a manager.' }, { status: 409 });
