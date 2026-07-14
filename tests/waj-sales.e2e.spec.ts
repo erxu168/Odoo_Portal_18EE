@@ -20,14 +20,24 @@ test('manager can open the What a Jerk sales dashboard and use every tab/range',
   await expect(page.getByText('Total sales')).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('.errbox')).toHaveCount(0);
 
-  for (const t of ['Best-sellers', 'Busy times', 'Orders', 'Kitchen', 'Overview']) {
+  for (const t of ['Menu', 'Busy times', 'Orders', 'Kitchen', 'Overview']) {
     await page.getByRole('tab', { name: t }).click();
     await expect(page.locator('.errbox')).toHaveCount(0);
   }
-  await page.getByRole('button', { name: 'Today' }).click();
+
+  for (const r of ['Today', 'Week', 'Month', 'YTD', 'Year']) {
+    await page.getByRole('button', { name: r, exact: true }).click();
+    await expect(page.getByText('Total sales')).toBeVisible();
+    await expect(page.locator('.errbox')).toHaveCount(0);
+  }
+
+  // Year picker: pick the previous year and confirm it still loads (no error).
+  await page.getByRole('button', { name: 'Month', exact: true }).click();
+  const yearSel = page.locator('.yearsel select');
+  const prevYear = String(new Date().getFullYear() - 1);
+  await yearSel.selectOption(prevYear);
   await expect(page.getByText('Total sales')).toBeVisible();
-  await page.getByRole('button', { name: 'This month' }).click();
-  await expect(page.getByText('Total sales')).toBeVisible();
+  await expect(page.locator('.errbox')).toHaveCount(0);
 
   await page.screenshot({ path: 'test-results/waj-sales-manager.png', fullPage: true });
 });

@@ -15,21 +15,24 @@ const eur2 = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR'
 const num = new Intl.NumberFormat('de-DE');
 const pctS = (n: number) => (n >= 0 ? '+' : '') + n.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %';
 function mmss(sec: number) { const m = Math.floor(sec / 60); const s = Math.round(sec % 60); return `${m}m ${s < 10 ? '0' : ''}${s}s`; }
-function safeDelta(cur: number, prev: number) { return prev > 0 ? ((cur - prev) / prev) * 100 : 0; }
+
+export interface Delta { pct: number; label: string; hasBase: boolean }
 
 // ── tooltip context ─────────────────────────────────────
 export const TipCtx = React.createContext<{ show: (t: string, e: React.MouseEvent) => void; hide: () => void }>({ show: () => {}, hide: () => {} });
 
 // ── primitives ──────────────────────────────────────────
-export function KpiTile({ label, value, deltaPct, goodWhenUp = true, cmp, hero }:
-  { label: string; value: string; deltaPct: number; goodWhenUp?: boolean; cmp: string; hero?: boolean }) {
-  const up = deltaPct >= 0;
-  const good = up === goodWhenUp;
+export function KpiTile({ label, value, deltas, hero }:
+  { label: string; value: string; deltas: Delta[]; hero?: boolean }) {
   return (
     <div className={`kpi ${hero ? 'hero wide' : 'small'}`}>
       <span className="kpi-label">{label}</span>
       <span className="kpi-val">{value}</span>
-      <span className={`delta ${good ? 'up' : 'down'}`}>{up ? '▲' : '▼'} {pctS(Math.abs(deltaPct))} <span className="vs">{cmp}</span></span>
+      {deltas.filter(d => d.label).map((d, i) => {
+        if (!d.hasBase) return <span key={i} className="delta flat">– <span className="vs">{d.label} (no data)</span></span>;
+        const up = d.pct >= 0;
+        return <span key={i} className={`delta ${up ? 'up' : 'down'}`}>{up ? '▲' : '▼'} {pctS(Math.abs(d.pct))} <span className="vs">{d.label}</span></span>;
+      })}
     </div>
   );
 }
@@ -146,28 +149,42 @@ export function InfoNote({ children }: { children: React.ReactNode }) {
 export function OverviewTab({ d }: { d: SalesPayload }) {
   const sales = d.salesTotal, orders = d.ordersTotal, avg = orders ? sales / orders : 0;
   const prevAvg = d.prevOrders ? d.prevSales / d.prevOrders : 0;
+  const yoyAvg = d.yoyOrders ? d.yoySales / d.yoyOrders : 0;
+  // Baseline presence is decided by the order count (a real but zero-revenue
+  // baseline is not "no data"), while the % uses the revenue baseline.
+  const mk = (cur: number, base: number, baseOrders: number, label: string): Delta => ({ pct: base > 0 ? ((cur - base) / base) * 100 : 0, label, hasBase: baseOrders > 0 });
   const best = d.dow && d.dow.length ? d.dow.reduce((b, r) => (r[1] > b[1] ? r : b)) : null;
   return (
     <>
       <div className="kpi-grid">
-        <KpiTile label="Total sales" value={eur0.format(sales)} deltaPct={safeDelta(sales, d.prevSales)} cmp={d.cmp} hero />
-        <KpiTile label="Orders" value={num.format(orders)} deltaPct={safeDelta(orders, d.prevOrders)} cmp={d.cmp} />
-        <KpiTile label="Avg / order" value={eur2.format(avg)} deltaPct={safeDelta(avg, prevAvg)} cmp={d.cmp} />
+        <KpiTile label="Total sales" value={eur0.format(sales)} hero deltas={[mk(sales, d.prevSales, d.prevOrders, d.prevLabel), mk(sales, d.yoySales, d.yoyOrders, d.yoyLabel)]} />
+        <KpiTile label="Orders" value={num.format(orders)} deltas={[mk(orders, d.prevOrders, d.prevOrders, d.prevLabel), mk(orders, d.yoyOrders, d.yoyOrders, d.yoyLabel)]} />
+        <KpiTile label="Avg / order" value={eur2.format(avg)} deltas={[mk(avg, prevAvg, d.prevOrders, d.prevLabel), mk(avg, yoyAvg, d.yoyOrders, d.yoyLabel)]} />
       </div>
       <div className="card">
         <div className="card-head"><span className="card-title">Sales trend</span><span className="card-hint">{d.trendUnit}</span></div>
         <TrendChart points={d.trend} />
       </div>
-      {best
-        ? <InfoNote>Strongest day this period was <b>{best[0]}</b> ({eur0.format(best[1])}).</InfoNote>
-        : <InfoNote>Switch to <b>This week</b> or <b>This month</b> to see day-of-week patterns.</InfoNote>}
+      {best ? <InfoNote>Strongest day was <b>{best[0]}</b> ({eur0.format(best[1])}).</InfoNote> : null}
     </>
   );
 }
 
 export function ProductsTab({ d, sort, setSort }: { d: SalesPayload; sort: 'revenue' | 'qty'; setSort: (s: 'revenue' | 'qty') => void }) {
+  const fd = d.foodRev + d.drinkRev;
+  const foodPct = fd ? Math.round((d.foodRev / fd) * 100) : 0;
   return (
     <>
+      <div className="card">
+        <div className="card-head"><span className="card-title">Food vs drink</span><span className="card-hint">by amount</span></div>
+        {fd > 0
+          ? <SplitBar aLabel="Food" aPct={foodPct} aAmt={eur0.format(d.foodRev)} bLabel="Drink" bPct={100 - foodPct} bAmt={eur0.format(d.drinkRev)} />
+          : <div className="empty">No sales in this period.</div>}
+      </div>
+      <div className="card">
+        <div className="card-head"><span className="card-title">By category</span><span className="card-hint">revenue</span></div>
+        <HBars rows={d.categories} mode="revenue" />
+      </div>
       <div className="card">
         <div className="card-head">
           <span className="card-title">Best-sellers</span>
@@ -178,7 +195,6 @@ export function ProductsTab({ d, sort, setSort }: { d: SalesPayload; sort: 'reve
         </div>
         <HBars rows={d.products} mode={sort} />
       </div>
-      <InfoNote>Ranked across the selected period. Tap a bar for exact numbers.</InfoNote>
     </>
   );
 }

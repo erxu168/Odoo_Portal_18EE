@@ -13,15 +13,23 @@ import {
   TipCtx, OverviewTab, ProductsTab, BusyTab, OrdersTab, KitchenTab,
 } from './SalesViz';
 import type { Range, SalesPayload } from '@/lib/waj-sales';
+import { dayShift, mondayOf, monthFirst, firstOfNextMonth, prevMonthFirst, labelDay, labelMonth } from '@/lib/waj-sales-time';
 
 const RANGES: { id: Range; label: string }[] = [
   { id: 'today', label: 'Today' },
-  { id: 'week', label: 'This week' },
-  { id: 'month', label: 'This month' },
+  { id: 'week', label: 'Week' },
+  { id: 'month', label: 'Month' },
+  { id: 'ytd', label: 'YTD' },
+  { id: 'year', label: 'Year' },
 ];
+
+function berlinToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+const EARLIEST_YEAR = 2024;
 const TABS = [
   { id: 'overview', label: 'Overview' },
-  { id: 'products', label: 'Best-sellers' },
+  { id: 'products', label: 'Menu' },
   { id: 'busy', label: 'Busy times' },
   { id: 'orders', label: 'Orders' },
   { id: 'kitchen', label: 'Kitchen' },
@@ -30,6 +38,7 @@ type TabId = typeof TABS[number]['id'];
 
 export default function SalesDashboard() {
   const [range, setRange] = useState<Range>('week');
+  const [anchor, setAnchor] = useState<string>(() => berlinToday());
   const [tab, setTab] = useState<TabId>('overview');
   const [sort, setSort] = useState<'revenue' | 'qty'>('revenue');
   const [data, setData] = useState<SalesPayload | null>(null);
@@ -45,7 +54,9 @@ export default function SalesDashboard() {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`/api/sales?range=${range}`);
+      // 'Today' always follows the real current day (survives an open-overnight tab).
+      const effAnchor = range === 'today' ? berlinToday() : anchor;
+      const r = await fetch(`/api/sales?range=${range}&anchor=${effAnchor}`);
       const j = await r.json();
       if (my !== reqRef.current) return; // a newer request superseded this one
       if (!r.ok || !j.success) throw new Error(j.error || `Request failed (${r.status})`);
@@ -56,7 +67,7 @@ export default function SalesDashboard() {
     } finally {
       if (!silent && my === reqRef.current) setLoading(false);
     }
-  }, [range]);
+  }, [range, anchor]);
 
   useEffect(() => { fetchData(false); }, [fetchData]);
   useEffect(() => { const id = setInterval(() => fetchData(true), 180000); return () => clearInterval(id); }, [fetchData]);
@@ -64,6 +75,35 @@ export default function SalesDashboard() {
 
   const show = (text: string, e: React.MouseEvent) => setTip({ text, x: e.clientX, y: e.clientY });
   const hide = () => setTip(null);
+
+  // ---- period navigation ----
+  const today = berlinToday();
+  const year = Number(anchor.slice(0, 4));
+  const years: number[] = [];
+  for (let y = Number(today.slice(0, 4)); y >= EARLIEST_YEAR; y--) years.push(y);
+
+  const pickRange = (r: Range) => { if (r === 'today') setAnchor(today); setRange(r); };
+  const pickYear = (y: number) => {
+    // Keep the currently-viewed month/day, clamped to that year's month length.
+    const mo = Number(anchor.slice(5, 7)), d = Number(anchor.slice(8, 10));
+    const maxD = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    const cand = `${y}-${String(mo).padStart(2, '0')}-${String(Math.min(d, maxD)).padStart(2, '0')}`;
+    setAnchor(cand > today ? today : cand);
+  };
+  const hasStepper = range === 'week' || range === 'month';
+  const canNext = range === 'week' ? mondayOf(anchor) < mondayOf(today)
+    : range === 'month' ? monthFirst(anchor) < monthFirst(today) : false;
+  const step = (delta: number) => {
+    if (range === 'week') {
+      const na = dayShift(anchor, delta * 7);
+      setAnchor(na > today ? today : na);
+    } else if (range === 'month') {
+      const mf = monthFirst(anchor);
+      const nm = delta > 0 ? firstOfNextMonth(mf) : prevMonthFirst(mf);
+      setAnchor(nm > today ? today : nm);
+    }
+  };
+  const stepLabel = range === 'week' ? labelDay(mondayOf(anchor)) : labelMonth(monthFirst(anchor));
 
   const mins = fetchedAt ? Math.floor((Date.now() - fetchedAt) / 60000) : 0;
   const updated = !fetchedAt ? '' : mins < 1 ? 'updated just now' : mins === 1 ? 'updated 1 min ago' : `updated ${mins} min ago`;
@@ -81,9 +121,27 @@ export default function SalesDashboard() {
 
         <div className="rangebar" role="group" aria-label="Date range">
           {RANGES.map(r => (
-            <button key={r.id} aria-pressed={range === r.id} onClick={() => setRange(r.id)}>{r.label}</button>
+            <button key={r.id} aria-pressed={range === r.id} onClick={() => pickRange(r.id)}>{r.label}</button>
           ))}
         </div>
+
+        {range !== 'today' && (
+          <div className="subbar">
+            {hasStepper && (
+              <div className="stepper">
+                <button onClick={() => step(-1)} aria-label="Previous period">‹</button>
+                <span>{stepLabel}</span>
+                <button onClick={() => step(1)} disabled={!canNext} aria-label="Next period">›</button>
+              </div>
+            )}
+            <label className="yearsel">
+              <span>Year</span>
+              <select value={year} onChange={e => pickYear(Number(e.target.value))}>
+                {years.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
 
         <nav className="tabbar" role="tablist" aria-label="Sections">
           {TABS.map(t => (
@@ -125,6 +183,15 @@ export default function SalesDashboard() {
         .wajs .rangebar button { flex:1;border:1px solid var(--border);background:var(--surface);color:var(--muted);
           font:inherit;font-size:14px;font-weight:700;padding:9px 6px;border-radius:11px;cursor:pointer;transition:.15s; }
         .wajs .rangebar button[aria-pressed="true"] { background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 2px 8px rgba(245,128,10,.32); }
+        .wajs .subbar { display:flex;align-items:center;gap:10px;padding:8px 14px 0; }
+        .wajs .stepper { display:flex;align-items:center;gap:8px; }
+        .wajs .stepper button { width:32px;height:32px;border:1px solid var(--border);background:var(--surface);border-radius:9px;font-size:18px;color:var(--ink-2);cursor:pointer;line-height:1;display:grid;place-items:center; }
+        .wajs .stepper button:disabled { opacity:.4;cursor:not-allowed; }
+        .wajs .stepper span { font-size:13px;font-weight:700;color:var(--ink);min-width:100px;text-align:center;font-variant-numeric:tabular-nums; }
+        .wajs .yearsel { display:flex;align-items:center;gap:7px;margin-left:auto; }
+        .wajs .yearsel span { font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint); }
+        .wajs .yearsel select { font:inherit;font-size:14px;font-weight:700;color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:7px 10px;cursor:pointer; }
+        .wajs .delta.flat { color:var(--faint); }
         .wajs .tabbar { display:flex;gap:2px;overflow-x:auto;padding:2px 8px 0;background:var(--bg);
           border-bottom:1px solid var(--border);scrollbar-width:none; }
         .wajs .tabbar::-webkit-scrollbar { display:none; }

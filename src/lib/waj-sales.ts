@@ -16,7 +16,7 @@
 import { getOdoo } from './odoo';
 import { getPrepHistory, getRecentDoneStages } from './kds-db';
 import {
-  DOW, berlinParts, berlinDayOf, utcStr, computeBounds,
+  DOW, MON, berlinParts, berlinDayOf, utcStr, computeBounds,
   weekdayLabel, dayOfMonthLabel, type Range, type Bounds,
 } from './waj-sales-time';
 
@@ -29,12 +29,18 @@ const PREP_MAX_SEC = 3 * 3600;        // ignore prep times over 3h (abandoned/vo
 export interface SalesPayload {
   range: Range;
   sub: string;
-  cmp: string;
+  prevLabel: string;                       // '' => no previous-period delta
+  yoyLabel: string;                        // '' => no year-on-year delta
   trendUnit: string;
   trend: [string, number, number][];      // [label, sales, orders]
   prevSales: number;
   prevOrders: number;
+  yoySales: number;
+  yoyOrders: number;
   products: [string, number, number][];    // [name, qty, revenue]
+  categories: [string, number, number][];  // [category, qty, revenue]
+  foodRev: number;
+  drinkRev: number;
   hours: [string, number][];               // [hourLabel, orders]
   hoursHint: string;
   dow: [string, number][] | null;          // [dayLabel, avgSales]
@@ -103,35 +109,42 @@ async function fetchAll(model: string, domain: any[], fields: string[], order = 
   return out;
 }
 
-// ── main compute ────────────────────────────────────────
-export async function computeSales(range: Range, nowMs: number): Promise<SalesPayload> {
-  const waj = await resolveWaj();
-  const b = computeBounds(range, nowMs);
-  const cStart = utcStr(b.curStartMs), cEnd = utcStr(b.curEndMs);
-  const pStart = utcStr(b.prevStartMs), pEnd = utcStr(b.prevEndMs);
+/** Sales € + order count for a [startMs, endMs) window (empty if not set). */
+async function periodTotals(companyId: number, startMs: number, endMs: number): Promise<{ sales: number; orders: number }> {
+  if (!startMs || endMs <= startMs) return { sales: 0, orders: 0 };
+  const rows = await fetchAll('pos.order',
+    [['company_id', '=', companyId], ['date_order', '>=', utcStr(startMs)], ['date_order', '<', utcStr(endMs)], ['state', 'in', SOLD]],
+    ['amount_total']);
+  return { sales: Math.round((rows as any[]).reduce((a, o) => a + o.amount_total, 0)), orders: rows.length };
+}
 
-  const [orders, prevOrders, lines, payments] = await Promise.all([
+// ── main compute ────────────────────────────────────────
+export async function computeSales(range: Range, anchorDay: string, nowMs: number): Promise<SalesPayload> {
+  const waj = await resolveWaj();
+  const b = computeBounds(range, anchorDay, nowMs);
+  const cStart = utcStr(b.curStartMs), cEnd = utcStr(b.curEndMs);
+
+  const [orders, lines, payments, prev, yoy] = await Promise.all([
     fetchAll('pos.order',
       [['company_id', '=', waj.companyId], ['date_order', '>=', cStart], ['date_order', '<', cEnd], ['state', 'in', SOLD]],
       ['id', 'date_order', 'amount_total', 'takeaway'], 'date_order asc'),
-    fetchAll('pos.order',
-      [['company_id', '=', waj.companyId], ['date_order', '>=', pStart], ['date_order', '<', pEnd], ['state', 'in', SOLD]],
-      ['id', 'amount_total']),
     fetchAll('pos.order.line',
       [['order_id.company_id', '=', waj.companyId], ['order_id.date_order', '>=', cStart], ['order_id.date_order', '<', cEnd], ['order_id.state', 'in', SOLD]],
-      ['order_id', 'product_id', 'qty', 'price_subtotal_incl']),
+      ['order_id', 'product_id', 'qty', 'price_subtotal', 'price_subtotal_incl']),
     fetchAll('pos.payment',
       [['company_id', '=', waj.companyId], ['payment_date', '>=', cStart], ['payment_date', '<', cEnd]],
       ['payment_method_id', 'amount']),
+    periodTotals(waj.companyId, b.prevStartMs, b.prevEndMs),
+    periodTotals(waj.companyId, b.yoyStartMs, b.yoyEndMs),
   ]);
 
   // ---- trend ----
   const trend = buildTrend(orders, b);
-  const prevSales = (prevOrders as any[]).reduce((a, o) => a + o.amount_total, 0);
 
   // ---- products + items-per-order ----
   const prodMap = new Map<number, { name: string; qty: number; rev: number }>();
   const orderItems = new Map<number, number>();
+  let foodRev = 0, drinkRev = 0;
   for (const l of lines as any[]) {
     const oid = l.order_id ? l.order_id[0] : 0;
     const pname = l.product_id ? String(l.product_id[1]) : '';
@@ -141,6 +154,10 @@ export async function computeSales(range: Range, nowMs: number): Promise<SalesPa
     e.qty += l.qty; e.rev += l.price_subtotal_incl;
     prodMap.set(pid, e);
     orderItems.set(oid, (orderItems.get(oid) || 0) + Math.max(0, l.qty));
+    // Food vs drink by German VAT: drinks 19%, food 7% (WAJ applies no dine-in bump).
+    // Include refund lines (negative) so the split reconciles with net revenue.
+    const sub = l.price_subtotal, incl = l.price_subtotal_incl;
+    if (sub !== 0) { if ((incl / sub - 1) * 100 > 15) drinkRev += incl; else foodRev += incl; }
   }
   // Keep the union of the revenue and quantity leaders so the client can rank by
   // either without a low-price, high-volume item being dropped by a revenue cut.
@@ -153,6 +170,28 @@ export async function computeSales(range: Range, nowMs: number): Promise<SalesPa
     .filter(e => keep.has(e[0]))
     .sort((a, c) => c[1].rev - a[1].rev)
     .map(e => [e[1].name, Math.round(e[1].qty), Math.round(e[1].rev)]);
+
+  // ---- categories (group products by their Odoo category leaf) ----
+  // active_test:false so archived products keep their category in historical views.
+  const pids = Array.from(prodMap.keys()).filter(id => id > 0);
+  const prodCats = pids.length
+    ? await getOdoo().searchRead('product.product', [['id', 'in', pids]], ['categ_id'], { limit: pids.length, context: { active_test: false } })
+    : [];
+  const catByPid = new Map<number, string>();
+  for (const p of prodCats as any[]) {
+    const full = p.categ_id ? String(p.categ_id[1]) : 'Uncategorised';
+    catByPid.set(p.id, full.includes(' / ') ? full.split(' / ').pop()! : full);
+  }
+  const catMap = new Map<string, { qty: number; rev: number }>();
+  prodMap.forEach((e, pid) => {
+    const cat = catByPid.get(pid) || 'Uncategorised';
+    const c = catMap.get(cat) || { qty: 0, rev: 0 };
+    c.qty += e.qty; c.rev += e.rev; catMap.set(cat, c);
+  });
+  const categories: [string, number, number][] = Array.from(catMap.entries())
+    .sort((a, c) => c[1].rev - a[1].rev)
+    .slice(0, 10)
+    .map(([name, v]) => [name, Math.round(v.qty), Math.round(v.rev)]);
 
   // ---- busy hours ----
   const activeDays = new Set((orders as any[]).map(o => berlinParts(o.date_order).day)).size || 1;
@@ -222,10 +261,13 @@ export async function computeSales(range: Range, nowMs: number): Promise<SalesPa
   const kitchen = await computeKitchen(waj.companyId, b);
 
   return {
-    range, sub: b.sub, cmp: b.cmp,
-    trendUnit: b.gran === 'hour' ? 'By hour' : 'By day',
-    trend, prevSales: Math.round(prevSales), prevOrders: (prevOrders as any[]).length,
-    products, hours, hoursHint, dow,
+    range, sub: b.sub, prevLabel: b.prevLabel, yoyLabel: b.yoyLabel,
+    trendUnit: b.gran === 'hour' ? 'By hour' : b.gran === 'month' ? 'By month' : 'By day',
+    trend,
+    prevSales: prev.sales, prevOrders: prev.orders,
+    yoySales: yoy.sales, yoyOrders: yoy.orders,
+    products, categories, foodRev: Math.round(foodRev), drinkRev: Math.round(drinkRev),
+    hours, hoursHint, dow,
     salesTotal, ordersTotal,
     cashPct, cashAmt: Math.round(cash), cardAmt: Math.round(card),
     dineInPct, dineInOrders, takeawayOrders,
@@ -246,15 +288,30 @@ function buildTrend(orders: any[], b: Bounds): [string, number, number][] {
     return Array.from(m.keys()).sort((a, c) => a - c)
       .map(h => [String(h).padStart(2, '0'), Math.round(m.get(h)!.s), m.get(h)!.o] as [string, number, number]);
   }
+  const byMonth = b.gran === 'month';
   const m = new Map<string, { s: number; o: number }>();
+  if (byMonth) {
+    // Prefill every month in the window so a zero-sales month shows a gap, not a
+    // misleadingly-adjacent point.
+    let cur = berlinParts(utcStr(b.curStartMs)).day.slice(0, 7);
+    const end = berlinParts(utcStr(Math.max(b.curStartMs, b.curEndMs - 1))).day.slice(0, 7);
+    for (let guard = 0; guard < 400; guard++) {
+      m.set(cur, { s: 0, o: 0 });
+      if (cur >= end) break;
+      let [yy, mm] = cur.split('-').map(Number); mm++; if (mm > 12) { mm = 1; yy++; }
+      cur = `${yy}-${String(mm).padStart(2, '0')}`;
+    }
+  }
   for (const o of orders) {
     const day = berlinParts(o.date_order).day;
-    const e = m.get(day) || { s: 0, o: 0 };
-    e.s += o.amount_total; e.o += 1; m.set(day, e);
+    const key = byMonth ? day.slice(0, 7) : day; // YYYY-MM or YYYY-MM-DD
+    const e = m.get(key) || { s: 0, o: 0 };
+    e.s += o.amount_total; e.o += 1; m.set(key, e);
   }
-  return Array.from(m.keys()).sort().map(day => {
-    const label = b.range === 'week' ? weekdayLabel(day) : dayOfMonthLabel(day);
-    return [label, Math.round(m.get(day)!.s), m.get(day)!.o] as [string, number, number];
+  return Array.from(m.keys()).sort().map(key => {
+    const label = byMonth ? MON[Number(key.slice(5, 7)) - 1]
+      : b.weekly ? weekdayLabel(key) : dayOfMonthLabel(key);
+    return [label, Math.round(m.get(key)!.s), m.get(key)!.o] as [string, number, number];
   });
 }
 

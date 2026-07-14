@@ -5,7 +5,7 @@
  * All Berlin conversions are DST-correct (via Intl, not a fixed +1 offset).
  */
 
-export type Range = 'today' | 'week' | 'month';
+export type Range = 'today' | 'week' | 'month' | 'ytd' | 'year';
 
 export const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -56,6 +56,46 @@ export function berlinMidnightMs(dayStr: string): number {
 export function utcStr(ms: number): string {
   return new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
 }
+
+// ── wall-clock-preserving instant shifts (DST- and leap-safe) ──
+// Shifting a comparison window by adding raw milliseconds drifts across DST and
+// leap boundaries. Instead we read the Berlin civil date/time, shift the
+// calendar field, and rebuild the instant — so "one year / month / week earlier"
+// keeps the same wall-clock time and calendar position.
+function berlinWall(ms: number): { y: number; mo: number; d: number; h: number; mi: number; s: number } {
+  const f = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BERLIN, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+  const p: Record<string, string> = {};
+  for (const part of f.formatToParts(new Date(ms))) p[part.type] = part.value;
+  let h = parseInt(p.hour, 10);
+  if (h === 24) h = 0;
+  return { y: +p.year, mo: +p.month, d: +p.day, h, mi: +p.minute, s: +p.second };
+}
+function berlinInstant(y: number, mo: number, d: number, h: number, mi: number, s: number): number {
+  const naive = Date.UTC(y, mo - 1, d, h, mi, s);
+  const o1 = berlinOffsetHours(naive);
+  let ms = naive - o1 * 3600 * 1000;
+  const o2 = berlinOffsetHours(ms);
+  if (o2 !== o1) ms = naive - o2 * 3600 * 1000;
+  return ms;
+}
+function daysInMonth(y: number, mo: number): number { return new Date(Date.UTC(y, mo, 0)).getUTCDate(); }
+
+export function shiftDays(ms: number, n: number): number {
+  const w = berlinWall(ms);
+  const nd = new Date(Date.UTC(w.y, w.mo - 1, w.d + n));
+  return berlinInstant(nd.getUTCFullYear(), nd.getUTCMonth() + 1, nd.getUTCDate(), w.h, w.mi, w.s);
+}
+export function shiftMonths(ms: number, n: number): number {
+  const w = berlinWall(ms);
+  const idx = (w.mo - 1) + n;
+  const ny = w.y + Math.floor(idx / 12);
+  const nm = ((idx % 12) + 12) % 12 + 1;
+  return berlinInstant(ny, nm, Math.min(w.d, daysInMonth(ny, nm)), w.h, w.mi, w.s);
+}
+export function shiftYears(ms: number, n: number): number { return shiftMonths(ms, n * 12); }
 export function dayShift(dayStr: string, delta: number): string {
   const d = new Date(dayStr + 'T12:00:00Z');
   d.setUTCDate(d.getUTCDate() + delta);
@@ -87,49 +127,89 @@ export function labelMonth(day: string): string {
 export function weekdayLabel(day: string): string { return DOW[dowOf(day)]; }
 export function dayOfMonthLabel(day: string): string { return String(Number(day.slice(8, 10))); }
 
-export interface Bounds {
-  range: Range;
-  gran: 'hour' | 'day';
-  startDay: string;
-  curStartMs: number; curEndMs: number;
-  prevStartMs: number; prevEndMs: number;
-  sub: string; cmp: string;
+export function monthFirst(day: string): string { return day.slice(0, 8) + '01'; }
+export function firstOfNextMonth(firstOfMonth: string): string {
+  const [y, m] = firstOfMonth.split('-').map(Number);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  return `${ny}-${String(nm).padStart(2, '0')}-01`;
+}
+/** Same YYYY-MM-DD shifted by `delta` years, clamping Feb 29 -> Feb 28. */
+export function shiftYearDay(day: string, delta: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const ny = y + delta;
+  const maxD = new Date(Date.UTC(ny, m, 0)).getUTCDate();
+  return `${ny}-${String(m).padStart(2, '0')}-${String(Math.min(d, maxD)).padStart(2, '0')}`;
 }
 
-export function computeBounds(range: Range, nowMs: number): Bounds {
+export interface Bounds {
+  range: Range;
+  gran: 'hour' | 'day' | 'month';
+  weekly: boolean;   // day-granularity: label by weekday (week) vs day-of-month (month)
+  anchorDay: string;
+  curStartMs: number; curEndMs: number;
+  prevStartMs: number; prevEndMs: number; prevLabel: string; // '' => no previous-period delta
+  yoyStartMs: number; yoyEndMs: number; yoyLabel: string;     // '' => no year-on-year delta
+  sub: string;
+}
+
+/**
+ * Bounds for the selected range anchored at `anchorDay` (a day inside the target
+ * period; also carries the selected year). Produces three windows:
+ *   cur  — the period, up to `now` if it is the current period, else the full period
+ *   prev — the previous comparable period, ending at the same civil point
+ *   yoy  — the same period one year earlier, ending at the same civil point
+ * Comparison endpoints are computed by wall-clock-preserving calendar shifts
+ * (DST- and leap-safe); day-length differences clamp (e.g. Mar 30 vs Feb 28).
+ */
+export function computeBounds(range: Range, anchorDay: string, nowMs: number): Bounds {
   const today = berlinDayOf(nowMs);
-  const curEndMs = nowMs;
+  const anchor = anchorDay && anchorDay <= today ? anchorDay : today; // never in the future
+  const todayMD = today.slice(5); // MM-DD, for the year-to-date endpoint
+
+  let startDay: string, endExcl: string, sub: string, prevLabel = '', yoyLabel = '';
+  let gran: 'hour' | 'day' | 'month' = 'day';
+  let weekly = false;
+  let prevShift: ((ms: number) => number) | null = null;
+  let yoyShift: (ms: number) => number = (ms) => shiftYears(ms, -1);
+
   if (range === 'today') {
-    const curStartMs = berlinMidnightMs(today);
-    return {
-      range, gran: 'hour', startDay: today, curStartMs, curEndMs,
-      prevStartMs: berlinMidnightMs(dayShift(today, -7)),
-      prevEndMs: curEndMs - 7 * 86400000,
-      sub: `Today · ${labelDay(today)}`,
-      cmp: `vs last ${DOW[dowOf(today)]} (same time)`,
-    };
+    startDay = anchor; endExcl = dayShift(anchor, 1);
+    prevShift = (ms) => shiftDays(ms, -7); prevLabel = `vs last ${DOW[dowOf(anchor)]}`;
+    yoyLabel = 'vs last year';
+    gran = 'hour'; sub = `Today · ${labelDay(anchor)}`;
+  } else if (range === 'week') {
+    const ws = mondayOf(anchor); startDay = ws; endExcl = dayShift(ws, 7);
+    prevShift = (ms) => shiftDays(ms, -7); prevLabel = 'vs last week';
+    yoyShift = (ms) => shiftDays(ms, -364); yoyLabel = 'vs same week last year'; // 52 weeks keeps the weekday
+    weekly = true; sub = `Week of ${labelDay(ws)}`;
+  } else if (range === 'month') {
+    const mf = monthFirst(anchor); startDay = mf; endExcl = firstOfNextMonth(mf);
+    prevShift = (ms) => shiftMonths(ms, -1); prevLabel = 'vs last month';
+    yoyLabel = 'vs same month last year';
+    sub = labelMonth(mf);
+  } else if (range === 'ytd') {
+    const yr = anchor.slice(0, 4);
+    startDay = `${yr}-01-01`; endExcl = dayShift(`${yr}-${todayMD}`, 1); // independent of the stepped anchor day
+    yoyLabel = 'vs last year (YTD)';
+    gran = 'month'; sub = `${yr} · year to date`;
+  } else { // year
+    const yr = Number(anchor.slice(0, 4));
+    startDay = `${yr}-01-01`; endExcl = `${yr + 1}-01-01`;
+    yoyLabel = `vs ${yr - 1}`;
+    gran = 'month'; sub = `${yr}`;
   }
-  if (range === 'week') {
-    const startDay = mondayOf(today);
-    const curStartMs = berlinMidnightMs(startDay);
-    return {
-      range, gran: 'day', startDay, curStartMs, curEndMs,
-      prevStartMs: berlinMidnightMs(dayShift(startDay, -7)),
-      prevEndMs: curEndMs - 7 * 86400000,
-      sub: `This week · from ${labelDay(startDay)}`,
-      cmp: 'vs last week',
-    };
-  }
-  const startDay = today.slice(0, 8) + '01';
+
   const curStartMs = berlinMidnightMs(startDay);
-  const prevStartMs = berlinMidnightMs(prevMonthFirst(startDay));
+  const curEndMs = Math.min(berlinMidnightMs(endExcl), nowMs);
+  const [prevStartMs, prevEndMs] = prevShift ? [prevShift(curStartMs), prevShift(curEndMs)] : [0, 0];
+  const [yoyStartMs, yoyEndMs] = [yoyShift(curStartMs), yoyShift(curEndMs)];
+
   return {
-    range, gran: 'day', startDay, curStartMs, curEndMs,
-    prevStartMs,
-    // Same elapsed window a month earlier, but never spill past the end of the
-    // previous month (e.g. Mar 30 must not compare into early March).
-    prevEndMs: Math.min(prevStartMs + (curEndMs - curStartMs), curStartMs),
-    sub: `This month · ${labelMonth(startDay)}`,
-    cmp: 'vs same period last month',
+    range, gran, weekly, anchorDay: anchor,
+    curStartMs, curEndMs,
+    prevStartMs, prevEndMs, prevLabel,
+    yoyStartMs, yoyEndMs, yoyLabel,
+    sub,
   };
 }
