@@ -281,9 +281,9 @@ export async function sendStaffInviteEmail(toEmail: string, toName: string, invi
 export async function sendKioskSetupCodeEmail(toEmail: string, toName: string, code: string, companyId?: number) {
   const brand = await getCompanyBrandName(companyId);
   await getTransporter(companyId).sendMail({
-    from: `"Krawings Time Clock" <${getFrom(companyId)}>`,
+    from: `"${brand} Time Clock" <${getFrom(companyId)}>`,
     to: toEmail,
-    subject: `Your Time Clock setup code: ${code}`,
+    subject: `Your ${brand} Time Clock setup code: ${code}`,
     text: [
       `Hi ${toName},`,
       '',
@@ -293,22 +293,22 @@ export async function sendKioskSetupCodeEmail(toEmail: string, toName: string, c
       '',
       'This code expires in 15 minutes. If you did not request this, ignore this email.',
       '',
-      `— Krawings ${brand}`,
+      `— ${brand} Time Clock`,
     ].join('\n'),
     html: `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 24px;">
-          <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
-          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">TIME CLOCK &middot; ${brand.toUpperCase()}</div>
+          <div style="font-size: 26px; font-weight: 800; color: #1A1F2E;">${brand}</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px; letter-spacing: 1px;">TIME CLOCK</div>
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Here is your code to set up your Time Clock PIN. Type it into the tablet, then choose your own 4-digit PIN.</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Here is your code to set up your <b>${brand}</b> Time Clock PIN. Type it into the tablet, then choose your own 4-digit PIN.</p>
         <div style="text-align: center; margin: 28px 0;">
           <div style="display: inline-block; padding: 16px 28px; background-color: #F3F4F6; border-radius: 12px; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #1A1F2E;">${code}</div>
         </div>
         <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This code expires in 15 minutes. If you did not request this, ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
-        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings ${brand} &middot; Time Clock</p>
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${brand} &middot; Time Clock</p>
       </div>
     `,
   });
@@ -322,35 +322,40 @@ export async function sendKioskPinResetEmail(toEmail: string, toName: string, re
   const resetUrl = `${PORTAL_URL}/kiosk/reset-pin?token=${resetToken}`;
   const brand = await getCompanyBrandName(companyId);
   await getTransporter(companyId).sendMail({
-    from: `"Krawings Time Clock" <${getFrom(companyId)}>`,
+    from: `"${brand} Time Clock" <${getFrom(companyId)}>`,
     to: toEmail,
-    subject: 'Reset your Time Clock PIN',
+    subject: `Reset your ${brand} Time Clock PIN`,
     text: [
       `Hi ${toName},`,
       '',
-      'Someone asked to reset your Time Clock PIN.',
+      `A request to reset the Time Clock PIN for ${toName} was made at the ${brand} tablet.`,
       '',
       'Open the link below on your phone to choose a new 4-digit PIN:',
       resetUrl,
       '',
-      'This link expires in 1 hour. If you did not request this, ignore this email.',
+      `Didn't request this? If it wasn't you, ignore this email — your current PIN still works — and let your manager know.`,
       '',
-      `— Krawings ${brand}`,
+      'This link expires in 1 hour.',
+      '',
+      `— ${brand} Time Clock`,
     ].join('\n'),
     html: `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 24px;">
-          <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
-          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">TIME CLOCK &middot; ${brand.toUpperCase()}</div>
+          <div style="font-size: 26px; font-weight: 800; color: #1A1F2E;">${brand}</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px; letter-spacing: 1px;">TIME CLOCK</div>
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Someone asked to reset your Time Clock PIN. Tap the button to choose a new 4-digit PIN.</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">A request to reset the Time Clock PIN for <b>${toName}</b> was made at the <b>${brand}</b> tablet. Tap the button to choose a new 4-digit PIN.</p>
         <div style="text-align: center; margin: 28px 0;">
           <a href="${resetUrl}" style="display: inline-block; padding: 14px 32px; background-color: #16A34A; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px;">Set a new PIN</a>
         </div>
-        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link expires in 1 hour. If you did not request this, ignore this email.</p>
+        <div style="background-color: #FEF2F2; border: 1px solid #FECACA; border-radius: 12px; padding: 12px 16px; margin: 8px 0 16px;">
+          <p style="color: #B91C1C; font-size: 13px; line-height: 1.5; margin: 0;"><b>Didn't request this?</b> If it wasn't you, don't tap the button — ignore this email (your current PIN still works) and let your manager know.</p>
+        </div>
+        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link expires in 1 hour.</p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
-        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings ${brand} &middot; Time Clock</p>
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${brand} &middot; Time Clock</p>
       </div>
     `,
   });
