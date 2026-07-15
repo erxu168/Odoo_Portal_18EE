@@ -26,6 +26,13 @@ interface PresenceRow {
   minsLate: number;
 }
 
+interface UnscheduledPresent {
+  employeeId: number;
+  employeeName: string;
+  checkIn: string;
+  sinceBeforeToday: boolean;
+}
+
 interface PresenceProps {
   companyId: number;
   isManager: boolean;
@@ -48,6 +55,7 @@ function hhmm(odoo: string | null): string {
 
 export default function PresenceBoard({ companyId, onBack }: PresenceProps) {
   const [rows, setRows] = useState<PresenceRow[]>([]);
+  const [unscheduled, setUnscheduled] = useState<UnscheduledPresent[]>([]);
   const [now, setNow] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +67,7 @@ export default function PresenceBoard({ companyId, onBack }: PresenceProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setRows(Array.isArray(data.rows) ? data.rows : []);
+      setUnscheduled(Array.isArray(data.unscheduledPresent) ? data.unscheduledPresent : []);
       setNow(typeof data.now === 'string' ? data.now : '');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -74,9 +83,12 @@ export default function PresenceBoard({ companyId, onBack }: PresenceProps) {
     return () => clearInterval(timer);
   }, [companyId, fetchPresence]);
 
-  const presentCount = rows.filter(r => r.state === 'present').length;
+  // Count unique people present — someone with two shifts today is one person.
+  const scheduledPresent = new Set(rows.filter(r => r.state === 'present').map(r => r.employeeId)).size;
+  const presentCount = scheduledPresent + unscheduled.length;
   const lateRows = rows.filter(r => r.state === 'late');
   const lateNames = lateRows.map(r => r.employeeName).join(', ');
+  const dayLabel = (odoo: string) => berlinParts(odoo).date.slice(5).replace('-', '/'); // MM/DD
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -119,12 +131,43 @@ export default function PresenceBoard({ companyId, onBack }: PresenceProps) {
             <div className="flex gap-2">
               <StatChip value={presentCount} label="Present" />
               <StatChip value={lateRows.length} label="Late" tone={lateRows.length > 0 ? 'red' : 'default'} />
-              <StatChip value={rows.length} label="Today" />
+              <StatChip value={rows.length} label="Scheduled" />
             </div>
+
+            {unscheduled.length > 0 && (
+              <div>
+                <div className="text-[var(--fs-xs)] font-semibold text-gray-400 tracking-wider uppercase px-1 pb-1.5">
+                  Clocked in · not on today{'’'}s rota
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  {unscheduled.map((u, i) => (
+                    <div
+                      key={u.employeeId}
+                      className={`flex items-center gap-3 px-4 py-3 min-h-[44px] ${
+                        i > 0 ? 'border-t border-gray-100' : ''
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[var(--fs-md)] font-bold text-gray-900 truncate">{u.employeeName}</div>
+                        <div className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
+                          in since {hhmm(u.checkIn)}
+                          {u.sinceBeforeToday ? ` · ${dayLabel(u.checkIn)}` : ''}
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0">
+                        <Badge variant={u.sinceBeforeToday ? 'amber' : 'green'}>
+                          {u.sinceBeforeToday ? 'Still in?' : 'Present'}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {rows.length === 0 ? (
               <div className="text-center py-16 text-gray-500 text-[var(--fs-base)]">
-                Nobody scheduled today.
+                {unscheduled.length === 0 ? 'Nobody is scheduled or clocked in.' : 'Nobody scheduled today.'}
               </div>
             ) : (
               <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">

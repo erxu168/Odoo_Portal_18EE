@@ -43,10 +43,15 @@ function initials(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 }
 
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
 export default function Punctuality({ companyId, onBack }: PunctualityProps) {
   const [weekKey, setWeekKey] = useState(currentWeekKey());
   const [employees, setEmployees] = useState<PEmp[]>([]);
   const [unmatched, setUnmatched] = useState(0);
+  const [ambiguous, setAmbiguous] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,6 +64,7 @@ export default function Punctuality({ companyId, onBack }: PunctualityProps) {
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setEmployees(Array.isArray(data.employees) ? data.employees : []);
       setUnmatched(typeof data.unmatched === 'number' ? data.unmatched : 0);
+      setAmbiguous(typeof data.ambiguous === 'number' ? data.ambiguous : 0);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
     } finally {
@@ -99,10 +105,11 @@ export default function Punctuality({ companyId, onBack }: PunctualityProps) {
           </div>
         ) : employees.length === 0 ? (
           <div className="text-center py-16 text-gray-500 text-[var(--fs-base)]">
-            No matched clock-ins this week.
-            {unmatched > 0 && (
+            No clock-ins matched a shift this week.
+            {(unmatched > 0 || ambiguous > 0) && (
               <div className="text-[var(--fs-xs)] text-gray-400 mt-2">
-                {unmatched} clock-in{unmatched === 1 ? '' : 's'} not yet linked to a shift.
+                {unmatched > 0 && <div>{plural(unmatched, 'clock-in')} had no scheduled shift to compare against.</div>}
+                {ambiguous > 0 && <div>{plural(ambiguous, 'clock-in')} matched several shifts that day — skipped.</div>}
               </div>
             )}
           </div>
@@ -136,10 +143,10 @@ export default function Punctuality({ companyId, onBack }: PunctualityProps) {
                 </div>
               );
             })}
-            {unmatched > 0 && (
+            {(unmatched > 0 || ambiguous > 0) && (
               <div className="text-center text-[var(--fs-xs)] text-gray-400 mt-1">
-                {unmatched} clock-in{unmatched === 1 ? '' : 's'} not yet linked to a shift (they’ll match as staff clock in
-                against their shift on the kiosk).
+                {unmatched > 0 && <div>{plural(unmatched, 'clock-in')} had no scheduled shift to compare against.</div>}
+                {ambiguous > 0 && <div>{plural(ambiguous, 'clock-in')} matched several shifts that day — skipped.</div>}
               </div>
             )}
           </>

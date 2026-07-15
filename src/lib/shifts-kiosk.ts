@@ -107,10 +107,12 @@ export async function kioskPunch(companyId: number, employeeId: number): Promise
   const at = berlinParts(nowUtc).hhmm;
 
   // Find this employee's shift for today (active one preferred, else nearest).
+  // Only PUBLISHED slots — a draft rota entry must not become a punctuality
+  // commitment stamped onto the attendance record.
   const weekSlots = await fetchWeekSlots(companyId, currentWeekKey());
   const today = berlinParts(nowUtc).date;
   const mine = weekSlots.filter(s => {
-    if (s.employeeId !== employeeId) return false;
+    if (s.employeeId !== employeeId || s.state !== 'published') return false;
     const startMs = odooToDate(s.start).getTime();
     const endMs = odooToDate(s.end).getTime();
     return berlinParts(s.start).date === today || (startMs <= nowMs && nowMs < endMs);

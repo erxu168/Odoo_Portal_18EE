@@ -18,6 +18,9 @@ type OdooRow = Record<string, unknown>;
 function m2oId(v: unknown): number | null {
   return Array.isArray(v) && typeof v[0] === 'number' ? v[0] : null;
 }
+function m2oName(v: unknown): string {
+  return Array.isArray(v) && typeof v[1] === 'string' ? v[1] : '';
+}
 function str(v: unknown): string {
   return typeof v === 'string' ? v : '';
 }
@@ -54,24 +57,40 @@ const ATT_FIELDS = ['employee_id', 'check_in', 'check_out', 'worked_hours', 'pla
 
 // -- Reads ------------------------------------------------------------------------
 
+/** A live open clock-in (check_out still false) with the employee's name. */
+export interface OpenAttendance {
+  attendanceId: number;
+  employeeId: number;
+  /** employee display name, taken from the employee_id many2one (no extra query) */
+  name: string;
+  /** Odoo UTC-naive check-in */
+  checkIn: string;
+  workedHours: number;
+}
+
 /**
  * Employees currently clocked in for a company (open attendance = check_out false).
- * Returns employeeId → {check_in, worked_hours-so-far}. Latest open record wins.
+ * Returns employeeId → {name, check_in, worked_hours-so-far}. Latest open record
+ * wins, so an employee with duplicate open records still appears once.
  */
-export async function fetchOpenAttendance(
-  companyId: number,
-): Promise<Map<number, { checkIn: string; workedHours: number }>> {
+export async function fetchOpenAttendance(companyId: number): Promise<Map<number, OpenAttendance>> {
   const rows = (await getOdoo().searchRead(
     'hr.attendance',
     [['employee_id.company_id', '=', companyId], ['check_out', '=', false]],
     ATT_FIELDS,
     { limit: 500, order: 'check_in desc' },
   )) as OdooRow[];
-  const map = new Map<number, { checkIn: string; workedHours: number }>();
+  const map = new Map<number, OpenAttendance>();
   for (const r of rows) {
     const eid = m2oId(r.employee_id);
     if (eid !== null && !map.has(eid)) {
-      map.set(eid, { checkIn: str(r.check_in), workedHours: num(r.worked_hours) });
+      map.set(eid, {
+        attendanceId: r.id as number,
+        employeeId: eid,
+        name: m2oName(r.employee_id),
+        checkIn: str(r.check_in),
+        workedHours: num(r.worked_hours),
+      });
     }
   }
   return map;

@@ -8,10 +8,21 @@
  *   due      — scheduled, not clocked in, in the window but within grace
  *   upcoming — shift hasn't started yet
  *   done     — shift end time has passed
+ * Anyone clocked in who is NOT on a published/assigned shift today is returned
+ * separately as `unscheduledPresent`, so the board always answers "who is
+ * physically here right now" even when the rota isn't published or maintained.
  * All time comparisons use absolute instants (UTC) so overnight shifts are safe.
+ *
+ * Known limitation: only the current ISO week's slots are fetched, so a shift
+ * that started the previous Sunday and runs past Monday 00:00 is not matched to
+ * its schedule during those early-Monday hours. The person is not lost — they
+ * still appear under `unscheduledPresent` (clocked in) — only their shift link
+ * and lateness are missed for that narrow window.
  */
-import { fetchWeekSlots } from '@/lib/shifts-odoo';
+import type { OpenAttendance } from '@/lib/shifts-attendance';
 import { fetchOpenAttendance } from '@/lib/shifts-attendance';
+import { fetchWeekSlots } from '@/lib/shifts-odoo';
+import type { ShiftSlot } from '@/types/shifts';
 import { berlinParts, currentWeekKey, nowOdooUtc, odooToDate } from '@/lib/shifts-time';
 
 export type PresenceState = 'present' | 'late' | 'due' | 'upcoming' | 'done';
@@ -30,28 +41,42 @@ export interface PresenceRow {
   minsLate: number;
 }
 
+/** Someone clocked in who has no published, assigned shift today. */
+export interface UnscheduledPresent {
+  employeeId: number;
+  employeeName: string;
+  /** clock-in time, Odoo UTC-naive */
+  checkIn: string;
+  /** true when the clock-in began before today (a likely forgotten clock-out) */
+  sinceBeforeToday: boolean;
+}
+
 export interface PresenceResult {
   /** server "now" as Odoo UTC */
   now: string;
   graceMin: number;
   rows: PresenceRow[];
   lateCount: number;
+  unscheduledPresent: UnscheduledPresent[];
 }
 
 const RANK: Record<PresenceState, number> = { late: 0, due: 1, present: 2, upcoming: 3, done: 4 };
 
-export async function computePresence(companyId: number, graceMin: number): Promise<PresenceResult> {
-  const nowUtc = nowOdooUtc();
+/**
+ * Pure presence computation — no Odoo access, so it is directly unit-testable.
+ * `open` is keyed by employeeId with the newest open record per employee.
+ */
+export function buildPresence(
+  slots: ShiftSlot[],
+  open: Map<number, OpenAttendance>,
+  nowUtc: string,
+  graceMin: number,
+): PresenceResult {
   const nowMs = odooToDate(nowUtc).getTime();
   const todayDate = berlinParts(nowUtc).date;
 
-  const [weekSlots, open] = await Promise.all([
-    fetchWeekSlots(companyId, currentWeekKey()),
-    fetchOpenAttendance(companyId),
-  ]);
-
   const rows: PresenceRow[] = [];
-  for (const s of weekSlots) {
+  for (const s of slots) {
     if (s.employeeId === null || s.state !== 'published') continue;
     const startMs = odooToDate(s.start).getTime();
     const endMs = odooToDate(s.end).getTime();
@@ -90,5 +115,29 @@ export async function computePresence(companyId: number, graceMin: number): Prom
   rows.sort(
     (a, b) => RANK[a.state] - RANK[b.state] || odooToDate(a.start).getTime() - odooToDate(b.start).getTime(),
   );
-  return { now: nowUtc, graceMin, rows, lateCount: rows.filter(r => r.state === 'late').length };
+
+  // Clocked in, but not represented by any scheduled row today → surface them.
+  const scheduledEmpIds = new Set(rows.map(r => r.employeeId));
+  const unscheduledPresent: UnscheduledPresent[] = [];
+  for (const att of Array.from(open.values())) {
+    if (scheduledEmpIds.has(att.employeeId)) continue;
+    unscheduledPresent.push({
+      employeeId: att.employeeId,
+      employeeName: att.name || `Employee #${att.employeeId}`,
+      checkIn: att.checkIn,
+      sinceBeforeToday: berlinParts(att.checkIn).date !== todayDate,
+    });
+  }
+  unscheduledPresent.sort((a, b) => odooToDate(a.checkIn).getTime() - odooToDate(b.checkIn).getTime());
+
+  return { now: nowUtc, graceMin, rows, lateCount: rows.filter(r => r.state === 'late').length, unscheduledPresent };
+}
+
+export async function computePresence(companyId: number, graceMin: number): Promise<PresenceResult> {
+  const nowUtc = nowOdooUtc();
+  const [weekSlots, open] = await Promise.all([
+    fetchWeekSlots(companyId, currentWeekKey()),
+    fetchOpenAttendance(companyId),
+  ]);
+  return buildPresence(weekSlots, open, nowUtc, graceMin);
 }
