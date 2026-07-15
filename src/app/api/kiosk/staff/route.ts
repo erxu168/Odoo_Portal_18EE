@@ -1,6 +1,8 @@
 /**
  * GET /api/kiosk/staff?company_id=6  (PUBLIC — device kiosk, no login)
- * Lists the company's staff who have a kiosk PIN, with their clocked-in state.
+ * Lists ALL of the company's active staff with their clocked-in state and a
+ * `hasPin` flag. Staff without a PIN still appear so they can set one up at the
+ * tablet (see /api/kiosk/setup/*).
  */
 import { NextResponse } from 'next/server';
 import { employeesWithPin } from '@/lib/shifts-db';

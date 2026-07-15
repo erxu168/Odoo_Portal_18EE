@@ -273,3 +273,85 @@ export async function sendStaffInviteEmail(toEmail: string, toName: string, invi
     messageId: info.messageId || '',
   };
 }
+
+/**
+ * Kiosk time clock: email a 6-digit code the staff member types into the tablet to
+ * set up their PIN for the first time.
+ */
+export async function sendKioskSetupCodeEmail(toEmail: string, toName: string, code: string, companyId?: number) {
+  const brand = await getCompanyBrandName(companyId);
+  await getTransporter(companyId).sendMail({
+    from: `"Krawings Time Clock" <${getFrom(companyId)}>`,
+    to: toEmail,
+    subject: `Your Time Clock setup code: ${code}`,
+    text: [
+      `Hi ${toName},`,
+      '',
+      `Your Time Clock PIN setup code is: ${code}`,
+      '',
+      'Type this code into the tablet, then choose your own 4-digit PIN.',
+      '',
+      'This code expires in 15 minutes. If you did not request this, ignore this email.',
+      '',
+      `— Krawings ${brand}`,
+    ].join('\n'),
+    html: `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">TIME CLOCK &middot; ${brand.toUpperCase()}</div>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Here is your code to set up your Time Clock PIN. Type it into the tablet, then choose your own 4-digit PIN.</p>
+        <div style="text-align: center; margin: 28px 0;">
+          <div style="display: inline-block; padding: 16px 28px; background-color: #F3F4F6; border-radius: 12px; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #1A1F2E;">${code}</div>
+        </div>
+        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This code expires in 15 minutes. If you did not request this, ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings ${brand} &middot; Time Clock</p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Kiosk time clock: email a reset link so a staff member who forgot their PIN can
+ * set a new one (opened on their own phone).
+ */
+export async function sendKioskPinResetEmail(toEmail: string, toName: string, resetToken: string, companyId?: number) {
+  const resetUrl = `${PORTAL_URL}/kiosk/reset-pin?token=${resetToken}`;
+  const brand = await getCompanyBrandName(companyId);
+  await getTransporter(companyId).sendMail({
+    from: `"Krawings Time Clock" <${getFrom(companyId)}>`,
+    to: toEmail,
+    subject: 'Reset your Time Clock PIN',
+    text: [
+      `Hi ${toName},`,
+      '',
+      'Someone asked to reset your Time Clock PIN.',
+      '',
+      'Open the link below on your phone to choose a new 4-digit PIN:',
+      resetUrl,
+      '',
+      'This link expires in 1 hour. If you did not request this, ignore this email.',
+      '',
+      `— Krawings ${brand}`,
+    ].join('\n'),
+    html: `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
+          <div style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">TIME CLOCK &middot; ${brand.toUpperCase()}</div>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Someone asked to reset your Time Clock PIN. Tap the button to choose a new 4-digit PIN.</p>
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${resetUrl}" style="display: inline-block; padding: 14px 32px; background-color: #16A34A; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px;">Set a new PIN</a>
+        </div>
+        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link expires in 1 hour. If you did not request this, ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">Krawings ${brand} &middot; Time Clock</p>
+      </div>
+    `,
+  });
+}

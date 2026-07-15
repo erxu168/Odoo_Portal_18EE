@@ -215,6 +215,26 @@ function ensureTables(): void {
       UNIQUE(company_id, employee_id, period_key)
     );
     CREATE INDEX IF NOT EXISTS idx_wknd_hist_emp ON shift_weekend_history(company_id, employee_id, period_key);
+
+    -- Kiosk: one-time 6-digit code emailed for first-time PIN setup (stored hashed).
+    CREATE TABLE IF NOT EXISTS kiosk_setup_codes (
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      code TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (company_id, employee_id)
+    );
+
+    -- Kiosk: one-time token behind the "forgot PIN" reset link.
+    CREATE TABLE IF NOT EXISTS kiosk_pin_reset_tokens (
+      token TEXT PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kiosk_reset_expires ON kiosk_pin_reset_tokens(expires_at);
   `);
 
   // Additive migrations for DBs created before a column existed (fresh DBs get
@@ -447,6 +467,92 @@ export function employeesWithPin(companyId: number): Set<number> {
     .prepare('SELECT employee_id FROM shift_kiosk_pins WHERE company_id=?')
     .all(companyId) as { employee_id: number }[];
   return new Set(rows.map(r => r.employee_id));
+}
+
+/** True when this employee already has a kiosk PIN for the company. */
+export function hasKioskPin(companyId: number, employeeId: number): boolean {
+  ensureTables();
+  return !!getDb()
+    .prepare('SELECT 1 FROM shift_kiosk_pins WHERE company_id=? AND employee_id=?')
+    .get(companyId, employeeId);
+}
+
+// -- Kiosk first-time setup codes (emailed 6-digit, entered at the tablet) -------
+
+const SETUP_CODE_TTL_MS = 15 * 60_000; // 15 minutes
+const SETUP_CODE_MAX_ATTEMPTS = 5;
+
+/** Create/replace a one-time setup code for (company, employee); stored hashed. */
+export function createKioskSetupCode(companyId: number, employeeId: number, code: string): void {
+  ensureTables();
+  const expires = new Date(Date.now() + SETUP_CODE_TTL_MS).toISOString();
+  getDb()
+    .prepare(
+      `INSERT INTO kiosk_setup_codes (company_id, employee_id, code, expires_at, attempts)
+       VALUES (?,?,?,?,0)
+       ON CONFLICT(company_id, employee_id)
+       DO UPDATE SET code=excluded.code, expires_at=excluded.expires_at, attempts=0`,
+    )
+    .run(companyId, employeeId, hashPin(code), expires);
+}
+
+/**
+ * Verify a setup code. On a correct, unexpired, un-exhausted code: deletes it and
+ * returns true. On a wrong code: increments attempts and returns false. Expired or
+ * too-many-attempts codes are cleared and return false.
+ */
+export function verifyKioskSetupCode(companyId: number, employeeId: number, code: string): boolean {
+  ensureTables();
+  const db = getDb();
+  const row = db
+    .prepare('SELECT code, expires_at, attempts FROM kiosk_setup_codes WHERE company_id=? AND employee_id=?')
+    .get(companyId, employeeId) as { code: string; expires_at: string; attempts: number } | undefined;
+  if (!row) return false;
+  const drop = () =>
+    db.prepare('DELETE FROM kiosk_setup_codes WHERE company_id=? AND employee_id=?').run(companyId, employeeId);
+  if (row.expires_at < nowISO() || row.attempts >= SETUP_CODE_MAX_ATTEMPTS) {
+    drop();
+    return false;
+  }
+  if (!checkPin(code, row.code)) {
+    db.prepare('UPDATE kiosk_setup_codes SET attempts=attempts+1 WHERE company_id=? AND employee_id=?').run(
+      companyId,
+      employeeId,
+    );
+    return false;
+  }
+  drop();
+  return true;
+}
+
+// -- Kiosk PIN reset tokens (behind the "forgot PIN" email link) -----------------
+
+const PIN_RESET_TTL_MS = 60 * 60_000; // 1 hour
+
+/** Create a one-time reset token for (company, employee); returns the token string. */
+export function createKioskPinResetToken(companyId: number, employeeId: number): string {
+  ensureTables();
+  const db = getDb();
+  const token = randomBytes(32).toString('hex');
+  db.prepare('DELETE FROM kiosk_pin_reset_tokens WHERE company_id=? AND employee_id=?').run(companyId, employeeId);
+  db.prepare('DELETE FROM kiosk_pin_reset_tokens WHERE expires_at < ?').run(nowISO());
+  const expires = new Date(Date.now() + PIN_RESET_TTL_MS).toISOString();
+  db.prepare(
+    'INSERT INTO kiosk_pin_reset_tokens (token, company_id, employee_id, created_at, expires_at) VALUES (?,?,?,?,?)',
+  ).run(token, companyId, employeeId, nowISO(), expires);
+  return token;
+}
+
+/** Consume a reset token → {companyId, employeeId} (and delete it), or null if invalid/expired. */
+export function consumeKioskPinResetToken(token: string): { companyId: number; employeeId: number } | null {
+  ensureTables();
+  const db = getDb();
+  const row = db
+    .prepare('SELECT company_id, employee_id FROM kiosk_pin_reset_tokens WHERE token=? AND expires_at > ?')
+    .get(token, nowISO()) as { company_id: number; employee_id: number } | undefined;
+  if (!row) return null;
+  db.prepare('DELETE FROM kiosk_pin_reset_tokens WHERE token=?').run(token);
+  return { companyId: row.company_id, employeeId: row.employee_id };
 }
 
 // -- Settings -------------------------------------------------------------------
