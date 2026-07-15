@@ -18,6 +18,53 @@ This rule exists because past branch fragmentation caused fixes to land on the w
 
 ---
 
+## Codex cross-check (binding)
+
+For **complex tasks**, get a second opinion from the **OpenAI Codex CLI** (`codex`) — a
+second reasoning model (OpenAI) that reviews your plan and your diff. This is for the
+primary agent (**Claude Code**). **When Codex itself is the running agent, ignore this
+section — it must not invoke itself** (no recursion).
+
+- **Complex task =** a new feature/module, an architecture or design-system decision, a
+  multi-file change, or a non-trivial bug fix. **Skip Codex** for trivial work: typos,
+  one-liners, a single copy/token tweak.
+- **Model & effort (always):** `gpt-5.6-sol` at reasoning effort `high` — pass both
+  explicitly on every call (defaults live in `~/.codex/config.toml`, but keep the rule
+  self-contained). Model ids age — revisit periodically.
+- **Read-only always:** pass **`--sandbox read-only`** so Codex can't touch the repo.
+  **Codex advises; Claude makes every edit.**
+- **`</dev/null` is mandatory:** end every `codex exec` with **`</dev/null`** — Codex drains
+  stdin even though the prompt is an argument, so without an EOF a backgrounded call can
+  block waiting on stdin. Prefer running Codex in the background and waiting for it to exit.
+- **Run from the repo root** — no `-C <path>` is hardcoded, so these commands stay correct
+  on every checkout of this repo (Mac dev checkout, staging `/opt/krawings-portal`, …).
+  This repo is a git repo, so Codex reviews your `git diff` directly.
+- **Run Codex in parallel, never as a serial blocker:** launch the planning call first —
+  after the session-start reads and `git checkout main && git pull`, but before your own
+  deep task-specific reads; launch the verification call the moment the last edit is saved,
+  alongside your local `npm run build` / lint. Only the **commit** waits on Codex's verdict.
+- **Rate Codex 1–10** for usefulness in the closing report (honest cost/benefit signal).
+- **Cost:** Codex calls use your OpenAI/ChatGPT quota, billed separately from Anthropic.
+
+**1) Plan a complex task (Codex advises, does NOT implement):**
+   `codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" --sandbox read-only "Plan this task, do NOT implement: <goal + constraints>. Give approach, risks, edge cases, files to touch." </dev/null`
+Then reconcile your plan with Codex's and note where it shaped the result.
+
+**2) Verify a finished complex task (mandatory) — code review of the diff:**
+   `codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" --sandbox read-only -o /tmp/codex-verdict.md "Review the current uncommitted changes for task '<name>'. Priority: code review — bugs, correctness, security, regressions by file:line with severity. Then confirm requirements are met: <requirements>." </dev/null`
+   (Running parallel tasks? Give `-o` a unique path so verdicts don't collide.)
+Read the verdict, fix real issues, **re-run the review after any substantive fix**, and summarize in the closing report what you accepted/rejected.
+Pure code diff? Use the purpose-built reviewer — the **top-level** `codex review` sets the model via `-c model=` and takes **no** `-m`:
+   `codex review --uncommitted -c model="gpt-5.6-sol" -c model_reasoning_effort="high" </dev/null`
+
+**3) Stuck (any task):** hand Codex the problem + what you already tried:
+   `codex exec -m gpt-5.6-sol -c model_reasoning_effort="high" --sandbox read-only "I'm stuck on: <problem>. Tried: <attempts>. Relevant files: <paths>. Propose a concrete fix/approach." </dev/null`
+
+**4) Codex unavailable?** If a call fails (quota, rate limit, auth) **say so in the closing
+report** — which step was skipped and why. Never let the missing cross-check be silent.
+
+---
+
 ## Read These Files First (every session)
 
 1. **PORTAL.md** — master reference: tech stack, file structure, what's built, UX rules, Odoo field names, build priority
