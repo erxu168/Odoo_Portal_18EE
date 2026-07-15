@@ -290,6 +290,29 @@ export function getUserByApplicantId(applicantId: number): PortalUser | null {
   return db.prepare('SELECT * FROM portal_users WHERE applicant_id = ? AND active = 1').get(applicantId) as PortalUser | null;
 }
 
+/**
+ * Look up the portal account for an employee regardless of active state, with the
+ * computed has_pin flag. Unlike getUserByEmployeeId (which filters active = 1),
+ * this surfaces deactivated accounts so they can be reactivated.
+ */
+export function getAccountByEmployeeId(employeeId: number): PortalUser | null {
+  const db = getDb();
+  // Prefer an active account, then the most recent, so that if an employee ever
+  // ends up with both a deactivated and a live account we surface the live one.
+  return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, is_shared_device, (pin_hash IS NOT NULL) AS has_pin, created_at, last_login FROM portal_users WHERE employee_id = ? ORDER BY active DESC, created_at DESC LIMIT 1').get(employeeId) as PortalUser | null;
+}
+
+/**
+ * Existence check by email that ignores active state (email is UNIQUE COLLATE
+ * NOCASE across ALL rows, active or not). Use before creating an account so a
+ * deactivated row holding the same email produces a friendly error rather than a
+ * UNIQUE-constraint 500.
+ */
+export function getAnyUserByEmail(email: string): PortalUser | null {
+  const db = getDb();
+  return db.prepare('SELECT id, name, email, role, employee_id, active, status FROM portal_users WHERE email = ? COLLATE NOCASE LIMIT 1').get(email) as PortalUser | null;
+}
+
 export function getUserById(id: number): PortalUser | null {
   const db = getDb();
   return db.prepare('SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, is_shared_device, (pin_hash IS NOT NULL) AS has_pin, created_at, last_login FROM portal_users WHERE id = ?').get(id) as PortalUser | null;

@@ -20,7 +20,7 @@ import {
   revokeInvitesForEmployee,
   markInviteAccepted,
   createUser,
-  getUserByEmail,
+  getAnyUserByEmail,
   getUserByEmployeeId,
   createSession,
   logAudit,
@@ -296,15 +296,26 @@ export async function acceptStaffInvite(token: string, email: string, password: 
   if (pwError) {
     return { ok: false, status: 400, body: { error: pwError } };
   }
-  if (getUserByEmail(cleanEmail)) {
+  // Any-active-state check: a DEACTIVATED account can still own this email
+  // (email is UNIQUE COLLATE NOCASE across all rows), so getUserByEmail's
+  // active=1 filter would miss it and the INSERT below would 500.
+  if (getAnyUserByEmail(cleanEmail)) {
     return { ok: false, status: 409, body: { error: 'That email is already in use. Please log in or use a different email.' } };
   }
 
-  const userId = createUser(invite.name, cleanEmail, password, 'staff', {
-    employee_id: invite.employee_id,
-    status: 'active',
-    allowed_company_ids: await employeeCompanyIds(invite.employee_id),
-  });
+  let userId: number;
+  try {
+    userId = createUser(invite.name, cleanEmail, password, 'staff', {
+      employee_id: invite.employee_id,
+      status: 'active',
+      allowed_company_ids: await employeeCompanyIds(invite.employee_id),
+    });
+  } catch (err: unknown) {
+    // Belt-and-suspenders: map a UNIQUE-email (or any insert) failure to the
+    // friendly 409 instead of an unhandled 500 dead-end.
+    console.error('[staff-invite] createUser failed at accept:', err);
+    return { ok: false, status: 409, body: { error: 'That email is already in use. Please log in or use a different email.' } };
+  }
   markInviteAccepted(invite.id);
   const sessionToken = createSession(userId);
 

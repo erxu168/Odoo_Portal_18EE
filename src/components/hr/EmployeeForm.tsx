@@ -39,6 +39,7 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
   const [jobTitle, setJobTitle] = useState('');
   const [workEmail, setWorkEmail] = useState('');
   const [mobilePhone, setMobilePhone] = useState('');
+  const [workPhone, setWorkPhone] = useState('');
   const [skill, setSkill] = useState<'' | '1' | '2' | '3'>('');
 
   // Load pickers (companies scoped to the user) + departments. Departments come
@@ -75,6 +76,7 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
           setJobTitle(emp.job_title || '');
           setWorkEmail(emp.work_email || '');
           setMobilePhone(emp.mobile_phone || '');
+          setWorkPhone(emp.work_phone || '');
         }
       })
       .catch(() => setError('Could not load this employee.'))
@@ -107,6 +109,7 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
         job_title: jobTitle.trim(),
         work_email: workEmail.trim(),
         mobile_phone: mobilePhone.trim(),
+        work_phone: workPhone.trim(),
         ...(isNew && skill ? { skill } : {}),
       };
       const res = isNew
@@ -122,6 +125,7 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
         setJobTitle('');
         setWorkEmail('');
         setMobilePhone('');
+        setWorkPhone('');
         setSaving(false);
         return;
       }
@@ -291,6 +295,12 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
           <Field label="Mobile phone (optional)">
             <input value={mobilePhone} onChange={e => setMobilePhone(e.target.value)} placeholder="e.g. +49 160 1234567"
               className="form-inp" inputMode="tel" />
+          </Field>
+
+          <Field label="Work phone (optional)">
+            <input value={workPhone} onChange={e => setWorkPhone(e.target.value)} placeholder="Only if they have a dedicated work line"
+              className="form-inp" inputMode="tel" />
+            <span className="block text-[var(--fs-xs)] text-gray-400 mt-1">Leave blank if they only have a mobile — the restaurant’s own number is not a personal work phone.</span>
           </Field>
 
           <Field label="Email (optional)">

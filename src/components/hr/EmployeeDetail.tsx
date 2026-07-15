@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppHeader from "@/components/ui/AppHeader";
 import DocumentViewer from "@/components/ui/DocumentViewer";
+import EmployeePortalAccess from "@/components/hr/EmployeePortalAccess";
 import type { EmployeeData } from "@/types/hr";
 import { EMPLOYEE_READ_FIELDS, DOCUMENT_TYPES, calculateOnboardingPercent, aufenthaltstitelLabel } from "@/types/hr";
 
@@ -165,8 +166,11 @@ export default function EmployeeDetail({ employeeId, onBack, onContract, onDeact
         <Row label="Restaurant" value={emp.company_id ? (emp.company_id as [number, string])[1] : ''} optional />
         <Row label="Department" value={dept} optional />
         <Row label="Mobile" value={emp.mobile_phone || ''} optional />
+        <Row label="Work phone" value={emp.work_phone || ''} optional />
         <Row label="Work email" value={emp.work_email || ''} optional />
       </Section>
+
+      <EmployeePortalAccess employeeId={employeeId} />
 
       <STitle text="DATEV / Personalfragebogen" />
       <Section title="Personal & address" onEdit={editMode ? () => onEditSection('personal') : undefined}>

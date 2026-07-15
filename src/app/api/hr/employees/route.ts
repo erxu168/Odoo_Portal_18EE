@@ -9,7 +9,7 @@ import { parseCompanyIds } from '@/lib/db';
 
 const LIST_FIELDS = [
   'id', 'name', 'department_id', 'job_title', 'first_contract_date', 'company_id',
-  'work_email', 'mobile_phone', 'private_street', 'private_city', 'private_zip',
+  'work_email', 'mobile_phone', 'work_phone', 'private_street', 'private_city', 'private_zip',
 ];
 
 export async function GET(req: NextRequest) {
@@ -77,6 +77,18 @@ export async function POST(req: NextRequest) {
 
     const odoo = getOdoo();
     const id = await odoo.create('hr.employee', vals);
+
+    // Work phone. Standard Odoo auto-fills work_phone from the work address, which
+    // defaults to the company contact — so every employee ends up showing the
+    // restaurant landline. Our staff have no individual work phones unless one is
+    // explicitly entered here. Write it AFTER create (separate call): address_id is
+    // unchanged by this write, so the stored compute that would re-fill the company
+    // landline does not run and our value sticks. Empty -> false clears the
+    // auto-filled landline; a real number is saved and stays in sync with Odoo
+    // (both portal and Odoo read/write this same field).
+    const workPhone = String(body.work_phone || '').trim();
+    await odoo.write('hr.employee', [id], { work_phone: workPhone || false });
+
     return NextResponse.json({ employee: { id, name } }, { status: 201 });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });

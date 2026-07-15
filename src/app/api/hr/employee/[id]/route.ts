@@ -12,6 +12,8 @@ import { parseCompanyIds } from '@/lib/db';
 import { EMPLOYEE_READ_FIELDS } from '@/types/hr';
 
 // Essentials — coerced (company/department -> number, active -> boolean).
+// work_phone is deliberately NOT here — it is written separately (see PATCH) so an
+// in-request company change can't let Odoo's stored recompute overwrite the value.
 const BASICS = new Set(['name', 'company_id', 'department_id', 'job_title', 'work_email', 'mobile_phone', 'active']);
 
 // Full DATEV record — passed through as-is (the edit form sends correct types,
@@ -85,6 +87,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (scope.error) return scope.error;
     const allowed = scope.allowed;
 
+    // work_phone: pull it out of the main write. Standard Odoo recomputes work_phone
+    // from the work address (company) whenever company_id / the work address changes,
+    // so writing it in the SAME dict as a company move could let that recompute clobber
+    // the entered value. Write it separately and last. Empty -> false to clear (same
+    // sentinel the create path uses), so blank stays blank.
+    const hasWorkPhone = Object.prototype.hasOwnProperty.call(body, 'work_phone');
+    const workPhone = hasWorkPhone ? (String(body.work_phone || '').trim() || false) : undefined;
+
     const vals: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(body)) {
       if (BASICS.has(k)) {
@@ -95,7 +105,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         vals[k] = v; // pass through (correct types + false-for-empty from the form)
       }
     }
-    if (Object.keys(vals).length === 0) {
+    if (Object.keys(vals).length === 0 && !hasWorkPhone) {
       return NextResponse.json({ error: 'Nothing to update.' }, { status: 400 });
     }
     if (vals.name !== undefined && !String(vals.name).trim()) {
@@ -106,8 +116,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ error: 'You can only assign staff to your own restaurant.' }, { status: 403 });
     }
 
-    await odoo.write('hr.employee', [employeeId], vals);
-    return NextResponse.json({ success: true, updated: Object.keys(vals) });
+    if (Object.keys(vals).length > 0) {
+      await odoo.write('hr.employee', [employeeId], vals);
+    }
+    // Separate, final write so a same-request company change can't recompute over it.
+    if (hasWorkPhone) {
+      await odoo.write('hr.employee', [employeeId], { work_phone: workPhone });
+    }
+    const updated = [...Object.keys(vals), ...(hasWorkPhone ? ['work_phone'] : [])];
+    return NextResponse.json({ success: true, updated });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('PATCH /api/hr/employee/[id] error:', err);
