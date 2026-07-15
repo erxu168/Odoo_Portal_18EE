@@ -26,15 +26,48 @@ export interface KioskStaff {
   employeeId: number;
   name: string;
   clockedIn: boolean;
+  /** Whether this person has set a kiosk PIN yet. When false, tapping starts setup. */
+  hasPin: boolean;
 }
 
-/** Staff of the company who have a PIN set, with their live clocked-in state. */
+/**
+ * All active staff of the company, each flagged with whether they have a PIN and
+ * their live clocked-in state. Staff without a PIN still appear so they can set one
+ * up at the tablet.
+ */
 export async function kioskStaffList(companyId: number, pinned: Set<number>): Promise<KioskStaff[]> {
   const [emps, open] = await Promise.all([fetchEmployees(companyId), fetchOpenAttendance(companyId)]);
   return emps
-    .filter(e => pinned.has(e.id))
-    .map(e => ({ employeeId: e.id, name: e.name, clockedIn: open.has(e.id) }))
+    .map(e => ({ employeeId: e.id, name: e.name, clockedIn: open.has(e.id), hasPin: pinned.has(e.id) }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Look up an employee's display name + best email (work → private) for kiosk PIN
+ * emails. Validates the employee belongs to the company. Returns null if unknown or
+ * on another company; email is '' when none is on file.
+ */
+export async function kioskEmployeeContact(
+  companyId: number,
+  employeeId: number,
+): Promise<{ name: string; email: string } | null> {
+  const odoo = getOdoo();
+  const rows = (await odoo.read('hr.employee', [employeeId], [
+    'name',
+    'company_id',
+    'work_email',
+    'private_email',
+  ])) as Record<string, unknown>[];
+  if (!rows.length) return null;
+  const r = rows[0];
+  const empCompany = Array.isArray(r.company_id) ? (r.company_id[0] as number) : null;
+  if (empCompany !== companyId) return null;
+  const email =
+    (typeof r.work_email === 'string' && r.work_email) ||
+    (typeof r.private_email === 'string' && r.private_email) ||
+    '';
+  const name = typeof r.name === 'string' ? r.name : 'Staff';
+  return { name, email };
 }
 
 export type PunchNote = 'ontime' | 'late' | 'early' | 'overtime';
