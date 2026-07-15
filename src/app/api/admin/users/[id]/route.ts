@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
-import { getUserById, updateUser, resetPassword, setUserPin } from '@/lib/db';
+import { getUserById, updateUser, resetPassword, setUserPin, deleteUser } from '@/lib/db';
 
 /**
  * PATCH /api/admin/users/[id]
@@ -76,4 +76,31 @@ export async function PATCH(
       { status: 500 },
     );
   }
+}
+
+/**
+ * DELETE /api/admin/users/[id]
+ * Hard-delete a portal account (frees its email + employee to be re-invited).
+ * Admin only. You cannot delete your own account.
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: { id: string } },
+) {
+  const me = getCurrentUser();
+  if (!me || !hasRole(me, 'admin')) {
+    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+  }
+
+  const userId = parseInt(params.id);
+  const user = getUserById(userId);
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+  if (me.id === userId) {
+    return NextResponse.json({ error: 'You cannot delete your own account.' }, { status: 400 });
+  }
+
+  deleteUser(userId);
+  return NextResponse.json({ ok: true });
 }

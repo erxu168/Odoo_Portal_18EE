@@ -97,7 +97,7 @@ export async function storeInviteForEmployee(
   emp: EmployeeLite,
   actor: Actor,
   sendEmail: boolean,
-): Promise<{ inviteId: number; link: string; emailSent: boolean; emailStatus: InviteEmailStatus }> {
+): Promise<{ inviteId: number; link: string; emailSent: boolean; emailStatus: InviteEmailStatus; emailServer?: { accepted: string[]; response: string; messageId: string }; emailError?: string }> {
   revokeInvitesForEmployee(emp.id);
 
   const token = generateInviteToken();
@@ -118,14 +118,18 @@ export async function storeInviteForEmployee(
   // Default reflects why no mail goes out: not requested → skipped, requested
   // but the employee has no address → no_address. A real attempt overwrites it.
   let emailStatus: InviteEmailStatus = sendEmail ? 'no_address' : 'skipped';
+  let emailServer: { accepted: string[]; response: string; messageId: string } | undefined;
+  let emailError: string | undefined;
   if (sendEmail && emp.email) {
     try {
-      await sendStaffInviteEmail(emp.email, emp.name, link, emp.companyId, emp.locationName);
+      const mail = await sendStaffInviteEmail(emp.email, emp.name, link, emp.companyId, emp.locationName);
       emailSent = true;
       emailStatus = 'sent';
+      emailServer = { accepted: mail.accepted, response: mail.response, messageId: mail.messageId };
     } catch (err: unknown) {
       console.error('[staff-invite] welcome email failed:', err);
       emailStatus = 'failed';
+      emailError = err instanceof Error ? err.message : String(err);
     }
   }
 
@@ -139,7 +143,7 @@ export async function storeInviteForEmployee(
     detail: `Invite for ${emp.name} (${emp.email || 'no email'}) — email=${emailStatus}`,
   });
 
-  return { inviteId, link, emailSent, emailStatus };
+  return { inviteId, link, emailSent, emailStatus, emailServer, emailError };
 }
 
 /**
@@ -170,6 +174,8 @@ export interface CreateInviteResult {
     email?: string | null;
     email_sent?: boolean;
     email_status?: InviteEmailStatus;
+    email_server?: { accepted: string[]; response: string; messageId: string };
+    email_error?: string;
     link?: string;
     share_text?: string;
     portal_user_id?: number;
@@ -217,7 +223,7 @@ export async function createStaffInvite(
   const companyId: number | undefined = Array.isArray(emp.company_id) ? (emp.company_id[0] as number) : undefined;
   const locationName: string | undefined = Array.isArray(emp.department_id) ? (emp.department_id[1] as string) : undefined;
 
-  const { inviteId, link, emailSent, emailStatus } = await storeInviteForEmployee({ id: employeeId, name, email, companyId, locationName }, actor, sendEmail);
+  const { inviteId, link, emailSent, emailStatus, emailServer, emailError } = await storeInviteForEmployee({ id: employeeId, name, email, companyId, locationName }, actor, sendEmail);
 
   return {
     ok: true,
@@ -230,6 +236,8 @@ export async function createStaffInvite(
       email,
       email_sent: emailSent,
       email_status: emailStatus,
+      email_server: emailServer,
+      email_error: emailError,
       link,
       share_text: shareMessage(name, link),
     },

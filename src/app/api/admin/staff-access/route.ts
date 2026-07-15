@@ -103,6 +103,8 @@ export async function POST(request: Request) {
         share_text: result.body.share_text,
         email_sent: result.body.email_sent,
         email_status: status,
+        email_server: result.body.email_server,
+        email_error: result.body.email_error,
       });
     }
 
@@ -112,7 +114,7 @@ export async function POST(request: Request) {
       const pendingIds = new Set(listPendingInvites().map((i) => i.employee_id));
 
       const targets = employees.filter((e) => !accountIds.has(e.id) && !pendingIds.has(e.id));
-      const toEmail: { email: string; name: string; link: string; companyId?: number }[] = [];
+      const toEmail: { email: string; name: string; link: string; companyId?: number; locationName?: string }[] = [];
       let created = 0;
       let failed = 0;
 
@@ -120,13 +122,14 @@ export async function POST(request: Request) {
         try {
           const email = emailOf(e) || null;
           const companyId = Array.isArray(e.company_id) ? e.company_id[0] : undefined;
+          const locationName = Array.isArray(e.department_id) ? e.department_id[1] : undefined;
           const { link } = await storeInviteForEmployee(
-            { id: e.id, name: e.name || 'Team member', email, companyId },
+            { id: e.id, name: e.name || 'Team member', email, companyId, locationName },
             actor,
             false,
           );
           created += 1;
-          if (email) toEmail.push({ email, name: e.name || 'Team member', link, companyId });
+          if (email) toEmail.push({ email, name: e.name || 'Team member', link, companyId, locationName });
         } catch (err: unknown) {
           failed += 1;
           console.error(`[staff-access] invite_all failed for employee ${e.id}:`, err);

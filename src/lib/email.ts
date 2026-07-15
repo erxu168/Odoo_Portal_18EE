@@ -207,10 +207,20 @@ export async function sendCandidateWelcomeEmail(
 }
 
 
+/** What the SMTP server told us about a send — proof the mail left our server. */
+export interface MailSendResult {
+  accepted: string[];
+  rejected: string[];
+  response: string;
+  messageId: string;
+}
+
 /**
  * Send a staff member their portal invite link (push-provisioning model).
+ * Returns the SMTP result so callers can show real "it left the mail server"
+ * confirmation (accepted recipients + the server's response, e.g. "250 OK").
  */
-export async function sendStaffInviteEmail(toEmail: string, toName: string, inviteUrl: string, companyId?: number, locationName?: string) {
+export async function sendStaffInviteEmail(toEmail: string, toName: string, inviteUrl: string, companyId?: number, locationName?: string): Promise<MailSendResult> {
   // The restaurant/location name staff will recognise. Prefer the employee's
   // department (the actual restaurant, e.g. "What a Jerk"), since a new hire's
   // legal Company is usually the umbrella entity and would name the wrong place.
@@ -220,7 +230,7 @@ export async function sendStaffInviteEmail(toEmail: string, toName: string, invi
   const explicit = (locationName || '').trim();
   const brand = explicit || await getCompanyBrandName(companyId);
   const location = brand && brand !== 'Staff Portal' ? brand : 'Krawings';
-  await getTransporter(companyId).sendMail({
+  const info = await getTransporter(companyId).sendMail({
     from: `"${location} Staff Portal" <${getFrom(companyId)}>`,
     to: toEmail,
     subject: `Set up your ${location} staff portal account`,
@@ -256,4 +266,10 @@ export async function sendStaffInviteEmail(toEmail: string, toName: string, invi
       </div>
     `,
   });
+  return {
+    accepted: (info.accepted || []).map(String),
+    rejected: (info.rejected || []).map(String),
+    response: typeof info.response === 'string' ? info.response : '',
+    messageId: info.messageId || '',
+  };
 }

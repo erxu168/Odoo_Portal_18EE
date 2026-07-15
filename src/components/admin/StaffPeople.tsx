@@ -225,6 +225,22 @@ export default function StaffPeople() {
     if (await patchAccount(a.id, { new_password: pw })) flash('Password updated.');
   }
 
+  async function deleteAccount(a: Account) {
+    const ok = window.confirm(
+      `Permanently delete ${a.name}'s account (${a.email})?\n\nThis frees their email to be used again and cannot be undone. Their Odoo employee record is not affected.`,
+    );
+    if (!ok) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/users/${a.id}`, { method: 'DELETE' });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Delete failed'); }
+      flash(`Deleted ${a.name}'s account — email freed.`);
+      fetchAll();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
+
   // ---- invite (reuse /api/admin/staff-access) ----
   async function invite(emp: Employee, action: 'invite' | 'resend') {
     if (!emp.department) {
@@ -244,7 +260,16 @@ export default function StaffPeople() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Invite failed');
       if (data.share_text) setLinks((prev) => ({ ...prev, [emp.employee_id]: data.share_text }));
-      flash(data.message || 'Invite sent.');
+      if (data.email_status === 'sent') {
+        // Real "it left the mail server" proof: the SMTP server's response.
+        const resp = data.email_server?.response ? ` (${data.email_server.response})` : '';
+        flash(`✓ ${data.message} Mail server accepted it${resp}.`);
+      } else if (data.email_status === 'failed') {
+        setError(`Mail server did not accept it: ${data.email_error || 'unknown error'}. Copy the link below and share it manually.`);
+      } else {
+        // no_address / skipped — invite still created, share the link by hand.
+        flash(data.message || 'Invite link created — copy it below to share.');
+      }
       fetchAll();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Invite failed');
@@ -480,6 +505,10 @@ export default function StaffPeople() {
                           className={`px-3 py-1 rounded-lg border text-[12px] ${account.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-green-200 text-green-600 active:bg-green-50'}`}>
                           {account.active ? 'Deactivate' : 'Reactivate'}
                         </button>
+                        <button onClick={() => deleteAccount(account)}
+                          className="px-3 py-1 rounded-lg border border-red-300 text-red-700 active:bg-red-50 text-[12px] font-semibold">
+                          Delete
+                        </button>
                       </div>
 
                       {account.last_login && (
@@ -606,6 +635,10 @@ export default function StaffPeople() {
                   <button onClick={() => toggleActive(a)}
                     className={`px-3 py-1 rounded-lg border text-[12px] ${a.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-green-200 text-green-600 active:bg-green-50'}`}>
                     {a.active ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                  <button onClick={() => deleteAccount(a)}
+                    className="px-3 py-1 rounded-lg border border-red-300 text-red-700 active:bg-red-50 text-[12px] font-semibold">
+                    Delete
                   </button>
                 </div>
               </div>

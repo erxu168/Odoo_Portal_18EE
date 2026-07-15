@@ -288,6 +288,18 @@ export function createUser(name: string, email: string, password: string, role: 
   return result.lastInsertRowid as number;
 }
 
+/**
+ * Hard-delete a portal account and its sessions. Frees the account's (UNIQUE)
+ * email + its employee_id so the person can be invited from scratch again.
+ * Does NOT touch the Odoo hr.employee record. Sessions are removed explicitly
+ * because better-sqlite3 doesn't enforce ON DELETE CASCADE by default.
+ */
+export function deleteUser(id: number): void {
+  const db = getDb();
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+  db.prepare('DELETE FROM portal_users WHERE id = ?').run(id);
+}
+
 export function updateUser(id: number, updates: { name?: string; role?: string; active?: number; employee_id?: number | null; applicant_id?: number | null; must_change_password?: number; status?: string; allowed_company_ids?: number[]; module_access?: string[] | null; is_shared_device?: number }) {
   const db = getDb();
   const sets: string[] = [];
