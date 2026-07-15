@@ -1,13 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useShift } from '@/lib/shift-context';
 import PinPad from './PinPad';
 
 /** The provisioned tablet's login: a PIN pad. A correct PIN signs the tablet in
  *  as the person and lands on the Kitchen Station home. */
 export default function TabletPinLogin({ companyName, onManager }: { companyName: string; onManager: () => void }) {
-  const { signIn } = useShift();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -19,18 +17,18 @@ export default function TabletPinLogin({ companyName, onManager }: { companyName
       });
       const d = await res.json();
       if (res.ok && d.ok) {
-        // Seed the StationGate session keys so the acting person survives the hard
-        // navigation to the home. StationGate (which takes over there) expires a
-        // "restored" actor that has no persisted company + activity stamp, so
-        // without these it would immediately sign the person out and show its lock.
+        // Seed the acting person + StationGate keys DIRECTLY in localStorage (not via
+        // ShiftProvider.signIn): on the /login page StationGate has isShared=false, so
+        // reactively setting an active person there would trip its "not a shared
+        // device -> clear the actor" effect and sign the person straight back out.
+        // Writing storage and hard-navigating lets StationGate restore + accept the
+        // person on the home, where isShared=true.
         try {
+          const person = { id: d.user.id, name: d.user.name, employee_id: d.user.employee_id ?? null, since: Date.now() };
+          localStorage.setItem('kw_active_person', JSON.stringify(person));
           localStorage.setItem('kw_station_company', String(d.company_id));
           localStorage.setItem('kw_station_last_activity', String(Date.now()));
         } catch { /* storage disabled */ }
-        // Remember the acting person for the UI bar, then HARD-navigate so the
-        // company context + server layout re-initialise from the new session
-        // (a soft push leaves companyId=0, showing empty company-scoped screens).
-        signIn({ id: d.user.id, name: d.user.name, employee_id: d.user.employee_id ?? null });
         window.location.assign('/');
       } else {
         setError(d.error || 'PIN not recognised.');
