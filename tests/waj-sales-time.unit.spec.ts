@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import {
   berlinParts, berlinDayOf, berlinMidnightMs, utcStr, dayShift, mondayOf,
   prevMonthFirst, monthFirst, firstOfNextMonth, shiftYearDay,
-  shiftDays, shiftMonths, shiftYears,
+  shiftDays, shiftMonths, shiftYears, classifyCategory, projectMonth, daysInMonthOf,
   labelDay, labelMonth, weekdayLabel, dayOfMonthLabel, computeBounds,
 } from '../src/lib/waj-sales-time';
 
@@ -55,6 +55,26 @@ test('wall-clock shifts are DST- and leap-safe', () => {
   expect(berlinDayOf(shiftYears(berlinMidnightMs('2024-02-29'), 1))).toBe('2025-02-28');
   // -364 days keeps the weekday (52 weeks) for week-over-year comparisons.
   expect(shiftDays(berlinMidnightMs('2026-07-13'), -364)).toBe(berlinMidnightMs('2025-07-14'));
+});
+
+test('classifyCategory: group + rough food-cost %', () => {
+  expect(classifyCategory('WAJ Drinks')).toEqual({ group: 'drink', costPct: 45 });
+  expect(classifyCategory('Soft Drinks')).toEqual({ group: 'drink', costPct: 45 });
+  expect(classifyCategory('Sauces')).toEqual({ group: 'sauce', costPct: 15 });
+  expect(classifyCategory('WAJ Sides')).toEqual({ group: 'side', costPct: 25 });
+  expect(classifyCategory('Burgers').costPct).toBe(35);
+  expect(classifyCategory('Patties').costPct).toBe(32);
+  expect(classifyCategory('WAJ Grill').costPct).toBe(38);
+  expect(classifyCategory('Signature Jerk').costPct).toBe(38);
+  expect(classifyCategory('Mystery Box')).toEqual({ group: 'food', costPct: 33 });
+});
+
+test('projectMonth extrapolates to month-end; daysInMonthOf', () => {
+  expect(projectMonth(1000, 10, 30)).toBe(3000);
+  expect(projectMonth(0, 0, 30)).toBe(0);
+  expect(daysInMonthOf('2026-02-01')).toBe(28);
+  expect(daysInMonthOf('2024-02-01')).toBe(29);
+  expect(daysInMonthOf('2026-07-15')).toBe(31);
 });
 
 test('labels', () => {

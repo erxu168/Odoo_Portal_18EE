@@ -17,7 +17,8 @@ import { getOdoo } from './odoo';
 import { getPrepHistory, getRecentDoneStages } from './kds-db';
 import {
   DOW, MON, berlinParts, berlinDayOf, utcStr, computeBounds,
-  weekdayLabel, dayOfMonthLabel, type Range, type Bounds,
+  weekdayLabel, dayOfMonthLabel, classifyCategory, projectMonth, daysInMonthOf,
+  type Range, type Bounds,
 } from './waj-sales-time';
 
 export type { Range } from './waj-sales-time';
@@ -61,6 +62,21 @@ export interface SalesPayload {
   coverage: number;                        // % of orders with a recorded prep time
   prepDow: [string, number][] | null;      // [dayLabel, minutes]
   kitchenHasData: boolean;
+  // ── additional KPIs ──
+  projectedMonthEnd: number | null;
+  drinkAttachPct: number;
+  sideAttachPct: number;
+  slowSellers: [string, number, number][];        // [name, qty, revenue]
+  profitByCat: [string, number, number][];         // [category, estProfit, marginPct]
+  estGrossProfit: number;
+  refunds: { count: number; amount: number };
+  voids: number;
+  discounts: { amount: number; count: number };
+  till: { name: string; date: string; diff: number }[];
+  tillNet: number;
+  staff: [string, number, number][];               // [name, orders, sales]
+  tips: { total: number; ratePct: number; avgWhenTipped: number };
+  heatmap: { hours: number[]; rows: [string, number[]][] } | null;
   meta: { companyId: number; configId: number | null; company: string };
 }
 
@@ -124,16 +140,21 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   const b = computeBounds(range, anchorDay, nowMs);
   const cStart = utcStr(b.curStartMs), cEnd = utcStr(b.curEndMs);
 
-  const [orders, lines, payments, prev, yoy] = await Promise.all([
+  const [orders, lines, payments, sessions, prev, yoy] = await Promise.all([
     fetchAll('pos.order',
       [['company_id', '=', waj.companyId], ['date_order', '>=', cStart], ['date_order', '<', cEnd], ['state', 'in', SOLD]],
-      ['id', 'date_order', 'amount_total', 'takeaway'], 'date_order asc'),
+      ['id', 'date_order', 'amount_total', 'takeaway', 'employee_id', 'tip_amount', 'has_deleted_line'], 'date_order asc'),
     fetchAll('pos.order.line',
       [['order_id.company_id', '=', waj.companyId], ['order_id.date_order', '>=', cStart], ['order_id.date_order', '<', cEnd], ['order_id.state', 'in', SOLD]],
-      ['order_id', 'product_id', 'qty', 'price_subtotal', 'price_subtotal_incl']),
+      ['order_id', 'product_id', 'qty', 'price_subtotal', 'price_subtotal_incl', 'discount']),
     fetchAll('pos.payment',
       [['company_id', '=', waj.companyId], ['payment_date', '>=', cStart], ['payment_date', '<', cEnd]],
       ['payment_method_id', 'amount']),
+    waj.configId
+      ? fetchAll('pos.session',
+        [['config_id', '=', waj.configId], ['state', '=', 'closed'], ['start_at', '>=', cStart], ['start_at', '<', cEnd]],
+        ['name', 'start_at', 'cash_register_difference'], 'start_at asc')
+      : Promise.resolve([]),
     periodTotals(waj.companyId, b.prevStartMs, b.prevEndMs),
     periodTotals(waj.companyId, b.yoyStartMs, b.yoyEndMs),
   ]);
@@ -144,7 +165,7 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   // ---- products + items-per-order ----
   const prodMap = new Map<number, { name: string; qty: number; rev: number }>();
   const orderItems = new Map<number, number>();
-  let foodRev = 0, drinkRev = 0;
+  let foodRev = 0, drinkRev = 0, discountAmt = 0, discountLines = 0;
   for (const l of lines as any[]) {
     const oid = l.order_id ? l.order_id[0] : 0;
     const pname = l.product_id ? String(l.product_id[1]) : '';
@@ -158,6 +179,8 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
     // Include refund lines (negative) so the split reconciles with net revenue.
     const sub = l.price_subtotal, incl = l.price_subtotal_incl;
     if (sub !== 0) { if ((incl / sub - 1) * 100 > 15) drinkRev += incl; else foodRev += incl; }
+    const disc = l.discount || 0;
+    if (disc > 0 && disc < 100) { discountAmt += incl * (disc / (100 - disc)); discountLines++; }
   }
   // Keep the union of the revenue and quantity leaders so the client can rank by
   // either without a low-price, high-volume item being dropped by a revenue cut.
@@ -270,6 +293,102 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   // ---- kitchen ----
   const kitchen = await computeKitchen(waj.companyId, b);
 
+  // ═══ additional KPIs ═══════════════════════════════════
+  const today = berlinDayOf(nowMs);
+  const groupByPid = (pid: number) => {
+    const cid = firstCatByPid.get(pid);
+    return classifyCategory((cid && catNameById.get(cid)) || '').group;
+  };
+
+  // drink/side attach rate (share of orders that include a drink / a side)
+  const ordersWithDrink = new Set<number>(), ordersWithSide = new Set<number>();
+  for (const l of lines as any[]) {
+    const oid = l.order_id ? l.order_id[0] : 0;
+    const pid = l.product_id ? l.product_id[0] : 0;
+    if (!oid || !pid || (l.qty || 0) <= 0) continue;
+    const g = groupByPid(pid);
+    if (g === 'drink') ordersWithDrink.add(oid);
+    else if (g === 'side') ordersWithSide.add(oid);
+  }
+  const drinkAttachPct = ordersTotal ? Math.round((ordersWithDrink.size / ordersTotal) * 100) : 0;
+  const sideAttachPct = ordersTotal ? Math.round((ordersWithSide.size / ordersTotal) * 100) : 0;
+
+  // slow sellers (lowest movers among products that sold)
+  const slowSellers: [string, number, number][] = Array.from(prodMap.values())
+    .sort((a, c) => a.qty - c.qty).slice(0, 6)
+    .map(p => [p.name, Math.round(p.qty), Math.round(p.rev)]);
+
+  // estimated profit by category (ROUGH: revenue x (1 - assumed food cost))
+  const profitByCat: [string, number, number][] = Array.from(catMap.entries())
+    .map(([name, v]) => {
+      const marginPct = 100 - classifyCategory(name).costPct;
+      return [name, Math.round((v.rev * marginPct) / 100), marginPct] as [string, number, number];
+    })
+    .sort((a, c) => c[1] - a[1]).slice(0, 10);
+  const estGrossProfit = profitByCat.reduce((a, c) => a + c[1], 0);
+
+  // refunds, voids, discounts
+  const refundOrders = (orders as any[]).filter(o => o.amount_total < 0);
+  const refunds = { count: refundOrders.length, amount: Math.round(refundOrders.reduce((a, o) => a + Math.abs(o.amount_total), 0)) };
+  const voids = (orders as any[]).filter(o => o.has_deleted_line).length;
+  const discounts = { amount: Math.round(discountAmt), count: discountLines };
+
+  // till over/short per closed session
+  const till = (sessions as any[]).map(s => ({
+    name: String(s.name), date: berlinParts(String(s.start_at)).day,
+    diff: Math.round((s.cash_register_difference || 0) * 100) / 100,
+  }));
+  const tillNet = Math.round(till.reduce((a, t) => a + t.diff, 0) * 100) / 100;
+
+  // sales per staff
+  const staffMap = new Map<string, { orders: number; sales: number }>();
+  for (const o of orders as any[]) {
+    const name = o.employee_id ? String(o.employee_id[1]) : 'Unassigned';
+    const e = staffMap.get(name) || { orders: 0, sales: 0 };
+    e.orders += 1; e.sales += o.amount_total; staffMap.set(name, e);
+  }
+  const staff: [string, number, number][] = Array.from(staffMap.entries())
+    .map(([name, e]) => [name, e.orders, Math.round(e.sales)] as [string, number, number])
+    .sort((a, c) => c[2] - a[2]);
+
+  // tips
+  const tipTotal = (orders as any[]).reduce((a, o) => a + (o.tip_amount || 0), 0);
+  const tippedCount = (orders as any[]).filter(o => (o.tip_amount || 0) > 0).length;
+  const tips = {
+    total: Math.round(tipTotal * 100) / 100,
+    ratePct: ordersTotal ? Math.round((tippedCount / ordersTotal) * 100) : 0,
+    avgWhenTipped: tippedCount ? Math.round((tipTotal / tippedCount) * 100) / 100 : 0,
+  };
+
+  // busy heatmap (day-of-week x hour order counts) — multi-day ranges only
+  let heatmap: { hours: number[]; rows: [string, number[]][] } | null = null;
+  if (b.gran !== 'hour') {
+    const hourSet = new Set<number>();
+    const grid = new Map<number, Map<number, number>>();
+    for (const o of orders as any[]) {
+      const p = berlinParts(o.date_order);
+      hourSet.add(p.hour);
+      if (!grid.has(p.dow)) grid.set(p.dow, new Map());
+      const row = grid.get(p.dow)!;
+      row.set(p.hour, (row.get(p.hour) || 0) + 1);
+    }
+    const hours = Array.from(hourSet).sort((a, c) => a - c);
+    if (hours.length) {
+      const rows: [string, number[]][] = [];
+      for (let i = 0; i < 7; i++) {
+        const row = grid.get(i);
+        if (row) rows.push([DOW[i], hours.map(h => row.get(h) || 0)]);
+      }
+      heatmap = { hours, rows };
+    }
+  }
+
+  // month projection (current month only)
+  let projectedMonthEnd: number | null = null;
+  if (b.range === 'month' && b.anchorDay.slice(0, 7) === today.slice(0, 7)) {
+    projectedMonthEnd = projectMonth(salesTotal, Number(today.slice(8, 10)), daysInMonthOf(today));
+  }
+
   return {
     range, sub: b.sub, prevLabel: b.prevLabel, yoyLabel: b.yoyLabel,
     trendUnit: b.gran === 'hour' ? 'By hour' : b.gran === 'month' ? 'By month' : 'By day',
@@ -282,6 +401,11 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
     cashPct, cashAmt: Math.round(cash), cardAmt: Math.round(card),
     dineInPct, dineInOrders, takeawayOrders,
     avgItems, items,
+    projectedMonthEnd,
+    drinkAttachPct, sideAttachPct, slowSellers,
+    profitByCat, estGrossProfit,
+    refunds, voids, discounts,
+    till, tillNet, staff, tips, heatmap,
     ...kitchen,
     meta: { companyId: waj.companyId, configId: waj.configId, company: waj.company },
   };

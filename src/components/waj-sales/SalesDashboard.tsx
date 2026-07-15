@@ -10,7 +10,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import {
-  TipCtx, OverviewTab, ProductsTab, BusyTab, OrdersTab, KitchenTab,
+  TipCtx, OverviewTab, ProductsTab, BusyTab, OrdersTab, TeamTab, KitchenTab,
 } from './SalesViz';
 import type { Range, SalesPayload } from '@/lib/waj-sales';
 import { dayShift, mondayOf, monthFirst, firstOfNextMonth, prevMonthFirst, labelDay, labelMonth } from '@/lib/waj-sales-time';
@@ -32,6 +32,7 @@ const TABS = [
   { id: 'products', label: 'Menu' },
   { id: 'busy', label: 'Busy times' },
   { id: 'orders', label: 'Orders' },
+  { id: 'team', label: 'Team' },
   { id: 'kitchen', label: 'Kitchen' },
 ] as const;
 type TabId = typeof TABS[number]['id'];
@@ -158,6 +159,7 @@ export default function SalesDashboard() {
           {data && tab === 'products' && <ProductsTab d={data} sort={sort} setSort={setSort} />}
           {data && tab === 'busy' && <BusyTab d={data} />}
           {data && tab === 'orders' && <OrdersTab d={data} />}
+          {data && tab === 'team' && <TeamTab d={data} />}
           {data && tab === 'kitchen' && <KitchenTab d={data} />}
         </main>
 
@@ -271,6 +273,20 @@ export default function SalesDashboard() {
         .wajs .empty.pad { padding:40px 0; }
         .wajs .errbox { background:#FEE2E2;color:#991B1B;border:1px solid #FCA5A5;border-radius:12px;padding:12px 14px;font-size:13px;font-weight:600; }
         .wajs .footer-note { text-align:center;font-size:11px;color:var(--faint);padding:10px 20px 0; }
+        .wajs .ministats { display:flex;gap:10px;flex-wrap:wrap; }
+        .wajs .ministat { flex:1;min-width:88px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:11px 12px;display:flex;flex-direction:column;gap:3px; }
+        .wajs .ministat .mv { font-size:18px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums; }
+        .wajs .ministat .mk { font-size:11px;color:var(--muted);font-weight:600; }
+        .wajs .plainlist { display:flex;flex-direction:column; }
+        .wajs .pl-row { display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--surface-2); }
+        .wajs .pl-row:last-child { border-bottom:0; }
+        .wajs .pl-nm { font-size:14px;font-weight:600;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+        .wajs .pl-v { font-size:13px;font-weight:700;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap; }
+        .wajs .heatmap { display:flex;flex-direction:column;gap:3px;overflow-x:auto; }
+        .wajs .hm-row { display:flex;gap:3px;align-items:center; }
+        .wajs .hm-day { width:30px;flex:0 0 30px;font-size:10px;font-weight:700;color:var(--muted); }
+        .wajs .hm-h { flex:1;min-width:15px;text-align:center;font-size:9px;color:var(--faint);font-weight:600; }
+        .wajs .hm-cell { flex:1;min-width:15px;height:22px;border-radius:3px;cursor:default; }
         .wajs .tt { position:fixed;z-index:50;pointer-events:none;background:var(--ink);color:#fff;font-size:11px;font-weight:600;
           padding:6px 9px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.28);white-space:nowrap;max-width:220px; }
         @media (prefers-reduced-motion: reduce) { .wajs * { transition:none !important; } }

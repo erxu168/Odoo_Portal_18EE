@@ -126,6 +126,31 @@ export function labelMonth(day: string): string {
 }
 export function weekdayLabel(day: string): string { return DOW[dowOf(day)]; }
 export function dayOfMonthLabel(day: string): string { return String(Number(day.slice(8, 10))); }
+export function daysInMonthOf(day: string): number {
+  const [y, m] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+// ── menu-category classification (ROUGH profit estimate) ──
+// We have no real recipe costs, so estimate a food-cost % per POS-category name.
+// Also used to detect drink/side items for attach-rate. Clearly an estimate.
+export type CatGroup = 'food' | 'drink' | 'side' | 'sauce';
+export function classifyCategory(name: string): { group: CatGroup; costPct: number } {
+  const n = (name || '').toLowerCase();
+  if (/drink|beer|soda|\bbar\b|cocktail|wine|spirit|malt|lager|cola|\bting\b|guinness|water|juice/.test(n)) return { group: 'drink', costPct: 45 };
+  if (/sauce|\bdip\b/.test(n)) return { group: 'sauce', costPct: 15 };
+  if (/side|extra/.test(n)) return { group: 'side', costPct: 25 };
+  if (/burger|wrap/.test(n)) return { group: 'food', costPct: 35 };
+  if (/patt|fried|kfc/.test(n)) return { group: 'food', costPct: 32 };
+  if (/grill|jerk|bbq|chicken|lamb|pork|beef|goat|seafood|signature|meat|fish/.test(n)) return { group: 'food', costPct: 38 };
+  return { group: 'food', costPct: 33 };
+}
+
+/** Straight-line month projection from month-to-date sales. */
+export function projectMonth(salesToDate: number, dayOfMonth: number, daysInMonth: number): number {
+  if (dayOfMonth <= 0) return Math.round(salesToDate);
+  return Math.round((salesToDate / dayOfMonth) * daysInMonth);
+}
 
 export function monthFirst(day: string): string { return day.slice(0, 8) + '01'; }
 export function firstOfNextMonth(firstOfMonth: string): string {

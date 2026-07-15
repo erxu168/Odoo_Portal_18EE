@@ -145,6 +145,29 @@ export function InfoNote({ children }: { children: React.ReactNode }) {
   );
 }
 
+export function MiniStats({ items }: { items: [string, string][] }) {
+  return <div className="ministats">{items.map(([k, v], i) => <div className="ministat" key={i}><span className="mv">{v}</span><span className="mk">{k}</span></div>)}</div>;
+}
+
+export function Heatmap({ data }: { data: { hours: number[]; rows: [string, number[]][] } }) {
+  const tip = useContext(TipCtx);
+  const max = Math.max(1, ...data.rows.flatMap(r => r[1]));
+  return (
+    <div className="heatmap">
+      <div className="hm-row"><span className="hm-day" />{data.hours.map(h => <span key={h} className="hm-h">{h}</span>)}</div>
+      {data.rows.map(([day, counts]) => (
+        <div className="hm-row" key={day}>
+          <span className="hm-day">{day}</span>
+          {counts.map((c, i) => (
+            <span key={i} className="hm-cell" style={{ background: c ? `rgba(245,128,10,${(0.15 + (c / max) * 0.85).toFixed(2)})` : 'var(--track)' }}
+              onMouseMove={e => tip.show(`${day} ${data.hours[i]}:00 · ${c} order${c === 1 ? '' : 's'}`, e)} onMouseLeave={tip.hide} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── tab bodies ──────────────────────────────────────────
 export function OverviewTab({ d }: { d: SalesPayload }) {
   const sales = d.salesTotal, orders = d.ordersTotal, avg = orders ? sales / orders : 0;
@@ -166,6 +189,12 @@ export function OverviewTab({ d }: { d: SalesPayload }) {
         <div className="card-head"><span className="card-title">Sales trend</span><span className="card-hint">{d.trendUnit}</span></div>
         <TrendChart points={d.trend} />
       </div>
+      {d.projectedMonthEnd != null && (
+        <div className="card">
+          <div className="card-head"><span className="card-title">Projected month-end</span><span className="card-hint">at current pace</span></div>
+          <div className="big-stat"><span className="n">{eur0.format(d.projectedMonthEnd)}</span><span className="u">estimate</span></div>
+        </div>
+      )}
       {best ? <InfoNote>Strongest day was <b>{best[0]}</b> ({eur0.format(best[1])}).</InfoNote> : null}
     </>
   );
@@ -177,6 +206,7 @@ export function ProductsTab({ d, sort, setSort }: { d: SalesPayload; sort: 'reve
   // non-negative and there is net revenue, and clamp the percentage.
   const showSplit = d.foodRev >= 0 && d.drinkRev >= 0 && fd > 0;
   const foodPct = showSplit ? Math.max(0, Math.min(100, Math.round((d.foodRev / fd) * 100))) : 0;
+  const pmax = Math.max(...d.profitByCat.map(x => x[1]), 1);
   return (
     <>
       <div className="card">
@@ -199,6 +229,31 @@ export function ProductsTab({ d, sort, setSort }: { d: SalesPayload; sort: 'reve
         </div>
         <HBars rows={d.products} mode={sort} />
       </div>
+      <div className="card">
+        <div className="card-head"><span className="card-title">Attach rate</span><span className="card-hint">of all orders</span></div>
+        <MiniStats items={[['include a drink', d.drinkAttachPct + '%'], ['include a side', d.sideAttachPct + '%']]} />
+      </div>
+      <div className="card">
+        <div className="card-head"><span className="card-title">Estimated profit</span><span className="card-hint">rough · by category</span></div>
+        {d.profitByCat.length
+          ? <div className="hbars">{d.profitByCat.map((r, i) => (
+              <div className="hbar" key={i}>
+                <div className="nm"><span className="rk">{i + 1}</span>{r[0]}</div>
+                <div className="val">{eur0.format(r[1])}<div className="sub">{r[2]}% margin</div></div>
+                <div className="track"><div className="fill" style={{ width: Math.round((r[1] / pmax) * 100) + '%' }} /></div>
+              </div>
+            ))}</div>
+          : <div className="empty">No sales in this period.</div>}
+        <InfoNote>Rough estimate using typical food-cost %, not your real recipe costs.</InfoNote>
+      </div>
+      <div className="card">
+        <div className="card-head"><span className="card-title">Slowest movers</span><span className="card-hint">fewest sold</span></div>
+        {d.slowSellers.length
+          ? <div className="plainlist">{d.slowSellers.map((r, i) => (
+              <div className="pl-row" key={i}><span className="pl-nm">{r[0]}</span><span className="pl-v">{num.format(r[1])} sold · {eur0.format(r[2])}</span></div>
+            ))}</div>
+          : <div className="empty">No sales in this period.</div>}
+      </div>
     </>
   );
 }
@@ -212,7 +267,13 @@ export function BusyTab({ d }: { d: SalesPayload }) {
       </div>
       {d.dow
         ? <div className="card"><div className="card-head"><span className="card-title">By day of week</span><span className="card-hint">avg sales / day</span></div><VBars rows={d.dow} money /></div>
-        : <InfoNote>Day-of-week needs more than one day. Switch to <b>This week</b> or <b>This month</b> to compare Mon–Sun.</InfoNote>}
+        : <InfoNote>Day-of-week needs more than one day. Switch to <b>Week</b> or <b>Month</b> to compare Mon–Sun.</InfoNote>}
+      {d.heatmap && (
+        <div className="card">
+          <div className="card-head"><span className="card-title">Rush heatmap</span><span className="card-hint">orders · day × hour</span></div>
+          <Heatmap data={d.heatmap} />
+        </div>
+      )}
     </>
   );
 }
@@ -233,6 +294,25 @@ export function OrdersTab({ d }: { d: SalesPayload }) {
       <div className="card"><div className="card-head"><span className="card-title">Items per order</span><span className="card-hint">avg {d.avgItems.toLocaleString('de-DE')} items</span></div>
         <VBars rows={d.items} unit="%" />
       </div>
+      <div className="card">
+        <div className="card-head"><span className="card-title">Refunds, voids &amp; discounts</span><span className="card-hint">watch for mistakes</span></div>
+        <MiniStats items={[
+          ['refunds', `${num.format(d.refunds.count)} · ${eur0.format(d.refunds.amount)}`],
+          ['edited orders', num.format(d.voids)],
+          ['discounts', d.discounts.count ? `${num.format(d.discounts.count)} · ${eur0.format(d.discounts.amount)}` : 'none'],
+        ]} />
+      </div>
+      {d.till.length > 0 && (
+        <div className="card">
+          <div className="card-head"><span className="card-title">Till over / short</span><span className="card-hint">net {d.tillNet > 0 ? '+' : ''}{eur2.format(d.tillNet)}</span></div>
+          <div className="plainlist">{d.till.map((t, i) => (
+            <div className="pl-row" key={i}>
+              <span className="pl-nm">{t.date}</span>
+              <span className="pl-v" style={{ color: t.diff < 0 ? 'var(--bad)' : t.diff > 0 ? 'var(--good)' : 'var(--muted)' }}>{t.diff > 0 ? '+' : ''}{eur2.format(t.diff)}</span>
+            </div>
+          ))}</div>
+        </div>
+      )}
     </>
   );
 }
@@ -263,6 +343,31 @@ export function KitchenTab({ d }: { d: SalesPayload }) {
         ? <><div className="card"><div className="card-head"><span className="card-title">Prep time by day</span><span className="card-hint">avg minutes</span></div><VBars rows={d.prepDow} unit="m" /></div>
           <InfoNote>The kitchen tends to slow on the busiest days — worth watching against staffing.</InfoNote></>
         : null}
+    </>
+  );
+}
+
+export function TeamTab({ d }: { d: SalesPayload }) {
+  const maxSales = Math.max(...d.staff.map(s => s[2]), 1);
+  return (
+    <>
+      <div className="card">
+        <div className="card-head"><span className="card-title">Tips</span><span className="card-hint">{d.tips.ratePct}% of orders tipped</span></div>
+        <MiniStats items={[['total tips', eur0.format(d.tips.total)], ['avg when tipped', eur2.format(d.tips.avgWhenTipped)], ['tip rate', d.tips.ratePct + '%']]} />
+      </div>
+      <div className="card">
+        <div className="card-head"><span className="card-title">Sales per staff</span><span className="card-hint">this period</span></div>
+        {d.staff.length
+          ? <div className="hbars">{d.staff.map((s, i) => (
+              <div className="hbar" key={i}>
+                <div className="nm"><span className="rk">{i + 1}</span>{s[0]}</div>
+                <div className="val">{eur0.format(s[2])}<div className="sub">{num.format(s[1])} orders · {eur2.format(s[1] ? s[2] / s[1] : 0)} avg</div></div>
+                <div className="track"><div className="fill" style={{ width: Math.round((s[2] / maxSales) * 100) + '%' }} /></div>
+              </div>
+            ))}</div>
+          : <div className="empty">No staff-attributed sales in this period.</div>}
+        <InfoNote>Orders with no cashier recorded show as “Unassigned”.</InfoNote>
+      </div>
     </>
   );
 }
