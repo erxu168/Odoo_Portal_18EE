@@ -1,12 +1,8 @@
 name: Build Time Clock APK
 
-# Cloud-builds the "Krawings Time Clock" Android kiosk app (a Capacitor wrapper of
-# https://portal.krawings.de/kiosk) with no local Android Studio needed. Same idea as
-# the WAJ till app: the finished .apk is published to a rolling GitHub release so any
-# tablet can download and install it directly.
-#
-# Trigger it from the Actions tab (Run workflow), or it runs automatically when the
-# Time Clock kit changes.
+# Cloud-builds the "Kiosk Attendance" Android kiosk app (a Capacitor wrapper of
+# https://portal.krawings.de/kiosk) with no local Android Studio needed. The finished
+# .apk is published to a rolling GitHub release so any tablet can install it directly.
 
 on:
   workflow_dispatch:
@@ -25,7 +21,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # needed to publish the APK to a release
+      contents: write
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -53,7 +49,7 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
-      - name: Use the Time Clock Capacitor config
+      - name: Use the Kiosk Attendance Capacitor config
         run: cp docs/android-timeclock/capacitor.config.json ./capacitor.config.json
 
       - name: Provide a webDir (app loads the live site via server.url)
@@ -70,13 +66,28 @@ jobs:
       - name: Sync Capacitor into the native project
         run: npx cap sync android
 
-      - name: Generate the app icon from the kit art
+      - name: Generate the app icon
         run: |
+          set -e
+          # Legacy square/round icons: @capacitor/assets reads icon-only.png correctly
+          # and also writes the adaptive-icon XML.
           mkdir -p assets
           cp docs/android-timeclock/assets/icon-only.png assets/icon-only.png
-          cp docs/android-timeclock/assets/icon-foreground.png assets/icon-foreground.png
-          cp docs/android-timeclock/assets/icon-background.png assets/icon-background.png
           npx --yes @capacitor/assets generate --android
+          # Adaptive icon: @capacitor/assets does NOT honor a custom foreground at the
+          # correct 108dp sizes, so we write the adaptive foreground (our art) and a
+          # solid-white background ourselves, at the proper per-density sizes. This runs
+          # LAST so nothing overwrites it.
+          if ! command -v convert >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick; fi
+          RES=android/app/src/main/res
+          FG=docs/android-timeclock/assets/icon-foreground.png
+          for pair in mdpi:108 hdpi:162 xhdpi:216 xxhdpi:324 xxxhdpi:432; do
+            d=${pair%%:*}; s=${pair##*:}
+            convert "$FG" -resize ${s}x${s} "$RES/mipmap-$d/ic_launcher_foreground.png"
+            convert -size ${s}x${s} xc:white "$RES/mipmap-$d/ic_launcher_background.png"
+          done
+          echo "Adaptive foreground (xxxhdpi) is now:"
+          file "$RES/mipmap-xxxhdpi/ic_launcher_foreground.png"
 
       - name: Build the debug APK
         run: |
@@ -91,8 +102,6 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      # Publish the raw .apk to a rolling "timeclock-latest" release so any tablet can
-      # download it from the same URL every build (no zip, no unzipping).
       - name: Publish APK to the 'timeclock-latest' release
         if: github.ref == 'refs/heads/main'
         env:
@@ -102,5 +111,5 @@ jobs:
           gh release delete timeclock-latest --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create timeclock-latest krawings-timeclock.apk \
             --repo "${{ github.repository }}" \
-            --title "Krawings Time Clock (latest build)" \
+            --title "Kiosk Attendance (latest build)" \
             --notes "Auto-built from ${{ github.sha }}. On the tablet: open this page, tap krawings-timeclock.apk, and allow install from unknown sources. Currently points at STAGING (portal.krawings.de/kiosk)."
