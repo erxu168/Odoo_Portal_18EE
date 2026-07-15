@@ -70,6 +70,26 @@ jobs:
       - name: Sync Capacitor into the native project
         run: npx cap sync android
 
+      - name: Generate the app icon (legacy via @capacitor/assets, adaptive deterministically)
+        run: |
+          # Legacy square/round icons: @capacitor/assets reads icon-only.png correctly.
+          mkdir -p assets
+          cp docs/android-timeclock/assets/icon-only.png assets/icon-only.png
+          npx --yes @capacitor/assets generate --android
+          # Adaptive icon: @capacitor/assets ignores our custom foreground, so write the
+          # adaptive foreground (our art) + solid-white background ourselves at 108dp sizes.
+          if ! command -v convert >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick; fi
+          RES=android/app/src/main/res
+          FG=docs/android-timeclock/assets/icon-foreground.png
+          for pair in mdpi:108 hdpi:162 xhdpi:216 xxhdpi:324 xxxhdpi:432; do
+            d=${pair%%:*}; s=${pair##*:}
+            convert "$FG" -resize ${s}x${s} "$RES/mipmap-$d/ic_launcher_foreground.png"
+            convert -size ${s}x${s} xc:white "$RES/mipmap-$d/ic_launcher_background.png"
+          done
+
+      - name: Sync Capacitor into the native project
+        run: npx cap sync android
+
       - name: Generate the app icon from the kit art
         run: |
           mkdir -p assets
