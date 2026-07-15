@@ -6,17 +6,20 @@ import { loadKioskSettings, type KioskSettings as KioskSettingsT } from '@/lib/k
 
 /**
  * Tablet time-clock kiosk (no login). The restaurant is set on the tablet from the
- * gear → settings screen (manager/admin login), saved in localStorage. The old
- *   /kiosk?company=6
- * URL still works as a first-time fallback. Staff tap their name, enter a 4-digit
- * PIN, and are clocked IN or OUT (auto). Writes Odoo hr.attendance via
- * /api/kiosk/punch. No geolocation (DSGVO).
+ * gear → settings screen (manager/admin login), saved in localStorage. Staff tap
+ * their name and enter a 4-digit PIN to clock IN/OUT (auto) via /api/kiosk/punch.
+ *
+ * Everyone at the restaurant is listed. A staff member without a PIN yet taps their
+ * name and sets one up: we email them a 6-digit code (proves it's them), they enter
+ * it and choose a PIN. "Forgot PIN" emails a reset link they open on their phone.
+ * No geolocation (DSGVO) — device trust + PIN only.
  */
 
 interface KioskStaff {
   employeeId: number;
   name: string;
   clockedIn: boolean;
+  hasPin: boolean;
 }
 interface PunchResult {
   ok: true;
@@ -60,7 +63,7 @@ function beep(): void {
 export default function KioskPage() {
   const [settings, setSettings] = useState<KioskSettingsT | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [screen, setScreen] = useState<'grid' | 'pin' | 'done'>('grid');
+  const [screen, setScreen] = useState<'grid' | 'pin' | 'setup' | 'done'>('grid');
   const [staff, setStaff] = useState<KioskStaff[]>([]);
   const [selected, setSelected] = useState<KioskStaff | null>(null);
   const [pin, setPin] = useState('');
@@ -68,6 +71,18 @@ export default function KioskPage() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<PunchResult | null>(null);
   const [clock, setClock] = useState('');
+  const [flash, setFlash] = useState('');
+
+  // Forgot-PIN feedback shown on the PIN screen.
+  const [forgotMsg, setForgotMsg] = useState('');
+
+  // First-time PIN setup flow.
+  const [setupStep, setSetupStep] = useState<'start' | 'code'>('start');
+  const [setupEmailMasked, setSetupEmailMasked] = useState('');
+  const [setupCode, setSetupCode] = useState('');
+  const [setupPin, setSetupPin] = useState('');
+  const [setupConfirm, setSetupConfirm] = useState('');
+  const [setupError, setSetupError] = useState('');
 
   const companyId = settings?.companyId ?? null;
   const fullscreenLock = settings?.fullscreenLock ?? true;
@@ -128,12 +143,38 @@ export default function KioskPage() {
     return () => window.removeEventListener('popstate', onPop);
   }, [fullscreenLock]);
 
-  function pickPerson(s: KioskStaff) {
-    if (fullscreenLock) enterFullscreen(); // first tap is a user gesture — a good moment to go full screen
-    setSelected(s);
+  const backToGrid = useCallback(() => {
+    setScreen('grid');
+    setSelected(null);
     setPin('');
     setPinError(false);
-    setScreen('pin');
+    setForgotMsg('');
+    setSetupStep('start');
+    setSetupCode('');
+    setSetupPin('');
+    setSetupConfirm('');
+    setSetupError('');
+    setSetupEmailMasked('');
+  }, []);
+
+  function pickPerson(s: KioskStaff) {
+    if (fullscreenLock) enterFullscreen(); // first tap is a user gesture — a good moment to go full screen
+    setFlash('');
+    setSelected(s);
+    if (s.hasPin) {
+      setPin('');
+      setPinError(false);
+      setForgotMsg('');
+      setScreen('pin');
+    } else {
+      setSetupStep('start');
+      setSetupCode('');
+      setSetupPin('');
+      setSetupConfirm('');
+      setSetupError('');
+      setSetupEmailMasked('');
+      setScreen('setup');
+    }
   }
 
   const submitPin = useCallback(
@@ -174,6 +215,84 @@ export default function KioskPage() {
     if (next.length === 4) submitPin(next);
   }
 
+  // ---- Forgot PIN (email a reset link) ----
+  const requestForgot = useCallback(async () => {
+    if (!selected || !companyId || busy) return;
+    setBusy(true);
+    setForgotMsg('');
+    try {
+      const r = await fetch('/api/kiosk/forgot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, employee_id: selected.employeeId }),
+      });
+      const d = await r.json();
+      setForgotMsg(r.ok && d.ok ? `Reset link sent to ${d.emailMasked}. Open it on your phone.` : d.error || 'Could not send the link.');
+    } catch {
+      setForgotMsg('Network error — try again.');
+    } finally {
+      setBusy(false);
+    }
+  }, [selected, companyId, busy]);
+
+  // ---- First-time setup: request the email code ----
+  const requestSetupCode = useCallback(async () => {
+    if (!selected || !companyId || busy) return;
+    setBusy(true);
+    setSetupError('');
+    try {
+      const r = await fetch('/api/kiosk/setup/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, employee_id: selected.employeeId }),
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) {
+        setSetupEmailMasked(d.emailMasked || 'your email');
+        setSetupStep('code');
+      } else {
+        setSetupError(d.error || 'Could not send the code.');
+      }
+    } catch {
+      setSetupError('Network error — try again.');
+    } finally {
+      setBusy(false);
+    }
+  }, [selected, companyId, busy]);
+
+  // ---- First-time setup: confirm code + set PIN + clock in ----
+  const confirmSetup = useCallback(async () => {
+    if (!selected || !companyId || busy) return;
+    if (!/^\d{6}$/.test(setupCode)) { setSetupError('Enter the 6-digit code from your email.'); return; }
+    if (!/^\d{4}$/.test(setupPin)) { setSetupError('Your PIN must be 4 digits.'); return; }
+    if (setupPin !== setupConfirm) { setSetupError('The two PINs don’t match.'); return; }
+    setBusy(true);
+    setSetupError('');
+    try {
+      const r = await fetch('/api/kiosk/setup/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, employee_id: selected.employeeId, code: setupCode, pin: setupPin }),
+      });
+      const d = await r.json();
+      if (r.ok && d.action) {
+        if (settings?.sound) beep();
+        setResult(d as PunchResult);
+        setScreen('done');
+      } else if (r.ok && d.ok) {
+        setFlash('PIN set! Tap your name to clock in.');
+        backToGrid();
+        loadStaff();
+      } else {
+        setSetupError(d.error || 'Could not set your PIN.');
+      }
+    } catch {
+      setSetupError('Network error — try again.');
+    } finally {
+      setBusy(false);
+    }
+  }, [selected, companyId, busy, setupCode, setupPin, setupConfirm, settings?.sound, loadStaff, backToGrid]);
+
   const header = (
     <header className="bg-[#1A1F2E] text-white px-6 py-4 flex items-center justify-between">
       <div className="min-w-0 flex items-baseline gap-2">
@@ -195,10 +314,6 @@ export default function KioskPage() {
     </header>
   );
 
-  // The settings overlay is rendered ONCE as a stable sibling of whatever content
-  // branch is showing (below). Keeping it out of the branch divs means switching
-  // branches — e.g. not-set-up → grid after a manager picks the restaurant — does
-  // not remount it and drop the unlocked state.
   const overlay = settingsOpen && settings && (
     <KioskSettings
       settings={settings}
@@ -210,10 +325,12 @@ export default function KioskPage() {
     />
   );
 
+  const setupInputCls =
+    'w-full text-center text-3xl font-bold tracking-[0.35em] tabular-nums bg-gray-50 border border-gray-200 rounded-2xl py-3.5 outline-none focus:border-green-500';
+
   let content: React.ReactNode;
 
   if (!settings) {
-    // First paint before settings load — keep it blank (avoids a flash of "not set up").
     content = <div className="min-h-screen bg-gray-50" />;
   } else if (!companyId) {
     // ---- Not set up yet (no restaurant chosen) ----
@@ -259,7 +376,7 @@ export default function KioskPage() {
           <div className={`rounded-2xl px-7 py-3 text-lg font-bold ${noteClass}`}>{noteMsg}</div>
           {r.shift && <div className="text-gray-400 mt-4 text-lg">Your shift: {r.shift}</div>}
           <button
-            onClick={() => { setScreen('grid'); setSelected(null); setResult(null); loadStaff(); }}
+            onClick={backToGrid}
             className="mt-8 bg-green-600 text-white px-10 py-3.5 rounded-full text-lg font-bold active:bg-green-700"
           >
             Done
@@ -275,7 +392,7 @@ export default function KioskPage() {
         {header}
         <div className="flex-1 flex flex-col items-center p-6">
           <button
-            onClick={() => { setScreen('grid'); setSelected(null); }}
+            onClick={backToGrid}
             className="self-start bg-white border border-gray-200 rounded-full px-5 py-2.5 font-bold text-gray-600 active:bg-gray-100"
           >
             ‹ Back
@@ -322,6 +439,92 @@ export default function KioskPage() {
               ⌫
             </button>
           </div>
+          <div className="mt-6 text-center">
+            <button onClick={requestForgot} disabled={busy} className="text-gray-500 font-semibold underline active:text-gray-700 disabled:opacity-50">
+              Forgot PIN?
+            </button>
+            {forgotMsg && <div className="text-sm text-gray-600 mt-2 max-w-xs">{forgotMsg}</div>}
+          </div>
+        </div>
+      </div>
+    );
+  } else if (screen === 'setup' && selected) {
+    // ---- First-time PIN setup ----
+    content = (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        {header}
+        <div className="flex-1 flex flex-col items-center p-6">
+          <button
+            onClick={backToGrid}
+            className="self-start bg-white border border-gray-200 rounded-full px-5 py-2.5 font-bold text-gray-600 active:bg-gray-100"
+          >
+            ‹ Back
+          </button>
+          <div className="w-24 h-24 rounded-full bg-gray-200 text-gray-600 text-3xl font-bold flex items-center justify-center mt-4">
+            {initials(selected.name)}
+          </div>
+          <div className="text-2xl font-extrabold text-gray-900 mt-4">Hi, {firstName(selected.name)}</div>
+
+          {setupStep === 'start' ? (
+            <div className="flex flex-col items-center w-full max-w-xs mt-2">
+              <div className="text-gray-500 font-semibold text-center mt-1">You don’t have a PIN yet.</div>
+              <div className="text-gray-500 text-center text-sm mt-2 mb-6">
+                We’ll email you a 6-digit code to make sure it’s you. Then you pick your own 4-digit PIN.
+              </div>
+              <button
+                onClick={requestSetupCode}
+                disabled={busy}
+                className="w-full bg-green-600 text-white py-4 rounded-2xl text-lg font-bold active:bg-green-700 disabled:opacity-50"
+              >
+                {busy ? 'Sending…' : 'Email me a code'}
+              </button>
+              {setupError && <div className="text-red-600 font-semibold text-sm text-center mt-4">{setupError}</div>}
+            </div>
+          ) : (
+            <div className="flex flex-col w-full max-w-xs mt-2 gap-3">
+              <div className="text-gray-500 text-center text-sm mb-1">
+                We sent a code to <span className="font-bold text-gray-700">{setupEmailMasked}</span>. Enter it, then choose your PIN.
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Code from email</label>
+                <input
+                  inputMode="numeric" autoComplete="off" maxLength={6} placeholder="––––––"
+                  value={setupCode}
+                  onChange={e => setSetupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className={setupInputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Choose a 4-digit PIN</label>
+                <input
+                  type="password" inputMode="numeric" autoComplete="off" maxLength={4} placeholder="••••"
+                  value={setupPin}
+                  onChange={e => setSetupPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className={setupInputCls}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Confirm PIN</label>
+                <input
+                  type="password" inputMode="numeric" autoComplete="off" maxLength={4} placeholder="••••"
+                  value={setupConfirm}
+                  onChange={e => setSetupConfirm(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className={setupInputCls}
+                />
+              </div>
+              {setupError && <div className="text-red-600 font-semibold text-sm text-center">{setupError}</div>}
+              <button
+                onClick={confirmSetup}
+                disabled={busy}
+                className="mt-1 bg-green-600 text-white py-4 rounded-2xl text-lg font-bold active:bg-green-700 disabled:opacity-50"
+              >
+                {busy ? 'Setting up…' : 'Set PIN & clock in'}
+              </button>
+              <button onClick={requestSetupCode} disabled={busy} className="text-gray-500 font-semibold underline text-sm active:text-gray-700 disabled:opacity-50">
+                Resend code
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -333,10 +536,15 @@ export default function KioskPage() {
         {header}
         <div className="flex-1 p-6">
           <div className="text-center text-gray-600 text-lg font-semibold mb-6">Tap your name to clock in or out</div>
+          {flash && (
+            <div className="max-w-md mx-auto mb-5 text-center bg-green-50 text-green-700 font-bold rounded-2xl px-5 py-3">
+              {flash}
+            </div>
+          )}
           {staff.length === 0 ? (
             <div className="text-center text-gray-400 mt-16 text-lg">
-              No staff set up for the clock yet.
-              <div className="text-base mt-1">A manager assigns PINs in Roster &amp; Caps.</div>
+              No staff found for this restaurant.
+              <div className="text-base mt-1">Check the restaurant in ⚙ settings.</div>
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-4 max-w-4xl mx-auto">
@@ -350,9 +558,13 @@ export default function KioskPage() {
                     {initials(s.name)}
                   </div>
                   <div className="text-[17px] font-bold text-gray-900 text-center leading-tight">{s.name}</div>
-                  <div className={`text-sm font-bold ${s.clockedIn ? 'text-green-600' : 'text-gray-400'}`}>
-                    {s.clockedIn ? '● Working' : '○ Off'}
-                  </div>
+                  {!s.hasPin ? (
+                    <div className="text-sm font-bold text-blue-600">Set up PIN</div>
+                  ) : (
+                    <div className={`text-sm font-bold ${s.clockedIn ? 'text-green-600' : 'text-gray-400'}`}>
+                      {s.clockedIn ? '● Working' : '○ Off'}
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
