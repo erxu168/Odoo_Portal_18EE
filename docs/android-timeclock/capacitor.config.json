@@ -1,6 +1,6 @@
 {
   "appId": "de.krawings.timeclock",
-  "appName": "Krawings Time Clock",
+  "appName": "Kiosk Attendance",
   "webDir": "www",
   "server": {
     "url": "https://portal.krawings.de/kiosk",
