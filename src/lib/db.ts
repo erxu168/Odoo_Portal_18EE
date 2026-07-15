@@ -9,6 +9,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
+import { createHash, randomBytes } from 'crypto';
 
 const DB_PATH = path.join(process.cwd(), 'data', 'portal.db');
 
@@ -53,7 +54,8 @@ function initTables(db: Database.Database) {
       token TEXT PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
       created_at TEXT NOT NULL,
-      expires_at TEXT NOT NULL
+      expires_at TEXT NOT NULL,
+      station_device_id INTEGER   -- set for shared-tablet sessions; enables per-device revoke
     );
 
     CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -91,6 +93,25 @@ function initTables(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_reset_expires ON password_reset_tokens(expires_at);
     CREATE INDEX IF NOT EXISTS idx_reg_attempts ON registration_attempts(ip_or_identifier, attempted_at);
     CREATE INDEX IF NOT EXISTS idx_station_actors_expires ON station_actors(expires_at);
+
+    -- A provisioned shared tablet (one-time manager setup). Holds a long-lived
+    -- device credential bound to a restaurant's shared "station" account so the
+    -- tablet can show a PIN-only login. The raw token lives in an httpOnly cookie;
+    -- only its sha256 hash is stored here. Revocable ("un-setup").
+    CREATE TABLE IF NOT EXISTS station_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      station_user_id INTEGER NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
+      company_id INTEGER NOT NULL,
+      label TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      last_used_at TEXT,
+      revoked INTEGER NOT NULL DEFAULT 0,
+      fail_count INTEGER NOT NULL DEFAULT 0,   -- consecutive wrong PINs (persistent brute-force lockout)
+      locked_until TEXT                        -- ISO; while > now, PIN login is refused
+    );
+    CREATE INDEX IF NOT EXISTS idx_station_devices_token ON station_devices(token_hash);
 
     CREATE TABLE IF NOT EXISTS portal_settings (
       key TEXT PRIMARY KEY,
@@ -232,6 +253,30 @@ function migrateSchema(db: Database.Database) {
       db.exec('CREATE INDEX IF NOT EXISTS idx_station_actors_expires ON station_actors(expires_at)');
     }
   } catch { /* table absent or already current */ }
+
+  // sessions gained station_device_id (per-tablet-device session revocation).
+  try {
+    const sCols = db.prepare('PRAGMA table_info(sessions)').all() as { name: string }[];
+    if (sCols.length > 0 && !sCols.some(c => c.name === 'station_device_id')) {
+      db.exec('ALTER TABLE sessions ADD COLUMN station_device_id INTEGER');
+    }
+    // At most one active session per provisioned device (DB-enforced; NULLs — i.e.
+    // normal user sessions — are exempt from the uniqueness).
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_device ON sessions(station_device_id) WHERE station_device_id IS NOT NULL');
+  } catch { /* ignore */ }
+
+  // station_devices gained the persistent PIN-lockout columns.
+  try {
+    const sdCols = db.prepare('PRAGMA table_info(station_devices)').all() as { name: string }[];
+    if (sdCols.length > 0) {
+      if (!sdCols.some(c => c.name === 'fail_count')) {
+        db.exec('ALTER TABLE station_devices ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0');
+      }
+      if (!sdCols.some(c => c.name === 'locked_until')) {
+        db.exec('ALTER TABLE station_devices ADD COLUMN locked_until TEXT');
+      }
+    }
+  } catch { /* table absent — initTables creates it with the columns */ }
 }
 
 function seedAdmin(db: Database.Database) {
@@ -423,13 +468,36 @@ export function resetPassword(id: number, newPassword: string) {
 
 // -- Session CRUD --
 
-export function createSession(userId: number): string {
+export function createSession(userId: number, stationDeviceId?: number): string {
   const db = getDb();
   const token = crypto.randomUUID();
   const now = nowISO();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
-  db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)').run(token, userId, now, expiresAt.toISOString());
+  db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at, station_device_id) VALUES (?, ?, ?, ?, ?)').run(token, userId, now, expiresAt.toISOString(), stationDeviceId ?? null);
+  db.prepare('UPDATE portal_users SET last_login = ?, login_count = login_count + 1 WHERE id = ?').run(now, userId);
+  return token;
+}
+
+/** Delete all sessions created on a specific provisioned tablet (per-device revoke). */
+export function deleteSessionsForDevice(stationDeviceId: number): void {
+  getDb().prepare('DELETE FROM sessions WHERE station_device_id = ?').run(stationDeviceId);
+}
+
+/** Create a shared-tablet session, atomically replacing any prior session for the
+ *  same device (one active session per device — also DB-enforced by a partial
+ *  unique index on station_device_id). */
+export function createTabletSession(userId: number, stationDeviceId: number): string {
+  const db = getDb();
+  const token = crypto.randomUUID();
+  const now = nowISO();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 30);
+  db.transaction(() => {
+    db.prepare('DELETE FROM sessions WHERE station_device_id = ?').run(stationDeviceId);
+    db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at, station_device_id) VALUES (?, ?, ?, ?, ?)')
+      .run(token, userId, now, expiresAt.toISOString(), stationDeviceId);
+  })();
   db.prepare('UPDATE portal_users SET last_login = ?, login_count = login_count + 1 WHERE id = ?').run(now, userId);
   return token;
 }
@@ -437,11 +505,22 @@ export function createSession(userId: number): string {
 export function getSessionUser(token: string): PortalUser | null {
   const db = getDb();
   const now = nowISO();
+  // For a SHARED-TABLET session (station_device_id set) the session is only valid
+  // while its device is still provisioned (not revoked) AND the station account is
+  // still a staff-level shared-device account. So revoking a device, or changing
+  // the station account's role/flag, invalidates its sessions on the very next
+  // request — closing the revoke race and any privilege-escalation-by-edit. Normal
+  // (NULL device) sessions are unaffected.
   const row = db.prepare(`
     SELECT u.id, u.name, u.email, u.role, u.employee_id, u.applicant_id, u.must_change_password, u.status, u.active, u.login_count, u.tour_seen, u.allowed_company_ids, u.module_access, u.is_shared_device, u.preferences, u.created_at, u.last_login
     FROM sessions s
     JOIN portal_users u ON u.id = s.user_id
+    LEFT JOIN station_devices d ON d.id = s.station_device_id
     WHERE s.token = ? AND u.active = 1 AND u.status = 'active' AND s.expires_at > ?
+      AND (
+        s.station_device_id IS NULL
+        OR (d.id IS NOT NULL AND d.revoked = 0 AND u.role = 'staff' AND u.is_shared_device = 1)
+      )
   `).get(token, now) as PortalUser | null;
   return row || null;
 }
@@ -507,6 +586,82 @@ export function deleteStationActor(token: string) {
 
 export function cleanExpiredStationActors() {
   getDb().prepare('DELETE FROM station_actors WHERE expires_at < ?').run(nowISO());
+}
+
+// -- Provisioned shared tablets (device credential for PIN-only login) --
+
+function sha256(s: string): string { return createHash('sha256').update(s).digest('hex'); }
+
+export interface StationDevice { id: number; station_user_id: number; company_id: number; label: string | null; locked_until: string | null; }
+
+/** Provision a tablet: store the sha256 of a fresh device token, return the raw
+ *  token to put in an httpOnly cookie. Bound to a restaurant's station account. */
+export function provisionStationDevice(stationUserId: number, companyId: number, label: string | null, createdBy: string): string {
+  const db = getDb();
+  const token = randomBytes(32).toString('hex');
+  db.prepare(
+    'INSERT INTO station_devices (token_hash, station_user_id, company_id, label, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(sha256(token), stationUserId, companyId, label ?? null, createdBy, nowISO());
+  return token;
+}
+
+/** Resolve a device token → its station account + company, or null if unknown/revoked. */
+export function getStationDevice(token: string): StationDevice | null {
+  if (!token) return null;
+  const db = getDb();
+  const row = db.prepare(
+    'SELECT id, station_user_id, company_id, label, revoked, locked_until FROM station_devices WHERE token_hash = ?'
+  ).get(sha256(token)) as (StationDevice & { revoked: number }) | undefined;
+  if (!row || row.revoked) return null;
+  db.prepare('UPDATE station_devices SET last_used_at = ? WHERE id = ?').run(nowISO(), row.id);
+  return { id: row.id, station_user_id: row.station_user_id, company_id: row.company_id, label: row.label ?? null, locked_until: row.locked_until ?? null };
+}
+
+export function revokeStationDevice(token: string): void {
+  if (!token) return;
+  getDb().prepare('UPDATE station_devices SET revoked = 1 WHERE token_hash = ?').run(sha256(token));
+}
+
+/** Revoke ALL device tokens for a station account (full tablet reset for a restaurant). */
+export function revokeStationDevicesForStation(stationUserId: number): void {
+  getDb().prepare('UPDATE station_devices SET revoked = 1 WHERE station_user_id = ?').run(stationUserId);
+}
+
+// -- Persistent PIN brute-force lockout (survives restarts, unlike the in-memory limiter) --
+const PIN_FAIL_THRESHOLD = 10;              // wrong PINs before a lockout
+const PIN_LOCK_MS = 10 * 60 * 1000;         // lockout duration once tripped
+
+/** Record a wrong PIN for a device; lock it for a while once the threshold trips. */
+export function recordDeviceLoginFailure(deviceId: number): void {
+  const db = getDb();
+  const row = db.prepare('SELECT fail_count FROM station_devices WHERE id = ?').get(deviceId) as { fail_count: number } | undefined;
+  const next = (row?.fail_count ?? 0) + 1;
+  if (next >= PIN_FAIL_THRESHOLD) {
+    db.prepare('UPDATE station_devices SET fail_count = 0, locked_until = ? WHERE id = ?')
+      .run(new Date(Date.now() + PIN_LOCK_MS).toISOString(), deviceId);
+  } else {
+    db.prepare('UPDATE station_devices SET fail_count = ? WHERE id = ?').run(next, deviceId);
+  }
+}
+
+/** Clear the failure counter + any lockout after a successful PIN. */
+export function clearDeviceLoginFailures(deviceId: number): void {
+  getDb().prepare('UPDATE station_devices SET fail_count = 0, locked_until = NULL WHERE id = ?').run(deviceId);
+}
+
+/** Delete all login sessions for a user (used to fully revoke tablet access). */
+export function deleteSessionsForUser(userId: number): void {
+  getDb().prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+}
+
+/** All active shared (is_shared_device) "station" accounts serving a given company.
+ *  More than one is a misconfiguration the caller should reject (never guess). */
+export function findStationAccountsForCompany(companyId: number): PortalUser[] {
+  const db = getDb();
+  const rows = db.prepare(
+    "SELECT id, name, email, role, employee_id, applicant_id, must_change_password, status, active, login_count, tour_seen, allowed_company_ids, module_access, is_shared_device, (pin_hash IS NOT NULL) AS has_pin, created_at, last_login FROM portal_users WHERE is_shared_device = 1 AND active = 1 AND status = 'active' ORDER BY id"
+  ).all() as PortalUser[];
+  return rows.filter(u => parseCompanyIds(u.allowed_company_ids).includes(companyId));
 }
 
 // -- Registration Rate Limiting --

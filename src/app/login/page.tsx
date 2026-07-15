@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCompany } from '@/lib/company-context';
+import TabletPinLogin from '@/components/tablet/TabletPinLogin';
+import TabletSetup from '@/components/tablet/TabletSetup';
 
-function LoginForm() {
+function LoginForm({ onSetupTablet }: { onSetupTablet: () => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { reload: reloadCompanies } = useCompany();
@@ -151,9 +153,69 @@ function LoginForm() {
         >
           Create an account
         </button>
+        <button
+          onClick={onSetupTablet}
+          className="mt-4 text-[12px] text-gray-400 font-semibold active:text-gray-600"
+        >
+          Set up this device as a shared tablet
+        </button>
       </div>
     </div>
   );
+}
+
+function Spinner() {
+  return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
+    </div>
+  );
+}
+
+/** Decides what the login screen shows: a provisioned tablet gets a PIN pad;
+ *  everyone else gets the normal email/password form (+ a manager "set up tablet"). */
+function LoginInner() {
+  const [mode, setMode] = useState<'loading' | 'pin' | 'password' | 'setup'>('loading');
+  const [companyName, setCompanyName] = useState('');
+  const [provisioned, setProvisioned] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Retry a few times so a transient error doesn't silently drop a provisioned
+      // tablet to the email/password form. /api/tablet/status is a lightweight
+      // DB-only endpoint, so a lasting failure is a broader outage — only then
+      // fall back to the normal login.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const r = await fetch('/api/tablet/status', { cache: 'no-store' });
+          if (r.ok) {
+            const d = await r.json();
+            if (cancelled) return;
+            if (d.provisioned) { setProvisioned(true); setCompanyName(d.company_name || ''); setMode('pin'); }
+            else { setProvisioned(false); setMode('password'); }
+            return;
+          }
+        } catch { /* network blip — retry */ }
+        await new Promise(res => setTimeout(res, 500 * (attempt + 1)));
+      }
+      if (!cancelled) setMode('password');
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (mode === 'loading') return <Spinner />;
+  if (mode === 'pin') return <TabletPinLogin companyName={companyName} onManager={() => setMode('setup')} />;
+  if (mode === 'setup') {
+    return (
+      <TabletSetup
+        alreadyProvisioned={provisioned}
+        onDone={() => window.location.reload()}
+        onCancel={() => setMode(provisioned ? 'pin' : 'password')}
+      />
+    );
+  }
+  return <LoginForm onSetupTablet={() => setMode('setup')} />;
 }
 
 export default function LoginPage() {
@@ -168,12 +230,8 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <Suspense fallback={
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
-        </div>
-      }>
-        <LoginForm />
+      <Suspense fallback={<Spinner />}>
+        <LoginInner />
       </Suspense>
     </div>
   );
