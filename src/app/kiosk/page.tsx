@@ -155,7 +155,8 @@ export default function KioskPage() {
     setSetupConfirm('');
     setSetupError('');
     setSetupEmailMasked('');
-  }, []);
+    loadStaff(); // refresh clocked-in/out status on return to the grid
+  }, [loadStaff]);
 
   function pickPerson(s: KioskStaff) {
     if (fullscreenLock) enterFullscreen(); // first tap is a user gesture — a good moment to go full screen
