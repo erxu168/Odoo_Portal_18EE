@@ -7,7 +7,8 @@ import { CompanyProvider } from '@/lib/company-context';
 import DebugOverlay from '@/components/ui/DebugOverlay';
 import { TopBarProvider } from '@/components/ui/TopBarContext';
 import { ShiftProvider } from '@/lib/shift-context';
-import WorkingAsBanner from '@/components/ui/WorkingAsBanner';
+import StationGate from '@/components/ui/StationGate';
+import { getCurrentUser } from '@/lib/auth';
 
 export const metadata: Metadata = {
   title: 'Krawings Portal',
@@ -27,17 +28,26 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // Derive the shared-tablet flag server-side so StationGate starts from an
+  // authoritative value — never a client "unknown" state that could fail open
+  // (expose tools un-PINned) or, if the lookup hangs, blank the whole portal.
+  const stationShared = !!getCurrentUser()?.is_shared_device;
   return (
     <html lang="en">
       <body className="antialiased bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white min-h-screen">
         <TopBarProvider>
         <CompanyProvider>
           <ShiftProvider>
-            <AppTopBar />
-            <WorkingAsBanner />
-            <MainWrapper>{children}</MainWrapper>
-            <AppTabBar />
-            <DebugOverlay />
+            {/* StationGate sits OUTSIDE the shell so it can mark the shell `inert`
+                while the PIN lock is up (blocks keyboard/AT access, not just
+                visually), while its own lock/bar stay interactive. */}
+            <StationGate serverShared={stationShared} />
+            <div id="kw-app-shell">
+              <AppTopBar />
+              <MainWrapper>{children}</MainWrapper>
+              <AppTabBar />
+              <DebugOverlay />
+            </div>
           </ShiftProvider>
         </CompanyProvider>
         </TopBarProvider>

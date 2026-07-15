@@ -18,15 +18,12 @@ interface ShiftCtx {
 }
 
 const LS_KEY = 'kw_active_person';
-const COOKIE = 'kw_acting'; // read server-side to credit work to the active person
 const MAX_MS = 12 * 60 * 60 * 1000; // auto-clear after 12h (a shift never runs longer)
 
-function setActingCookie(p: ActivePerson | null) {
-  if (typeof document === 'undefined') return;
-  if (!p) { document.cookie = `${COOKIE}=;path=/;max-age=0;SameSite=Lax`; return; }
-  const val = encodeURIComponent(JSON.stringify({ id: p.id, employee_id: p.employee_id }));
-  document.cookie = `${COOKIE}=${val};path=/;max-age=${12 * 60 * 60};SameSite=Lax`;
-}
+// NOTE: `activePerson` here is CLIENT-SIDE state for the UI only ("Signed in as
+// X"). Attribution is NOT trusted from the client — the server credits work via
+// the httpOnly, station-bound `kw_actor` token minted at PIN verification (see
+// lib/shift-attribution.ts + /api/station/pin-login).
 
 const ShiftContext = createContext<ShiftCtx>({ activePerson: null, signIn: () => {}, signOut: () => {}, openSignIn: () => {} });
 export function useShift() { return useContext(ShiftContext); }
@@ -41,8 +38,8 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) {
         const p = JSON.parse(raw) as ActivePerson;
-        if (p && p.since && (Date.now() - p.since) < MAX_MS) { setActivePerson(p); setActingCookie(p); }
-        else { localStorage.removeItem(LS_KEY); setActingCookie(null); }
+        if (p && p.since && (Date.now() - p.since) < MAX_MS) { setActivePerson(p); }
+        else { localStorage.removeItem(LS_KEY); }
       }
     } catch { /* ignore */ }
   }, []);
@@ -50,7 +47,6 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
   const signIn = useCallback((p: Omit<ActivePerson, 'since'>) => {
     const person: ActivePerson = { ...p, since: Date.now() };
     setActivePerson(person);
-    setActingCookie(person);
     try { localStorage.setItem(LS_KEY, JSON.stringify(person)); } catch { /* ignore */ }
     setSheetOpen(false);
     const after = afterRef.current;
@@ -60,7 +56,6 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(() => {
     setActivePerson(null);
-    setActingCookie(null);
     try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ }
   }, []);
 

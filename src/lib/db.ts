@@ -69,12 +69,28 @@ function initTables(db: Database.Database) {
       attempted_at TEXT NOT NULL
     );
 
+    -- Server-minted "who's acting" token for a shared kitchen tablet: proves a
+    -- PIN was verified. Bound to the exact tablet LOGIN SESSION (station_session)
+    -- so it can't be forged, replayed from another session, or reused after
+    -- logout/relogin. The FK cascade auto-revokes it when that session ends.
+    CREATE TABLE IF NOT EXISTS station_actors (
+      token TEXT PRIMARY KEY,
+      station_session TEXT NOT NULL REFERENCES sessions(token) ON DELETE CASCADE,
+      station_user_id INTEGER NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
+      acting_user_id INTEGER NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
+      acting_employee_id INTEGER,
+      company_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_users_email ON portal_users(email);
     CREATE INDEX IF NOT EXISTS idx_users_employee ON portal_users(employee_id);
     CREATE INDEX IF NOT EXISTS idx_users_status ON portal_users(status);
     CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
     CREATE INDEX IF NOT EXISTS idx_reset_expires ON password_reset_tokens(expires_at);
     CREATE INDEX IF NOT EXISTS idx_reg_attempts ON registration_attempts(ip_or_identifier, attempted_at);
+    CREATE INDEX IF NOT EXISTS idx_station_actors_expires ON station_actors(expires_at);
 
     CREATE TABLE IF NOT EXISTS portal_settings (
       key TEXT PRIMARY KEY,
@@ -195,6 +211,27 @@ function migrateSchema(db: Database.Database) {
     try { db.exec('ALTER TABLE portal_users ADD COLUMN is_shared_device INTEGER NOT NULL DEFAULT 0'); }
     catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
   }
+
+  // station_actors gained `station_session`. The table only holds transient acting
+  // tokens, so if an older shape exists just drop + recreate it (worst case: active
+  // tablet users re-enter their PIN). Without this, INSERTs would fail on old DBs.
+  try {
+    const saCols = db.prepare('PRAGMA table_info(station_actors)').all() as { name: string }[];
+    if (saCols.length > 0 && !saCols.some(c => c.name === 'station_session')) {
+      db.exec('DROP TABLE station_actors');
+      db.exec(`CREATE TABLE station_actors (
+        token TEXT PRIMARY KEY,
+        station_session TEXT NOT NULL REFERENCES sessions(token) ON DELETE CASCADE,
+        station_user_id INTEGER NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
+        acting_user_id INTEGER NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
+        acting_employee_id INTEGER,
+        company_id INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      )`);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_station_actors_expires ON station_actors(expires_at)');
+    }
+  } catch { /* table absent or already current */ }
 }
 
 function seedAdmin(db: Database.Database) {
@@ -394,6 +431,59 @@ export function deleteSession(token: string) {
 export function cleanExpiredSessions() {
   const db = getDb();
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(nowISO());
+}
+
+// -- Station "who's acting" tokens (shared kitchen tablet) --
+
+export interface StationActor {
+  station_session: string;
+  station_user_id: number;
+  acting_user_id: number;
+  acting_employee_id: number | null;
+  company_id: number;
+}
+
+/** Mint a server-stored acting token after a PIN is verified. Returns the token
+ *  to put in an httpOnly cookie — unforgeable and bound to the exact tablet login
+ *  session (stationSession = the kw_session token). */
+export function createStationActor(stationSession: string, stationUserId: number, actingUserId: number, actingEmployeeId: number | null, companyId: number, ttlMs: number): string {
+  const db = getDb();
+  cleanExpiredStationActors(); // opportunistic prune so the table can't grow unbounded
+  const token = crypto.randomUUID();
+  const now = nowISO();
+  const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+  // Atomic replace: one acting person per tablet session. Purging any prior token
+  // for this session in the same transaction means a failed sign-out can't leave a
+  // stale actor valid when the next person PINs in.
+  db.transaction(() => {
+    db.prepare('DELETE FROM station_actors WHERE station_session = ?').run(stationSession);
+    db.prepare(
+      'INSERT INTO station_actors (token, station_session, station_user_id, acting_user_id, acting_employee_id, company_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(token, stationSession, stationUserId, actingUserId, actingEmployeeId ?? null, companyId, now, expiresAt);
+  })();
+  return token;
+}
+
+/** Resolve an acting token, or null if unknown/expired (expired rows are purged). */
+export function getStationActor(token: string): StationActor | null {
+  const db = getDb();
+  const row = db.prepare(
+    'SELECT station_session, station_user_id, acting_user_id, acting_employee_id, company_id, expires_at FROM station_actors WHERE token = ?'
+  ).get(token) as (StationActor & { expires_at: string }) | undefined;
+  if (!row) return null;
+  if (new Date(row.expires_at).getTime() < Date.now()) {
+    db.prepare('DELETE FROM station_actors WHERE token = ?').run(token);
+    return null;
+  }
+  return { station_session: row.station_session, station_user_id: row.station_user_id, acting_user_id: row.acting_user_id, acting_employee_id: row.acting_employee_id ?? null, company_id: row.company_id };
+}
+
+export function deleteStationActor(token: string) {
+  getDb().prepare('DELETE FROM station_actors WHERE token = ?').run(token);
+}
+
+export function cleanExpiredStationActors() {
+  getDb().prepare('DELETE FROM station_actors WHERE expires_at < ?').run(nowISO());
 }
 
 // -- Registration Rate Limiting --
