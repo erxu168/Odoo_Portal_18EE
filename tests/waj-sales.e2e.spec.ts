@@ -20,7 +20,7 @@ test('manager can open the What a Jerk sales dashboard and use every tab/range',
   await expect(page.getByText('Total sales')).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('.errbox')).toHaveCount(0);
 
-  for (const t of ['Menu', 'Busy times', 'Orders', 'Kitchen', 'Overview']) {
+  for (const t of ['Menu', 'Busy times', 'Orders', 'Team', 'Kitchen', 'Overview']) {
     await page.getByRole('tab', { name: t }).click();
     await expect(page.locator('.errbox')).toHaveCount(0);
   }
@@ -46,7 +46,7 @@ test('manager can open the What a Jerk sales dashboard and use every tab/range',
   await yearSel.selectOption(String(new Date().getFullYear()));
   await page.getByRole('tab', { name: 'Menu' }).click();
   await expect(page.getByText('Food vs drink')).toBeVisible();
-  await expect(page.getByText('By category')).toBeVisible();
+  await expect(page.getByText('By category', { exact: true })).toBeVisible();
   await expect(page.locator('.errbox')).toHaveCount(0);
   await page.screenshot({ path: 'test-results/waj-sales-menu.png', fullPage: true });
 });

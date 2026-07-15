@@ -146,14 +146,14 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
       ['id', 'date_order', 'amount_total', 'takeaway', 'employee_id', 'tip_amount', 'has_deleted_line'], 'date_order asc'),
     fetchAll('pos.order.line',
       [['order_id.company_id', '=', waj.companyId], ['order_id.date_order', '>=', cStart], ['order_id.date_order', '<', cEnd], ['order_id.state', 'in', SOLD]],
-      ['order_id', 'product_id', 'qty', 'price_subtotal', 'price_subtotal_incl', 'discount']),
+      ['order_id', 'product_id', 'qty', 'price_subtotal', 'price_subtotal_incl', 'discount', 'price_unit']),
     fetchAll('pos.payment',
       [['company_id', '=', waj.companyId], ['payment_date', '>=', cStart], ['payment_date', '<', cEnd]],
       ['payment_method_id', 'amount']),
     waj.configId
       ? fetchAll('pos.session',
-        [['config_id', '=', waj.configId], ['state', '=', 'closed'], ['start_at', '>=', cStart], ['start_at', '<', cEnd]],
-        ['name', 'start_at', 'cash_register_difference'], 'start_at asc')
+        [['config_id', '=', waj.configId], ['state', '=', 'closed'], ['stop_at', '>=', cStart], ['stop_at', '<', cEnd]],
+        ['name', 'stop_at', 'cash_register_difference'], 'stop_at asc')
       : Promise.resolve([]),
     periodTotals(waj.companyId, b.prevStartMs, b.prevEndMs),
     periodTotals(waj.companyId, b.yoyStartMs, b.yoyEndMs),
@@ -180,7 +180,8 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
     const sub = l.price_subtotal, incl = l.price_subtotal_incl;
     if (sub !== 0) { if ((incl / sub - 1) * 100 > 15) drinkRev += incl; else foodRev += incl; }
     const disc = l.discount || 0;
-    if (disc > 0 && disc < 100) { discountAmt += incl * (disc / (100 - disc)); discountLines++; }
+    // pre-tax discount given = list line value x discount% (handles up to 100%)
+    if (disc > 0) { discountAmt += (l.price_unit || 0) * (l.qty || 0) * (disc / 100); discountLines++; }
   }
   // Keep the union of the revenue and quantity leaders so the client can rank by
   // either without a low-price, high-volume item being dropped by a revenue cut.
@@ -300,7 +301,11 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
     return classifyCategory((cid && catNameById.get(cid)) || '').group;
   };
 
-  // drink/side attach rate (share of orders that include a drink / a side)
+  // Behavioral KPIs exclude refund orders (negative totals); financial KPIs keep them.
+  const saleOrders = (orders as any[]).filter(o => o.amount_total >= 0);
+  const saleCount = saleOrders.length;
+
+  // drink/side attach rate (share of sale orders that include a drink / a side)
   const ordersWithDrink = new Set<number>(), ordersWithSide = new Set<number>();
   for (const l of lines as any[]) {
     const oid = l.order_id ? l.order_id[0] : 0;
@@ -310,83 +315,88 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
     if (g === 'drink') ordersWithDrink.add(oid);
     else if (g === 'side') ordersWithSide.add(oid);
   }
-  const drinkAttachPct = ordersTotal ? Math.round((ordersWithDrink.size / ordersTotal) * 100) : 0;
-  const sideAttachPct = ordersTotal ? Math.round((ordersWithSide.size / ordersTotal) * 100) : 0;
+  const drinkAttachPct = saleCount ? Math.round((ordersWithDrink.size / saleCount) * 100) : 0;
+  const sideAttachPct = saleCount ? Math.round((ordersWithSide.size / saleCount) * 100) : 0;
 
-  // slow sellers (lowest movers among products that sold)
+  // slowest movers (fewest sold, among products with net positive sales)
   const slowSellers: [string, number, number][] = Array.from(prodMap.values())
+    .filter(p => p.qty > 0)
     .sort((a, c) => a.qty - c.qty).slice(0, 6)
     .map(p => [p.name, Math.round(p.qty), Math.round(p.rev)]);
 
   // estimated profit by category (ROUGH: revenue x (1 - assumed food cost))
-  const profitByCat: [string, number, number][] = Array.from(catMap.entries())
-    .map(([name, v]) => {
-      const marginPct = 100 - classifyCategory(name).costPct;
-      return [name, Math.round((v.rev * marginPct) / 100), marginPct] as [string, number, number];
-    })
-    .sort((a, c) => c[1] - a[1]).slice(0, 10);
-  const estGrossProfit = profitByCat.reduce((a, c) => a + c[1], 0);
+  const catProfit: [string, number, number][] = Array.from(catMap.entries()).map(([name, v]) => {
+    const marginPct = 100 - classifyCategory(name).costPct;
+    return [name, Math.round((v.rev * marginPct) / 100), marginPct] as [string, number, number];
+  });
+  const estGrossProfit = catProfit.reduce((a, c) => a + c[1], 0); // full total, not just top 10
+  const profitByCat = catProfit.sort((a, c) => c[1] - a[1]).slice(0, 10);
 
-  // refunds, voids, discounts
+  // refunds, voids, discounts (financial — refunds kept)
   const refundOrders = (orders as any[]).filter(o => o.amount_total < 0);
   const refunds = { count: refundOrders.length, amount: Math.round(refundOrders.reduce((a, o) => a + Math.abs(o.amount_total), 0)) };
   const voids = (orders as any[]).filter(o => o.has_deleted_line).length;
   const discounts = { amount: Math.round(discountAmt), count: discountLines };
 
-  // till over/short per closed session
+  // till over/short per closed session (by closing date)
   const till = (sessions as any[]).map(s => ({
-    name: String(s.name), date: berlinParts(String(s.start_at)).day,
+    name: String(s.name),
+    date: s.stop_at ? berlinParts(String(s.stop_at)).day : '',
     diff: Math.round((s.cash_register_difference || 0) * 100) / 100,
   }));
   const tillNet = Math.round(till.reduce((a, t) => a + t.diff, 0) * 100) / 100;
 
-  // sales per staff
-  const staffMap = new Map<string, { orders: number; sales: number }>();
-  for (const o of orders as any[]) {
-    const name = o.employee_id ? String(o.employee_id[1]) : 'Unassigned';
-    const e = staffMap.get(name) || { orders: 0, sales: 0 };
-    e.orders += 1; e.sales += o.amount_total; staffMap.set(name, e);
+  // sales per staff (keyed by employee id so same-named staff stay separate)
+  const staffMap = new Map<number, { name: string; orders: number; sales: number }>();
+  for (const o of saleOrders) {
+    const id = o.employee_id ? o.employee_id[0] : -1;
+    const e = staffMap.get(id) || { name: o.employee_id ? String(o.employee_id[1]) : 'Unassigned', orders: 0, sales: 0 };
+    e.orders += 1; e.sales += o.amount_total; staffMap.set(id, e);
   }
-  const staff: [string, number, number][] = Array.from(staffMap.entries())
-    .map(([name, e]) => [name, e.orders, Math.round(e.sales)] as [string, number, number])
+  const staff: [string, number, number][] = Array.from(staffMap.values())
+    .map(e => [e.name, e.orders, Math.round(e.sales)] as [string, number, number])
     .sort((a, c) => c[2] - a[2]);
 
-  // tips
-  const tipTotal = (orders as any[]).reduce((a, o) => a + (o.tip_amount || 0), 0);
-  const tippedCount = (orders as any[]).filter(o => (o.tip_amount || 0) > 0).length;
+  // tips (from sale orders)
+  const tipTotal = saleOrders.reduce((a, o) => a + (o.tip_amount || 0), 0);
+  const tippedCount = saleOrders.filter(o => (o.tip_amount || 0) > 0).length;
   const tips = {
     total: Math.round(tipTotal * 100) / 100,
-    ratePct: ordersTotal ? Math.round((tippedCount / ordersTotal) * 100) : 0,
+    ratePct: saleCount ? Math.round((tippedCount / saleCount) * 100) : 0,
     avgWhenTipped: tippedCount ? Math.round((tipTotal / tippedCount) * 100) / 100 : 0,
   };
 
-  // busy heatmap (day-of-week x hour order counts) — multi-day ranges only
+  // busy heatmap — AVG orders per weekday-hour (normalized by weekday count) — multi-day only
   let heatmap: { hours: number[]; rows: [string, number[]][] } | null = null;
   if (b.gran !== 'hour') {
     const hourSet = new Set<number>();
     const grid = new Map<number, Map<number, number>>();
-    for (const o of orders as any[]) {
+    const dowDates = new Map<number, Set<string>>();
+    for (const o of saleOrders) {
       const p = berlinParts(o.date_order);
       hourSet.add(p.hour);
       if (!grid.has(p.dow)) grid.set(p.dow, new Map());
-      const row = grid.get(p.dow)!;
-      row.set(p.hour, (row.get(p.hour) || 0) + 1);
+      grid.get(p.dow)!.set(p.hour, (grid.get(p.dow)!.get(p.hour) || 0) + 1);
+      if (!dowDates.has(p.dow)) dowDates.set(p.dow, new Set());
+      dowDates.get(p.dow)!.add(p.day);
     }
     const hours = Array.from(hourSet).sort((a, c) => a - c);
     if (hours.length) {
       const rows: [string, number[]][] = [];
       for (let i = 0; i < 7; i++) {
         const row = grid.get(i);
-        if (row) rows.push([DOW[i], hours.map(h => row.get(h) || 0)]);
+        if (!row) continue;
+        const n = dowDates.get(i)?.size || 1;
+        rows.push([DOW[i], hours.map(h => Math.round(((row.get(h) || 0) / n) * 10) / 10)]);
       }
       heatmap = { hours, rows };
     }
   }
 
-  // month projection (current month only)
+  // month projection (current month only, using fractional elapsed days)
   let projectedMonthEnd: number | null = null;
   if (b.range === 'month' && b.anchorDay.slice(0, 7) === today.slice(0, 7)) {
-    projectedMonthEnd = projectMonth(salesTotal, Number(today.slice(8, 10)), daysInMonthOf(today));
+    projectedMonthEnd = projectMonth(salesTotal, (b.curEndMs - b.curStartMs) / 86400000, daysInMonthOf(today));
   }
 
   return {

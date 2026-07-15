@@ -160,7 +160,7 @@ export function Heatmap({ data }: { data: { hours: number[]; rows: [string, numb
           <span className="hm-day">{day}</span>
           {counts.map((c, i) => (
             <span key={i} className="hm-cell" style={{ background: c ? `rgba(245,128,10,${(0.15 + (c / max) * 0.85).toFixed(2)})` : 'var(--track)' }}
-              onMouseMove={e => tip.show(`${day} ${data.hours[i]}:00 · ${c} order${c === 1 ? '' : 's'}`, e)} onMouseLeave={tip.hide} />
+              onMouseMove={e => tip.show(`${day} ${data.hours[i]}:00 · avg ${c} order${c === 1 ? '' : 's'}`, e)} onMouseLeave={tip.hide} />
           ))}
         </div>
       ))}
@@ -240,7 +240,7 @@ export function ProductsTab({ d, sort, setSort }: { d: SalesPayload; sort: 'reve
               <div className="hbar" key={i}>
                 <div className="nm"><span className="rk">{i + 1}</span>{r[0]}</div>
                 <div className="val">{eur0.format(r[1])}<div className="sub">{r[2]}% margin</div></div>
-                <div className="track"><div className="fill" style={{ width: Math.round((r[1] / pmax) * 100) + '%' }} /></div>
+                <div className="track"><div className="fill" style={{ width: Math.max(0, Math.round((r[1] / pmax) * 100)) + '%' }} /></div>
               </div>
             ))}</div>
           : <div className="empty">No sales in this period.</div>}
@@ -270,7 +270,7 @@ export function BusyTab({ d }: { d: SalesPayload }) {
         : <InfoNote>Day-of-week needs more than one day. Switch to <b>Week</b> or <b>Month</b> to compare Mon–Sun.</InfoNote>}
       {d.heatmap && (
         <div className="card">
-          <div className="card-head"><span className="card-title">Rush heatmap</span><span className="card-hint">orders · day × hour</span></div>
+          <div className="card-head"><span className="card-title">Rush heatmap</span><span className="card-hint">avg orders · day × hour</span></div>
           <Heatmap data={d.heatmap} />
         </div>
       )}
@@ -362,7 +362,7 @@ export function TeamTab({ d }: { d: SalesPayload }) {
               <div className="hbar" key={i}>
                 <div className="nm"><span className="rk">{i + 1}</span>{s[0]}</div>
                 <div className="val">{eur0.format(s[2])}<div className="sub">{num.format(s[1])} orders · {eur2.format(s[1] ? s[2] / s[1] : 0)} avg</div></div>
-                <div className="track"><div className="fill" style={{ width: Math.round((s[2] / maxSales) * 100) + '%' }} /></div>
+                <div className="track"><div className="fill" style={{ width: Math.max(0, Math.round((s[2] / maxSales) * 100)) + '%' }} /></div>
               </div>
             ))}</div>
           : <div className="empty">No staff-attributed sales in this period.</div>}

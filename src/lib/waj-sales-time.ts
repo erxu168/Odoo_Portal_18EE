@@ -11,30 +11,31 @@ export const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const BERLIN = 'Europe/Berlin';
 
+// Module-scoped Intl formatters — constructing one per call is expensive
+// (~15x slower on large ranges), so reuse them.
+const F_PARTS = new Intl.DateTimeFormat('en-CA', { timeZone: BERLIN, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false, weekday: 'short' });
+const F_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: BERLIN, year: 'numeric', month: '2-digit', day: '2-digit' });
+const F_OFFSET = new Intl.DateTimeFormat('en-US', { timeZone: BERLIN, timeZoneName: 'shortOffset' });
+const DOW_INDEX: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+
 /** Berlin day (YYYY-MM-DD), hour (0-23) and dow (0=Mon) for a UTC datetime string. */
 export function berlinParts(utcStr: string): { day: string; hour: number; dow: number } {
   const d = new Date(utcStr.replace(' ', 'T') + 'Z');
-  const f = new Intl.DateTimeFormat('en-CA', {
-    timeZone: BERLIN, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', hour12: false, weekday: 'short',
-  });
   const p: Record<string, string> = {};
-  for (const part of f.formatToParts(d)) p[part.type] = part.value;
+  for (const part of F_PARTS.formatToParts(d)) p[part.type] = part.value;
   let hour = parseInt(p.hour, 10);
   if (hour === 24) hour = 0;
-  const map: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
-  return { day: `${p.year}-${p.month}-${p.day}`, hour, dow: map[p.weekday] ?? 0 };
+  return { day: `${p.year}-${p.month}-${p.day}`, hour, dow: DOW_INDEX[p.weekday] ?? 0 };
 }
 
 /** Berlin local date (YYYY-MM-DD) for an epoch-ms instant. */
 export function berlinDayOf(ms: number): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: BERLIN, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+  return F_DAY.format(new Date(ms));
 }
 
 /** Berlin UTC offset in hours at a given instant (DST-aware). */
 function berlinOffsetHours(ms: number): number {
-  const tz = new Intl.DateTimeFormat('en-US', { timeZone: BERLIN, timeZoneName: 'shortOffset' })
-    .formatToParts(new Date(ms)).find(p => p.type === 'timeZoneName')?.value || 'GMT+1';
+  const tz = F_OFFSET.formatToParts(new Date(ms)).find(p => p.type === 'timeZoneName')?.value || 'GMT+1';
   const m = tz.match(/GMT([+-]\d+)/);
   return m ? parseInt(m[1], 10) : 1;
 }
@@ -62,13 +63,10 @@ export function utcStr(ms: number): string {
 // leap boundaries. Instead we read the Berlin civil date/time, shift the
 // calendar field, and rebuild the instant — so "one year / month / week earlier"
 // keeps the same wall-clock time and calendar position.
+const F_WALL = new Intl.DateTimeFormat('en-CA', { timeZone: BERLIN, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 function berlinWall(ms: number): { y: number; mo: number; d: number; h: number; mi: number; s: number } {
-  const f = new Intl.DateTimeFormat('en-CA', {
-    timeZone: BERLIN, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  });
   const p: Record<string, string> = {};
-  for (const part of f.formatToParts(new Date(ms))) p[part.type] = part.value;
+  for (const part of F_WALL.formatToParts(new Date(ms))) p[part.type] = part.value;
   let h = parseInt(p.hour, 10);
   if (h === 24) h = 0;
   return { y: +p.year, mo: +p.month, d: +p.day, h, mi: +p.minute, s: +p.second };
@@ -139,7 +137,7 @@ export function classifyCategory(name: string): { group: CatGroup; costPct: numb
   const n = (name || '').toLowerCase();
   if (/drink|beer|soda|\bbar\b|cocktail|wine|spirit|malt|lager|cola|\bting\b|guinness|water|juice/.test(n)) return { group: 'drink', costPct: 45 };
   if (/sauce|\bdip\b/.test(n)) return { group: 'sauce', costPct: 15 };
-  if (/side|extra/.test(n)) return { group: 'side', costPct: 25 };
+  if (/\b(side|extra)/.test(n)) return { group: 'side', costPct: 25 }; // \b avoids "outside" etc.
   if (/burger|wrap/.test(n)) return { group: 'food', costPct: 35 };
   if (/patt|fried|kfc/.test(n)) return { group: 'food', costPct: 32 };
   if (/grill|jerk|bbq|chicken|lamb|pork|beef|goat|seafood|signature|meat|fish/.test(n)) return { group: 'food', costPct: 38 };
