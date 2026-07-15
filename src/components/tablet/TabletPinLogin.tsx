@@ -19,6 +19,14 @@ export default function TabletPinLogin({ companyName, onManager }: { companyName
       });
       const d = await res.json();
       if (res.ok && d.ok) {
+        // Seed the StationGate session keys so the acting person survives the hard
+        // navigation to the home. StationGate (which takes over there) expires a
+        // "restored" actor that has no persisted company + activity stamp, so
+        // without these it would immediately sign the person out and show its lock.
+        try {
+          localStorage.setItem('kw_station_company', String(d.company_id));
+          localStorage.setItem('kw_station_last_activity', String(Date.now()));
+        } catch { /* storage disabled */ }
         // Remember the acting person for the UI bar, then HARD-navigate so the
         // company context + server layout re-initialise from the new session
         // (a soft push leaves companyId=0, showing empty company-scoped screens).

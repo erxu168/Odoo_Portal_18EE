@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     const actorToken = createStationActor(sessionToken, station.id, match.user.id, match.user.employee_id ?? null, device.company_id, ACTOR_TTL_MS);
 
     const secure = process.env.NODE_ENV === 'production';
-    const res = NextResponse.json({ ok: true, user: match.user });
+    const res = NextResponse.json({ ok: true, user: match.user, company_id: device.company_id });
     res.cookies.set(COOKIE_NAME, sessionToken, { httpOnly: true, secure, sameSite: 'lax', path: '/', maxAge: 30 * 24 * 60 * 60 });
     res.cookies.set('kw_actor', actorToken, { httpOnly: true, secure, sameSite: 'lax', path: '/', maxAge: ACTOR_TTL_MS / 1000 });
     // Non-httpOnly so CompanyProvider (client) picks up the tablet's restaurant.
