@@ -24,7 +24,11 @@ cp "$NATIVE/device_admin.xml"              "$RES_XML/device_admin.xml"
 python3 - "$NATIVE/AndroidManifest.additions.xml" "$MANIFEST" <<'PY'
 import re, sys
 additions, manifest = sys.argv[1], sys.argv[2]
-block = re.search(r"<receiver[\s\S]*?</receiver>", open(additions).read()).group(0)
+src = open(additions).read()
+# Strip XML comments first — the additions file's comment contains sample
+# <receiver>/<activity> tags that would otherwise get captured and corrupt the manifest.
+src = re.sub(r"<!--[\s\S]*?-->", "", src)
+block = re.search(r"<receiver[\s\S]*?</receiver>", src).group(0).strip()
 txt = open(manifest).read()
 if "KioskDeviceAdminReceiver" in txt:
     print("Receiver already present; leaving manifest as-is.")
