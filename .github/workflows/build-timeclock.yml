@@ -1,0 +1,98 @@
+name: Build Time Clock APK
+
+# Cloud-builds the "Krawings Time Clock" Android kiosk app (a Capacitor wrapper of
+# https://portal.krawings.de/kiosk) with no local Android Studio needed. Same idea as
+# the WAJ till app: the finished .apk is published to a rolling GitHub release so any
+# tablet can download and install it directly.
+#
+# Trigger it from the Actions tab (Run workflow), or it runs automatically when the
+# Time Clock kit changes.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docs/android-timeclock/**'
+      - '.github/workflows/build-timeclock.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'docs/android-timeclock/**'
+      - '.github/workflows/build-timeclock.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to publish the APK to a release
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'   # Capacitor 8 CLI requires Node >= 22
+          cache: 'npm'
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages (Capacitor 8 targets SDK 36)
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Use the Time Clock Capacitor config
+        run: cp docs/android-timeclock/capacitor.config.json ./capacitor.config.json
+
+      - name: Provide a webDir (app loads the live site via server.url)
+        run: |
+          mkdir -p www
+          printf '' > www/index.html
+
+      - name: Generate the native Android project
+        run: npx cap add android
+
+      - name: Wire in the kiosk lock-task native code
+        run: bash docs/android-timeclock/ci/prepare-native.sh
+
+      - name: Sync Capacitor into the native project
+        run: npx cap sync android
+
+      - name: Build the debug APK
+        run: |
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload the APK as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: krawings-timeclock-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      # Publish the raw .apk to a rolling "timeclock-latest" release so any tablet can
+      # download it from the same URL every build (no zip, no unzipping).
+      - name: Publish APK to the 'timeclock-latest' release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk krawings-timeclock.apk
+          gh release delete timeclock-latest --repo "${{ github.repository }}" --yes --cleanup-tag || true
+          gh release create timeclock-latest krawings-timeclock.apk \
+            --repo "${{ github.repository }}" \
+            --title "Krawings Time Clock (latest build)" \
+            --notes "Auto-built from ${{ github.sha }}. On the tablet: open this page, tap krawings-timeclock.apk, and allow install from unknown sources. Currently points at STAGING (portal.krawings.de/kiosk)."
