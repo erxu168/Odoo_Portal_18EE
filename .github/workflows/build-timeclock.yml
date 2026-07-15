@@ -74,8 +74,6 @@ jobs:
         run: |
           mkdir -p assets
           cp docs/android-timeclock/assets/icon-only.png assets/icon-only.png
-          cp docs/android-timeclock/assets/icon-foreground.png assets/icon-foreground.png
-          cp docs/android-timeclock/assets/icon-background.png assets/icon-background.png
           npx --yes @capacitor/assets generate --android
 
       - name: Build the debug APK
