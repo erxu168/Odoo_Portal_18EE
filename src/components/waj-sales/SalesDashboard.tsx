@@ -38,7 +38,7 @@ const TABS = [
 type TabId = typeof TABS[number]['id'];
 
 export default function SalesDashboard() {
-  const [range, setRange] = useState<Range>('week');
+  const [range, setRange] = useState<Range>('today');
   const [anchor, setAnchor] = useState<string>(() => berlinToday());
   const [tab, setTab] = useState<TabId>('overview');
   const [sort, setSort] = useState<'revenue' | 'qty'>('revenue');
