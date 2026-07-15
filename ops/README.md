@@ -15,10 +15,11 @@ ever "deployed but not on GitHub." Full design: `docs/superpowers/specs/2026-07-
 - **WAL-safe SQLite backup** of `data/*.db` before anything (verified non-empty; keeps last `BACKUP_KEEP`).
 - **Fast-forward only** to a **pinned** `origin/main` SHA — never a force update, never over a dirty/diverged tree.
 - `npm ci` only when the lockfile changed; **rollback re-installs the old lockfile's deps**.
-- **Health check** on `/kiosk` (a DB-backed route), then **auto-rollback** on any build/health failure, and a **CRITICAL** alert if the rollback itself is unhealthy.
+- **Health check** on a **DB-backed** route (`/api/kiosk/staff?company_id=…`, body must contain `"staff"` — proves SQLite reads), then **auto-rollback** on any build/health failure (rollback captures every step), and a **CRITICAL** alert if the rollback itself is unhealthy.
 - **Failed-SHA quarantine** (`/var/lib/portal-sync/failed-sha`): a bad commit is deployed once, then skipped until a *new* commit or manual clear — no 2-minute failure loop.
-- **Shared deploy lock** (`/var/lock/portal-deploy.lock`) across autodeploy + golive; the watchdog defers while a deploy runs.
-- **Alerts hit journald first** (`logger -t portal-sync`), then Obsidian — an outage can't hide an alert. Per-env note files avoid two servers racing on one file.
+- **Shared deploy lock** (`/run/portal-sync/deploy.lock`, root-only 0700 dir) across autodeploy + golive; the watchdog reads state under the lock then releases it (never sleeps holding it).
+- **Alerts hit journald first** (`logger -t portal-sync`), then Obsidian — an outage can't hide an alert. The vault write stages **only its own note** (never `git add -A`), is `timeout`-bounded, and aborts a failed rebase. Per-env note files avoid two servers racing on one file.
+- **Logs + locks live in root-only dirs** (`/var/log/portal-sync`, `/run/portal-sync`, both 0700) so predictable paths can't be symlink-hijacked.
 
 ## Install
 ```bash
