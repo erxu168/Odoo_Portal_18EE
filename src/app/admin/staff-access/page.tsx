@@ -56,7 +56,14 @@ export default function StaffAccessPage() {
     }
   }
 
-  async function handleInvite(employeeId: number, action: 'invite' | 'resend') {
+  async function handleInvite(row: StaffRow, action: 'invite' | 'resend') {
+    if (!row.department) {
+      const ok = window.confirm(
+        `${row.name} has no restaurant (department) set in Odoo, so their invite email will just say “Krawings” instead of the restaurant name.\n\nSet their Department in Odoo first for correct branding, or send anyway?`,
+      );
+      if (!ok) return;
+    }
+    const employeeId = row.employee_id;
     setActionLoading(employeeId);
     setError(null);
     try {
@@ -215,7 +222,11 @@ export default function StaffAccessPage() {
                       <div className="min-w-0">
                         <div className="text-[15px] font-bold text-gray-900 truncate">{r.name}</div>
                         <div className="text-[12px] text-gray-500 font-mono mt-0.5 truncate">{r.email || r.phone || 'No email or phone'}</div>
-                        {r.department && <div className="text-[11px] text-gray-400 mt-0.5 truncate">{r.department}</div>}
+                        {r.department ? (
+                          <div className="text-[11px] text-gray-500 mt-0.5 truncate">{r.department}</div>
+                        ) : (
+                          <div className="text-[11px] text-amber-600 font-semibold mt-0.5 truncate">No restaurant set — email says “Krawings”</div>
+                        )}
                       </div>
                       <span className={`text-[11px] px-2.5 py-0.5 rounded-md font-semibold whitespace-nowrap ${meta.cls}`}>{meta.label}</span>
                     </div>
@@ -223,7 +234,7 @@ export default function StaffAccessPage() {
                   {r.status !== 'active' && (
                     <div className="flex gap-2 border-t border-gray-100 p-3">
                       <button
-                        onClick={() => handleInvite(r.employee_id, r.status === 'invited' ? 'resend' : 'invite')}
+                        onClick={() => handleInvite(r, r.status === 'invited' ? 'resend' : 'invite')}
                         disabled={isLoading}
                         className="flex-1 h-10 rounded-xl bg-green-500 text-white text-[13px] font-bold active:bg-green-600 disabled:opacity-50 flex items-center justify-center"
                       >

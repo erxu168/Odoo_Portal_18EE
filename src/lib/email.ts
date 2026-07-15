@@ -210,12 +210,15 @@ export async function sendCandidateWelcomeEmail(
 /**
  * Send a staff member their portal invite link (push-provisioning model).
  */
-export async function sendStaffInviteEmail(toEmail: string, toName: string, inviteUrl: string, companyId?: number) {
-  const brand = await getCompanyBrandName(companyId);
-  // The restaurant/location name staff will recognise. Falls back to the
-  // umbrella brand only when the employee has no company on file, so the
-  // sender, subject and body always name a place the person actually works at
-  // (a generic "Krawings Staff Portal" reads as spam to new hires).
+export async function sendStaffInviteEmail(toEmail: string, toName: string, inviteUrl: string, companyId?: number, locationName?: string) {
+  // The restaurant/location name staff will recognise. Prefer the employee's
+  // department (the actual restaurant, e.g. "What a Jerk"), since a new hire's
+  // legal Company is usually the umbrella entity and would name the wrong place.
+  // Fall back to the company brand, then to "Krawings", so the sender, subject
+  // and body always name somewhere the person recognises (a generic
+  // "Krawings Staff Portal" reads as spam to new hires).
+  const explicit = (locationName || '').trim();
+  const brand = explicit || await getCompanyBrandName(companyId);
   const location = brand && brand !== 'Staff Portal' ? brand : 'Krawings';
   await getTransporter(companyId).sendMail({
     from: `"${location} Staff Portal" <${getFrom(companyId)}>`,

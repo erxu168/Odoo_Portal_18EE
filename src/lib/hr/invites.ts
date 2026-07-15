@@ -40,6 +40,8 @@ export interface EmployeeLite {
   name: string;
   email: string | null;
   companyId?: number;
+  /** Department name = the restaurant the person works at; used to brand the email. */
+  locationName?: string;
 }
 
 export function generateInviteToken(): string {
@@ -118,7 +120,7 @@ export async function storeInviteForEmployee(
   let emailStatus: InviteEmailStatus = sendEmail ? 'no_address' : 'skipped';
   if (sendEmail && emp.email) {
     try {
-      await sendStaffInviteEmail(emp.email, emp.name, link, emp.companyId);
+      await sendStaffInviteEmail(emp.email, emp.name, link, emp.companyId, emp.locationName);
       emailSent = true;
       emailStatus = 'sent';
     } catch (err: unknown) {
@@ -145,11 +147,11 @@ export async function storeInviteForEmployee(
  * returns immediately). Sequential to stay gentle on the SMTP server.
  */
 export async function sendInviteEmailsInBackground(
-  items: { email: string; name: string; link: string; companyId?: number }[],
+  items: { email: string; name: string; link: string; companyId?: number; locationName?: string }[],
 ): Promise<void> {
   for (const item of items) {
     try {
-      await sendStaffInviteEmail(item.email, item.name, item.link, item.companyId);
+      await sendStaffInviteEmail(item.email, item.name, item.link, item.companyId, item.locationName);
     } catch (err: unknown) {
       console.error(`[staff-invite] bulk email failed for ${item.email}:`, err);
     }
@@ -202,7 +204,7 @@ export async function createStaffInvite(
   const employees = await odoo.searchRead(
     'hr.employee',
     [['id', '=', employeeId]],
-    ['name', 'work_email', 'private_email', 'mobile_phone', 'company_id'],
+    ['name', 'work_email', 'private_email', 'mobile_phone', 'company_id', 'department_id'],
     { limit: 1 },
   );
   if (!employees || employees.length === 0) {
@@ -213,8 +215,9 @@ export async function createStaffInvite(
   const name: string = emp.name || 'Team member';
   const email: string | null = emp.work_email || emp.private_email || null;
   const companyId: number | undefined = Array.isArray(emp.company_id) ? (emp.company_id[0] as number) : undefined;
+  const locationName: string | undefined = Array.isArray(emp.department_id) ? (emp.department_id[1] as string) : undefined;
 
-  const { inviteId, link, emailSent, emailStatus } = await storeInviteForEmployee({ id: employeeId, name, email, companyId }, actor, sendEmail);
+  const { inviteId, link, emailSent, emailStatus } = await storeInviteForEmployee({ id: employeeId, name, email, companyId, locationName }, actor, sendEmail);
 
   return {
     ok: true,
