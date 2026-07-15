@@ -43,7 +43,6 @@ Exactly **one unit per item**, chosen at setup, from: **piece**, **weight (kg)**
 | Festival | A — short hot-hold | 2 h | piece |
 | Patties | A — short hot-hold | 2 h | piece |
 | French fries | B — cook-to-order (excluded) | ~10 min | weight |
-| Fried chicken | A **or** B — **confirm at setup** (held hot → A; made to order → B) | TBC | weight |
 | Cole slaw | C — cold multi-day | 2 days | weight (or portion) |
 | Sliced tomato | C — cold multi-day | 1 day | weight (or piece) |
 | Iceberg lettuce | C — cold multi-day | 1 day | weight (or piece) |
@@ -51,7 +50,7 @@ Exactly **one unit per item**, chosen at setup, from: **piece**, **weight (kg)**
 
 **`group` drives all behaviour** (it is the sole switch; the existing `prep_type` field is left untouched and is not relied on):
 - **A (hot_hold):** full treatment — start-of-shift target + live batch button + expiry countdowns + "cook another now" nudges.
-- **B (cook_to_order):** **excluded** from targets and nudges; no timers. Shown on the plan only as a greyed *"made to order — no prep target"* info line so the cook sees it's intentionally left alone. (Fries; fried chicken if made-to-order.)
+- **B (cook_to_order):** **excluded** from targets and nudges; no timers. Shown on the plan only as a greyed *"made to order — no prep target"* info line so the cook sees it's intentionally left alone. (Fries.)
 - **C (cold_prep):** a daily *"prep this much, use by [date]"* list. Same batch mechanism as A but with a **days-scale** expiry rendered as a **date** (not a minute countdown) and **no mid-service nudges**. Waste is still captured via the end-of-life "binned" tap so cold items appear in the waste report.
 
 **Units & the till.** Because the till can't weigh, **weight items use a "units per sale" factor** in the item's own unit (e.g. one fries portion sold ≈ 0.15 kg; one combo sold ≈ 2 chicken pieces). This is the existing `prep_pos_link.portions_per_sale` field, reinterpreted as "units-of-this-item consumed per till sale". Logging a made batch of a weight item is a rough estimate (e.g. one pan ≈ 2 kg), consistent with the existing inventory count-by-pack behaviour (no floor scale).
@@ -85,9 +84,19 @@ On the Prep screen: *"Today looks [busier/quieter] than usual — aim to have ro
 
 ### 5.4 Part 4 — Looking back + who/where — NEW
 
-- **Waste log & payoff:** every binned/expired batch (group A **and** C) is recorded; a simple weekly view — *"made X, sold Y, binned Z"* per item — to watch waste drop and tune hold-times/batch sizes. (Distinct from the existing forecast-accuracy screen, which compares forecast vs sales.)
+- **Waste log & payoff:** every binned/expired batch (group A **and** C) is recorded, and — via the waste tracker in §5.5 — so is **raw-ingredient** waste. One weekly view shows *"made X, sold Y, binned Z"* per dish **and** ingredients thrown away by reason, with a **€ total** where costs are known, to watch waste drop and tune hold-times/batch sizes. (Distinct from the existing forecast-accuracy screen, which compares forecast vs sales.)
 - **Cold multi-day list:** group-C items as a daily prep checklist with use-by dates; today's target nets out any still-valid carryover from prior days (§6.3).
 - **Who & where:** managers set up items (existing `prep-planner.*` permissions); cooks use it on the kitchen tablet via the existing **"WAJ Kitchen Tablet"** shared account + "working as" PIN. Own screen; **KDS untouched.**
+
+### 5.5 Waste & spoilage tracker (ingredients + dishes) — NEW
+
+Two kinds of waste, one report:
+- **Dish waste** is already captured by the batch flow (§5.3b): a batch tapped **"binned"** or left past its hold-time records its leftover as waste — no extra work for the cook.
+- **Ingredient waste** is captured by a **"Log waste"** quick-flow that reuses the Inventory count screens: the cook searches or **scans** the ingredient, enters the amount in the unit they already count in (2 kg tomatoes, 3 crates, 1 bunch — via the existing `CrateCountSheet`), taps a **reason**, and optionally photographs the bin. Credited to whoever is signed in (shared-tablet "working as" PIN via `resolveAttribution`).
+- **Reasons (fixed list of 5):** Spoiled · Expired · Prep trim · Over-prepped · Dropped.
+- **Placement:** one shared **Waste** screen, reachable as a tile from **both** Inventory and Prep Planner. Dishes feed it automatically; ingredients via the quick-log.
+- **The report:** dishes as *made / sold / binned*; ingredients as *thrown away by reason*, each valued at **qty × ingredient cost** for a weekly **€ total**. Where an ingredient has no cost entered, show the quantity and **"cost not set"** rather than a false €0.
+- **Honest limits:** ingredient waste depends on staff logging it (the automatic "derive it from stock counts" method is too noisy without guaranteed daily open/close counts — see §11). € accuracy depends on ingredient costs being maintained in the system.
 
 ---
 
@@ -104,6 +113,7 @@ On the Prep screen: *"Today looks [busier/quieter] than usual — aim to have ro
 - **`group`** on `prep_items` — `hot_hold` | `cook_to_order` | `cold_prep`, **NOT NULL, default `hot_hold`**. Existing Ssam rows migrate to `hot_hold`; setup must set the right value. Batch/nudge logic fires **only** for `group='hot_hold'`.
 - **`batch_size` → REAL.** Today `prep_items.batch_size` is INTEGER, which truncates weight standard batches (e.g. 1.5 kg pan). Widen to REAL (SQLite table rebuild) or add a REAL `standard_batch_size`. `prep_batches.size` is already REAL.
 - **`sample_size` on `prep_item_forecasts`.** Today this column exists only on the POS-product-level `prep_forecasts`; the cook-facing views read `prep_item_forecasts`, which has none. Add an aggregated `sample_size` (sum/min of contributing products' sample sizes) populated in `computePrepItemForecasts`, so "still learning" is computable at item level.
+- **`waste_events`** (ingredient waste; lives with the Inventory module) — one row per logged ingredient waste: `id`, `product_id` (Odoo `product.product`), `qty` (base unit via `crate-units`), `uom`, `reason` (`spoiled` | `expired` | `trim` | `over_prep` | `dropped`), `location_id` (→ company scope, matching Inventory's pattern), `logged_by`, `logged_at`, `note`, `unit_cost` (snapshot of `standard_price` at log time), optional photo via the existing polymorphic `count_photos`. **Not** a reason column on counts (counts are absolute snapshots; waste is a delta that also happens outside count sessions). Dish waste stays on `prep_batches.discarded_qty`; the report **unions** the two.
 
 ### 6.3 New logic / endpoints (Stage-3 math pinned)
 - **Log/close batch:** `POST /api/prep-planner/batches` (item, size) → writes `prep_batches`, computes `expires_at`. `PATCH …/batches/[id]` → `sold_out` (no waste) | `discarded` (+`discarded_qty`); a batch past `expires_at` still `active` is treated as `expired` and its unsold remainder counts as waste.
@@ -117,7 +127,7 @@ On the Prep screen: *"Today looks [busier/quieter] than usual — aim to have ro
 - **Nudge:** window = **next 60 minutes** of forecast (sum `prep_item_forecasts.forecast_portions` for the coming 60 min; configurable per group later). If `on_hand < expected_next_60` and the item is **not** still-learning → `cook_now`, suggested qty = round up `(expected_next_60 − on_hand)` to the nearest standard batch.
 - **Still-learning threshold (one rule, used by plan AND live):** an item is "still learning" if it has **no forecast rows** OR its aggregated `sample_size < minRows` (reuse the engine's existing `minRows`, 20 prod / ~5 staging). Views enumerate active mapped items via LEFT JOIN to forecasts so thin items are listed (not dropped) and flagged.
 - **Group-C quantity:** target = forecast summed over the item's **shelf-life window** (1–3 days) **minus still-valid carryover** (on-hand from prior days' active group-C batches).
-- **Waste report:** `GET /api/prep-planner/waste?from&to&companyId` → made vs sold vs discarded per item (groups A & C).
+- **Unified waste report:** a report endpoint that **unions** dish waste (`prep_batches.discarded_qty`, groups A & C) with ingredient waste (`waste_events`) over a date range, valued via cost (`standard_price` / dish cost) → weekly *made vs sold vs binned* per dish + *thrown away by reason* per ingredient + a **€ total** (`"cost not set"` where cost is missing). Company scope derived via `location_id`→`stock.location.company_id` (Inventory stores no `company_id` on rows). A sibling of the existing Inventory Consumption report, not an extension of it.
 
 ### 6.4 Fixes discovered during mapping (each mapped to a stage)
 - **Company id — hard Stage-1 precondition (not a build-time guess).** `companies.ts` hardcodes WAJ = 5 / default = Ssam 3, and the portal `CLAUDE.md` also says Company 5 = What A Jerk (staging); a separate project note suggested a co5→co6 merge. **This contradiction must be resolved by introspecting the live Odoo before any wiring**, the verified id recorded, and `companies.ts` made **environment-aware** (staging vs prod backends differ) rather than hardcoded. *(Stage 1)*
@@ -125,12 +135,13 @@ On the Prep screen: *"Today looks [busier/quieter] than usual — aim to have ro
 - **Holiday bug.** `holidayMult` forces the forecast to 0 on public holidays (treats holiday = closed) — wrong for a shop open on holidays. Fix for WAJ. This is the **only** genuine "till-purity" fix needed: the seasonal multiplier already returns 1 when there's no last-year data (WAJ is new) and weather is already inert, so **no seasonal neutralisation is required** for this delivery. *(Stage 1)*
 - **Auth tightening.** `cook-plan` / `ack` are login-only and trust the client `companyId` (no membership check). Tighten **before** the new batch/waste writes. *(Stage 2)*
 
-## 7. The four delivery stages (each independently shippable + verified on staging)
+## 7. The five delivery stages (each independently shippable + verified on staging)
 
 1. **Aim it at What A Jerk + plan.** *Preconditions:* resolve & verify the WAJ company id against live Odoo (make `companies.ts` env-aware); **verify POS→backend sync latency on an OPEN session** (does a sale appear in `pos.order.line` within the poll interval, or only at session close?). *Then:* schedule the cron incl. WAJ; fix the holiday bug; add the `group` field (+ default) and `sample_size` on `prep_item_forecasts` and widen `batch_size` to REAL; set up WAJ items (groups, hold-times, units, batch sizes) + mappings; move the start-of-shift plan onto the Prep screen with the "still learning" state; group-C checklist skeleton.
 2. **Batch button + expiry timers.** Tighten cook-plan/ack auth; `prep_batches` + log/close endpoints; live batch list with countdowns (amber/red); "binned"/"all sold". Immediate waste reduction even before nudges.
 3. **Live "cook another now" nudges.** `/live` endpoint with the pinned on-hand FIFO math, 60-min demand window, nudge verdict, polling UI, and the still-learning fallback (or forecast-based fallback if the till doesn't sync live).
-4. **Waste log + cold multi-day list.** Waste capture + weekly report (groups A & C); group-C carryover-netting + use-by list finished.
+4. **Dish waste log + cold multi-day list.** Dish waste capture + weekly report (groups A & C); group-C carryover-netting + use-by list finished.
+5. **Ingredient waste tracker + unified report.** New `waste_events` + a "Log waste" screen cloned from Inventory's `QuickCount` (product search/scan, `CrateCountSheet` weight/pack qty, the 5 reason chips, photo, offline queue, shared-tablet attribution); a shared **Waste** tile from Inventory + Prep Planner; the unified €-valued report (dishes + ingredients). Optional best-effort Odoo write-off (gated on `is_storable`) can follow behind a flag.
 
 ## 8. Edge cases & error handling
 - **Thin/no data:** show "still learning", never a confident wrong number or a crash.
@@ -148,7 +159,6 @@ On the Prep screen: *"Today looks [busier/quieter] than usual — aim to have ro
 - Production held until owner signs off on staging.
 
 ## 10. Open questions (confirm during build; none block writing the plan)
-- **Fried chicken:** held hot (group A) or made to order (group B)?
 - **WAJ company id** — resolved as a Stage-1 precondition (§6.4), noted here for visibility.
 - **Standard batch sizes** per item (one tray of rice = ? portions; one batch of wings = ? pieces).
 - **Per-sale factors:** grams-per-sale for weight items; pieces-per-sale for combos including chicken/rice.
@@ -161,3 +171,5 @@ On the Prep screen: *"Today looks [busier/quieter] than usual — aim to have ro
 - No automatic recipe/BOM-derived mapping (mappings are hand-set for WAJ; revisit only if needed).
 - No rollout beyond What A Jerk in this work (design stays company-scoped so Ssam etc. can follow later).
 - No perfect stock accuracy — "ready now" is a till-based estimate the cook can correct.
+- No automatic/derived waste estimation (opening + deliveries − closing − sales) — too noisy without enforced daily counts; ingredient waste is logged, not inferred. (Possible manager-only cross-check later, never the capture method.)
+- No mandatory Odoo scrap posting — the portal is the record of truth for waste; any Odoo write-off is optional, best-effort, and gated on `is_storable`.
