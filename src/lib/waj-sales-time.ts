@@ -200,7 +200,7 @@ export function computeBounds(range: Range, anchorDay: string, nowMs: number): B
     startDay = anchor; endExcl = dayShift(anchor, 1);
     prevShift = (ms) => shiftDays(ms, -7); prevLabel = `vs last ${DOW[dowOf(anchor)]}`;
     yoyLabel = 'vs last year';
-    gran = 'hour'; sub = `Today · ${labelDay(anchor)}`;
+    gran = 'hour'; sub = anchor === today ? `Today · ${labelDay(anchor)}` : labelDay(anchor);
   } else if (range === 'week') {
     const ws = mondayOf(anchor); startDay = ws; endExcl = dayShift(ws, 7);
     prevShift = (ms) => shiftDays(ms, -7); prevLabel = 'vs last week';

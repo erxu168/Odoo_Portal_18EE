@@ -16,7 +16,7 @@ import type { Range, SalesPayload } from '@/lib/waj-sales';
 import { dayShift, mondayOf, monthFirst, firstOfNextMonth, prevMonthFirst, labelDay, labelMonth } from '@/lib/waj-sales-time';
 
 const RANGES: { id: Range; label: string }[] = [
-  { id: 'today', label: 'Today' },
+  { id: 'today', label: 'Day' },
   { id: 'week', label: 'Week' },
   { id: 'month', label: 'Month' },
   { id: 'ytd', label: 'YTD' },
@@ -55,9 +55,7 @@ export default function SalesDashboard() {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      // 'Today' always follows the real current day (survives an open-overnight tab).
-      const effAnchor = range === 'today' ? berlinToday() : anchor;
-      const r = await fetch(`/api/sales?range=${range}&anchor=${effAnchor}`);
+      const r = await fetch(`/api/sales?range=${range}&anchor=${anchor}`);
       const j = await r.json();
       if (my !== reqRef.current) return; // a newer request superseded this one
       if (!r.ok || !j.success) throw new Error(j.error || `Request failed (${r.status})`);
@@ -91,11 +89,15 @@ export default function SalesDashboard() {
     const cand = `${y}-${String(mo).padStart(2, '0')}-${String(Math.min(d, maxD)).padStart(2, '0')}`;
     setAnchor(cand > today ? today : cand);
   };
-  const hasStepper = range === 'week' || range === 'month';
-  const canNext = range === 'week' ? mondayOf(anchor) < mondayOf(today)
+  const hasStepper = range === 'today' || range === 'week' || range === 'month';
+  const canNext = range === 'today' ? anchor < today
+    : range === 'week' ? mondayOf(anchor) < mondayOf(today)
     : range === 'month' ? monthFirst(anchor) < monthFirst(today) : false;
   const step = (delta: number) => {
-    if (range === 'week') {
+    if (range === 'today') {
+      const na = dayShift(anchor, delta);
+      setAnchor(na > today ? today : na);
+    } else if (range === 'week') {
       const na = dayShift(anchor, delta * 7);
       setAnchor(na > today ? today : na);
     } else if (range === 'month') {
@@ -104,7 +106,8 @@ export default function SalesDashboard() {
       setAnchor(nm > today ? today : nm);
     }
   };
-  const stepLabel = range === 'week' ? labelDay(mondayOf(anchor)) : labelMonth(monthFirst(anchor));
+  const stepLabel = range === 'today' ? labelDay(anchor)
+    : range === 'week' ? labelDay(mondayOf(anchor)) : labelMonth(monthFirst(anchor));
 
   const mins = fetchedAt ? Math.floor((Date.now() - fetchedAt) / 60000) : 0;
   const updated = !fetchedAt ? '' : mins < 1 ? 'updated just now' : mins === 1 ? 'updated 1 min ago' : `updated ${mins} min ago`;
@@ -126,23 +129,25 @@ export default function SalesDashboard() {
           ))}
         </div>
 
-        {range !== 'today' && (
-          <div className="subbar">
-            {hasStepper && (
-              <div className="stepper">
-                <button onClick={() => step(-1)} aria-label="Previous period">‹</button>
-                <span>{stepLabel}</span>
-                <button onClick={() => step(1)} disabled={!canNext} aria-label="Next period">›</button>
-              </div>
+        <div className="subbar">
+          {hasStepper && (
+            <div className="stepper">
+              <button onClick={() => step(-1)} aria-label="Previous period">‹</button>
+              <span>{stepLabel}</span>
+              <button onClick={() => step(1)} disabled={!canNext} aria-label="Next period">›</button>
+            </div>
+          )}
+          {range === 'today'
+            ? <input className="datepick" type="date" value={anchor} max={today} onChange={e => { if (e.target.value) setAnchor(e.target.value); }} aria-label="Pick a day" />
+            : (
+              <label className="yearsel">
+                <span>Year</span>
+                <select value={year} onChange={e => pickYear(Number(e.target.value))}>
+                  {years.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </label>
             )}
-            <label className="yearsel">
-              <span>Year</span>
-              <select value={year} onChange={e => pickYear(Number(e.target.value))}>
-                {years.map(y => <option key={y} value={y}>{y}</option>)}
-              </select>
-            </label>
-          </div>
-        )}
+        </div>
 
         <nav className="tabbar" role="tablist" aria-label="Sections">
           {TABS.map(t => (
@@ -193,6 +198,7 @@ export default function SalesDashboard() {
         .wajs .yearsel { display:flex;align-items:center;gap:7px;margin-left:auto; }
         .wajs .yearsel span { font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint); }
         .wajs .yearsel select { font:inherit;font-size:14px;font-weight:700;color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:7px 10px;cursor:pointer; }
+        .wajs .datepick { margin-left:auto;font:inherit;font-size:14px;font-weight:600;color:var(--ink);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:6px 10px;cursor:pointer; }
         .wajs .delta.flat { color:var(--faint); }
         .wajs .tabbar { display:flex;gap:2px;overflow-x:auto;padding:2px 8px 0;background:var(--bg);
           border-bottom:1px solid var(--border);scrollbar-width:none; }

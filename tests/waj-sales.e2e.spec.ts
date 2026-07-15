@@ -25,11 +25,18 @@ test('manager can open the What a Jerk sales dashboard and use every tab/range',
     await expect(page.locator('.errbox')).toHaveCount(0);
   }
 
-  for (const r of ['Today', 'Week', 'Month', 'YTD', 'Year']) {
+  for (const r of ['Day', 'Week', 'Month', 'YTD', 'Year']) {
     await page.getByRole('button', { name: r, exact: true }).click();
     await expect(page.getByText('Total sales')).toBeVisible();
     await expect(page.locator('.errbox')).toHaveCount(0);
   }
+
+  // Day view: date picker present + stepper navigates to a previous day.
+  await page.getByRole('button', { name: 'Day', exact: true }).click();
+  await expect(page.locator('.datepick')).toBeVisible();
+  await page.getByRole('button', { name: 'Previous period' }).click();
+  await expect(page.getByText('Total sales')).toBeVisible();
+  await expect(page.locator('.errbox')).toHaveCount(0);
 
   // Year picker: pick the previous year and confirm the fetch for that year loads.
   await page.getByRole('button', { name: 'Month', exact: true }).click();
