@@ -171,20 +171,30 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
     .sort((a, c) => c[1].rev - a[1].rev)
     .map(e => [e[1].name, Math.round(e[1].qty), Math.round(e[1].rev)]);
 
-  // ---- categories (group products by their Odoo category leaf) ----
-  // active_test:false so archived products keep their category in historical views.
+  // ---- categories (group products by their POS category) ----
+  // pos_categ_ids is a m2m (returns ids); a product usually has exactly one, so we
+  // attribute to the first. active_test:false keeps archived products/categories.
+  const odoo = getOdoo();
   const pids = Array.from(prodMap.keys()).filter(id => id > 0);
   const prodCats = pids.length
-    ? await getOdoo().searchRead('product.product', [['id', 'in', pids]], ['categ_id'], { limit: pids.length, context: { active_test: false } })
+    ? await odoo.searchRead('product.product', [['id', 'in', pids]], ['pos_categ_ids'], { limit: pids.length, context: { active_test: false } })
     : [];
-  const catByPid = new Map<number, string>();
+  const firstCatByPid = new Map<number, number | null>();
+  const catIds = new Set<number>();
   for (const p of prodCats as any[]) {
-    const full = p.categ_id ? String(p.categ_id[1]) : 'Uncategorised';
-    catByPid.set(p.id, full.includes(' / ') ? full.split(' / ').pop()! : full);
+    const ids: number[] = p.pos_categ_ids || [];
+    const first = ids.length ? ids[0] : null;
+    firstCatByPid.set(p.id, first);
+    if (first) catIds.add(first);
   }
+  const catNameRows = catIds.size
+    ? await odoo.searchRead('pos.category', [['id', 'in', Array.from(catIds)]], ['name'], { limit: catIds.size, context: { active_test: false } })
+    : [];
+  const catNameById = new Map<number, string>((catNameRows as any[]).map(c => [c.id, String(c.name)]));
   const catMap = new Map<string, { qty: number; rev: number }>();
   prodMap.forEach((e, pid) => {
-    const cat = catByPid.get(pid) || 'Uncategorised';
+    const cid = firstCatByPid.get(pid);
+    const cat = (cid && catNameById.get(cid)) || 'Uncategorised';
     const c = catMap.get(cat) || { qty: 0, rev: 0 };
     c.qty += e.qty; c.rev += e.rev; catMap.set(cat, c);
   });
