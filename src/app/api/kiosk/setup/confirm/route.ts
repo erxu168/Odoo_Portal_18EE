@@ -49,12 +49,16 @@ export async function POST(request: Request) {
 
     setKioskPin(companyId, employeeId, pin);
 
-    // Clock them in right away (they came to punch). If it fails, the PIN still stands.
-    const result = await kioskPunch(companyId, employeeId);
-    if (!result.ok) {
-      return NextResponse.json({ ok: true, pinSet: true });
+    // Clock them in right away (they came to punch). The PIN is already saved, so if the
+    // clock-in fails for ANY reason (business error or a thrown Odoo error), still report
+    // success — the person just taps their name to punch. Never claim "couldn't set PIN".
+    try {
+      const result = await kioskPunch(companyId, employeeId);
+      if (result.ok) return NextResponse.json(result);
+    } catch (e) {
+      console.error('[kiosk] setup/confirm: PIN set but clock-in failed:', e instanceof Error ? e.message : e);
     }
-    return NextResponse.json(result);
+    return NextResponse.json({ ok: true, pinSet: true });
   } catch (err: unknown) {
     console.error('[kiosk] setup/confirm error:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Could not set your PIN — try again.' }, { status: 500 });
