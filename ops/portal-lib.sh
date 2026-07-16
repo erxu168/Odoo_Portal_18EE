@@ -119,6 +119,8 @@ ensure_build_dir() {
   # build reads env + (occasionally) the DB; point them at the live shared copies (same as in-place build did)
   [ -L "$BUILD_DIR/.env.local" ] || { rm -rf "$BUILD_DIR/.env.local"; ln -s "$PORTAL_DIR/.env.local" "$BUILD_DIR/.env.local"; }
   [ -L "$BUILD_DIR/data" ]       || { rm -rf "$BUILD_DIR/data";       ln -s "$PORTAL_DIR/data"       "$BUILD_DIR/data"; }
+  # the workspace needs node_modules to build; seed from live once (deploys refresh it when deps change)
+  [ -d "$BUILD_DIR/node_modules" ] || cp -a "$PORTAL_DIR/node_modules" "$BUILD_DIR/node_modules" || return 1
   return 0
 }
 
