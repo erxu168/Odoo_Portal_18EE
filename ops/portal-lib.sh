@@ -16,6 +16,7 @@ CONF=/etc/portal-sync.conf
 : "${VAULT_DIR:=/opt/obsidian-vault}"
 : "${BACKUP_KEEP:=10}"
 : "${MIN_FREE_MB:=800}"
+: "${BUILD_DIR:=/opt/portal-build}"   # isolated build workspace (git worktree of the source)
 
 LOG_DIR=/var/log/portal-sync          # root-only (0700): predictable names can't be hijacked
 LOCK_DIR=/run/portal-sync             # root-only (0700): lock files can't be symlink-attacked
@@ -110,24 +111,44 @@ health_ok() {
   log "health check failed on ${HEALTH_PATH} (last=${code:-none})"; rm -f "$body"; return 1
 }
 
-# _rollback <oldsha> <ts> <reason> <deps_changed 0|1> — captures every step; never claims false health.
-_rollback() {
-  local old=$1 ts=$2 reason=$3 deps=$4 fail=0
-  log "ROLLBACK to ${old:0:7} ($reason)"
-  git -C "$PORTAL_DIR" reset --hard "$old" >/dev/null 2>&1 || fail=1
-  [ "$deps" = 1 ] && { ( cd "$PORTAL_DIR" && npm ci ) >"$LOG_DIR/rb-npmci-$ts.log" 2>&1 || fail=1; }
-  ( cd "$PORTAL_DIR" && npm run build ) >"$LOG_DIR/rollback-$ts.log" 2>&1 || fail=1
-  systemctl restart "$PORTAL_SERVICE" || fail=1
-  sleep 3
-  if [ "$fail" = 0 ] && health_ok; then
-    palert "⚠️ **$PORTAL_ENV** deploy FAILED ($reason) — rolled back to \`${old:0:7}\`, healthy. Logs: $LOG_DIR/*-$ts.log"
+# ensure_build_dir — create the isolated build worktree once + (re)point its shared symlinks.
+ensure_build_dir() {
+  if [ ! -e "$BUILD_DIR/.git" ]; then
+    git -C "$PORTAL_DIR" worktree add --detach "$BUILD_DIR" "$(git -C "$PORTAL_DIR" rev-parse HEAD)" >/dev/null 2>&1 || return 1
+  fi
+  # build reads env + (occasionally) the DB; point them at the live shared copies (same as in-place build did)
+  [ -L "$BUILD_DIR/.env.local" ] || { rm -rf "$BUILD_DIR/.env.local"; ln -s "$PORTAL_DIR/.env.local" "$BUILD_DIR/.env.local"; }
+  [ -L "$BUILD_DIR/data" ]       || { rm -rf "$BUILD_DIR/data";       ln -s "$PORTAL_DIR/data"       "$BUILD_DIR/data"; }
+  return 0
+}
+
+# _swap_rollback <oldsha> <ts> <deps_changed 0|1> <reason> — INSTANT rollback: swap the
+# previous build artifacts back (NO rebuild — so this can never fail the way a rebuild can).
+_swap_rollback() {
+  local old=$1 ts=$2 deps=$3 reason=$4
+  log "SWAP-ROLLBACK to ${old:0:7} ($reason)"
+  systemctl stop "$PORTAL_SERVICE"
+  git -C "$PORTAL_DIR" reset --hard "$old" >/dev/null 2>&1
+  if [ -d "$PORTAL_DIR/.next.prev" ]; then
+    rm -rf "$PORTAL_DIR/.next.bad"; mv "$PORTAL_DIR/.next" "$PORTAL_DIR/.next.bad" 2>/dev/null
+    mv "$PORTAL_DIR/.next.prev" "$PORTAL_DIR/.next"
+  fi
+  if [ "$deps" = 1 ] && [ -d "$PORTAL_DIR/node_modules.prev" ]; then
+    rm -rf "$PORTAL_DIR/node_modules.bad"; mv "$PORTAL_DIR/node_modules" "$PORTAL_DIR/node_modules.bad" 2>/dev/null
+    mv "$PORTAL_DIR/node_modules.prev" "$PORTAL_DIR/node_modules"
+  fi
+  systemctl start "$PORTAL_SERVICE"; sleep 3
+  if health_ok; then
+    palert "⚠️ **$PORTAL_ENV** deploy FAILED ($reason) — instantly swapped back to \`${old:0:7}\`, healthy (no rebuild). Logs: $LOG_DIR/*-$ts.log"
   else
-    palert "🆘 **$PORTAL_ENV** deploy FAILED ($reason) AND rollback is UNHEALTHY — MANUAL FIX NEEDED. Logs: $LOG_DIR/*-$ts.log"
+    palert "🆘 **$PORTAL_ENV** deploy FAILED ($reason) AND swap-back is UNHEALTHY — MANUAL FIX NEEDED. Logs: $LOG_DIR/*-$ts.log"
   fi
 }
 
-# guarded_deploy [target_sha] — fast-forward to a PINNED sha and restart safely.
-# Preconditions (caller ensures): branch main, tracked tree clean, sha is a descendant of HEAD.
+# guarded_deploy [target_sha] — BUILD-ASIDE deploy: build the new version in an isolated
+# workspace (live site untouched); only a SUCCESSFUL build is swapped in; rollback is an
+# instant artifact swap-back with no rebuild. Preconditions (caller ensures): branch main,
+# tracked tree clean, sha is a descendant of HEAD.
 guarded_deploy() {
   local target=$1 ts oldsha newsha subject deps_changed=0
   ts=$(date +%Y%m%d-%H%M%S)
@@ -135,26 +156,50 @@ guarded_deploy() {
   newsha=${target:-$(git -C "$PORTAL_DIR" rev-parse origin/main)}
   [ "$oldsha" = "$newsha" ] && { log "already up to date"; return 0; }
   [ -w "$STATE_DIR" ] || { palert "❌ **$PORTAL_ENV** state dir not writable — refusing (quarantine would fail-open)"; return 1; }
-  log "deploying ${oldsha:0:7} -> ${newsha:0:7}"
-
+  log "deploying ${oldsha:0:7} -> ${newsha:0:7} (build-aside)"
   check_disk || return 1
-  db_backup "$ts" || { palert "❌ **$PORTAL_ENV** DB backup failed — deploy ABORTED (nothing changed)"; return 1; }
+  ensure_build_dir || { palert "❌ **$PORTAL_ENV** build workspace setup failed — deploy ABORTED (live untouched)"; return 1; }
 
-  if ! git -C "$PORTAL_DIR" merge --ff-only "$newsha" >"$LOG_DIR/ffwd-$ts.log" 2>&1; then
-    palert "❌ **$PORTAL_ENV** fast-forward to \`${newsha:0:7}\` failed — deploy ABORTED. See $LOG_DIR/ffwd-$ts.log"
-    return 1
+  # 1. point the build workspace at the pinned sha (live site still serving oldsha, untouched)
+  if ! git -C "$BUILD_DIR" checkout --detach "$newsha" -f >"$LOG_DIR/co-$ts.log" 2>&1; then
+    echo "$newsha" > "$FAILED_SHA_FILE"
+    palert "❌ **$PORTAL_ENV** build-workspace checkout to \`${newsha:0:7}\` failed — deploy ABORTED (live untouched)"; return 1
   fi
+  # 2. deps in the build workspace only, if the lockfile changed
   if ! git -C "$PORTAL_DIR" diff --quiet "$oldsha" "$newsha" -- package-lock.json package.json; then
-    deps_changed=1; log "deps changed -> npm ci"
-    ( cd "$PORTAL_DIR" && npm ci ) >"$LOG_DIR/npmci-$ts.log" 2>&1 \
-      || { echo "$newsha" > "$FAILED_SHA_FILE"; _rollback "$oldsha" "$ts" "npm ci failed" "$deps_changed"; return 1; }
+    deps_changed=1; log "deps changed -> npm ci (build workspace)"
+    if ! ( cd "$BUILD_DIR" && npm ci ) >"$LOG_DIR/npmci-$ts.log" 2>&1; then
+      echo "$newsha" > "$FAILED_SHA_FILE"
+      palert "❌ **$PORTAL_ENV** npm ci failed in build workspace — deploy ABORTED (LIVE UNTOUCHED, still \`${oldsha:0:7}\`). Log: $LOG_DIR/npmci-$ts.log"; return 1
+    fi
   fi
-  if ! ( cd "$PORTAL_DIR" && npm run build ) >"$LOG_DIR/build-$ts.log" 2>&1; then
-    echo "$newsha" > "$FAILED_SHA_FILE"; _rollback "$oldsha" "$ts" "build failed" "$deps_changed"; return 1
+  # 3. BUILD ASIDE — the failure-prone step, fully isolated from the live site
+  if ! ( cd "$BUILD_DIR" && npm run build ) >"$LOG_DIR/build-$ts.log" 2>&1; then
+    echo "$newsha" > "$FAILED_SHA_FILE"
+    palert "❌ **$PORTAL_ENV** build FAILED for \`${newsha:0:7}\` — LIVE SITE UNTOUCHED (still serving \`${oldsha:0:7}\`). Log: $LOG_DIR/build-$ts.log"; return 1
   fi
-  systemctl restart "$PORTAL_SERVICE"; sleep 4
+  log "build OK (aside) — staging artifacts"
+  # 4. DB backup before we touch the live site
+  db_backup "$ts" || { palert "❌ **$PORTAL_ENV** DB backup failed — deploy ABORTED (live untouched)"; return 1; }
+  # 5. stage built artifacts next to live (same filesystem → the swap itself is instant)
+  rm -rf "$PORTAL_DIR/.next.incoming"
+  cp -a "$BUILD_DIR/.next" "$PORTAL_DIR/.next.incoming" || { palert "❌ **$PORTAL_ENV** staging .next failed — deploy ABORTED (live untouched)"; rm -rf "$PORTAL_DIR/.next.incoming"; return 1; }
+  if [ "$deps_changed" = 1 ]; then
+    rm -rf "$PORTAL_DIR/node_modules.incoming"
+    cp -a "$BUILD_DIR/node_modules" "$PORTAL_DIR/node_modules.incoming" || { palert "❌ **$PORTAL_ENV** staging node_modules failed — ABORTED (live untouched)"; rm -rf "$PORTAL_DIR/.next.incoming" "$PORTAL_DIR/node_modules.incoming"; return 1; }
+  fi
+  # 6. swap during a brief stop (no in-flight readers) — all same-fs renames, instant
+  systemctl stop "$PORTAL_SERVICE"
+  git -C "$PORTAL_DIR" merge --ff-only "$newsha" >"$LOG_DIR/ffwd-$ts.log" 2>&1
+  rm -rf "$PORTAL_DIR/.next.prev"; mv "$PORTAL_DIR/.next" "$PORTAL_DIR/.next.prev"; mv "$PORTAL_DIR/.next.incoming" "$PORTAL_DIR/.next"
+  if [ "$deps_changed" = 1 ]; then
+    rm -rf "$PORTAL_DIR/node_modules.prev"; mv "$PORTAL_DIR/node_modules" "$PORTAL_DIR/node_modules.prev"; mv "$PORTAL_DIR/node_modules.incoming" "$PORTAL_DIR/node_modules"
+  fi
+  systemctl start "$PORTAL_SERVICE"; sleep 4
+  # 7. health-gate; on failure, INSTANT swap-back (no rebuild)
   if ! health_ok; then
-    echo "$newsha" > "$FAILED_SHA_FILE"; _rollback "$oldsha" "$ts" "health check failed" "$deps_changed"; return 1
+    echo "$newsha" > "$FAILED_SHA_FILE"
+    _swap_rollback "$oldsha" "$ts" "$deps_changed" "health check failed"; return 1
   fi
   rm -f "$FAILED_SHA_FILE"
   subject=$(git -C "$PORTAL_DIR" log -1 --pretty=%s)

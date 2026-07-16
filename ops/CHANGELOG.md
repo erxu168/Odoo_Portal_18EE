@@ -1,5 +1,15 @@
 # Portal auto-sync — changelog
 
+## 2026-07-16 — v2: build-aside deploys
+- Deploys now **build in an isolated workspace** (`/opt/portal-build`); the live site is never
+  touched by a build. A failed build leaves the running site fully intact (no rollback needed) —
+  fixes the 2026-07-15 incident where an in-place build failure + a failed rollback-rebuild caused
+  a ~5 min outage.
+- Only a **successful** build is swapped in (same-filesystem renames during a brief restart).
+- **Rollback is now an instant artifact swap-back** (`.next.prev`) with **no rebuild**, so it can't
+  fail the way last night's rebuild-on-rollback did.
+- Startup DB migrations are additive (`ADD COLUMN … DEFAULT`), so a code swap-back is DB-safe.
+
 ## 2026-07-15 — v1 (staging live)
 - Initial system: staging auto-deploy (cron */2), production `golive` (manual),
   hourly drift watchdog, Obsidian deploy log + alerts.

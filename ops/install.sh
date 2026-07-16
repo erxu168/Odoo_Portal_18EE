@@ -43,5 +43,10 @@ tmp=$(mktemp)
 echo '17 * * * * /usr/local/bin/portal-drift-check.sh >> /var/log/portal-sync/drift.log 2>&1' >> "$tmp"
 crontab "$tmp"; rm -f "$tmp"
 
+# create the isolated build workspace (idempotent; a git worktree of the source repo)
+# shellcheck disable=SC1091
+. /usr/local/bin/portal-lib.sh
+if ensure_build_dir; then echo "build workspace ready: $BUILD_DIR"; else echo "WARN: build workspace not created yet (will be created on first deploy)"; fi
+
 echo "installed for ENV=$ENV. Active portal crons:"
 crontab -l | grep -E 'portal-(autodeploy|drift)' || echo "  (none)"
