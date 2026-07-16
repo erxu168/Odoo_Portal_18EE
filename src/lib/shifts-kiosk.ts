@@ -96,20 +96,25 @@ export interface PunchError {
  */
 export async function kioskPunch(companyId: number, employeeId: number): Promise<PunchResult | PunchError> {
   const odoo = getOdoo();
-  const emp = (await odoo.read('hr.employee', [employeeId], ['name', 'company_id'])) as Record<string, unknown>[];
+  const nowUtc = nowOdooUtc();
+  const nowMs = odooToDate(nowUtc).getTime();
+  const at = berlinParts(nowUtc).hhmm;
+
+  // The employee read and the week-slot read are independent — fire them together to save a
+  // round-trip. The open-attendance read is deliberately NOT batched here: it decides
+  // clock-in vs clock-out, so we read it right before the write (below) to keep that
+  // check→write window as tight as the original code did. Only PUBLISHED slots count for
+  // punctuality — a draft rota entry must not become a commitment stamped onto attendance.
+  const [emp, weekSlots] = await Promise.all([
+    odoo.read('hr.employee', [employeeId], ['name', 'company_id']) as Promise<Record<string, unknown>[]>,
+    fetchWeekSlots(companyId, currentWeekKey()),
+  ]);
+
   if (!emp.length) return { ok: false, error: 'Unknown employee' };
   const empCompany = Array.isArray(emp[0].company_id) ? (emp[0].company_id[0] as number) : null;
   if (empCompany !== companyId) return { ok: false, error: 'This person is not on this company.' };
   const name = typeof emp[0].name === 'string' ? emp[0].name : 'Staff';
 
-  const nowUtc = nowOdooUtc();
-  const nowMs = odooToDate(nowUtc).getTime();
-  const at = berlinParts(nowUtc).hhmm;
-
-  // Find this employee's shift for today (active one preferred, else nearest).
-  // Only PUBLISHED slots — a draft rota entry must not become a punctuality
-  // commitment stamped onto the attendance record.
-  const weekSlots = await fetchWeekSlots(companyId, currentWeekKey());
   const today = berlinParts(nowUtc).date;
   const mine = weekSlots.filter(s => {
     if (s.employeeId !== employeeId || s.state !== 'published') return false;
@@ -131,6 +136,8 @@ export async function kioskPunch(companyId: number, employeeId: number): Promise
   const slot = active ?? nearest ?? null;
   const shift = slot ? fmtTimeRange(slot.start, slot.end) : null;
 
+  // Read open-attendance state immediately before the write to keep the check→write window
+  // tight (a stale in/out decision could duplicate or wrongly close an attendance).
   const openId = await openAttendanceId(employeeId);
 
   if (openId) {

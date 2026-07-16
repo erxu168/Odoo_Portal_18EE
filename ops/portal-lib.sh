@@ -157,6 +157,27 @@ _swap_rollback() {
   fi
 }
 
+# _portal_build_needed <oldsha> <newsha> — return 0 (yes, build) if the diff touches
+# anything the portal build or runtime depends on; return 1 (no) only when EVERY changed
+# path is docs/ops/CI/addons. Fail-safe: an empty diff, a git error, or any unrecognized
+# path forces a build, so skipping a rebuild can never leave stale code live.
+_portal_build_needed() {
+  local old=$1 new=$2 f changed
+  # --no-renames: a rename is reported as delete(old)+add(new), so a source file renamed
+  # INTO an allowlisted dir still surfaces its source-side path and forces a build (never
+  # leaves stale .next serving code that moved/was removed).
+  changed=$(git -C "$PORTAL_DIR" diff --name-only --no-renames "$old" "$new" 2>/dev/null) || return 0
+  [ -z "$changed" ] && return 0
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    case "$f" in
+      docs/*|ops/*|.github/*|scripts/*|mocks/*|sql/*|odoo-addons/*|odoo-modules/*|*.md) ;;
+      *) return 0 ;;   # something outside the doc/ops allowlist → rebuild
+    esac
+  done <<< "$changed"
+  return 1             # every changed path was docs/ops/CI → safe to skip the rebuild
+}
+
 # guarded_deploy [target_sha] — BUILD-ASIDE deploy: build the new version in an isolated
 # workspace (live site untouched); only a SUCCESSFUL build is swapped in; rollback is an
 # instant artifact swap-back with no rebuild. Preconditions (caller ensures): branch main,
@@ -168,6 +189,21 @@ guarded_deploy() {
   newsha=${target:-$(git -C "$PORTAL_DIR" rev-parse origin/main)}
   [ "$oldsha" = "$newsha" ] && { log "already up to date"; return 0; }
   [ -w "$STATE_DIR" ] || { palert "❌ **$PORTAL_ENV** state dir not writable — refusing (quarantine would fail-open)"; return 1; }
+
+  # Fast path: when the diff is ONLY docs/ops/CI (nothing the portal build or runtime uses),
+  # skip the expensive rebuild+restart — just fast-forward the checkout. Avoids needless CPU
+  # load on the shared box (Odoo runs here too) and an unnecessary service restart.
+  # Fail-safe: any non-doc path, or a failed ff-advance, falls through to a full build-aside.
+  if ! _portal_build_needed "$oldsha" "$newsha"; then
+    if git -C "$PORTAL_DIR" merge --ff-only "$newsha" >"$LOG_DIR/ffwd-$ts.log" 2>&1; then
+      rm -f "$FAILED_SHA_FILE"
+      pnote deploy-log "⏭️ **$PORTAL_ENV** \`${oldsha:0:7}\` → \`${newsha:0:7}\` — docs/ops only, no portal rebuild"
+      log "SKIP rebuild (docs/ops only) -> ${newsha:0:7}"
+      return 0
+    fi
+    log "docs-only ff-advance failed — falling back to full build-aside deploy"
+  fi
+
   log "deploying ${oldsha:0:7} -> ${newsha:0:7} (build-aside)"
   local live_lock target_lock
   check_disk || return 1
