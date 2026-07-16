@@ -19,16 +19,19 @@ interface KioskStaff {
   employeeId: number;
   name: string;
   clockedIn: boolean;
+  onBreak: boolean;
   hasPin: boolean;
 }
+type PunchAction = 'in' | 'break' | 'out' | 'resume';
 interface PunchResult {
   ok: true;
-  action: 'in' | 'out';
+  action: PunchAction;
   name: string;
   at: string;
   note: 'ontime' | 'late' | 'early' | 'overtime';
   mins: number;
   shift: string | null;
+  breakMins?: number;
 }
 
 function initials(name: string): string {
@@ -72,6 +75,8 @@ export default function KioskPage() {
   const [result, setResult] = useState<PunchResult | null>(null);
   const [clock, setClock] = useState('');
   const [flash, setFlash] = useState('');
+  // A non-PIN problem to show back on the grid (state conflict, rate limit, error).
+  const [notice, setNotice] = useState('');
 
   // Forgot-PIN feedback shown on the PIN screen.
   const [forgotMsg, setForgotMsg] = useState('');
@@ -161,6 +166,7 @@ export default function KioskPage() {
   function pickPerson(s: KioskStaff) {
     if (fullscreenLock) enterFullscreen(); // first tap is a user gesture — a good moment to go full screen
     setFlash('');
+    setNotice('');
     setSelected(s);
     if (s.hasPin) {
       setPin('');
@@ -179,7 +185,7 @@ export default function KioskPage() {
   }
 
   const submitPin = useCallback(
-    async (finalPin: string) => {
+    async (finalPin: string, action: PunchAction) => {
       if (!selected || !companyId) return;
       setBusy(true);
       setPinError(false);
@@ -187,25 +193,32 @@ export default function KioskPage() {
         const r = await fetch('/api/kiosk/punch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ company_id: companyId, employee_id: selected.employeeId, pin: finalPin }),
+          body: JSON.stringify({ company_id: companyId, employee_id: selected.employeeId, pin: finalPin, action }),
         });
         const d = await r.json();
         if (r.ok && d.ok) {
           if (settings?.sound) beep();
           setResult(d as PunchResult);
           setScreen('done');
-        } else {
+        } else if (r.status === 401) {
+          // Wrong PIN — let them try again.
           setPin('');
           setPinError(true);
+        } else {
+          // Not a PIN problem (state changed, rate limited, server error): show the
+          // reason and go back to the grid, which reloads everyone's live state.
+          setNotice(typeof d?.error === 'string' ? d.error : 'Please try again.');
+          backToGrid();
         }
       } catch {
-        setPin('');
-        setPinError(true);
+        // Network / non-JSON failure — not a PIN problem.
+        setNotice('Network problem — please try again.');
+        backToGrid();
       } finally {
         setBusy(false);
       }
     },
-    [selected, companyId, settings?.sound],
+    [selected, companyId, settings?.sound, backToGrid],
   );
 
   function keyPress(digit: string) {
@@ -213,7 +226,11 @@ export default function KioskPage() {
     setPinError(false);
     const next = pin + digit;
     setPin(next);
-    if (next.length === 4) submitPin(next);
+    // A person who is OFF has a single action (clock in) → auto-submit on the 4th
+    // digit. WORKING / ON BREAK must choose Break vs End shift, so wait for a button.
+    if (next.length === 4 && selected && !selected.clockedIn && !selected.onBreak) {
+      submitPin(next, 'in');
+    }
   }
 
   // ---- Forgot PIN (email a reset link) ----
@@ -356,22 +373,32 @@ export default function KioskPage() {
   } else if (screen === 'done' && result) {
     // ---- Confirmation ----
     const r = result;
+    let icon = '✅';
+    let title = 'Clocked out';
     let noteMsg = '';
     let noteClass = 'bg-green-50 text-green-700';
     if (r.action === 'in') {
+      icon = '👋'; title = 'Clocked in';
       if (r.note === 'late') { noteMsg = `${r.mins} min late — logged`; noteClass = 'bg-amber-50 text-amber-700'; }
       else noteMsg = 'You’re on time';
+    } else if (r.action === 'resume') {
+      icon = '👋'; title = 'Welcome back';
+      noteMsg = r.breakMins != null ? `${r.breakMins} min break — back to work` : 'Back to work';
+    } else if (r.action === 'break') {
+      icon = '☕'; title = 'On break';
+      noteMsg = 'Clock back in when you return'; noteClass = 'bg-amber-50 text-amber-700';
     } else {
+      icon = '✅'; title = 'Clocked out';
       if (r.note === 'early') { noteMsg = `Left ${r.mins} min early`; noteClass = 'bg-amber-50 text-amber-700'; }
-      else if (r.note === 'overtime') { noteMsg = `${r.mins} min overtime — thanks!`; noteClass = 'bg-green-50 text-green-700'; }
+      else if (r.note === 'overtime') { noteMsg = `${r.mins} min overtime — thanks!`; }
       else noteMsg = 'See you!';
     }
     content = (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {header}
         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-          <div className="text-7xl mb-2">{r.action === 'in' ? '👋' : '✅'}</div>
-          <div className="text-3xl font-extrabold text-gray-900">{r.action === 'in' ? 'Clocked in' : 'Clocked out'}</div>
+          <div className="text-7xl mb-2">{icon}</div>
+          <div className="text-3xl font-extrabold text-gray-900">{title}</div>
           <div className="text-xl font-semibold text-gray-600 mt-1">{r.name}</div>
           <div className="text-6xl font-extrabold tabular-nums my-5 text-gray-900">{r.at}</div>
           <div className={`rounded-2xl px-7 py-3 text-lg font-bold ${noteClass}`}>{noteMsg}</div>
@@ -388,6 +415,15 @@ export default function KioskPage() {
   } else if (screen === 'pin' && selected) {
     // ---- PIN entry ----
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    // OFF → single action (auto clock-in). WORKING / ON BREAK → choose an action.
+    const mode: 'off' | 'working' | 'onbreak' = selected.clockedIn
+      ? 'working'
+      : selected.onBreak
+        ? 'onbreak'
+        : 'off';
+    const pinReady = pin.length === 4 && !busy;
+    const subtitle =
+      mode === 'working' ? 'Enter PIN, then choose' : mode === 'onbreak' ? 'Enter PIN, then choose' : 'Enter PIN to clock IN';
     content = (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {header}
@@ -402,9 +438,7 @@ export default function KioskPage() {
             {initials(selected.name)}
           </div>
           <div className="text-2xl font-extrabold text-gray-900 mt-4">Hi, {firstName(selected.name)}</div>
-          <div className="text-gray-500 font-semibold mt-1">
-            {selected.clockedIn ? 'Enter PIN to clock OUT' : 'Enter PIN to clock IN'}
-          </div>
+          <div className="text-gray-500 font-semibold mt-1">{subtitle}</div>
           <div className="flex gap-4 my-7">
             {[0, 1, 2, 3].map(i => (
               <span key={i} className={`w-4 h-4 rounded-full ${pin.length > i ? 'bg-green-600' : 'border-2 border-gray-300'}`} />
@@ -440,6 +474,36 @@ export default function KioskPage() {
               ⌫
             </button>
           </div>
+
+          {mode !== 'off' && (
+            <div className="w-full max-w-xs mt-6 flex flex-col gap-3">
+              {mode === 'working' ? (
+                <button
+                  disabled={!pinReady}
+                  onClick={() => submitPin(pin, 'break')}
+                  className="w-full py-4 rounded-2xl text-lg font-bold bg-amber-500 text-white active:bg-amber-600 disabled:opacity-40 transition-opacity"
+                >
+                  ☕ Break
+                </button>
+              ) : (
+                <button
+                  disabled={!pinReady}
+                  onClick={() => submitPin(pin, 'resume')}
+                  className="w-full py-4 rounded-2xl text-lg font-bold bg-green-600 text-white active:bg-green-700 disabled:opacity-40 transition-opacity"
+                >
+                  ▶️ Back from break
+                </button>
+              )}
+              <button
+                disabled={!pinReady}
+                onClick={() => submitPin(pin, 'out')}
+                className="w-full py-4 rounded-2xl text-lg font-bold bg-white border-2 border-red-200 text-red-600 active:bg-red-50 disabled:opacity-40 transition-opacity"
+              >
+                🔴 End shift
+              </button>
+            </div>
+          )}
+
           <div className="mt-6 text-center">
             <button onClick={requestForgot} disabled={busy} className="text-gray-500 font-semibold underline active:text-gray-700 disabled:opacity-50">
               Forgot PIN?
@@ -532,6 +596,7 @@ export default function KioskPage() {
   } else {
     // ---- Staff grid ----
     const workingNow = staff.filter(s => s.clockedIn).length;
+    const onBreakNow = staff.filter(s => s.onBreak).length;
     content = (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         {header}
@@ -540,6 +605,11 @@ export default function KioskPage() {
           {flash && (
             <div className="max-w-md mx-auto mb-5 text-center bg-green-50 text-green-700 font-bold rounded-2xl px-5 py-3">
               {flash}
+            </div>
+          )}
+          {notice && (
+            <div className="max-w-md mx-auto mb-5 text-center bg-amber-50 text-amber-800 font-bold rounded-2xl px-5 py-3">
+              {notice}
             </div>
           )}
           {staff.length === 0 ? (
@@ -561,10 +631,12 @@ export default function KioskPage() {
                   <div className="text-[17px] font-bold text-gray-900 text-center leading-tight">{s.name}</div>
                   {!s.hasPin ? (
                     <div className="text-sm font-bold text-blue-600">Set up PIN</div>
+                  ) : s.clockedIn ? (
+                    <div className="text-sm font-bold text-green-600">● Working</div>
+                  ) : s.onBreak ? (
+                    <div className="text-sm font-bold text-amber-600">⏸ On break</div>
                   ) : (
-                    <div className={`text-sm font-bold ${s.clockedIn ? 'text-green-600' : 'text-gray-400'}`}>
-                      {s.clockedIn ? '● Working' : '○ Off'}
-                    </div>
+                    <div className="text-sm font-bold text-gray-400">○ Off</div>
                   )}
                 </button>
               ))}
@@ -572,7 +644,10 @@ export default function KioskPage() {
           )}
         </div>
         {settings.showWorkingNow && (
-          <footer className="text-center text-green-600 font-bold py-4">● {workingNow} working now</footer>
+          <footer className="text-center font-bold py-4">
+            <span className="text-green-600">● {workingNow} working</span>
+            {onBreakNow > 0 && <span className="text-amber-600"> · ⏸ {onBreakNow} on break</span>}
+          </footer>
         )}
       </div>
     );

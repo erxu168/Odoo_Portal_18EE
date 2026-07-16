@@ -12,6 +12,7 @@
  * - Times are Odoo UTC-naive; convert to Berlin wall clock in shifts-time.ts.
  */
 import { getOdoo } from '@/lib/odoo';
+import { durationHours } from '@/lib/shifts-time';
 
 type OdooRow = Record<string, unknown>;
 
@@ -149,4 +150,34 @@ export async function kioskClockIn(
 /** Clock OUT: write check_out on the given open attendance record. */
 export async function kioskClockOut(attendanceId: number, whenUtc: string): Promise<void> {
   await getOdoo().write('hr.attendance', [attendanceId], { check_out: whenUtc });
+}
+
+/**
+ * Record a finished break in Odoo, idempotently. Creates an hr.break
+ * (krawings_attendance model; Odoo computes `duration`) for the work segment the
+ * break followed, and stamps the segment's total_break_time. A segment has at most
+ * one break after it, so we key on attendance_id: if an hr.break already exists for
+ * it we skip the create (safe to retry after a partial failure or crash — no
+ * duplicates). The total_break_time write is idempotent (same value). Times are
+ * Odoo UTC-naive.
+ */
+export async function recordBreakOnce(
+  employeeId: number,
+  attendanceId: number,
+  startUtc: string,
+  endUtc: string,
+): Promise<void> {
+  const odoo = getOdoo();
+  const existing = (await odoo.searchRead('hr.break', [['attendance_id', '=', attendanceId]], ['id'], {
+    limit: 1,
+  })) as OdooRow[];
+  if (!existing.length) {
+    await odoo.create('hr.break', {
+      employee_id: employeeId,
+      attendance_id: attendanceId,
+      start_time: startUtc,
+      end_time: endUtc,
+    });
+  }
+  await odoo.write('hr.attendance', [attendanceId], { total_break_time: Math.max(0, durationHours(startUtc, endUtc)) });
 }

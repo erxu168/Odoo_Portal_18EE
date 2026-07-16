@@ -235,6 +235,18 @@ function ensureTables(): void {
       expires_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_kiosk_reset_expires ON kiosk_pin_reset_tokens(expires_at);
+
+    -- Kiosk: who is currently on a break. A break = clocked out with the intent
+    -- to return, so there is no open Odoo attendance while on break. break_started_at
+    -- is the Odoo UTC check_out of the segment they broke from; attendance_id is that
+    -- segment (used to write the hr.break + its total_break_time on return).
+    CREATE TABLE IF NOT EXISTS kiosk_on_break (
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      break_started_at TEXT NOT NULL,
+      attendance_id INTEGER NOT NULL,
+      PRIMARY KEY (company_id, employee_id)
+    );
   `);
 
   // Additive migrations for DBs created before a column existed (fresh DBs get
@@ -475,6 +487,58 @@ export function hasKioskPin(companyId: number, employeeId: number): boolean {
   return !!getDb()
     .prepare('SELECT 1 FROM shift_kiosk_pins WHERE company_id=? AND employee_id=?')
     .get(companyId, employeeId);
+}
+
+// -- Kiosk on-break state -------------------------------------------------------
+
+/** A marker that a break longer than this is stale (person left without returning). */
+export const ON_BREAK_STALE_MS = 12 * 60 * 60_000; // 12 hours
+
+export interface OnBreakRow {
+  breakStartedAt: string;
+  attendanceId: number;
+}
+
+/** Mark an employee as on break (clocked out, intending to return). */
+export function setOnBreak(
+  companyId: number,
+  employeeId: number,
+  breakStartedAt: string,
+  attendanceId: number,
+): void {
+  ensureTables();
+  getDb()
+    .prepare(
+      `INSERT INTO kiosk_on_break (company_id, employee_id, break_started_at, attendance_id)
+       VALUES (?,?,?,?)
+       ON CONFLICT(company_id, employee_id)
+       DO UPDATE SET break_started_at=excluded.break_started_at, attendance_id=excluded.attendance_id`,
+    )
+    .run(companyId, employeeId, breakStartedAt, attendanceId);
+}
+
+/** Clear an employee's on-break marker (returned or ended shift). */
+export function clearOnBreak(companyId: number, employeeId: number): void {
+  ensureTables();
+  getDb().prepare('DELETE FROM kiosk_on_break WHERE company_id=? AND employee_id=?').run(companyId, employeeId);
+}
+
+/** The raw on-break marker, or null when none. Does not consider staleness. */
+export function getOnBreak(companyId: number, employeeId: number): OnBreakRow | null {
+  ensureTables();
+  const row = getDb()
+    .prepare('SELECT break_started_at, attendance_id FROM kiosk_on_break WHERE company_id=? AND employee_id=?')
+    .get(companyId, employeeId) as { break_started_at: string; attendance_id: number } | undefined;
+  return row ? { breakStartedAt: row.break_started_at, attendanceId: row.attendance_id } : null;
+}
+
+/** employeeIds of the company currently on a *fresh* break (stale markers ignored). */
+export function onBreakEmployeeIds(companyId: number, staleBeforeIso: string): Set<number> {
+  ensureTables();
+  const rows = getDb()
+    .prepare('SELECT employee_id FROM kiosk_on_break WHERE company_id=? AND break_started_at >= ?')
+    .all(companyId, staleBeforeIso) as { employee_id: number }[];
+  return new Set(rows.map(r => r.employee_id));
 }
 
 // -- Kiosk first-time setup codes (emailed 6-digit, entered at the tablet) -------
