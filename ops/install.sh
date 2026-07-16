@@ -43,10 +43,24 @@ tmp=$(mktemp)
 echo '17 * * * * /usr/local/bin/portal-drift-check.sh >> /var/log/portal-sync/drift.log 2>&1' >> "$tmp"
 crontab "$tmp"; rm -f "$tmp"
 
-# create the isolated build workspace (idempotent; a git worktree of the source repo)
+# disable any legacy webhook deploy path (it would bypass the deploy lock and build live)
+for w in portal-webhook krawings-portal-webhook webhook; do
+  if systemctl list-unit-files 2>/dev/null | grep -q "^$w.service"; then
+    systemctl disable --now "$w.service" 2>/dev/null || true
+    systemctl mask "$w.service" 2>/dev/null || true
+    echo "disabled + masked legacy $w.service"
+  fi
+done
+
+# create the isolated build workspace (idempotent; a git worktree of the source repo),
+# under the deploy lock so it can't race a running deploy on the same worktree
 # shellcheck disable=SC1091
 . /usr/local/bin/portal-lib.sh
-if ensure_build_dir; then echo "build workspace ready: $BUILD_DIR"; else echo "WARN: build workspace not created yet (will be created on first deploy)"; fi
+if ( flock -w 300 9 || exit 1; ensure_build_dir ) 9>"$DEPLOY_LOCK"; then
+  echo "build workspace ready: $BUILD_DIR"
+else
+  echo "WARN: build workspace not created yet (will be created on first deploy)"
+fi
 
 echo "installed for ENV=$ENV. Active portal crons:"
 crontab -l | grep -E 'portal-(autodeploy|drift)' || echo "  (none)"

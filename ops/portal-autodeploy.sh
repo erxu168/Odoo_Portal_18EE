@@ -7,6 +7,15 @@ exec 9>"$DEPLOY_LOCK"
 flock -n 9 || exit 0        # a deploy/golive is already running
 
 cd "$PORTAL_DIR" || exit 1
+
+# recover a service left stopped by an interrupted cutover (we hold the deploy lock here,
+# so this only fires when no deploy is actually running)
+if ! systemctl is-active --quiet "$PORTAL_SERVICE"; then
+  log "service not active — starting it"
+  systemctl start "$PORTAL_SERVICE"; sleep 3
+  if health_ok; then palert "⚠️ **$PORTAL_ENV** service was stopped — restarted, healthy"; else palert "🆘 **$PORTAL_ENV** service was stopped and won't come healthy — MANUAL FIX"; fi
+fi
+
 do_fetch || exit 0          # fetch failure is tracked + alerted by do_fetch
 
 classify_state
