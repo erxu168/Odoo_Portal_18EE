@@ -16,6 +16,7 @@ export function GET() {
   if (!device) return NextResponse.json({ provisioned: false });
   return NextResponse.json({
     provisioned: true,
+    disabled: device.disabled, // access turned off by a manager
     company_id: device.company_id,
     company_name: device.label || '', // stored at provision time
   });

@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCompany } from '@/lib/company-context';
 import TabletPinLogin from '@/components/tablet/TabletPinLogin';
 import TabletSetup from '@/components/tablet/TabletSetup';
+import TabletOff from '@/components/tablet/TabletOff';
 
 function LoginForm({ onSetupTablet }: { onSetupTablet: () => void }) {
   const router = useRouter();
@@ -175,43 +176,66 @@ function Spinner() {
 /** Decides what the login screen shows: a provisioned tablet gets a PIN pad;
  *  everyone else gets the normal email/password form (+ a manager "set up tablet"). */
 function LoginInner() {
-  const [mode, setMode] = useState<'loading' | 'pin' | 'password' | 'setup'>('loading');
+  const [mode, setMode] = useState<'loading' | 'pin' | 'off' | 'password' | 'setup'>('loading');
   const [companyName, setCompanyName] = useState('');
   const [provisioned, setProvisioned] = useState(false);
+  const [disabled, setDisabled] = useState(false);
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
 
   useEffect(() => {
     let cancelled = false;
+
+    // /api/tablet/status is a lightweight DB-only endpoint. Apply its result, but
+    // only flip the pin/off/password screen automatically — never interrupt a
+    // manager mid-setup. Returns false on a network/5xx failure.
+    async function apply(): Promise<boolean> {
+      try {
+        const r = await fetch('/api/tablet/status', { cache: 'no-store' });
+        if (!r.ok) return false;
+        const d = await r.json();
+        if (cancelled) return true;
+        // Auto-switch the login screen for every mode EXCEPT while a manager is
+        // mid-setup — including recovering from a transient 'password' fallback.
+        const auto = modeRef.current !== 'setup';
+        if (d.provisioned) {
+          setProvisioned(true); setCompanyName(d.company_name || ''); setDisabled(!!d.disabled);
+          if (auto) setMode(d.disabled ? 'off' : 'pin');
+        } else {
+          setProvisioned(false); setDisabled(false);
+          if (auto) setMode('password');
+        }
+        return true;
+      } catch { return false; }
+    }
+
     (async () => {
-      // Retry a few times so a transient error doesn't silently drop a provisioned
-      // tablet to the email/password form. /api/tablet/status is a lightweight
-      // DB-only endpoint, so a lasting failure is a broader outage — only then
-      // fall back to the normal login.
-      for (let attempt = 0; attempt < 4; attempt++) {
-        try {
-          const r = await fetch('/api/tablet/status', { cache: 'no-store' });
-          if (r.ok) {
-            const d = await r.json();
-            if (cancelled) return;
-            if (d.provisioned) { setProvisioned(true); setCompanyName(d.company_name || ''); setMode('pin'); }
-            else { setProvisioned(false); setMode('password'); }
-            return;
-          }
-        } catch { /* network blip — retry */ }
+      // Retry so a transient error doesn't drop a provisioned tablet to the
+      // email/password form; only a lasting failure falls back. Track success with
+      // a plain flag — modeRef doesn't update synchronously after setMode, so
+      // reading it here would wrongly override the mode apply() just set.
+      let resolved = false;
+      for (let attempt = 0; attempt < 4 && !cancelled; attempt++) {
+        if (await apply()) { resolved = true; break; }
         await new Promise(res => setTimeout(res, 500 * (attempt + 1)));
       }
-      if (!cancelled) setMode('password');
+      if (!cancelled && !resolved) setMode('password');
     })();
-    return () => { cancelled = true; };
+
+    // Poll so a manager remotely turning access on/off flips the tablet's screen.
+    const iv = setInterval(() => { apply(); }, 20000);
+    return () => { cancelled = true; clearInterval(iv); };
   }, []);
 
   if (mode === 'loading') return <Spinner />;
   if (mode === 'pin') return <TabletPinLogin companyName={companyName} onManager={() => setMode('setup')} />;
+  if (mode === 'off') return <TabletOff companyName={companyName} onManager={() => setMode('setup')} />;
   if (mode === 'setup') {
     return (
       <TabletSetup
         alreadyProvisioned={provisioned}
         onDone={() => window.location.reload()}
-        onCancel={() => setMode(provisioned ? 'pin' : 'password')}
+        onCancel={() => setMode(provisioned ? (disabled ? 'off' : 'pin') : 'password')}
       />
     );
   }

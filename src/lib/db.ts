@@ -108,6 +108,7 @@ function initTables(db: Database.Database) {
       created_at TEXT NOT NULL,
       last_used_at TEXT,
       revoked INTEGER NOT NULL DEFAULT 0,
+      disabled INTEGER NOT NULL DEFAULT 0,     -- access turned off (reversible; revoked is permanent)
       fail_count INTEGER NOT NULL DEFAULT 0,   -- consecutive wrong PINs (persistent brute-force lockout)
       locked_until TEXT                        -- ISO; while > now, PIN login is refused
     );
@@ -265,18 +266,22 @@ function migrateSchema(db: Database.Database) {
     db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_device ON sessions(station_device_id) WHERE station_device_id IS NOT NULL');
   } catch { /* ignore */ }
 
-  // station_devices gained the persistent PIN-lockout columns.
-  try {
+  // station_devices gained the persistent PIN-lockout columns + the disabled flag.
+  // PRAGMA on an absent table returns []; each ALTER independently tolerates only a
+  // concurrent "duplicate column" and lets any real failure surface (no outer catch).
+  {
     const sdCols = db.prepare('PRAGMA table_info(station_devices)').all() as { name: string }[];
     if (sdCols.length > 0) {
-      if (!sdCols.some(c => c.name === 'fail_count')) {
-        db.exec('ALTER TABLE station_devices ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0');
-      }
-      if (!sdCols.some(c => c.name === 'locked_until')) {
-        db.exec('ALTER TABLE station_devices ADD COLUMN locked_until TEXT');
-      }
+      const addCol = (name: string, ddl: string) => {
+        if (sdCols.some(c => c.name === name)) return;
+        try { db.exec(ddl); }
+        catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
+      };
+      addCol('fail_count', 'ALTER TABLE station_devices ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0');
+      addCol('locked_until', 'ALTER TABLE station_devices ADD COLUMN locked_until TEXT');
+      addCol('disabled', 'ALTER TABLE station_devices ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0');
     }
-  } catch { /* table absent — initTables creates it with the columns */ }
+  }
 }
 
 function seedAdmin(db: Database.Database) {
@@ -487,17 +492,25 @@ export function deleteSessionsForDevice(stationDeviceId: number): void {
 /** Create a shared-tablet session, atomically replacing any prior session for the
  *  same device (one active session per device — also DB-enforced by a partial
  *  unique index on station_device_id). */
-export function createTabletSession(userId: number, stationDeviceId: number): string {
+export function createTabletSession(userId: number, stationDeviceId: number): string | null {
   const db = getDb();
   const token = crypto.randomUUID();
   const now = nowISO();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
+  let created = false;
   db.transaction(() => {
+    // Re-check the device INSIDE the transaction: a concurrent disable/revoke must
+    // not race in between the pre-check and session creation and leave a session
+    // that becomes valid again when the device is re-enabled.
+    const dev = db.prepare('SELECT revoked, disabled FROM station_devices WHERE id = ?').get(stationDeviceId) as { revoked: number; disabled: number } | undefined;
+    if (!dev || dev.revoked || dev.disabled) return;
     db.prepare('DELETE FROM sessions WHERE station_device_id = ?').run(stationDeviceId);
     db.prepare('INSERT INTO sessions (token, user_id, created_at, expires_at, station_device_id) VALUES (?, ?, ?, ?, ?)')
       .run(token, userId, now, expiresAt.toISOString(), stationDeviceId);
+    created = true;
   })();
+  if (!created) return null;
   db.prepare('UPDATE portal_users SET last_login = ?, login_count = login_count + 1 WHERE id = ?').run(now, userId);
   return token;
 }
@@ -519,7 +532,7 @@ export function getSessionUser(token: string): PortalUser | null {
     WHERE s.token = ? AND u.active = 1 AND u.status = 'active' AND s.expires_at > ?
       AND (
         s.station_device_id IS NULL
-        OR (d.id IS NOT NULL AND d.revoked = 0 AND u.role = 'staff' AND u.is_shared_device = 1)
+        OR (d.id IS NOT NULL AND d.revoked = 0 AND d.disabled = 0 AND u.role = 'staff' AND u.is_shared_device = 1)
       )
   `).get(token, now) as PortalUser | null;
   return row || null;
@@ -592,7 +605,9 @@ export function cleanExpiredStationActors() {
 
 function sha256(s: string): string { return createHash('sha256').update(s).digest('hex'); }
 
-export interface StationDevice { id: number; station_user_id: number; company_id: number; label: string | null; locked_until: string | null; }
+export interface StationDevice { id: number; station_user_id: number; company_id: number; label: string | null; locked_until: string | null; disabled: boolean; }
+
+export interface StationDeviceRow { id: number; company_id: number; label: string | null; created_by: string | null; created_at: string; last_used_at: string | null; disabled: boolean; }
 
 /** Provision a tablet: store the sha256 of a fresh device token, return the raw
  *  token to put in an httpOnly cookie. Bound to a restaurant's station account. */
@@ -605,16 +620,18 @@ export function provisionStationDevice(stationUserId: number, companyId: number,
   return token;
 }
 
-/** Resolve a device token → its station account + company, or null if unknown/revoked. */
+/** Resolve a device token → its station account + company, or null if unknown/revoked.
+ *  A DISABLED (access turned off) device is still returned — with disabled=true — so
+ *  callers can show "turned off" rather than "not set up". Only revoked = gone. */
 export function getStationDevice(token: string): StationDevice | null {
   if (!token) return null;
   const db = getDb();
   const row = db.prepare(
-    'SELECT id, station_user_id, company_id, label, revoked, locked_until FROM station_devices WHERE token_hash = ?'
-  ).get(sha256(token)) as (StationDevice & { revoked: number }) | undefined;
+    'SELECT id, station_user_id, company_id, label, revoked, disabled, locked_until FROM station_devices WHERE token_hash = ?'
+  ).get(sha256(token)) as { id: number; station_user_id: number; company_id: number; label: string | null; revoked: number; disabled: number; locked_until: string | null } | undefined;
   if (!row || row.revoked) return null;
   db.prepare('UPDATE station_devices SET last_used_at = ? WHERE id = ?').run(nowISO(), row.id);
-  return { id: row.id, station_user_id: row.station_user_id, company_id: row.company_id, label: row.label ?? null, locked_until: row.locked_until ?? null };
+  return { id: row.id, station_user_id: row.station_user_id, company_id: row.company_id, label: row.label ?? null, locked_until: row.locked_until ?? null, disabled: !!row.disabled };
 }
 
 export function revokeStationDevice(token: string): void {
@@ -625,6 +642,43 @@ export function revokeStationDevice(token: string): void {
 /** Revoke ALL device tokens for a station account (full tablet reset for a restaurant). */
 export function revokeStationDevicesForStation(stationUserId: number): void {
   getDb().prepare('UPDATE station_devices SET revoked = 1 WHERE station_user_id = ?').run(stationUserId);
+}
+
+// -- Manager management of provisioned tablets (remote list / toggle / remove) --
+
+/** Provisioned (non-revoked) tablets, optionally scoped to a set of companies. */
+export function listStationDevices(companyIds: number[] | null): StationDeviceRow[] {
+  const db = getDb();
+  const rows = db.prepare(
+    'SELECT id, company_id, label, created_by, created_at, last_used_at, disabled FROM station_devices WHERE revoked = 0 ORDER BY created_at DESC'
+  ).all() as { id: number; company_id: number; label: string | null; created_by: string | null; created_at: string; last_used_at: string | null; disabled: number }[];
+  const scoped = companyIds ? rows.filter(r => companyIds.includes(r.company_id)) : rows;
+  return scoped.map(r => ({ id: r.id, company_id: r.company_id, label: r.label ?? null, created_by: r.created_by ?? null, created_at: r.created_at, last_used_at: r.last_used_at ?? null, disabled: !!r.disabled }));
+}
+
+/** A device's company (for authorising a manager's remote action), or null if unknown/revoked. */
+export function getStationDeviceCompany(id: number): number | null {
+  const row = getDb().prepare('SELECT company_id, revoked FROM station_devices WHERE id = ?').get(id) as { company_id: number; revoked: number } | undefined;
+  if (!row || row.revoked) return null;
+  return row.company_id;
+}
+
+/** Turn a tablet's access on/off (reversible). Off also invalidates its live sessions. */
+export function setStationDeviceDisabled(id: number, disabled: boolean): void {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare('UPDATE station_devices SET disabled = ? WHERE id = ?').run(disabled ? 1 : 0, id);
+    if (disabled) db.prepare('DELETE FROM sessions WHERE station_device_id = ?').run(id);
+  })();
+}
+
+/** Permanently remove a tablet setup by id (revoke token + drop its sessions). */
+export function revokeStationDeviceById(id: number): void {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare('UPDATE station_devices SET revoked = 1 WHERE id = ?').run(id);
+    db.prepare('DELETE FROM sessions WHERE station_device_id = ?').run(id);
+  })();
 }
 
 // -- Persistent PIN brute-force lockout (survives restarts, unlike the in-memory limiter) --

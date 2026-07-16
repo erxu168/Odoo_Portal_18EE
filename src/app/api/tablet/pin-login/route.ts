@@ -28,6 +28,9 @@ export async function POST(request: Request) {
     if (!device) {
       return NextResponse.json({ error: 'This tablet isn’t set up yet. Ask a manager.' }, { status: 403 });
     }
+    if (device.disabled) {
+      return NextResponse.json({ error: 'This tablet is turned off. Ask a manager to turn it back on.' }, { status: 403 });
+    }
 
     // Persistent lockout (survives restarts, unlike the in-memory limiter).
     if (device.locked_until && new Date(device.locked_until).getTime() > Date.now()) {
@@ -75,8 +78,12 @@ export async function POST(request: Request) {
 
     // Sign in AS the station account: atomically replace any prior session for this
     // device (one session per device — also invalidates a copied token's session),
-    // then mint the acting token bound to the new session for the person.
+    // then mint the acting token bound to the new session for the person. Returns
+    // null if the device was disabled/removed mid-request.
     const sessionToken = createTabletSession(station.id, device.id);
+    if (!sessionToken) {
+      return NextResponse.json({ error: 'This tablet is turned off. Ask a manager.' }, { status: 403 });
+    }
     const actorToken = createStationActor(sessionToken, station.id, match.user.id, match.user.employee_id ?? null, device.company_id, ACTOR_TTL_MS);
 
     const secure = process.env.NODE_ENV === 'production';

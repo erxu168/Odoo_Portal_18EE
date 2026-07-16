@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
+import SharedTabletsSection from '@/components/admin/SharedTabletsSection';
 import { PORTAL_MODULES, defaultModuleIds, parseModuleAccess } from '@/lib/modules';
 
 interface User {
@@ -382,6 +383,7 @@ export default function AdminUsersPage() {
       )}
 
       <div className="px-4 pb-24">
+        <SharedTabletsSection />
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="w-7 h-7 border-2 border-gray-300 border-t-green-600 rounded-full animate-spin" />
