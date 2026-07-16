@@ -50,9 +50,16 @@ jobs:
         run: npm ci
 
       - name: Use the Kiosk Attendance Capacitor config
-        run: cp docs/android-timeclock/capacitor.config.json ./capacitor.config.json
+        # The repo root has capacitor.config.ts (the PORTAL app: appId de.krawings.portal,
+        # server.url = origin). Capacitor loads config .ts > .js > .json, so unless we remove
+        # the .ts our copied .json is IGNORED — the APK is built as the Portal app pointed at
+        # the origin, which redirects to /login. Remove it so the kiosk .json (with the
+        # /kiosk path) is the config Capacitor actually uses.
+        run: |
+          rm -f capacitor.config.ts capacitor.config.js
+          cp docs/android-timeclock/capacitor.config.json ./capacitor.config.json
 
-      - name: Provide a webDir (app loads the live site via server.url)
+      - name: Provide a webDir (the app loads the live site via server.url)
         run: |
           mkdir -p www
           printf '' > www/index.html
