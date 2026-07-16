@@ -65,8 +65,7 @@ export default function SharedTabletsSection() {
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 mb-4">
-      <div className="mb-1 text-[15px] font-bold text-gray-900">Shared tablets</div>
-      <p className="text-[12px] text-gray-500 mb-3">Turn a kitchen tablet&rsquo;s access on or off, or remove its setup — even a lost one, from here.</p>
+      <p className="text-[13px] text-gray-500 mb-3">Turn a kitchen tablet&rsquo;s access on or off, or remove its setup — even a lost one, from here.</p>
 
       {error && <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-red-700 text-[12px]">{error}</div>}
 
