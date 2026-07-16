@@ -1,6 +1,71 @@
 # Krawings Portal — STATUS
 
-_Last updated: 2026-07-11_
+_Last updated: 2026-07-16_
+
+## 2026-07-16 session — Full build audit + STATUS reconciliation (code reality vs docs)
+
+Ran a 10-agent code-level audit of every module (surveys read the **actual code**, not this
+file). Headline: **the code is well ahead of the docs.** STATUS.md and PORTAL.md had drifted
+badly — several **shipped, live** modules were still recorded as unbuilt. The "Module status"
+table below is rewritten to match reality.
+
+**Also shipped 2026-07-16 (commits `0a28280`, `93c89c6`):** on the unified Staff screen
+(`/admin/staff`), **resend/regenerate invite link** now shows a real **mail-server delivery
+confirmation** (the SMTP `250` response via `sendStaffInviteEmail` → `email_server`), a red
+error with the SMTP reason on failure, and a **Delete account** control (`deleteUser` +
+`DELETE /api/admin/users/[id]`) that frees the UNIQUE email + employee for a fresh invite.
+A portal-access panel + work-phone field were also added on the HR employee screen.
+
+**Shipped-since items the docs were missing / mis-stating (now corrected in the table):**
+- **Inventory** — was "⚠️ backend only, page.tsx NOT built"; it is **fully built and live**
+  (7 screens, crate/pack counting, scan-to-create, photo proof, `stock.quant` writeback).
+  Honest caveat: built but **not yet in active production use**.
+- **Sales (WAJ dashboard)** — was **absent entirely**; `/sales` + `/api/sales` +
+  `components/waj-sales` shipped (5 ranges, prev-period + YoY, 5 tabs, live POS + KDS timings).
+- **Shifts / Planning** — was **absent** (PORTAL.md still called it "future/not built"); a
+  ~19-screen / ~55-route module is **live** over `planning.slot`, incl. Gantt day-timeline +
+  drag-to-create and MiLoG timesheet export.
+- **Kiosk time-clock + Station shared-tablet acting token** — shipped; were undocumented.
+- **Prep Planner frontend** — was "Phase 2 backend only"; the **full UI ships** (6 pages +
+  8 components). Remaining work is algorithm refinement (weather/DOW multipliers hardcoded
+  to 1.0; holidays treated as closed), not the frontend.
+- **Purchase receive flow** — was "rebuild pending"; the **staff-submit → manager-approve +
+  delivery-note-photo→PDF** path is shipped (OCR path removed).
+- **HR onboarding** — was "⚠️ partial, pending validation/reset/profile"; onboarding,
+  profile, documents, and password reset are all **shipped and validated on staging**.
+  Open: consent acknowledgments persist only to localStorage; onboarding-complete status
+  never set.
+- **MO live ingredient edit + BOM versioning** and **Cooking-Guide featured dishes** — shipped.
+
+**Real remaining work (prioritized) — the honest "to build" list:**
+1. **Issues & Requests frontend (17 screens)** — complete backend (7-table SQLite, 11 REST
+   routes, QR equipment registry) + Odoo addon `krawings_issues` are shipped and **completely
+   invisible**. Highest leverage: pure UI unlocks a whole module.
+2. **Reports UI consolidation** — 9 live APIs, but 5 tabs (Daily/Compare/Records/Menu/P&L)
+   render "coming soon" while **finished standalone pages sit unlinked**; Menu Intelligence
+   has no UI. Mostly wiring + one screen.
+3. **Security: authenticate the 35+ open API routes** + make `requireAuth()` throw (the
+   AUDIT_REPORT figure predates Sales/Shifts/Prep/Kiosk, so the real surface is larger).
+4. **Tasks `/admin`** — the one non-functional mock in an otherwise complete module.
+5. **Rentals tenant self-service + contract templates** — invite flow is broken end-to-end
+   (links to a non-existent accept page; invites require a template nothing can create).
+6. **Install/verify Odoo addons** — `krawings_issues`, `krawings_contract`,
+   `krawings_document_layout` (per audit, uninstalled), `krawings_task_manager` (prod).
+   Ensure only ONE of each duplicated pair is installed (`bom_auto_qty` **v4** not v3;
+   `termination` **v2** not v1).
+7. **DATEV export** — repeatedly promised (two disabled tiles + "wizard" framing); **zero
+   implementation** exists anywhere.
+8. **KDS production go-live** — config-only env flip + prod POS config id (awaiting Ethan).
+9. **Smart-Shift recommendations layer** — the missing half of the shift value prop; the
+   prep-forecast plumbing to feed it already exists.
+
+Still just mocks/specs (unchanged): Invoice Scanner (8-screen mock), Music/Krawings Auto
+(9-screen mock), Letter Writing (needs `krawings_document_layout`), Prep hot-hold/waste
+(draft spec), Staffing Optimization (ML — largely superseded by the Smart-Shift heuristic).
+
+**⚠️ Note:** this table now reflects a code-level audit, but the exact **staging/prod install
+state of the custom Odoo addons is inferred from notes, not verified live** — verify against
+the server before relying on it.
 
 ## 2026-07-11 session — Staff invite email: name the location + tell the manager when it was not sent (commit `5655422`)
 
@@ -123,31 +188,44 @@ Bug fix discovered during deploy: in Odoo 18 EE multi-company setups, `mrp.workc
 New raw material products created on staging: 1567 (Pimento berries, whole), 1568 (Black peppercorns, whole), 1569 (Brown sugar), 1570 (Water). All in RAW MATERIALS category, kg UoM, WAJ company. Need supplier prices set before BOM cost rollup is meaningful.
 
 ## Current focus
-KDS — staging deploy + live test with WAJ POS (config id 14). Production go-live is a config-only switch once staging validates.
+Active: HR onboarding / staff-invite rollout (resend + mail-server delivery confirmation +
+delete-account shipped 2026-07-16; **~34/42 employees still not set up** — bulk invite not run),
+Shifts refinements, the Sales dashboard, and permission-system rollout. Next highest-leverage
+builds: **Issues UI**, **Reports UI consolidation**, and **security hardening** (see the
+2026-07-16 audit entry above for the full prioritized list).
 
 ## Module status
 
+_Rewritten 2026-07-16 from a code-level audit. Legend: ✅ shipped · ⚠️ partial · 🟡 backend only · 📋 designed/mock · ❌ not built._
+
 | Module | Status | Notes |
 |---|---|---|
-| Auth / Login | ✅ shipped | cookie `kw_session`, hasRole() hierarchy staff/manager/admin |
-| Admin | ✅ shipped | user management, role editing |
-| Dashboard | ✅ shipped | 2×2 tile grid entry pattern |
-| Manufacturing | ✅ shipped | Create MO (with inline sub-BOM creation), MO detail, WO detail, BOM list/detail, auto-advance WOs, FIFO component lot auto-assign, consumption wizard on close. |
-| Purchase | ✅ shipped | 5 tabs, 11 screens; Choco replacement. Receive flow rebuild pending (stock.picking validation + backorder wizard). |
-| Inventory | ⚠️ backend only | 4 tables, 7 API routes, Odoo stock.quant write via action_apply_inventory. Frontend page.tsx NOT built. |
-| Recipes | ✅ shipped | Concurrent cook sessions, absolute timestamps, Kitchen Board dashboard, global timer banner. 22-issue audit done. |
-| HR / Onboarding | ⚠️ partial | 7-step DATEV wizard, DocumentCapture, self-registration. Pending: end-to-end staging validation, email notifications, password reset, profile page. |
-| Termination v2 | ✅ shipped | Portal UI + PDF (wkhtmltopdf DIN 5008 Form B) + Sign. Odoo krawings_termination_v2 = data layer only. |
-| Letter Writing | 📋 designed | DIN 5008 Form B spec, Puppeteer PDF. Not built. |
-| Contract scanner | ✅ shipped | Claude Vision API. ANTHROPIC_API_KEY in .env.local. |
-| Invoice scanner | 📋 scoped | 8-screen mock. Vision + Graph API + WhatsApp + SEPA XML + DATEV. Not built. |
-| KDS | 🟢 **live-POS ready (staging)** | `/kds` + 14 components + 5 API groups. Read-only Odoo polling (hybrid trigger), stages persisted in SQLite. Staging WAJ config id = 14. Production switch = env + settings only. |
-| Prep Planner | 🟡 **Phase 2 backend shipped** | EWMA engine + Open-Meteo + nightly cron (Phase 1) + prep items, POS↔prep mapping, item-level forecasts (Phase 2). 21/21 smoke tests pass. Seed data + frontend = Phase 3. |
-| Music (Krawings Auto) | 📋 mock done | Locked-down kiosk PWA, YouTube IFrame Player API. 9-screen mock. |
-| Staffing optimization | 📋 designed | Prophet+XGBoost → rules engine → OR-Tools constraint scheduling. 10–14 week build. |
-| **Issues & Requests** | 🟢 **backend shipped** | See below. Frontend not started. |
-| **Rentals** | 🟢 **frontend v2 shipped** | See below. 16 pages, 16 components, 25 API routes, seeded SQLite. |
-| **WAJ Jerk BOMs** | 🟢 **deployed to staging** | Boston Bay v2.0 (id 166, 167) + commercial v1.0 coexist. Side-by-side production test pending. |
+| Auth / Login | ✅ shipped | cookie `kw_session`, bcrypt + server sessions; self-registration + admin approval; password reset/change; per-company SMTP |
+| Admin / Staff hub | ✅ shipped | unified `/admin/staff` (People + Access): invite/resend + **mail-server delivery confirmation** + **delete account**, role×action permission matrix, per-user module/company scoping, SMTP + reminder settings, supplier-credential vault. Legacy `/admin/users` + `/admin/staff-access` still ship |
+| Dashboard | ✅ shipped | 2×2 tile grid, module-access filtered |
+| Manufacturing | ✅ shipped | MO/WO lifecycle over `mrp.*`, BOM CRUD + **versioning**, pick list, label subsystem. Outstanding: emerald→orange design migration |
+| Recipes / Chef Guide / Production Guide | ✅ shipped | Kitchen board, concurrent cook sessions, timers, record/approve/publish, featured dishes + ingredient scaling |
+| Purchase | ✅ shipped | ~16 screens: order guides, cart, PO create + auto-confirm, email/WhatsApp, manager approval, **receive flow (delivery-note photo→PDF)** |
+| Inventory | ✅ shipped | 7 screens: counting sessions, quick-count, crate/pack counting, scan-to-create, photo proof, `stock.quant` writeback. **Not yet in active production use** |
+| HR / Onboarding | ✅ shipped | 8-step DATEV wizard, profile, documents, contract status, invite/accept. Open: consent persistence (localStorage only), onboarding-complete status never set |
+| Termination v2 | ✅ shipped | 4-step wizard, §622 BGB, DIN 5008 PDF + Sign, send-to-accountant. Odoo `krawings_termination_v2` = data layer |
+| Shifts / Planning | ✅ shipped | ~19 screens / ~55 routes over `planning.slot`: claim, hours, covers, Gantt day-timeline + drag-create, patterns/publish, unconfirmed board, MiLoG export. **Smart-Shift recommendations layer not built** |
+| Kiosk time-clock | ✅ shipped | no-login PIN punch → `hr.attendance`; on-tablet manager settings |
+| Station (shared tablets) | ✅ shipped | PIN-gated, server-minted acting token for write attribution |
+| Sales (WAJ) | ✅ shipped | 5 ranges, prev-period + YoY, 5 tabs; live POS + KDS timings (WAJ-only by design) |
+| Contract scanner | ✅ shipped | Claude Vision API |
+| KDS | 🟢 live-POS ready (staging) | read-only POS feed, prep/ready/done, batching, timers. **Production go-live = config-only, pending Ethan** |
+| Prep Planner | ⚠️ frontend shipped, algo partial | full UI (6 pages) + EWMA nightly cron. weather/DOW multipliers hardcoded 1.0; holidays treated as closed; Ssam seed + prune cron pending |
+| Reports | ⚠️ partial | 9 live read-only APIs; some tabs live, 5 render "coming soon" over **unlinked finished pages**; Menu Intelligence has no UI |
+| Tasks | ⚠️ partial | staff/manager/templates/recurrence shipped; `/tasks/admin` is a non-functional mock |
+| Rentals | ⚠️ partial | 16 pages, SEPA, rent-increase, inspections, meters, AES vault shipped; **tenant self-service invite broken**; contract templates missing; no route auth; standalone SQLite (no Odoo) |
+| Issues & Requests | 🟡 backend only | 7-table SQLite + 11 REST routes + QR equipment registry + `krawings_issues` addon; **zero frontend** (17 screens not started) |
+| Letter Writing | 📋 designed | DIN 5008 Form B; needs `krawings_document_layout` install |
+| Invoice scanner | 📋 mock | 8-screen mock; Vision + Graph + WhatsApp + SEPA + DATEV — not built |
+| Music (Krawings Auto) | 📋 mock | 9-screen mock; locked-down kiosk PWA + YouTube IFrame |
+| Staffing optimization | 📋 designed | Prophet+XGBoost→OR-Tools; largely superseded by the Smart-Shift heuristic |
+| DATEV export | ❌ not built | promised (2 disabled tiles + "wizard" framing); no export exists anywhere |
+| WAJ Jerk BOMs | 🟢 deployed (staging) | Boston Bay v2.0 (id 166, 167) + commercial v1.0 coexist; side-by-side prod test pending |
 
 ## Prep Planner — detail
 
