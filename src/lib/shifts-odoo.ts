@@ -184,6 +184,24 @@ export async function fetchSlot(id: number): Promise<ShiftSlot | null> {
   return rows.length > 0 ? mapSlot(rows[0]) : null;
 }
 
+/** employeeId → email (work_email, else private_email) for the given employees. */
+export async function fetchEmployeeEmails(employeeIds: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (employeeIds.length === 0) return out;
+  const rows = (await getOdoo().searchRead(
+    'hr.employee',
+    [['id', 'in', employeeIds]],
+    ['work_email', 'private_email'],
+    { limit: employeeIds.length },
+  )) as OdooRow[];
+  for (const r of rows) {
+    const id = typeof r.id === 'number' ? r.id : null;
+    const email = (typeof r.work_email === 'string' && r.work_email) || (typeof r.private_email === 'string' && r.private_email) || '';
+    if (id !== null && email) out.set(id, email);
+  }
+  return out;
+}
+
 /** Active employees of the company with resource, caps, skills and roles resolved. */
 export async function fetchEmployees(companyId: number): Promise<ShiftEmployee[]> {
   const odoo = getOdoo();

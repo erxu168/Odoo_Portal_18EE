@@ -236,6 +236,20 @@ function ensureTables(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_kiosk_reset_expires ON kiosk_pin_reset_tokens(expires_at);
 
+    -- Shift confirmation: one-time token behind the "confirm you'll be there" link
+    -- in reminder emails (lets a staffer confirm without logging in). One live
+    -- token per (slot, employee); reused across a shift's reminder emails.
+    CREATE TABLE IF NOT EXISTS shift_confirm_tokens (
+      token TEXT PRIMARY KEY,
+      slot_id INTEGER NOT NULL,
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_shift_confirm_token_slot_emp ON shift_confirm_tokens(slot_id, employee_id);
+    CREATE INDEX IF NOT EXISTS idx_shift_confirm_token_expires ON shift_confirm_tokens(expires_at);
+
     -- Kiosk: who is currently on a break. A break = clocked out with the intent
     -- to return, so there is no open Odoo attendance while on break. break_started_at
     -- is the Odoo UTC check_out of the segment they broke from; attendance_id is that
@@ -254,6 +268,12 @@ function ensureTables(): void {
   for (const [col, def] of [
     ['require_confirmation', 'INTEGER NOT NULL DEFAULT 0'],
     ['confirm_by_hours', 'REAL NOT NULL DEFAULT 24'],
+    ['reminder_email_enabled', "INTEGER NOT NULL DEFAULT 0"],
+    ['reminder_evening_time', "TEXT NOT NULL DEFAULT '18:00'"],
+    ['reminder_morning_time', "TEXT NOT NULL DEFAULT '09:00'"],
+    ['reminder_final_lead_hours', 'REAL NOT NULL DEFAULT 3'],
+    ['reminder_quiet_start', "TEXT NOT NULL DEFAULT '22:00'"],
+    ['reminder_quiet_end', "TEXT NOT NULL DEFAULT '08:00'"],
   ] as const) {
     try { db.exec(`ALTER TABLE shift_settings ADD COLUMN ${col} ${def}`); }
     catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
@@ -427,10 +447,17 @@ export function markReminderSent(slotId: number, stage: ReminderStage): void {
   getDb().prepare('INSERT OR IGNORE INTO shift_confirm_reminders (slot_id, stage, sent_at) VALUES (?,?,?)').run(slotId, stage, nowISO());
 }
 
-/** Drop a slot's reminder history (on reassign, so the new assignee starts fresh). */
+/**
+ * Drop a slot's reminder history AND its confirm tokens (on reassign / time edit /
+ * unpublish / cover — anything that resets confirmation), so the new assignee (or
+ * moved shift) starts fresh and any old email link stops working. Every reset path
+ * already calls this alongside clearConfirmation, so folding the token cleanup in
+ * here keeps all of them covered without touching each call site.
+ */
 export function clearConfirmReminders(slotId: number): void {
   ensureTables();
   getDb().prepare('DELETE FROM shift_confirm_reminders WHERE slot_id=?').run(slotId);
+  clearShiftConfirmTokens(slotId);
 }
 
 // -- Kiosk PINs -----------------------------------------------------------------
@@ -630,7 +657,23 @@ interface SettingsRow {
   allow_sick_report: number;
   require_confirmation: number;
   confirm_by_hours: number;
+  reminder_email_enabled: number;
+  reminder_evening_time: string;
+  reminder_morning_time: string;
+  reminder_final_lead_hours: number;
+  reminder_quiet_start: string;
+  reminder_quiet_end: string;
 }
+
+/** Defaults for the email-reminder fields (also used when a settings row predates them). */
+const REMINDER_DEFAULTS = {
+  reminderEmailEnabled: false,
+  reminderEveningTime: '18:00',
+  reminderMorningTime: '09:00',
+  reminderFinalLeadHours: 3,
+  reminderQuietStart: '22:00',
+  reminderQuietEnd: '08:00',
+} as const;
 
 /** Per-company shift settings. Missing row → defaults 1/12/2/1/1, confirmation off/24h. */
 export function getShiftSettings(companyId: number): ShiftSettings {
@@ -648,6 +691,7 @@ export function getShiftSettings(companyId: number): ShiftSettings {
       allowSickReport: true,
       requireConfirmation: false,
       confirmByHours: 24,
+      ...REMINDER_DEFAULTS,
     };
   }
   return {
@@ -659,6 +703,12 @@ export function getShiftSettings(companyId: number): ShiftSettings {
     allowSickReport: row.allow_sick_report === 1,
     requireConfirmation: row.require_confirmation === 1,
     confirmByHours: row.confirm_by_hours ?? 24,
+    reminderEmailEnabled: row.reminder_email_enabled === 1,
+    reminderEveningTime: row.reminder_evening_time || REMINDER_DEFAULTS.reminderEveningTime,
+    reminderMorningTime: row.reminder_morning_time || REMINDER_DEFAULTS.reminderMorningTime,
+    reminderFinalLeadHours: row.reminder_final_lead_hours ?? REMINDER_DEFAULTS.reminderFinalLeadHours,
+    reminderQuietStart: row.reminder_quiet_start || REMINDER_DEFAULTS.reminderQuietStart,
+    reminderQuietEnd: row.reminder_quiet_end || REMINDER_DEFAULTS.reminderQuietEnd,
   };
 }
 
@@ -672,8 +722,8 @@ export function companiesRequiringConfirmation(): number[] {
 export function saveShiftSettings(s: ShiftSettings): void {
   ensureTables();
   getDb().prepare(`
-    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(company_id) DO UPDATE SET
       require_approval = excluded.require_approval,
       answer_deadline_hours = excluded.answer_deadline_hours,
@@ -682,6 +732,12 @@ export function saveShiftSettings(s: ShiftSettings): void {
       allow_sick_report = excluded.allow_sick_report,
       require_confirmation = excluded.require_confirmation,
       confirm_by_hours = excluded.confirm_by_hours,
+      reminder_email_enabled = excluded.reminder_email_enabled,
+      reminder_evening_time = excluded.reminder_evening_time,
+      reminder_morning_time = excluded.reminder_morning_time,
+      reminder_final_lead_hours = excluded.reminder_final_lead_hours,
+      reminder_quiet_start = excluded.reminder_quiet_start,
+      reminder_quiet_end = excluded.reminder_quiet_end,
       updated_at = excluded.updated_at
   `).run(
     s.companyId,
@@ -692,8 +748,59 @@ export function saveShiftSettings(s: ShiftSettings): void {
     s.allowSickReport ? 1 : 0,
     s.requireConfirmation ? 1 : 0,
     s.confirmByHours,
+    s.reminderEmailEnabled ? 1 : 0,
+    s.reminderEveningTime,
+    s.reminderMorningTime,
+    s.reminderFinalLeadHours,
+    s.reminderQuietStart,
+    s.reminderQuietEnd,
     nowISO(),
   );
+}
+
+// -- Shift confirm tokens (behind the "confirm you'll be there" email link) ------
+
+/**
+ * One-time-ish token that lets a staffer confirm a shift from a reminder email
+ * without logging in. Reuses a live token for the same (slot, employee) so every
+ * reminder email for a shift carries the same link; expiresAtISO should be just
+ * past the shift so the link dies afterwards. The token is NOT consumed on use —
+ * confirming is idempotent, so a re-click still lands on a friendly "confirmed".
+ */
+export function getOrCreateShiftConfirmToken(
+  slotId: number,
+  companyId: number,
+  employeeId: number,
+  expiresAtISO: string,
+): string {
+  ensureTables();
+  const db = getDb();
+  db.prepare('DELETE FROM shift_confirm_tokens WHERE expires_at < ?').run(nowISO());
+  const existing = db
+    .prepare('SELECT token FROM shift_confirm_tokens WHERE slot_id=? AND employee_id=? AND expires_at > ?')
+    .get(slotId, employeeId, nowISO()) as { token: string } | undefined;
+  if (existing) return existing.token;
+  const token = randomBytes(32).toString('hex');
+  db.prepare(
+    'INSERT OR REPLACE INTO shift_confirm_tokens (token, slot_id, company_id, employee_id, created_at, expires_at) VALUES (?,?,?,?,?,?)',
+  ).run(token, slotId, companyId, employeeId, nowISO(), expiresAtISO);
+  return token;
+}
+
+/** Resolve a confirm token → {slotId, companyId, employeeId}, or null if invalid/expired. Not consumed. */
+export function resolveShiftConfirmToken(token: string): { slotId: number; companyId: number; employeeId: number } | null {
+  ensureTables();
+  const row = getDb()
+    .prepare('SELECT slot_id, company_id, employee_id FROM shift_confirm_tokens WHERE token=? AND expires_at > ?')
+    .get(token, nowISO()) as { slot_id: number; company_id: number; employee_id: number } | undefined;
+  if (!row) return null;
+  return { slotId: row.slot_id, companyId: row.company_id, employeeId: row.employee_id };
+}
+
+/** Drop a slot's confirm tokens (e.g. when it is reassigned). */
+export function clearShiftConfirmTokens(slotId: number): void {
+  ensureTables();
+  getDb().prepare('DELETE FROM shift_confirm_tokens WHERE slot_id=?').run(slotId);
 }
 
 // -- Cover requests ---------------------------------------------------------------

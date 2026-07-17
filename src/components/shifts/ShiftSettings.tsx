@@ -29,11 +29,26 @@ interface SettingsForm {
   weekendEnabled: boolean;
   requireConfirmation: boolean;
   confirmByHours: number;
+  reminderEmailEnabled: boolean;
+  reminderEveningTime: string;
+  reminderMorningTime: string;
+  reminderFinalLeadHours: number;
 }
 
 const ANSWER_HOURS = [4, 8, 12, 24];
 const SETTLE_HOURS = [1, 2, 4, 12];
 const CONFIRM_HOURS = [12, 24, 48];
+const EVENING_TIMES = ['16:00', '17:00', '18:00', '19:00', '20:00'];
+const MORNING_TIMES = ['07:00', '08:00', '09:00', '10:00', '11:00'];
+const FINAL_LEAD_HOURS = [2, 3, 4, 6];
+
+function str(v: unknown, fallback: string): string {
+  return typeof v === 'string' && v ? v : fallback;
+}
+
+function timeOptions(base: string[], current: string): string[] {
+  return base.includes(current) ? base : [...base, current].sort();
+}
 
 function bool(v: unknown, fallback: boolean): boolean {
   return typeof v === 'boolean' ? v : fallback;
@@ -95,6 +110,10 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
         weekendEnabled: bool(s.weekendEnabled, true),
         requireConfirmation: bool(s.requireConfirmation, false),
         confirmByHours: numOr(s.confirmByHours, 24),
+        reminderEmailEnabled: bool(s.reminderEmailEnabled, false),
+        reminderEveningTime: str(s.reminderEveningTime, '18:00'),
+        reminderMorningTime: str(s.reminderMorningTime, '09:00'),
+        reminderFinalLeadHours: numOr(s.reminderFinalLeadHours, 3),
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -265,25 +284,98 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                 }
               />
               {form.requireConfirmation && (
-                <SettingRow
-                  title="Confirm by"
-                  hint="How long before a shift confirmation is due; after that it’s flagged for you"
-                  divider
-                  control={
-                    <select
-                      aria-label="Confirm by"
-                      className={selectClass}
-                      value={form.confirmByHours}
-                      onChange={e => update({ confirmByHours: Number(e.target.value) })}
-                    >
-                      {hourOptions(CONFIRM_HOURS, form.confirmByHours).map(h => (
-                        <option key={h} value={h}>
-                          {h} hours before
-                        </option>
-                      ))}
-                    </select>
-                  }
-                />
+                <>
+                  <SettingRow
+                    title="Alert me by"
+                    hint="How long before a shift an unconfirmed one is flagged for you on the board"
+                    divider
+                    control={
+                      <select
+                        aria-label="Alert me by"
+                        className={selectClass}
+                        value={form.confirmByHours}
+                        onChange={e => update({ confirmByHours: Number(e.target.value) })}
+                      >
+                        {hourOptions(CONFIRM_HOURS, form.confirmByHours).map(h => (
+                          <option key={h} value={h}>
+                            {h} hours before
+                          </option>
+                        ))}
+                      </select>
+                    }
+                  />
+                      <SettingRow
+                        title="Evening-before reminder"
+                        hint="First reminder — the evening before (drives the app + push nudge, and email if on)"
+                        divider
+                        control={
+                          <select
+                            aria-label="Evening-before reminder time"
+                            className={selectClass}
+                            value={form.reminderEveningTime}
+                            onChange={e => update({ reminderEveningTime: e.target.value })}
+                          >
+                            {timeOptions(EVENING_TIMES, form.reminderEveningTime).map(t => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        }
+                      />
+                      <SettingRow
+                        title="Morning-of reminder"
+                        hint="Second reminder, on the morning of the shift"
+                        divider
+                        control={
+                          <select
+                            aria-label="Morning-of reminder time"
+                            className={selectClass}
+                            value={form.reminderMorningTime}
+                            onChange={e => update({ reminderMorningTime: e.target.value })}
+                          >
+                            {timeOptions(MORNING_TIMES, form.reminderMorningTime).map(t => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        }
+                      />
+                      <SettingRow
+                        title="Final reminder"
+                        hint="Last reminder before the shift, then it’s escalated to you"
+                        divider
+                        control={
+                          <select
+                            aria-label="Final reminder lead time"
+                            className={selectClass}
+                            value={form.reminderFinalLeadHours}
+                            onChange={e => update({ reminderFinalLeadHours: Number(e.target.value) })}
+                          >
+                            {(FINAL_LEAD_HOURS.includes(form.reminderFinalLeadHours)
+                              ? FINAL_LEAD_HOURS
+                              : [...FINAL_LEAD_HOURS, form.reminderFinalLeadHours].sort((a, b) => a - b)
+                            ).map(h => (
+                              <option key={h} value={h}>
+                                {h} hours before
+                              </option>
+                            ))}
+                          </select>
+                        }
+                      />
+                      <SettingRow
+                        title="Email reminders"
+                        hint="Also email the reminder with a one-tap confirm link (on top of the app nudges)"
+                        divider
+                        control={
+                          <ToggleSwitch
+                            on={form.reminderEmailEnabled}
+                            onToggle={() => update({ reminderEmailEnabled: !form.reminderEmailEnabled })}
+                          />
+                        }
+                      />
+                </>
               )}
             </div>
 

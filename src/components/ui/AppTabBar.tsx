@@ -55,7 +55,7 @@ const TABS = [
  * Bottom tab bar. Hidden on auth pages and full-screen module pages (recipes, etc.)
  */
 
-const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/hr', '/kiosk'];
+const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/hr', '/kiosk', '/confirm-shift'];
 // Wide routes get an edge-to-edge bar (tabs stay centered) instead of a
 // phone-width box floating over wide content.
 const WIDE_ROUTES = ['/shifts'];

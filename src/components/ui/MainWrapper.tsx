@@ -9,7 +9,7 @@ import { usePathname } from 'next/navigation';
  */
 
 const FULL_SCREEN_ROUTES = ['/recipes', '/hr'];
-const FULL_VIEWPORT_ROUTES = ['/kds', '/kiosk'];
+const FULL_VIEWPORT_ROUTES = ['/kds', '/kiosk', '/confirm-shift'];
 // Wide routes: no phone-width cap — the module's own screens choose their width
 // (grid screens go wide on desktop, list/form screens self-center). Phones are
 // unaffected because they're already narrower than any of these caps.

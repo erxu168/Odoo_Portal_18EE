@@ -65,8 +65,20 @@ export interface ShiftSettings {
   allowSickReport: boolean;
   /** Require staff to confirm ("I'll be there") their assigned published shifts. */
   requireConfirmation: boolean;
-  /** Hours before a shift by which confirmation is due (drives reminders + overdue). */
+  /** Hours before a shift by which confirmation is due (drives the manager alert + overdue flag). */
   confirmByHours: number;
+  /** Also email staff a reminder with a one-tap confirm link (on top of push + in-app). */
+  reminderEmailEnabled: boolean;
+  /** Berlin "HH:MM" for the evening-before staff nudge. */
+  reminderEveningTime: string;
+  /** Berlin "HH:MM" for the morning-of staff nudge. */
+  reminderMorningTime: string;
+  /** Hours before start for the final staff nudge. */
+  reminderFinalLeadHours: number;
+  /** Berlin "HH:MM" quiet-hours window start (no staff nudges sent inside it). */
+  reminderQuietStart: string;
+  /** Berlin "HH:MM" quiet-hours window end (exclusive). */
+  reminderQuietEnd: string;
 }
 
 /** Snapshot of the slot at cover-request creation time. */

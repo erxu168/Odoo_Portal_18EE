@@ -327,6 +327,63 @@ export async function sendKioskSetupCodeEmail(toEmail: string, toName: string, c
 }
 
 /**
+ * Shift reminder: ask a staff member to confirm they'll be there, with a one-tap
+ * link that confirms without logging in. Sent by the confirmation cron on top of
+ * the in-app + web-push nudges. Best-effort — the caller catches SMTP errors.
+ */
+export async function sendShiftReminderEmail(
+  toEmail: string,
+  toName: string,
+  shift: { day: string; time: string; roleName: string },
+  confirmUrl: string,
+  companyId?: number,
+): Promise<void> {
+  const brand = await getCompanyBrandName(companyId);
+  const location = brand && brand !== 'Staff Portal' ? brand : 'Krawings';
+  const roleLine = shift.roleName ? ` (${shift.roleName})` : '';
+  const when = `${shift.day}, ${shift.time}${roleLine}`;
+
+  await getTransporter(companyId).sendMail({
+    from: `"${location} Shifts" <${getFrom(companyId)}>`,
+    to: toEmail,
+    subject: `Please confirm your shift — ${shift.day}, ${shift.time}`,
+    text: [
+      `Hi ${toName},`,
+      '',
+      `This is a reminder about your upcoming shift at ${location}:`,
+      `  ${when}`,
+      '',
+      'Please confirm you’ll be there by opening this link:',
+      confirmUrl,
+      '',
+      'We’ll keep reminding you until you confirm. Can’t make it? Let your manager know as soon as you can.',
+      '',
+      `— ${location} Shifts`,
+    ].join('\n'),
+    html: `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 28px;">
+          <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
+          <div style="font-size: 13px; color: #16A34A; font-weight: 700; margin-top: 4px; letter-spacing: 0.02em;">${location}</div>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">This is a reminder about your upcoming shift. Please confirm you’ll be there.</p>
+        <div style="background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 12px; padding: 18px 20px; margin: 18px 0; text-align: center;">
+          <div style="font-size: 18px; font-weight: 800; color: #111827;">${shift.day}</div>
+          <div style="font-size: 16px; font-weight: 600; color: #374151; margin-top: 2px;">${shift.time}${roleLine}</div>
+        </div>
+        <div style="text-align: center; margin: 26px 0;">
+          <a href="${confirmUrl}" style="display: inline-block; padding: 14px 32px; background-color: #16A34A; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px;">Confirm — I’ll be there ✅</a>
+        </div>
+        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">We’ll keep reminding you until you confirm. Can’t make it? Let your manager know as soon as you can.</p>
+        <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${location} &middot; Krawings Staff Portal</p>
+      </div>
+    `,
+  });
+}
+
+/**
  * Kiosk time clock: email a reset link so a staff member who forgot their PIN can
  * set a new one (opened on their own phone).
  */
