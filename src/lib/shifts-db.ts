@@ -140,6 +140,7 @@ function ensureTables(): void {
       end_hhmm TEXT NOT NULL,
       role_id INTEGER,
       headcount INTEGER NOT NULL DEFAULT 1,
+      min_skill TEXT,
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_template_company ON shift_templates(company_id);
@@ -278,6 +279,8 @@ function ensureTables(): void {
     try { db.exec(`ALTER TABLE shift_settings ADD COLUMN ${col} ${def}`); }
     catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
   }
+  try { db.exec('ALTER TABLE shift_templates ADD COLUMN min_skill TEXT'); }
+  catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
 
   _initialized = true;
 }
@@ -1161,6 +1164,7 @@ interface TemplateRow {
   end_hhmm: string;
   role_id: number | null;
   headcount: number;
+  min_skill: string | null;
   created_at: string;
 }
 
@@ -1173,6 +1177,7 @@ function mapTemplate(r: TemplateRow): ShiftTemplate {
     endHHMM: r.end_hhmm,
     roleId: r.role_id,
     headcount: r.headcount,
+    minSkill: r.min_skill === '2' || r.min_skill === '3' ? r.min_skill : null,
     createdAt: r.created_at,
   };
 }
@@ -1194,14 +1199,16 @@ export function createShiftTemplate(v: {
   endHHMM: string;
   roleId: number | null;
   headcount: number;
+  minSkill?: string | null;
 }): number {
   ensureTables();
+  const minSkill = v.minSkill === '2' || v.minSkill === '3' ? v.minSkill : null;
   const info = getDb()
     .prepare(
-      `INSERT INTO shift_templates (company_id, name, start_hhmm, end_hhmm, role_id, headcount, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO shift_templates (company_id, name, start_hhmm, end_hhmm, role_id, headcount, min_skill, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(v.companyId, v.name, v.startHHMM, v.endHHMM, v.roleId, v.headcount, nowISO());
+    .run(v.companyId, v.name, v.startHHMM, v.endHHMM, v.roleId, v.headcount, minSkill, nowISO());
   return Number(info.lastInsertRowid);
 }
 

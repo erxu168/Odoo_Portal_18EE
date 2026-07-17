@@ -239,7 +239,10 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
     setNote(t.name);
     setStart(t.startHHMM);
     setEnd(t.endHHMM);
-    if (t.roleId !== null) setRoleIds(new Set([t.roleId]));
+    setRoleIds(t.roleId !== null ? new Set<number>([t.roleId]) : new Set<number>());
+    // Reset the skill gate to the template's — an "Anyone" template must clear a
+    // restriction left over from a previously-applied template.
+    setMinSkill(t.minSkill === '2' || t.minSkill === '3' ? t.minSkill : '1');
     setSaveAsTemplate(false); // already saved
   }
 
@@ -469,7 +472,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
           await fetch('/api/shifts/templates', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ company_id: companyId, name: note.trim(), start, end, role_id: selectedRoles[0] ?? null, headcount: 1 }),
+            body: JSON.stringify({ company_id: companyId, name: note.trim(), start, end, role_id: selectedRoles[0] ?? null, headcount: 1, min_skill: minSkill === '1' ? null : minSkill }),
           });
         } catch { /* template save is a convenience — ignore */ }
       }
@@ -529,6 +532,11 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
                         className="pl-3.5 pr-8 py-2 rounded-full bg-green-50 border border-green-200 text-green-800 text-[var(--fs-sm)] font-semibold active:bg-green-100"
                       >
                         {t.name} · {t.startHHMM}–{t.endHHMM}
+                        {(t.minSkill === '2' || t.minSkill === '3') && (
+                          <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold align-middle">
+                            {t.minSkill === '3' ? 'L3' : 'L2+'}
+                          </span>
+                        )}
                       </button>
                       <button
                         type="button"

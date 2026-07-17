@@ -38,8 +38,9 @@ export async function POST(request: Request) {
       Number.isInteger(body.headcount) && (body.headcount as number) >= 1 && (body.headcount as number) <= 20
         ? (body.headcount as number)
         : 1;
+    const minSkill = body.min_skill === '2' || body.min_skill === '3' ? body.min_skill : null;
 
-    const id = createShiftTemplate({ companyId: auth.companyId, name, startHHMM: start, endHHMM: end, roleId, headcount });
+    const id = createShiftTemplate({ companyId: auth.companyId, name, startHHMM: start, endHHMM: end, roleId, headcount, minSkill });
     return NextResponse.json({ ok: true, id });
   } catch (err: unknown) {
     return serverError('POST templates', err);

@@ -168,6 +168,8 @@ export interface ShiftTemplate {
   endHHMM: string;
   roleId: number | null;
   headcount: number;
+  /** Minimum skill to claim shifts made from this template ('2'|'3'), or null = anyone. */
+  minSkill: string | null;
   createdAt: string;
 }
 
