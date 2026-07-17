@@ -29,6 +29,7 @@ import {
   offsetWeekKey,
   weekKeyDays,
 } from '@/lib/shifts-time';
+import { addDaysISO } from '@/lib/shifts-duplicate';
 import type { ShiftEmployee, ShiftSlot } from '@/types/shifts';
 
 interface CreatePrefill {
@@ -480,6 +481,8 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const [editRoleId, setEditRoleId] = useState<number | null>(null);
   const [editNote, setEditNote] = useState('');
   const [assignId, setAssignId] = useState<number | null>(null);
+  const [editDeptId, setEditDeptId] = useState<number | null>(null);
+  const [editMinSkill, setEditMinSkill] = useState<'1' | '2' | '3'>('1'); // open-shift skill gate
   const [showAll, setShowAll] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
@@ -506,6 +509,14 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const upcomingReqRef = useRef(0); // guards the unassign upcoming-count preview against stale responses
   const [copyDaySheet, setCopyDaySheet] = useState(false);
   const [copyTargets, setCopyTargets] = useState<Set<string>>(new Set());
+
+  // Duplicate-plan sheet: copy selected days of this week onto later weeks.
+  const [dupSheet, setDupSheet] = useState(false);
+  const [dupDays, setDupDays] = useState<Set<string>>(new Set());
+  const [dupRepeat, setDupRepeat] = useState<'once' | 'weekly_until'>('once');
+  const [dupUntil, setDupUntil] = useState('');
+  const [dupSaving, setDupSaving] = useState(false);
+  const [dupError, setDupError] = useState<string | null>(null);
 
   // Month view (calendar grid) — its own multi-week aggregation.
   const [monthAnchor, setMonthAnchor] = useState<string>(() => (focusDate || todayBerlin).slice(0, 7));
@@ -557,6 +568,63 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   }, []);
 
   const days = useMemo(() => weekKeyDays(weekKey), [weekKey]);
+
+  // How many shifts sit on each day of the visible week (drives the Duplicate sheet).
+  const weekSlotCountByDay = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of data?.slots ?? []) {
+      const d = berlinParts(s.start).date;
+      m.set(d, (m.get(d) ?? 0) + 1);
+    }
+    return m;
+  }, [data]);
+
+  function openDuplicate() {
+    const withShifts = days.filter(d => (weekSlotCountByDay.get(d) ?? 0) > 0);
+    setDupDays(new Set(withShifts));
+    setDupRepeat('once');
+    setDupUntil(addDaysISO(days[days.length - 1], 28)); // default 4 weeks past week-end
+    setDupError(null);
+    setDupSheet(true);
+  }
+
+  async function submitDuplicate() {
+    setDupSaving(true);
+    setDupError(null);
+    try {
+      const res = await fetch('/api/shifts/duplicate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId,
+          source_week: weekKey,
+          source_dates: Array.from(dupDays),
+          repeat: dupRepeat,
+          ...(dupRepeat === 'weekly_until' ? { until: dupUntil } : {}),
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+      setDupSheet(false);
+      const created = typeof d.created === 'number' ? d.created : 0;
+      const skipped = typeof d.skipped === 'number' ? d.skipped : 0;
+      showToast(
+        created === 0
+          ? skipped > 0
+            ? 'Those shifts already exist — nothing new added'
+            : 'No shifts to copy'
+          : `Duplicated ${created} shift${created === 1 ? '' : 's'}${
+              skipped > 0 ? ` (${skipped} already existed)` : ''
+            } — added as drafts`,
+      );
+      void load();
+      if (viewMode === 'month') void loadMonth();
+    } catch (err: unknown) {
+      setDupError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setDupSaving(false);
+    }
+  }
 
   // Keep the selected day inside the visible week (preserve the weekday).
   useEffect(() => {
@@ -847,6 +915,8 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     setEditRoleId(slot.roleId);
     setEditNote(slot.note || '');
     setAssignId(slot.employeeId);
+    setEditDeptId(slot.departmentId);
+    setEditMinSkill(slot.minSkill === '2' || slot.minSkill === '3' ? slot.minSkill : '1');
     setShowAll(false);
     setSaving(false);
     setSheetError(null);
@@ -873,6 +943,9 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           role_id: editRoleId,
           note: editNote.trim(),
           assign_employee_id: assignId,
+          department_id: editDeptId,
+          // Skill gate only applies to open shifts; clear it (null) when assigned or "Anyone".
+          min_skill: assignId === null && editMinSkill !== '1' ? editMinSkill : null,
         }),
       });
       const d = await res.json().catch(() => ({}));
@@ -891,11 +964,11 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   function editSheetToCreateBody(): Record<string, unknown> {
     const body: Record<string, unknown> = {
       company_id: companyId, date: editDate, start: editStart, end: editEnd,
-      role_id: editRoleId, department_id: editSlot?.departmentId ?? null,
+      role_id: editRoleId, department_id: editDeptId,
       note: editNote.trim(), count: 1,
     };
     if (assignId !== null) body.assign_employee_id = assignId;
-    else if (editSlot?.minSkill) body.min_skill = editSlot.minSkill;
+    else if (editMinSkill !== '1') body.min_skill = editMinSkill;
     return body;
   }
 
@@ -1875,9 +1948,17 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                   onChange={setSubGroup}
                 />
               )}
+              {viewMode === 'week' && (
+                <button
+                  onClick={openDuplicate}
+                  className="ml-auto rounded-lg border border-gray-200 bg-white text-gray-700 text-[var(--fs-xs)] font-semibold px-3 py-1.5 active:bg-gray-50"
+                >
+                  Duplicate…
+                </button>
+              )}
               <button
                 onClick={openUnassignMenu}
-                className="ml-auto rounded-lg border border-gray-200 bg-white text-gray-700 text-[var(--fs-xs)] font-semibold px-3 py-1.5 active:bg-gray-50"
+                className={`${viewMode === 'week' ? '' : 'ml-auto'} rounded-lg border border-gray-200 bg-white text-gray-700 text-[var(--fs-xs)] font-semibold px-3 py-1.5 active:bg-gray-50`}
               >
                 Unassign…
               </button>
@@ -2327,6 +2408,105 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         )}
       </Sheet>
 
+      <Sheet open={dupSheet} onClose={() => { if (!dupSaving) setDupSheet(false); }}>
+        <div className="flex flex-col gap-3">
+          <div className="text-[var(--fs-lg)] font-bold text-gray-900">Duplicate this week</div>
+          <div className={HINT}>
+            Copies the shifts on the days you pick onto later weeks as open drafts — nobody is
+            assigned and nothing is published until you publish it.
+          </div>
+
+          <div>
+            <div className={LBL}>Days to copy</div>
+            <div className="flex flex-col gap-1.5">
+              {days.map(d => {
+                const n = weekSlotCountByDay.get(d) ?? 0;
+                const on = dupDays.has(d);
+                const disabled = n === 0;
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() =>
+                      setDupDays(prev => {
+                        const s = new Set(prev);
+                        if (s.has(d)) s.delete(d);
+                        else s.add(d);
+                        return s;
+                      })
+                    }
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                      on ? 'border-green-600 bg-green-50' : 'border-gray-200 bg-white'
+                    } ${disabled ? 'opacity-40' : 'active:bg-gray-50'}`}
+                  >
+                    <span className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 ${on ? 'bg-green-600 border-green-600' : 'border-gray-300'}`}>
+                      {on && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+                      )}
+                    </span>
+                    <span className="flex-1 min-w-0 text-[var(--fs-sm)] font-semibold text-gray-900">{dayLabel(d)}</span>
+                    <span className="text-[var(--fs-xs)] text-gray-500">{n === 0 ? 'no shifts' : `${n} shift${n === 1 ? '' : 's'}`}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className={LBL}>Repeat</div>
+            <div className="flex bg-gray-100 rounded-full p-1">
+              <button
+                type="button"
+                onClick={() => setDupRepeat('once')}
+                className={`flex-1 py-2 rounded-full text-[var(--fs-sm)] font-semibold transition-colors ${dupRepeat === 'once' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+              >
+                Once (next week)
+              </button>
+              <button
+                type="button"
+                onClick={() => setDupRepeat('weekly_until')}
+                className={`flex-1 py-2 rounded-full text-[var(--fs-sm)] font-semibold transition-colors ${dupRepeat === 'weekly_until' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+              >
+                Every week…
+              </button>
+            </div>
+          </div>
+
+          {dupRepeat === 'weekly_until' && (
+            <div>
+              <div className={LBL}>Repeat every week until</div>
+              <input
+                type="date"
+                value={dupUntil}
+                min={addDaysISO(days[days.length - 1], 1)}
+                max={addDaysISO(days[days.length - 1], 8 * 7)}
+                onChange={e => e.target.value && setDupUntil(e.target.value)}
+                className={ds.input}
+              />
+              <div className={`${HINT} mt-1`}>Up to 8 weeks ahead.</div>
+            </div>
+          )}
+
+          {dupError && (
+            <div className="px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-[var(--fs-sm)] text-red-700">
+              {dupError}
+            </div>
+          )}
+
+          <button
+            onClick={() => void submitDuplicate()}
+            disabled={dupSaving || dupDays.size === 0}
+            className={`${ds.btnPrimary} disabled:opacity-50`}
+          >
+            {dupSaving ? 'Duplicating…' : 'Duplicate'}
+          </button>
+          <button onClick={() => setDupSheet(false)} disabled={dupSaving} className={ds.btnSecondary}>
+            Cancel
+          </button>
+        </div>
+      </Sheet>
+
       <Sheet open={editSlot !== null} onClose={closeSheet}>
         {editSlot && (
           <div className="flex flex-col gap-3">
@@ -2379,6 +2559,40 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 ))}
               </select>
             </div>
+            {(data?.departments ?? []).length > 0 && (
+              <div>
+                <div className={LBL}>Department</div>
+                <select
+                  value={editDeptId ?? ''}
+                  onChange={e => setEditDeptId(e.target.value === '' ? null : Number(e.target.value))}
+                  className={ds.input}
+                >
+                  <option value="">No department</option>
+                  {(data?.departments ?? []).map(dp => (
+                    <option key={dp.id} value={dp.id}>{dp.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {assignId === null && (
+              <div>
+                <div className={LBL}>Who can take it</div>
+                <div className="flex gap-2">
+                  {([['1', 'Anyone'], ['2', 'Level 2+'], ['3', 'Level 3 only']] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setEditMinSkill(v)}
+                      className={`flex-1 py-2 rounded-xl text-[var(--fs-sm)] font-semibold border transition-colors ${
+                        editMinSkill === v ? 'border-green-600 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-500'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <div className={LBL}>Note</div>
               <input
