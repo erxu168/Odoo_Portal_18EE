@@ -1384,22 +1384,11 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     const cls = s.state === 'draft'
       ? `${base} opacity-70 outline-dashed outline-1 outline-offset-[-2px] outline-amber-500`
       : base;
-    // Lead with the shift name (note) when one is set, so it's easy to spot.
-    // Status is never colour-only: over-cap and draft carry text tokens too.
+    // Grid cards lead with WHO + the TIME on their own lines (readable), with the
+    // shift name as a small muted third line. Status is never colour-only:
+    // over-cap and draft carry text tokens too.
     const who = isOpen ? 'Open' : firstName(s.employeeName);
-    const t = chipTime(s) + (s.overCap ? ' · over' : '');
-    let line1: string;
-    let line2 = '';
-    if (s.note) {
-      line1 = s.note;
-      line2 = (mode === 'person' ? `${who} · ` : '') + t;
-    } else if (mode === 'person') {
-      line1 = who;
-      line2 = t;
-    } else {
-      line1 = (isOpen ? 'Open · ' : '') + t;
-    }
-    if (s.state === 'draft') line2 = line2 ? `${line2} · draft` : 'draft';
+    const statusSuffix = `${s.overCap ? ' · over' : ''}${s.state === 'draft' ? ' · draft' : ''}`;
     const selectable = selectMode && !isOpen; // open shifts have no one to remove
     const isSelected = selectedIds.has(s.id);
     return (
@@ -1420,7 +1409,9 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           if (longFired.current) { longFired.current = false; return; }
           openSheet(s);
         }}
-        className={`relative ${block ? 'w-full' : ''} rounded-md px-2 py-1.5 min-h-[44px] flex flex-col items-center justify-center text-[var(--fs-xs)] font-bold leading-tight text-center ${cls} ${
+        className={`relative ${block ? 'w-full' : ''} rounded-md px-2 py-1.5 min-h-[44px] flex flex-col ${
+          block ? 'items-start justify-center gap-0.5 text-left' : 'items-center justify-center text-center'
+        } text-[var(--fs-xs)] font-bold leading-tight ${cls} ${
           selectMode ? (selectable ? (isSelected ? 'ring-2 ring-orange-600 ring-offset-1' : '') : 'opacity-40') : ''
         }`}
       >
@@ -1428,10 +1419,22 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
           <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-orange-600 text-white text-[10px] leading-none flex items-center justify-center border border-white">✓</span>
         )}
         {block ? (
-          <>
-            <span className="block truncate max-w-full">{line1}</span>
-            {line2 && <span className="block truncate max-w-full tabular-nums whitespace-nowrap">{line2}</span>}
-          </>
+          mode === 'person' ? (
+            <>
+              <span className="block truncate max-w-full">{who}</span>
+              <span className="block truncate max-w-full tabular-nums whitespace-nowrap font-semibold opacity-90">
+                {chipTime(s)}{statusSuffix}
+              </span>
+              {s.note && <span className="block truncate max-w-full font-medium opacity-60">{s.note}</span>}
+            </>
+          ) : (
+            <>
+              <span className="block truncate max-w-full tabular-nums whitespace-nowrap">
+                {isOpen ? 'Open · ' : ''}{chipTime(s)}{statusSuffix}
+              </span>
+              {s.note && <span className="block truncate max-w-full font-medium opacity-60">{s.note}</span>}
+            </>
+          )
         ) : (
           <span className="tabular-nums whitespace-nowrap">
             {s.note ? `${s.note} · ` : mode === 'person' ? `${who} ` : isOpen ? 'Open · ' : ''}
