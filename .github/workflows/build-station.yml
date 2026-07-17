@@ -1,0 +1,106 @@
+name: Build Kitchen Station APK
+
+# Cloud-builds the "Kitchen Station" Android app (a Capacitor wrapper of
+# https://portal.krawings.de — the shared kitchen tablet). This is the OPEN variant:
+# a normal app staff can leave (no kiosk lock-task). The finished .apk is published to
+# a rolling GitHub release so any tablet can install it directly. No local Android
+# Studio needed. See docs/android-station/README.md.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docs/android-station/**'
+      - '.github/workflows/build-station.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'docs/android-station/**'
+      - '.github/workflows/build-station.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'   # Capacitor 8 CLI requires Node >= 22
+          cache: 'npm'
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required Android SDK packages (Capacitor 8 targets SDK 36)
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Use the Kitchen Station Capacitor config
+        # The repo root has capacitor.config.ts (the Portal app: appId de.krawings.portal).
+        # Capacitor loads config .ts > .js > .json, so unless we remove the .ts our copied
+        # .json is IGNORED. Remove it so the station .json is the config Capacitor uses.
+        run: |
+          rm -f capacitor.config.ts capacitor.config.js
+          cp docs/android-station/capacitor.config.json ./capacitor.config.json
+
+      - name: Provide a webDir (the app loads the live site via server.url)
+        run: |
+          mkdir -p www
+          printf '' > www/index.html
+
+      - name: Generate the native Android project
+        run: npx cap add android
+
+      # NOTE: no kiosk lock-task step here — this is the OPEN variant. (The Time Clock
+      # app wires in native lock-task code; the Kitchen Station intentionally does not.)
+
+      - name: Sync Capacitor into the native project
+        run: npx cap sync android
+
+      - name: Generate the app icon (placeholder — reuses existing art; rebrand later)
+        run: |
+          set -e
+          mkdir -p assets
+          cp docs/android-timeclock/assets/icon-only.png assets/icon-only.png
+          npx --yes @capacitor/assets generate --android
+
+      - name: Build the debug APK
+        run: |
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload the APK as a build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: krawings-station-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Publish APK to the 'station-latest' release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk krawings-station.apk
+          gh release delete station-latest --repo "${{ github.repository }}" --yes --cleanup-tag || true
+          gh release create station-latest krawings-station.apk \
+            --repo "${{ github.repository }}" \
+            --title "Kitchen Station (latest build)" \
+            --notes "Auto-built from ${{ github.sha }}. On the tablet: open this page, tap krawings-station.apk, and allow install from unknown sources. Currently points at STAGING (portal.krawings.de)."

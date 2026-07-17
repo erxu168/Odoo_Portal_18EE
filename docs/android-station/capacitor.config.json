@@ -1,0 +1,13 @@
+{
+  "appId": "de.krawings.station",
+  "appName": "Kitchen Station",
+  "webDir": "www",
+  "server": {
+    "url": "https://portal.krawings.de",
+    "cleartext": true,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
