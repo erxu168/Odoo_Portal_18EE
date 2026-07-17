@@ -15,6 +15,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { invalidateActiveRequestsForSlot } from '@/lib/shifts-guards';
 import {
+  clearConfirmation,
+  clearConfirmReminders,
   deleteSlotDepartment,
   deleteSlotMinSkill,
   slotDepartments,
@@ -123,6 +125,8 @@ export async function POST(req: NextRequest) {
       await deleteSlot(id);
       deleteSlotDepartment(id);
       deleteSlotMinSkill(id);
+      clearConfirmation(id);
+      clearConfirmReminders(id);
     }
 
     if (affectedEmp.size > 0) {

@@ -151,6 +151,28 @@ export async function fetchFutureAssignedSlots(companyId: number): Promise<Shift
   return rows.map(mapSlot);
 }
 
+/**
+ * Every future ASSIGNED shift (draft AND published) for one employee, soonest
+ * first. Unlike fetchFutureAssignedSlots this is per-employee and includes
+ * drafts — used by the "remove a person from all upcoming shifts" flow.
+ */
+export async function fetchEmployeeUpcomingAssignedSlots(
+  companyId: number,
+  employeeId: number,
+): Promise<ShiftSlot[]> {
+  const rows = (await getOdoo().searchRead(
+    'planning.slot',
+    [
+      ['company_id', '=', companyId],
+      ['employee_id', '=', employeeId],
+      ['start_datetime', '>=', nowOdooUtc()],
+    ],
+    SLOT_FIELDS,
+    { limit: 1000, order: 'start_datetime asc, id asc' },
+  )) as OdooRow[];
+  return rows.map(mapSlot);
+}
+
 /** One slot by id, or null when it no longer exists. */
 export async function fetchSlot(id: number): Promise<ShiftSlot | null> {
   const rows = (await getOdoo().searchRead(
@@ -333,7 +355,13 @@ export async function updateSlot(
     vals.end_datetime = berlinDateTimeToUtcOdoo(endDate, endHHMM);
   }
   if (v.roleId !== undefined) vals.role_id = v.roleId ?? false;
-  if (v.resourceId !== undefined) vals.resource_id = v.resourceId ? v.resourceId : false;
+  if (v.resourceId !== undefined) {
+    vals.resource_id = v.resourceId ? v.resourceId : false;
+    // An open (unassigned) shift can never be over-cap — there is no assignee.
+    // Clear any stale flag inline so the now-open slot doesn't render red;
+    // recompute (driven by callers) reads only assigned slots and so can't.
+    if (!v.resourceId) vals.x_over_cap_flag = false;
+  }
   if (v.note !== undefined) vals.name = v.note || false;
   if (v.state !== undefined) vals.state = v.state;
 

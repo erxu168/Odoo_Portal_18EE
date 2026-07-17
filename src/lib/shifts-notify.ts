@@ -26,6 +26,7 @@ const PUSH_TITLES: Record<string, string> = {
   cover_invalidated: 'Cover request no longer valid',
   sick_reported: 'Sick report',
   shift_published: 'New shifts published',
+  shift_unpublished: 'Shift removed',
   week_published: 'New shifts to pick',
   shift_changed: 'Shift updated',
   shift_cancelled: 'Shift cancelled',

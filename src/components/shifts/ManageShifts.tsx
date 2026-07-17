@@ -484,14 +484,26 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const [saving, setSaving] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
 
-  const [confirm, setConfirm] = useState<'publish' | 'copy' | 'delete' | null>(null);
+  const [confirm, setConfirm] = useState<'publish' | 'copy' | 'delete' | 'unpublish' | null>(null);
   const [lastWeekCount, setLastWeekCount] = useState<number | null>(null);
   const [notifyOnPublish, setNotifyOnPublish] = useState(true);
+  const [notifyOnUnpublish, setNotifyOnUnpublish] = useState(true);
+
+  // Bulk unassign: a chooser sheet, a per-person flow (picker → confirm), and a
+  // grid multi-select mode. Shifts become OPEN (unfilled), never deleted.
+  const [unassignMenu, setUnassignMenu] = useState(false);
+  const [personPicker, setPersonPicker] = useState(false);
+  const [unassignTarget, setUnassignTarget] = useState<{ id: number; name: string; weekCount: number } | null>(null);
+  const [unassignUpcoming, setUnassignUpcoming] = useState<number | null>(null);
+  const [notifyOnUnassign, setNotifyOnUnassign] = useState(true);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [upcoming, setUpcoming] = useState<{ count: number; weeks: number } | null>(null); // all future drafts
   const [quickMenu, setQuickMenu] = useState<ShiftSlot | null>(null);
   const [deleteSeries, setDeleteSeries] = useState<{ slot: ShiftSlot; count: number } | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longFired = useRef(false);
+  const upcomingReqRef = useRef(0); // guards the unassign upcoming-count preview against stale responses
   const [copyDaySheet, setCopyDaySheet] = useState(false);
   const [copyTargets, setCopyTargets] = useState<Set<string>>(new Set());
 
@@ -783,6 +795,20 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   }, [data, days]);
 
   const draftCount = (data?.slots ?? []).filter(s => s.state === 'draft').length;
+  const publishedCount = (data?.slots ?? []).filter(s => s.state === 'published').length;
+
+  // People assigned in the loaded week, most shifts first — drives the unassign
+  // picker (built from slots, so a name shows even if off the current roster).
+  const peopleWithShifts = (() => {
+    const m = new Map<number, { id: number; name: string; count: number }>();
+    for (const s of data?.slots ?? []) {
+      if (s.employeeId === null) continue;
+      const e = m.get(s.employeeId) ?? { id: s.employeeId, name: s.employeeName || 'Unknown', count: 0 };
+      e.count += 1;
+      m.set(s.employeeId, e);
+    }
+    return Array.from(m.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  })();
   const qaShiftCount = qaDate ? quickAddCombos().length : 0; // shifts the quick-add will make
   // ArbZG check for the quick-add: picked people's existing shifts vs the new times.
   // Only covers the loaded week — the create screen re-checks with its own fetch.
@@ -1154,6 +1180,167 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     }
   }
 
+  // Unpublish = the mirror of publish. Reset the notify toggle to ON each open,
+  // matching the publish sheet so a quiet unpublish is a deliberate per-use choice.
+  function openUnpublishConfirm() {
+    setNotifyOnUnpublish(true);
+    setConfirm('unpublish');
+  }
+
+  async function doUnpublishWeek() {
+    setConfirm(null);
+    try {
+      const res = await fetch('/api/shifts/unpublish-week', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, week: weekKey, notify: notifyOnUnpublish }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+      const n = typeof d.unpublished === 'number' ? d.unpublished : 0;
+      showToast(
+        n === 0
+          ? 'Nothing to unpublish'
+          : `Unpublished ${n} shift${n === 1 ? '' : 's'} — back to draft${notifyOnUnpublish ? ', staff notified' : ''}`,
+      );
+      void load();
+      if (viewMode === 'month') void loadMonth();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not unpublish the week');
+    }
+  }
+
+  // Single-shift unpublish from the quick menu. There is no notify toggle in that
+  // flow, so it always notifies the assignee (honours the "notify by default"
+  // choice) — the week sheet is where a manager opts into a quiet unpublish.
+  async function doUnpublishSlot(slot: ShiftSlot) {
+    try {
+      const res = await fetch('/api/shifts/unpublish-slot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, slot_id: slot.id, notify: true }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+      const n = typeof d.unpublished === 'number' ? d.unpublished : 0;
+      showToast(
+        n === 0
+          ? 'That shift is already a draft'
+          : `Shift unpublished — back to draft${slot.employeeId ? ', staff notified' : ''}`,
+      );
+      void load();
+      if (viewMode === 'month') void loadMonth();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not unpublish the shift');
+    }
+  }
+
+  // ---- Bulk unassign --------------------------------------------------------
+  function openUnassignMenu() {
+    setNotifyOnUnassign(true);
+    setUnassignMenu(true);
+  }
+
+  function startSelectMode() {
+    setUnassignMenu(false);
+    setViewMode('week'); // lock to the week grid — the only view with selectable chips
+    setSelectedIds(new Set());
+    setSelectMode(true);
+  }
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+  function toggleSelected(id: number) {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+
+  function openPersonPicker() {
+    setUnassignMenu(false);
+    setPersonPicker(true);
+  }
+
+  // Pick a person → open the confirm sheet and peek at how many upcoming shifts
+  // they're on (this week's count comes from the loaded grid).
+  function pickPersonForUnassign(p: { id: number; name: string; count: number }) {
+    setPersonPicker(false);
+    setUnassignTarget({ id: p.id, name: p.name, weekCount: p.count });
+    setUnassignUpcoming(null);
+    const reqId = upcomingReqRef.current + 1; // monotonic — unique per request, even same person
+    upcomingReqRef.current = reqId;
+    (async () => {
+      try {
+        const res = await fetch('/api/shifts/unassign-person', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company_id: companyId, employee_id: p.id, scope: 'upcoming', dry_run: true }),
+        });
+        const d = await res.json().catch(() => ({}));
+        // Ignore a slow response if a different person has since been picked.
+        if (res.ok && typeof d.count === 'number' && upcomingReqRef.current === reqId) {
+          setUnassignUpcoming(d.count);
+        }
+      } catch { /* preview only — ignore */ }
+    })();
+  }
+
+  async function doUnassignPerson(scope: 'week' | 'upcoming') {
+    const t = unassignTarget;
+    if (!t) return;
+    setUnassignTarget(null);
+    try {
+      const res = await fetch('/api/shifts/unassign-person', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, employee_id: t.id, scope, week: weekKey, notify: notifyOnUnassign }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+      const n = typeof d.unassigned === 'number' ? d.unassigned : 0;
+      const w = typeof d.weeks === 'number' ? d.weeks : 1;
+      showToast(
+        n === 0
+          ? `${t.name} had no shifts to unassign`
+          : `Removed ${t.name} from ${n} shift${n === 1 ? '' : 's'}${scope === 'upcoming' && w > 1 ? ` across ${w} weeks` : ''} — now open`,
+      );
+      void load();
+      if (viewMode === 'month') void loadMonth();
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not unassign this person');
+    }
+  }
+
+  async function doUnassignSelected() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    try {
+      const res = await fetch('/api/shifts/unassign-slots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, slot_ids: ids, notify: true }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof d.error === 'string' ? d.error : `HTTP ${res.status}`);
+      const n = typeof d.unassigned === 'number' ? d.unassigned : 0;
+      showToast(
+        n === 0
+          ? 'Those shifts are already open'
+          : `Unassigned ${n} shift${n === 1 ? '' : 's'} — now open`,
+      );
+      exitSelectMode();
+      void load();
+      if (viewMode === 'month') void loadMonth();
+    } catch (err: unknown) {
+      // Keep the selection so the manager can retry.
+      showToast(err instanceof Error ? err.message : 'Could not unassign the selected shifts');
+    }
+  }
+
   // Peek at last week so the confirm can say how many shifts will be copied.
   async function openCopyConfirm() {
     setLastWeekCount(null);
@@ -1213,11 +1400,14 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
       line1 = (isOpen ? 'Open · ' : '') + t;
     }
     if (s.state === 'draft') line2 = line2 ? `${line2} · draft` : 'draft';
+    const selectable = selectMode && !isOpen; // open shifts have no one to remove
+    const isSelected = selectedIds.has(s.id);
     return (
       <button
         key={s.id}
-        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setQuickMenu(s); }}
+        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!selectMode) setQuickMenu(s); }}
         onPointerDown={() => {
+          if (selectMode) return;
           longFired.current = false;
           if (pressTimer.current) clearTimeout(pressTimer.current);
           pressTimer.current = setTimeout(() => { longFired.current = true; setQuickMenu(s); }, 450);
@@ -1226,11 +1416,17 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         onPointerLeave={() => { if (pressTimer.current) clearTimeout(pressTimer.current); }}
         onClick={e => {
           e.stopPropagation();
+          if (selectMode) { if (selectable) toggleSelected(s.id); return; }
           if (longFired.current) { longFired.current = false; return; }
           openSheet(s);
         }}
-        className={`relative ${block ? 'w-full' : ''} rounded-md px-2 py-1.5 min-h-[44px] flex flex-col items-center justify-center text-[var(--fs-xs)] font-bold leading-tight text-center ${cls}`}
+        className={`relative ${block ? 'w-full' : ''} rounded-md px-2 py-1.5 min-h-[44px] flex flex-col items-center justify-center text-[var(--fs-xs)] font-bold leading-tight text-center ${cls} ${
+          selectMode ? (selectable ? (isSelected ? 'ring-2 ring-orange-600 ring-offset-1' : '') : 'opacity-40') : ''
+        }`}
       >
+        {selectMode && isSelected && (
+          <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-orange-600 text-white text-[10px] leading-none flex items-center justify-center border border-white">✓</span>
+        )}
         {block ? (
           <>
             <span className="block truncate max-w-full">{line1}</span>
@@ -1577,10 +1773,26 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="Planning" title="Manage Shifts" subtitle="Plan, publish & reassign" showBack onBack={onBack} />
+      <AppHeader
+        supertitle="Planning"
+        title="Manage Shifts"
+        subtitle="Plan, publish & reassign"
+        showBack
+        onBack={onBack}
+        action={
+          viewMode !== 'month' && publishedCount > 0 ? (
+            <button
+              onClick={openUnpublishConfirm}
+              className="rounded-lg bg-white/10 text-white text-[var(--fs-xs)] font-semibold px-3 py-1.5 active:bg-white/20"
+            >
+              Unpublish
+            </button>
+          ) : undefined
+        }
+      />
 
       <div className="pt-3 pb-36 max-w-6xl mx-auto w-full">
-        {viewMode === 'month' ? (
+        {!selectMode && (viewMode === 'month' ? (
           <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-2.5 py-2 mx-4 mb-3">
             <button
               onClick={() => setMonthAnchor(a => shiftMonth(a, -1))}
@@ -1632,27 +1844,41 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             onJumpDate={d => { setWeekKey(berlinISOWeekKey(`${d} 12:00:00`)); setDay(d); }}
             onToday={() => { setWeekKey(currentWeekKey()); setDay(todayBerlin); }}
           />
-        )}
+        ))}
 
         <div className="px-4 pb-3 flex flex-wrap items-center gap-2">
-          <Seg<ViewMode>
-            value={viewMode}
-            options={[
-              { key: 'day', label: 'Day' },
-              { key: 'week', label: 'Week' },
-              { key: 'month', label: 'Month' },
-            ]}
-            onChange={setViewMode}
-          />
-          {viewMode !== 'day' && (
-            <Seg<SubGroup>
-              value={subGroup}
-              options={[
-                { key: 'role', label: 'By role' },
-                { key: 'person', label: 'By person' },
-              ]}
-              onChange={setSubGroup}
-            />
+          {selectMode ? (
+            <div className="text-[var(--fs-sm)] font-semibold text-orange-700">
+              Selecting shifts to unassign — tap the ones to clear.
+            </div>
+          ) : (
+            <>
+              <Seg<ViewMode>
+                value={viewMode}
+                options={[
+                  { key: 'day', label: 'Day' },
+                  { key: 'week', label: 'Week' },
+                  { key: 'month', label: 'Month' },
+                ]}
+                onChange={setViewMode}
+              />
+              {viewMode !== 'day' && (
+                <Seg<SubGroup>
+                  value={subGroup}
+                  options={[
+                    { key: 'role', label: 'By role' },
+                    { key: 'person', label: 'By person' },
+                  ]}
+                  onChange={setSubGroup}
+                />
+              )}
+              <button
+                onClick={openUnassignMenu}
+                className="ml-auto rounded-lg border border-gray-200 bg-white text-gray-700 text-[var(--fs-xs)] font-semibold px-3 py-1.5 active:bg-gray-50"
+              >
+                Unassign…
+              </button>
+            </>
           )}
         </div>
 
@@ -1846,7 +2072,8 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         )}
       </div>
 
-      {/* Footer actions */}
+      {/* Footer actions (hidden while multi-selecting shifts to unassign) */}
+      {!selectMode && (
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 safe-bottom z-[60]">
         <div className="max-w-6xl mx-auto flex gap-2">
           <button
@@ -1879,6 +2106,36 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         </div>
         <div className="h-[env(safe-area-inset-bottom)]" />
       </div>
+      )}
+
+      {/* Multi-select action bar — appears while selecting shifts to unassign */}
+      {selectMode && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3 safe-bottom z-[70]">
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center text-[var(--fs-xs)] font-semibold text-gray-500 pb-2">
+              {selectedIds.size === 0
+                ? 'Tap assigned shifts to select them'
+                : `${selectedIds.size} shift${selectedIds.size === 1 ? '' : 's'} selected`}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={exitSelectMode}
+                className="flex-1 bg-white border border-gray-200 text-gray-700 font-semibold rounded-xl py-3 text-[var(--fs-sm)] active:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void doUnassignSelected()}
+                disabled={selectedIds.size === 0}
+                className="flex-1 bg-orange-600 text-white font-semibold rounded-xl py-3 text-[var(--fs-sm)] active:bg-orange-700 shadow-lg shadow-orange-600/30 disabled:opacity-50"
+              >
+                Unassign ({selectedIds.size})
+              </button>
+            </div>
+          </div>
+          <div className="h-[env(safe-area-inset-bottom)]" />
+        </div>
+      )}
 
       {/* Slot edit / assign sheet */}
       {/* Inline quick-add — create a shift without leaving Manage */}
@@ -2241,6 +2498,106 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         </div>
       </Sheet>
 
+      <Sheet open={confirm === 'unpublish'} onClose={() => setConfirm(null)}>
+        <div className="flex flex-col gap-3">
+          <div className="text-[var(--fs-lg)] font-bold text-gray-900">Unpublish this week</div>
+          <div className="text-[var(--fs-sm)] text-gray-500">
+            {publishedCount} published shift{publishedCount === 1 ? '' : 's'} will go back to draft and disappear from staff schedules. Nothing is deleted — you can edit and republish anytime.
+          </div>
+          {publishedCount > 0 && (
+            <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-[var(--fs-sm)] text-amber-800">
+              <span aria-hidden="true">⚠</span>
+              <span>Any pending cover requests on these shifts are cancelled, and staff confirmations are cleared.</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-[var(--fs-sm)] font-semibold text-gray-900">Tell affected staff</div>
+              <div className="text-[var(--fs-xs)] text-gray-400">Turn off to unpublish quietly — assigned staff aren’t notified.</div>
+            </div>
+            <ToggleSwitch on={notifyOnUnpublish} onToggle={() => setNotifyOnUnpublish(v => !v)} />
+          </div>
+          <button
+            onClick={() => void doUnpublishWeek()}
+            disabled={publishedCount === 0}
+            className={`${ds.btnPrimary} disabled:opacity-50`}
+          >
+            Unpublish week ({publishedCount})
+          </button>
+          <button onClick={() => setConfirm(null)} className={ds.btnSecondary}>Not now</button>
+        </div>
+      </Sheet>
+
+      {/* Bulk unassign — choose a mechanism */}
+      <Sheet open={unassignMenu} onClose={() => setUnassignMenu(false)}>
+        <div className="flex flex-col gap-3">
+          <div className="text-[var(--fs-lg)] font-bold text-gray-900">Unassign people</div>
+          <div className="text-[var(--fs-sm)] text-gray-500">
+            Take people off shifts in bulk. The shifts stay — they just become open for someone else to pick up.
+          </div>
+          <button onClick={openPersonPicker} className={ds.btnSecondary}>Remove one person from their shifts</button>
+          <button onClick={startSelectMode} className={ds.btnSecondary}>Pick shifts to clear</button>
+          <button onClick={() => setUnassignMenu(false)} className={ds.btnSecondary}>Cancel</button>
+        </div>
+      </Sheet>
+
+      {/* Bulk unassign — pick which person */}
+      <Sheet open={personPicker} onClose={() => setPersonPicker(false)}>
+        <div className="flex flex-col gap-2">
+          <div className="text-[var(--fs-lg)] font-bold text-gray-900">Remove a person</div>
+          <div className="text-[var(--fs-sm)] text-gray-500">Pick who to take off shifts. Counts are for {weekLabel(weekKey)}.</div>
+          {peopleWithShifts.length === 0 ? (
+            <div className="text-[var(--fs-sm)] text-gray-400 py-6 text-center">No one is assigned this week.</div>
+          ) : (
+            <div className="flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto">
+              {peopleWithShifts.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => pickPersonForUnassign(p)}
+                  className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-gray-200 bg-white active:bg-gray-50 text-left"
+                >
+                  <span className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{p.name}</span>
+                  <span className="flex-shrink-0 text-[var(--fs-xs)] text-gray-500 tabular-nums">{p.count} shift{p.count === 1 ? '' : 's'}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <button onClick={() => setPersonPicker(false)} className={ds.btnSecondary}>Cancel</button>
+        </div>
+      </Sheet>
+
+      {/* Bulk unassign — confirm scope for the chosen person */}
+      <Sheet open={unassignTarget !== null} onClose={() => setUnassignTarget(null)}>
+        {unassignTarget && (
+          <div className="flex flex-col gap-3">
+            <div className="text-[var(--fs-lg)] font-bold text-gray-900">Remove {unassignTarget.name}</div>
+            <div className="text-[var(--fs-sm)] text-gray-500">
+              Their shifts become open (unfilled) — nothing is deleted. Any pending cover requests are cancelled and confirmations cleared.
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-[var(--fs-sm)] font-semibold text-gray-900">Tell {unassignTarget.name}</div>
+                <div className="text-[var(--fs-xs)] text-gray-400">Turn off to do it quietly — they aren’t notified.</div>
+              </div>
+              <ToggleSwitch on={notifyOnUnassign} onToggle={() => setNotifyOnUnassign(v => !v)} />
+            </div>
+            <button
+              onClick={() => void doUnassignPerson('week')}
+              disabled={unassignTarget.weekCount === 0}
+              className={`${ds.btnPrimary} disabled:opacity-50`}
+            >
+              Remove from this week ({unassignTarget.weekCount})
+            </button>
+            <button onClick={() => void doUnassignPerson('upcoming')} className={ds.btnSecondary}>
+              {unassignUpcoming === null
+                ? 'Remove from all upcoming…'
+                : `Remove from all upcoming (${unassignUpcoming})`}
+            </button>
+            <button onClick={() => setUnassignTarget(null)} className={ds.btnSecondary}>Cancel</button>
+          </div>
+        )}
+      </Sheet>
+
       {confirm === 'copy' && (
         <ConfirmDialog
           title="Copy last week?"
@@ -2294,6 +2651,11 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
             </div>
             <button onClick={() => { const s = quickMenu; setQuickMenu(null); openSheet(s); }} className={ds.btnSecondary}>Edit</button>
             <button onClick={() => { const s = quickMenu; setQuickMenu(null); void duplicateSlot(s); }} className={ds.btnSecondary}>Duplicate</button>
+            {quickMenu.state === 'published' && (
+              <button onClick={() => { const s = quickMenu; setQuickMenu(null); void doUnpublishSlot(s); }} className={ds.btnSecondary}>
+                Unpublish — back to draft
+              </button>
+            )}
             <button onClick={() => { const s = quickMenu; setQuickMenu(null); void startDelete(s); }} className={ds.btnDanger}>Delete</button>
           </div>
         )}

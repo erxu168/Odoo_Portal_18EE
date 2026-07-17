@@ -133,7 +133,8 @@ export type ShiftNotificationType =
   | 'cover_expired'
   | 'cover_invalidated'
   | 'sick_reported'
-  | 'shift_published';
+  | 'shift_published'
+  | 'shift_unpublished';
 
 export interface ShiftNotification {
   id: number;
