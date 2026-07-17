@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
+import CameraCaptureModal from '@/components/ui/CameraCaptureModal';
 
 /**
  * Three-source photo picker (Take photo · Photo library · Choose file).
@@ -20,10 +21,30 @@ interface Props {
   disabled?: boolean;
 }
 
+/**
+ * Phones/tablets have a native camera app worth using; desktops (incl. touchscreen
+ * Windows laptops) need the in-browser webcam. Match real mobile/tablet UAs; treat
+ * iPadOS (reports as "Macintosh" but has touch points) as mobile — but do NOT
+ * classify a touchscreen Windows laptop or Chromebook as mobile.
+ */
+function isMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const iPadOS = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || iPadOS;
+}
+
 export default function PhotoSourceButtons({ onFile, disabled = false }: Props) {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [showCamera, setShowCamera] = useState(false);
+
+  function openCamera() {
+    // Phone → native camera (higher quality, familiar UI). Desktop → webcam modal.
+    if (isMobileDevice()) cameraRef.current?.click();
+    else setShowCamera(true);
+  }
 
   function pick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -38,7 +59,7 @@ export default function PhotoSourceButtons({ onFile, disabled = false }: Props) 
   return (
     <>
       <div className="flex gap-2">
-        <button type="button" onClick={() => cameraRef.current?.click()} disabled={disabled} className={btn}>
+        <button type="button" onClick={openCamera} disabled={disabled} className={btn}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
             <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
             <circle cx="12" cy="13" r="4" />
@@ -67,6 +88,13 @@ export default function PhotoSourceButtons({ onFile, disabled = false }: Props) 
       <input ref={cameraRef} type="file" accept="image/*" capture="user" className="hidden" onChange={pick} disabled={disabled} />
       <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={pick} disabled={disabled} />
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pick} disabled={disabled} />
+
+      {showCamera && (
+        <CameraCaptureModal
+          onCapture={(f) => { setShowCamera(false); onFile(f); }}
+          onClose={() => setShowCamera(false)}
+        />
+      )}
     </>
   );
 }
