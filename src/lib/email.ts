@@ -25,7 +25,15 @@ async function getCompanyBrandName(companyId?: number): Promise<string> {
     const rows = (await getOdoo().read('res.company', [companyId], ['name'])) as Array<Record<string, unknown>>;
     const raw = rows?.[0]?.name;
     if (typeof raw === 'string' && raw.trim()) {
-      return raw.replace(/\s*\(.*\)\s*$/, '').trim() || raw.trim();
+      // Clean the legal company name into the recognisable restaurant name:
+      // drop a trailing "(address)" and a ", Inh. <owner>" suffix.
+      // e.g. "What a Jerk (Kottbusser Damm 96)" -> "What a Jerk",
+      //      "Ssam Korean BBQ, Inh. Ruo Xu"     -> "Ssam Korean BBQ".
+      const cleaned = raw
+        .replace(/\s*\(.*\)\s*$/, '')
+        .replace(/,\s*Inh(?:\.|aber)?\b.*$/i, '')
+        .trim();
+      return cleaned || raw.trim();
     }
   } catch {
     /* fall through to neutral label */
@@ -221,48 +229,52 @@ export interface MailSendResult {
  * confirmation (accepted recipients + the server's response, e.g. "250 OK").
  */
 export async function sendStaffInviteEmail(toEmail: string, toName: string, inviteUrl: string, companyId?: number, locationName?: string): Promise<MailSendResult> {
-  // The restaurant/location name staff will recognise. Prefer the employee's
-  // department (the actual restaurant, e.g. "What a Jerk"), since a new hire's
-  // legal Company is usually the umbrella entity and would name the wrong place.
-  // Fall back to the company brand, then to "Krawings", so the sender, subject
-  // and body always name somewhere the person recognises (a generic
-  // "Krawings Staff Portal" reads as spam to new hires).
-  const explicit = (locationName || '').trim();
-  const brand = explicit || await getCompanyBrandName(companyId);
-  const location = brand && brand !== 'Staff Portal' ? brand : 'Krawings';
+  // Brand the invite around the RESTAURANT the person was hired at (the Odoo
+  // company, e.g. "What a Jerk"), with their department (e.g. "Kitchen") as a
+  // secondary line. `locationName` carries the department. We never say
+  // "Krawings" — a new hire recognises their restaurant, not the umbrella brand.
+  const brand = await getCompanyBrandName(companyId);
+  const restaurant = brand && brand !== 'Staff Portal' ? brand : '';
+  const department = (locationName || '').trim();
+  const heading = restaurant || department || 'Staff Portal';          // big header line
+  const subheading = restaurant && department ? department : '';        // dept under the restaurant
+  const welcome = restaurant ? `Welcome to the team at ${restaurant}!` : 'Welcome to the team!';
+  const senderName = restaurant || department || 'Staff Portal';
+  const byWhom = restaurant || department || 'your workplace';
+  const footer = [restaurant, department].filter(Boolean).join(' · ') || 'Staff Portal';
   const info = await getTransporter(companyId).sendMail({
-    from: `"${location} Staff Portal" <${getFrom(companyId)}>`,
+    from: `"${senderName}" <${getFrom(companyId)}>`,
     to: toEmail,
-    subject: `Set up your ${location} staff portal account`,
+    subject: restaurant ? `Welcome to ${restaurant} — set up your staff account` : 'Set up your staff account',
     text: [
       `Hi ${toName},`,
       '',
-      `You have been added to the team at ${location}. Welcome!`,
+      `${welcome} We’re really glad to have you on the team.`,
       '',
-      `This is your staff portal account for ${location} — where you can see your shifts, hours, documents and personal details. Tap the link below to set it up and choose a password:`,
+      `This is your staff portal — where you can see your shifts, hours, documents and personal details. Tap the link below to set it up and choose a password:`,
       inviteUrl,
       '',
       'This link is just for you and expires in 14 days.',
       '',
-      `You are receiving this because a manager at ${location} added you to the staff portal. If you were not expecting it, you can ignore this email.`,
+      `You’re receiving this because a manager at ${byWhom} added you to the staff portal. If you were not expecting it, you can ignore this email.`,
       '',
-      `— ${location} · Krawings Staff Portal`,
+      footer,
     ].join('\n'),
     html: `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 32px;">
-          <div style="font-size: 24px; font-weight: 700; color: #1A1F2E;">KRAWINGS</div>
-          <div style="font-size: 13px; color: #16A34A; font-weight: 700; margin-top: 4px; letter-spacing: 0.02em;">${location}</div>
+          <div style="font-size: 26px; font-weight: 800; color: #1A1F2E; letter-spacing: 0.01em;">${heading}</div>
+          ${subheading ? `<div style="font-size: 13px; color: #16A34A; font-weight: 700; margin-top: 4px; letter-spacing: 0.02em;">${subheading}</div>` : ''}
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${toName},</p>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6;">You have been added to the team at <strong>${location}</strong>. This is your staff portal account for ${location}, where you can see your shifts, hours, documents and personal details.</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;"><strong>${welcome}</strong> We’re really glad to have you on the team. This is your staff portal, where you can see your shifts, hours, documents and personal details.</p>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Tap the button below to set up your account and choose a password.</p>
         <div style="text-align: center; margin: 28px 0;">
           <a href="${inviteUrl}" style="display: inline-block; padding: 14px 32px; background-color: #16A34A; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: 700; font-size: 15px;">Set up my account</a>
         </div>
-        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link is just for you and expires in 14 days. You are receiving this because a manager at ${location} added you to the staff portal. If you were not expecting it, you can ignore this email.</p>
+        <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">This link is just for you and expires in 14 days. You’re receiving this because a manager at ${byWhom} added you to the staff portal. If you were not expecting it, you can ignore this email.</p>
         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
-        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${location} · Krawings Staff Portal</p>
+        <p style="color: #9CA3AF; font-size: 11px; text-align: center;">${footer}</p>
       </div>
     `,
   });
