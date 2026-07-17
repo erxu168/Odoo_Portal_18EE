@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
-import UploadWidget from '@/components/ui/UploadWidget';
+import PhotoSourceButtons from '@/components/ui/PhotoSourceButtons';
 import type { EmployeeData } from '@/types/hr';
 import { calculateOnboardingPercent, aufenthaltstitelLabel } from '@/types/hr';
 
@@ -184,8 +184,12 @@ export default function MyProfile({ onBack, onEdit }: Props) {
   }
 
   async function handlePhotoFile(file: File) {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { showToast('Please choose an image.'); return; }
+    if (!file || uploadingPhoto) return;
+    // Some valid images (e.g. HEIC) report an empty MIME type, so only reject a
+    // type that is set AND clearly not an image; the decode step catches the rest.
+    if (file.type && !file.type.startsWith('image/')) { showToast('Please choose an image file.'); return; }
+    // Cap before decoding so a huge file cannot blow up memory on a phone.
+    if (file.size > 25 * 1024 * 1024) { showToast('That image is too large (max 25 MB).'); return; }
     setUploadingPhoto(true);
     try {
       const image_base64 = await downscaleToJpegBase64(file);
@@ -440,6 +444,8 @@ export default function MyProfile({ onBack, onEdit }: Props) {
             onClick={() => setShowPhotoUpload(v => !v)}
             className="w-full h-full rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold text-[var(--fs-xxl)] overflow-hidden border-3 border-green-100 active:opacity-90"
             aria-label="Change your photo"
+            aria-expanded={showPhotoUpload}
+            aria-controls="photo-upload-panel"
           >
             {photoLoaded ? (
               <img src={`/api/hr/employee/photo?v=${photoVersion}`} alt="" className="w-full h-full object-cover" />
@@ -471,18 +477,10 @@ export default function MyProfile({ onBack, onEdit }: Props) {
 
       {/* Photo upload */}
       {showPhotoUpload && (
-        <div className="mx-5 mt-3 bg-white rounded-2xl p-4 border border-gray-200">
+        <div id="photo-upload-panel" className="mx-5 mt-3 bg-white rounded-2xl p-4 border border-gray-200">
           <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-1.5">Your photo</div>
           <p className="text-[var(--fs-xs)] text-gray-500 mb-3">A clear headshot of your face. It is shown across Krawings apps (portal, kiosk).</p>
-          <UploadWidget
-            onFiles={(files) => { if (files[0]) handlePhotoFile(files[0]); }}
-            capture="user"
-            accept="image/*"
-            multiple={false}
-            disabled={uploadingPhoto}
-            cameraLabel="Take Photo"
-            fileLabel="Choose Photo"
-          />
+          <PhotoSourceButtons onFile={handlePhotoFile} disabled={uploadingPhoto} />
           {uploadingPhoto && <div className="mt-2 text-[var(--fs-xs)] text-gray-500">Uploading…</div>}
         </div>
       )}
@@ -605,7 +603,7 @@ export default function MyProfile({ onBack, onEdit }: Props) {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white text-[var(--fs-sm)] font-semibold px-4 py-2.5 rounded-full shadow-lg animate-[fadeIn_200ms_ease]">
+        <div role="status" aria-live="polite" className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-gray-800 text-white text-[var(--fs-sm)] font-semibold px-4 py-2.5 rounded-full shadow-lg animate-[fadeIn_200ms_ease]">
           {toast}
         </div>
       )}
@@ -636,6 +634,9 @@ async function downscaleToJpegBase64(file: File, maxDim = 1024, quality = 0.85):
     canvas.height = h;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Your browser cannot process this image.');
+    // White backdrop so transparent PNGs do not become black once flattened to JPEG.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
     ctx.drawImage(source, 0, 0, w, h);
     return canvas.toDataURL('image/jpeg', quality).replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
   };
@@ -653,7 +654,7 @@ async function downscaleToJpegBase64(file: File, maxDim = 1024, quality = 0.85):
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
       const el = new Image();
       el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error('Could not read that image.'));
+      el.onerror = () => reject(new Error('That image format is not supported here — please use a JPG or PNG.'));
       el.src = url;
     });
     return draw(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
