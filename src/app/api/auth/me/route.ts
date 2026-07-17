@@ -20,8 +20,11 @@ export async function GET() {
     try {
       const odoo = getOdoo();
       const emps = await odoo.searchRead('hr.employee', [['id', '=', user.employee_id]], ['image_128'], { limit: 1 });
-      if (emps.length > 0 && emps[0].image_128) {
-        avatar = emps[0].image_128;
+      // Odoo returns `false` when no photo is set; only accept a plausibly-real
+      // base64 image so a bad/empty value never renders as a broken <img>.
+      const img = emps[0]?.image_128;
+      if (typeof img === 'string' && img.length > 100) {
+        avatar = img;
       }
     } catch { /* Odoo unavailable — skip avatar */ }
   }

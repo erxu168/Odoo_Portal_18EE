@@ -32,6 +32,7 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoSaved, setPhotoSaved] = useState(false);
+  const [photoBroken, setPhotoBroken] = useState(false);
 
   useEffect(() => {
     loadDocs();
@@ -176,8 +177,8 @@ export default function StepDocuments({ employee, onNext, onPrev, onRefresh }: P
             >
               {photoPreview ? (
                 <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
-              ) : photoSaved ? (
-                <img src="/api/hr/employee/photo" alt="Profile" className="w-full h-full object-cover" />
+              ) : photoSaved && !photoBroken ? (
+                <img src="/api/hr/employee/photo" alt="Profile" onError={() => setPhotoBroken(true)} className="w-full h-full object-cover" />
               ) : (
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400">
                   <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />

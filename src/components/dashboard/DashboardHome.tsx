@@ -103,6 +103,7 @@ export default function DashboardHome() {
   const [userName, setUserName] = useState<string>('');
   const [userRole, setUserRole] = useState<string>('staff');
   const [avatar, setAvatar] = useState<string | null>(null);
+  const [avatarBroken, setAvatarBroken] = useState(false);
   const [badges, setBadges] = useState<Record<string, number>>({});
   const [shift, setShift] = useState<any>(null);
   const [tasks, setTasks] = useState<any>(null);
@@ -210,8 +211,8 @@ export default function DashboardHome() {
         <div className="absolute -top-10 -right-5 w-40 h-40 rounded-full bg-[radial-gradient(circle,rgba(245,128,10,0.08)_0%,transparent_70%)]" />
         <div className="relative flex items-center gap-3">
           <button onClick={() => router.push('/hr')} className="flex-shrink-0 active:scale-95 transition-transform">
-            {avatar ? (
-              <img src={`data:image/png;base64,${avatar}`} alt="" className="w-12 h-12 rounded-full object-cover border-2 border-white/20" />
+            {avatar && !avatarBroken ? (
+              <img src={`data:image/png;base64,${avatar}`} alt="" onError={() => setAvatarBroken(true)} className="w-12 h-12 rounded-full object-cover border-2 border-white/20" />
             ) : firstName ? (
               <div className="w-12 h-12 rounded-full bg-green-600 flex items-center justify-center border-2 border-white/20">
                 <span className="text-white text-[16px] font-bold">{firstName[0]}</span>
