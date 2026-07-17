@@ -11,6 +11,12 @@ test('defaults apply when there is no override', () => {
   expect(roleCan('admin', 'shifts.shift.manage', {})).toBe(true);
 });
 
+test('inventory.location.manage is manager+admin only', () => {
+  expect(roleCan('manager', 'inventory.location.manage', {})).toBe(true);
+  expect(roleCan('admin', 'inventory.location.manage', {})).toBe(true);
+  expect(roleCan('staff', 'inventory.location.manage', {})).toBe(false);
+});
+
 test('view action is allowed for all roles by default', () => {
   expect(roleCan('staff', 'shifts.schedule.view', {})).toBe(true);
 });

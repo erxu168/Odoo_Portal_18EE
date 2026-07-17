@@ -84,6 +84,7 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'inventory.template.manage',       module: 'inventory', label: 'Create & assign count lists',                     defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.consumption.view',      module: 'inventory', label: 'View consumption report',                        defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.productsettings.manage', module: 'inventory', label: 'Edit product settings (packs, photo rule)',      defaultRoles: ['manager', 'admin'] },
+  { key: 'inventory.location.manage',       module: 'inventory', label: 'Set up count locations (map, shelves, photos)',     defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.product.create',        module: 'inventory', label: 'Create a product via scan',                      defaultRoles: ['staff', 'manager', 'admin'] },
 
   // ── Prep Planner — a manager-only module (nav tile minRole=manager). Its item/link/forecast
