@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import UploadWidget from '@/components/ui/UploadWidget';
 import type { EmployeeData } from '@/types/hr';
 import { calculateOnboardingPercent, aufenthaltstitelLabel } from '@/types/hr';
 
@@ -115,6 +116,11 @@ export default function MyProfile({ onBack, onEdit }: Props) {
   const [iban, setIban] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [photoLoaded, setPhotoLoaded] = useState(false);
+  const [showPhotoUpload, setShowPhotoUpload] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Unique per mount + per upload so a fresh photo never collides with the
+  // 60s-cached previous one (the GET photo endpoint sets max-age=60).
+  const [photoVersion, setPhotoVersion] = useState(() => Date.now());
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
@@ -175,6 +181,32 @@ export default function MyProfile({ onBack, onEdit }: Props) {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(''), 2500);
+  }
+
+  async function handlePhotoFile(file: File) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { showToast('Please choose an image.'); return; }
+    setUploadingPhoto(true);
+    try {
+      const image_base64 = await downscaleToJpegBase64(file);
+      // Reuse the existing self-service employee PUT (image_1920 is whitelisted there,
+      // same path StepDocuments uses) — Odoo stores it canonically for every app.
+      const res = await fetch('/api/hr/employee', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { image_1920: image_base64 } }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Upload failed'); }
+      // Unique cache-buster so the <img> re-fetches the new photo (never a stale hit).
+      setPhotoVersion(Date.now());
+      setPhotoLoaded(true);
+      setShowPhotoUpload(false);
+      showToast('Photo updated');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Could not upload photo');
+    } finally {
+      setUploadingPhoto(false);
+    }
   }
 
   function startEdit(key: string, currentValue: string, countryId?: number) {
@@ -402,11 +434,28 @@ export default function MyProfile({ onBack, onEdit }: Props) {
 
       {/* Header card */}
       <div className="bg-white px-5 py-6 text-center border-b border-gray-200">
-        <div className="w-[80px] h-[80px] rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold text-[var(--fs-xxl)] mx-auto mb-3 overflow-hidden border-3 border-green-100">
-          {photoLoaded ? (
-            <img src="/api/hr/employee/photo" alt="" className="w-full h-full object-cover" />
-          ) : initials}
-          <img src="/api/hr/employee/photo" alt="" className="hidden" onLoad={() => setPhotoLoaded(true)} onError={() => setPhotoLoaded(false)} />
+        <div className="relative w-[80px] h-[80px] mx-auto mb-3">
+          <button
+            type="button"
+            onClick={() => setShowPhotoUpload(v => !v)}
+            className="w-full h-full rounded-full bg-green-50 text-green-600 flex items-center justify-center font-bold text-[var(--fs-xxl)] overflow-hidden border-3 border-green-100 active:opacity-90"
+            aria-label="Change your photo"
+          >
+            {photoLoaded ? (
+              <img src={`/api/hr/employee/photo?v=${photoVersion}`} alt="" className="w-full h-full object-cover" />
+            ) : initials}
+          </button>
+          <span className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-green-600 border-2 border-white flex items-center justify-center pointer-events-none">
+            {uploadingPhoto ? (
+              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" />
+                <circle cx="12" cy="13" r="4" />
+              </svg>
+            )}
+          </span>
+          <img src={`/api/hr/employee/photo?v=${photoVersion}`} alt="" className="hidden" onLoad={() => setPhotoLoaded(true)} onError={() => setPhotoLoaded(false)} />
         </div>
         <div className="text-[var(--fs-xl)] font-bold">{emp.name}</div>
         <div className="text-[var(--fs-sm)] text-gray-500">{job ? `${job} \u00b7 ${dept}` : dept}</div>
@@ -417,8 +466,26 @@ export default function MyProfile({ onBack, onEdit }: Props) {
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[var(--fs-xs)] font-semibold bg-amber-50 text-amber-700">{pct}% complete</span>
           )}
         </div>
-        <div className="text-[var(--fs-xs)] text-gray-400 mt-2">Tap any field to edit</div>
+        <div className="text-[var(--fs-xs)] text-gray-400 mt-2">Tap your photo to change it · Tap any field to edit</div>
       </div>
+
+      {/* Photo upload */}
+      {showPhotoUpload && (
+        <div className="mx-5 mt-3 bg-white rounded-2xl p-4 border border-gray-200">
+          <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-1.5">Your photo</div>
+          <p className="text-[var(--fs-xs)] text-gray-500 mb-3">A clear headshot of your face. It is shown across Krawings apps (portal, kiosk).</p>
+          <UploadWidget
+            onFiles={(files) => { if (files[0]) handlePhotoFile(files[0]); }}
+            capture="user"
+            accept="image/*"
+            multiple={false}
+            disabled={uploadingPhoto}
+            cameraLabel="Take Photo"
+            fileLabel="Choose Photo"
+          />
+          {uploadingPhoto && <div className="mt-2 text-[var(--fs-xs)] text-gray-500">Uploading…</div>}
+        </div>
+      )}
 
       {/* Language */}
       <SectionTitle text="Language" />
@@ -548,4 +615,49 @@ export default function MyProfile({ onBack, onEdit }: Props) {
 
 function SectionTitle({ text }: { text: string }) {
   return <div className="px-5 pt-4 pb-1 text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400">{text}</div>;
+}
+
+/**
+ * Read an image File, respect EXIF orientation (iOS selfies), downscale to a max
+ * dimension and return bare JPEG base64 (no data: prefix) — keeps the upload small
+ * and consistent before it is stored in Odoo image_1920.
+ *
+ * Primary path uses createImageBitmap with imageOrientation:'from-image' (honours
+ * EXIF on modern browsers). If that API is missing or throws (older Safari), it
+ * falls back to an <img> decode, which modern browsers auto-orient when drawing.
+ */
+async function downscaleToJpegBase64(file: File, maxDim = 1024, quality = 0.85): Promise<string> {
+  const draw = (source: CanvasImageSource, srcW: number, srcH: number): string => {
+    const scale = Math.min(1, maxDim / Math.max(srcW, srcH));
+    const w = Math.max(1, Math.round(srcW * scale));
+    const h = Math.max(1, Math.round(srcH * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Your browser cannot process this image.');
+    ctx.drawImage(source, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', quality).replace(/^data:image\/[a-zA-Z+]+;base64,/, '');
+  };
+
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
+      try { return draw(bitmap, bitmap.width, bitmap.height); }
+      finally { if (typeof bitmap.close === 'function') bitmap.close(); }
+    } catch { /* fall through to the <img> path below */ }
+  }
+
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Could not read that image.'));
+      el.src = url;
+    });
+    return draw(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
