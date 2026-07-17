@@ -4,14 +4,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useShift } from '@/lib/shift-context';
 import { useCompany } from '@/lib/company-context';
+import StationSignIn from '@/components/station/StationSignIn';
 
 /**
  * StationGate — the shared kitchen tablet's front door. Active ONLY on a
  * station account (is_shared_device); renders nothing on personal logins.
  *
- * - Signed OUT: a full-screen PIN pad blocks the whole app. Typing a 4-digit
- *   PIN identifies the person (POST /api/station/pin-login) and marks them as
- *   "acting" so their work is credited to them. The tablet's own access stays
+ * - Signed OUT: a full-screen name-then-PIN sign-in blocks the whole app. You tap
+ *   your name and enter your 4-digit PIN (POST /api/station/pin-login), which marks
+ *   you as "acting" so your work is credited to you. The tablet's own access stays
  *   kitchen-only, so a PIN never exposes HR/pay/admin.
  * - Signed IN: a slim bar with "Done" (sign out now) + an idle timer that signs
  *   out after a few minutes untouched. Last-activity is persisted so the idle
@@ -30,9 +31,6 @@ export default function StationGate({ serverShared }: { serverShared: boolean })
   // Seed from the server-derived flag: authoritative, instant, no Odoo — so we
   // never blank the portal waiting on a lookup, nor fail open on an "unknown".
   const [isShared, setIsShared] = useState<boolean>(serverShared);
-  const [pin, setPin] = useState('');
-  const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
   const signedInCompany = useRef<number | null>(null); // company the actor PIN'd into
 
   // Sign out AND drop the persisted activity stamp + company binding. Used by
@@ -136,38 +134,32 @@ export default function StationGate({ serverShared }: { serverShared: boolean })
     };
   }, [isShared, activePerson, companyId, endSession]);
 
-  const submit = useCallback(async (finalPin: string) => {
-    if (finalPin.length !== 4) return;
-    if (!companyId) { setErr('Just a moment — setting up…'); setPin(''); return; }
-    setBusy(true); setErr('');
-    try {
-      const res = await fetch('/api/station/pin-login', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: finalPin, company_id: companyId }),
-      });
-      const d = await res.json();
-      if (res.ok && d.ok) {
-        signedInCompany.current = companyId; // bind actor to the restaurant they verified against
-        try { localStorage.setItem(LS_ACT, String(Date.now())); localStorage.setItem(LS_CO, String(companyId)); } catch { /* ignore */ }
-        signIn({ id: d.user.id, name: d.user.name, employee_id: d.user.employee_id ?? null });
-        setPin('');
-      } else {
-        setErr(d.error || 'PIN not recognised.'); setPin('');
-      }
-    } catch {
-      setErr('Connection failed.'); setPin('');
-    } finally {
-      setBusy(false);
-    }
+  // Load this restaurant's pickable staff (session-authed; the station account is
+  // already signed in here, unlike the pre-session /login screen).
+  const loadStaff = useCallback(async () => {
+    if (!companyId) return [];
+    const r = await fetch(`/api/shift/staff?company_id=${companyId}`, { cache: 'no-store' });
+    if (!r.ok) throw new Error('load failed');
+    const d = await r.json();
+    return Array.isArray(d.staff) ? d.staff : [];
+  }, [companyId]);
+
+  // Verify the chosen person's PIN. Company comes from the tablet, not the picker.
+  const verify = useCallback(async (userId: number, pin: string) => {
+    if (!companyId) return { ok: false, error: 'Just a moment — setting up…' };
+    const res = await fetch('/api/station/pin-login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, company_id: companyId, pin }),
+    });
+    const d = await res.json().catch(() => ({}));
+    return res.ok && d.ok ? { ok: true, user: d.user } : { ok: false, error: d.error };
+  }, [companyId]);
+
+  const onSignedIn = useCallback((user: { id: number; name: string; employee_id: number | null }) => {
+    signedInCompany.current = companyId ?? null; // bind actor to the restaurant they verified against
+    try { localStorage.setItem(LS_ACT, String(Date.now())); if (companyId) localStorage.setItem(LS_CO, String(companyId)); } catch { /* ignore */ }
+    signIn({ id: user.id, name: user.name, employee_id: user.employee_id ?? null });
   }, [companyId, signIn]);
-
-  // Auto-submit on the 4th digit. (Intentionally only depends on `pin`.)
-  useEffect(() => {
-    if (pin.length === 4) submit(pin);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pin]);
-
-  const tapDigit = useCallback((d: string) => { setErr(''); setPin(p => (p.length >= 4 ? p : p + d)); }, []);
 
   if (!isShared) return null; // personal device → no gate
 
@@ -182,36 +174,13 @@ export default function StationGate({ serverShared }: { serverShared: boolean })
     );
   }
 
-  // Signed out → full-screen PIN lock over the whole app.
+  // Signed out → full-screen name-then-PIN sign-in over the whole app.
   return (
-    <div className="fixed inset-0 z-[200] bg-[#1A1F2E] flex flex-col items-center justify-center px-6 text-white">
-      <div className="text-center">
-        <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-white/50">Kitchen Station</div>
-        <div className="text-[var(--fs-xl)] font-bold mt-1">{companyName || 'Staff sign-in'}</div>
-        <div className="text-[var(--fs-sm)] text-white/60 mt-1">Enter your PIN to start</div>
-      </div>
-
-      <div className="flex items-center justify-center gap-3 my-6">
-        {[0, 1, 2, 3].map(i => (
-          <div key={i} className={`w-4 h-4 rounded-full transition-colors ${i < pin.length ? 'bg-white' : 'bg-white/20'}`} />
-        ))}
-      </div>
-
-      <div className="text-[14px] text-red-300 font-semibold mb-4 min-h-[20px]">{err}</div>
-
-      <div className="grid grid-cols-3 gap-3 w-full max-w-[300px]">
-        {['1','2','3','4','5','6','7','8','9'].map(d => (
-          <button key={d} disabled={busy} onClick={() => tapDigit(d)}
-            className="h-16 rounded-2xl bg-white/10 text-[26px] font-bold active:bg-white/20 disabled:opacity-50">{d}</button>
-        ))}
-        <div />
-        <button disabled={busy} onClick={() => tapDigit('0')}
-          className="h-16 rounded-2xl bg-white/10 text-[26px] font-bold active:bg-white/20 disabled:opacity-50">0</button>
-        <button onClick={() => setPin(p => p.slice(0, -1))}
-          className="h-16 rounded-2xl text-white/70 active:bg-white/10 flex items-center justify-center">
-          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><path d="M18 9l-6 6M12 9l6 6"/></svg>
-        </button>
-      </div>
-    </div>
+    <StationSignIn
+      companyName={companyName}
+      loadStaff={loadStaff}
+      verify={verify}
+      onSuccess={onSignedIn}
+    />
   );
 }

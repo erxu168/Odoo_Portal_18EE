@@ -1,40 +1,45 @@
 /**
  * station-auth.ts
- * PIN-only identification for the shared kitchen-tablet login.
+ * Name-then-PIN identification for the shared kitchen tablet.
  *
- * The tablet is signed in as a restricted "station" account (is_shared_device);
- * a person then types ONLY their 4-digit PIN and we resolve WHO they are among
- * the staff of the tablet's restaurant. The PIN never grants access beyond the
- * station account's own (kitchen-only) scope — it just says who is acting, so
- * task ticks and stock counts are credited to the right person.
+ * The tablet is signed in as a restricted "station" account (is_shared_device).
+ * A person first taps THEIR NAME, then enters their 4-digit PIN; we verify that
+ * one selected person's PIN against the canonical clock-in store (shift_kiosk_pins).
+ * The PIN never grants access beyond the station account's own (kitchen-only)
+ * scope — it only says who is acting, so task ticks and stock counts are credited
+ * to the right person. Because the NAME identifies the person (no reverse-by-PIN
+ * lookup), two staff may safely share a PIN with no ambiguity.
  */
 
-import { listStationCandidates, getUserById } from '@/lib/db';
+import { getUserById, parseCompanyIds } from '@/lib/db';
 import { verifyKioskPin } from '@/lib/shifts-db';
 
-export type PinMatch =
-  | { status: 'ok'; user: { id: number; name: string; employee_id: number | null } }
-  | { status: 'none' }        // no staff in this company has that PIN
-  | { status: 'ambiguous' };  // two+ staff share that PIN — must be fixed by a manager
+export type PersonPinResult =
+  | { status: 'ok'; user: { id: number; name: string; employee_id: number } }
+  | { status: 'invalid' }     // not a valid person for this restaurant
+  | { status: 'wrong_pin' };  // the person exists but the PIN was wrong
 
 /**
- * Match a 4-digit PIN against the company's employee-linked staff, verifying against
- * the canonical clock-in PIN store (shift_kiosk_pins), company-scoped. PIN-less
- * candidates cost only a cheap lookup (no hash). Ambiguity is surfaced, never guessed —
- * but two portal accounts on the SAME employee are one person, not a collision.
+ * Verify a SELECTED person's PIN for a restaurant. The caller says who they claim
+ * to be (userId, chosen from the name picker); we confirm the account is a real,
+ * active, non-shared, employee-linked member of that company, then check the PIN
+ * against the canonical clock-in store. Callers MUST treat 'invalid' and
+ * 'wrong_pin' identically (one generic error) so a crafted id can't be used to
+ * probe account state or PIN validity.
  */
-export function findUserByPinInCompany(companyId: number, pin: string): PinMatch {
-  const candidates = listStationCandidates(companyId); // active, non-shared, employee-linked, in this company
-  const matches = candidates.filter(c => verifyKioskPin(companyId, c.employee_id, pin));
-  if (matches.length === 0) return { status: 'none' };
-  // Genuine ambiguity = two DIFFERENT employees share the PIN. Duplicate portal
-  // accounts pointing at one employee_id are the same person, so don't count them.
-  const distinctEmployees = new Set(matches.map(m => m.employee_id));
-  if (distinctEmployees.size > 1) return { status: 'ambiguous' };
-  const chosen = matches[0];
-  const u = getUserById(chosen.id);
-  return {
-    status: 'ok',
-    user: { id: chosen.id, name: chosen.name, employee_id: u?.employee_id ?? chosen.employee_id },
-  };
+export function verifyStationPersonPin(companyId: number, userId: number, pin: string): PersonPinResult {
+  const u = getUserById(userId);
+  // Revocation-safe: a deactivated/suspended, shared-device or employee-unlinked
+  // account can never be identified by PIN, even if a clock PIN was left behind.
+  if (!u || !u.employee_id || !u.active || u.status !== 'active' || u.is_shared_device) {
+    return { status: 'invalid' };
+  }
+  // The person must belong to this restaurant (admins are cross-company).
+  if (u.role !== 'admin' && !parseCompanyIds(u.allowed_company_ids).includes(companyId)) {
+    return { status: 'invalid' };
+  }
+  if (!verifyKioskPin(companyId, u.employee_id, pin)) {
+    return { status: 'wrong_pin' };
+  }
+  return { status: 'ok', user: { id: u.id, name: u.name, employee_id: u.employee_id } };
 }

@@ -1,9 +1,10 @@
 /**
- * POST /api/tablet/pin-login  { pin }
- * Staff sign-in on a provisioned shared tablet — PIN only, no email/password.
- * The device token (kw_tablet) identifies the restaurant + its station account;
- * a correct PIN signs the tablet in AS the (staff-level, kitchen-only) station
- * account and mints the tamper-proof acting token for the person who entered it.
+ * POST /api/tablet/pin-login  { user_id, pin }
+ * Staff sign-in on a provisioned shared tablet — tap your NAME then enter your PIN,
+ * no email/password. The device token (kw_tablet) identifies the restaurant + its
+ * station account; verifying the SELECTED person's PIN signs the tablet in AS the
+ * (staff-level, kitchen-only) station account and mints the tamper-proof acting
+ * token for that person.
  */
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
@@ -14,7 +15,7 @@ import {
 import { COOKIE_NAME } from '@/lib/auth';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { isSameOrigin } from '@/lib/csrf';
-import { findUserByPinInCompany } from '@/lib/station-auth';
+import { verifyStationPersonPin } from '@/lib/station-auth';
 
 export const dynamic = 'force-dynamic';
 const ACTOR_TTL_MS = 12 * 60 * 60 * 1000;
@@ -39,6 +40,10 @@ export async function POST(request: Request) {
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const pin = typeof body.pin === 'string' ? body.pin : '';
+    const userId = Number.parseInt(String(body.user_id ?? ''), 10);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return NextResponse.json({ error: 'Tap your name first.' }, { status: 400 });
+    }
     if (!/^\d{4}$/.test(pin)) {
       return NextResponse.json({ error: 'Enter your 4-digit PIN.' }, { status: 400 });
     }
@@ -64,14 +69,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'This tablet’s account is unavailable. Ask a manager to set it up again.' }, { status: 403 });
     }
 
-    const match = findUserByPinInCompany(device.company_id, pin);
+    // Verify the SELECTED person's PIN. The restaurant comes only from the trusted
+    // device record, never the client.
+    const match = verifyStationPersonPin(device.company_id, userId, pin);
     if (match.status !== 'ok') {
-      // Count toward the lockout and return a GENERIC error for both "no match"
-      // and "ambiguous" so the response can't be used as a PIN-validity oracle.
+      // Count toward the per-DEVICE lockout (never per selected name — else an
+      // attacker rotates names for a fresh budget) and return a GENERIC error for
+      // both an invalid selection and a wrong PIN, so it can't be used as an oracle.
       recordDeviceLoginFailure(device.id);
-      if (match.status === 'ambiguous') {
-        console.warn('[tablet] ambiguous PIN (shared by 2+ staff) for company', device.company_id);
-      }
       return NextResponse.json({ error: 'PIN not recognised.' }, { status: 401 });
     }
     clearDeviceLoginFailures(device.id);

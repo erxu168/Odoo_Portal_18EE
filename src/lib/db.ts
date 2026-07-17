@@ -640,6 +640,24 @@ export function getStationDevice(token: string): StationDevice | null {
   return { id: row.id, station_user_id: row.station_user_id, company_id: row.company_id, label: row.label ?? null, locked_until: row.locked_until ?? null, disabled: !!row.disabled };
 }
 
+/**
+ * The physical shared-tablet device backing a session (via sessions.station_device_id) —
+ * null if the session isn't a live tablet session, or the device is revoked/disabled. Lets
+ * the in-app "switch person" route derive the restaurant from the TRUSTED device (and its
+ * physical id for lockout), never a client-supplied value.
+ */
+export function getStationDeviceForSession(sessionToken: string): StationDevice | null {
+  if (!sessionToken) return null;
+  const db = getDb();
+  const s = db.prepare('SELECT station_device_id FROM sessions WHERE token = ?').get(sessionToken) as { station_device_id: number | null } | undefined;
+  if (!s || s.station_device_id == null) return null;
+  const row = db.prepare(
+    'SELECT id, station_user_id, company_id, label, revoked, disabled, locked_until FROM station_devices WHERE id = ?'
+  ).get(s.station_device_id) as { id: number; station_user_id: number; company_id: number; label: string | null; revoked: number; disabled: number; locked_until: string | null } | undefined;
+  if (!row || row.revoked || row.disabled) return null;
+  return { id: row.id, station_user_id: row.station_user_id, company_id: row.company_id, label: row.label ?? null, locked_until: row.locked_until ?? null, disabled: !!row.disabled };
+}
+
 export function revokeStationDevice(token: string): void {
   if (!token) return;
   getDb().prepare('UPDATE station_devices SET revoked = 1 WHERE token_hash = ?').run(sha256(token));

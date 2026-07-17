@@ -6,7 +6,7 @@
  * if the PIN was set but the clock-in couldn't run.
  */
 import { NextResponse } from 'next/server';
-import { verifyKioskSetupCode, setKioskPin, hasKioskPin, pinTakenByOtherInCompany, PinTakenError } from '@/lib/shifts-db';
+import { verifyKioskSetupCode, setKioskPin, hasKioskPin } from '@/lib/shifts-db';
 import { kioskPunch } from '@/lib/shifts-kiosk';
 import { checkRateLimit, clientIpFromHeaders } from '@/lib/rate-limit';
 
@@ -47,16 +47,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'You already have a PIN — enter it to clock in.' }, { status: 400 });
     }
     // Validate the setup code FIRST — only the real staff member (who holds the emailed
-    // code) may proceed, so the collision check below can't be used as a public PIN oracle.
+    // code) may set a PIN.
     if (!verifyKioskSetupCode(companyId, employeeId, code)) {
       return NextResponse.json({ error: 'That code is wrong or expired.' }, { status: 401 });
     }
-    // A rare collision here does consume the code; the person just requests a new one.
-    if (pinTakenByOtherInCompany(companyId, employeeId, pin)) {
-      return NextResponse.json({ error: 'That PIN is already used by someone else here — pick a different one.' }, { status: 409 });
-    }
-
-    setKioskPin(companyId, employeeId, pin); // atomic uniqueness backstop
+    setKioskPin(companyId, employeeId, pin);
 
     // Clock them in right away (they came to punch). If it fails, the PIN still stands.
     const result = await kioskPunch(companyId, employeeId);
@@ -65,7 +60,6 @@ export async function POST(request: Request) {
     }
     return NextResponse.json(result);
   } catch (err: unknown) {
-    if (err instanceof PinTakenError) return NextResponse.json({ error: err.message }, { status: 409 });
     console.error('[kiosk] setup/confirm error:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Could not set your PIN — try again.' }, { status: 500 });
   }

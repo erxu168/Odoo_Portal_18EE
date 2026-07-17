@@ -29,13 +29,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Claim the token + set the PIN atomically (one transaction) — a duplicate PIN rolls
-    // back and keeps the token valid; concurrent workers can't double-use it.
+    // Claim the token + set the PIN atomically (one transaction) — concurrent workers
+    // can't double-use the one-time token.
     const result = redeemKioskPinResetToken(token, pin);
     if (!result.ok) {
-      if (result.reason === 'taken') {
-        return NextResponse.json({ error: 'That PIN is already used by someone else here — pick a different one.' }, { status: 409 });
-      }
       return NextResponse.json({ error: 'This reset link is invalid or has expired.' }, { status: 400 });
     }
     return NextResponse.json({ ok: true });
