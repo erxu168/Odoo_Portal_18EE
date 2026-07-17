@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import LocationManager from '@/components/inventory/LocationManager';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import InventoryDashboard from '@/components/inventory/InventoryDashboard';
@@ -25,6 +26,7 @@ type Screen =
   | { type: 'product-settings' }
   | { type: 'drinks-scanner' }
   | { type: 'drinks-editor' }
+  | { type: 'locations' }
   | { type: 'consumption' }
   | { type: 'session'; sessionId: number };
 
@@ -119,6 +121,10 @@ export default function InventoryPage() {
         <ProductSettings onBack={goDashboard} />
       </div>
     );
+  }
+
+  if (screen.type === 'locations' && can('inventory.location.manage')) {
+    return <LocationManager onBack={goDashboard} />;
   }
 
   if (screen.type === 'drinks-scanner' && canManage) {

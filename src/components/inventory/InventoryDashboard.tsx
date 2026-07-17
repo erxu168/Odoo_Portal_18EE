@@ -184,6 +184,18 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     }] : []),
+    ...(can('inventory.location.manage') ? [{
+      id: 'locations',
+      label: 'Locations',
+      color: 'bg-indigo-50 border-indigo-200', iconBg: 'bg-indigo-100', iconColor: 'text-indigo-600',
+      sublabel: 'Map, shelves, photos',
+      badge: 0,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+        </svg>
+      ),
+    }] : []),
   ];
 
   return (
