@@ -10,6 +10,7 @@ import { berlinToday, berlinWeekday } from './berlin-date';
 import type {
   CountingTemplate, CountingSession, CountEntry, QuickCount,
   Frequency, AssignType, SessionStatus,
+  CountLocation, ProductPlacement,
 } from '@/types/inventory';
 
 // ===
@@ -107,6 +108,33 @@ export function initInventoryTables() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_count_photos_source ON count_photos(source_table, source_id);
+
+    CREATE TABLE IF NOT EXISTS count_locations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      parent_id INTEGER,
+      company_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'area',
+      description TEXT,
+      photo TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      odoo_location_id INTEGER,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS product_locations (
+      odoo_product_id INTEGER NOT NULL,
+      count_location_id INTEGER NOT NULL,
+      shelf_sort INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (odoo_product_id, count_location_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_count_locations_company ON count_locations(company_id);
+    CREATE INDEX IF NOT EXISTS idx_count_locations_parent ON count_locations(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_product_locations_loc ON product_locations(count_location_id);
   `);
   migrateInventorySchema(db);
 }
@@ -780,4 +808,125 @@ export function deleteCountPhotos(source: PhotoSource, sourceId: number) {
   const db = getDb();
   db.prepare('DELETE FROM count_photos WHERE source_table = ? AND source_id = ?')
     .run(source, sourceId);
+}
+
+// ===
+// COUNT LOCATIONS (the digital twin — portal-owned, company-scoped)
+// ===
+
+export function createCountLocation(data: {
+  parent_id?: number | null;
+  company_id: number;
+  name: string;
+  kind?: string;
+  description?: string | null;
+  photo?: string | null;
+  odoo_location_id?: number | null;
+  created_by: number;
+}): number {
+  const db = getDb();
+  const ts = now();
+  // Default sort_order = max sibling + 10 within the same company + parent.
+  const sib = db.prepare(
+    `SELECT COALESCE(MAX(sort_order), 0) AS m FROM count_locations
+     WHERE company_id = ? AND ${data.parent_id != null ? 'parent_id = ?' : 'parent_id IS NULL'}`
+  ).get(...(data.parent_id != null ? [data.company_id, data.parent_id] : [data.company_id])) as { m: number };
+  const r = db.prepare(`
+    INSERT INTO count_locations (parent_id, company_id, name, kind, description, photo, sort_order, odoo_location_id, active, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+  `).run(
+    data.parent_id ?? null, data.company_id, data.name, data.kind || 'area',
+    data.description ?? null, data.photo ?? null, sib.m + 10,
+    data.odoo_location_id ?? null, data.created_by, ts, ts
+  );
+  return r.lastInsertRowid as number;
+}
+
+export function getCountLocation(id: number): CountLocation | null {
+  const db = getDb();
+  const r = db.prepare('SELECT * FROM count_locations WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  return r ? { ...(r as unknown as CountLocation), active: !!r.active } : null;
+}
+
+/** Update a location. Scoped by company_id so a manager can never edit another company's location by guessing an id. */
+export function updateCountLocation(id: number, companyId: number, data: Partial<{
+  name: string; kind: string; description: string | null; photo: string | null;
+  sort_order: number; odoo_location_id: number | null; parent_id: number | null; active: boolean;
+}>): void {
+  const db = getDb();
+  const sets: string[] = []; const vals: unknown[] = [];
+  const put = (col: string, v: unknown) => { sets.push(`${col} = ?`); vals.push(v); };
+  if (data.name !== undefined) put('name', data.name);
+  if (data.kind !== undefined) put('kind', data.kind);
+  if (data.description !== undefined) put('description', data.description);
+  if (data.photo !== undefined) put('photo', data.photo);
+  if (data.sort_order !== undefined) put('sort_order', data.sort_order);
+  if (data.odoo_location_id !== undefined) put('odoo_location_id', data.odoo_location_id);
+  if (data.parent_id !== undefined) put('parent_id', data.parent_id);
+  if (data.active !== undefined) put('active', data.active ? 1 : 0);
+  if (sets.length === 0) return;
+  put('updated_at', now()); vals.push(id, companyId);
+  db.prepare(`UPDATE count_locations SET ${sets.join(', ')} WHERE id = ? AND company_id = ?`).run(...vals);
+}
+
+/**
+ * Delete a location and everything under it (children + all placements), scoped by company.
+ * No FK reliance (SQLite FK enforcement is off by default), so cascade is done manually.
+ * NOTE (Phase 2): once session history references locations, switch this to a soft delete
+ * (active = 0, already filtered by listCountLocations) so a historical count is never orphaned.
+ */
+export function deleteCountLocation(id: number, companyId: number): void {
+  const db = getDb();
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  const collect = (parent: number) => {
+    if (seen.has(parent)) return; // guard against any accidental cycle
+    seen.add(parent);
+    ids.push(parent);
+    const kids = db.prepare('SELECT id FROM count_locations WHERE parent_id = ? AND company_id = ?')
+      .all(parent, companyId) as { id: number }[];
+    kids.forEach((k) => collect(k.id));
+  };
+  // Only proceed if the root belongs to this company.
+  const root = db.prepare('SELECT id FROM count_locations WHERE id = ? AND company_id = ?').get(id, companyId);
+  if (!root) return;
+  collect(id);
+  const tx = db.transaction(() => {
+    const ph = ids.map(() => '?').join(',');
+    db.prepare(`DELETE FROM product_locations WHERE count_location_id IN (${ph})`).run(...ids);
+    db.prepare(`DELETE FROM count_locations WHERE id IN (${ph}) AND company_id = ?`).run(...ids, companyId);
+  });
+  tx();
+}
+
+export function listCountLocations(companyId: number): CountLocation[] {
+  const db = getDb();
+  const rows = db.prepare(
+    'SELECT * FROM count_locations WHERE company_id = ? AND active = 1 ORDER BY sort_order, id'
+  ).all(companyId) as Record<string, unknown>[];
+  return rows.map((r) => ({ ...(r as unknown as CountLocation), active: !!r.active }));
+}
+
+/** Replace the full placement set for a location (products + their shelf order). */
+export function setProductPlacements(countLocationId: number, items: { odoo_product_id: number; shelf_sort: number }[]): void {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM product_locations WHERE count_location_id = ?').run(countLocationId);
+    const ins = db.prepare('INSERT INTO product_locations (odoo_product_id, count_location_id, shelf_sort) VALUES (?, ?, ?)');
+    items.forEach((it) => ins.run(it.odoo_product_id, countLocationId, it.shelf_sort));
+  });
+  tx();
+}
+
+export function getPlacements(countLocationId: number): ProductPlacement[] {
+  const db = getDb();
+  return db.prepare(
+    'SELECT odoo_product_id, count_location_id, shelf_sort FROM product_locations WHERE count_location_id = ? ORDER BY shelf_sort, odoo_product_id'
+  ).all(countLocationId) as ProductPlacement[];
+}
+
+export function getLocationsForProduct(productId: number): number[] {
+  const db = getDb();
+  return (db.prepare('SELECT count_location_id FROM product_locations WHERE odoo_product_id = ?').all(productId) as { count_location_id: number }[])
+    .map((r) => r.count_location_id);
 }

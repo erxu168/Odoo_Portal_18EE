@@ -115,3 +115,28 @@ export interface QuickCount {
   loose_qty?: number | null;
   units_per_crate?: number | null;
 }
+
+// ── Location layer (portal SQLite) ──
+export type LocationKind = 'area' | 'fridge' | 'freezer' | 'dry' | 'zone' | 'bar';
+
+export interface CountLocation {
+  id: number;
+  parent_id: number | null;
+  company_id: number;
+  name: string;
+  kind: LocationKind | string;
+  description: string | null;
+  photo: string | null;            // base64 data URL (Phase 1; object storage in Phase 5)
+  sort_order: number;              // walking-route order among siblings
+  odoo_location_id: number | null; // optional real stock.location for a future write
+  active: boolean;
+  created_by: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductPlacement {
+  odoo_product_id: number;
+  count_location_id: number;
+  shelf_sort: number;              // order on the shelf
+}
