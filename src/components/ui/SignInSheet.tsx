@@ -45,12 +45,12 @@ export default function SignInSheet({ open, activePerson, onClose, onSignedIn, o
   }
 
   async function submitPin(finalPin: string) {
-    if (!picked || finalPin.length !== 4) return;
+    if (!picked || finalPin.length !== 4 || !companyId) return;
     setBusy(true); setErr('');
     try {
       const res = await fetch('/api/shift/identify', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: picked.id, pin: finalPin }),
+        body: JSON.stringify({ user_id: picked.id, company_id: companyId, pin: finalPin }),
       });
       const d = await res.json();
       if (res.ok && d.ok) {
@@ -88,7 +88,7 @@ export default function SignInSheet({ open, activePerson, onClose, onSignedIn, o
             )}
             <div className="flex flex-col gap-2">
               {staff.length === 0 && (
-                <div className="text-center py-6 text-[13px] text-gray-400">No staff have a PIN yet. An admin sets PINs in Manage Staff.</div>
+                <div className="text-center py-6 text-[13px] text-gray-400">No staff have a PIN yet. Staff set their own PIN at the time clock.</div>
               )}
               {staff.map(s => (
                 <button key={s.id} onClick={() => { setPicked(s); setPin(''); setErr(''); }}

@@ -7,7 +7,8 @@
 import { NextResponse } from 'next/server';
 import { AuthError, requireAuth } from '@/lib/auth';
 import { parseCompanyIds } from '@/lib/db';
-import { employeesWithPin, setKioskPin } from '@/lib/shifts-db';
+import { employeesWithPin, setKioskPin, PinTakenError } from '@/lib/shifts-db';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,10 +54,18 @@ export async function POST(request: Request) {
     if (!/^\d{4}$/.test(pin)) {
       return NextResponse.json({ error: 'PIN must be exactly 4 digits.' }, { status: 400 });
     }
+    // Throttle: the uniqueness rejection (409) is a PIN-membership signal, so cap attempts
+    // to stop an insider enumerating coworkers' PINs. Keyed on the account only (not a
+    // spoofable client IP) so rotating x-forwarded-for can't reset the bucket.
+    const rl = checkRateLimit(`my-pin-set:${user.id}`, 10, 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json({ error: 'Too many tries — wait a moment.' }, { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } });
+    }
     setKioskPin(r.companyId, r.employeeId, pin);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    if (err instanceof PinTakenError) return NextResponse.json({ error: err.message }, { status: 409 });
     console.error('[shifts] my-pin POST error:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Could not set your PIN' }, { status: 500 });
   }

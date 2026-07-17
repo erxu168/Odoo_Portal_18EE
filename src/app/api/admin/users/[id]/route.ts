@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, hasRole } from '@/lib/auth';
-import { getUserById, updateUser, resetPassword, setUserPin, deleteUser } from '@/lib/db';
+import { getUserById, updateUser, resetPassword, deleteUser } from '@/lib/db';
 
 /**
  * PATCH /api/admin/users/[id]
@@ -29,14 +29,8 @@ export async function PATCH(
       resetPassword(userId, body.new_password);
     }
 
-    // Set / clear the shared-device attribution PIN (4 digits).
-    if (body.pin !== undefined) {
-      const pin = body.pin === null || body.pin === '' ? null : String(body.pin);
-      if (pin !== null && !/^\d{4}$/.test(pin)) {
-        return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
-      }
-      setUserPin(userId, pin);
-    }
+    // (PIN setting removed — the single staff PIN is now the clock-in PIN, set only via
+    // the staff's own time-clock flow, e.g. email-code self-serve + forgot-PIN reset.)
 
     // Update fields
     const updates: Record<string, any> = {};

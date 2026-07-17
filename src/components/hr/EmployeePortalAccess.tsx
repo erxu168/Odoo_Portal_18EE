@@ -142,14 +142,6 @@ export default function EmployeePortalAccess({ employeeId }: { employeeId: numbe
     const next = moduleIds.includes(moduleId) ? moduleIds.filter((m) => m !== moduleId) : [...moduleIds, moduleId];
     await patch({ module_access: next });
   }
-  async function setPin() {
-    if (!account) return;
-    const pin = window.prompt(`Set a 4-digit PIN for ${account.name} (leave empty to remove):`, '');
-    if (pin === null) return;
-    const trimmed = pin.trim();
-    if (trimmed && !/^\d{4}$/.test(trimmed)) { setError('PIN must be exactly 4 digits'); return; }
-    await patch({ pin: trimmed || null });
-  }
   async function resetPassword() {
     if (!account) return;
     const pw = window.prompt(`New password for ${account.name}:`);
@@ -242,10 +234,6 @@ export default function EmployeePortalAccess({ employeeId }: { employeeId: numbe
               <button onClick={() => setShowModules((v) => !v)}
                 className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${showModules ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
                 Modules
-              </button>
-              <button onClick={setPin}
-                className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${account.has_pin ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
-                {account.has_pin ? 'PIN ✓' : 'Set PIN'}
               </button>
               <button onClick={resetPassword}
                 className="px-3 py-1 rounded-lg border border-gray-200 text-gray-600 active:bg-gray-50 text-[12px]">

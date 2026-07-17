@@ -10,7 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { setKioskPin } from '@/lib/shifts-db';
+import { setKioskPin, PinTakenError } from '@/lib/shifts-db';
 import { fetchEmployees, recomputeWeekFlags } from '@/lib/shifts-odoo';
 import { currentWeekKey, offsetWeekKey } from '@/lib/shifts-time';
 import { requireManagerCompany, serverError } from '../../_manager';
@@ -141,6 +141,7 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
+    if (err instanceof PinTakenError) return NextResponse.json({ error: err.message }, { status: 409 });
     return serverError('PUT roster/[employeeId]', err);
   }
 }

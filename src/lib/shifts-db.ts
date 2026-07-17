@@ -476,7 +476,38 @@ function checkPin(pin: string, stored: string): boolean {
   return hash.length === expected.length && timingSafeEqual(hash, expected);
 }
 
-/** Set (empty/null clears) a staff member's kiosk PIN. */
+/**
+ * Thrown by setKioskPin when the chosen PIN is already held by ANOTHER employee in
+ * the same company. The tablet login identifies a person by PIN alone, so two staff
+ * in one restaurant must never share a PIN (or the reverse lookup is ambiguous).
+ */
+export class PinTakenError extends Error {
+  constructor() {
+    super('That PIN is already used by someone else here — pick a different one.');
+    this.name = 'PinTakenError';
+  }
+}
+
+/**
+ * Read-only pre-check: does a DIFFERENT employee in this company already use this PIN?
+ * Use it for a friendly rejection BEFORE consuming a one-time setup code / reset token,
+ * so a collision doesn't burn the credential. setKioskPin still enforces this atomically
+ * as the authoritative, race-safe guard.
+ */
+export function pinTakenByOtherInCompany(companyId: number, employeeId: number, pin: string): boolean {
+  ensureTables();
+  const rows = getDb()
+    .prepare('SELECT pin FROM shift_kiosk_pins WHERE company_id=? AND employee_id<>?')
+    .all(companyId, employeeId) as { pin: string }[];
+  return rows.some(r => checkPin(pin, r.pin));
+}
+
+/**
+ * Set (empty/null clears) a staff member's kiosk PIN — the single canonical staff PIN
+ * (clock-in + kitchen-tablet login + shift attribution). Enforces per-company uniqueness
+ * ATOMICALLY: the collision scan and the write run in one transaction, so two concurrent
+ * setters can't both land the same PIN. Throws PinTakenError on collision.
+ */
 export function setKioskPin(companyId: number, employeeId: number, pin: string | null): void {
   ensureTables();
   const db = getDb();
@@ -484,11 +515,20 @@ export function setKioskPin(companyId: number, employeeId: number, pin: string |
     db.prepare('DELETE FROM shift_kiosk_pins WHERE company_id=? AND employee_id=?').run(companyId, employeeId);
     return;
   }
-  db.prepare(
-    `INSERT INTO shift_kiosk_pins (company_id, employee_id, pin, updated_at)
-     VALUES (?,?,?,?)
-     ON CONFLICT(company_id, employee_id) DO UPDATE SET pin=excluded.pin, updated_at=excluded.updated_at`,
-  ).run(companyId, employeeId, hashPin(pin), nowISO());
+  const hashed = hashPin(pin); // scrypt is CPU-heavy — do it outside the txn
+  const write = db.transaction(() => {
+    const others = db
+      .prepare('SELECT pin FROM shift_kiosk_pins WHERE company_id=? AND employee_id<>?')
+      .all(companyId, employeeId) as { pin: string }[];
+    if (others.some(r => checkPin(pin, r.pin))) throw new PinTakenError();
+    db.prepare(
+      `INSERT INTO shift_kiosk_pins (company_id, employee_id, pin, updated_at)
+       VALUES (?,?,?,?)
+       ON CONFLICT(company_id, employee_id) DO UPDATE SET pin=excluded.pin, updated_at=excluded.updated_at`,
+    ).run(companyId, employeeId, hashed, nowISO());
+  });
+  write.immediate(); // BEGIN IMMEDIATE: take the write lock before the collision scan so
+  // concurrent setters serialize (no stale-snapshot SQLITE_BUSY, no missed 409).
 }
 
 export function verifyKioskPin(companyId: number, employeeId: number, pin: string): boolean {
@@ -634,16 +674,42 @@ export function createKioskPinResetToken(companyId: number, employeeId: number):
   return token;
 }
 
-/** Consume a reset token → {companyId, employeeId} (and delete it), or null if invalid/expired. */
-export function consumeKioskPinResetToken(token: string): { companyId: number; employeeId: number } | null {
+/**
+ * Redeem a reset token AND set the new PIN in ONE transaction: claim (delete) the token,
+ * enforce per-company uniqueness, and write the PIN atomically. A duplicate PIN rolls the
+ * whole thing back (token stays valid); and because it's one transaction, the same token
+ * can't be double-used across concurrent workers. Returns the reason on failure.
+ */
+export type ResetRedeem = { ok: true } | { ok: false; reason: 'invalid' | 'taken' };
+export function redeemKioskPinResetToken(token: string, pin: string): ResetRedeem {
   ensureTables();
   const db = getDb();
-  const row = db
-    .prepare('SELECT company_id, employee_id FROM kiosk_pin_reset_tokens WHERE token=? AND expires_at > ?')
-    .get(token, nowISO()) as { company_id: number; employee_id: number } | undefined;
-  if (!row) return null;
-  db.prepare('DELETE FROM kiosk_pin_reset_tokens WHERE token=?').run(token);
-  return { companyId: row.company_id, employeeId: row.employee_id };
+  const run = db.transaction((): ResetRedeem => {
+    const row = db
+      .prepare('SELECT company_id, employee_id FROM kiosk_pin_reset_tokens WHERE token=? AND expires_at > ?')
+      .get(token, nowISO()) as { company_id: number; employee_id: number } | undefined;
+    // Reject an unknown/expired token BEFORE any scrypt work — /api/kiosk/reset is public,
+    // so we must not let invalid requests block the event loop hashing a PIN.
+    if (!row) return { ok: false, reason: 'invalid' };
+    // Claim the one-time token; a rollback (below) un-claims it.
+    db.prepare('DELETE FROM kiosk_pin_reset_tokens WHERE token=?').run(token);
+    const others = db
+      .prepare('SELECT pin FROM shift_kiosk_pins WHERE company_id=? AND employee_id<>?')
+      .all(row.company_id, row.employee_id) as { pin: string }[];
+    if (others.some(r => checkPin(pin, r.pin))) throw new PinTakenError(); // rolls back the claim
+    db.prepare(
+      `INSERT INTO shift_kiosk_pins (company_id, employee_id, pin, updated_at)
+       VALUES (?,?,?,?)
+       ON CONFLICT(company_id, employee_id) DO UPDATE SET pin=excluded.pin, updated_at=excluded.updated_at`,
+    ).run(row.company_id, row.employee_id, hashPin(pin), nowISO());
+    return { ok: true };
+  });
+  try {
+    return run.immediate(); // BEGIN IMMEDIATE — serialize before the collision scan
+  } catch (e) {
+    if (e instanceof PinTakenError) return { ok: false, reason: 'taken' };
+    throw e;
+  }
 }
 
 // -- Settings -------------------------------------------------------------------

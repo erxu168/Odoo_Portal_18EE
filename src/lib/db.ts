@@ -429,20 +429,9 @@ export function updateUser(id: number, updates: { name?: string; role?: string; 
   db.prepare(`UPDATE portal_users SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
 }
 
-/** Set (or clear, if pin is empty) a user's 4-digit attribution PIN. */
-export function setUserPin(id: number, pin: string | null) {
-  const db = getDb();
-  const hash = pin ? bcrypt.hashSync(pin, 10) : null;
-  db.prepare('UPDATE portal_users SET pin_hash = ? WHERE id = ?').run(hash, id);
-}
-
-/** Verify a PIN for a specific user. */
-export function verifyUserPin(id: number, pin: string): boolean {
-  const db = getDb();
-  const row = db.prepare("SELECT pin_hash FROM portal_users WHERE id = ? AND active = 1 AND status = 'active'").get(id) as { pin_hash: string | null } | undefined;
-  if (!row || !row.pin_hash) return false;
-  return bcrypt.compareSync(pin, row.pin_hash);
-}
+// NOTE: the staff PIN is unified onto the clock-in store (shift_kiosk_pins, keyed by
+// employee) — see setKioskPin/verifyKioskPin in shifts-db.ts. The old portal_users.pin_hash
+// setter/verifier were removed; the column is retained (unused) for reversibility.
 
 /** Personal staff (with a PIN set) who can sign in on a shared device in this company. */
 export function listShiftStaff(companyId: number): { id: number; name: string }[] {
@@ -453,6 +442,23 @@ export function listShiftStaff(companyId: number): { id: number; name: string }[
   return rows
     .filter(r => r.role === 'admin' || parseCompanyIds(r.allowed_company_ids).includes(companyId))
     .map(r => ({ id: r.id, name: r.name }));
+}
+
+/**
+ * Candidates for shared-device PIN identification in this company: active, non-shared
+ * accounts LINKED TO AN EMPLOYEE. PIN state now lives in the kiosk store
+ * (shift_kiosk_pins, keyed by employee_id) — so, unlike listShiftStaff, we filter on
+ * employee_id rather than pin_hash. The caller verifies each candidate's PIN against
+ * the kiosk store and dedupes by employee_id.
+ */
+export function listStationCandidates(companyId: number): { id: number; name: string; employee_id: number }[] {
+  const db = getDb();
+  const rows = db.prepare(
+    "SELECT id, name, role, employee_id, allowed_company_ids FROM portal_users WHERE active = 1 AND status = 'active' AND is_shared_device = 0 AND employee_id IS NOT NULL ORDER BY name"
+  ).all() as { id: number; name: string; role: string; employee_id: number; allowed_company_ids: string }[];
+  return rows
+    .filter(r => r.role === 'admin' || parseCompanyIds(r.allowed_company_ids).includes(companyId))
+    .map(r => ({ id: r.id, name: r.name, employee_id: r.employee_id }));
 }
 
 export function updateUserPreferences(id: number, prefs: Record<string, any>) {

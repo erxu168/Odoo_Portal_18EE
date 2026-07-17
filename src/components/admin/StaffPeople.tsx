@@ -207,13 +207,6 @@ export default function StaffPeople() {
     if (await patchAccount(a.id, { module_access: null })) updateAccountLocal(a.id, { module_access: null });
   }
 
-  async function setPin(a: Account) {
-    const pin = window.prompt(`Set a 4-digit PIN for ${a.name} (leave empty to remove):`, '');
-    if (pin === null) return;
-    const trimmed = pin.trim();
-    if (trimmed && !/^\d{4}$/.test(trimmed)) { setError('PIN must be exactly 4 digits'); return; }
-    if (await patchAccount(a.id, { pin: trimmed || null })) updateAccountLocal(a.id, { has_pin: trimmed ? 1 : 0 });
-  }
 
   async function toggleActive(a: Account) {
     if (await patchAccount(a.id, { active: !a.active })) updateAccountLocal(a.id, { active: a.active ? 0 : 1 });
@@ -493,10 +486,6 @@ export default function StaffPeople() {
                           className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${modulesOpen ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
                           Modules
                         </button>
-                        <button onClick={() => setPin(account)}
-                          className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${account.has_pin ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
-                          {account.has_pin ? 'PIN ✓' : 'Set PIN'}
-                        </button>
                         <button onClick={() => resetPassword(account)}
                           className="px-3 py-1 rounded-lg border border-gray-200 text-gray-600 active:bg-gray-50 text-[12px]">
                           Reset pw
@@ -628,10 +617,6 @@ export default function StaffPeople() {
                     <option value="manager">Manager</option>
                     <option value="admin">Admin</option>
                   </select>
-                  <button onClick={() => setPin(a)}
-                    className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${a.has_pin ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
-                    {a.has_pin ? 'PIN ✓' : 'Set PIN'}
-                  </button>
                   <button onClick={() => toggleActive(a)}
                     className={`px-3 py-1 rounded-lg border text-[12px] ${a.active ? 'border-red-200 text-red-600 active:bg-red-50' : 'border-green-200 text-green-600 active:bg-green-50'}`}>
                     {a.active ? 'Deactivate' : 'Reactivate'}

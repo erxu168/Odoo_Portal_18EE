@@ -143,21 +143,6 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function setPin(user: User) {
-    const pin = window.prompt(`Set a 4-digit PIN for ${user.name} (leave empty to remove):`, '');
-    if (pin === null) return;
-    const trimmed = pin.trim();
-    if (trimmed && !/^\d{4}$/.test(trimmed)) { setError('PIN must be exactly 4 digits'); return; }
-    try {
-      const res = await fetch(`/api/admin/users/${user.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin: trimmed || null }),
-      });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Server rejected PIN'); }
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, has_pin: trimmed ? 1 : 0 } : u));
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Could not set PIN');
-    }
-  }
 
   async function resetModules(user: User) {
     try {
@@ -496,10 +481,6 @@ export default function AdminUsersPage() {
                           <button onClick={() => setExpandedModules(expandedModules === u.id ? null : u.id)}
                             className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${expandedModules === u.id ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
                             Modules
-                          </button>
-                          <button onClick={() => setPin(u)}
-                            className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${u.has_pin ? 'border-green-300 text-green-700 bg-green-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>
-                            {u.has_pin ? 'PIN ✓' : 'Set PIN'}
                           </button>
                           <button onClick={() => toggleSharedDevice(u)}
                             className={`px-3 py-1 rounded-lg border text-[12px] font-semibold ${u.is_shared_device ? 'border-[#2563EB] text-[#2563EB] bg-blue-50' : 'border-gray-200 text-gray-600 active:bg-gray-50'}`}>

@@ -18,7 +18,6 @@ import {
   getAccountByEmployeeId,
   getUserById,
   updateUser,
-  setUserPin,
   resetPassword,
   getActiveInviteByEmployeeId,
   revokeInvitesForEmployee,
@@ -218,18 +217,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       updates.active = body.active ? 1 : 0;
     }
 
-    // Validate the PIN BEFORE any write, so a bad PIN cannot 400 after other
-    // fields (e.g. active) were already persisted.
-    let pinToSet: string | null | undefined;
-    if (body.pin !== undefined) {
-      pinToSet = body.pin === null || body.pin === '' ? null : String(body.pin);
-      if (pinToSet !== null && !/^\d{4}$/.test(pinToSet)) {
-        return NextResponse.json({ error: 'PIN must be exactly 4 digits' }, { status: 400 });
-      }
-    }
+    // (PIN setting removed — the single staff PIN is the clock-in PIN, set only via the
+    // staff's own time-clock flow, e.g. email-code self-serve + forgot-PIN reset.)
 
     if (Object.keys(updates).length > 0) updateUser(account.id, updates);
-    if (pinToSet !== undefined) setUserPin(account.id, pinToSet);
     if (body.new_password) resetPassword(account.id, String(body.new_password));
 
     const updated = getUserById(account.id);

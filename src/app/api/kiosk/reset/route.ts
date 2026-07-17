@@ -4,7 +4,7 @@
  * belongs to, then consumes the token. Used by the /kiosk/reset-pin page.
  */
 import { NextResponse } from 'next/server';
-import { consumeKioskPinResetToken, setKioskPin } from '@/lib/shifts-db';
+import { redeemKioskPinResetToken } from '@/lib/shifts-db';
 import { checkRateLimit, clientIpFromHeaders } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -29,13 +29,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate the PIN format BEFORE consuming the token, so a typo doesn't burn it.
-    const target = consumeKioskPinResetToken(token);
-    if (!target) {
+    // Claim the token + set the PIN atomically (one transaction) — a duplicate PIN rolls
+    // back and keeps the token valid; concurrent workers can't double-use it.
+    const result = redeemKioskPinResetToken(token, pin);
+    if (!result.ok) {
+      if (result.reason === 'taken') {
+        return NextResponse.json({ error: 'That PIN is already used by someone else here — pick a different one.' }, { status: 409 });
+      }
       return NextResponse.json({ error: 'This reset link is invalid or has expired.' }, { status: 400 });
     }
-
-    setKioskPin(target.companyId, target.employeeId, pin);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     console.error('[kiosk] reset error:', err instanceof Error ? err.message : err);
