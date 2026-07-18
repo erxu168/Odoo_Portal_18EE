@@ -8,6 +8,7 @@ import DebugOverlay from '@/components/ui/DebugOverlay';
 import { TopBarProvider } from '@/components/ui/TopBarContext';
 import { ShiftProvider } from '@/lib/shift-context';
 import StationGate from '@/components/ui/StationGate';
+import RestartListener from '@/components/device/RestartListener';
 import { getCurrentUser } from '@/lib/auth';
 
 export const metadata: Metadata = {
@@ -42,6 +43,9 @@ export default function RootLayout({
                 while the PIN lock is up (blocks keyboard/AT access, not just
                 visually), while its own lock/bar stay interactive. */}
             <StationGate serverShared={stationShared} />
+            {/* Heartbeat for remote restart — outside the shell so it keeps polling
+                even while a PIN lock has the shell inert. */}
+            <RestartListener />
             <div id="kw-app-shell">
               <AppTopBar />
               <MainWrapper>{children}</MainWrapper>

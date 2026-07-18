@@ -11,6 +11,7 @@ CONF=/etc/portal-sync.conf
 : "${PORTAL_ENV:=unknown}"
 : "${PORTAL_PORT:=3000}"
 : "${PORTAL_SERVICE:=krawings-portal}"
+: "${DEVICE_RESTART_TOKEN:=}"                        # set in /etc/portal-sync.conf to enable the post-deploy remote-restart hook (must match the portal's .env.local DEVICE_RESTART_TOKEN)
 : "${HEALTH_PATH:=/api/kiosk/staff?company_id=6}"   # DB-backed route (queries SQLite)
 : "${HEALTH_EXPECT:=\"staff\"}"                      # body must contain this (proves DB read)
 : "${VAULT_DIR:=/opt/obsidian-vault}"
@@ -182,6 +183,25 @@ _portal_build_needed() {
 # workspace (live site untouched); only a SUCCESSFUL build is swapped in; rollback is an
 # instant artifact swap-back with no rebuild. Preconditions (caller ensures): branch main,
 # tracked tree clean, sha is a descendant of HEAD.
+# _notify_device_restart <sha> — after a HEALTHY deploy, ask the portal to restart the
+# opted-in unattended-display fleet (KDS/kiosk) so they load the new build. Best-effort:
+# idempotent on the sha (a retry re-issues nothing), and a failure is logged/alerted but
+# NEVER rolls back an otherwise-healthy deploy. No-op unless DEVICE_RESTART_TOKEN is set.
+_notify_device_restart() {
+  local sha=$1 code
+  [ -n "$DEVICE_RESTART_TOKEN" ] || return 0
+  code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 15 \
+           -X POST "http://127.0.0.1:${PORTAL_PORT}/api/internal/device-restart" \
+           -H "Authorization: Bearer ${DEVICE_RESTART_TOKEN}" \
+           -H 'Content-Type: application/json' \
+           -d "{\"deploySha\":\"${sha}\",\"env\":\"${PORTAL_ENV}\"}" 2>/dev/null)
+  if [ "$code" = "200" ]; then
+    log "device-restart broadcast sent for ${sha:0:7}"
+  else
+    palert "⚠️ **$PORTAL_ENV** device-restart hook failed (HTTP ${code:-none}) for \`${sha:0:7}\` — deploy is healthy; screens may need a manual reload"
+  fi
+}
+
 guarded_deploy() {
   local target=$1 ts oldsha newsha subject deps_changed=0
   ts=$(date +%Y%m%d-%H%M%S)
@@ -275,5 +295,6 @@ guarded_deploy() {
   subject=$(git -C "$PORTAL_DIR" log -1 --pretty=%s)
   pnote deploy-log "✅ **$PORTAL_ENV** \`${oldsha:0:7}\` → \`${newsha:0:7}\` — ${subject}"
   log "DEPLOY OK -> ${newsha:0:7}"
+  _notify_device_restart "$newsha"   # best-effort; never fails the deploy
   return 0
 }

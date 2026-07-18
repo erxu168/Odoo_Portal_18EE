@@ -3,6 +3,7 @@
 import React from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import SharedTabletsSection from '@/components/admin/SharedTabletsSection';
+import DeviceRestartSection from '@/components/admin/DeviceRestartSection';
 
 export default function AdminTabletsPage() {
   return (
@@ -10,6 +11,7 @@ export default function AdminTabletsPage() {
       <AppHeader supertitle="MANAGER" title="Shared Tablets" />
       <div className="px-4 py-4 pb-24">
         <SharedTabletsSection />
+        <DeviceRestartSection />
       </div>
     </div>
   );
