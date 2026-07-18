@@ -13,6 +13,7 @@ import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { cacheSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
 import { hasCrate, crateTotal, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
+import GuidedCountingFlow from './GuidedCountingFlow';
 
 interface CountingSessionProps {
   sessionId: number;
@@ -45,6 +46,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});         // product_id -> count-by label
   const [crateSplits, setCrateSplits] = useState<Record<number, { crates: number; loose: number }>>({});
   const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
+  // -- Guided route (Phase 2) --
+  const [route, setRoute] = useState<{ guided: boolean; stops: any[] } | null>(null);
+  const [guidedStatuses, setGuidedStatuses] = useState<Record<number, { status: string; skip_reason: string | null }>>({});
+  const [statusPending, setStatusPending] = useState(0); // in-flight location-status writes
 
   // -- Barcode scanner --
   const [showScanner, setShowScanner] = useState(false);
@@ -176,6 +181,42 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     }).catch(() => {});
   }, [sessionId]);
 
+  // Guided route: the session's locations + each stop's counted/skipped status.
+  useEffect(() => {
+    fetch(`/api/inventory/sessions/${sessionId}/route`).then(r => r.ok ? r.json() : null).then((d) => {
+      if (!d) return;
+      setRoute(d);
+      const st: Record<number, { status: string; skip_reason: string | null }> = {};
+      (d.stops || []).forEach((s: any) => {
+        if (s.status && s.status !== 'pending') st[s.bucket_id] = { status: s.status, skip_reason: s.skip_reason ?? null };
+      });
+      setGuidedStatuses(st);
+    }).catch(() => {});
+  }, [sessionId]);
+
+  // Mark a location counted / skipped. Offline-safe: queues + drains on reconnect
+  // (submit is blocked until the queue is empty, so the server sees these first).
+  async function postStopStatus(bucketId: number, status: string, skipReason: string | null) {
+    const prev = guidedStatuses[bucketId];
+    setGuidedStatuses((p) => ({ ...p, [bucketId]: { status, skip_reason: skipReason } }));
+    setStatusPending((n) => n + 1);
+    try {
+      const res = await offlineSafeMutate({
+        url: `/api/inventory/sessions/${sessionId}/location-status`,
+        method: 'POST',
+        body: { count_location_id: bucketId, status, skip_reason: skipReason },
+        dedupKey: `locstatus:${sessionId}:${bucketId}`,
+      });
+      if (res.queued) { await sync.refresh(); }
+      else if (!res.ok) {
+        // Server rejected it (4xx) — roll back the optimistic mark.
+        setGuidedStatuses((p) => { const n = { ...p }; if (prev) n[bucketId] = prev; else delete n[bucketId]; return n; });
+      }
+    } finally {
+      setStatusPending((n) => n - 1);
+    }
+  }
+
   // Build categories using LEAF names only
   const categories = React.useMemo(() => {
     const cats = new Map<string, { id: number; leaf: string }>();
@@ -223,6 +264,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
     return groups;
   }, [filtered]);
+
+  const productsById = React.useMemo(() => {
+    const m: Record<number, any> = {};
+    products.forEach((p) => { m[p.id] = p; });
+    return m;
+  }, [products]);
 
   const countedCount = Object.keys(entries).length;
   const totalCount = products.length;
@@ -351,6 +398,11 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setShowConfirm(false);
       return;
     }
+    if (statusPending > 0) {
+      setSubmitError('Still saving your last location — try again in a moment.');
+      setShowConfirm(false);
+      return;
+    }
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -381,6 +433,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const isReadOnly = session?.status === 'submitted' || session?.status === 'approved' || session?.status === 'rejected';
   const locationName = session?.location_name || '';
   const showCatGroups = categories.length > 1 && catFilter === 'all' && !search;
+
+  // Guided mode: staff walk location-by-location when the list has a real route.
+  const guidedMode = !!route?.guided && canSubmit;
 
   // -- Product row component --
   function ProductRow({ p }: { p: any }) {
@@ -636,7 +691,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
         {canSubmit && (
           <div className="px-4 py-3">
-            <button onClick={() => setShowConfirm(true)} disabled={submitting || countedCount === 0}
+            <button onClick={() => setShowConfirm(true)} disabled={submitting || (countedCount === 0 && !guidedMode)}
               className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-50">
               Submit for approval
             </button>
@@ -683,6 +738,18 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       <OfflineBanner sync={sync} />
 
+      {guidedMode && route ? (
+        <GuidedCountingFlow
+          stops={route.stops}
+          productsById={productsById}
+          statuses={guidedStatuses}
+          renderRow={(p) => <ProductRow p={p} />}
+          onFinishStop={(b) => postStopStatus(b, 'counted', null)}
+          onSkipStop={(b, r) => postStopStatus(b, 'skipped', r)}
+          onReview={() => setView('review')}
+        />
+      ) : (
+        <>
       <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
 
       <FilterBar>
@@ -734,6 +801,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             Review count ({countedCount}/{totalCount})
           </button>
         </div>
+      )}
+        </>
       )}
 
       {isReadOnly && (
