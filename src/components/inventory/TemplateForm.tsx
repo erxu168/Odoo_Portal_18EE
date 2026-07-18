@@ -64,12 +64,29 @@ export default function TemplateForm({ template, locations, departments, onSave,
   useEffect(() => {
     async function load() {
       try {
-        const [prodRes, userRes] = await Promise.all([
-          fetch(`/api/inventory/products?limit=500&include_pos=1${companyId ? `&company_id=${companyId}` : ''}`),
+        // When editing, also fetch the template's already-selected products by
+        // explicit ids — they must stay visible even if outside the company's
+        // relevant set (e.g. selected before the relevance filter existed).
+        const selectedIds: number[] = template?.product_ids || [];
+        const [prodRes, userRes, selRes] = await Promise.all([
+          fetch(`/api/inventory/products?limit=500&include_pos=1${companyId ? `&company_id=${companyId}&relevant=1` : ''}`),
           fetch('/api/admin/users'),
+          selectedIds.length > 0
+            ? fetch(`/api/inventory/products?ids=${selectedIds.join(',')}&limit=1000`)
+            : null,
         ]);
         const prodData = await prodRes.json();
-        setAllProducts((prodData.products || []).filter((p: any) => p.active !== false));
+        let prods = (prodData.products || []).filter((p: any) => p.active !== false);
+        if (selRes) {
+          try {
+            const selData = await selRes.json();
+            const seen = new Set(prods.map((p: any) => p.id));
+            for (const p of (selData.products || [])) {
+              if (p.active !== false && !seen.has(p.id)) prods = [...prods, p];
+            }
+          } catch { /* ignore — browse list alone still works */ }
+        }
+        setAllProducts(prods);
         try {
           const userData = await userRes.json();
           setPortalUsers((userData.users || []).filter((u: any) => u.employee_id));

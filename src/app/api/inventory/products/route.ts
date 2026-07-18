@@ -27,11 +27,115 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { registerDraftProduct, isDraftProduct } from '@/lib/inventory-db';
+import { registerDraftProduct, isDraftProduct, listTemplates } from '@/lib/inventory-db';
 
 // Process-level cache for the default category and UOM IDs.
 let _defaultCategId: number | null = null;
 let _defaultUomId: number | null = null;
+
+// ── Relevance filter (per company) ──
+// Most products in this Odoo are GLOBAL (company_id = false) — verified on
+// staging 2026-07-18: 1067 of 1193 browse products are shared, 0 are tagged
+// to Ssam — so company scoping alone cannot hide another restaurant's items.
+// "Relevant to company X" = X actually touches the product: it has a stock
+// quant in X, is a component of one of X's (or a shared) BOM, sits on one of
+// X's purchase lines, or is referenced by a portal counting template.
+// Company-TAGGED products are always shown regardless (see domain below).
+const RELEVANT_TTL_MS = 5 * 60 * 1000;
+const _relevantCache = new Map<number, { ids: number[]; at: number }>();
+
+/**
+ * searchRead everything matching `domain`, paginating by an id cursor so a
+ * large set is never silently truncated (Odoo returns at most `limit` rows
+ * with no truncation marker). Logs loudly if the hard cap is ever hit.
+ */
+async function readAllByIdCursor(
+  model: string,
+  domain: any[],
+  fields: string[],
+  pageSize = 5000,
+  maxPages = 10,
+): Promise<any[]> {
+  const odoo = getOdoo();
+  const out: any[] = [];
+  let lastId = 0;
+  for (let page = 0; page < maxPages; page++) {
+    const rows = await odoo.searchRead(model, [...domain, ['id', '>', lastId]],
+      ['id', ...fields], { limit: pageSize, order: 'id asc' });
+    out.push(...rows);
+    if (rows.length < pageSize) return out;
+    lastId = rows[rows.length - 1].id;
+  }
+  console.warn(`[relevant-products] ${model} hit the ${pageSize * maxPages}-row cap — relevance set may be incomplete`);
+  return out;
+}
+
+async function getRelevantProductIds(companyId: number): Promise<number[]> {
+  const hit = _relevantCache.get(companyId);
+  if (hit && Date.now() - hit.at < RELEVANT_TTL_MS) return hit.ids;
+  // Evict OTHER companies' expired entries so arbitrary company ids can't
+  // grow the map forever. This company's expired entry stays until a
+  // successful refresh overwrites it — during an Odoo outage every request
+  // then consistently serves the stale set (and retries the refresh).
+  _relevantCache.forEach((v, k) => {
+    if (k !== companyId && Date.now() - v.at >= RELEVANT_TTL_MS) _relevantCache.delete(k);
+  });
+
+  try {
+    const ids = new Set<number>();
+    const addProduct = (row: { product_id: number | [number, string] | false }) => {
+      const pid = Array.isArray(row.product_id) ? row.product_id[0] : row.product_id;
+      if (pid) ids.add(pid as number);
+    };
+
+    // 1. Has stock in this company (any quant row, incl. qty 0 history rows)
+    (await readAllByIdCursor('stock.quant',
+      [['company_id', '=', companyId]], ['product_id'])).forEach(addProduct);
+
+    // 2. Component of this company's (or a shared) BOM
+    const boms = await readAllByIdCursor('mrp.bom',
+      [['company_id', 'in', [companyId, false]]], []);
+    if (boms.length > 0) {
+      (await readAllByIdCursor('mrp.bom.line',
+        [['bom_id', 'in', boms.map((b: { id: number }) => b.id)]], ['product_id'])).forEach(addProduct);
+    }
+
+    // 3. On one of this company's purchase order lines
+    (await readAllByIdCursor('purchase.order.line',
+      [['company_id', '=', companyId]], ['product_id'])).forEach(addProduct);
+
+    // 4. Referenced by an ACTIVE counting template whose location belongs to
+    // this company (templates point at Odoo stock.location; a template from
+    // another restaurant must not make its products relevant here).
+    const templates = listTemplates({ active: true });
+    if (templates.length > 0) {
+      const locIds = Array.from(new Set(templates.map(t => t.location_id).filter(Boolean)));
+      const locs = locIds.length > 0
+        ? await readAllByIdCursor('stock.location', [['id', 'in', locIds]], ['company_id'])
+        : [];
+      const locCompany = new Map<number, number | false>(locs.map((l: any) =>
+        [l.id, Array.isArray(l.company_id) ? l.company_id[0] : l.company_id]));
+      for (const t of templates) {
+        const c = locCompany.get(t.location_id);
+        // Include when the template's location is this company's or shared/unknown
+        if (c === companyId || c === false || c == null) {
+          for (const pid of t.product_ids || []) ids.add(pid);
+        }
+      }
+    }
+
+    const arr = Array.from(ids);
+    _relevantCache.set(companyId, { ids: arr, at: Date.now() });
+    return arr;
+  } catch (e) {
+    // A stale set beats failing open (all shared products) or closed (none)
+    if (hit) {
+      console.error('[relevant-products] refresh failed — serving stale cache:', e);
+      return hit.ids;
+    }
+    throw e;
+  }
+}
 
 async function getDefaultCategId(): Promise<number> {
   if (_defaultCategId !== null) return _defaultCategId;
@@ -117,7 +221,25 @@ export async function GET(request: Request) {
       // allowed; anything else falls back to their allowed set.
       const adminUnrestricted = user.role === 'admin' && allowedIds.length === 0;
       if (activeCompany && (adminUnrestricted || allowedIds.includes(activeCompany))) {
-        domain.push('|', ['company_id', '=', false], ['company_id', '=', activeCompany]);
+        // relevant=1 (browse/settings screens): shared products only show when
+        // the active company actually uses them; company-tagged always show.
+        let relevantIds: number[] | null = null;
+        if (searchParams.get('relevant') === '1') {
+          try {
+            relevantIds = await getRelevantProductIds(activeCompany);
+          } catch (e) {
+            // Fail CLOSED: with no cache and Odoo erroring, show company-tagged
+            // products only — never dump all shared products on the screen.
+            console.error('relevant-products lookup failed — showing company-tagged only:', e);
+            relevantIds = [];
+          }
+        }
+        if (relevantIds) {
+          domain.push('|', ['company_id', '=', activeCompany],
+            '&', ['company_id', '=', false], ['id', 'in', relevantIds]);
+        } else {
+          domain.push('|', ['company_id', '=', false], ['company_id', '=', activeCompany]);
+        }
       } else if (allowedIds.length > 0) {
         domain.push('|', ['company_id', '=', false], ['company_id', 'in', allowedIds]);
       } else if (!adminUnrestricted) {
