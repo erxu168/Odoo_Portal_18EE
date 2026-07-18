@@ -244,7 +244,7 @@ export function ProductsTab({ d, sort, setSort }: { d: SalesPayload; sort: 'reve
               </div>
             ))}</div>
           : <div className="empty">No sales in this period.</div>}
-        <InfoNote>Rough estimate using typical food-cost %, not your real recipe costs.</InfoNote>
+        <InfoNote>Estimate based on ~30% food / 35% drink cost, not itemised recipe costs.</InfoNote>
       </div>
       <div className="card">
         <div className="card-head"><span className="card-title">Slowest movers</span><span className="card-hint">fewest sold</span></div>

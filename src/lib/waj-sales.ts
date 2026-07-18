@@ -24,6 +24,9 @@ import {
 export type { Range } from './waj-sales-time';
 
 const SOLD = ['paid', 'done', 'invoiced'];
+// Food-cost % per menu group — WAJ owner's figures (2026-07-15): 30% food, 35% drinks.
+// Sides/sauces treated as food. Adjust here if the real costs change.
+const COST_PCT: Record<string, number> = { food: 30, drink: 35, side: 30, sauce: 30 };
 const PREP_TARGET_SEC = 600;          // 10 min
 const PREP_MAX_SEC = 3 * 3600;        // ignore prep times over 3h (abandoned/void)
 
@@ -152,7 +155,7 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
       ['payment_method_id', 'amount']),
     waj.configId
       ? fetchAll('pos.session',
-        [['config_id', '=', waj.configId], ['state', '=', 'closed'], ['stop_at', '>=', cStart], ['stop_at', '<', cEnd]],
+        [['company_id', '=', waj.companyId], ['config_id', '=', waj.configId], ['state', '=', 'closed'], ['stop_at', '>=', cStart], ['stop_at', '<', cEnd]],
         ['name', 'stop_at', 'cash_register_difference'], 'stop_at asc')
       : Promise.resolve([]),
     periodTotals(waj.companyId, b.prevStartMs, b.prevEndMs),
@@ -326,7 +329,7 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
 
   // estimated profit by category (ROUGH: revenue x (1 - assumed food cost))
   const catProfit: [string, number, number][] = Array.from(catMap.entries()).map(([name, v]) => {
-    const marginPct = 100 - classifyCategory(name).costPct;
+    const marginPct = 100 - (COST_PCT[classifyCategory(name).group] ?? 33);
     return [name, Math.round((v.rev * marginPct) / 100), marginPct] as [string, number, number];
   });
   const estGrossProfit = catProfit.reduce((a, c) => a + c[1], 0); // full total, not just top 10
