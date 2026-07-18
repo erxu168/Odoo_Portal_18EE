@@ -2,49 +2,31 @@
 <templates id="template" xml:space="preserve">
     <t t-inherit="point_of_sale.MoneyDetailsPopup" t-inherit-mode="extension">
         <xpath expr="//Dialog/div" position="replace">
-            <div class="kw-cash-count">
-                <div class="kw-cash-rows">
-                    <div t-foreach="bills" t-as="moneyValue" t-key="moneyValue"
-                         class="kw-cash-row d-flex align-items-center my-1"
-                         t-att-class="{ 'kw-active': entry.activeKey === moneyValue }">
-                        <label class="kw-denom text-end pe-2" t-att-for="moneyValue">
-                            <span t-esc="env.utils.formatCurrency(_parseFloat(moneyValue))"/>
-                        </label>
-                        <button class="btn btn-sm kw-mode-btn me-2"
-                                t-att-class="{
-                                    'invisible': !isCoin(moneyValue),
-                                    'btn-primary': modeOf(moneyValue) === 'value',
-                                    'btn-outline-secondary': modeOf(moneyValue) !== 'value' }"
-                                t-on-click="() => this.toggleMode(moneyValue)">
-                            <t t-esc="modeOf(moneyValue) === 'value' ? 'Value' : 'Qty'"/>
-                        </button>
-                        <div class="input-group kw-input">
-                            <button class="btn btn-secondary border"
-                                    t-att-disabled="_qtyOf(moneyValue) lte 0"
-                                    t-on-click="() => this.step(moneyValue, -1)">
-                                <i class="fa fa-minus"/>
-                            </button>
-                            <input class="form-control text-center kw-field" type="text"
-                                   inputmode="none" readonly="readonly"
-                                   t-att-value="displayValue(moneyValue)"
-                                   t-on-click="() => this.setActive(moneyValue)"/>
-                            <button class="btn btn-secondary border"
-                                    t-on-click="() => this.step(moneyValue, 1)">
-                                <i class="fa fa-plus"/>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div class="kw-numpad">
-                    <button t-foreach="['1','2','3','4','5','6','7','8','9','.','0']"
-                            t-as="k" t-key="k"
-                            class="btn btn-lg btn-light border kw-key"
-                            t-on-click="() => this.numpadKey(k)">
-                        <t t-esc="k"/>
+            <div class="kw-cash-rows">
+                <div t-foreach="bills" t-as="moneyValue" t-key="moneyValue"
+                     class="kw-cash-row d-flex align-items-center my-1">
+                    <span class="kw-denom text-end pe-2"
+                          t-esc="env.utils.formatCurrency(_parseFloat(moneyValue))"/>
+                    <button class="btn btn-sm kw-mode-btn me-1"
+                            t-att-class="{
+                                'invisible': !isCoin(moneyValue),
+                                'btn-primary': modeOf(moneyValue) === 'value',
+                                'btn-outline-secondary': modeOf(moneyValue) !== 'value' }"
+                            t-on-click="() => this.toggleMode(moneyValue)">
+                        <t t-esc="modeOf(moneyValue) === 'value' ? 'Value' : 'Qty'"/>
                     </button>
-                    <button class="btn btn-lg btn-light border kw-key"
-                            t-on-click="() => this.numpadKey('backspace')">
-                        <i class="fa fa-long-arrow-left"/>
+                    <button class="btn btn-secondary border kw-step"
+                            t-att-disabled="_qtyOf(moneyValue) lte 0"
+                            t-on-click="() => this.step(moneyValue, -1)">
+                        <i class="fa fa-minus"/>
+                    </button>
+                    <button class="btn btn-light border kw-field flex-grow-1"
+                            t-on-click="() => this.editRow(moneyValue)">
+                        <t t-esc="displayValue(moneyValue) || '0'"/>
+                    </button>
+                    <button class="btn btn-secondary border kw-step"
+                            t-on-click="() => this.step(moneyValue, 1)">
+                        <i class="fa fa-plus"/>
                     </button>
                 </div>
             </div>

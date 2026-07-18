@@ -20,18 +20,19 @@ prints as `€4.50 in €0.05 coins` instead of `90 x €0.05`.
 
 **2. No Android keyboard popup — on-screen numpad instead**
 
-The numeric fields are `readonly` + `inputmode="none"`, so tapping them never
-raises the tablet's soft keyboard (which used to occlude the popup). Entry is
+Tapping a denomination's value opens the POS' **own numpad popup**
+(`NumberPopup` — the same on-screen numpad used elsewhere in the POS), so the
+tablet's native soft keyboard never pops up or occludes the screen. Entry is
 via:
 
-- the on-screen **numpad** embedded in the popup (tap a field to select it,
-  then type), and
-- the existing **+ / −** buttons (one coin/note per tap).
+- the **numpad popup** (tap a row's value → type on the on-screen numpad → OK), and
+- the **+ / −** buttons (one coin/note per tap) for quick adjustments.
 
 > **Scope (Phase 1):** this is limited to the closing cash-count popup
-> (`MoneyDetailsPopup`). Extending the no-keyboard + numpad behaviour to the
-> rest of the POS (payments, quantities, discounts) is Phase 2 — same
-> mechanism, wider reach.
+> (`MoneyDetailsPopup`). Extending the no-keyboard behaviour to the rest of the
+> POS (payments, quantities, discounts) is Phase 2 — but note the core POS
+> payment/quantity numpads are already button-based, so most of the POS is
+> unaffected by the soft keyboard to begin with.
 
 ## Install defaults
 
