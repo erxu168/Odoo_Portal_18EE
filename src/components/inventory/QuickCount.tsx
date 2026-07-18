@@ -121,7 +121,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
     setLoading(true);
     try {
       const [prodRes, locRes, flagRes] = await Promise.all([
-        fetch('/api/inventory/products').then((r) => r.json()),
+        fetch(`/api/inventory/products?company_id=${companyId}`).then((r) => r.json()),
         fetch(`/api/inventory/locations?company_id=${companyId}`).then((r) => r.json()),
         fetch('/api/inventory/product-flags').then((r) => r.json()),
       ]);

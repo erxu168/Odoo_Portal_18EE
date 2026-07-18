@@ -20,10 +20,12 @@
  * Body: { barcode: string, name: string }
  * Returns: { product: { id, name, categ_id, uom_id, barcode, active } }
  */
+export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides } from '@/lib/db';
+import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { registerDraftProduct, isDraftProduct } from '@/lib/inventory-db';
 
@@ -95,8 +97,30 @@ export async function GET(request: Request) {
     if (categoryId) domain.push(['categ_id', '=', parseInt(categoryId)]);
     if (search) domain.push(['name', 'ilike', search]);
 
+    // Company scope — only on the open browse (skipped when explicit `ids` are
+    // given, since those are an already-curated set, e.g. a counting template's
+    // products). A product is visible to a company when it is SHARED
+    // (company_id = false) OR owned by that company. This keeps products shared
+    // across restaurants (e.g. Ssam + What a Jerk) while hiding another
+    // company's own products. Active company comes from the top-bar switcher
+    // (?company_id=, else the kw_company_id cookie); guarded by the user's
+    // allowed companies so a stale cookie can't widen access.
+    if (!ids) {
+      const activeCompany = parseInt(searchParams.get('company_id') || '0', 10)
+        || parseInt(cookies().get('kw_company_id')?.value || '0', 10);
+      const allowedIds = parseCompanyIds(user.allowed_company_ids);
+      // An empty allowed list means "unrestricted" (all companies) — trust the
+      // switcher selection then. A restricted user may only scope to a company
+      // they're allowed; a stale/foreign cookie falls back to their allowed set.
+      if (activeCompany && (allowedIds.length === 0 || allowedIds.includes(activeCompany))) {
+        domain.push('|', ['company_id', '=', false], ['company_id', '=', activeCompany]);
+      } else if (allowedIds.length > 0) {
+        domain.push('|', ['company_id', '=', false], ['company_id', 'in', allowedIds]);
+      }
+    }
+
     const products = await odoo.searchRead('product.product', domain,
-      ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode', 'active', 'available_in_pos'],
+      ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode', 'active', 'available_in_pos', 'company_id'],
       { limit, order: 'categ_id, name', context: { active_test: false } }
     );
 

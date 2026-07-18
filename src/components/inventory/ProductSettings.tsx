@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { SearchBar, Spinner, EmptyState } from './ui';
 import { suggestCrateSizeFromName, baseIsMeasure } from '@/lib/crate-units';
+import { useCompany } from '@/lib/company-context';
 
 interface ProductSettingsProps {
   onBack: () => void;
@@ -13,6 +14,7 @@ interface ProductSettingsProps {
 const PACK_LABELS = ['piece', 'bunch', 'head', 'crate', 'case', 'box', 'tray', 'bag', 'pack'];
 
 export default function ProductSettings({ onBack }: ProductSettingsProps) {
+  const { companyId } = useCompany();
   const [products, setProducts] = useState<any[]>([]);
   const [flags, setFlags] = useState<Record<number, boolean>>({});
   const [crateSizes, setCrateSizes] = useState<Record<number, string>>({});   // per-product input strings ('' = none)
@@ -27,7 +29,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
       setLoading(true);
       try {
         const [prodRes, flagRes] = await Promise.all([
-          fetch('/api/inventory/products?limit=500&include_pos=1').then(r => r.json()),
+          fetch(`/api/inventory/products?limit=500&include_pos=1${companyId ? `&company_id=${companyId}` : ''}`).then(r => r.json()),
           fetch('/api/inventory/product-flags').then(r => r.json()),
         ]);
         const prods = (prodRes.products || []).filter((p: any) => p.active !== false);
@@ -50,7 +52,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
       }
     }
     load();
-  }, []);
+  }, [companyId]);
 
   const filtered = useMemo(() => {
     if (!search) return products;

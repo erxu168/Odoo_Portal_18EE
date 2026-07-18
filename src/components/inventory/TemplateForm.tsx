@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { BackHeader, FilterBar, FilterPill, SearchBar, Spinner } from './ui';
+import { useCompany } from '@/lib/company-context';
 
 const FREQUENCIES = [
   { id: 'daily', label: 'Daily' },
@@ -36,6 +37,7 @@ interface TemplateFormProps {
 }
 
 export default function TemplateForm({ template, locations, departments, onSave, onCancel }: TemplateFormProps) {
+  const { companyId } = useCompany();
   const [name, setName] = useState(template?.name || '');
   const [frequency, setFrequency] = useState(template?.frequency || 'adhoc');
   const [scheduleDays, setScheduleDays] = useState<number[]>(template?.schedule_days || []);
@@ -63,7 +65,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
     async function load() {
       try {
         const [prodRes, userRes] = await Promise.all([
-          fetch('/api/inventory/products?limit=500&include_pos=1'),
+          fetch(`/api/inventory/products?limit=500&include_pos=1${companyId ? `&company_id=${companyId}` : ''}`),
           fetch('/api/admin/users'),
         ]);
         const prodData = await prodRes.json();
@@ -79,7 +81,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
       }
     }
     load();
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     if (!locationId && locations.length > 0) {
