@@ -149,6 +149,17 @@ export default function QuickCount({ userRole }: QuickCountProps) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Discard any in-progress counts when the restaurant (company) changes — they
+  // belong to the previous company's products and must never be submitted
+  // against another company's location.
+  useEffect(() => {
+    setCounts({});
+    setPhotos({});
+    setCrateSplits({});
+    setSubmitError(null);
+    setSubmitted(false);
+  }, [companyId]);
+
   const categories = React.useMemo(() => {
     const cats = new Map<number, string>();
     products.forEach((p) => { if (p.categ_id) cats.set(p.categ_id[0], p.categ_id[1]); });

@@ -87,35 +87,42 @@ export async function GET(request: Request) {
     if (!includePos) domain.push(['available_in_pos', '=', false]);
 
     // Filter by explicit product IDs (from counting template)
+    let hasIdFilter = false;
     if (ids) {
       const idList = ids.split(',').map(Number).filter(n => !isNaN(n) && n > 0);
       if (idList.length > 0) {
         domain.push(['id', 'in', idList]);
+        hasIdFilter = true;
       }
     }
 
     if (categoryId) domain.push(['categ_id', '=', parseInt(categoryId)]);
     if (search) domain.push(['name', 'ilike', search]);
 
-    // Company scope — only on the open browse (skipped when explicit `ids` are
-    // given, since those are an already-curated set, e.g. a counting template's
-    // products). A product is visible to a company when it is SHARED
-    // (company_id = false) OR owned by that company. This keeps products shared
-    // across restaurants (e.g. Ssam + What a Jerk) while hiding another
-    // company's own products. Active company comes from the top-bar switcher
-    // (?company_id=, else the kw_company_id cookie); guarded by the user's
-    // allowed companies so a stale cookie can't widen access.
-    if (!ids) {
+    // Company scope — only on the open browse (skipped when an explicit `ids`
+    // filter was applied, since those are an already-curated set, e.g. a
+    // counting template's products). A product is visible to a company when it
+    // is SHARED (company_id = false) OR owned by that company. This keeps
+    // products shared across restaurants (e.g. Ssam + What a Jerk) while hiding
+    // another company's own products. Active company comes from the top-bar
+    // switcher (?company_id=, else the kw_company_id cookie); guarded by the
+    // user's allowed companies so a stale/forged cookie can't widen access.
+    if (!hasIdFilter) {
       const activeCompany = parseInt(searchParams.get('company_id') || '0', 10)
         || parseInt(cookies().get('kw_company_id')?.value || '0', 10);
       const allowedIds = parseCompanyIds(user.allowed_company_ids);
-      // An empty allowed list means "unrestricted" (all companies) — trust the
-      // switcher selection then. A restricted user may only scope to a company
-      // they're allowed; a stale/foreign cookie falls back to their allowed set.
-      if (activeCompany && (allowedIds.length === 0 || allowedIds.includes(activeCompany))) {
+      // Only a full admin with no company restriction is trusted to browse any
+      // company via the switcher. A non-admin (incl. one with an empty/no
+      // company assignment) may only scope to a company they're explicitly
+      // allowed; anything else falls back to their allowed set.
+      const adminUnrestricted = user.role === 'admin' && allowedIds.length === 0;
+      if (activeCompany && (adminUnrestricted || allowedIds.includes(activeCompany))) {
         domain.push('|', ['company_id', '=', false], ['company_id', '=', activeCompany]);
       } else if (allowedIds.length > 0) {
         domain.push('|', ['company_id', '=', false], ['company_id', 'in', allowedIds]);
+      } else if (!adminUnrestricted) {
+        // Non-admin with no usable company signal: fail closed to shared-only.
+        domain.push(['company_id', '=', false]);
       }
     }
 
