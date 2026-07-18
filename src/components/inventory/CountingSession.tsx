@@ -50,6 +50,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [route, setRoute] = useState<{ guided: boolean; stops: any[] } | null>(null);
   const [guidedStatuses, setGuidedStatuses] = useState<Record<number, { status: string; skip_reason: string | null }>>({});
   const [statusPending, setStatusPending] = useState(0); // in-flight location-status writes
+  const [savesPending, setSavesPending] = useState(0);   // in-flight count saves/deletes
 
   // -- Barcode scanner --
   const [showScanner, setShowScanner] = useState(false);
@@ -276,11 +277,28 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const uncountedProducts = products.filter(p => entries[p.id] === undefined);
   const countedProducts = products.filter(p => entries[p.id] !== undefined);
 
+  // A count save/delete wrapped so it counts as "in flight" — submission waits
+  // for these to settle, otherwise a save racing behind submit would hit the
+  // now-submitted edit lock (400) and be dropped, losing the count.
+  async function trackedMutate(opts: Parameters<typeof offlineSafeMutate>[0]) {
+    setSavesPending((n) => n + 1);
+    try {
+      const res = await offlineSafeMutate(opts);
+      // If it queued (offline / transient 5xx), register it in sync.pending
+      // BEFORE we drop savesPending — otherwise there'd be a window where both
+      // counters read zero and submit could slip past a not-yet-synced count.
+      if (res.queued) await sync.refresh();
+      return res;
+    } finally {
+      setSavesPending((n) => n - 1);
+    }
+  }
+
   async function saveCount(productId: number, qty: number | null, uom: string) {
     if (qty === null || qty === undefined) {
       setEntries((prev) => { const next = { ...prev }; delete next[productId]; return next; });
       void updateCachedEntry(sessionId, productId, { counted_qty: null });
-      const res = await offlineSafeMutate({
+      const res = await trackedMutate({
         url: `/api/inventory/counts?session_id=${sessionId}&product_id=${productId}`,
         method: 'DELETE',
         dedupKey: `delete:${sessionId}:${productId}`,
@@ -289,7 +307,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     } else {
       setEntries((prev) => ({ ...prev, [productId]: qty }));
       void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom });
-      const res = await offlineSafeMutate({
+      const res = await trackedMutate({
         url: '/api/inventory/counts',
         method: 'POST',
         body: { session_id: sessionId, product_id: productId, counted_qty: qty, uom },
@@ -319,7 +337,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setEntries((prev) => { const next = { ...prev }; delete next[product.id]; return next; });
       setCrateSplits((prev) => { const next = { ...prev }; delete next[product.id]; return next; });
       void updateCachedEntry(sessionId, product.id, { counted_qty: null });
-      const res = await offlineSafeMutate({
+      const res = await trackedMutate({
         url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}`,
         method: 'DELETE',
         dedupKey: `delete:${sessionId}:${product.id}`,
@@ -333,7 +351,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     void updateCachedEntry(sessionId, product.id, {
       counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size,
     });
-    const res = await offlineSafeMutate({
+    const res = await trackedMutate({
       url: '/api/inventory/counts',
       method: 'POST',
       body: { session_id: sessionId, product_id: product.id, counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size },
@@ -400,6 +418,11 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     }
     if (statusPending > 0) {
       setSubmitError('Still saving your last location — try again in a moment.');
+      setShowConfirm(false);
+      return;
+    }
+    if (savesPending > 0) {
+      setSubmitError('Still saving your last count — try again in a moment.');
       setShowConfirm(false);
       return;
     }
@@ -504,7 +527,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               onChange={async (next) => {
                 setRowPhotos(prev => ({ ...prev, [p.id]: next }));
                 void updateCachedEntry(sessionId, p.id, { counted_qty: val ?? undefined, uom, photos: next });
-                const res = await offlineSafeMutate({
+                const res = await trackedMutate({
                   url: '/api/inventory/counts',
                   method: 'POST',
                   body: {

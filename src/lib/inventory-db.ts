@@ -26,6 +26,7 @@ export function initInventoryTables() {
       frequency TEXT NOT NULL DEFAULT 'adhoc',
       schedule_days TEXT NOT NULL DEFAULT '[]',
       location_id INTEGER NOT NULL,
+      company_id INTEGER,
       category_ids TEXT NOT NULL DEFAULT '[]',
       product_ids TEXT NOT NULL DEFAULT '[]',
       assign_type TEXT,
@@ -42,6 +43,7 @@ export function initInventoryTables() {
       scheduled_date TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
       location_id INTEGER NOT NULL,
+      company_id INTEGER,
       assigned_user_id INTEGER,
       submitted_at TEXT,
       reviewed_by INTEGER,
@@ -208,6 +210,25 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   if (!tmplColNames.includes('schedule_days')) {
     db.exec("ALTER TABLE counting_templates ADD COLUMN schedule_days TEXT NOT NULL DEFAULT '[]'");
   }
+  // Which restaurant a list belongs to — lets a shared department tablet (one
+  // company-scoped staff account) see lists that aren't assigned to a specific
+  // person. Nullable: legacy lists stay person-only until re-saved.
+  if (!tmplColNames.includes('company_id')) {
+    db.exec("ALTER TABLE counting_templates ADD COLUMN company_id INTEGER");
+  }
+
+  // Snapshot the company onto each session at creation, so later editing a
+  // template's company can never re-tag historical sessions' visibility/routing.
+  const sessCols2 = db.prepare("PRAGMA table_info('counting_sessions')").all() as { name: string }[];
+  if (!sessCols2.some(c => c.name === 'company_id')) {
+    db.exec("ALTER TABLE counting_sessions ADD COLUMN company_id INTEGER");
+    // Backfill existing sessions from their template's current company.
+    db.exec(`
+      UPDATE counting_sessions
+      SET company_id = (SELECT t.company_id FROM counting_templates t WHERE t.id = counting_sessions.template_id)
+      WHERE company_id IS NULL
+    `);
+  }
 
   // Crate/multi-UoM migrations — portal-side crate size + count-line split.
   // All additive & nullable: existing rows keep working (missing = no crate).
@@ -260,6 +281,7 @@ export function createTemplate(data: {
   frequency: Frequency;
   schedule_days?: number[];
   location_id: number;
+  company_id?: number | null;
   category_ids: number[];
   product_ids?: number[];
   assign_type: AssignType;
@@ -269,11 +291,11 @@ export function createTemplate(data: {
   const db = getDb();
   const ts = now();
   const r = db.prepare(`
-    INSERT INTO counting_templates (name, frequency, schedule_days, location_id, category_ids, product_ids, assign_type, assign_id, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO counting_templates (name, frequency, schedule_days, location_id, company_id, category_ids, product_ids, assign_type, assign_id, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.name, data.frequency, JSON.stringify(data.schedule_days || []),
-    data.location_id,
+    data.location_id, data.company_id ?? null,
     JSON.stringify(data.category_ids), JSON.stringify(data.product_ids || []),
     data.assign_type, data.assign_id, data.created_by, ts, ts
   );
@@ -285,6 +307,7 @@ export function updateTemplate(id: number, data: Partial<{
   frequency: Frequency;
   schedule_days: number[];
   location_id: number;
+  company_id: number | null;
   category_ids: number[];
   product_ids: number[];
   assign_type: AssignType;
@@ -298,6 +321,7 @@ export function updateTemplate(id: number, data: Partial<{
   if (data.frequency !== undefined) { sets.push('frequency = ?'); vals.push(data.frequency); }
   if (data.schedule_days !== undefined) { sets.push('schedule_days = ?'); vals.push(JSON.stringify(data.schedule_days)); }
   if (data.location_id !== undefined) { sets.push('location_id = ?'); vals.push(data.location_id); }
+  if (data.company_id !== undefined) { sets.push('company_id = ?'); vals.push(data.company_id); }
   if (data.category_ids !== undefined) { sets.push('category_ids = ?'); vals.push(JSON.stringify(data.category_ids)); }
   if (data.product_ids !== undefined) { sets.push('product_ids = ?'); vals.push(JSON.stringify(data.product_ids)); }
   if (data.assign_type !== undefined) { sets.push('assign_type = ?'); vals.push(data.assign_type); }
@@ -320,12 +344,23 @@ export function getTemplate(id: number): CountingTemplate | null {
   return row ? parseTemplate(row) : null;
 }
 
-export function listTemplates(filters?: { location_id?: number; active?: boolean }): CountingTemplate[] {
+export function listTemplates(filters?: { location_id?: number; active?: boolean; company_ids?: number[] }): CountingTemplate[] {
   const db = getDb();
   const where: string[] = [];
   const vals: unknown[] = [];
   if (filters?.location_id) { where.push('t.location_id = ?'); vals.push(filters.location_id); }
   if (filters?.active !== undefined) { where.push('t.active = ?'); vals.push(filters.active ? 1 : 0); }
+  // Scope to a set of restaurants (for the manager-facing list). Legacy lists
+  // with no company stay visible so a manager can re-save to tag them.
+  if (filters?.company_ids) {
+    if (filters.company_ids.length > 0) {
+      const ph = filters.company_ids.map(() => '?').join(',');
+      where.push(`(t.company_id IN (${ph}) OR t.company_id IS NULL)`);
+      vals.push(...filters.company_ids);
+    } else {
+      where.push('t.company_id IS NULL');
+    }
+  }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const rows = db.prepare(`
     SELECT t.*, u.name as assign_label
@@ -356,12 +391,19 @@ export function createSession(data: {
   scheduled_date: string;
   location_id: number;
   assigned_user_id?: number | null;
+  company_id?: number | null;
 }): number {
   const db = getDb();
+  // Snapshot the company at creation; derive from the template when the caller
+  // didn't pass it (so the session's company never shifts if the template is
+  // later re-tagged).
+  const companyId = data.company_id !== undefined
+    ? data.company_id
+    : (getTemplate(data.template_id)?.company_id ?? null);
   const r = db.prepare(`
-    INSERT INTO counting_sessions (template_id, scheduled_date, location_id, assigned_user_id, status, created_at)
-    VALUES (?, ?, ?, ?, 'pending', ?)
-  `).run(data.template_id, data.scheduled_date, data.location_id, data.assigned_user_id || null, now());
+    INSERT INTO counting_sessions (template_id, scheduled_date, location_id, company_id, assigned_user_id, status, created_at)
+    VALUES (?, ?, ?, ?, ?, 'pending', ?)
+  `).run(data.template_id, data.scheduled_date, data.location_id, companyId, data.assigned_user_id || null, now());
   return r.lastInsertRowid as number;
 }
 
@@ -371,6 +413,10 @@ export function listSessions(filters?: {
   location_id?: number;
   assigned_user_id?: number;
   scheduled_date?: string;
+  // Staff visibility: a session is shown when it's assigned to this user, OR
+  // it's not assigned to any person AND belongs to one of the user's companies
+  // (how a shared department tablet sees "Anyone"/department lists).
+  visibleTo?: { userId: number; companyIds: number[] };
 }): CountingSession[] {
   const db = getDb();
   const where: string[] = [];
@@ -379,11 +425,23 @@ export function listSessions(filters?: {
   if (filters?.template_id) { where.push('s.template_id = ?'); vals.push(filters.template_id); }
   if (filters?.location_id) { where.push('s.location_id = ?'); vals.push(filters.location_id); }
   if (filters?.assigned_user_id) { where.push('s.assigned_user_id = ?'); vals.push(filters.assigned_user_id); }
+  if (filters?.visibleTo) {
+    const { userId, companyIds } = filters.visibleTo;
+    if (companyIds.length > 0) {
+      const ph = companyIds.map(() => '?').join(',');
+      where.push(`(s.assigned_user_id = ? OR (s.assigned_user_id IS NULL AND s.company_id IN (${ph})))`);
+      vals.push(userId, ...companyIds);
+    } else {
+      where.push('s.assigned_user_id = ?');
+      vals.push(userId);
+    }
+  }
   if (filters?.scheduled_date) { where.push('s.scheduled_date = ?'); vals.push(filters.scheduled_date); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
   return db.prepare(`
     SELECT s.*, t.name as template_name, t.frequency as template_frequency,
            t.product_ids as template_product_ids, t.category_ids as template_category_ids,
+           s.company_id as company_id,
            u.name as assigned_user_name
     FROM counting_sessions s
     LEFT JOIN counting_templates t ON t.id = s.template_id
@@ -398,6 +456,7 @@ export function getSession(id: number): CountingSession | null {
   return db.prepare(`
     SELECT s.*, t.name as template_name, t.frequency as template_frequency,
            t.product_ids as template_product_ids, t.category_ids as template_category_ids,
+           s.company_id as company_id,
            u.name as assigned_user_name
     FROM counting_sessions s
     LEFT JOIN counting_templates t ON t.id = s.template_id
@@ -435,7 +494,7 @@ export function updateSessionStatus(id: number, status: SessionStatus, extra?: {
  * - adhoc/monthly: skipped (adhoc = manual, monthly = not yet implemented)
  * Skips templates that already have a session for today.
  */
-export function generateTodaySessions(): { created: number; skipped: number } {
+export function generateTodaySessions(companyIds?: number[]): { created: number; skipped: number } {
   const db = getDb();
   const today = todayStr();
 
@@ -444,6 +503,13 @@ export function generateTodaySessions(): { created: number; skipped: number } {
   let skipped = 0;
 
   for (const tmpl of templates) {
+    // Scope generation to the requester's restaurant(s) when given, so one
+    // company's session-list load can't spawn another company's sessions.
+    // (undefined = unrestricted, e.g. an admin or an internal call.)
+    if (companyIds && !(tmpl.company_id != null && companyIds.includes(tmpl.company_id))) {
+      skipped++;
+      continue;
+    }
     // Check if this template should generate today based on frequency + schedule
     if (!shouldGenerateToday(tmpl)) {
       skipped++;
@@ -468,6 +534,7 @@ export function generateTodaySessions(): { created: number; skipped: number } {
       template_id: tmpl.id,
       scheduled_date: today,
       location_id: tmpl.location_id,
+      company_id: tmpl.company_id ?? null,
       assigned_user_id: assignedUserId,
     });
     created++;
@@ -506,6 +573,7 @@ export function generateSessionForTemplate(templateId: number): number | null {
     template_id: templateId,
     scheduled_date: today,
     location_id: tmpl.location_id,
+    company_id: tmpl.company_id ?? null,
     assigned_user_id: assignedUserId,
   });
 }

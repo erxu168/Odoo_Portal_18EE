@@ -209,6 +209,11 @@ export default function TemplateForm({ template, locations, departments, onSave,
       frequency,
       schedule_days: frequency === 'weekly' ? scheduleDays : [],
       location_id: locationId,
+      // Which restaurant — drives tablet visibility. On edit, preserve the
+      // list's own restaurant (there's no company picker here) so switching the
+      // active company can't silently re-tag it; only a legacy untagged list
+      // falls back to the active company.
+      company_id: (isEdit ? (template?.company_id ?? companyId) : companyId) || undefined,
       category_ids: catIds,
       product_ids: Array.from(selectedProductIds),
       assign_type: assignType,

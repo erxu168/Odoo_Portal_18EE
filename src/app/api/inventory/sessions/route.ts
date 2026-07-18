@@ -10,8 +10,9 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides } from '@/lib/db';
+import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
 import { createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap } from '@/lib/inventory-db';
+import { canAccessSession } from '@/lib/inventory-access';
 import { resolveSessionRoute } from '@/lib/session-route';
 import { missedStops } from '@/lib/guided-route';
 import { logAudit } from '@/lib/db';
@@ -21,8 +22,14 @@ export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  // Auto-generate today's sessions if they don't exist yet (idempotent)
-  try { generateTodaySessions(); } catch (_e) { /* non-fatal */ }
+  // Auto-generate today's sessions if they don't exist yet (idempotent),
+  // scoped to the caller's restaurant(s) so a load can't spawn another
+  // company's sessions. Unrestricted admin (no company) generates all.
+  {
+    const allowed = parseCompanyIds(user.allowed_company_ids);
+    const adminUnrestricted = user.role === 'admin' && allowed.length === 0;
+    try { generateTodaySessions(adminUnrestricted ? undefined : allowed); } catch (_e) { /* non-fatal */ }
+  }
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status') as string | null;
@@ -30,15 +37,18 @@ export async function GET(request: Request) {
   const locationId = searchParams.get('location_id');
   const date = searchParams.get('date'); // YYYY-MM-DD format
 
-  // Staff only see sessions assigned to them; managers/admins see all
+  // Staff see sessions assigned to them PLUS unassigned ("Anyone"/department)
+  // lists for their restaurant(s); managers/admins see all.
   const isStaff = !hasRole(user, 'manager');
 
   const sessions = listSessions({
     status: (status || undefined) as undefined,
     template_id: templateId ? parseInt(templateId) : undefined,
     location_id: locationId ? parseInt(locationId) : undefined,
-    assigned_user_id: isStaff ? user.id : undefined,
     scheduled_date: date || undefined,
+    ...(isStaff
+      ? { visibleTo: { userId: user.id, companyIds: parseCompanyIds(user.allowed_company_ids) } }
+      : {}),
   });
 
   return NextResponse.json({ sessions });
@@ -53,19 +63,45 @@ export async function POST(request: Request) {
 
   const body = await request.json();
 
-  // Generate all today's sessions from active templates
+  // Generate today's sessions from active templates — scoped to the manager's
+  // restaurant(s); a full admin with no restriction generates all.
   if (body.action === 'generate_today') {
-    const result = generateTodaySessions();
+    const allowed = parseCompanyIds(user.allowed_company_ids);
+    const adminUnrestricted = user.role === 'admin' && allowed.length === 0;
+    const result = generateTodaySessions(adminUnrestricted ? undefined : allowed);
     return NextResponse.json({ ...result, message: `Generated ${result.created} sessions (${result.skipped} skipped)` });
   }
 
-  const { template_id, scheduled_date, location_id, assigned_user_id } = body;
+  const { template_id, scheduled_date, assigned_user_id } = body;
 
-  if (!template_id || !scheduled_date || !location_id) {
-    return NextResponse.json({ error: 'template_id, scheduled_date, location_id required' }, { status: 400 });
+  if (!template_id || !scheduled_date) {
+    return NextResponse.json({ error: 'template_id and scheduled_date required' }, { status: 400 });
   }
 
-  const id = createSession({ template_id, scheduled_date, location_id, assigned_user_id });
+  // Location + company come from the template (never the client) so a session
+  // can't be pointed at another restaurant's stock location.
+  const tmpl = getTemplate(template_id);
+  if (!tmpl) return NextResponse.json({ error: 'List not found' }, { status: 404 });
+  const allowed = parseCompanyIds(user.allowed_company_ids);
+  const adminUnrestricted = user.role === 'admin' && allowed.length === 0;
+  if (!adminUnrestricted) {
+    // A legacy untagged list has no company to authorize against and could
+    // carry a cross-company location — tag it first.
+    if (tmpl.company_id == null) {
+      return NextResponse.json({ error: 'Tag this list with a restaurant before starting a count.' }, { status: 400 });
+    }
+    if (!allowed.includes(tmpl.company_id)) {
+      return NextResponse.json({ error: 'That list belongs to another restaurant' }, { status: 403 });
+    }
+  }
+
+  const id = createSession({
+    template_id,
+    scheduled_date,
+    location_id: tmpl.location_id,
+    company_id: tmpl.company_id ?? null,
+    assigned_user_id,
+  });
   return NextResponse.json({ id, message: 'Session created' }, { status: 201 });
 }
 
@@ -86,8 +122,9 @@ export async function PUT(request: Request) {
   if (status === 'submitted') {
     const session = getSession(id);
     if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-    // Only the assigned staff (or a manager) may submit, and only an editable session.
-    if (!hasRole(user, 'manager') && session.assigned_user_id !== user.id)
+    // The assigned staff, any staff of the restaurant for an unassigned list,
+    // or a manager may submit — and only while still editable.
+    if (!canAccessSession(user, session))
       return NextResponse.json({ error: 'This is not your count to submit' }, { status: 403 });
     if (session.status !== 'pending' && session.status !== 'in_progress')
       return NextResponse.json({ error: 'This count has already been submitted' }, { status: 400 });

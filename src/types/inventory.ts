@@ -51,6 +51,7 @@ export interface CountingTemplate {
   frequency: Frequency;
   schedule_days: number[];  // JS weekday numbers: 0=Sun, 1=Mon, ..., 6=Sat
   location_id: number;
+  company_id?: number | null;  // which restaurant this list belongs to
   location_name?: string;
   category_ids: number[];   // JSON stored
   product_ids: number[];    // JSON stored — explicit product picks
@@ -71,6 +72,7 @@ export interface CountingSession {
   scheduled_date: string;
   status: SessionStatus;
   location_id: number;
+  company_id?: number | null;  // restaurant of the template (for staff visibility)
   location_name?: string;
   assigned_user_id: number | null;
   assigned_user_name?: string;

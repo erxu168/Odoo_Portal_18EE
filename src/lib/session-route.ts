@@ -30,20 +30,17 @@ export function resolveSessionRoute(sessionId: number): { guided: boolean; stops
   if (refs.length === 0) {
     return buildGuidedRoute({ productIds, placements, locations: [], statuses: [] });
   }
-  // A session belongs to ONE restaurant. Pick the company deterministically
-  // (the one owning the most referenced locations; tie -> lowest id) and scope
-  // both the location tree and placements to it, so a product shared across
-  // companies can't pull in another company's locations.
-  // KNOWN LIMITATION: this is a heuristic, not derived from the session's Odoo
-  // location. It is correct whenever a product is only placed within one
-  // company (the normal case). If the SAME Odoo product is placed in two
-  // different companies' locations, the majority company wins. A fully
-  // authoritative fix would read the session's stock.location.company_id from
-  // Odoo — deferred (adds an Odoo call to a hot path for an edge case that does
-  // not occur in the current 2-3 restaurant setup).
-  const byCompany = new Map<number, number>();
-  refs.forEach((r) => byCompany.set(r.company_id, (byCompany.get(r.company_id) || 0) + 1));
-  const companyId = Array.from(byCompany.entries()).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+  // A session belongs to ONE restaurant. Prefer the template's authoritative
+  // company_id (set on create); only fall back to the placement-majority
+  // heuristic for legacy lists that pre-date the company_id column. Scoping the
+  // location tree + placements to this company means a product shared across
+  // restaurants can never pull in another company's locations.
+  let companyId = session.company_id ?? null;
+  if (companyId == null) {
+    const byCompany = new Map<number, number>();
+    refs.forEach((r) => byCompany.set(r.company_id, (byCompany.get(r.company_id) || 0) + 1));
+    companyId = Array.from(byCompany.entries()).sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+  }
 
   const locations = listCountLocations(companyId);
   const compLocIds = new Set(locations.map((l) => l.id));

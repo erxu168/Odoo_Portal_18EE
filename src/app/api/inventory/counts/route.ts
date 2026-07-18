@@ -9,9 +9,15 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, setCountPhotos, getCountPhotosMap } from '@/lib/inventory-db';
+import { canAccessSession } from '@/lib/inventory-access';
 import { getOdoo } from '@/lib/odoo';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { crateTotal } from '@/lib/crate-units';
+
+// A count line can only be written/removed while the session is still open.
+function isEditable(status: string): boolean {
+  return status === 'pending' || status === 'in_progress';
+}
 
 
 export async function GET(request: Request) {
@@ -22,6 +28,10 @@ export async function GET(request: Request) {
   const sessionId = searchParams.get('session_id');
   if (!sessionId) return NextResponse.json({ error: 'session_id required' }, { status: 400 });
 
+  const session = getSession(parseInt(sessionId));
+  if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+  if (!canAccessSession(user, session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const entries = getSessionEntries(parseInt(sessionId));
   const photoMap = getCountPhotosMap('count_entries', entries.map((e: any) => e.id));
   const hydrated = entries.map((e: any) => ({ ...e, photos: photoMap[e.id] || [] }));
@@ -29,8 +39,7 @@ export async function GET(request: Request) {
   // Fetch system quantities from Odoo stock.quant for this session's location
   const systemQtys: Record<number, number> = {};
   try {
-    const session = getSession(parseInt(sessionId));
-    if (session) {
+    {
       const odoo = getOdoo();
       const quants = await odoo.searchRead('stock.quant',
         [['location_id', '=', session.location_id], ['quantity', '>', 0]],
@@ -72,6 +81,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'session_id, product_id, counted_qty required' }, { status: 400 });
   }
 
+  const session = getSession(session_id);
+  if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+  if (!canAccessSession(user, session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!isEditable(session.status)) return NextResponse.json({ error: 'This count can no longer be edited' }, { status: 400 });
+
   upsertCountEntry({
     session_id, product_id, counted_qty: baseQty,
     system_qty: system_qty ?? null,
@@ -104,6 +118,11 @@ export async function DELETE(request: Request) {
   if (!sessionId || !productId) {
     return NextResponse.json({ error: 'session_id and product_id required' }, { status: 400 });
   }
+
+  const session = getSession(parseInt(sessionId));
+  if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+  if (!canAccessSession(user, session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  if (!isEditable(session.status)) return NextResponse.json({ error: 'This count can no longer be edited' }, { status: 400 });
 
   deleteCountEntry(parseInt(sessionId), parseInt(productId));
   return NextResponse.json({ message: 'Count removed' });

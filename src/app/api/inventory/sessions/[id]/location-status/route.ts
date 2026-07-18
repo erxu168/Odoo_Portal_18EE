@@ -5,8 +5,9 @@ export const dynamic = 'force-dynamic';
  * Body: { count_location_id: number, status: 'pending'|'counted'|'skipped', skip_reason?: string }
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { initInventoryTables, getSession, setSessionLocationStatus } from '@/lib/inventory-db';
+import { canAccessSession } from '@/lib/inventory-access';
 import { resolveSessionRoute } from '@/lib/session-route';
 
 const STATUSES = ['pending', 'counted', 'skipped'];
@@ -24,8 +25,9 @@ export async function POST(
 
   const session = getSession(id);
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-  // Only the assigned staff (or a manager) may update a session's stops.
-  if (!hasRole(user, 'manager') && session.assigned_user_id !== user.id)
+  // The assigned staff, any staff of the restaurant for an unassigned list, or
+  // a manager may update a session's stops.
+  if (!canAccessSession(user, session))
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   // Locked once submitted/reviewed.
   if (session.status !== 'pending' && session.status !== 'in_progress')

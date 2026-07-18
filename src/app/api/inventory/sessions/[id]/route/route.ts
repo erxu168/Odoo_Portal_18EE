@@ -6,8 +6,9 @@ export const dynamic = 'force-dynamic';
  * "Everything else" stop for unplaced products. guided:false => flat counting.
  */
 import { NextResponse } from 'next/server';
-import { requireAuth, hasRole } from '@/lib/auth';
+import { requireAuth } from '@/lib/auth';
 import { initInventoryTables, getSession } from '@/lib/inventory-db';
+import { canAccessSession } from '@/lib/inventory-access';
 import { resolveSessionRoute } from '@/lib/session-route';
 
 export async function GET(
@@ -23,8 +24,9 @@ export async function GET(
 
   const session = getSession(id);
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-  // Staff may only view a route for a session assigned to them.
-  if (!hasRole(user, 'manager') && session.assigned_user_id !== user.id)
+  // Staff may view a route for their own assigned session, or an unassigned
+  // ("Anyone"/department) session in their restaurant. Managers: any.
+  if (!canAccessSession(user, session))
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   return NextResponse.json(resolveSessionRoute(id));
