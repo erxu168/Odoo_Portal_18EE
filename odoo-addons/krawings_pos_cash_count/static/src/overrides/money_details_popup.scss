@@ -1,13 +1,7 @@
-.kw-cash-count {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-
-    .kw-cash-rows {
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 0.15rem;
-    }
+.kw-cash-rows {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.15rem 1rem;
 
     .kw-cash-row {
         gap: 0.25rem;
@@ -23,34 +17,14 @@
         min-width: 3.75rem;
     }
 
-    .kw-input {
-        max-width: 12rem;
+    .kw-step {
+        flex: 0 0 auto;
     }
 
+    // The value/quantity entry target. Big tap area; opens the POS numpad popup.
     .kw-field {
-        background-color: #fff;
-        // readonly + inputmode=none: never raises the OS keyboard, but must
-        // still look and behave like an editable field.
-        cursor: pointer;
-    }
-
-    .kw-cash-row.kw-active .kw-field {
-        outline: 2px solid var(--primary, #714b67);
-        outline-offset: -1px;
-    }
-
-    .kw-numpad {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 0.4rem;
-        width: 100%;
-        max-width: 18rem;
-        margin: 0.25rem auto 0;
-    }
-
-    .kw-key {
-        padding: 0.55rem 0;
-        font-size: 1.25rem;
+        min-width: 4rem;
+        font-variant-numeric: tabular-nums;
         font-weight: 600;
     }
 }

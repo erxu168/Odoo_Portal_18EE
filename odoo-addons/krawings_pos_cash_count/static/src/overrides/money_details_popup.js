@@ -2,35 +2,38 @@
 
 import { patch } from "@web/core/utils/patch";
 import { MoneyDetailsPopup } from "@point_of_sale/app/utils/money_details_popup/money_details_popup";
+import { NumberPopup } from "@point_of_sale/app/utils/input_popups/number_popup";
+import {
+    getButtons,
+    DECIMAL,
+    ZERO,
+    BACKSPACE,
+    EMPTY,
+} from "@point_of_sale/app/generic_components/numpad/numpad";
 import { useState } from "@odoo/owl";
+import { useService } from "@web/core/utils/hooks";
+import { parseFloat as parseFloatLocale } from "@web/views/fields/parsers";
 import { floatIsZero } from "@web/core/utils/numbers";
 import { _t } from "@web/core/l10n/translation";
 
 patch(MoneyDetailsPopup.prototype, {
     setup() {
         super.setup();
+        this.dialog = useService("dialog");
 
-        // Denomination values (as string keys) that are flagged as coins and
-        // may therefore be counted by value.
+        // Denomination values (string keys) flagged as coins -> may be counted by value.
         this.coinValues = new Set(
             this.pos.models["pos.bill"]
                 .filter((bill) => bill.is_coin)
                 .map((bill) => String(bill.value))
         );
 
-        // Coins default to "value" entry (the whole point of this change);
-        // notes/bills have no mode entry and stay quantity-only.
+        // Coins default to "value" entry (the whole point); notes stay quantity-only.
         const initialMode = {};
         for (const value of this.coinValues) {
             initialMode[value] = "value";
         }
-
-        this.entry = useState({
-            mode: initialMode, // { [value]: "qty" | "value" }
-            activeKey: null, // denomination value string currently being edited
-            buffer: "", // raw typed string for the active row
-            fresh: true, // next keypress replaces the buffer (select-all behaviour)
-        });
+        this.entry = useState({ mode: initialMode }); // { [value]: "qty" | "value" }
     },
 
     // ---- denomination helpers -------------------------------------------
@@ -47,79 +50,71 @@ patch(MoneyDetailsPopup.prototype, {
         const q = this.state.moneyDetails[value];
         return isNaN(q) || !q ? 0 : q;
     },
+    toggleMode(value) {
+        if (!this.isCoin(value)) {
+            return;
+        }
+        const nextMode = this.modeOf(value) === "value" ? "qty" : "value";
+        this.entry.mode[value] = nextMode;
+        // A count of physical coins must be whole: snap when entering quantity mode
+        // so the shown number and the running total can never diverge.
+        if (nextMode === "qty") {
+            this.state.moneyDetails[value] = Math.round(this._qtyOf(value));
+        }
+    },
 
-    // ---- display / typing -----------------------------------------------
-    // The plain (dot-decimal) string shown for the stored quantity of a row.
-    _storedString(value) {
+    // Number rendered on a row's entry button. Always reflects the stored value:
+    // value mode -> the exact euro total; quantity mode -> the (integer) count.
+    displayValue(value) {
         const qty = this._qtyOf(value);
         if (!qty) {
             return "";
         }
         if (this.modeOf(value) === "value") {
-            return (this._denom(value) * qty).toFixed(this.currency.decimal_places);
+            return this.env.utils.formatCurrency(this._denom(value) * qty, false);
         }
         return String(qty);
     },
-    // What the input should render right now (live buffer for the active row).
-    displayValue(value) {
-        if (this.entry.activeKey === value) {
-            return this.entry.buffer;
-        }
-        return this._storedString(value);
-    },
-    // Store a typed string into moneyDetails as a quantity.
-    _commit(value, str) {
-        const num = parseFloat(str);
-        if (isNaN(num)) {
-            this.state.moneyDetails[value] = 0;
-            return;
-        }
-        this.state.moneyDetails[value] =
-            this.modeOf(value) === "value" ? num / this._denom(value) : num;
-    },
 
     // ---- interaction ----------------------------------------------------
-    setActive(value) {
-        this.entry.activeKey = value;
-        this.entry.buffer = this._storedString(value);
-        this.entry.fresh = true;
-    },
-    toggleMode(value) {
-        if (!this.isCoin(value)) {
-            return;
-        }
-        this.entry.mode[value] = this.modeOf(value) === "value" ? "qty" : "value";
-        if (this.entry.activeKey === value) {
-            this.entry.buffer = this._storedString(value);
-            this.entry.fresh = true;
-        }
-    },
-    numpadKey(key) {
-        const value = this.entry.activeKey;
-        if (value === null) {
-            return;
-        }
-        let buf = this.entry.fresh ? "" : this.entry.buffer;
-        this.entry.fresh = false;
-        if (key === "backspace") {
-            buf = buf.slice(0, -1);
-        } else if (key === ".") {
-            if (!buf.includes(".")) {
-                buf = (buf || "0") + ".";
-            }
-        } else {
-            buf += key;
-        }
-        this.entry.buffer = buf;
-        this._commit(value, buf);
-    },
     step(value, delta) {
-        const qty = Math.max(0, this._qtyOf(value) + delta);
-        this.state.moneyDetails[value] = qty;
-        if (this.entry.activeKey === value) {
-            this.entry.buffer = this._storedString(value);
-            this.entry.fresh = true;
-        }
+        this.state.moneyDetails[value] = Math.max(0, this._qtyOf(value) + delta);
+    },
+
+    // Tap a row -> open the POS' own numpad popup (no OS keyboard) to type a value.
+    editRow(value) {
+        const isValueMode = this.isCoin(value) && this.modeOf(value) === "value";
+        const denomLabel = this.env.utils.formatCurrency(this._denom(value));
+        this.dialog.add(NumberPopup, {
+            title: isValueMode
+                ? _t("%s in coins — total value", denomLabel)
+                : _t("%s — quantity", denomLabel),
+            startingValue: this.displayValue(value) || "0",
+            // Value mode allows decimals (a euro amount); quantity mode is a whole
+            // count, so drop the decimal key entirely.
+            buttons: isValueMode
+                ? getButtons([DECIMAL, ZERO, BACKSPACE])
+                : getButtons([EMPTY, ZERO, BACKSPACE]),
+            formatDisplayedValue: isValueMode
+                ? (x) => `${this.pos.currency.symbol} ${x}`
+                : (x) => x,
+            getPayload: (num) => {
+                let parsed = 0;
+                try {
+                    parsed = num ? parseFloatLocale(num) : 0;
+                } catch {
+                    parsed = 0;
+                }
+                if (isNaN(parsed) || parsed < 0) {
+                    parsed = 0;
+                }
+                // Quantity mode stores a whole coin/note count; value mode stores the
+                // implied (possibly fractional) count derived from the euro amount.
+                this.state.moneyDetails[value] = isValueMode
+                    ? parsed / this._denom(value)
+                    : Math.round(parsed);
+            },
+        });
     },
 
     // ---- confirm (value-mode aware note) --------------------------------
