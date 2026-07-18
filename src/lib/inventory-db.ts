@@ -135,6 +135,15 @@ export function initInventoryTables() {
     CREATE INDEX IF NOT EXISTS idx_count_locations_company ON count_locations(company_id);
     CREATE INDEX IF NOT EXISTS idx_count_locations_parent ON count_locations(parent_id);
     CREATE INDEX IF NOT EXISTS idx_product_locations_loc ON product_locations(count_location_id);
+
+    CREATE TABLE IF NOT EXISTS session_location_status (
+      session_id INTEGER NOT NULL,
+      count_location_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      skip_reason TEXT,
+      updated_at TEXT,
+      PRIMARY KEY (session_id, count_location_id)
+    );
   `);
   migrateInventorySchema(db);
 }
@@ -907,6 +916,16 @@ export function listCountLocations(companyId: number): CountLocation[] {
   return rows.map((r) => ({ ...(r as unknown as CountLocation), active: !!r.active }));
 }
 
+export function getCountLocationsByIds(ids: number[]): CountLocation[] {
+  if (ids.length === 0) return [];
+  const db = getDb();
+  const ph = ids.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT * FROM count_locations WHERE id IN (${ph}) AND active = 1`
+  ).all(...ids) as Record<string, unknown>[];
+  return rows.map((r) => ({ ...(r as unknown as CountLocation), active: !!r.active }));
+}
+
 /** Replace the full placement set for a location (products + their shelf order). */
 export function setProductPlacements(countLocationId: number, items: { odoo_product_id: number; shelf_sort: number }[]): void {
   const db = getDb();
@@ -929,4 +948,37 @@ export function getLocationsForProduct(productId: number): number[] {
   const db = getDb();
   return (db.prepare('SELECT count_location_id FROM product_locations WHERE odoo_product_id = ?').all(productId) as { count_location_id: number }[])
     .map((r) => r.count_location_id);
+}
+
+/** All placements for a set of products (used to build a session's guided route). */
+export function getPlacementsForProducts(productIds: number[]): ProductPlacement[] {
+  if (productIds.length === 0) return [];
+  const db = getDb();
+  const ph = productIds.map(() => '?').join(',');
+  return db.prepare(
+    `SELECT odoo_product_id, count_location_id, shelf_sort FROM product_locations WHERE odoo_product_id IN (${ph})`
+  ).all(...productIds) as ProductPlacement[];
+}
+
+// ===
+// SESSION LOCATION STATUS (guided route — per-stop counted/skipped state)
+// ===
+
+export function setSessionLocationStatus(
+  sessionId: number, countLocationId: number, status: string, skipReason: string | null,
+): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO session_location_status (session_id, count_location_id, status, skip_reason, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(session_id, count_location_id) DO UPDATE SET
+      status = excluded.status, skip_reason = excluded.skip_reason, updated_at = excluded.updated_at
+  `).run(sessionId, countLocationId, status, skipReason ?? null, now());
+}
+
+export function getSessionLocationStatuses(sessionId: number): { count_location_id: number; status: string; skip_reason: string | null }[] {
+  const db = getDb();
+  return db.prepare(
+    'SELECT count_location_id, status, skip_reason FROM session_location_status WHERE session_id = ?'
+  ).all(sessionId) as { count_location_id: number; status: string; skip_reason: string | null }[];
 }
