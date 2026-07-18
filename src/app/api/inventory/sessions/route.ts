@@ -12,6 +12,8 @@ import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap } from '@/lib/inventory-db';
+import { resolveSessionRoute } from '@/lib/session-route';
+import { missedStops } from '@/lib/guided-route';
 import { logAudit } from '@/lib/db';
 
 
@@ -84,20 +86,45 @@ export async function PUT(request: Request) {
   if (status === 'submitted') {
     const session = getSession(id);
     if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    // Only the assigned staff (or a manager) may submit, and only an editable session.
+    if (!hasRole(user, 'manager') && session.assigned_user_id !== user.id)
+      return NextResponse.json({ error: 'This is not your count to submit' }, { status: 403 });
+    if (session.status !== 'pending' && session.status !== 'in_progress')
+      return NextResponse.json({ error: 'This count has already been submitted' }, { status: 400 });
 
-    // Check count completion: require all products counted
     const entries = getSessionEntries(id);
-    const template = getTemplate(session.template_id);
-    if (template) {
-      const productIds: number[] = (() => {
-        try { return JSON.parse((template as unknown as Record<string, string>).product_ids || '[]'); } catch { return []; }
-      })();
-      const expectedCount = productIds.length > 0 ? productIds.length : 0;
-      if (expectedCount > 0 && entries.length < expectedCount) {
+
+    // Completion gate: if this session HAS a guided route (its products are
+    // placed into locations), every location must be counted or skipped — even
+    // if the staff set no statuses. Otherwise use the flat all-counted gate.
+    // (Sessions whose products aren't placed anywhere are guided:false.)
+    const route = resolveSessionRoute(id);
+    if (route.guided) {
+      // Every location with products must be visited (counted) or skipped with a
+      // reason. Uncounted items inside a visited location submit as "not counted",
+      // matching the flat flow — so we gate on the stop status, not per-item.
+      const missed = missedStops(route.stops);
+      if (missed.length > 0) {
+        const names = missed.map((s) => (s.location ? s.location.name : 'Everything else'));
         return NextResponse.json({
-          error: `Please count all items before submitting. ${entries.length}/${expectedCount} counted.`,
-          code: 'INCOMPLETE_COUNT',
+          error: `Count or skip every location first. Still to do: ${names.join(', ')}.`,
+          code: 'MISSED_LOCATIONS',
         }, { status: 400 });
+      }
+    } else {
+      // Flat completion gate (unchanged, behavior-preserving).
+      const template = getTemplate(session.template_id);
+      if (template) {
+        const productIds: number[] = (() => {
+          try { return JSON.parse((template as unknown as Record<string, string>).product_ids || '[]'); } catch { return []; }
+        })();
+        const expectedCount = productIds.length > 0 ? productIds.length : 0;
+        if (expectedCount > 0 && entries.length < expectedCount) {
+          return NextResponse.json({
+            error: `Please count all items before submitting. ${entries.length}/${expectedCount} counted.`,
+            code: 'INCOMPLETE_COUNT',
+          }, { status: 400 });
+        }
       }
     }
 
