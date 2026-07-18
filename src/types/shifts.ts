@@ -29,6 +29,10 @@ export interface ShiftSlot {
   overCap: boolean;
   /** Duration in hours = end − start, computed portal-side. NEVER allocated_hours. */
   hours: number;
+  /** Fully-loaded labour cost (€) incl. employer on-costs; set by the manage route. */
+  cost?: number;
+  /** true when `cost` is an estimate (open shift priced at the minimum wage). */
+  costEstimated?: boolean;
   companyId: number;
 }
 
@@ -79,6 +83,10 @@ export interface ShiftSettings {
   reminderQuietStart: string;
   /** Berlin "HH:MM" quiet-hours window end (exclusive). */
   reminderQuietEnd: string;
+  /** Employer on-cost (AG) % added on top of gross for Minijob staff (e.g. 30). */
+  agCostMinijob: number;
+  /** Employer on-cost (AG) % for regular (Midijob/Vollzeit) staff (e.g. 21). */
+  agCostRegular: number;
 }
 
 /** Snapshot of the slot at cover-request creation time. */

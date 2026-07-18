@@ -67,7 +67,14 @@ interface ManageData {
   roles: RoleInfo[];
   departments: RoleInfo[];
   slots: ShiftSlot[];
-  totals: { perDay: number[]; assigned: number; open: number } | null;
+  totals: {
+    perDay: number[];
+    assigned: number;
+    open: number;
+    costPerDay?: number[];
+    costWeek?: number;
+    costEstimatedAny?: boolean;
+  } | null;
   pendingRequestSlotIds: number[];
 }
 
@@ -107,6 +114,13 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 function fmtH(n: number): string {
   return n.toFixed(1);
+}
+
+const EUR = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
+/** Money with cents, German format — used for shifts and totals alike so the
+ *  per-shift figures always sum to the day/week totals shown. */
+function fmtEur(n: number): string {
+  return EUR.format(n);
 }
 
 function fmtCap(cap: number): string {
@@ -650,6 +664,9 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
               perDay: raw.totals.perDay.map(num),
               assigned: num(raw.totals.assigned),
               open: num(raw.totals.open),
+              costPerDay: Array.isArray(raw.totals.costPerDay) ? raw.totals.costPerDay.map(num) : undefined,
+              costWeek: typeof raw.totals.costWeek === 'number' ? raw.totals.costWeek : undefined,
+              costEstimatedAny: raw.totals.costEstimatedAny === true,
             }
           : null;
       setData({
@@ -902,7 +919,11 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
   const overCapPeople = (data?.employees ?? []).filter(e => e.overCap || (e.cap !== null && e.hours > e.cap));
   const openDraftCount = (data?.slots ?? []).filter(s => s.state === 'draft' && !s.employeeId).length;
   const publishConcerns = overCapPeople.length + (openDraftCount > 0 ? 1 : 0);
-  const weekTotalsLabel = `${fmtH(totals.assigned + totals.open)} h · ${fmtH(totals.assigned)} assigned + ${fmtH(totals.open)} open`;
+  const weekCostSuffix =
+    typeof totals.costWeek === 'number'
+      ? ` · ${fmtEur(totals.costWeek)}${totals.costEstimatedAny ? ' est.' : ''}`
+      : '';
+  const weekTotalsLabel = `${fmtH(totals.assigned + totals.open)} h · ${fmtH(totals.assigned)} assigned + ${fmtH(totals.open)} open${weekCostSuffix}`;
 
   // ---- Slot sheet -----------------------------------------------------------
   function openSheet(slot: ShiftSlot) {
@@ -1464,6 +1485,13 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
     const statusSuffix = `${s.overCap ? ' · over' : ''}${s.state === 'draft' ? ' · draft' : ''}`;
     const selectable = selectMode && !isOpen; // open shifts have no one to remove
     const isSelected = selectedIds.has(s.id);
+    const costLine =
+      typeof s.cost === 'number' ? (
+        <span className="block truncate max-w-full tabular-nums font-semibold opacity-80">
+          {fmtEur(s.cost)}
+          {s.costEstimated ? ' est.' : ''}
+        </span>
+      ) : null;
     return (
       <button
         key={s.id}
@@ -1499,6 +1527,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 {chipTime(s)}{statusSuffix}
               </span>
               {s.note && <span className="block truncate max-w-full font-medium opacity-60">{s.note}</span>}
+              {costLine}
             </>
           ) : (
             <>
@@ -1506,6 +1535,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 {isOpen ? 'Open · ' : ''}{chipTime(s)}{statusSuffix}
               </span>
               {s.note && <span className="block truncate max-w-full font-medium opacity-60">{s.note}</span>}
+              {costLine}
             </>
           )
         ) : (
@@ -1751,6 +1781,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         <span className="flex items-center gap-1.5">
           <span className="text-[var(--fs-xs)] text-gray-500 tabular-nums">
             {totals.perDay[i] > 0 ? `${fmtH(totals.perDay[i])} h` : '—'}
+            {totals.costPerDay && totals.costPerDay[i] > 0 ? ` · ${fmtEur(totals.costPerDay[i])}` : ''}
           </span>
           <button
             onClick={() => openQuickAdd(date)}
@@ -2139,10 +2170,15 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                   {days.map((d, i) => (
                     <div
                       key={`t-${d}`}
-                      className="bg-gray-100 flex items-center justify-center py-2 text-[var(--fs-sm)] font-bold text-gray-900 tabular-nums"
+                      className="bg-gray-100 flex flex-col items-center justify-center py-2 text-[var(--fs-sm)] font-bold text-gray-900 tabular-nums leading-tight"
                     >
                       {totals.perDay[i] > 0 ? (
-                        `${Number.isInteger(totals.perDay[i]) ? totals.perDay[i] : totals.perDay[i].toFixed(1)} h`
+                        <>
+                          <span>{Number.isInteger(totals.perDay[i]) ? totals.perDay[i] : totals.perDay[i].toFixed(1)} h</span>
+                          {totals.costPerDay && totals.costPerDay[i] > 0 && (
+                            <span className="text-[var(--fs-xs)] font-semibold text-gray-500">{fmtEur(totals.costPerDay[i])}</span>
+                          )}
+                        </>
                       ) : (
                         <span className="text-gray-400 font-normal">—</span>
                       )}
@@ -2520,6 +2556,15 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                     editSlot.employeeName ? `assigned to ${editSlot.employeeName}` : 'open'
                   }`}
                 </div>
+                {typeof editSlot.cost === 'number' && (
+                  <div className="text-[var(--fs-sm)] font-semibold text-gray-900 mt-0.5 tabular-nums">
+                    {fmtEur(editSlot.cost)}
+                    <span className="font-normal text-gray-500">
+                      {' '}
+                      {editSlot.costEstimated ? 'est. · incl. employer costs' : 'incl. employer costs'}
+                    </span>
+                  </div>
+                )}
               </div>
               <Badge variant={editSlot.state === 'draft' ? 'gray' : 'green'}>
                 {editSlot.state === 'draft' ? 'Draft' : 'Published'}

@@ -275,6 +275,8 @@ function ensureTables(): void {
     ['reminder_final_lead_hours', 'REAL NOT NULL DEFAULT 3'],
     ['reminder_quiet_start', "TEXT NOT NULL DEFAULT '22:00'"],
     ['reminder_quiet_end', "TEXT NOT NULL DEFAULT '08:00'"],
+    ['ag_cost_minijob', 'REAL NOT NULL DEFAULT 30'],
+    ['ag_cost_regular', 'REAL NOT NULL DEFAULT 21'],
   ] as const) {
     try { db.exec(`ALTER TABLE shift_settings ADD COLUMN ${col} ${def}`); }
     catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
@@ -692,7 +694,12 @@ interface SettingsRow {
   reminder_final_lead_hours: number;
   reminder_quiet_start: string;
   reminder_quiet_end: string;
+  ag_cost_minijob?: number;
+  ag_cost_regular?: number;
 }
+
+/** Defaults for the employer on-cost (AG) percentages when a row predates them. */
+const AG_COST_DEFAULTS = { agCostMinijob: 30, agCostRegular: 21 };
 
 /** Defaults for the email-reminder fields (also used when a settings row predates them). */
 const REMINDER_DEFAULTS = {
@@ -721,6 +728,7 @@ export function getShiftSettings(companyId: number): ShiftSettings {
       requireConfirmation: false,
       confirmByHours: 24,
       ...REMINDER_DEFAULTS,
+      ...AG_COST_DEFAULTS,
     };
   }
   return {
@@ -738,6 +746,8 @@ export function getShiftSettings(companyId: number): ShiftSettings {
     reminderFinalLeadHours: row.reminder_final_lead_hours ?? REMINDER_DEFAULTS.reminderFinalLeadHours,
     reminderQuietStart: row.reminder_quiet_start || REMINDER_DEFAULTS.reminderQuietStart,
     reminderQuietEnd: row.reminder_quiet_end || REMINDER_DEFAULTS.reminderQuietEnd,
+    agCostMinijob: row.ag_cost_minijob ?? AG_COST_DEFAULTS.agCostMinijob,
+    agCostRegular: row.ag_cost_regular ?? AG_COST_DEFAULTS.agCostRegular,
   };
 }
 
@@ -751,8 +761,8 @@ export function companiesRequiringConfirmation(): number[] {
 export function saveShiftSettings(s: ShiftSettings): void {
   ensureTables();
   getDb().prepare(`
-    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, ag_cost_minijob, ag_cost_regular, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(company_id) DO UPDATE SET
       require_approval = excluded.require_approval,
       answer_deadline_hours = excluded.answer_deadline_hours,
@@ -767,6 +777,8 @@ export function saveShiftSettings(s: ShiftSettings): void {
       reminder_final_lead_hours = excluded.reminder_final_lead_hours,
       reminder_quiet_start = excluded.reminder_quiet_start,
       reminder_quiet_end = excluded.reminder_quiet_end,
+      ag_cost_minijob = excluded.ag_cost_minijob,
+      ag_cost_regular = excluded.ag_cost_regular,
       updated_at = excluded.updated_at
   `).run(
     s.companyId,
@@ -783,6 +795,8 @@ export function saveShiftSettings(s: ShiftSettings): void {
     s.reminderFinalLeadHours,
     s.reminderQuietStart,
     s.reminderQuietEnd,
+    s.agCostMinijob,
+    s.agCostRegular,
     nowISO(),
   );
 }

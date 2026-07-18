@@ -33,6 +33,8 @@ interface SettingsForm {
   reminderEveningTime: string;
   reminderMorningTime: string;
   reminderFinalLeadHours: number;
+  agCostMinijob: number;
+  agCostRegular: number;
 }
 
 const ANSWER_HOURS = [4, 8, 12, 24];
@@ -56,6 +58,11 @@ function bool(v: unknown, fallback: boolean): boolean {
 
 function numOr(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback;
+}
+
+/** A percentage 0–100 (0 is valid, unlike numOr). */
+function pctOr(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : fallback;
 }
 
 function hourOptions(base: number[], current: number): number[] {
@@ -91,6 +98,10 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedToast, setSavedToast] = useState(false);
+  // AG-rate inputs are free numbers → edit locally, commit on blur (the instant-
+  // save would otherwise PUT invalid half-typed values).
+  const [agMiniStr, setAgMiniStr] = useState('');
+  const [agRegStr, setAgRegStr] = useState('');
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -114,6 +125,8 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
         reminderEveningTime: str(s.reminderEveningTime, '18:00'),
         reminderMorningTime: str(s.reminderMorningTime, '09:00'),
         reminderFinalLeadHours: numOr(s.reminderFinalLeadHours, 3),
+        agCostMinijob: pctOr(s.agCostMinijob, 30),
+        agCostRegular: pctOr(s.agCostRegular, 21),
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -153,8 +166,29 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
     }
   }
 
+  // Keep the AG-input strings in sync when the stored values change (load/save).
+  useEffect(() => {
+    if (form) {
+      setAgMiniStr(String(form.agCostMinijob));
+      setAgRegStr(String(form.agCostRegular));
+    }
+  }, [form?.agCostMinijob, form?.agCostRegular]);
+
+  function commitAg(field: 'agCostMinijob' | 'agCostRegular', raw: string, current: number, resync: (s: string) => void) {
+    const parsed = parseFloat(raw.replace(',', '.'));
+    if (!Number.isFinite(parsed)) {
+      resync(String(current)); // ignore blank / invalid → restore the stored value
+      return;
+    }
+    const n = Math.max(0, Math.min(100, Math.round(parsed * 10) / 10));
+    if (n !== current) void update({ [field]: n } as Partial<SettingsForm>);
+    else resync(String(current));
+  }
+
   const selectClass =
     'bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-[var(--fs-md)] font-semibold text-gray-900 outline-none focus:border-green-600 min-h-[44px]';
+  const pctInputClass =
+    'w-20 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-[var(--fs-md)] font-semibold text-gray-900 text-right outline-none focus:border-green-600 min-h-[44px] tabular-nums';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -377,6 +411,57 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                       />
                 </>
               )}
+            </div>
+
+            <SectionTitle>Labour cost</SectionTitle>
+            <div className="mx-4 bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] overflow-hidden">
+              <SettingRow
+                title="Employer costs — Minijob"
+                hint="Extra % on top of gross pay for Minijob staff (employer social contributions)"
+                divider={false}
+                control={
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      aria-label="Employer on-cost percentage for Minijob staff"
+                      className={pctInputClass}
+                      value={agMiniStr}
+                      onChange={e => setAgMiniStr(e.target.value)}
+                      onBlur={e => commitAg('agCostMinijob', e.target.value, form.agCostMinijob, setAgMiniStr)}
+                    />
+                    <span className="text-[var(--fs-md)] font-bold text-gray-500">%</span>
+                  </div>
+                }
+              />
+              <SettingRow
+                title="Employer costs — regular staff"
+                hint="Extra % for Midijob / full-time staff (pension, health, unemployment, care…)"
+                divider
+                control={
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      aria-label="Employer on-cost percentage for regular staff"
+                      className={pctInputClass}
+                      value={agRegStr}
+                      onChange={e => setAgRegStr(e.target.value)}
+                      onBlur={e => commitAg('agCostRegular', e.target.value, form.agCostRegular, setAgRegStr)}
+                    />
+                    <span className="text-[var(--fs-md)] font-bold text-gray-500">%</span>
+                  </div>
+                }
+              />
+            </div>
+            <div className="mx-4 mt-1.5 text-[var(--fs-sm)] text-gray-400 leading-snug">
+              Used to estimate the full cost of each shift. A planning estimate — not exact payroll.
             </div>
 
             {onOpenPatterns && (

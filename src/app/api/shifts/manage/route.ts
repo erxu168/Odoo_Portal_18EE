@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getShiftSettings, listCoverRequests, slotDepartments, slotMinSkills } from '@/lib/shifts-db';
 import { lazyExpireIfDue } from '@/lib/shifts-guards';
 import { fetchDepartments, fetchEmployees, fetchRoles, fetchWeekSlots, weekHoursMap } from '@/lib/shifts-odoo';
+import { minimumWageForDate, shiftLabourCost } from '@/lib/shift-labour-cost';
 import { berlinParts, weekKeyDays } from '@/lib/shifts-time';
 import { requireManagerCompany, resolveWeekKey, round2, serverError } from '../_manager';
 
@@ -66,9 +67,35 @@ export async function GET(req: NextRequest) {
       return { ...e, hours, overCap: e.cap !== null && hours > e.cap + 1e-9 };
     });
 
+    const settings = getShiftSettings(companyId);
+
+    // Fully-loaded labour cost per slot = hours × €/h × (1 + employer on-cost %).
+    // Assigned → the person's contract rate + their AG rate; open → an estimate at
+    // the statutory minimum wage using the regular AG rate.
+    const empById = new Map(employees.map(e => [e.id, e]));
+    const costPerDay = [0, 0, 0, 0, 0, 0, 0];
+    let costWeek = 0;
+    let costEstimatedAny = false;
+    for (const s of slots) {
+      const date = berlinParts(s.start).date;
+      const emp = s.employeeId !== null ? empById.get(s.employeeId) : undefined;
+      // Exact only when the assignee is on the roster WITH a contract rate on file.
+      // Open shifts, off-roster assignees, or staff with no contract → estimate at
+      // the minimum wage that applies on the shift's date (their AG rate if known).
+      const hasRate = emp?.hasContract === true;
+      const estimated = !hasRate;
+      const rate = hasRate ? emp!.hourlyRate : minimumWageForDate(date);
+      const agPct = emp && emp.employmentType === 'minijob' ? settings.agCostMinijob : settings.agCostRegular;
+      s.cost = shiftLabourCost(s.hours, rate, agPct);
+      s.costEstimated = estimated;
+      if (estimated) costEstimatedAny = true;
+      const idx = dayIndex.get(date);
+      if (idx !== undefined) costPerDay[idx] = round2(costPerDay[idx] + s.cost);
+      costWeek += s.cost;
+    }
+
     // Slot ids with a still-pending cover request (lazy-expired first, only
     // requests whose slot is in this week's grid matter here).
-    const settings = getShiftSettings(companyId);
     const slotById = new Map(slots.map(s => [s.id, s]));
     const pendingRequestSlotIds: number[] = [];
     for (const request of listCoverRequests({
@@ -90,7 +117,14 @@ export async function GET(req: NextRequest) {
       roles,
       departments,
       slots,
-      totals: { perDay, assigned: round2(assigned), open: round2(open) },
+      totals: {
+        perDay,
+        assigned: round2(assigned),
+        open: round2(open),
+        costPerDay,
+        costWeek: round2(costWeek),
+        costEstimatedAny,
+      },
       pendingRequestSlotIds,
     });
   } catch (err: unknown) {

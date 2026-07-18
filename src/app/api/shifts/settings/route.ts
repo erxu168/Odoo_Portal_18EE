@@ -41,6 +41,12 @@ function readTime(v: unknown, fallback: string): string | null {
   return typeof v === 'string' && /^([01]?\d|2[0-3]):[0-5]\d$/.test(v) ? v : null;
 }
 
+/** An employer on-cost percentage (0–100). */
+function readPct(v: unknown, fallback: number): number | null {
+  if (v === undefined) return fallback;
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+}
+
 export async function PUT(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -62,9 +68,13 @@ export async function PUT(req: NextRequest) {
     const reminderFinalLeadHours = readHours(body.reminderFinalLeadHours, current.reminderFinalLeadHours);
     const reminderQuietStart = readTime(body.reminderQuietStart, current.reminderQuietStart);
     const reminderQuietEnd = readTime(body.reminderQuietEnd, current.reminderQuietEnd);
+    const agCostMinijob = readPct(body.agCostMinijob, current.agCostMinijob);
+    const agCostRegular = readPct(body.agCostRegular, current.agCostRegular);
 
     if (
       requireApproval === null ||
+      agCostMinijob === null ||
+      agCostRegular === null ||
       allowAskAll === null ||
       allowSickReport === null ||
       requireConfirmation === null ||
@@ -96,6 +106,8 @@ export async function PUT(req: NextRequest) {
       reminderFinalLeadHours,
       reminderQuietStart,
       reminderQuietEnd,
+      agCostMinijob,
+      agCostRegular,
     };
     saveShiftSettings(settings);
 
