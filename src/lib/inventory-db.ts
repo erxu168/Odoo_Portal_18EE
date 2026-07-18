@@ -144,6 +144,17 @@ export function initInventoryTables() {
       updated_at TEXT,
       PRIMARY KEY (session_id, count_location_id)
     );
+
+    CREATE TABLE IF NOT EXISTS location_kinds (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT,
+      UNIQUE(company_id, kind)
+    );
   `);
   migrateInventorySchema(db);
 }
@@ -981,4 +992,100 @@ export function getSessionLocationStatuses(sessionId: number): { count_location_
   return db.prepare(
     'SELECT count_location_id, status, skip_reason FROM session_location_status WHERE session_id = ?'
   ).all(sessionId) as { count_location_id: number; status: string; skip_reason: string | null }[];
+}
+
+// ===
+// LOCATION KINDS (per-company manageable "type" list for count locations)
+// ===
+
+export interface LocationKindRow {
+  id: number;
+  company_id: number;
+  kind: string;   // stored value on count_locations.kind (lowercase)
+  label: string;  // what managers see in the Type dropdown
+  sort_order: number;
+}
+
+const DEFAULT_LOCATION_KINDS: { kind: string; label: string }[] = [
+  { kind: 'area', label: 'Area' },
+  { kind: 'fridge', label: 'Fridge' },
+  { kind: 'freezer', label: 'Freezer' },
+  { kind: 'dry', label: 'Dry store' },
+  { kind: 'zone', label: 'Zone' },
+  { kind: 'bar', label: 'Bar' },
+];
+
+/**
+ * List a company's location kinds, seeding the six defaults the first time a
+ * company touches the feature (so existing kinds keep their labels and every
+ * company starts from the familiar set).
+ */
+export function listLocationKinds(companyId: number): LocationKindRow[] {
+  const db = getDb();
+  const existing = db.prepare(
+    'SELECT COUNT(*) AS n FROM location_kinds WHERE company_id = ?'
+  ).get(companyId) as { n: number };
+  if (existing.n === 0) {
+    const ins = db.prepare(
+      'INSERT OR IGNORE INTO location_kinds (company_id, kind, label, sort_order, created_at) VALUES (?, ?, ?, ?, ?)'
+    );
+    DEFAULT_LOCATION_KINDS.forEach((k, i) => ins.run(companyId, k.kind, k.label, (i + 1) * 10, now()));
+  }
+  return db.prepare(
+    'SELECT id, company_id, kind, label, sort_order FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id'
+  ).all(companyId) as LocationKindRow[];
+}
+
+/**
+ * Add a kind. The stored `kind` value is the lowercased label (kept simple —
+ * count_locations.kind is free text). Returns null when a same-named kind
+ * already exists for the company (case-insensitive).
+ */
+export function addLocationKind(companyId: number, label: string, userId: number): LocationKindRow | null {
+  const db = getDb();
+  const clean = label.trim().replace(/\s+/g, ' ');
+  if (!clean) return null;
+  const kind = clean.toLowerCase();
+  // Duplicate if either the stored kind or the visible label matches — the
+  // defaults have kind ≠ label ("dry" / "Dry store"), so check both.
+  const dupe = db.prepare(
+    'SELECT id FROM location_kinds WHERE company_id = ? AND (lower(kind) = ? OR lower(label) = ?)'
+  ).get(companyId, kind, kind);
+  if (dupe) return null;
+  const maxSort = (db.prepare(
+    'SELECT COALESCE(MAX(sort_order), 0) AS m FROM location_kinds WHERE company_id = ?'
+  ).get(companyId) as { m: number }).m;
+  try {
+    const r = db.prepare(
+      'INSERT INTO location_kinds (company_id, kind, label, sort_order, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(companyId, kind, clean, maxSort + 10, userId, now());
+    return {
+      id: r.lastInsertRowid as number, company_id: companyId, kind, label: clean, sort_order: maxSort + 10,
+    };
+  } catch {
+    // Unique-constraint race (two adds of the same name) → treat as duplicate
+    return null;
+  }
+}
+
+/**
+ * Delete a kind — refused while any of the company's active locations still
+ * uses it (returns the usage count so the UI can explain).
+ */
+export function deleteLocationKind(id: number, companyId: number): { ok: boolean; in_use: number } {
+  const db = getDb();
+  const row = db.prepare(
+    'SELECT kind FROM location_kinds WHERE id = ? AND company_id = ?'
+  ).get(id, companyId) as { kind: string } | undefined;
+  if (!row) return { ok: false, in_use: 0 };
+  // Compare in JS: SQLite lower() only folds ASCII, and German type names
+  // (Kühlraum…) are realistic here. JS toLowerCase() is Unicode-correct.
+  const target = row.kind.toLowerCase();
+  const used = (db.prepare(
+    'SELECT kind FROM count_locations WHERE company_id = ? AND active = 1'
+  ).all(companyId) as { kind: string }[])
+    .filter((l) => (l.kind || '').toLowerCase() === target).length;
+  if (used > 0) return { ok: false, in_use: used };
+  db.prepare('DELETE FROM location_kinds WHERE id = ? AND company_id = ?').run(id, companyId);
+  return { ok: true, in_use: 0 };
 }

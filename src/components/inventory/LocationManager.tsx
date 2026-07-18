@@ -6,11 +6,10 @@ import { useCompany } from '@/lib/company-context';
 import { buildLocationTree, reorder } from '@/lib/location-tree';
 import type { CountLocation } from '@/types/inventory';
 
-const KINDS = [
-  { v: 'area', l: 'Area' }, { v: 'fridge', l: 'Fridge' }, { v: 'freezer', l: 'Freezer' },
-  { v: 'dry', l: 'Dry store' }, { v: 'zone', l: 'Zone' }, { v: 'bar', l: 'Bar' },
-];
-const kindLabel = (v: string) => KINDS.find((k) => k.v === v)?.l || v;
+// Location types are per-company and manager-editable (location_kinds table,
+// seeded with Area/Fridge/Freezer/Dry store/Zone/Bar on first use).
+interface KindRow { id: number; kind: string; label: string }
+const fallbackLabel = (v: string) => (v ? v.charAt(0).toUpperCase() + v.slice(1) : v);
 
 function downscale(file: File): Promise<string> {
   return new Promise((resolve) => {
@@ -33,24 +32,36 @@ function downscale(file: File): Promise<string> {
 export default function LocationManager({ onBack }: { onBack: () => void }) {
   const { companyId } = useCompany();
   const [locations, setLocations] = useState<CountLocation[]>([]);
+  const [kinds, setKinds] = useState<KindRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState<Partial<CountLocation> | null>(null); // null = closed
   const [assignFor, setAssignFor] = useState<CountLocation | null>(null);
+  const [managingKinds, setManagingKinds] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError(false);
     try {
-      const url = '/api/inventory/count-locations' + (companyId ? `?company_id=${companyId}` : '');
-      const res = await fetch(url);
-      if (!res.ok) { setLoadError(true); setLocations([]); return; }
-      const d = await res.json();
+      const q = companyId ? `?company_id=${companyId}` : '';
+      const [locRes, kindRes] = await Promise.all([
+        fetch('/api/inventory/count-locations' + q),
+        fetch('/api/inventory/location-kinds' + q),
+      ]);
+      if (!locRes.ok) { setLoadError(true); setLocations([]); return; }
+      const d = await locRes.json();
       setLocations(d.locations || []);
+      if (kindRes.ok) {
+        const k = await kindRes.json();
+        setKinds(k.kinds || []);
+      }
     } catch {
       setLoadError(true);
     } finally { setLoading(false); }
   }, [companyId]);
   useEffect(() => { load(); }, [load]);
+
+  const kindLabel = (v: string) =>
+    kinds.find((k) => k.kind.toLowerCase() === (v || '').toLowerCase())?.label || fallbackLabel(v);
 
   const tree = buildLocationTree(locations);
 
@@ -149,14 +160,14 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
                   <button onClick={() => setEditing(shelf)} className="text-xs font-semibold text-blue-600 px-1">Edit</button>
                 </div>
               ))}
-              <button onClick={() => setEditing({ parent_id: area.id, kind: 'zone' })}
+              <button onClick={() => setEditing({ parent_id: area.id, kind: kinds.find((k) => k.kind === 'zone')?.kind || kinds[0]?.kind || 'zone' })}
                       className="w-full text-left px-6 py-2.5 text-sm font-semibold text-green-700 active:bg-gray-50">
                 + Add a shelf / spot
               </button>
             </div>
           </div>
         ))}
-        <button onClick={() => setEditing({ parent_id: null, kind: 'area' })}
+        <button onClick={() => setEditing({ parent_id: null, kind: kinds.find((k) => k.kind === 'area')?.kind || kinds[0]?.kind || 'area' })}
                 className="w-full py-4 rounded-2xl bg-green-600 text-white font-bold shadow-lg shadow-green-600/30 active:bg-green-700">
           + Add an area
         </button>
@@ -165,24 +176,133 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
       {editing && (
         <LocationForm
           initial={editing}
+          kinds={kinds}
+          onManageKinds={() => setManagingKinds(true)}
           onCancel={() => setEditing(null)}
           onSave={save}
           onDelete={editing.id ? () => remove(editing.id as number) : undefined}
         />
       )}
       {assignFor && <AssignProducts location={assignFor} onClose={() => setAssignFor(null)} />}
+      {managingKinds && (
+        <ManageKinds
+          companyId={companyId}
+          kinds={kinds}
+          locations={locations}
+          onChanged={async () => {
+            try {
+              const res = await fetch('/api/inventory/location-kinds' + (companyId ? `?company_id=${companyId}` : ''));
+              if (res.ok) { const k = await res.json(); setKinds(k.kinds || []); }
+            } catch { /* keep the current list */ }
+          }}
+          onClose={() => setManagingKinds(false)}
+        />
+      )}
     </div>
   );
 }
 
-function LocationForm({ initial, onCancel, onSave, onDelete }: {
+/** Bottom sheet for adding / deleting the company's location types. */
+function ManageKinds({ companyId, kinds, locations, onChanged, onClose }: {
+  companyId: number;
+  kinds: KindRow[];
+  locations: CountLocation[];
+  onChanged: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [newLabel, setNewLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const usage = (k: KindRow) =>
+    locations.filter((l) => (l.kind || '').toLowerCase() === k.kind.toLowerCase()).length;
+
+  async function add() {
+    const label = newLabel.trim();
+    if (!label || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch('/api/inventory/location-kinds', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, label }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || 'Could not add the type — please try again.');
+        return;
+      }
+      setNewLabel('');
+      await onChanged();
+    } catch {
+      alert('Network error — please try again.');
+    } finally { setBusy(false); }
+  }
+
+  async function remove(k: KindRow) {
+    if (busy) return;
+    if (!confirm(`Remove the type “${k.label}”?`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/inventory/location-kinds?id=${k.id}&company_id=${companyId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        alert(d.error || 'Could not remove the type — please try again.');
+        return;
+      }
+      await onChanged();
+    } catch {
+      alert('Network error — please try again.');
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[110] bg-black/50 flex items-end">
+      <div className="bg-white w-full max-w-lg mx-auto rounded-t-2xl p-5 pb-8 max-h-[85vh] overflow-y-auto">
+        <h3 className="text-lg font-bold mb-1">Location types</h3>
+        <p className="text-xs text-gray-500 mb-3">A type still used by a location can{'’'}t be removed — change those locations first.</p>
+        {kinds.map((k) => {
+          const n = usage(k);
+          return (
+            <div key={k.id} className="flex items-center gap-3 py-2.5 border-b border-gray-100">
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-900">{k.label}</div>
+                {n > 0 && <div className="text-[11px] text-gray-400">used by {n} location{n !== 1 ? 's' : ''}</div>}
+              </div>
+              <button onClick={() => remove(k)} disabled={busy || n > 0}
+                      aria-label={`Remove ${k.label}`}
+                      className={`text-sm font-semibold px-2 py-1 rounded-lg ${n > 0 ? 'text-gray-300' : 'text-red-600 active:bg-red-50'}`}>
+                Remove
+              </button>
+            </div>
+          );
+        })}
+        <div className="flex gap-2 mt-4">
+          <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
+                 onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
+                 placeholder="New type, e.g. Cellar" maxLength={40}
+                 className="flex-1 border-2 border-gray-200 rounded-xl px-3 py-3 bg-gray-50" />
+          <button onClick={add} disabled={!newLabel.trim() || busy}
+                  className="px-5 rounded-xl bg-green-600 text-white font-bold disabled:opacity-50">Add</button>
+        </div>
+        <button onClick={onClose} className="w-full mt-4 py-3 rounded-xl bg-gray-100 font-bold">Done</button>
+      </div>
+    </div>
+  );
+}
+
+function LocationForm({ initial, kinds, onManageKinds, onCancel, onSave, onDelete }: {
   initial: Partial<CountLocation>;
+  kinds: KindRow[];
+  onManageKinds: () => void;
   onCancel: () => void;
   onSave: (loc: Partial<CountLocation>) => void;
   onDelete?: () => void;
 }) {
   const [name, setName] = useState(initial.name || '');
-  const [kind, setKind] = useState(initial.kind || 'area');
+  const [kind, setKind] = useState(initial.kind || kinds[0]?.kind || 'area');
+  // An existing location may carry a type that was since removed — keep it
+  // selectable so opening the editor never silently changes the value.
+  const options = kinds.some((k) => k.kind.toLowerCase() === String(kind).toLowerCase())
+    ? kinds
+    : [...kinds, { id: -1, kind: String(kind), label: fallbackLabel(String(kind)) }];
   const [description, setDescription] = useState(initial.description || '');
   const [photo, setPhoto] = useState<string | null>(initial.photo || null);
   return (
@@ -192,9 +312,12 @@ function LocationForm({ initial, onCancel, onSave, onDelete }: {
         <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Walk-in Fridge"
                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50" />
-        <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Type</label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Type</label>
+          <button onClick={onManageKinds} className="text-[11px] font-bold text-blue-600 active:opacity-70">Edit types</button>
+        </div>
         <select value={kind} onChange={(e) => setKind(e.target.value)} className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50">
-          {KINDS.map((k) => <option key={k.v} value={k.v}>{k.l}</option>)}
+          {options.map((k) => <option key={k.id} value={k.kind}>{k.label}</option>)}
         </select>
         <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Where to stand (optional)</label>
         <input value={description || ''} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Back-left wall, top two shelves"
