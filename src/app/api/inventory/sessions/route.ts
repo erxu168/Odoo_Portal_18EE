@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
-import { createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap } from '@/lib/inventory-db';
+import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap } from '@/lib/inventory-db';
 import { canAccessSession } from '@/lib/inventory-access';
 import { resolveSessionRoute } from '@/lib/session-route';
 import { missedStops } from '@/lib/guided-route';
@@ -21,6 +21,8 @@ import { logAudit } from '@/lib/db';
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  initInventoryTables();
 
   // Auto-generate today's sessions if they don't exist yet (idempotent),
   // scoped to the caller's restaurant(s) so a load can't spawn another
@@ -61,6 +63,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  initInventoryTables();
   const body = await request.json();
 
   // Generate today's sessions from active templates — scoped to the manager's
@@ -109,6 +112,7 @@ export async function PUT(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  initInventoryTables();
   const body = await request.json();
   const { id, status, review_note, proof_photo } = body;
   if (!id || !status) return NextResponse.json({ error: 'id and status required' }, { status: 400 });

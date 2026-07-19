@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  initInventoryTables();
   const body = await request.json();
   const { session_id, review_note } = body;
   if (!session_id) return NextResponse.json({ error: 'session_id required' }, { status: 400 });

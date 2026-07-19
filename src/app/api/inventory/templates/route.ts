@@ -10,7 +10,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate } from '@/lib/inventory-db';
+import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate } from '@/lib/inventory-db';
 
 /**
  * The stock location a list counts must belong to its restaurant (or be a
@@ -31,6 +31,8 @@ async function locationCompanyError(locationId: number, companyId: number): Prom
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  initInventoryTables();
 
   const { searchParams } = new URL(request.url);
   const locationId = searchParams.get('location_id');
@@ -57,6 +59,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden \u2014 manager role required' }, { status: 403 });
   }
 
+  initInventoryTables();
   const body = await request.json();
   const { name, frequency, schedule_days, location_id, category_ids, product_ids, assign_type, assign_id } = body;
 
@@ -114,6 +117,7 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  initInventoryTables();
   const body = await request.json();
   const { id, ...updates } = body;
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
