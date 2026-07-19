@@ -28,9 +28,9 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { id, action } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
-  // Whitelist the action — an unknown/typo value must NOT silently approve.
-  if (action != null && action !== 'approve' && action !== 'reject') {
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+  // Require an explicit action — an omitted/unknown value must NOT silently approve.
+  if (action !== 'approve' && action !== 'reject') {
+    return NextResponse.json({ error: 'Invalid action — approve or reject' }, { status: 400 });
   }
 
   const db = getDb();
