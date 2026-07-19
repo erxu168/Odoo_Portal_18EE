@@ -73,6 +73,7 @@ const LINE_FIELDS = ['id', 'order_id', 'product_id', 'full_product_name', 'qty',
 // TTL instead of each polling Odoo independently. This is what keeps "one Odoo
 // poller" true even though several routes read the feed.
 const FEED_TTL_MS = 2500;
+const FEED_CACHE_CAP = 32; // bound memory: a handful of real configs; evict oldest beyond this
 const feedCache = new Map<number, { at: number; data: FiredFeed }>();
 const inFlight = new Map<number, Promise<FiredFeed>>();
 
@@ -134,7 +135,17 @@ export async function fetchFiredOrders(configId: number): Promise<FiredFeed> {
   if (existing) return existing;
 
   const p = fetchFromOdoo(configId)
-    .then(data => { feedCache.set(configId, { at: Date.now(), data }); return data; })
+    .then(data => {
+      feedCache.set(configId, { at: Date.now(), data });
+      // Bound the map so an arbitrary stream of configIds can't grow memory
+      // without limit (the /api/kds/orders configId is caller-supplied).
+      while (feedCache.size > FEED_CACHE_CAP) {
+        const oldest = feedCache.keys().next().value;
+        if (oldest === undefined) break;
+        feedCache.delete(oldest);
+      }
+      return data;
+    })
     .finally(() => { inFlight.delete(configId); });
   inFlight.set(configId, p);
   return p;

@@ -14,7 +14,7 @@
  * Audio is fire-and-forget and only ever fired AFTER state is set (spec dec. 12).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CookStation, CookTimerDTO, QueueGroup, DoneEntry } from '@/types/cooktimer';
+import type { CookStation, CookTimerDTO, QueueGroup, DoneEntry, TimersResponse, QueueResponse } from '@/types/cooktimer';
 import { deriveDisplayState } from '@/lib/cooktimer-logic';
 import { unlockAudio, playStageAlarm, playDoneAlarm } from '@/lib/cooktimer/sound';
 
@@ -44,7 +44,10 @@ export function useCookTimer() {
   const [done, setDone] = useState<DoneEntry[]>([]);
   const [nowMs, setNowMs] = useState<number>(Date.now());
   const [toast, setToast] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Separate error state per poller so a timers-poll success can't mask a
+  // persistent queue/Odoo failure (and vice-versa).
+  const [timerError, setTimerError] = useState<string | null>(null);
+  const [queueError, setQueueError] = useState<string | null>(null);
 
   const overrides = useRef<Map<number, Override>>(new Map());
   const clockOffset = useRef(0);
@@ -91,62 +94,66 @@ export function useCookTimer() {
   // --- polling -------------------------------------------------------------
   const pollTimers = useCallback(async () => {
     const seq = ++timersSeq.current;
+    let data: TimersResponse | null = null;
+    let failed = false;
     try {
       const res = await fetch('/api/cooktimer/timers', { cache: 'no-store' });
-      // A server error returns empty arrays; DON'T wipe the board with them —
-      // keep the last known state and surface the error.
-      if (!res.ok) { setError('Cook timer server error'); return; }
-      const data = await res.json();
-      if (seq < timersApplied.current) return; // a newer poll already landed
-      timersApplied.current = seq;
-      if (typeof data.serverNow === 'number') clockOffset.current = data.serverNow - Date.now();
-      if (Array.isArray(data.stations)) setStations(data.stations);
-      if (Array.isArray(data.done)) setDone(data.done);
-      if (Array.isArray(data.timers)) {
-        setServerTimers(data.timers);
-        // Prune overrides the server has caught up to (snappy handoff to truth).
-        const byId = new Map<number, CookTimerDTO>(data.timers.map((t: CookTimerDTO) => [t.id, t]));
-        overrides.current.forEach((o, id) => {
-          if (o.expires < Date.now()) { overrides.current.delete(id); return; }
-          const s = byId.get(id);
-          if (o.removed) { if (!s) overrides.current.delete(id); return; }
-          if (!s) return;
-          const caughtStep = o.currentStep === undefined || s.currentStep >= o.currentStep;
-          const caughtMute = o.muted === undefined || s.muted === o.muted;
-          if (caughtStep && caughtMute) overrides.current.delete(id);
-        });
-        // Drop beep bookkeeping for timers that are no longer active (finished/
-        // cancelled) so the map can't grow without bound on a long-lived tablet.
-        lastBeep.current.forEach((_v, id) => { if (!byId.has(id)) lastBeep.current.delete(id); });
-      }
-      setError(null);
-    } catch { /* offline — keep last known, visual countdown continues */ }
+      if (res.ok) data = (await res.json()) as TimersResponse;
+      else failed = true; // a server error returns empty arrays — never wipe the board with them
+    } catch { failed = true; } // network/JSON failure — surface it, keep last known board
+    // Apply the seq guard to ALL outcomes so a stale failure can't clobber a newer success.
+    if (seq < timersApplied.current) return;
+    timersApplied.current = seq;
+    if (failed || !data) { setTimerError('Cook timer connection problem'); return; }
+    if (typeof data.serverNow === 'number') clockOffset.current = data.serverNow - Date.now();
+    if (Array.isArray(data.stations)) setStations(data.stations);
+    if (Array.isArray(data.done)) setDone(data.done);
+    if (Array.isArray(data.timers)) {
+      setServerTimers(data.timers);
+      // Prune overrides the server has caught up to (snappy handoff to truth).
+      const byId = new Map<number, CookTimerDTO>(data.timers.map(t => [t.id, t]));
+      overrides.current.forEach((o, id) => {
+        if (o.expires < Date.now()) { overrides.current.delete(id); return; }
+        const s = byId.get(id);
+        if (o.removed) { if (!s) overrides.current.delete(id); return; }
+        if (!s) return;
+        const caughtStep = o.currentStep === undefined || s.currentStep >= o.currentStep;
+        const caughtMute = o.muted === undefined || s.muted === o.muted;
+        if (caughtStep && caughtMute) overrides.current.delete(id);
+      });
+      // Drop beep bookkeeping for timers no longer active so the map can't grow unbounded.
+      lastBeep.current.forEach((_v, id) => { if (!byId.has(id)) lastBeep.current.delete(id); });
+    }
+    setTimerError(null);
   }, []);
 
   const pollQueue = useCallback(async () => {
     const seq = ++queueSeq.current;
+    const e = enabledRef.current;
+    // Always send an explicit stations param: all-enabled sends every id,
+    // all-disabled sends an empty list (=> show nothing).
+    const qs = e === null ? '' : `?stations=${e.join(',')}`;
+    let data: QueueResponse | null = null;
+    let failed = false;
     try {
-      const e = enabledRef.current;
-      // Always send an explicit stations param: all-enabled sends every id,
-      // all-disabled sends an empty list (=> show nothing).
-      const qs = e === null ? '' : `?stations=${e.join(',')}`;
       const res = await fetch(`/api/cooktimer/queue${qs}`, { cache: 'no-store' });
-      if (!res.ok) { setError('Cook timer server error'); return; } // keep last known queue
-      const data = await res.json();
-      if (seq < queueApplied.current) return;
-      queueApplied.current = seq;
-      if (Array.isArray(data.stations)) {
-        setStations(data.stations);
-        // First run with no stored selection: default to all active stations.
-        if (enabledRef.current === null && data.stations.length) {
-          const all = data.stations.map((s: CookStation) => s.id);
-          enabledRef.current = all;
-          setEnabled(all);
-        }
+      if (res.ok) data = (await res.json()) as QueueResponse;
+      else failed = true;
+    } catch { failed = true; }
+    if (seq < queueApplied.current) return;
+    queueApplied.current = seq;
+    if (failed || !data) { setQueueError('Cook timer connection problem'); return; }
+    if (Array.isArray(data.stations)) {
+      setStations(data.stations);
+      // First run with no stored selection: default to all active stations.
+      if (enabledRef.current === null && data.stations.length) {
+        const all = data.stations.map(s => s.id);
+        enabledRef.current = all;
+        setEnabled(all);
       }
-      if (Array.isArray(data.queue)) setQueue(data.queue);
-      setError(data.error || null); // e.g. "No POS config ID set" (a real 200 state)
-    } catch { /* offline */ }
+    }
+    if (Array.isArray(data.queue)) setQueue(data.queue);
+    setQueueError(data.error || null); // e.g. "No POS config ID set" (a real 200 state)
   }, []);
 
   useEffect(() => {
@@ -232,14 +239,22 @@ export function useCookTimer() {
   const restore = (id: number) => { overrides.current.delete(id); setServerTimers(prev => [...prev]); };
 
   const finish = useCallback(async (id: number, expectedStep: number, label: string) => {
-    setOverride(id, { removed: true }, 3500);
-    showToast(`Marked ready on KDS ✓ ${label}`);
+    setOverride(id, { removed: true }, 3500); // optimistic hide; toast only on confirmed success
     try {
       const res = await fetch(`/api/cooktimer/timers/${id}/finish`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expected_step: expectedStep }),
       });
-      if (!res.ok) { restore(id); showToast('Could not mark ready — try again'); } // don't claim false success
+      const data = await res.json().catch(() => ({}));
+      // The route returns 200 even when the guard rejects the finish (e.g. another
+      // tablet cancelled first, or it wasn't the last step) — a state of 'finished'
+      // is the only real success, so we never announce "ready" falsely.
+      if (res.ok && data?.timer?.state === 'finished') {
+        showToast(`Marked ready on KDS ✓ ${label}`);
+      } else {
+        restore(id);
+        showToast('Could not mark ready — try again');
+      }
     } catch { restore(id); showToast('Network error — not marked ready'); }
     await Promise.all([pollTimers(), pollQueue()]);
   }, [pollTimers, pollQueue, showToast]);
@@ -290,7 +305,8 @@ export function useCookTimer() {
     .filter((t): t is CookTimerDTO => !!t && (set === null || set.has(t.stationId)));
 
   return {
-    stations, enabled, soundOn, queue, timers, done, nowMs, toast, error,
+    stations, enabled, soundOn, queue, timers, done, nowMs, toast,
+    error: queueError || timerError, // surface either poller's failure
     start, advance, skip, finish, cancel, setMute, toggleStation, toggleSound,
   };
 }

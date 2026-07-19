@@ -48,6 +48,26 @@ test('full cook flow: start -> advance x2 -> finish writes kds_line_ready', () =
   expect(getReadyLineIds().has(L)).toBe(false);
 });
 
+test('finishTimer refuses to complete before the last step (no premature ready rows)', () => {
+  const fries = getActiveProfilesByProduct().get(FRIES_PRODUCT)!; // 3 steps
+  const [L, O] = [990401, 990401];
+  const t = createTimer(fries.id, fries.stationId, line(L, O))!;
+
+  // At step 0 (not the last step), a stray finish must be a no-op — no ready row.
+  const early = finishTimer(t.id, 0)!;
+  expect(early.state).toBe('running');
+  expect(getReadyLineIds().has(L)).toBe(false);
+
+  // Walk to the last step, then finish succeeds and writes the ready row.
+  advanceTimer(t.id, 0);
+  advanceTimer(t.id, 1);
+  const fin = finishTimer(t.id, 2)!;
+  expect(fin.state).toBe('finished');
+  expect(getReadyLineIds().has(L)).toBe(true);
+
+  cleanup([O], t.id);
+});
+
 test('mute is reset on advance and a stale mute is rejected (decision 8)', () => {
   const fries = getActiveProfilesByProduct().get(FRIES_PRODUCT)!;
   const [L, O] = [990101, 990101];
