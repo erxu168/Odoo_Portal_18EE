@@ -251,7 +251,13 @@ export default function SalesDashboard() {
         .wajs .trend .grid { stroke:var(--border);stroke-width:1; }
         .wajs .trend .dot { fill:var(--brand);stroke:var(--surface);stroke-width:2.5; }
         .wajs .trend .xlab { fill:var(--faint);font-size:10px;font-weight:600; }
+        .wajs .trend .ylab { fill:var(--faint);font-size:9px;font-weight:600;font-variant-numeric:tabular-nums; }
+        .wajs .trend .ghost { fill:none;stroke:var(--faint);stroke-width:1.6;stroke-dasharray:4 3;opacity:.75; }
         .wajs .trend .hit { fill:transparent;cursor:default; }
+        .wajs .ghost-legend { display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--muted);font-weight:500; }
+        .wajs .ghost-legend .gl { width:14px;height:0;display:inline-block; }
+        .wajs .ghost-legend .gl-solid { border-top:2px solid var(--brand); }
+        .wajs .ghost-legend .gl-dash { border-top:2px dashed var(--faint); }
         .wajs .ring-row { display:flex;align-items:center;gap:16px; }
         .wajs .ring { width:108px;height:108px;flex:0 0 auto;position:relative; }
         .wajs .ring svg { transform:rotate(-90deg); }

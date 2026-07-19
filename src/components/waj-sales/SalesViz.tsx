@@ -6,8 +6,10 @@
  * SalesDashboard). Styling lives in SalesDashboard's scoped <style> under .wajs.
  */
 
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import type { SalesPayload } from '@/lib/waj-sales';
+
+type TrendMetric = 'sales' | 'orders' | 'avg';
 
 // ── formatters ──────────────────────────────────────────
 const eur0 = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
@@ -37,35 +39,46 @@ export function KpiTile({ label, value, deltas, hero }:
   );
 }
 
-export function TrendChart({ points }: { points: [string, number, number][] }) {
+export function TrendChart({ points, prev, prevLabel, metric }:
+  { points: [string, number, number][]; prev: ([number, number] | null)[]; prevLabel: string; metric: TrendMetric }) {
   const tip = useContext(TipCtx);
-  const W = 340, H = 150, padX = 10, padTop = 14, plotBot = 26;
+  const W = 340, H = 156, padL = 42, padR = 10, padTop = 14, padBot = 26;
   const n = points.length;
   if (!n) return <div className="empty">No sales in this period.</div>;
-  const vals = points.map(p => p[1]);
-  const max = Math.max(...vals), min = Math.min(...vals);
-  const lo = Math.min(min * 0.85, min - (max - min) * 0.15);
-  const span = (max - lo) || 1;
-  const plotW = W - padX * 2, plotH = H - padTop - plotBot;
-  const X = (i: number) => padX + (n === 1 ? plotW / 2 : plotW * i / (n - 1));
-  const Y = (v: number) => padTop + plotH * (1 - (v - lo) / span);
+  const valC = (p: [string, number, number]) => metric === 'orders' ? p[2] : metric === 'avg' ? (p[2] ? p[1] / p[2] : 0) : p[1];
+  const valG = (g: [number, number] | null) => g == null ? null : metric === 'orders' ? g[1] : metric === 'avg' ? (g[1] ? g[0] / g[1] : 0) : g[0];
+  const cur = points.map(valC);
+  const gho = prev.map(valG);
+  const max = Math.max(...cur, ...gho.filter((x): x is number => x != null), metric === 'orders' ? 1 : 0.01);
+  const span = max || 1; // baseline 0
+  const plotW = W - padL - padR, plotH = H - padTop - padBot;
+  const X = (i: number) => padL + (n === 1 ? plotW / 2 : plotW * i / (n - 1));
+  const Y = (v: number) => padTop + plotH * (1 - v / span);
+  const fmtY = (v: number) => metric === 'orders' ? num.format(Math.round(v)) : eur0.format(v);
+  const fmtV = (v: number) => metric === 'orders' ? num.format(Math.round(v)) + ' orders' : metric === 'avg' ? eur2.format(v) : eur0.format(v);
   let line = '';
-  points.forEach((p, i) => { line += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(p[1]).toFixed(1) + ' '; });
+  points.forEach((p, i) => { line += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(cur[i]).toFixed(1) + ' '; });
   const area = line + `L${X(n - 1).toFixed(1)} ${padTop + plotH} L${X(0).toFixed(1)} ${padTop + plotH} Z`;
+  let ghost = '', pen = false;
+  gho.forEach((g, i) => { if (g == null) { pen = false; return; } ghost += (pen ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(g).toFixed(1) + ' '; pen = true; });
   const step = n > 9 ? Math.ceil(n / 6) : 1;
+  const gridYs = [0, 1, 2];
   return (
-    <svg className="trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Sales trend">
+    <svg className="trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${metric} trend`}>
       <defs><linearGradient id="wajs-area" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor="var(--brand)" stopOpacity="0.28" />
         <stop offset="100%" stopColor="var(--brand)" stopOpacity="0.02" />
       </linearGradient></defs>
-      {[0, 1, 2].map(g => { const gy = padTop + plotH * g / 2; return <line key={g} className="grid" x1={padX} y1={gy} x2={W - padX} y2={gy} />; })}
+      {gridYs.map(g => <line key={g} className="grid" x1={padL} y1={padTop + plotH * g / 2} x2={W - padR} y2={padTop + plotH * g / 2} />)}
+      {gridYs.map(g => <text key={'y' + g} className="ylab" x={padL - 5} y={padTop + plotH * g / 2 + 3} textAnchor="end">{fmtY(max * (1 - g / 2))}</text>)}
+      {ghost && <path className="ghost" d={ghost} />}
       <path className="area" d={area} fill="url(#wajs-area)" />
       <path className="line" d={line} />
-      <circle className="dot" cx={X(n - 1)} cy={Y(points[n - 1][1])} r={4.5} />
+      <circle className="dot" cx={X(n - 1)} cy={Y(cur[n - 1])} r={4.5} />
       {points.map((p, i) => {
         const hw = plotW / n;
-        const t = `${p[0]} · ${eur0.format(p[1])} · ${num.format(p[2])} orders`;
+        const gv = gho[i];
+        const t = `${p[0]} · ${fmtV(cur[i])}${gv != null ? ` (was ${fmtV(gv)})` : ''}`;
         return <rect key={i} className="hit" x={X(i) - hw / 2} y={padTop} width={hw} height={plotH} onMouseMove={e => tip.show(t, e)} onMouseLeave={tip.hide} />;
       })}
       {points.map((p, i) => (i % step === 0 || i === n - 1)
@@ -170,6 +183,7 @@ export function Heatmap({ data }: { data: { hours: number[]; rows: [string, numb
 
 // ── tab bodies ──────────────────────────────────────────
 export function OverviewTab({ d }: { d: SalesPayload }) {
+  const [metric, setMetric] = useState<TrendMetric>('sales');
   const sales = d.salesTotal, orders = d.ordersTotal, avg = orders ? sales / orders : 0;
   const prevAvg = d.prevOrders ? d.prevSales / d.prevOrders : 0;
   const yoyAvg = d.yoyOrders ? d.yoySales / d.yoyOrders : 0;
@@ -186,8 +200,18 @@ export function OverviewTab({ d }: { d: SalesPayload }) {
         <KpiTile label="Avg / order" value={eur2.format(avg)} deltas={[mk(avg, prevAvg, d.prevOrders, d.prevLabel), mk(avg, yoyAvg, d.yoyOrders, d.yoyLabel)]} />
       </div>
       <div className="card">
-        <div className="card-head"><span className="card-title">Sales trend</span><span className="card-hint">{d.trendUnit}</span></div>
-        <TrendChart points={d.trend} />
+        <div className="card-head">
+          <span className="card-title">{metric === 'orders' ? 'Orders' : metric === 'avg' ? 'Avg order' : 'Sales'} trend</span>
+          <span className="seg-mini" role="group" aria-label="Trend metric">
+            <button aria-pressed={metric === 'sales'} onClick={() => setMetric('sales')}>€ Sales</button>
+            <button aria-pressed={metric === 'orders'} onClick={() => setMetric('orders')}>Orders</button>
+            <button aria-pressed={metric === 'avg'} onClick={() => setMetric('avg')}>Avg</button>
+          </span>
+        </div>
+        <TrendChart points={d.trend} prev={d.trendPrev} prevLabel={d.trendPrevLabel} metric={metric} />
+        {d.trendPrev.some(x => x != null) && (
+          <div className="ghost-legend"><span className="gl gl-solid" />this period<span className="gl gl-dash" />{d.trendPrevLabel.replace(/^vs /, '')}</div>
+        )}
       </div>
       {d.projectedMonthEnd != null && (
         <div className="card">

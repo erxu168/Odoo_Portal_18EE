@@ -37,6 +37,8 @@ export interface SalesPayload {
   yoyLabel: string;                        // '' => no year-on-year delta
   trendUnit: string;
   trend: [string, number, number][];      // [label, sales, orders]
+  trendPrev: ([number, number] | null)[]; // aligned to trend: [prevSales, prevOrders] | null
+  trendPrevLabel: string;
   prevSales: number;
   prevOrders: number;
   yoySales: number;
@@ -143,7 +145,12 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   const b = computeBounds(range, anchorDay, nowMs);
   const cStart = utcStr(b.curStartMs), cEnd = utcStr(b.curEndMs);
 
-  const [orders, lines, payments, sessions, prev, yoy] = await Promise.all([
+  // Ghost line = the comparison period: previous period (week/month/day) or, for
+  // YTD/Year, last year (they have no separate "previous period").
+  const ghostStartMs = b.prevLabel ? b.prevStartMs : b.yoyStartMs;
+  const ghostEndMs = b.prevLabel ? b.prevEndMs : b.yoyEndMs;
+
+  const [orders, lines, payments, sessions, ghostOrders, prev, yoy] = await Promise.all([
     fetchAll('pos.order',
       [['company_id', '=', waj.companyId], ['date_order', '>=', cStart], ['date_order', '<', cEnd], ['state', 'in', SOLD]],
       ['id', 'date_order', 'amount_total', 'takeaway', 'employee_id', 'tip_amount', 'has_deleted_line'], 'date_order asc'),
@@ -158,12 +165,29 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
         [['company_id', '=', waj.companyId], ['config_id', '=', waj.configId], ['state', '=', 'closed'], ['stop_at', '>=', cStart], ['stop_at', '<', cEnd]],
         ['name', 'stop_at', 'cash_register_difference'], 'stop_at asc')
       : Promise.resolve([]),
+    ghostStartMs
+      ? fetchAll('pos.order',
+        [['company_id', '=', waj.companyId], ['date_order', '>=', utcStr(ghostStartMs)], ['date_order', '<', utcStr(ghostEndMs)], ['state', 'in', SOLD]],
+        ['date_order', 'amount_total'])
+      : Promise.resolve([]),
     periodTotals(waj.companyId, b.prevStartMs, b.prevEndMs),
     periodTotals(waj.companyId, b.yoyStartMs, b.yoyEndMs),
   ]);
 
-  // ---- trend ----
-  const trend = buildTrend(orders, b);
+  // ---- trend (current series + aligned previous-period "ghost") ----
+  const trendPts = buildTrend(orders, b);
+  const trend: [string, number, number][] = trendPts.map(p => [p.label, p.sales, p.orders]);
+  const ghostMap = new Map<number, { s: number; o: number }>();
+  for (const o of ghostOrders as any[]) {
+    const key = trendKeyOf(berlinParts(o.date_order), b);
+    const e = ghostMap.get(key) || { s: 0, o: 0 };
+    e.s += o.amount_total; e.o += 1; ghostMap.set(key, e);
+  }
+  const trendPrev: ([number, number] | null)[] = trendPts.map(p => {
+    const g = ghostMap.get(p.key);
+    return g ? [Math.round(g.s), g.o] : null;
+  });
+  const trendPrevLabel = b.prevLabel || b.yoyLabel;
 
   // ---- products + items-per-order ----
   const prodMap = new Map<number, { name: string; qty: number; rev: number }>();
@@ -405,7 +429,7 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   return {
     range, sub: b.sub, prevLabel: b.prevLabel, yoyLabel: b.yoyLabel,
     trendUnit: b.gran === 'hour' ? 'By hour' : b.gran === 'month' ? 'By month' : 'By day',
-    trend,
+    trend, trendPrev, trendPrevLabel,
     prevSales: prev.sales, prevOrders: prev.orders,
     yoySales: yoy.sales, yoyOrders: yoy.orders,
     products, categories, foodRev: Math.round(foodRev), drinkRev: Math.round(drinkRev),
@@ -424,7 +448,17 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   };
 }
 
-function buildTrend(orders: any[], b: Bounds): [string, number, number][] {
+interface TrendPoint { key: number; label: string; sales: number; orders: number }
+
+/** Position key for a bucket, so the ghost (previous period) line aligns to it:
+ *  hour-of-day / day-of-month / weekday index / month-of-year. */
+function trendKeyOf(p: { day: string; hour: number; dow: number }, b: Bounds): number {
+  if (b.gran === 'hour') return p.hour;
+  if (b.gran === 'month') return Number(p.day.slice(5, 7));
+  return b.weekly ? p.dow : Number(p.day.slice(8, 10));
+}
+
+function buildTrend(orders: any[], b: Bounds): TrendPoint[] {
   if (b.gran === 'hour') {
     const m = new Map<number, { s: number; o: number }>();
     for (const o of orders) {
@@ -433,13 +467,12 @@ function buildTrend(orders: any[], b: Bounds): [string, number, number][] {
       e.s += o.amount_total; e.o += 1; m.set(h, e);
     }
     return Array.from(m.keys()).sort((a, c) => a - c)
-      .map(h => [String(h).padStart(2, '0'), Math.round(m.get(h)!.s), m.get(h)!.o] as [string, number, number]);
+      .map(h => ({ key: h, label: String(h).padStart(2, '0'), sales: Math.round(m.get(h)!.s), orders: m.get(h)!.o }));
   }
   const byMonth = b.gran === 'month';
   const m = new Map<string, { s: number; o: number }>();
   if (byMonth) {
-    // Prefill every month in the window so a zero-sales month shows a gap, not a
-    // misleadingly-adjacent point.
+    // Prefill every month in the window so a zero-sales month shows a gap.
     let cur = berlinParts(utcStr(b.curStartMs)).day.slice(0, 7);
     const end = berlinParts(utcStr(Math.max(b.curStartMs, b.curEndMs - 1))).day.slice(0, 7);
     for (let guard = 0; guard < 400; guard++) {
@@ -455,11 +488,11 @@ function buildTrend(orders: any[], b: Bounds): [string, number, number][] {
     const e = m.get(key) || { s: 0, o: 0 };
     e.s += o.amount_total; e.o += 1; m.set(key, e);
   }
-  return Array.from(m.keys()).sort().map(key => {
-    const label = byMonth ? MON[Number(key.slice(5, 7)) - 1]
-      : b.weekly ? weekdayLabel(key) : dayOfMonthLabel(key);
-    return [label, Math.round(m.get(key)!.s), m.get(key)!.o] as [string, number, number];
-  });
+  return Array.from(m.keys()).sort().map(k => ({
+    key: byMonth ? Number(k.slice(5, 7)) : b.weekly ? DOW.indexOf(weekdayLabel(k)) : Number(k.slice(8, 10)),
+    label: byMonth ? MON[Number(k.slice(5, 7)) - 1] : b.weekly ? weekdayLabel(k) : dayOfMonthLabel(k),
+    sales: Math.round(m.get(k)!.s), orders: m.get(k)!.o,
+  }));
 }
 
 // ── kitchen prep time (KDS store + Odoo order start) ─────
