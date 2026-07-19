@@ -87,6 +87,12 @@ export interface ShiftSettings {
   agCostMinijob: number;
   /** Employer on-cost (AG) % for regular (Midijob/Vollzeit) staff (e.g. 21). */
   agCostRegular: number;
+  /** Attendance: minutes before shift start that clocking in is allowed (earlier = "too early"). */
+  attendanceEarlyWindowMin: number;
+  /** Attendance: minutes after shift end still counted as normal; beyond = overtime (needs approval). */
+  attendanceOvertimeGraceMin: number;
+  /** Attendance: allow a too-early clock-in (record + warn); when false it's refused. */
+  attendanceAllowEarly: boolean;
 }
 
 /** Snapshot of the slot at cover-request creation time. */

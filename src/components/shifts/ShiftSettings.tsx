@@ -35,6 +35,9 @@ interface SettingsForm {
   reminderFinalLeadHours: number;
   agCostMinijob: number;
   agCostRegular: number;
+  attendanceEarlyWindowMin: number;
+  attendanceOvertimeGraceMin: number;
+  attendanceAllowEarly: boolean;
 }
 
 const ANSWER_HOURS = [4, 8, 12, 24];
@@ -63,6 +66,11 @@ function numOr(v: unknown, fallback: number): number {
 /** A percentage 0–100 (0 is valid, unlike numOr). */
 function pctOr(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : fallback;
+}
+
+/** A grace/window in whole minutes 0–240 (0 is valid). */
+function minOr(v: unknown, fallback: number): number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 240 ? v : fallback;
 }
 
 function hourOptions(base: number[], current: number): number[] {
@@ -127,6 +135,9 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
         reminderFinalLeadHours: numOr(s.reminderFinalLeadHours, 3),
         agCostMinijob: pctOr(s.agCostMinijob, 30),
         agCostRegular: pctOr(s.agCostRegular, 21),
+        attendanceEarlyWindowMin: minOr(s.attendanceEarlyWindowMin, 10),
+        attendanceOvertimeGraceMin: minOr(s.attendanceOvertimeGraceMin, 20),
+        attendanceAllowEarly: bool(s.attendanceAllowEarly, true),
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -462,6 +473,58 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
             </div>
             <div className="mx-4 mt-1.5 text-[var(--fs-sm)] text-gray-400 leading-snug">
               Used to estimate the full cost of each shift. A planning estimate — not exact payroll.
+            </div>
+
+            <SectionTitle>Attendance</SectionTitle>
+            <div className="mx-4 bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] overflow-hidden">
+              <SettingRow
+                title="Early clock-in window"
+                hint="How early staff may clock in before their shift starts."
+                divider={false}
+                control={
+                  <select
+                    className={selectClass}
+                    aria-label="Early clock-in window in minutes"
+                    value={form.attendanceEarlyWindowMin}
+                    onChange={e => update({ attendanceEarlyWindowMin: Number(e.target.value) })}
+                  >
+                    {Array.from(new Set([0, 5, 10, 15, 20, 30, 45, 60, form.attendanceEarlyWindowMin])).sort((a, b) => a - b).map(m => (
+                      <option key={m} value={m}>{m} min</option>
+                    ))}
+                  </select>
+                }
+              />
+              <SettingRow
+                title="Allow clocking in early"
+                hint="On: record it with a friendly note. Off: block clock-in until the window opens."
+                divider
+                control={
+                  <ToggleSwitch
+                    on={form.attendanceAllowEarly}
+                    onToggle={() => update({ attendanceAllowEarly: !form.attendanceAllowEarly })}
+                  />
+                }
+              />
+              <SettingRow
+                title="Overtime grace"
+                hint="Minutes past shift end still counted as normal; beyond this is overtime (needs approval)."
+                divider
+                control={
+                  <select
+                    className={selectClass}
+                    aria-label="Overtime grace in minutes"
+                    value={form.attendanceOvertimeGraceMin}
+                    onChange={e => update({ attendanceOvertimeGraceMin: Number(e.target.value) })}
+                  >
+                    {Array.from(new Set([0, 5, 10, 15, 20, 30, 45, 60, form.attendanceOvertimeGraceMin])).sort((a, b) => a - b).map(m => (
+                      <option key={m} value={m}>{m} min</option>
+                    ))}
+                  </select>
+                }
+              />
+            </div>
+            <div className="mx-4 mt-1.5 text-[var(--fs-sm)] text-gray-400 leading-snug">
+              A clock-in after the scheduled start is always marked late.
             </div>
 
             {onOpenPatterns && (

@@ -23,10 +23,12 @@ import {
 import {
   clearOnBreak,
   getOnBreak,
+  getShiftSettings,
   onBreakEmployeeIds,
   setOnBreak,
   ON_BREAK_STALE_MS,
 } from '@/lib/shifts-db';
+import { classifyClockIn, classifyClockOut, policyFromSettings } from '@/lib/shifts-attendance-policy';
 import {
   berlinParts,
   currentWeekKey,
@@ -97,7 +99,7 @@ export async function kioskEmployeeContact(
   return { name, email };
 }
 
-export type PunchNote = 'ontime' | 'late' | 'early' | 'overtime';
+export type PunchNote = 'ontime' | 'late' | 'early' | 'overtime' | 'earlyin';
 export type KioskAction = 'in' | 'break' | 'out' | 'resume';
 
 export interface PunchResult {
@@ -113,6 +115,8 @@ export interface PunchResult {
   shift: string | null;
   /** for 'resume': how long the break lasted, in minutes */
   breakMins?: number;
+  /** attendance-policy message to show the employee (early / overtime), when any */
+  message?: string;
 }
 
 export type KioskState = 'off' | 'working' | 'onbreak';
@@ -129,6 +133,9 @@ interface TodaySlot {
   shift: string | null;
   startMs: number | null;
   endMs: number | null;
+  /** Berlin "HH:MM" of the scheduled start/end, for employee messages. */
+  startLabel: string | null;
+  endLabel: string | null;
 }
 
 /** This employee's shift for today (active one preferred, else nearest), published only. */
@@ -156,6 +163,8 @@ async function findTodaySlot(companyId: number, employeeId: number, nowUtc: stri
     shift: slot ? fmtTimeRange(slot.start, slot.end) : null,
     startMs: slot ? odooToDate(slot.start).getTime() : null,
     endMs: slot ? odooToDate(slot.end).getTime() : null,
+    startLabel: slot ? berlinParts(slot.start).hhmm : null,
+    endLabel: slot ? berlinParts(slot.end).hhmm : null,
   };
 }
 
@@ -178,6 +187,37 @@ async function preBreakSlotId(attendanceId: number, fallback: number | null): Pr
     // The segment resolved: use its slot (null when it had none). Only a read
     // *error* (not a since-deleted segment) falls back to a freshly-matched slot.
     return rows.length ? m2oId(rows[0].planning_slot_id) : null;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Resolve the shift to classify a clock-OUT against from the OPEN attendance's own
+ * planning_slot_id (stamped at clock-in) rather than today's nearest slot — so a split
+ * same-day roster (e.g. a lunch shift then a dinner shift) doesn't match the wrong one.
+ * Falls back to `fallback` (today's nearest) when the record has no link or can't be read.
+ */
+async function slotForOpenAttendance(openId: number, fallback: TodaySlot): Promise<TodaySlot> {
+  try {
+    const rows = (await getOdoo().read('hr.attendance', [openId], ['planning_slot_id'])) as Record<string, unknown>[];
+    const slotId = rows.length ? m2oId(rows[0].planning_slot_id) : null;
+    if (!slotId) return fallback;
+    const s = (await getOdoo().read('planning.slot', [slotId], ['start_datetime', 'end_datetime'])) as Record<
+      string,
+      unknown
+    >[];
+    const start = s.length && typeof s[0].start_datetime === 'string' ? (s[0].start_datetime as string) : null;
+    const end = s.length && typeof s[0].end_datetime === 'string' ? (s[0].end_datetime as string) : null;
+    if (!start || !end) return fallback;
+    return {
+      slotId,
+      shift: fmtTimeRange(start, end),
+      startMs: odooToDate(start).getTime(),
+      endMs: odooToDate(end).getTime(),
+      startLabel: berlinParts(start).hhmm,
+      endLabel: berlinParts(end).hhmm,
+    };
   } catch {
     return fallback;
   }
@@ -261,17 +301,17 @@ export async function kioskPunch(
   const effective: KioskAction = action ?? INFERRED_ACTION[state];
 
   const slot = await findTodaySlot(companyId, employeeId, nowUtc);
+  const policy = policyFromSettings(getShiftSettings(companyId));
 
   switch (effective) {
     case 'in': {
-      await kioskClockIn(employeeId, nowUtc, slot.slotId);
-      let note: PunchNote = 'ontime';
-      let mins = 0;
-      if (slot.startMs !== null && nowMs > slot.startMs) {
-        note = 'late';
-        mins = Math.round((nowMs - slot.startMs) / 60000);
+      // Classify BEFORE writing so a too-early, blocked punch never creates a record.
+      const v = classifyClockIn(nowMs, slot.startMs, slot.startLabel, policy);
+      if (v.blocked) {
+        return { ok: false, error: v.message ?? 'It’s too early to clock in.', state };
       }
-      return { ok: true, action: 'in', name, at, note, mins, shift: slot.shift };
+      await kioskClockIn(employeeId, nowUtc, slot.slotId);
+      return { ok: true, action: 'in', name, at, note: v.note, mins: v.mins, shift: slot.shift, message: v.message ?? undefined };
     }
 
     case 'break': {
@@ -306,20 +346,12 @@ export async function kioskPunch(
 
     case 'out': {
       if (openId) {
+        // Classify against the shift THIS attendance was linked to (split-day safe).
+        const outSlot = await slotForOpenAttendance(openId, slot);
         await kioskClockOut(openId, nowUtc);
         clearOnBreak(companyId, employeeId); // defensive
-        let note: PunchNote = 'ontime';
-        let mins = 0;
-        if (slot.endMs !== null) {
-          if (nowMs < slot.endMs) {
-            note = 'early';
-            mins = Math.round((slot.endMs - nowMs) / 60000);
-          } else if (nowMs > slot.endMs) {
-            note = 'overtime';
-            mins = Math.round((nowMs - slot.endMs) / 60000);
-          }
-        }
-        return { ok: true, action: 'out', name, at, note, mins, shift: slot.shift };
+        const v = classifyClockOut(nowMs, outSlot.endMs, policy);
+        return { ok: true, action: 'out', name, at, note: v.note, mins: v.mins, shift: outSlot.shift, message: v.message ?? undefined };
       }
       // Ending the shift while on break — already clocked out, just close the state.
       clearOnBreak(companyId, employeeId);

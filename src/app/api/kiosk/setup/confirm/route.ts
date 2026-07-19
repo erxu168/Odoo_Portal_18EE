@@ -53,10 +53,12 @@ export async function POST(request: Request) {
     }
     setKioskPin(companyId, employeeId, pin);
 
-    // Clock them in right away (they came to punch). If it fails, the PIN still stands.
+    // Clock them in right away (they came to punch). If it can't run (e.g. an
+    // attendance-policy block like "too early"), the PIN still stands — pass the
+    // reason back so the tablet can explain why they weren't clocked in.
     const result = await kioskPunch(companyId, employeeId);
     if (!result.ok) {
-      return NextResponse.json({ ok: true, pinSet: true });
+      return NextResponse.json({ ok: true, pinSet: true, message: result.error });
     }
     return NextResponse.json(result);
   } catch (err: unknown) {

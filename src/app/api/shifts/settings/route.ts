@@ -47,6 +47,12 @@ function readPct(v: unknown, fallback: number): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
 }
 
+/** A grace/window in whole minutes (0–240). */
+function readMinutes(v: unknown, fallback: number): number | null {
+  if (v === undefined) return fallback;
+  return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 240 ? v : null;
+}
+
 export async function PUT(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -70,8 +76,14 @@ export async function PUT(req: NextRequest) {
     const reminderQuietEnd = readTime(body.reminderQuietEnd, current.reminderQuietEnd);
     const agCostMinijob = readPct(body.agCostMinijob, current.agCostMinijob);
     const agCostRegular = readPct(body.agCostRegular, current.agCostRegular);
+    const attendanceEarlyWindowMin = readMinutes(body.attendanceEarlyWindowMin, current.attendanceEarlyWindowMin);
+    const attendanceOvertimeGraceMin = readMinutes(body.attendanceOvertimeGraceMin, current.attendanceOvertimeGraceMin);
+    const attendanceAllowEarly = readBool(body.attendanceAllowEarly, current.attendanceAllowEarly);
 
     if (
+      attendanceEarlyWindowMin === null ||
+      attendanceOvertimeGraceMin === null ||
+      attendanceAllowEarly === null ||
       requireApproval === null ||
       agCostMinijob === null ||
       agCostRegular === null ||
@@ -108,6 +120,9 @@ export async function PUT(req: NextRequest) {
       reminderQuietEnd,
       agCostMinijob,
       agCostRegular,
+      attendanceEarlyWindowMin,
+      attendanceOvertimeGraceMin,
+      attendanceAllowEarly,
     };
     saveShiftSettings(settings);
 

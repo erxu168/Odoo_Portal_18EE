@@ -277,6 +277,9 @@ function ensureTables(): void {
     ['reminder_quiet_end', "TEXT NOT NULL DEFAULT '08:00'"],
     ['ag_cost_minijob', 'REAL NOT NULL DEFAULT 30'],
     ['ag_cost_regular', 'REAL NOT NULL DEFAULT 21'],
+    ['attendance_early_window_min', 'INTEGER NOT NULL DEFAULT 10'],
+    ['attendance_overtime_grace_min', 'INTEGER NOT NULL DEFAULT 20'],
+    ['attendance_allow_early', 'INTEGER NOT NULL DEFAULT 1'],
   ] as const) {
     try { db.exec(`ALTER TABLE shift_settings ADD COLUMN ${col} ${def}`); }
     catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
@@ -696,10 +699,20 @@ interface SettingsRow {
   reminder_quiet_end: string;
   ag_cost_minijob?: number;
   ag_cost_regular?: number;
+  attendance_early_window_min?: number;
+  attendance_overtime_grace_min?: number;
+  attendance_allow_early?: number;
 }
 
 /** Defaults for the employer on-cost (AG) percentages when a row predates them. */
 const AG_COST_DEFAULTS = { agCostMinijob: 30, agCostRegular: 21 };
+
+/** Attendance-policy defaults (grace + enforcement) when a row predates them. */
+const ATTENDANCE_DEFAULTS = {
+  attendanceEarlyWindowMin: 10,
+  attendanceOvertimeGraceMin: 20,
+  attendanceAllowEarly: true,
+} as const;
 
 /** Defaults for the email-reminder fields (also used when a settings row predates them). */
 const REMINDER_DEFAULTS = {
@@ -729,6 +742,7 @@ export function getShiftSettings(companyId: number): ShiftSettings {
       confirmByHours: 24,
       ...REMINDER_DEFAULTS,
       ...AG_COST_DEFAULTS,
+      ...ATTENDANCE_DEFAULTS,
     };
   }
   return {
@@ -748,6 +762,9 @@ export function getShiftSettings(companyId: number): ShiftSettings {
     reminderQuietEnd: row.reminder_quiet_end || REMINDER_DEFAULTS.reminderQuietEnd,
     agCostMinijob: row.ag_cost_minijob ?? AG_COST_DEFAULTS.agCostMinijob,
     agCostRegular: row.ag_cost_regular ?? AG_COST_DEFAULTS.agCostRegular,
+    attendanceEarlyWindowMin: row.attendance_early_window_min ?? ATTENDANCE_DEFAULTS.attendanceEarlyWindowMin,
+    attendanceOvertimeGraceMin: row.attendance_overtime_grace_min ?? ATTENDANCE_DEFAULTS.attendanceOvertimeGraceMin,
+    attendanceAllowEarly: (row.attendance_allow_early ?? 1) === 1,
   };
 }
 
@@ -761,8 +778,8 @@ export function companiesRequiringConfirmation(): number[] {
 export function saveShiftSettings(s: ShiftSettings): void {
   ensureTables();
   getDb().prepare(`
-    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, ag_cost_minijob, ag_cost_regular, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, ag_cost_minijob, ag_cost_regular, attendance_early_window_min, attendance_overtime_grace_min, attendance_allow_early, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(company_id) DO UPDATE SET
       require_approval = excluded.require_approval,
       answer_deadline_hours = excluded.answer_deadline_hours,
@@ -779,6 +796,9 @@ export function saveShiftSettings(s: ShiftSettings): void {
       reminder_quiet_end = excluded.reminder_quiet_end,
       ag_cost_minijob = excluded.ag_cost_minijob,
       ag_cost_regular = excluded.ag_cost_regular,
+      attendance_early_window_min = excluded.attendance_early_window_min,
+      attendance_overtime_grace_min = excluded.attendance_overtime_grace_min,
+      attendance_allow_early = excluded.attendance_allow_early,
       updated_at = excluded.updated_at
   `).run(
     s.companyId,
@@ -797,6 +817,9 @@ export function saveShiftSettings(s: ShiftSettings): void {
     s.reminderQuietEnd,
     s.agCostMinijob,
     s.agCostRegular,
+    s.attendanceEarlyWindowMin,
+    s.attendanceOvertimeGraceMin,
+    s.attendanceAllowEarly ? 1 : 0,
     nowISO(),
   );
 }

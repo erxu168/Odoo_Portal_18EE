@@ -28,10 +28,11 @@ interface PunchResult {
   action: PunchAction;
   name: string;
   at: string;
-  note: 'ontime' | 'late' | 'early' | 'overtime';
+  note: 'ontime' | 'late' | 'early' | 'overtime' | 'earlyin';
   mins: number;
   shift: string | null;
   breakMins?: number;
+  message?: string;
 }
 
 function initials(name: string): string {
@@ -298,7 +299,7 @@ export default function KioskPage() {
         setResult(d as PunchResult);
         setScreen('done');
       } else if (r.ok && d.ok) {
-        setFlash('PIN set! Tap your name to clock in.');
+        setFlash(typeof d.message === 'string' && d.message ? `PIN set. ${d.message}` : 'PIN set! Tap your name to clock in.');
         backToGrid();
         loadStaff();
       } else {
@@ -380,6 +381,7 @@ export default function KioskPage() {
     if (r.action === 'in') {
       icon = '👋'; title = 'Clocked in';
       if (r.note === 'late') { noteMsg = `${r.mins} min late — logged`; noteClass = 'bg-amber-50 text-amber-700'; }
+      else if (r.note === 'earlyin') { icon = '⏰'; noteMsg = `Clocked in early — logged`; noteClass = 'bg-amber-50 text-amber-700'; }
       else noteMsg = 'You’re on time';
     } else if (r.action === 'resume') {
       icon = '👋'; title = 'Welcome back';
@@ -390,7 +392,7 @@ export default function KioskPage() {
     } else {
       icon = '✅'; title = 'Clocked out';
       if (r.note === 'early') { noteMsg = `Left ${r.mins} min early`; noteClass = 'bg-amber-50 text-amber-700'; }
-      else if (r.note === 'overtime') { noteMsg = `${r.mins} min overtime — thanks!`; }
+      else if (r.note === 'overtime') { icon = '⏰'; noteMsg = `${r.mins} min past your shift end`; noteClass = 'bg-amber-50 text-amber-700'; }
       else noteMsg = 'See you!';
     }
     content = (
@@ -402,6 +404,11 @@ export default function KioskPage() {
           <div className="text-xl font-semibold text-gray-600 mt-1">{r.name}</div>
           <div className="text-6xl font-extrabold tabular-nums my-5 text-gray-900">{r.at}</div>
           <div className={`rounded-2xl px-7 py-3 text-lg font-bold ${noteClass}`}>{noteMsg}</div>
+          {r.message && (
+            <div className="mt-4 max-w-md text-base font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-6 py-4">
+              {r.message}
+            </div>
+          )}
           {r.shift && <div className="text-gray-400 mt-4 text-lg">Your shift: {r.shift}</div>}
           <button
             onClick={backToGrid}

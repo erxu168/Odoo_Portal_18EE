@@ -22,6 +22,8 @@ import type { AttendanceRecord } from '@/lib/shifts-attendance';
 import { fetchAttendanceRange } from '@/lib/shifts-attendance';
 import { fetchEmployees, fetchWeekSlots } from '@/lib/shifts-odoo';
 import { getOdoo } from '@/lib/odoo';
+import { ATTENDANCE_POLICY_DEFAULTS, overtimeMinutes, policyFromSettings, type AttendancePolicy } from '@/lib/shifts-attendance-policy';
+import { getShiftSettings } from '@/lib/shifts-db';
 import { berlinParts, odooToDate, weekKeyToUtcRange } from '@/lib/shifts-time';
 
 export interface PunctualityEmployee {
@@ -68,6 +70,7 @@ export function tallyPunctuality(
   slotById: Map<number, PunctSlot>,
   fallbackSlots: PunctSlot[],
   nameOf: (id: number) => string,
+  policy: AttendancePolicy = ATTENDANCE_POLICY_DEFAULTS,
 ): PunctualityResult {
   const byEmp = new Map<number, PunctualityEmployee>();
   const get = (id: number): PunctualityEmployee => {
@@ -163,13 +166,19 @@ export function tallyPunctuality(
       e.lateMins += lateMin;
     }
     if (g.latestOut && g.slot.end) {
-      const diff = Math.round((odooToDate(g.latestOut).getTime() - odooToDate(g.slot.end).getTime()) / 60000);
-      if (diff < 0) {
+      const outMs = odooToDate(g.latestOut).getTime();
+      const endMs = odooToDate(g.slot.end).getTime();
+      if (outMs < endMs) {
         e.earlyCount++;
-        e.earlyMins += -diff;
-      } else if (diff > 0) {
-        e.overCount++;
-        e.overMins += diff;
+        e.earlyMins += Math.round((endMs - outMs) / 60000);
+      } else {
+        // Within the overtime grace after the end is a normal clock-out; only
+        // beyond it counts as overtime.
+        const over = overtimeMinutes(outMs, endMs, policy);
+        if (over > 0) {
+          e.overCount++;
+          e.overMins += over;
+        }
       }
     }
   }
@@ -229,5 +238,5 @@ export async function fetchWeekPunctuality(companyId: number, weekKey: string): 
     }
   }
 
-  return tallyPunctuality(weekKey, records, slotById, fallbackSlots, nameOf);
+  return tallyPunctuality(weekKey, records, slotById, fallbackSlots, nameOf, policyFromSettings(getShiftSettings(companyId)));
 }
