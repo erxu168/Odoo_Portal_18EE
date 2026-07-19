@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCapability, AuthError } from '@/lib/auth';
 import { canAccessCompany } from '@/lib/inventory-access';
-import { createTemplate, listTemplates } from '@/lib/staffing-checklist-db';
+import { createTemplate, listTemplatesWithCounts } from '@/lib/staffing-checklist-db';
 import type { CreateTemplateInput } from '@/types/staffing';
 
 export async function GET(req: NextRequest) {
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const companyId = Number(new URL(req.url).searchParams.get('company_id'));
     if (!companyId) return NextResponse.json({ error: 'company_id required' }, { status: 400 });
     if (!canAccessCompany(user, companyId)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    return NextResponse.json({ templates: listTemplates(companyId) });
+    return NextResponse.json({ templates: listTemplatesWithCounts(companyId) });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('[staffing] GET templates', err);

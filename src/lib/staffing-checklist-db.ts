@@ -138,6 +138,28 @@ export function listTemplates(companyId: number): TemplateRow[] {
   ).all(companyId) as TemplateRow[];
 }
 
+export interface TemplateWithCounts extends TemplateRow {
+  task_count: number;
+  business_count: number;
+  employee_count: number;
+}
+
+/** Templates for a company, each with its active task counts (for the Setup screen). */
+export function listTemplatesWithCounts(companyId: number): TemplateWithCounts[] {
+  ensureStaffingTables();
+  return getDb().prepare(`
+    SELECT s.*,
+      COUNT(t.id) AS task_count,
+      SUM(CASE WHEN t.audience = 'business' THEN 1 ELSE 0 END) AS business_count,
+      SUM(CASE WHEN t.audience = 'employee' THEN 1 ELSE 0 END) AS employee_count
+    FROM staffing_templates s
+    LEFT JOIN staffing_template_tasks t ON t.template_id = s.id AND t.active = 1
+    WHERE s.company_id = ? AND s.active = 1
+    GROUP BY s.id
+    ORDER BY s.stage, s.scope, s.name
+  `).all(companyId) as TemplateWithCounts[];
+}
+
 export function getTemplate(id: number): TemplateRow | null {
   ensureStaffingTables();
   return (getDb().prepare('SELECT * FROM staffing_templates WHERE id = ?').get(id) as TemplateRow) || null;

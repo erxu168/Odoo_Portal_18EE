@@ -18,6 +18,8 @@ import DeptRoleForm from '@/components/hr/DeptRoleForm';
 import TimeOff from '@/components/hr/TimeOff';
 import TimeOffRequest from '@/components/hr/TimeOffRequest';
 import CandidateStatus from '@/components/hr/CandidateStatus';
+import ChecklistSetup from '@/components/hr/ChecklistSetup';
+import ChecklistTemplateEditor from '@/components/hr/ChecklistTemplateEditor';
 
 type DeptRoleKind = 'department' | 'role';
 
@@ -37,7 +39,9 @@ type Screen =
   | { type: 'dept-role-edit'; kind: DeptRoleKind; recordId: number | null }
   | { type: 'timeoff' }
   | { type: 'timeoff-create' }
-  | { type: 'candidate-status' };
+  | { type: 'candidate-status' }
+  | { type: 'checklist-setup' }
+  | { type: 'checklist-template'; templateId: number };
 
 export default function HrPage() {
   const router = useRouter();
@@ -95,6 +99,7 @@ export default function HrPage() {
     else if (tile === 'departments') navigate({ type: 'dept-roles' });
     else if (tile === 'timeoff') navigate({ type: 'timeoff' });
     else if (tile === 'termination') router.push('/termination');
+    else if (tile === 'checklist-setup') navigate({ type: 'checklist-setup' });
   }
 
   switch (screen.type) {
@@ -238,6 +243,20 @@ export default function HrPage() {
         <CandidateStatus
           onHome={goHome}
           onStartOnboarding={() => navigate({ type: 'onboarding', step: 1 })}
+        />
+      );
+    case 'checklist-setup':
+      return (
+        <ChecklistSetup
+          onBack={goDashboard}
+          onOpen={(templateId) => navigate({ type: 'checklist-template', templateId })}
+        />
+      );
+    case 'checklist-template':
+      return (
+        <ChecklistTemplateEditor
+          templateId={screen.templateId}
+          onBack={goBack}
         />
       );
     default:

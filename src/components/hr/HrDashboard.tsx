@@ -226,6 +226,14 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
                       sub: 'Review & book leave',
                       onClick: () => onNavigate('timeoff'),
                     },
+                    ...(role === 'admin' ? [{
+                      id: 'checklist-setup',
+                      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>,
+                      bg: 'bg-amber-50', border: 'border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
+                      label: 'Checklist Setup',
+                      sub: 'Hire, promote & leave',
+                      onClick: () => onNavigate('checklist-setup'),
+                    }] : []),
                     ...(canSeeTermination ? [{
                       id: 'termination',
                       icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>,
