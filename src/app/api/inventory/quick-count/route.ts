@@ -102,17 +102,24 @@ export async function POST(request: Request) {
     }
   }
 
-  const ids: number[] = [];
-  for (const entry of entries) {
-    // If a crate split was sent, the base total is computed server-side.
+  // Compute + validate EVERY entry BEFORE inserting any, so an invalid quantity
+  // can't leave a partial batch persisted (a retry would then duplicate rows).
+  const prepared = entries.map((entry: any) => {
     const upc = entry.units_per_crate != null && Number(entry.units_per_crate) > 0 ? Number(entry.units_per_crate) : null;
     const hasSplit = upc !== null && (entry.crate_qty !== undefined || entry.loose_qty !== undefined);
     const baseQty = hasSplit
       ? crateTotal(Number(entry.crate_qty) || 0, Number(entry.loose_qty) || 0, upc)
       : Number(entry.counted_qty);
-    if (!Number.isFinite(baseQty) || baseQty < 0 || baseQty > 1e7) {
-      return NextResponse.json({ error: `Invalid quantity for product ${entry.product_id}` }, { status: 400 });
+    return { entry, upc, hasSplit, baseQty };
+  });
+  for (const p of prepared) {
+    if (!Number.isFinite(p.baseQty) || p.baseQty < 0 || p.baseQty > 1e7) {
+      return NextResponse.json({ error: `Invalid quantity for product ${p.entry.product_id}` }, { status: 400 });
     }
+  }
+
+  const ids: number[] = [];
+  for (const { entry, upc, hasSplit, baseQty } of prepared) {
     const id = createQuickCount({
       product_id: Number(entry.product_id),
       location_id,

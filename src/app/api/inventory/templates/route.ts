@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
+import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate } from '@/lib/inventory-db';
 
@@ -84,6 +84,19 @@ export async function POST(request: Request) {
 
   const locErr = await locationCompanyError(Number(location_id), companyId);
   if (locErr) return NextResponse.json({ error: locErr }, { status: 400 });
+
+  // A person-assigned list: the assignee must belong to this restaurant. Session
+  // generation copies this assignment straight onto sessions and canAccessSession
+  // trusts a direct assignment, so a cross-company assignee could otherwise open it.
+  if (assign_type === 'person' && assign_id != null) {
+    const assignee = getUserById(Number(assign_id));
+    if (!assignee) return NextResponse.json({ error: 'That person was not found' }, { status: 400 });
+    const ac = parseCompanyIds(assignee.allowed_company_ids);
+    const assigneeUnrestricted = assignee.role === 'admin' && ac.length === 0;
+    if (!assigneeUnrestricted && !ac.includes(companyId)) {
+      return NextResponse.json({ error: 'That person is not in this restaurant' }, { status: 400 });
+    }
+  }
 
   const id = createTemplate({
     name,

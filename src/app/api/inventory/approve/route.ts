@@ -71,10 +71,10 @@ export async function POST(request: Request) {
     const existingQuants = await odoo.searchRead('stock.quant', [
       ['product_id', 'in', productIds],
       ['location_id', '=', session.location_id],
-    ], ['id', 'product_id'], {
-      order: 'id asc',
-      limit: Math.max(200, productIds.length * 2),
-    });
+    ], ['id', 'product_id'], { order: 'id asc', limit: 20000 });
+    // If the result window is full we can't trust per-product counts (one heavily
+    // lot-tracked product could crowd others out), so fail closed for safety.
+    const quantsTruncated = existingQuants.length >= 20000;
     const quantByProduct = new Map<number, number>();
     const quantCountByProduct = new Map<number, number>();
     for (const q of existingQuants) {
@@ -90,10 +90,16 @@ export async function POST(request: Request) {
     const appliedQuantIds: number[] = [];
     await Promise.all(entries.map(async (entry) => {
       try {
-        // Several stock records for one product@location (lot/package/owner) — don't
-        // guess which to overwrite; flag for manual Odoo adjustment (like quick-count).
-        if ((quantCountByProduct.get(entry.product_id) || 0) > 1) {
-          failedEntries.push({ product_id: entry.product_id, error: 'Several stock records exist (lot/package) — adjust in Odoo' });
+        // Several stock records for one product@location (lot/package/owner), or a
+        // truncated lookup — don't guess which to overwrite; flag for manual Odoo
+        // adjustment (like quick-count) rather than risk a duplicate quant.
+        if (quantsTruncated || (quantCountByProduct.get(entry.product_id) || 0) > 1) {
+          failedEntries.push({
+            product_id: entry.product_id,
+            error: quantsTruncated
+              ? 'Too many stock records at this location to sync safely — adjust in Odoo'
+              : 'Several stock records exist (lot/package) — adjust in Odoo',
+          });
           return;
         }
         const existingId = quantByProduct.get(entry.product_id);
@@ -138,9 +144,12 @@ export async function POST(request: Request) {
   // in the portal regardless of the Odoo outcome; stock updates only for products
   // Odoo can track (storable).
   const notSynced = entries.length - syncedEntries.length;
+  const needsManual = failedEntries.length;
   let warning: string | null = null;
   if (syncError) {
     warning = `Approved and recorded. Couldn’t reach Odoo to update stock (${syncError}).`;
+  } else if (needsManual > 0) {
+    warning = `Approved. ${syncedEntries.length} updated in Odoo; ${needsManual} product${needsManual !== 1 ? 's' : ''} need manual adjustment in Odoo (several stock records exist).`;
   } else if (notSynced > 0) {
     warning = syncedEntries.length === 0
       ? 'Approved and recorded. Odoo stock was not updated — these products aren’t stock-tracked in Odoo.'
