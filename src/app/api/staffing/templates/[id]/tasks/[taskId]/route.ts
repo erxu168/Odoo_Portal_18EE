@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireCapability, AuthError } from '@/lib/auth';
 import { canAccessCompany } from '@/lib/inventory-access';
 import { getTemplate, updateTemplateTask, deleteTemplateTask } from '@/lib/staffing-checklist-db';
+import { assigneeError } from '@/lib/staffing-odoo';
 import type { UpsertTemplateTaskInput } from '@/types/staffing';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string; taskId: string } }) {
@@ -22,7 +23,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (b.reminder && (b.due_offset_days == null)) {
       return NextResponse.json({ error: 'A reminder needs a deadline.' }, { status: 400 });
     }
-    updateTemplateTask(Number(params.taskId), { ...b, title: b.title.trim() });
+    const aErr = assigneeError(b.responsible_type, b.responsible_user_id, tpl.company_id);
+    if (aErr) return NextResponse.json({ error: aErr }, { status: 400 });
+    // Scope the task to its template so a mismatched (A-template, B-task) pair can't cross companies.
+    const ok = updateTemplateTask(Number(params.taskId), tpl.id, { ...b, title: b.title.trim() });
+    if (!ok) return NextResponse.json({ error: 'Task not found in this checklist' }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
@@ -37,7 +42,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     const tpl = getTemplate(Number(params.id));
     if (!tpl) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (!canAccessCompany(user, tpl.company_id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    deleteTemplateTask(Number(params.taskId));
+    const ok = deleteTemplateTask(Number(params.taskId), tpl.id);
+    if (!ok) return NextResponse.json({ error: 'Task not found in this checklist' }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });

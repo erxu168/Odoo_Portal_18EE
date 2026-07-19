@@ -31,11 +31,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'company_id, stage, scope and name are required' }, { status: 400 });
     }
     if (!canAccessCompany(user, b.company_id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    // Only valid stage×scope combinations — a Joining+Level row must never occupy
+    // the promotion unique index, etc.
+    const validCombo = b.stage === 'promotion' ? b.scope === 'level' : (b.scope === 'base' || b.scope === 'team');
+    if (!validCombo) {
+      return NextResponse.json({ error: 'That stage and type do not go together.' }, { status: 400 });
+    }
     if (b.scope === 'team' && !b.department_id) {
       return NextResponse.json({ error: 'Pick a team for a team add-on.' }, { status: 400 });
     }
-    if (b.scope === 'level' && !b.target_level) {
-      return NextResponse.json({ error: 'Pick a target level for a promotion list.' }, { status: 400 });
+    if (b.scope === 'level' && !(b.target_level === '2' || b.target_level === '3')) {
+      return NextResponse.json({ error: 'Pick a valid target level for a promotion list.' }, { status: 400 });
     }
     const id = createTemplate({
       company_id: b.company_id, stage: b.stage, scope: b.scope,

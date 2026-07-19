@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireCapability, AuthError } from '@/lib/auth';
 import { canAccessCompany } from '@/lib/inventory-access';
 import { getTemplate, addTemplateTask, listTemplateTasks } from '@/lib/staffing-checklist-db';
+import { assigneeError } from '@/lib/staffing-odoo';
 import type { UpsertTemplateTaskInput } from '@/types/staffing';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (b.reminder && (b.due_offset_days == null)) {
       return NextResponse.json({ error: 'A reminder needs a deadline.' }, { status: 400 });
     }
+    const aErr = assigneeError(b.responsible_type, b.responsible_user_id, tpl.company_id);
+    if (aErr) return NextResponse.json({ error: aErr }, { status: 400 });
     const id = addTemplateTask(tpl.id, { ...b, title: b.title.trim() });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: unknown) {

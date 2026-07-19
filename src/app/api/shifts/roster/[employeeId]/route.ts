@@ -131,19 +131,6 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
       }
     }
 
-    // Skill write + promotion detection. On a confirmed upward level change we
-    // return a promotion_offer so the UI can offer the matching checklist.
-    let promotionOffer: { employee_id: number; target_level: string; from_level: string | null } | null = null;
-    if (skillVal !== undefined) {
-      let skillWriteOk = false;
-      try {
-        await odoo.write('hr.employee', [employeeId], { x_skill_level: skillVal });
-        skillWriteOk = true;
-      } catch { /* addon absent — skill not persisted, so no promotion offer */ }
-      if (skillWriteOk && isPromotion(employee.skill, toLevel) && toLevel) {
-        promotionOffer = { employee_id: employeeId, target_level: toLevel, from_level: employee.skill };
-      }
-    }
     // Standard field — write on its own so an addon-field failure above doesn't drop it.
     if (departmentWrite !== undefined) {
       await odoo.write('hr.employee', [employeeId], { department_id: departmentWrite });
@@ -157,6 +144,22 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
       const thisWeek = currentWeekKey();
       await recomputeWeekFlags(companyId, thisWeek, [employeeId]);
       await recomputeWeekFlags(companyId, offsetWeekKey(thisWeek, 1), [employeeId]);
+    }
+
+    // Skill write LAST, so a promotion detected here can't be lost by a later
+    // dept/role/recompute failure. On a confirmed upward level change we return a
+    // promotion_offer for the UI. (x_skill_level needs the shift-selfservice addon;
+    // where it's absent the write throws → no offer, matching the tolerant behaviour.)
+    let promotionOffer: { employee_id: number; target_level: string; from_level: string | null } | null = null;
+    if (skillVal !== undefined) {
+      let skillWriteOk = false;
+      try {
+        await odoo.write('hr.employee', [employeeId], { x_skill_level: skillVal });
+        skillWriteOk = true;
+      } catch { /* addon absent — skill not persisted, so no promotion offer */ }
+      if (skillWriteOk && toLevel && isPromotion(employee.skill, toLevel)) {
+        promotionOffer = { employee_id: employeeId, target_level: toLevel, from_level: employee.skill };
+      }
     }
 
     return NextResponse.json({ ok: true, promotion_offer: promotionOffer });

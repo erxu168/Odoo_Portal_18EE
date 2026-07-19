@@ -7,7 +7,23 @@
  * Level = hr.employee.x_skill_level ('1'=Trainee, '2'=Associate, '3'=Team Lead).
  */
 import { getOdoo } from './odoo';
-import { listUsers } from './db';
+import { listUsers, getUserById } from './db';
+import { canAccessCompany } from './inventory-access';
+import type { ResponsibleType } from '@/types/staffing';
+
+/**
+ * Validate a specific-user responsible for a template task: the user must exist,
+ * be active, and be able to access the template's company. Returns an error
+ * message (for a 400) or null when valid / not a specific_user assignment.
+ */
+export function assigneeError(responsibleType: ResponsibleType, userId: number | null | undefined, companyId: number): string | null {
+  if (responsibleType !== 'specific_user') return null;
+  if (!userId) return 'Pick the responsible person.';
+  const u = getUserById(Number(userId));
+  if (!u || !u.active || u.status !== 'active') return 'That person is not an active user.';
+  if (!canAccessCompany(u, companyId)) return 'That person cannot be assigned in this company.';
+  return null;
+}
 
 const m2oId = (v: unknown): number | null => (Array.isArray(v) ? (v[0] as number) : null);
 const m2oName = (v: unknown): string | null => (Array.isArray(v) ? (v[1] as string) : null);

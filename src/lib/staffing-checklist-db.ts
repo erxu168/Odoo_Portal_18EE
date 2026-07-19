@@ -64,7 +64,7 @@ function ensureStaffingTables(): void {
       sequence INTEGER NOT NULL DEFAULT 0,
       responsible_type TEXT NOT NULL DEFAULT 'employee_manager'
         CHECK (responsible_type IN ('specific_user','employee_manager','the_employee')),
-      responsible_user_id INTEGER,
+      responsible_user_id INTEGER REFERENCES portal_users(id) ON DELETE SET NULL,
       due_offset_days INTEGER,
       reminder INTEGER NOT NULL DEFAULT 0 CHECK (reminder IN (0,1)),
       active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0,1))
@@ -82,12 +82,15 @@ function ensureStaffingTables(): void {
       from_level TEXT,
       reference_date TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done','cancelled')),
-      started_by INTEGER NOT NULL,
+      started_by INTEGER REFERENCES portal_users(id) ON DELETE SET NULL,
       started_at TEXT NOT NULL,
       termination_id INTEGER,
       start_key TEXT NOT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS uq_staffing_inst_startkey ON staffing_instances(start_key);
+    -- At most one OPEN instance per (employee, stage) — the concurrency backstop.
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_staffing_inst_open
+      ON staffing_instances(employee_id, stage) WHERE status = 'open';
     CREATE INDEX IF NOT EXISTS idx_staffing_inst_emp ON staffing_instances(employee_id);
     CREATE INDEX IF NOT EXISTS idx_staffing_inst_co ON staffing_instances(company_id, status);
 
@@ -99,12 +102,12 @@ function ensureStaffingTables(): void {
       description TEXT,
       sequence INTEGER NOT NULL DEFAULT 0,
       source TEXT NOT NULL DEFAULT 'base' CHECK (source IN ('base','team','level')),
-      assignee_user_id INTEGER,
+      assignee_user_id INTEGER REFERENCES portal_users(id) ON DELETE SET NULL,
       assignee_employee_id INTEGER,
       due_date TEXT,
       reminder INTEGER NOT NULL DEFAULT 0 CHECK (reminder IN (0,1)),
       status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','skipped')),
-      done_by INTEGER,
+      done_by INTEGER REFERENCES portal_users(id) ON DELETE SET NULL,
       done_at TEXT,
       note TEXT,
       reminder_stage INTEGER NOT NULL DEFAULT 0
@@ -199,20 +202,24 @@ export function addTemplateTask(templateId: number, t: UpsertTemplateTaskInput):
   return Number(r.lastInsertRowid);
 }
 
-export function updateTemplateTask(taskId: number, t: UpsertTemplateTaskInput): void {
+/** Update a task scoped to its template (prevents cross-template/company task edits). */
+export function updateTemplateTask(taskId: number, templateId: number, t: UpsertTemplateTaskInput): boolean {
   ensureStaffingTables();
-  getDb().prepare(`
+  const r = getDb().prepare(`
     UPDATE staffing_template_tasks SET
       audience = ?, title = ?, description = ?, sequence = ?, responsible_type = ?,
       responsible_user_id = ?, due_offset_days = ?, reminder = ?
-    WHERE id = ?
+    WHERE id = ? AND template_id = ?
   `).run(t.audience, t.title, t.description ?? null, t.sequence ?? 0, t.responsible_type,
-         t.responsible_user_id ?? null, t.due_offset_days ?? null, t.reminder ? 1 : 0, taskId);
+         t.responsible_user_id ?? null, t.due_offset_days ?? null, t.reminder ? 1 : 0, taskId, templateId);
+  return r.changes === 1;
 }
 
-export function deleteTemplateTask(taskId: number): void {
+/** Delete a task scoped to its template. Returns false if it did not belong to the template. */
+export function deleteTemplateTask(taskId: number, templateId: number): boolean {
   ensureStaffingTables();
-  getDb().prepare('DELETE FROM staffing_template_tasks WHERE id = ?').run(taskId);
+  const r = getDb().prepare('DELETE FROM staffing_template_tasks WHERE id = ? AND template_id = ?').run(taskId, templateId);
+  return r.changes === 1;
 }
 
 /** Atomic bulk reorder: apply new sequence to each task id (all-or-nothing). */
@@ -291,15 +298,20 @@ function resolveAssignee(
   return { user: p.adminUserId, emp: null };
 }
 
-/** Gather + merge the seeds a start would produce (base+team, or the level list). */
+/**
+ * Gather + merge the seeds a start would produce (base+team, or the level list).
+ * Joining/Leaving REQUIRE an active base template — a team-only config must not
+ * start a checklist without the shared base. Returns [] when setup is incomplete.
+ */
 function gatherSeeds(companyId: number, stage: Stage, departmentId: number | null, targetLevel: string | null): TemplateTaskSeed[] {
   if (stage === 'promotion') {
     const lvl = targetLevel ? findLevelTemplate(companyId, targetLevel) : null;
     return lvl ? seedsFrom(lvl) : [];
   }
   const base = findBaseTemplate(companyId, stage);
+  if (!base) return []; // no shared base configured → setup incomplete
   const team = departmentId != null ? findTeamTemplate(companyId, stage, departmentId) : null;
-  return mergeTaskSeeds(base ? seedsFrom(base) : [], team ? seedsFrom(team) : []);
+  return mergeTaskSeeds(seedsFrom(base), team ? seedsFrom(team) : []);
 }
 
 /** Non-destructive preview of what a start would create (for the confirm prompt). */
@@ -355,8 +367,13 @@ export function startInstance(p: StartInstanceParams): number {
     return tx();
   } catch (err: unknown) {
     // Concurrent identical start hit the unique start_key — return the winner.
-    const again = db.prepare('SELECT id FROM staffing_instances WHERE start_key = ?').get(p.startKey) as { id: number } | undefined;
-    if (again) return again.id;
+    const byKey = db.prepare('SELECT id FROM staffing_instances WHERE start_key = ?').get(p.startKey) as { id: number } | undefined;
+    if (byKey) return byKey.id;
+    // Concurrent DIFFERENT-key start hit the one-open-per-stage unique index — return that winner.
+    const openSame = db.prepare(
+      `SELECT id FROM staffing_instances WHERE employee_id = ? AND stage = ? AND status = 'open' LIMIT 1`,
+    ).get(p.employeeId, p.stage) as { id: number } | undefined;
+    if (openSame) return openSame.id;
     throw err;
   }
 }
@@ -417,9 +434,11 @@ export function getTaskWithInstance(taskId: number): { task: InstanceTaskRow; in
   return { task, instance };
 }
 
-export function cancelInstance(id: number): void {
+/** Cancel an OPEN instance only. Returns false if it was already done/cancelled. */
+export function cancelInstance(id: number): boolean {
   ensureStaffingTables();
-  getDb().prepare(`UPDATE staffing_instances SET status = 'cancelled' WHERE id = ?`).run(id);
+  const r = getDb().prepare(`UPDATE staffing_instances SET status = 'cancelled' WHERE id = ? AND status = 'open'`).run(id);
+  return r.changes === 1;
 }
 
 export function getMyPendingEmployeeTasks(employeeId: number): (InstanceTaskRow & { stage: Stage; instance_status: string })[] {

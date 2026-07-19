@@ -12,7 +12,8 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     const data = getInstance(Number(params.id));
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (!canAccessCompany(user, data.instance.company_id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    cancelInstance(data.instance.id);
+    const cancelled = cancelInstance(data.instance.id);
+    if (!cancelled) return NextResponse.json({ error: 'Only an open checklist can be cancelled.' }, { status: 409 });
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });

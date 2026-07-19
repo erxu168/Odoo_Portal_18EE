@@ -28,24 +28,26 @@ export async function GET(req: NextRequest) {
   if (hour < 9 || hour >= 21) return NextResponse.json({ ok: true, sent: 0, skipped: 'quiet-hours' });
 
   const today = berlinToday();
-  let sent = 0;
+  let claimed = 0;   // stages advanced this run (at-most-once)
+  let delivered = 0; // pushes that actually landed on a device
   for (const t of listReminderCandidates()) {
     const stageNow = reminderStageDue(t.due_date, today);
     if (stageNow <= t.reminder_stage) continue;
     // Claim FIRST — at-most-once, safe against concurrent runs. A missing
     // subscription still counts as claimed so we don't retry hourly.
     if (!claimReminderStage(t.id, stageNow)) continue;
+    claimed++;
     const userId = t.assignee_user_id
       ?? (t.assignee_employee_id != null ? getUserByEmployeeId(t.assignee_employee_id)?.id ?? null : null);
     if (userId == null) continue;
     const when = stageNow === 3 ? 'is overdue' : stageNow === 2 ? 'is due today' : 'is coming up';
     try {
-      await sendPushToUser(userId, {
+      const res = await sendPushToUser(userId, {
         title: 'Checklist task', body: `“${t.title}” ${when}.`,
         url: '/hr', tag: `staffing-${t.id}`,
       });
-      sent++;
+      delivered += res.delivered;
     } catch (err: unknown) { console.error('[staffing] reminder push failed', err); }
   }
-  return NextResponse.json({ ok: true, sent });
+  return NextResponse.json({ ok: true, claimed, delivered });
 }

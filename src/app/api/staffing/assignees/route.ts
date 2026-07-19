@@ -16,12 +16,7 @@ export async function GET(req: NextRequest) {
 
     const assignees = listUsers()
       .filter(u => u.active && u.status === 'active' && !u.is_shared_device)
-      .filter(u => {
-        if (u.role === 'admin') return true; // admins are company-wide
-        let ids: number[] = [];
-        try { ids = JSON.parse(u.allowed_company_ids || '[]'); } catch { ids = []; }
-        return ids.length === 0 || ids.includes(companyId);
-      })
+      .filter(u => canAccessCompany(u, companyId)) // same rule as authorization (no empty-list god-mode)
       .map(u => ({ id: u.id, name: u.name, role: u.role, employee_id: u.employee_id }));
 
     return NextResponse.json({ assignees });
