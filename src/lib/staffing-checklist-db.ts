@@ -291,6 +291,32 @@ function resolveAssignee(
   return { user: p.adminUserId, emp: null };
 }
 
+/** Gather + merge the seeds a start would produce (base+team, or the level list). */
+function gatherSeeds(companyId: number, stage: Stage, departmentId: number | null, targetLevel: string | null): TemplateTaskSeed[] {
+  if (stage === 'promotion') {
+    const lvl = targetLevel ? findLevelTemplate(companyId, targetLevel) : null;
+    return lvl ? seedsFrom(lvl) : [];
+  }
+  const base = findBaseTemplate(companyId, stage);
+  const team = departmentId != null ? findTeamTemplate(companyId, stage, departmentId) : null;
+  return mergeTaskSeeds(base ? seedsFrom(base) : [], team ? seedsFrom(team) : []);
+}
+
+/** Non-destructive preview of what a start would create (for the confirm prompt). */
+export function previewMergedTasks(
+  companyId: number, stage: Stage, departmentId: number | null, targetLevel: string | null,
+): { total: number; business: number; employee: number; hasBase: boolean; hasTeam: boolean } {
+  ensureStaffingTables();
+  const seeds = gatherSeeds(companyId, stage, departmentId, targetLevel);
+  return {
+    total: seeds.length,
+    business: seeds.filter(s => s.audience === 'business').length,
+    employee: seeds.filter(s => s.audience === 'employee').length,
+    hasBase: seeds.some(s => s.source === 'base') || stage === 'promotion',
+    hasTeam: seeds.some(s => s.source === 'team'),
+  };
+}
+
 export function startInstance(p: StartInstanceParams): number {
   ensureStaffingTables();
   const db = getDb();
@@ -299,16 +325,7 @@ export function startInstance(p: StartInstanceParams): number {
   const dup = db.prepare('SELECT id FROM staffing_instances WHERE start_key = ?').get(p.startKey) as { id: number } | undefined;
   if (dup) return dup.id;
 
-  // Gather + merge seeds by stage.
-  let seeds: TemplateTaskSeed[] = [];
-  if (p.stage === 'promotion') {
-    const lvl = p.targetLevel ? findLevelTemplate(p.companyId, p.targetLevel) : null;
-    seeds = lvl ? seedsFrom(lvl) : [];
-  } else {
-    const base = findBaseTemplate(p.companyId, p.stage);
-    const team = p.departmentId != null ? findTeamTemplate(p.companyId, p.stage, p.departmentId) : null;
-    seeds = mergeTaskSeeds(base ? seedsFrom(base) : [], team ? seedsFrom(team) : []);
-  }
+  const seeds = gatherSeeds(p.companyId, p.stage, p.departmentId, p.targetLevel);
   if (seeds.length === 0) throw new SetupIncompleteError();
 
   const tx = db.transaction(() => {
