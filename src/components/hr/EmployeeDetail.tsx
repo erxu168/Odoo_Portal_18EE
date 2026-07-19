@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import AppHeader from "@/components/ui/AppHeader";
 import DocumentViewer from "@/components/ui/DocumentViewer";
 import EmployeePortalAccess from "@/components/hr/EmployeePortalAccess";
+import EmployeeJourney from "@/components/hr/EmployeeJourney";
 import type { EmployeeData } from "@/types/hr";
 import { EMPLOYEE_READ_FIELDS, DOCUMENT_TYPES, calculateOnboardingPercent, aufenthaltstitelLabel } from "@/types/hr";
 
@@ -25,9 +26,10 @@ interface Props {
   onToggleEditMode: () => void;
   onEditSection: (section: string) => void;
   onEditDocument: (docTypeKey: string) => void;
+  onOpenChecklist?: (instanceId: number) => void;
 }
 
-export default function EmployeeDetail({ employeeId, onBack, onContract, onDeactivated, editMode, onToggleEditMode, onEditSection, onEditDocument }: Props) {
+export default function EmployeeDetail({ employeeId, onBack, onContract, onDeactivated, editMode, onToggleEditMode, onEditSection, onEditDocument, onOpenChecklist }: Props) {
   const router = useRouter();
   const [emp, setEmp] = useState<EmployeeData | null>(null);
   const [docs, setDocs] = useState<Doc[]>([]);
@@ -171,6 +173,8 @@ export default function EmployeeDetail({ employeeId, onBack, onContract, onDeact
       </Section>
 
       <EmployeePortalAccess employeeId={employeeId} />
+
+      {onOpenChecklist && <EmployeeJourney employeeId={employeeId} onOpenChecklist={onOpenChecklist} />}
 
       <STitle text="DATEV / Personalfragebogen" />
       <Section title="Personal & address" onEdit={editMode ? () => onEditSection('personal') : undefined}>

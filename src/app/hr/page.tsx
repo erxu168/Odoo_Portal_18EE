@@ -20,6 +20,7 @@ import TimeOffRequest from '@/components/hr/TimeOffRequest';
 import CandidateStatus from '@/components/hr/CandidateStatus';
 import ChecklistSetup from '@/components/hr/ChecklistSetup';
 import ChecklistTemplateEditor from '@/components/hr/ChecklistTemplateEditor';
+import EmployeeChecklistView from '@/components/hr/EmployeeChecklistView';
 
 type DeptRoleKind = 'department' | 'role';
 
@@ -41,7 +42,8 @@ type Screen =
   | { type: 'timeoff-create' }
   | { type: 'candidate-status' }
   | { type: 'checklist-setup' }
-  | { type: 'checklist-template'; templateId: number };
+  | { type: 'checklist-template'; templateId: number }
+  | { type: 'checklist-view'; instanceId: number };
 
 export default function HrPage() {
   const router = useRouter();
@@ -156,6 +158,7 @@ export default function HrPage() {
             else navigate({ type: 'employee-section-edit', employeeId: screen.employeeId, section: section as SectionKey });
           }}
           onEditDocument={(docTypeKey) => navigate({ type: 'employee-doc-edit', employeeId: screen.employeeId, docTypeKey })}
+          onOpenChecklist={(instanceId) => navigate({ type: 'checklist-view', instanceId })}
         />
       );
     case 'employee-section-edit':
@@ -256,6 +259,13 @@ export default function HrPage() {
       return (
         <ChecklistTemplateEditor
           templateId={screen.templateId}
+          onBack={goBack}
+        />
+      );
+    case 'checklist-view':
+      return (
+        <EmployeeChecklistView
+          instanceId={screen.instanceId}
           onBack={goBack}
         />
       );
