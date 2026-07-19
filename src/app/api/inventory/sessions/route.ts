@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
+import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
 import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap } from '@/lib/inventory-db';
 import { canAccessSession, companyScope } from '@/lib/inventory-access';
 import { resolveSessionRoute } from '@/lib/session-route';
@@ -98,6 +98,21 @@ export async function POST(request: Request) {
     }
     if (!allowed.includes(tmpl.company_id)) {
       return NextResponse.json({ error: 'That list belongs to another restaurant' }, { status: 403 });
+    }
+  }
+
+  // If a specific person is assigned, they must belong to this list's restaurant
+  // (else a session could be assigned to — and thus opened by — someone in another
+  // company, since canAccessSession trusts a direct assignment).
+  if (assigned_user_id != null) {
+    const assignee = getUserById(Number(assigned_user_id));
+    if (!assignee) return NextResponse.json({ error: 'That person was not found' }, { status: 400 });
+    if (tmpl.company_id != null) {
+      const ac = parseCompanyIds(assignee.allowed_company_ids);
+      const assigneeUnrestricted = assignee.role === 'admin' && ac.length === 0;
+      if (!assigneeUnrestricted && !ac.includes(tmpl.company_id)) {
+        return NextResponse.json({ error: 'That person is not in this restaurant' }, { status: 400 });
+      }
     }
   }
 

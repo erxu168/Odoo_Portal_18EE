@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
-import { parseCompanyIds } from '@/lib/db';
+import { companyScope } from '@/lib/inventory-access';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -17,17 +17,21 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const activeCompany = parseInt(searchParams.get('company_id') || '0', 10);
+  // undefined = unrestricted admin; a non-admin with no companies gets NO
+  // locations (never all — the old empty-allowed fell through to no filter).
+  const scope = companyScope(user);
+  if (scope && scope.length === 0) return NextResponse.json({ locations: [] });
 
   try {
     const odoo = getOdoo();
 
     const domain: any[] = [['usage', '=', 'internal']];
-    const allowedIds = parseCompanyIds(user.allowed_company_ids);
-
-    if (activeCompany && allowedIds.includes(activeCompany)) {
+    if (scope) {
+      if (activeCompany && scope.includes(activeCompany)) domain.push(['company_id', '=', activeCompany]);
+      else domain.push(['company_id', 'in', scope]);
+    } else if (activeCompany) {
+      // Unrestricted admin: optional single-company narrow from the top-bar switcher.
       domain.push(['company_id', '=', activeCompany]);
-    } else if (allowedIds.length > 0) {
-      domain.push(['company_id', 'in', allowedIds]);
     }
 
     const locations = await odoo.searchRead('stock.location',

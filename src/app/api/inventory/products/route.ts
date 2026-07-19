@@ -252,6 +252,15 @@ export async function GET(request: Request) {
         // Non-admin with no usable company signal: fail closed to shared-only.
         domain.push(['company_id', '=', false]);
       }
+    } else {
+      // Explicit ids: still constrain to company-VISIBLE products (shared OR the
+      // caller's companies) so an id list can't enumerate another company's products.
+      const allowedIds = parseCompanyIds(user.allowed_company_ids);
+      const adminUnrestricted = user.role === 'admin' && allowedIds.length === 0;
+      if (!adminUnrestricted) {
+        if (allowedIds.length > 0) domain.push('|', ['company_id', '=', false], ['company_id', 'in', allowedIds]);
+        else domain.push(['company_id', '=', false]);
+      }
     }
 
     const products = await odoo.searchRead('product.product', domain,
