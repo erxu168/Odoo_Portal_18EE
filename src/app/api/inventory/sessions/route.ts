@@ -176,12 +176,17 @@ export async function PUT(request: Request) {
       if (template) {
         // getTemplate returns product_ids already parsed to number[] (parseTemplate).
         const productIds: number[] = Array.isArray(template.product_ids) ? template.product_ids : [];
-        const expectedCount = productIds.length;
-        if (expectedCount > 0 && entries.length < expectedCount) {
-          return NextResponse.json({
-            error: `Please count all items before submitting. ${entries.length}/${expectedCount} counted.`,
-            code: 'INCOMPLETE_COUNT',
-          }, { status: 400 });
+        if (productIds.length > 0) {
+          // Coverage, not row count: EVERY required product must have an entry, so
+          // extraneous/left-over rows can't satisfy the gate.
+          const counted = new Set(entries.map((e: any) => e.product_id));
+          const missing = productIds.filter((pid) => !counted.has(pid));
+          if (missing.length > 0) {
+            return NextResponse.json({
+              error: `Please count all items before submitting. ${productIds.length - missing.length}/${productIds.length} counted.`,
+              code: 'INCOMPLETE_COUNT',
+            }, { status: 400 });
+          }
         }
       }
     }
@@ -219,12 +224,18 @@ export async function PUT(request: Request) {
     if (session.status !== 'rejected') {
       return NextResponse.json({ error: 'Only rejected sessions can be reopened for recount' }, { status: 400 });
     }
-    updateSessionStatus(id, 'pending');
+    if (updateSessionStatus(id, 'pending', { fromStatus: 'rejected' }) === 0) {
+      return NextResponse.json({ error: 'This count was just changed by someone else — reload and try again.' }, { status: 409 });
+    }
     logAudit({ user_id: user.id, user_name: user.name, action: 'recount', module: 'inventory', target_type: 'session', target_id: id, detail: `Reopened session for recount (was rejected)` });
     return NextResponse.json({ message: 'Session reopened for recount' });
   }
 
-  updateSessionStatus(id, status, { reviewed_by: user.id, review_note });
+  const fromStatus = status === 'submitted' ? ['pending', 'in_progress']
+    : status === 'rejected' ? ['submitted'] : undefined;
+  if (updateSessionStatus(id, status, { reviewed_by: user.id, review_note, fromStatus }) === 0) {
+    return NextResponse.json({ error: 'This count was just changed by someone else — reload and try again.' }, { status: 409 });
+  }
 
   // Audit log for approve/reject/submit
   if (['approved', 'rejected', 'submitted'].includes(status)) {

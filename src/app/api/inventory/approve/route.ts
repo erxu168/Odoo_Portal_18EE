@@ -47,6 +47,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'No count entries to approve' }, { status: 400 });
   }
 
+  // Atomically claim the approval (only from 'submitted') BEFORE the Odoo write, so
+  // a concurrent reject/approve can't race. The approval then stands even if the
+  // Odoo sync fails (best-effort), matching prior behavior.
+  if (updateSessionStatus(session_id, 'approved', { reviewed_by: user.id, review_note, fromStatus: 'submitted' }) === 0) {
+    return NextResponse.json({ error: 'This count was just changed by someone else — reload.' }, { status: 409 });
+  }
+
   // Best-effort Odoo sync. The portal is the record of the count; Odoo stock
   // is only updated for products Odoo actually tracks (storable). Non-storable
   // products (or an Odoo outage) simply don't sync — the count is still approved.
@@ -119,13 +126,9 @@ export async function POST(request: Request) {
     console.error('Odoo inventory sync failed entirely:', syncError);
   }
 
-  // Approve regardless of the Odoo outcome. The count is recorded in the portal;
-  // Odoo stock updates only for products it can track (storable).
-  updateSessionStatus(session_id, 'approved', {
-    reviewed_by: user.id,
-    review_note,
-  });
-
+  // Already atomically approved above (before the Odoo sync). The count is recorded
+  // in the portal regardless of the Odoo outcome; stock updates only for products
+  // Odoo can track (storable).
   const notSynced = entries.length - syncedEntries.length;
   let warning: string | null = null;
   if (syncError) {

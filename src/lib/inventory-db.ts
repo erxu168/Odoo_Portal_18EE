@@ -503,16 +503,22 @@ export function saveSessionProofPhoto(id: number, photo: string) {
 export function updateSessionStatus(id: number, status: SessionStatus, extra?: {
   reviewed_by?: number;
   review_note?: string;
-}) {
+  fromStatus?: string | string[];   // when set, only transition from these states (atomic guard)
+}): number {
   const db = getDb();
   const ts = now();
+  const from = extra?.fromStatus == null ? null : (Array.isArray(extra.fromStatus) ? extra.fromStatus : [extra.fromStatus]);
+  const guard = from ? ` AND status IN (${from.map(() => '?').join(',')})` : '';
+  const gv = from || [];
   if (status === 'submitted') {
-    db.prepare('UPDATE counting_sessions SET status = ?, submitted_at = ? WHERE id = ?').run(status, ts, id);
+    return db.prepare(`UPDATE counting_sessions SET status = ?, submitted_at = ? WHERE id = ?${guard}`)
+      .run(status, ts, id, ...gv).changes as number;
   } else if (status === 'approved' || status === 'rejected') {
-    db.prepare('UPDATE counting_sessions SET status = ?, reviewed_by = ?, reviewed_at = ?, review_note = ? WHERE id = ?')
-      .run(status, extra?.reviewed_by || null, ts, extra?.review_note || null, id);
+    return db.prepare(`UPDATE counting_sessions SET status = ?, reviewed_by = ?, reviewed_at = ?, review_note = ? WHERE id = ?${guard}`)
+      .run(status, extra?.reviewed_by || null, ts, extra?.review_note || null, id, ...gv).changes as number;
   } else {
-    db.prepare('UPDATE counting_sessions SET status = ? WHERE id = ?').run(status, id);
+    return db.prepare(`UPDATE counting_sessions SET status = ? WHERE id = ?${guard}`)
+      .run(status, id, ...gv).changes as number;
   }
 }
 
