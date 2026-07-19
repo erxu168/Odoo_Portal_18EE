@@ -44,6 +44,7 @@ export interface OdooPlanningRole {
 export type Frequency = 'daily' | 'weekly' | 'monthly' | 'adhoc';
 export type AssignType = 'person' | 'department' | 'shift' | null;
 export type SessionStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected';
+export type CountMode = 'simple' | 'pack_loose';
 
 export interface CountingTemplate {
   id: number;
@@ -98,6 +99,12 @@ export interface CountEntry {
   crate_qty?: number | null;          // crates as entered (audit / review replay)
   loose_qty?: number | null;          // loose base units as entered
   units_per_crate?: number | null;    // crate size snapshot at count time
+  count_location_id?: number;         // which spot this count is for (0 = no specific spot / legacy)
+  out_of_stock?: boolean;             // deliberate "none here" (≠ a counted 0, ≠ not-counted)
+  count_mode?: CountMode | null;      // how it was counted (snapshot)
+  pack_label?: string | null;         // pack word snapshot ('crate'…)
+  loose_label?: string | null;        // single-unit word snapshot ('bottles'…)
+  odoo_qty?: number | null;           // converted base qty safe to write to Odoo (null = portal-only)
 }
 
 export interface QuickCount {
@@ -117,6 +124,11 @@ export interface QuickCount {
   crate_qty?: number | null;
   loose_qty?: number | null;
   units_per_crate?: number | null;
+  out_of_stock?: boolean;             // deliberate "none here"
+  count_mode?: CountMode | null;
+  pack_label?: string | null;
+  loose_label?: string | null;
+  odoo_qty?: number | null;           // converted base qty safe to write to Odoo
 }
 
 // ── Location layer (portal SQLite) ──
@@ -142,4 +154,28 @@ export interface ProductPlacement {
   odoo_product_id: number;
   count_location_id: number;
   shelf_sort: number;              // order on the shelf
+}
+
+/** A product placed at a spot within ONE specific list (template). */
+export interface TemplatePlacement {
+  template_id: number;
+  odoo_product_id: number;
+  count_location_id: number;
+  shelf_sort: number;
+}
+
+/**
+ * Frozen snapshot of one thing to count (a product at a spot) for a session,
+ * captured at session creation so later template edits never re-route it.
+ */
+export interface SessionCountItem {
+  session_id: number;
+  odoo_product_id: number;
+  count_location_id: number;
+  shelf_sort: number;
+  requires_photo: boolean;
+  count_mode: CountMode | null;
+  pack_label: string | null;
+  loose_label: string | null;
+  units_per_crate: number | null;
 }

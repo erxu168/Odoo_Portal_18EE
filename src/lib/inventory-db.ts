@@ -10,7 +10,8 @@ import { berlinToday, berlinWeekday } from './berlin-date';
 import type {
   CountingTemplate, CountingSession, CountEntry, QuickCount,
   Frequency, AssignType, SessionStatus,
-  CountLocation, ProductPlacement,
+  CountLocation, ProductPlacement, CountMode,
+  TemplatePlacement, SessionCountItem,
 } from '@/types/inventory';
 
 // ===
@@ -910,6 +911,8 @@ export interface ProductFlag {
   requires_photo: boolean;
   units_per_crate: number | null;  // base units per counted pack/piece; null = count in base units
   pack_label: string | null;       // what staff count in: 'crate' | 'bunch' | 'piece' | 'tray'… (null → 'pack')
+  count_mode: CountMode | null;    // 'simple' | 'pack_loose' — null = infer from units_per_crate
+  loose_label: string | null;      // single-unit word for pack_loose mode ('bottles'…)
   updated_by: number | null;
   updated_at: string | null;
 }
@@ -930,6 +933,8 @@ export function getProductFlags(ids?: number[]): ProductFlag[] {
     requires_photo: !!r.requires_photo,
     units_per_crate: r.units_per_crate != null ? Number(r.units_per_crate) : null,
     pack_label: r.pack_label ?? null,
+    count_mode: (r.count_mode as CountMode) ?? null,
+    loose_label: r.loose_label ?? null,
     updated_by: r.updated_by,
     updated_at: r.updated_at,
   }));
@@ -971,6 +976,101 @@ export function setProductCrateSize(
       updated_by = excluded.updated_by,
       updated_at = excluded.updated_at
   `).run(productId, size, userId, now());
+}
+
+/**
+ * Set a product's explicit count mode + the single-unit ("loose") word.
+ * mode = null clears back to legacy inference. Upsert leaves other flag fields
+ * (requires_photo, units_per_crate, pack_label) untouched.
+ */
+export function setProductCountMode(
+  productId: number,
+  mode: CountMode | null,
+  looseLabel: string | null,
+  userId: number,
+) {
+  const db = getDb();
+  const loose = looseLabel && looseLabel.trim() ? looseLabel.trim() : null;
+  db.prepare(`
+    INSERT INTO product_flags (odoo_product_id, count_mode, loose_label, updated_by, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(odoo_product_id) DO UPDATE SET
+      count_mode = excluded.count_mode,
+      loose_label = excluded.loose_label,
+      updated_by = excluded.updated_by,
+      updated_at = excluded.updated_at
+  `).run(productId, mode, loose, userId, now());
+}
+
+// ===
+// TEMPLATE PLACEMENTS (product ↔ spot, scoped to ONE list)
+// ===
+
+/** Replace all of a template's placements in one transaction. */
+export function setTemplatePlacements(
+  templateId: number,
+  placements: { odoo_product_id: number; count_location_id: number; shelf_sort?: number }[],
+): void {
+  const db = getDb();
+  const tx = db.transaction((rows: typeof placements) => {
+    db.prepare('DELETE FROM template_product_locations WHERE template_id = ?').run(templateId);
+    const ins = db.prepare(
+      'INSERT OR IGNORE INTO template_product_locations (template_id, odoo_product_id, count_location_id, shelf_sort) VALUES (?, ?, ?, ?)',
+    );
+    rows.forEach((p, i) => ins.run(templateId, p.odoo_product_id, p.count_location_id, p.shelf_sort ?? i));
+  });
+  tx(placements);
+}
+
+/** A template's placements, ordered by spot then shelf. */
+export function getTemplatePlacements(templateId: number): TemplatePlacement[] {
+  const db = getDb();
+  return db.prepare(
+    'SELECT template_id, odoo_product_id, count_location_id, shelf_sort FROM template_product_locations WHERE template_id = ? ORDER BY count_location_id, shelf_sort, odoo_product_id',
+  ).all(templateId) as TemplatePlacement[];
+}
+
+// ===
+// SESSION COUNT ITEMS (frozen "what/where to count" snapshot per session)
+// ===
+
+/** Freeze a session's items at creation. Replaces any existing snapshot. */
+export function snapshotSessionItems(
+  sessionId: number,
+  items: Omit<SessionCountItem, 'session_id'>[],
+): void {
+  const db = getDb();
+  const tx = db.transaction((rows: typeof items) => {
+    db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(sessionId);
+    const ins = db.prepare(`INSERT OR IGNORE INTO session_count_items
+      (session_id, odoo_product_id, count_location_id, shelf_sort, requires_photo, count_mode, pack_label, loose_label, units_per_crate)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    rows.forEach((it, i) => ins.run(
+      sessionId, it.odoo_product_id, it.count_location_id, it.shelf_sort ?? i,
+      it.requires_photo ? 1 : 0, it.count_mode ?? null, it.pack_label ?? null,
+      it.loose_label ?? null, it.units_per_crate ?? null,
+    ));
+  });
+  tx(items);
+}
+
+/** A session's snapshotted items (empty for legacy sessions → caller falls back to live resolution). */
+export function getSessionItems(sessionId: number): SessionCountItem[] {
+  const db = getDb();
+  const rows = db.prepare(
+    'SELECT * FROM session_count_items WHERE session_id = ? ORDER BY count_location_id, shelf_sort, odoo_product_id',
+  ).all(sessionId) as Record<string, unknown>[];
+  return rows.map(r => ({
+    session_id: r.session_id as number,
+    odoo_product_id: r.odoo_product_id as number,
+    count_location_id: r.count_location_id as number,
+    shelf_sort: r.shelf_sort as number,
+    requires_photo: !!r.requires_photo,
+    count_mode: (r.count_mode as CountMode) ?? null,
+    pack_label: (r.pack_label as string) ?? null,
+    loose_label: (r.loose_label as string) ?? null,
+    units_per_crate: r.units_per_crate != null ? Number(r.units_per_crate) : null,
+  }));
 }
 
 /**
