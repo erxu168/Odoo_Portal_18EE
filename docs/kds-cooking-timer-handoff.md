@@ -18,11 +18,17 @@ Competitor patterns this borrows from: Kitchen Brains QPM/TT-700 (product-button
 5. **No auto-advance, ever.** Every step end → alarm state; the next step starts only on a confirming tap ("START: 2ND FRY"). Rationale: the timer can't drop the basket; a human does. The `rest` step type exists for labeling only — no special behavior.
 6. **Alarm behavior**: repeating sound every ~1.6s until acknowledged + full-card red flash. Distinct tones: stage/action alarm vs a more insistent final DONE alarm. In alarm/done state the **whole card is the tap target**, not just the button.
 7. **Two-tap confirms** for destructive actions: SKIP STEP → "TAP AGAIN TO SKIP" (3.5s window, auto-resets); ✕ CANCEL (visible red-outline pill in card header) → "SURE?". Never use `window.confirm` — blocked in WebViews/sandboxes and bad kitchen UX.
-8. **Per-item mute**: 🔊 button next to CANCEL silences that timer's audio only; visual flash continues; amber 🔇 state. Global sound toggle in Settings kills everything. OPEN QUESTION for Ethan: should mute auto-reset when the timer advances to its next step? (Risk: muting a nagging "Spray beer" alarm silences the eventual DONE.) Mock keeps mute for the timer's life.
+8. **Per-item mute**: 🔊 button next to CANCEL silences that timer's audio only; visual flash continues; amber 🔇 state. Global sound toggle in Settings kills everything. **Mute RESETS on each step advance** (decided by Ethan 2026-07-19): muting an alarm acknowledges that step only, so a silenced "Spray beer" must never carry through and swallow the eventual DONE alarm. Note the v1.6 mock predates this decision and keeps mute for the timer's life — the spec wins.
 9. **KDS handoff**: on finish, all covered order lines are marked ready at LINE level; the main KDS order card shows a ✓ per timed line. (Current KDS tracks order-level state in `kds_completed_orders`; this adds line-level.)
 10. **Colors** (match KDS urgency language): running green, final 15% of a step amber ("warnzone"), alarm/done red flashing. Queue cards age: >60s amber left border, >120s red pulsing.
 11. **Immersive view**: no nav chrome (no hamburger/tab bar/home button), same rule as recipe screens and the KDS. Settings behind the corner gear.
 12. **Audio is fire-and-forget and NEVER in the critical path of a state transition.** Set state and mark re-render BEFORE any sound call; wrap all Web Audio in try/catch. (A sandbox AudioContext throw froze the state machine in mock v1.0 — this is a hard rule.)
+
+## Cook times — not final
+
+Real per-step durations are still being measured on the floor by Ethan. **Seed placeholder profiles** so the module is testable end to end; durations get entered later via the Profiles screen (or a seed script). Nothing in the build depends on the real numbers.
+
+When the real times arrive, remember WAJ items are location **reheat finishes** (central kitchen → chill → vacuum pack → location reheat), so these are finish times, not raw cook times.
 
 ## Data model (SQLite, `data/portal.db`, follow `kds-db.ts` lazy `ensureTables()` pattern)
 
@@ -38,6 +44,7 @@ kds_line_ready       (id, pos_order_id, pos_line_id, timer_id, ready_at)   -- re
 
 Notes:
 - `action` steps have `duration_seconds = 0` (instant prompt, e.g. "Spray beer", "Flip").
+- `cook_timers.muted` is cleared on every step advance (see decision 8).
 - Timekeeping is server-side from `step_started_at` (Berlin time via the `sv-SE` locale pattern — NEVER `toISOString()`), so a tablet reload/reconnect recovers exact remaining time.
 - Zero Odoo writes. Same read-only stance as the KDS (see 2026-06-10 STATUS entry for why).
 - Long-term: `cook_profiles` is conceptually adjacent to `prep_items`/`kds_product_config` — do NOT merge now, but keep naming compatible for a future migration.
@@ -46,7 +53,7 @@ Notes:
 
 - `GET  /queue?stations=1,2` — POS lines with an active profile for those stations, not yet started, grouped client-side
 - `POST /start` — body `{ line_ids: [] }` (1..n of same profile) → creates one timer
-- `POST /timers/[id]/advance` — confirm current alarm, start next step (or finish if last)
+- `POST /timers/[id]/advance` — confirm current alarm, start next step (or finish if last); clears `muted`
 - `POST /timers/[id]/mute` — toggle
 - `POST /timers/[id]/cancel`
 - `POST /timers/[id]/finish` — writes `kds_line_ready` rows for all covered lines
@@ -65,10 +72,10 @@ Reuse the existing KDS ~5s `pos.order` polling infrastructure (`/api/kds/orders`
 0. Add a "Cooking Timer" row (📋 → in progress) to STATUS.md's module table as part of the first commit; update it at session end per repo rules.
 1. Introspect Odoo staging first (hard rule): confirm WAJ POS config id 14 / company 6, pull real product list, verify line ids available in the existing KDS feed.
 2. DB layer + API routes with the queue endpoint driven by the existing KDS feed.
-3. Station screen, porting the mock's interaction model 1:1 (the mock IS the approved UX).
+3. Station screen, porting the mock's interaction model 1:1 (the mock IS the approved UX, except decision 8 where this spec overrides it).
 4. KDS ✓-per-line integration.
-5. Profiles manager screen — MOCK FIRST with Ethan, then build.
-6. Seed real profiles with Ethan (fries, jerk chicken smoke/spray chain, festival, plantain, wings, mac) — remember WAJ items are location REHEAT finishes (central kitchen → chill → vacuum → location reheat), so times are finish times, not raw cook times.
+5. **STOP HERE for the first build session.** Profiles manager screen — MOCK FIRST with Ethan, then build.
+6. Seed real profiles with Ethan (fries, jerk chicken smoke/spray chain, festival, plantain, wings, mac) once measured times exist.
 
 ## Explicitly out of v1 (phase 2 backlog)
 
@@ -77,7 +84,7 @@ Reuse the existing KDS ~5s `pos.order` polling infrastructure (`/api/kds/orders`
 - "waiting +0:45" overtime display on unacknowledged alarms (slack visibility for the smoker)
 - Join-running-batch (rejected — partial cook risk)
 - Hold timers after cook
-- Mute auto-reset on step change (pending Ethan's call, see decision 8)
+- Per-profile batch-size time adjustment (does a 3-portion basket need longer than 1? TBD from floor measurement)
 
 ## Portal rules that bind this build (from repo docs — read PORTAL.md, DESIGN_GUIDE.md, ux-rules.ts, design-system.ts first)
 
