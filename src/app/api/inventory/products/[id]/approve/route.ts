@@ -20,6 +20,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+import { initInventoryTables, isDraftProduct } from '@/lib/inventory-db';
 
 export async function POST(
   request: Request,
@@ -30,6 +31,7 @@ export async function POST(
   if (!roleCan(user.role, 'inventory.draft.review', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Manager access required' }, { status: 403 });
   }
+  initInventoryTables();
 
   const productId = parseInt(params.id, 10);
   if (isNaN(productId) || productId <= 0) {
@@ -67,6 +69,15 @@ export async function POST(
     );
     if (existing.length === 0) {
       return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    }
+    // Only a PENDING portal draft may be approved — never an already-active
+    // product. This endpoint rewrites name/category/UOM/cost and activates, so it
+    // must not be usable to overwrite an arbitrary live Odoo product by id.
+    if (existing[0].active !== false) {
+      return NextResponse.json({ error: 'That product is already active — only pending draft products can be approved.' }, { status: 400 });
+    }
+    if (!isDraftProduct(productId)) {
+      return NextResponse.json({ error: 'That is not a pending draft product.' }, { status: 400 });
     }
     const templateId = Array.isArray(existing[0].product_tmpl_id)
       ? existing[0].product_tmpl_id[0]
