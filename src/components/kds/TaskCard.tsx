@@ -90,6 +90,9 @@ export default function TaskCard({ task, isPriority, mostUrgentId }: TaskCardPro
                 <span className="kds-s-table">{entry.table}</span>
                 <span className="kds-s-qty">{entry.qty}x</span>
                 {isTa && <TakeawayBag size={16} />}
+                {entry.timerReady && (
+                  <span title="Cooked by the Cooking Timer" style={{ color: '#22c55e', fontWeight: 800, fontSize: 13 }}>✓</span>
+                )}
                 {entry.note && !isAllergenOrAdditiveNote(entry.note) && <span className="kds-s-note">{entry.note}</span>}
                 <Timer minutes={entry.waitMin} tier={tier} size="sm" />
               </div>

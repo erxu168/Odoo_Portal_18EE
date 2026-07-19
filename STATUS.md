@@ -215,6 +215,7 @@ _Rewritten 2026-07-16 from a code-level audit. Legend: ✅ shipped · ⚠️ par
 | Sales (WAJ) | ✅ shipped | 5 ranges, prev-period + YoY, 5 tabs; live POS + KDS timings (WAJ-only by design) |
 | Contract scanner | ✅ shipped | Claude Vision API |
 | KDS | 🟢 live-POS ready (staging) | read-only POS feed, prep/ready/done, batching, timers. **Production go-live = config-only, pending Ethan** |
+| Cooking Timer | 🚧 in progress | station-based multi-step cooking timers for WAJ (`/cooktimer`), fed by the shared KDS POS feed; server-owned state machine, per-line ✓ back onto the KDS. Steps 0–4 built (DB, API, station screen, KDS integration). **Profiles manager screen (step 5) pending an approved mock.** Doc drift: spec references `src/lib/ux-rules.ts`, which is absent from the repo. |
 | Prep Planner | ⚠️ frontend shipped, algo partial | full UI (6 pages) + EWMA nightly cron. weather/DOW multipliers hardcoded 1.0; holidays treated as closed; Ssam seed + prune cron pending |
 | Reports | ⚠️ partial | 9 live read-only APIs; some tabs live, 5 render "coming soon" over **unlinked finished pages**; Menu Intelligence has no UI |
 | Tasks | ⚠️ partial | staff/manager/templates/recurrence shipped; `/tasks/admin` is a non-functional mock |

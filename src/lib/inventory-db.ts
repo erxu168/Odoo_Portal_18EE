@@ -305,7 +305,12 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   if (!ceCols.includes('count_mode')) db.exec("ALTER TABLE count_entries ADD COLUMN count_mode TEXT");
   if (!ceCols.includes('pack_label')) db.exec("ALTER TABLE count_entries ADD COLUMN pack_label TEXT");
   if (!ceCols.includes('loose_label')) db.exec("ALTER TABLE count_entries ADD COLUMN loose_label TEXT");
-  if (!ceCols.includes('odoo_qty')) db.exec("ALTER TABLE count_entries ADD COLUMN odoo_qty REAL");
+  if (!ceCols.includes('odoo_qty')) {
+    db.exec("ALTER TABLE count_entries ADD COLUMN odoo_qty REAL");
+    // One-time backfill: legacy rows wrote counted_qty to Odoo — preserve that.
+    // Guarded by the column-add so future portal-only (null) rows are never clobbered.
+    db.exec("UPDATE count_entries SET odoo_qty = counted_qty WHERE odoo_qty IS NULL");
+  }
 
   // quick_counts: out-of-stock + unit snapshots + converted Odoo qty.
   const qc2Cols = (db.prepare("PRAGMA table_info('quick_counts')").all() as { name: string }[]).map(c => c.name);
@@ -313,7 +318,10 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   if (!qc2Cols.includes('count_mode')) db.exec("ALTER TABLE quick_counts ADD COLUMN count_mode TEXT");
   if (!qc2Cols.includes('pack_label')) db.exec("ALTER TABLE quick_counts ADD COLUMN pack_label TEXT");
   if (!qc2Cols.includes('loose_label')) db.exec("ALTER TABLE quick_counts ADD COLUMN loose_label TEXT");
-  if (!qc2Cols.includes('odoo_qty')) db.exec("ALTER TABLE quick_counts ADD COLUMN odoo_qty REAL");
+  if (!qc2Cols.includes('odoo_qty')) {
+    db.exec("ALTER TABLE quick_counts ADD COLUMN odoo_qty REAL");
+    db.exec("UPDATE quick_counts SET odoo_qty = counted_qty WHERE odoo_qty IS NULL");
+  }
 
   // Per-list placements: a product sits at one or more spots WITHIN a specific
   // list (template). Global product_locations stays for legacy/default physical

@@ -61,6 +61,7 @@ export function buildTaskGroups(orders: KdsOrder[], boost: number): TaskGroup[] 
         done: item.done,
         waitMin: order.waitMin,
         effectiveWait: effectiveWait(order, boost),
+        timerReady: item.timerReady,
       });
     }
   }
@@ -154,6 +155,7 @@ export function buildFirePlan(
         done: item.done,
         waitMin: order.waitMin,
         effectiveWait: effectiveWait(order, boost),
+        timerReady: item.timerReady,
       });
     }
   }

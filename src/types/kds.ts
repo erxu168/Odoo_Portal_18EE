@@ -43,6 +43,8 @@ export interface KdsItem {
   qty: number;
   note?: string;
   done: boolean;
+  /** True once the Cooking Timer has finished cooking this line (kds_line_ready). */
+  timerReady?: boolean;
 }
 
 export type OrderType = 'Dine-in' | 'Takeaway';
@@ -122,6 +124,8 @@ export interface TaskEntry {
   done: boolean;
   waitMin: number;
   effectiveWait: number;
+  /** True once the Cooking Timer has finished cooking this line (kds_line_ready). */
+  timerReady?: boolean;
 }
 
 export interface TaskGroup {

@@ -54,112 +54,126 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'This count was just changed by someone else — reload.' }, { status: 409 });
   }
 
+  // Aggregate per product BEFORE touching Odoo. The same product can be counted
+  // at several spots, so its spot rows MUST be summed into a single write —
+  // never a race of several writes to the same quant. odoo_qty is the Odoo-safe
+  // quantity (out-of-stock = 0); a null row is portal-only (e.g. a simple count
+  // with no average) and is excluded from the Odoo write entirely.
+  const writeByProduct = new Map<number, number>();
+  for (const e of entries) {
+    const oq = e.odoo_qty === undefined ? e.counted_qty : e.odoo_qty;  // legacy safety
+    if (oq === null) continue;                                          // portal-only
+    writeByProduct.set(e.product_id, (writeByProduct.get(e.product_id) || 0) + Number(oq));
+  }
+  const writableProductIds = Array.from(writeByProduct.keys());
+  const distinctProducts = new Set(entries.map(e => e.product_id)).size;
+
   // Best-effort Odoo sync. The portal is the record of the count; Odoo stock
   // is only updated for products Odoo actually tracks (storable). Non-storable
   // products (or an Odoo outage) simply don't sync — the count is still approved.
-  const syncedEntries: number[] = [];
+  const syncedProducts: number[] = [];
   const failedEntries: { product_id: number; error: string }[] = [];
   let syncError: string | null = null;
 
-  try {
-    const odoo = getOdoo();
+  if (writableProductIds.length > 0) {
+    try {
+      const odoo = getOdoo();
 
-    // One stock.quant lookup for every product in this session, instead
-    // of one round-trip per entry. Up to ~50 entries fits comfortably
-    // under the default search_read limit.
-    const productIds = entries.map(e => e.product_id);
-    const existingQuants = await odoo.searchRead('stock.quant', [
-      ['product_id', 'in', productIds],
-      ['location_id', '=', session.location_id],
-    ], ['id', 'product_id'], { order: 'id asc', limit: 20000 });
-    // If the result window is full we can't trust per-product counts (one heavily
-    // lot-tracked product could crowd others out), so fail closed for safety.
-    const quantsTruncated = existingQuants.length >= 20000;
-    const quantByProduct = new Map<number, number>();
-    const quantCountByProduct = new Map<number, number>();
-    for (const q of existingQuants) {
-      const pid = Array.isArray(q.product_id) ? q.product_id[0] : q.product_id;
-      quantCountByProduct.set(pid, (quantCountByProduct.get(pid) || 0) + 1);
-      // First match wins so the choice is deterministic across calls.
-      if (!quantByProduct.has(pid)) quantByProduct.set(pid, q.id);
-    }
-
-    // Run every per-entry write/create in parallel. Per-entry try/catch
-    // is preserved so a single failure doesn't block the others. Capture the
-    // exact quant id each entry touched so we apply ONLY those.
-    const appliedQuantIds: number[] = [];
-    await Promise.all(entries.map(async (entry) => {
-      try {
-        // Several stock records for one product@location (lot/package/owner), or a
-        // truncated lookup — don't guess which to overwrite; flag for manual Odoo
-        // adjustment (like quick-count) rather than risk a duplicate quant.
-        if (quantsTruncated || (quantCountByProduct.get(entry.product_id) || 0) > 1) {
-          failedEntries.push({
-            product_id: entry.product_id,
-            error: quantsTruncated
-              ? 'Too many stock records at this location to sync safely — adjust in Odoo'
-              : 'Several stock records exist (lot/package) — adjust in Odoo',
-          });
-          return;
-        }
-        const existingId = quantByProduct.get(entry.product_id);
-        let quantId: number;
-        if (existingId) {
-          quantId = existingId;
-          await odoo.write('stock.quant', [existingId], {
-            inventory_quantity: entry.counted_qty,
-            inventory_quantity_set: true,
-          });
-        } else {
-          quantId = await odoo.create('stock.quant', {
-            product_id: entry.product_id,
-            location_id: session.location_id,
-            inventory_quantity: entry.counted_qty,
-            inventory_quantity_set: true,
-          }) as number;
-        }
-        appliedQuantIds.push(quantId);
-        syncedEntries.push(entry.product_id);
-      } catch (entryErr: unknown) {
-        const msg = entryErr instanceof Error ? entryErr.message : String(entryErr);
-        console.error(`Odoo inventory write failed for product ${entry.product_id}:`, msg);
-        failedEntries.push({ product_id: entry.product_id, error: msg });
+      // One stock.quant lookup for every product in this session.
+      const existingQuants = await odoo.searchRead('stock.quant', [
+        ['product_id', 'in', writableProductIds],
+        ['location_id', '=', session.location_id],
+      ], ['id', 'product_id'], { order: 'id asc', limit: 20000 });
+      // If the result window is full we can't trust per-product counts (one heavily
+      // lot-tracked product could crowd others out), so fail closed for safety.
+      const quantsTruncated = existingQuants.length >= 20000;
+      const quantByProduct = new Map<number, number>();
+      const quantCountByProduct = new Map<number, number>();
+      for (const q of existingQuants) {
+        const pid = Array.isArray(q.product_id) ? q.product_id[0] : q.product_id;
+        quantCountByProduct.set(pid, (quantCountByProduct.get(pid) || 0) + 1);
+        // First match wins so the choice is deterministic across calls.
+        if (!quantByProduct.has(pid)) quantByProduct.set(pid, q.id);
       }
-    }));
 
-    // Apply ONLY the quants this approval wrote — never re-scan and sweep every
-    // pending inventory_quantity_set quant at the location (which could commit
-    // another session's or a manual, unrelated adjustment).
-    if (appliedQuantIds.length > 0) {
-      await odoo.call('stock.quant', 'action_apply_inventory', [appliedQuantIds]);
+      // One write per PRODUCT (summed across spots), in parallel. Per-product
+      // try/catch so a single failure doesn't block the others. Capture the
+      // exact quant id each touched so we apply ONLY those.
+      const appliedQuantIds: number[] = [];
+      await Promise.all(writableProductIds.map(async (productId) => {
+        const qty = writeByProduct.get(productId)!;
+        try {
+          // Several stock records for one product@location (lot/package/owner), or a
+          // truncated lookup — don't guess which to overwrite; flag for manual Odoo
+          // adjustment rather than risk a duplicate quant.
+          if (quantsTruncated || (quantCountByProduct.get(productId) || 0) > 1) {
+            failedEntries.push({
+              product_id: productId,
+              error: quantsTruncated
+                ? 'Too many stock records at this location to sync safely — adjust in Odoo'
+                : 'Several stock records exist (lot/package) — adjust in Odoo',
+            });
+            return;
+          }
+          const existingId = quantByProduct.get(productId);
+          let quantId: number;
+          if (existingId) {
+            quantId = existingId;
+            await odoo.write('stock.quant', [existingId], {
+              inventory_quantity: qty,
+              inventory_quantity_set: true,
+            });
+          } else {
+            quantId = await odoo.create('stock.quant', {
+              product_id: productId,
+              location_id: session.location_id,
+              inventory_quantity: qty,
+              inventory_quantity_set: true,
+            }) as number;
+          }
+          appliedQuantIds.push(quantId);
+          syncedProducts.push(productId);
+        } catch (entryErr: unknown) {
+          const msg = entryErr instanceof Error ? entryErr.message : String(entryErr);
+          console.error(`Odoo inventory write failed for product ${productId}:`, msg);
+          failedEntries.push({ product_id: productId, error: msg });
+        }
+      }));
+
+      // Apply ONLY the quants this approval wrote — never re-scan and sweep every
+      // pending inventory_quantity_set quant at the location (which could commit
+      // another session's or a manual, unrelated adjustment).
+      if (appliedQuantIds.length > 0) {
+        await odoo.call('stock.quant', 'action_apply_inventory', [appliedQuantIds]);
+      }
+    } catch (err: unknown) {
+      // A whole-sync failure (e.g. Odoo unreachable) is non-fatal — the count is
+      // still recorded/approved in the portal. Odoo stock is a best-effort push.
+      syncError = err instanceof Error ? err.message : String(err);
+      console.error('Odoo inventory sync failed entirely:', syncError);
     }
-  } catch (err: unknown) {
-    // A whole-sync failure (e.g. Odoo unreachable) is non-fatal — the count is
-    // still recorded/approved in the portal. Odoo stock is a best-effort push.
-    syncError = err instanceof Error ? err.message : String(err);
-    console.error('Odoo inventory sync failed entirely:', syncError);
   }
 
   // Already atomically approved above (before the Odoo sync). The count is recorded
   // in the portal regardless of the Odoo outcome; stock updates only for products
-  // Odoo can track (storable).
-  const notSynced = entries.length - syncedEntries.length;
+  // Odoo can track (storable). Portal-only products (no average) are recorded here only.
   const needsManual = failedEntries.length;
+  const notSynced = distinctProducts - syncedProducts.length - needsManual;
   let warning: string | null = null;
   if (syncError) {
     warning = `Approved and recorded. Couldn’t reach Odoo to update stock (${syncError}).`;
   } else if (needsManual > 0) {
-    warning = `Approved. ${syncedEntries.length} updated in Odoo; ${needsManual} product${needsManual !== 1 ? 's' : ''} need manual adjustment in Odoo (several stock records exist).`;
+    warning = `Approved. ${syncedProducts.length} updated in Odoo; ${needsManual} product${needsManual !== 1 ? 's' : ''} need manual adjustment in Odoo (several stock records exist).`;
   } else if (notSynced > 0) {
-    warning = syncedEntries.length === 0
+    warning = syncedProducts.length === 0
       ? 'Approved and recorded. Odoo stock was not updated — these products aren’t stock-tracked in Odoo.'
-      : `Approved. ${syncedEntries.length} updated in Odoo; ${notSynced} recorded here only (not stock-tracked in Odoo).`;
+      : `Approved. ${syncedProducts.length} updated in Odoo; ${notSynced} recorded here only.`;
   }
 
   return NextResponse.json({
-    message: warning || `Approved ${entries.length} counts`,
+    message: warning || `Approved ${distinctProducts} product${distinctProducts !== 1 ? 's' : ''}`,
     warning,
-    synced_count: syncedEntries.length,
+    synced_count: syncedProducts.length,
     failed_entries: failedEntries.length > 0 ? failedEntries : undefined,
     entries_count: entries.length,
   });

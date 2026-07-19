@@ -61,6 +61,14 @@ export default function ClassicView() {
                       <span className="kds-sc-qty">{i.qty}x</span>
                       <span className="kds-sc-name">{i.name}</span>
                       <SourceBadge dishName={i.name} fontSize={9} />
+                      {i.timerReady && (
+                        <span
+                          title="Cooked by the Cooking Timer"
+                          style={{ marginLeft: 'auto', color: '#22c55e', fontWeight: 800, fontSize: 10, letterSpacing: '.5px', whiteSpace: 'nowrap' }}
+                        >
+                          ✓ COOKED
+                        </span>
+                      )}
                     </div>
                     {showNote && <div className="kds-note">{i.note}</div>}
                   </div>
