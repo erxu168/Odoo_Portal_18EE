@@ -187,7 +187,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     setActionLoading(reviewQC.id);
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/inventory/quick-count/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: reviewQC.id }) });
+      const res = await fetch('/api/inventory/quick-count/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: reviewQC.id, action }) });
       const data = await res.json();
       if (!res.ok) { setErrorMsg(data.error || 'Action failed'); setQcConfirm(null); return; }
       if (data.warning) setErrorMsg(data.warning);

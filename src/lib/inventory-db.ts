@@ -742,6 +742,13 @@ export function approveQuickCount(id: number, reviewed_by: number) {
     .run('approved', reviewed_by, now(), id);
 }
 
+/** Reject (discard) a quick count — never writes to Odoo stock. */
+export function rejectQuickCount(id: number, reviewed_by: number) {
+  const db = getDb();
+  db.prepare('UPDATE quick_counts SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
+    .run('rejected', reviewed_by, now(), id);
+}
+
 /** Distinct Odoo location ids of quick counts still missing a company (for lazy backfill). */
 export function getQuickCountLocationsMissingCompany(): number[] {
   const db = getDb();

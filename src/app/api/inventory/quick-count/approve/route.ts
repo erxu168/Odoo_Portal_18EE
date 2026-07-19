@@ -12,7 +12,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, approveQuickCount } from '@/lib/inventory-db';
+import { initInventoryTables, approveQuickCount, rejectQuickCount } from '@/lib/inventory-db';
 import { getDb } from '@/lib/db';
 import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
 
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
 
   initInventoryTables();
   const body = await request.json();
-  const { id } = body;
+  const { id, action } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
   const db = getDb();
@@ -40,6 +40,13 @@ export async function POST(request: Request) {
   // unrestricted admin, so a manager can never approve another restaurant's count.
   const okCompany = qc.company_id == null ? isUnrestrictedAdmin(user) : canAccessCompany(user, qc.company_id);
   if (!okCompany) return NextResponse.json({ error: 'This count belongs to another restaurant' }, { status: 403 });
+
+  // Reject = discard the count. It must NEVER write to Odoo stock (the button
+  // previously called this same endpoint and silently APPROVED instead).
+  if (action === 'reject') {
+    rejectQuickCount(id, user.id);
+    return NextResponse.json({ message: 'Quick count rejected' });
+  }
 
   // Update status FIRST so it's approved even if Odoo write fails
   approveQuickCount(id, user.id);
