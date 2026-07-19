@@ -120,27 +120,28 @@ export async function PUT(request: Request) {
   const { id, status, review_note, proof_photo } = body;
   if (!id || !status) return NextResponse.json({ error: 'id and status required' }, { status: 400 });
 
-  // Staff can submit; managers can approve/reject/reopen
+  // Only these transitions exist — reject any other/arbitrary status outright so
+  // a client can't push a session into an unexpected state.
+  const VALID_STATUSES = ['submitted', 'approved', 'rejected', 'pending'];
+  if (!VALID_STATUSES.includes(status)) {
+    return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+  }
+
+  // Load + authorize the session ONCE for EVERY transition, so a guessed id can
+  // never change the status of another restaurant's / someone else's count.
+  const session = getSession(id);
+  if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+  if (!canAccessSession(user, session)) {
+    return NextResponse.json({ error: 'This count belongs to another restaurant' }, { status: 403 });
+  }
+
+  // Staff can submit; managers can approve/reject/reopen.
   if (['approved', 'rejected'].includes(status) && !roleCan(user.role, 'inventory.review.approve', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  // Approve/reject also require the caller to own the session's restaurant.
-  if (['approved', 'rejected'].includes(status)) {
-    const session = getSession(id);
-    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-    if (!canAccessSession(user, session))
-      return NextResponse.json({ error: 'This count belongs to another restaurant' }, { status: 403 });
-  }
-
   // On submit: enforce count completion + save proof photo
   if (status === 'submitted') {
-    const session = getSession(id);
-    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
-    // The assigned staff, any staff of the restaurant for an unassigned list,
-    // or a manager may submit — and only while still editable.
-    if (!canAccessSession(user, session))
-      return NextResponse.json({ error: 'This is not your count to submit' }, { status: 403 });
     if (session.status !== 'pending' && session.status !== 'in_progress')
       return NextResponse.json({ error: 'This count has already been submitted' }, { status: 400 });
 
@@ -210,8 +211,7 @@ export async function PUT(request: Request) {
     if (!roleCan(user.role, 'inventory.review.approve', getPermissionOverrides())) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    const session = getSession(id);
-    if (!session || session.status !== 'rejected') {
+    if (session.status !== 'rejected') {
       return NextResponse.json({ error: 'Only rejected sessions can be reopened for recount' }, { status: 400 });
     }
     updateSessionStatus(id, 'pending');
