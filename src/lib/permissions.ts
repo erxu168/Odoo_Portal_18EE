@@ -115,6 +115,11 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'tasks.template.manage',     module: 'tasks', label: 'Manage checklists & templates',       defaultRoles: ['manager', 'admin'] },
   { key: 'tasks.completion.override', module: 'tasks', label: 'Override a task completion',           defaultRoles: ['manager', 'admin'] },
   { key: 'tasks.manager.view',        module: 'tasks', label: 'View team task dashboard & history',   defaultRoles: ['manager', 'admin'] },
+
+  // ── Staff Lifecycle Checklists (HR: Joining / Promotion / Leaving). Master-list
+  // editing is admin-only in v1; running & ticking checklists is manager+admin.
+  { key: 'staffing.templates.manage', module: 'hr', label: 'Set up lifecycle checklists (master lists)', defaultRoles: ['admin'] },
+  { key: 'staffing.instances.manage', module: 'hr', label: 'Start & manage lifecycle checklists',        defaultRoles: ['manager', 'admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {
