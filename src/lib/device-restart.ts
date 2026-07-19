@@ -287,6 +287,9 @@ export interface DeviceClientRow {
   company_id: number | null;
   station_device_id: number | null;
   auto_restart: boolean;
+  user_name: string | null;    // last signed-in user's name (display only)
+  tablet_name: string | null;  // provisioned tablet's friendly name, if this is a station tablet
+  tablet_label: string | null; // provisioned tablet's restaurant name
   first_seen: string;
   last_seen: string;
   online: boolean;
@@ -303,6 +306,9 @@ interface RawClientRow {
   company_id: number | null;
   station_device_id: number | null;
   auto_restart: number;
+  user_name: string | null;
+  tablet_name: string | null;
+  tablet_label: string | null;
   first_seen: string;
   last_seen: string;
   pending: number;
@@ -316,10 +322,16 @@ export function listDeviceClients(companyIds: number[] | null): DeviceClientRow[
   const rows = db
     .prepare(
       `SELECT dc.*,
+              pu.name AS user_name,
+              sd.name AS tablet_name,
+              sd.label AS tablet_label,
               (SELECT COUNT(*) FROM device_restart_targets t
                  JOIN device_restart_commands c ON c.id = t.command_id
                 WHERE t.client_id = dc.client_id AND t.state != 'confirmed' AND c.expires_at > ?) AS pending
          FROM device_clients dc
+         LEFT JOIN portal_users pu ON pu.id = dc.user_id
+         LEFT JOIN station_devices sd
+                ON sd.id = dc.station_device_id AND sd.revoked = 0 AND sd.company_id = dc.company_id
         ORDER BY dc.last_seen DESC`,
     )
     .all(nowISO()) as RawClientRow[];
@@ -334,6 +346,9 @@ export function listDeviceClients(companyIds: number[] | null): DeviceClientRow[
     company_id: r.company_id,
     station_device_id: r.station_device_id,
     auto_restart: !!r.auto_restart,
+    user_name: r.user_name ?? null,
+    tablet_name: r.tablet_name ?? null,
+    tablet_label: r.tablet_label ?? null,
     first_seen: r.first_seen,
     last_seen: r.last_seen,
     online: nowMs - Date.parse(r.last_seen) < ONLINE_WINDOW_MS,

@@ -104,6 +104,7 @@ function initTables(db: Database.Database) {
       station_user_id INTEGER NOT NULL REFERENCES portal_users(id) ON DELETE CASCADE,
       company_id INTEGER NOT NULL,
       label TEXT,
+      name TEXT,                               -- manager-set friendly name to tell tablets in one restaurant apart
       created_by TEXT,
       created_at TEXT NOT NULL,
       last_used_at TEXT,
@@ -280,6 +281,7 @@ function migrateSchema(db: Database.Database) {
       addCol('fail_count', 'ALTER TABLE station_devices ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0');
       addCol('locked_until', 'ALTER TABLE station_devices ADD COLUMN locked_until TEXT');
       addCol('disabled', 'ALTER TABLE station_devices ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0');
+      addCol('name', 'ALTER TABLE station_devices ADD COLUMN name TEXT');
     }
   }
 }
@@ -658,7 +660,7 @@ function sha256(s: string): string { return createHash('sha256').update(s).diges
 
 export interface StationDevice { id: number; station_user_id: number; company_id: number; label: string | null; locked_until: string | null; disabled: boolean; }
 
-export interface StationDeviceRow { id: number; company_id: number; label: string | null; created_by: string | null; created_at: string; last_used_at: string | null; disabled: boolean; }
+export interface StationDeviceRow { id: number; company_id: number; label: string | null; name: string | null; created_by: string | null; created_at: string; last_used_at: string | null; disabled: boolean; }
 
 /** Provision a tablet: store the sha256 of a fresh device token, return the raw
  *  token to put in an httpOnly cookie. Bound to a restaurant's station account. */
@@ -719,10 +721,18 @@ export function revokeStationDevicesForStation(stationUserId: number): void {
 export function listStationDevices(companyIds: number[] | null): StationDeviceRow[] {
   const db = getDb();
   const rows = db.prepare(
-    'SELECT id, company_id, label, created_by, created_at, last_used_at, disabled FROM station_devices WHERE revoked = 0 ORDER BY created_at DESC'
-  ).all() as { id: number; company_id: number; label: string | null; created_by: string | null; created_at: string; last_used_at: string | null; disabled: number }[];
+    'SELECT id, company_id, label, name, created_by, created_at, last_used_at, disabled FROM station_devices WHERE revoked = 0 ORDER BY created_at DESC'
+  ).all() as { id: number; company_id: number; label: string | null; name: string | null; created_by: string | null; created_at: string; last_used_at: string | null; disabled: number }[];
   const scoped = companyIds ? rows.filter(r => companyIds.includes(r.company_id)) : rows;
-  return scoped.map(r => ({ id: r.id, company_id: r.company_id, label: r.label ?? null, created_by: r.created_by ?? null, created_at: r.created_at, last_used_at: r.last_used_at ?? null, disabled: !!r.disabled }));
+  return scoped.map(r => ({ id: r.id, company_id: r.company_id, label: r.label ?? null, name: r.name ?? null, created_by: r.created_by ?? null, created_at: r.created_at, last_used_at: r.last_used_at ?? null, disabled: !!r.disabled }));
+}
+
+/** Rename a provisioned tablet — a manager-set friendly name to tell tablets in one
+ *  restaurant apart (empty clears it). Distinct from `label` (the restaurant name the
+ *  tablet's own sign-in screen shows). */
+export function setStationDeviceName(id: number, name: string | null): void {
+  const trimmed = name && name.trim() ? name.trim().slice(0, 40) : null;
+  getDb().prepare('UPDATE station_devices SET name = ? WHERE id = ?').run(trimmed, id);
 }
 
 /** A device's company (for authorising a manager's remote action), or null if unknown/revoked. */

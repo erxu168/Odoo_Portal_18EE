@@ -16,6 +16,9 @@ interface DeviceRow {
   native_relaunch: boolean;
   company_id: number | null;
   auto_restart: boolean;
+  user_name: string | null;
+  tablet_name: string | null;
+  tablet_label: string | null;
   first_seen: string;
   last_seen: string;
   online: boolean;
@@ -35,6 +38,23 @@ function ago(iso: string): string {
 }
 
 const SURFACE_LABEL: Record<string, string> = { kds: 'KDS', kiosk: 'Kiosk', portal: 'Portal' };
+
+const PLATFORM: Record<string, string> = { web: 'Web', android: 'Android', ios: 'iOS' };
+function platformLabel(shell: string | null): string {
+  if (!shell) return 'Device';
+  return PLATFORM[shell.toLowerCase()] || shell.charAt(0).toUpperCase() + shell.slice(1);
+}
+
+/** Best human-readable name for a running screen, in priority order: manager-set name →
+ *  provisioned tablet's name → "Portal · <person>" → the tablet's restaurant → platform +
+ *  a short id (so two anonymous screens are still distinguishable). */
+function displayName(d: DeviceRow): string {
+  if (d.label?.trim()) return d.label.trim();
+  if (d.tablet_name?.trim()) return d.tablet_name.trim();
+  if (d.surface === 'portal' && d.user_name) return `Portal · ${d.user_name}`;
+  if (d.tablet_label?.trim()) return d.tablet_label.trim();
+  return `${platformLabel(d.shell)} · ${d.client_id.slice(-4)}`;
+}
 
 export default function DeviceRestartSection() {
   const [devices, setDevices] = useState<DeviceRow[] | null>(null);
@@ -68,7 +88,7 @@ export default function DeviceRestartSection() {
   }
 
   async function restartOne(d: DeviceRow) {
-    const name = d.label || SURFACE_LABEL[d.surface || ''] || 'this device';
+    const name = displayName(d);
     if (!window.confirm(`Restart ${name} now? The screen will reload to the latest version (a few seconds).`)) return;
     setBusy(d.client_id);
     setError(null);
@@ -129,6 +149,27 @@ export default function DeviceRestartSection() {
     }
   }
 
+  async function rename(d: DeviceRow) {
+    const next = window.prompt('Name this screen so you can tell them apart (e.g. Kitchen KDS, Front phone):', d.label || '');
+    if (next === null) return; // cancelled
+    setBusy(d.client_id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/devices/${encodeURIComponent(d.client_id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: next }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Failed');
+      await load(); // re-fetch so the derived name reflects the saved value
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (devices === null) return null;
 
   const kdsCount = devices.filter((d) => d.surface === 'kds' && d.online).length;
@@ -177,12 +218,13 @@ export default function DeviceRestartSection() {
                 aria-label={d.online ? 'Online' : 'Offline'}
               />
               <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-semibold text-gray-900 truncate">
-                  {d.label || SURFACE_LABEL[d.surface || ''] || 'Device'}
+                <button onClick={() => rename(d)} disabled={busy === d.client_id} className="flex items-center gap-1.5 max-w-full text-left active:opacity-70 disabled:opacity-50" aria-label="Rename this screen">
+                  <span className="text-[14px] font-semibold text-gray-900 truncate">{displayName(d)}</span>
                   {d.surface && (
-                    <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-gray-400">{SURFACE_LABEL[d.surface] || d.surface}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 flex-shrink-0">{SURFACE_LABEL[d.surface] || d.surface}</span>
                   )}
-                </div>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300 flex-shrink-0"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                </button>
                 <div className="text-[12px] text-gray-500 truncate">
                   {d.shell && d.shell !== 'web' ? `${d.shell} · ` : ''}
                   {d.pending ? 'restart pending · ' : ''}last seen {ago(d.last_seen)}

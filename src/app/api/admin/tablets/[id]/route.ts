@@ -6,7 +6,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireRole, AuthError } from '@/lib/auth';
-import { getStationDeviceCompany, setStationDeviceDisabled, revokeStationDeviceById, parseCompanyIds, logAudit } from '@/lib/db';
+import { getStationDeviceCompany, setStationDeviceDisabled, setStationDeviceName, revokeStationDeviceById, parseCompanyIds, logAudit } from '@/lib/db';
 import { isSameOrigin } from '@/lib/csrf';
 
 export const dynamic = 'force-dynamic';
@@ -29,13 +29,26 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const a = authorize(request, params.id);
     if (a.error) return a.error;
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    if (typeof body.enabled !== 'boolean') {
-      return NextResponse.json({ error: 'enabled must be true or false' }, { status: 400 });
+    const result: Record<string, unknown> = { ok: true };
+    let changed = false;
+    // Rename — a friendly per-tablet name so tablets in one restaurant are distinguishable.
+    if (typeof body.name === 'string') {
+      const name = body.name.trim().slice(0, 40) || null;
+      setStationDeviceName(a.id, name);
+      logAudit({ user_id: a.me.id, user_name: a.me.name, action: 'tablet_renamed', module: 'tablet', detail: `device=${a.id} company=${a.company}` });
+      result.name = name;
+      changed = true;
     }
-    const enabled = body.enabled;
-    setStationDeviceDisabled(a.id, !enabled);
-    logAudit({ user_id: a.me.id, user_name: a.me.name, action: enabled ? 'tablet_enabled' : 'tablet_disabled', module: 'tablet', detail: `device=${a.id} company=${a.company}` });
-    return NextResponse.json({ ok: true, disabled: !enabled });
+    // Turn access on/off.
+    if (typeof body.enabled === 'boolean') {
+      const enabled = body.enabled;
+      setStationDeviceDisabled(a.id, !enabled);
+      logAudit({ user_id: a.me.id, user_name: a.me.name, action: enabled ? 'tablet_enabled' : 'tablet_disabled', module: 'tablet', detail: `device=${a.id} company=${a.company}` });
+      result.disabled = !enabled;
+      changed = true;
+    }
+    if (!changed) return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+    return NextResponse.json(result);
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('PATCH /api/admin/tablets/[id] error:', err);

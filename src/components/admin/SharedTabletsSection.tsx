@@ -6,6 +6,7 @@ interface Tablet {
   id: number;
   company_id: number;
   label: string | null;
+  name: string | null;
   created_by: string | null;
   created_at: string;
   last_used_at: string | null;
@@ -61,6 +62,20 @@ export default function SharedTabletsSection() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); } finally { setBusy(null); }
   }
 
+  async function rename(t: Tablet) {
+    const next = window.prompt('Name this tablet so you can tell them apart (e.g. Kitchen, Pass, Front):', t.name || '');
+    if (next === null) return; // cancelled
+    setBusy(t.id); setError(null);
+    try {
+      const res = await fetch(`/api/admin/tablets/${t.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: next }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed');
+      setTablets(prev => prev ? prev.map(x => x.id === t.id ? { ...x, name: d.name ?? null } : x) : null);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); } finally { setBusy(null); }
+  }
+
   if (tablets === null) return null; // still loading — stay quiet
 
   return (
@@ -76,9 +91,12 @@ export default function SharedTabletsSection() {
           {tablets.map(t => (
             <div key={t.id} className="flex items-center gap-3 py-3">
               <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-semibold text-gray-900 truncate">{t.label || `Restaurant ${t.company_id}`}</div>
+                <button onClick={() => rename(t)} disabled={busy === t.id} className="flex items-center gap-1.5 max-w-full text-left active:opacity-70 disabled:opacity-50" aria-label="Rename this tablet">
+                  <span className="text-[14px] font-semibold text-gray-900 truncate">{t.name || t.label || `Restaurant ${t.company_id}`}</span>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400 flex-shrink-0"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                </button>
                 <div className="text-[12px] text-gray-500 truncate">
-                  Set up{t.created_by ? ` by ${t.created_by}` : ''} · {fmt(t.created_at)} · last used {fmt(t.last_used_at)}
+                  {t.name && t.label ? `${t.label} · ` : ''}Set up{t.created_by ? ` by ${t.created_by}` : ''} · {fmt(t.created_at)} · last used {fmt(t.last_used_at)}
                 </div>
               </div>
 
