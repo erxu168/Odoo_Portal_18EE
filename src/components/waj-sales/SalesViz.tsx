@@ -45,40 +45,47 @@ export function TrendChart({ points, prev, prevLabel, metric }:
   const W = 340, H = 156, padL = 42, padR = 10, padTop = 14, padBot = 26;
   const n = points.length;
   if (!n) return <div className="empty">No sales in this period.</div>;
-  const valC = (p: [string, number, number]) => metric === 'orders' ? p[2] : metric === 'avg' ? (p[2] ? p[1] / p[2] : 0) : p[1];
-  const valG = (g: [number, number] | null) => g == null ? null : metric === 'orders' ? g[1] : metric === 'avg' ? (g[1] ? g[0] / g[1] : 0) : g[0];
+  const valC = (p: [string, number, number]): number | null => metric === 'orders' ? p[2] : metric === 'avg' ? (p[2] ? p[1] / p[2] : null) : p[1];
+  const valG = (g: [number, number] | null): number | null => g == null ? null : metric === 'orders' ? g[1] : metric === 'avg' ? (g[1] ? g[0] / g[1] : null) : g[0];
   const cur = points.map(valC);
   const gho = prev.map(valG);
-  const max = Math.max(...cur, ...gho.filter((x): x is number => x != null), metric === 'orders' ? 1 : 0.01);
-  const span = max || 1; // baseline 0
+  const nums = [...cur, ...gho].filter((x): x is number => x != null);
+  let max = Math.max(...nums, metric === 'orders' ? 1 : 0.01);
+  if (metric === 'orders') max = Math.max(2, Math.ceil(max / 2) * 2); // whole, even → mid tick is an integer
+  const lo = Math.min(0, ...nums); // include negative (refund) buckets
+  const span = (max - lo) || 1;
   const plotW = W - padL - padR, plotH = H - padTop - padBot;
   const X = (i: number) => padL + (n === 1 ? plotW / 2 : plotW * i / (n - 1));
-  const Y = (v: number) => padTop + plotH * (1 - v / span);
+  const Y = (v: number) => padTop + plotH * (1 - (v - lo) / span);
   const fmtY = (v: number) => metric === 'orders' ? num.format(Math.round(v)) : eur0.format(v);
   const fmtV = (v: number) => metric === 'orders' ? num.format(Math.round(v)) + ' orders' : metric === 'avg' ? eur2.format(v) : eur0.format(v);
-  let line = '';
-  points.forEach((p, i) => { line += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(cur[i]).toFixed(1) + ' '; });
-  const area = line + `L${X(n - 1).toFixed(1)} ${padTop + plotH} L${X(0).toFixed(1)} ${padTop + plotH} Z`;
-  let ghost = '', pen = false;
-  gho.forEach((g, i) => { if (g == null) { pen = false; return; } ghost += (pen ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(g).toFixed(1) + ' '; pen = true; });
+  const pathOf = (vals: (number | null)[]) => {
+    let d = '', pen = false; const pts: { x: number; y: number }[] = [];
+    vals.forEach((v, i) => { if (v == null) { pen = false; return; } const x = X(i), y = Y(v); d += (pen ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' '; pen = true; pts.push({ x, y }); });
+    return { d, pts };
+  };
+  const curP = pathOf(cur), ghoP = pathOf(gho);
+  const baseY = Y(0);
+  const area = metric !== 'avg' && curP.pts.length ? curP.d + `L${X(n - 1).toFixed(1)} ${baseY.toFixed(1)} L${X(0).toFixed(1)} ${baseY.toFixed(1)} Z` : '';
+  const last = curP.pts.length ? curP.pts[curP.pts.length - 1] : null;
   const step = n > 9 ? Math.ceil(n / 6) : 1;
-  const gridYs = [0, 1, 2];
   return (
     <svg className="trend" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${metric} trend`}>
       <defs><linearGradient id="wajs-area" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor="var(--brand)" stopOpacity="0.28" />
         <stop offset="100%" stopColor="var(--brand)" stopOpacity="0.02" />
       </linearGradient></defs>
-      {gridYs.map(g => <line key={g} className="grid" x1={padL} y1={padTop + plotH * g / 2} x2={W - padR} y2={padTop + plotH * g / 2} />)}
-      {gridYs.map(g => <text key={'y' + g} className="ylab" x={padL - 5} y={padTop + plotH * g / 2 + 3} textAnchor="end">{fmtY(max * (1 - g / 2))}</text>)}
-      {ghost && <path className="ghost" d={ghost} />}
-      <path className="area" d={area} fill="url(#wajs-area)" />
-      <path className="line" d={line} />
-      <circle className="dot" cx={X(n - 1)} cy={Y(cur[n - 1])} r={4.5} />
+      {[0, 1, 2].map(g => <line key={g} className="grid" x1={padL} y1={padTop + plotH * g / 2} x2={W - padR} y2={padTop + plotH * g / 2} />)}
+      {[0, 1, 2].map(g => <text key={'y' + g} className="ylab" x={padL - 5} y={padTop + plotH * g / 2 + 3} textAnchor="end">{fmtY(lo + (max - lo) * (1 - g / 2))}</text>)}
+      {area && <path className="area" d={area} fill="url(#wajs-area)" />}
+      {ghoP.d && <path className="ghost" d={ghoP.d} />}
+      {ghoP.pts.map((p, i) => <circle key={'g' + i} className="ghost-dot" cx={p.x} cy={p.y} r={2} />)}
+      {curP.d && <path className="line" d={curP.d} />}
+      {last && <circle className="dot" cx={last.x} cy={last.y} r={4.5} />}
       {points.map((p, i) => {
         const hw = plotW / n;
-        const gv = gho[i];
-        const t = `${p[0]} · ${fmtV(cur[i])}${gv != null ? ` (was ${fmtV(gv)})` : ''}`;
+        const cv = cur[i], gv = gho[i];
+        const t = `${p[0]} · ${cv == null ? '—' : fmtV(cv)}${gv != null ? ` (was ${fmtV(gv)})` : ''}`;
         return <rect key={i} className="hit" x={X(i) - hw / 2} y={padTop} width={hw} height={plotH} onMouseMove={e => tip.show(t, e)} onMouseLeave={tip.hide} />;
       })}
       {points.map((p, i) => (i % step === 0 || i === n - 1)

@@ -150,7 +150,7 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   const ghostStartMs = b.prevLabel ? b.prevStartMs : b.yoyStartMs;
   const ghostEndMs = b.prevLabel ? b.prevEndMs : b.yoyEndMs;
 
-  const [orders, lines, payments, sessions, ghostOrders, prev, yoy] = await Promise.all([
+  const [orders, lines, payments, sessions, ghostOrders, otherTotals] = await Promise.all([
     fetchAll('pos.order',
       [['company_id', '=', waj.companyId], ['date_order', '>=', cStart], ['date_order', '<', cEnd], ['state', 'in', SOLD]],
       ['id', 'date_order', 'amount_total', 'takeaway', 'employee_id', 'tip_amount', 'has_deleted_line'], 'date_order asc'),
@@ -170,9 +170,13 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
         [['company_id', '=', waj.companyId], ['date_order', '>=', utcStr(ghostStartMs)], ['date_order', '<', utcStr(ghostEndMs)], ['state', 'in', SOLD]],
         ['date_order', 'amount_total'])
       : Promise.resolve([]),
-    periodTotals(waj.companyId, b.prevStartMs, b.prevEndMs),
-    periodTotals(waj.companyId, b.yoyStartMs, b.yoyEndMs),
+    // Only the comparison window NOT covered by ghostOrders needs its own totals:
+    // for day/week/month that's YoY; for YTD/Year there is no separate previous period.
+    b.prevLabel ? periodTotals(waj.companyId, b.yoyStartMs, b.yoyEndMs) : Promise.resolve({ sales: 0, orders: 0 }),
   ]);
+  const ghostTotals = { sales: Math.round((ghostOrders as any[]).reduce((a, o) => a + o.amount_total, 0)), orders: (ghostOrders as any[]).length };
+  const prev = b.prevLabel ? ghostTotals : { sales: 0, orders: 0 };
+  const yoy = b.prevLabel ? otherTotals : ghostTotals;
 
   // ---- trend (current series + aligned previous-period "ghost") ----
   const trendPts = buildTrend(orders, b);
@@ -185,7 +189,7 @@ export async function computeSales(range: Range, anchorDay: string, nowMs: numbe
   }
   const trendPrev: ([number, number] | null)[] = trendPts.map(p => {
     const g = ghostMap.get(p.key);
-    return g ? [Math.round(g.s), g.o] : null;
+    return g ? [g.s, g.o] : null;
   });
   const trendPrevLabel = b.prevLabel || b.yoyLabel;
 
@@ -467,7 +471,7 @@ function buildTrend(orders: any[], b: Bounds): TrendPoint[] {
       e.s += o.amount_total; e.o += 1; m.set(h, e);
     }
     return Array.from(m.keys()).sort((a, c) => a - c)
-      .map(h => ({ key: h, label: String(h).padStart(2, '0'), sales: Math.round(m.get(h)!.s), orders: m.get(h)!.o }));
+      .map(h => ({ key: h, label: String(h).padStart(2, '0'), sales: m.get(h)!.s, orders: m.get(h)!.o }));
   }
   const byMonth = b.gran === 'month';
   const m = new Map<string, { s: number; o: number }>();
@@ -491,7 +495,7 @@ function buildTrend(orders: any[], b: Bounds): TrendPoint[] {
   return Array.from(m.keys()).sort().map(k => ({
     key: byMonth ? Number(k.slice(5, 7)) : b.weekly ? DOW.indexOf(weekdayLabel(k)) : Number(k.slice(8, 10)),
     label: byMonth ? MON[Number(k.slice(5, 7)) - 1] : b.weekly ? weekdayLabel(k) : dayOfMonthLabel(k),
-    sales: Math.round(m.get(k)!.s), orders: m.get(k)!.o,
+    sales: m.get(k)!.s, orders: m.get(k)!.o,
   }));
 }
 
