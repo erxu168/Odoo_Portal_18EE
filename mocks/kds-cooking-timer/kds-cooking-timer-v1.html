@@ -124,6 +124,13 @@
   .cancel.sure{
     background:var(--urgent); border-color:var(--urgent); color:#fff;
   }
+  .mute{
+    height:36px; width:42px; border-radius:10px; flex-shrink:0;
+    border:1px solid var(--line); background:transparent; color:var(--dim);
+    font-size:16px; cursor:pointer;
+  }
+  .mute.on{border-color:var(--warn); background:rgba(245,158,11,.15); color:var(--warn);}
+  .hbtns{display:flex; gap:8px; flex-shrink:0;}
   /* done strip */
   #doneStrip{
     position:fixed; bottom:0; left:300px; right:0; background:var(--panel);
@@ -203,7 +210,7 @@
     <div class="srow"><div class="sname">Sound</div><div class="tog on" data-st="__sound"></div></div>
     <div class="srow"><div class="sname">Demo: 10&times; speed</div><div class="tog on" data-st="__speed"></div></div>
     <button id="closeSettings">Close</button>
-    <div class="mocknote">Mock v1.3 &mdash; demo orders re-appear in the queue over time so you can keep testing. Every step end alarms and must be confirmed with a tap &mdash; nothing advances by itself. When a card flashes, tapping anywhere on it advances/finishes. SKIP and CANCEL need a second tap to confirm.</div>
+    <div class="mocknote">Mock v1.4 &mdash; demo orders re-appear in the queue over time so you can keep testing. Every step end alarms and must be confirmed with a tap &mdash; nothing advances by itself. When a card flashes, tapping anywhere on it advances/finishes. SKIP and CANCEL need a second tap to confirm.</div>
   </div>
 </div>
 
@@ -317,7 +324,7 @@ function startTimer(q){
   state.queue = state.queue.filter(x=>x.id!==q.id);
   state.active.push({
     id:q.id, order:q.order, profile:q.profile, stepIdx:0,
-    stepStart:Date.now(), state:"run", lastBeep:0, confirm:null, confirmT:0
+    stepStart:Date.now(), state:"run", lastBeep:0, confirm:null, confirmT:0, muted:false
   });
   renderQueue(); renderBoard();
 }
@@ -334,7 +341,7 @@ function nextStep(t){
   const s=stepOf(t);
   if(s.type==="action"){ t.state="alarm"; t.lastBeep=Date.now(); }
   renderBoard();
-  if(s.type==="action") sndAction();
+  if(s.type==="action" && !t.muted) sndAction();
 }
 function finish(t){
   state.active=state.active.filter(x=>x.id!==t.id);
@@ -355,14 +362,14 @@ setInterval(()=>{
     const s=stepOf(t);
     if(t.confirm && Date.now()-t.confirmT>3500){ t.confirm=null; dirty=true; }
     if(t.state==="alarm"||t.state==="done"){
-      if(Date.now()-t.lastBeep>1600){ t.lastBeep=Date.now(); t.state==="done"?sndDone():sndAction(); }
+      if(!t.muted && Date.now()-t.lastBeep>1600){ t.lastBeep=Date.now(); t.state==="done"?sndDone():sndAction(); }
       return;
     }
     const rem=stepRemaining(t);
     if(rem<=0){
       const isLast = t.stepIdx===PROFILES[t.profile].steps.length-1;
-      if(isLast){ t.state="done"; t.lastBeep=Date.now(); dirty=true; sndDone(); }
-      else { t.state="alarm"; t.lastBeep=Date.now(); dirty=true; sndAction(); }
+      if(isLast){ t.state="done"; t.lastBeep=Date.now(); dirty=true; if(!t.muted) sndDone(); }
+      else { t.state="alarm"; t.lastBeep=Date.now(); dirty=true; if(!t.muted) sndAction(); }
     } else if(rem<=s.secs*.15 && t.state!=="warnzone"){ t.state="warnzone"; dirty=true; }
   });
   updateCounts();
@@ -417,13 +424,14 @@ function renderBoard(){
     const cancelBtn = t.confirm==="cancel"
       ? `<button class="cancel sure" data-act="cancel">SURE?</button>`
       : `<button class="cancel" data-act="cancel">\u2715 CANCEL</button>`;
+    const muteBtn = `<button class="mute ${t.muted?"on":""}" data-act="mute" title="${t.muted?"Unmute":"Mute"} this item">${t.muted?"\uD83D\uDD07":"\uD83D\uDD0A"}</button>`;
     card.innerHTML=`
       <div class="thead">
         <div><div class="name">${p.name}</div>
           <div class="osub"><span class="order">${t.order}</span>
           <span class="badge ${STATIONS[p.station].cls}">${STATIONS[p.station].name.toUpperCase()}</span></div>
         </div>
-        ${cancelBtn}
+        <div class="hbtns">${muteBtn}${cancelBtn}</div>
       </div>
       <div class="stepname">${s.type==="rest"?"REST":s.label}${s.type!=="action"?"":" \u2014 ACTION"}</div>
       <div class="count" id="cnt-${t.id}">${s.type==="action"?"NOW":fmt(stepRemaining(t))}</div>
@@ -433,6 +441,7 @@ function renderBoard(){
       el.onclick=(e)=>{
         e.stopPropagation();
         const a=el.dataset.act;
+        if(a==="mute"){ t.muted=!t.muted; renderBoard(); }
         if(a==="cancel"){
           if(t.confirm==="cancel"){ cancelTimer(t); }
           else { t.confirm="cancel"; t.confirmT=Date.now(); renderBoard(); }
