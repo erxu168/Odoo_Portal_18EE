@@ -459,14 +459,21 @@ export function claimReminderStage(taskId: number, stage: number): boolean {
   return r.changes === 1;
 }
 
-/** Count of overdue, still-pending tasks in open instances for a company (Needs attention badge). */
-export function countOverdueOpenTasks(companyId: number, todayISO: string): number {
+/**
+ * Count of overdue, still-pending tasks in open instances (Needs attention badge).
+ * companyIds = null → all companies (admins); otherwise scoped to that list.
+ */
+export function countOverdueOpenTasks(companyIds: number[] | null, todayISO: string): number {
   ensureStaffingTables();
-  const r = getDb().prepare(`
-    SELECT COUNT(*) AS n
+  const base = `SELECT COUNT(*) AS n
     FROM staffing_instance_tasks t JOIN staffing_instances i ON i.id = t.instance_id
-    WHERE i.company_id = ? AND i.status = 'open' AND t.status = 'pending'
-      AND t.due_date IS NOT NULL AND t.due_date < ?
-  `).get(companyId, todayISO) as { n: number };
+    WHERE i.status = 'open' AND t.status = 'pending'
+      AND t.due_date IS NOT NULL AND t.due_date < ?`;
+  if (companyIds && companyIds.length) {
+    const ph = companyIds.map(() => '?').join(',');
+    const r = getDb().prepare(`${base} AND i.company_id IN (${ph})`).get(todayISO, ...companyIds) as { n: number };
+    return r.n;
+  }
+  const r = getDb().prepare(base).get(todayISO) as { n: number };
   return r.n;
 }

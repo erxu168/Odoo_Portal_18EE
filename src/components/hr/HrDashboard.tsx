@@ -54,7 +54,8 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
             if (!ov.error) {
               setAttentionCount(
                 (ov.missingDocs?.length || 0) + (ov.expiring?.length || 0) +
-                (ov.contractsEnding?.length || 0) + (ov.sofortmeldung?.length || 0),
+                (ov.contractsEnding?.length || 0) + (ov.sofortmeldung?.length || 0) +
+                (ov.overdueChecklistTasks || 0),
               );
             }
           } catch { /* badge is best-effort */ }

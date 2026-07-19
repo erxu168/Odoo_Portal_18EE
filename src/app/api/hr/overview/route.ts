@@ -7,6 +7,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireRole, AuthError } from '@/lib/auth';
+import { countOverdueOpenTasks } from '@/lib/staffing-checklist-db';
 import { getOdoo } from '@/lib/odoo';
 import { parseCompanyIds } from '@/lib/db';
 
@@ -123,10 +124,14 @@ export async function GET() {
     }
     sofortmeldung.sort((a, b) => a.days - b.days);
 
+    // --- Overdue lifecycle-checklist tasks (portal-native) ---
+    const overdueChecklistTasks = countOverdueOpenTasks(allowed, today.toISOString().slice(0, 10));
+
     return NextResponse.json({
       expiryDays, contractDays,
       totalStaff: emps.length,
       missingDocs, expiring, contractsEnding, sofortmeldung,
+      overdueChecklistTasks,
     });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
