@@ -21,6 +21,9 @@ export function berlinStamp(epochMs: number = Date.now()): string {
   const [datePart, timePart] = wall.split(' ');
   const [y, mo, d] = datePart.split('-').map(Number);
   const [h, mi, s] = timePart.split(':').map(Number);
+  // toLocaleString gives whole seconds only; keep the sub-second part so a
+  // running step's remaining time is exact (no ~1s early alarm).
+  const ms = String(((epochMs % 1000) + 1000) % 1000).padStart(3, '0');
   // Offset = (that wall time interpreted as UTC) minus the real epoch. Rounds to
   // whole minutes; Berlin is always +01:00 or +02:00.
   const asUtc = Date.UTC(y, mo - 1, d, h, mi, s);
@@ -29,7 +32,7 @@ export function berlinStamp(epochMs: number = Date.now()): string {
   const abs = Math.abs(offsetMin);
   const oh = String(Math.floor(abs / 60)).padStart(2, '0');
   const om = String(abs % 60).padStart(2, '0');
-  return `${datePart}T${timePart}${sign}${oh}:${om}`;
+  return `${datePart}T${timePart}.${ms}${sign}${oh}:${om}`;
 }
 
 /** Parse an offset-bearing stamp back to epoch ms. Returns 0 on garbage. */

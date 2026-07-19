@@ -37,7 +37,8 @@ export default function CookTimerCard({ timer, nowMs, color, onAdvance, onFinish
   const isLast = timer.currentStep >= timer.steps.length - 1;
   const display = deriveDisplayState(step, timer.stepStartedEpoch, isLast, nowMs);
   const stateClass = display === 'running' ? 'run' : display;
-  const label = `${timer.profileName}${timer.orderRefs.length > 1 ? ` ×${timer.orderRefs.length}` : ''} ${timer.orderRefs.join(' ')}`.trim();
+  const batchN = timer.lines.length; // covered order lines (the batch size), not deduped refs
+  const label = `${timer.profileName}${batchN > 1 ? ` ×${batchN}` : ''} ${timer.orderRefs.join(' ')}`.trim();
 
   // Count text
   let countText: string;
@@ -75,7 +76,7 @@ export default function CookTimerCard({ timer, nowMs, color, onAdvance, onFinish
       <div className="ct-thead">
         <div style={{ minWidth: 0 }}>
           <div className="ct-tname">
-            {timer.profileName}{timer.orderRefs.length > 1 && <span className="ct-xn"> ×{timer.orderRefs.length}</span>}
+            {timer.profileName}{batchN > 1 && <span className="ct-xn"> ×{batchN}</span>}
           </div>
           <div className="ct-osub">
             <span className="ct-order">{timer.orderRefs.join('  ')}</span>

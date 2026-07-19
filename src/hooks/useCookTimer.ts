@@ -20,7 +20,8 @@ import { unlockAudio, playStageAlarm, playDoneAlarm } from '@/lib/cooktimer/soun
 
 const LS_STATIONS = 'ct_enabled_stations';
 const LS_SOUND = 'ct_sound_on';
-const POLL_MS = 1200;
+const POLL_MS = 1200;        // timers poll — SQLite only, cheap; keeps tablets in sync
+const QUEUE_POLL_MS = 5000;  // queue poll — hits the shared Odoo feed; match its ~5s cadence
 const TICK_MS = 250;
 const BEEP_MS = 1600;
 
@@ -48,6 +49,11 @@ export function useCookTimer() {
   const overrides = useRef<Map<number, Override>>(new Map());
   const clockOffset = useRef(0);
   const lastBeep = useRef<Map<number, number>>(new Map());
+  // Monotonic guards so an older in-flight poll can't overwrite a newer one's state.
+  const timersSeq = useRef(0);
+  const timersApplied = useRef(0);
+  const queueSeq = useRef(0);
+  const queueApplied = useRef(0);
   const soundRef = useRef(soundOn);
   const enabledRef = useRef(enabled);
   const serverTimersRef = useRef<CookTimerDTO[]>([]);
@@ -84,9 +90,15 @@ export function useCookTimer() {
 
   // --- polling -------------------------------------------------------------
   const pollTimers = useCallback(async () => {
+    const seq = ++timersSeq.current;
     try {
       const res = await fetch('/api/cooktimer/timers', { cache: 'no-store' });
+      // A server error returns empty arrays; DON'T wipe the board with them —
+      // keep the last known state and surface the error.
+      if (!res.ok) { setError('Cook timer server error'); return; }
       const data = await res.json();
+      if (seq < timersApplied.current) return; // a newer poll already landed
+      timersApplied.current = seq;
       if (typeof data.serverNow === 'number') clockOffset.current = data.serverNow - Date.now();
       if (Array.isArray(data.stations)) setStations(data.stations);
       if (Array.isArray(data.done)) setDone(data.done);
@@ -103,19 +115,26 @@ export function useCookTimer() {
           const caughtMute = o.muted === undefined || s.muted === o.muted;
           if (caughtStep && caughtMute) overrides.current.delete(id);
         });
+        // Drop beep bookkeeping for timers that are no longer active (finished/
+        // cancelled) so the map can't grow without bound on a long-lived tablet.
+        lastBeep.current.forEach((_v, id) => { if (!byId.has(id)) lastBeep.current.delete(id); });
       }
       setError(null);
     } catch { /* offline — keep last known, visual countdown continues */ }
   }, []);
 
   const pollQueue = useCallback(async () => {
+    const seq = ++queueSeq.current;
     try {
       const e = enabledRef.current;
       // Always send an explicit stations param: all-enabled sends every id,
       // all-disabled sends an empty list (=> show nothing).
       const qs = e === null ? '' : `?stations=${e.join(',')}`;
       const res = await fetch(`/api/cooktimer/queue${qs}`, { cache: 'no-store' });
+      if (!res.ok) { setError('Cook timer server error'); return; } // keep last known queue
       const data = await res.json();
+      if (seq < queueApplied.current) return;
+      queueApplied.current = seq;
       if (Array.isArray(data.stations)) {
         setStations(data.stations);
         // First run with no stored selection: default to all active stations.
@@ -126,17 +145,23 @@ export function useCookTimer() {
         }
       }
       if (Array.isArray(data.queue)) setQueue(data.queue);
-      if (data.error) setError(data.error); else setError(null);
+      setError(data.error || null); // e.g. "No POS config ID set" (a real 200 state)
     } catch { /* offline */ }
   }, []);
 
   useEffect(() => {
     pollTimers();
     pollQueue();
-    const iv = setInterval(() => { pollTimers(); pollQueue(); }, POLL_MS);
-    return () => clearInterval(iv);
+    // Timers (SQLite) poll fast for cross-tablet sync; the queue polls slower
+    // because it reads the shared Odoo feed and must not outrun its ~5s cadence.
+    const ivTimers = setInterval(pollTimers, POLL_MS);
+    const ivQueue = setInterval(pollQueue, QUEUE_POLL_MS);
+    return () => { clearInterval(ivTimers); clearInterval(ivQueue); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Clear the toast timer on unmount.
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   // Re-fetch the queue immediately when the station selection changes.
   useEffect(() => { pollQueue(); /* eslint-disable-next-line */ }, [enabled]);
@@ -204,23 +229,29 @@ export function useCookTimer() {
 
   const skip = advance; // SKIP advances the same way; the two-tap confirm is UI-side.
 
+  const restore = (id: number) => { overrides.current.delete(id); setServerTimers(prev => [...prev]); };
+
   const finish = useCallback(async (id: number, expectedStep: number, label: string) => {
     setOverride(id, { removed: true }, 3500);
     showToast(`Marked ready on KDS ✓ ${label}`);
     try {
-      await fetch(`/api/cooktimer/timers/${id}/finish`, {
+      const res = await fetch(`/api/cooktimer/timers/${id}/finish`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expected_step: expectedStep }),
       });
-    } catch { /* reconcile on poll */ }
+      if (!res.ok) { restore(id); showToast('Could not mark ready — try again'); } // don't claim false success
+    } catch { restore(id); showToast('Network error — not marked ready'); }
     await Promise.all([pollTimers(), pollQueue()]);
   }, [pollTimers, pollQueue, showToast]);
 
   const cancel = useCallback(async (id: number) => {
     setOverride(id, { removed: true }, 3500);
-    try { await fetch(`/api/cooktimer/timers/${id}/cancel`, { method: 'POST' }); } catch { /* reconcile */ }
+    try {
+      const res = await fetch(`/api/cooktimer/timers/${id}/cancel`, { method: 'POST' });
+      if (!res.ok) { restore(id); showToast('Could not cancel — try again'); }
+    } catch { restore(id); showToast('Network error — not cancelled'); }
     await Promise.all([pollTimers(), pollQueue()]);
-  }, [pollTimers, pollQueue]);
+  }, [pollTimers, pollQueue, showToast]);
 
   const setMute = useCallback(async (id: number, expectedStep: number, muted: boolean) => {
     setOverride(id, { muted });

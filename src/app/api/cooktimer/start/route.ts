@@ -19,7 +19,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const lineIds: number[] = Array.isArray(body.line_ids)
-      ? body.line_ids.map((n: unknown) => Number(n)).filter((n: number) => Number.isFinite(n))
+      ? Array.from(new Set(
+          (body.line_ids as unknown[]).map(n => Number(n)).filter((n): n is number => Number.isFinite(n) && n > 0)
+        )).slice(0, 100) // dedupe + cap: one batch is never this large
       : [];
     if (lineIds.length === 0) {
       return NextResponse.json({ error: 'line_ids required' }, { status: 400 });

@@ -34,6 +34,8 @@ export default function CookTimerPage() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
+      {t.error && <div className="ct-errbar">⚠ {t.error}</div>}
+
       <div className="ct-main">
         <CookQueue queue={t.queue} nowMs={t.nowMs} colorById={colorById} onStart={t.start} />
 

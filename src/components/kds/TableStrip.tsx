@@ -108,6 +108,9 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
                           {src.label}
                         </span>
                       )}
+                      {item.timerReady && (
+                        <span title="Cooked by the Cooking Timer" style={{ marginLeft: 'auto', color: '#22c55e', fontWeight: 800, fontSize: 10 }}>✓ COOKED</span>
+                      )}
                     </div>
                     {showNote && <div className="kds-note">{item.note}</div>}
                   </div>

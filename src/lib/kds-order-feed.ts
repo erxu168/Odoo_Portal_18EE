@@ -58,19 +58,26 @@ export interface FiredOrder {
   last_order_preparation_change: unknown;
 }
 
-/**
- * Fetch fired orders + their food lines for a POS config. Read-only.
- * `lineFields` lets each caller request exactly the pos.order.line fields it
- * needs (the KDS its display fields; the Cooking Timer additionally product_id)
- * without changing the other's payload. Returns fired orders (already filtered
- * by the hybrid trigger) and their lines grouped by order id.
- */
-export async function fetchFiredOrders(
-  configId: number,
-  lineFields: string[],
-): Promise<{ firedOrders: FiredOrder[]; linesByOrder: Record<number, Record<string, unknown>[]> }> {
-  const odoo = getOdoo();
+export interface FiredFeed {
+  firedOrders: FiredOrder[];
+  linesByOrder: Record<number, Record<string, unknown>[]>;
+}
 
+// A superset of the line fields BOTH callers need — the KDS its display fields,
+// the Cooking Timer additionally product_id. Fetching one shape lets a single
+// cached fetch serve every caller.
+const LINE_FIELDS = ['id', 'order_id', 'product_id', 'full_product_name', 'qty', 'note', 'customer_note'];
+
+// Short-lived per-config cache + single-flight. The KDS orders feed, the Cooking
+// Timer queue, and every cook tablet share ONE Odoo fetch per config within the
+// TTL instead of each polling Odoo independently. This is what keeps "one Odoo
+// poller" true even though several routes read the feed.
+const FEED_TTL_MS = 2500;
+const feedCache = new Map<number, { at: number; data: FiredFeed }>();
+const inFlight = new Map<number, Promise<FiredFeed>>();
+
+async function fetchFromOdoo(configId: number): Promise<FiredFeed> {
+  const odoo = getOdoo();
   const rawOrders = await odoo.searchRead(
     'pos.order',
     [
@@ -100,7 +107,7 @@ export async function fetchFiredOrders(
       ['qty', '>', 0],                       // exclude refund lines
       ['product_id.type', '!=', 'service'],  // exclude tips / fees
     ],
-    lineFields,
+    LINE_FIELDS,
     { limit: 800 },
   );
 
@@ -111,4 +118,24 @@ export async function fetchFiredOrders(
     linesByOrder[oid].push(line);
   }
   return { firedOrders, linesByOrder };
+}
+
+/**
+ * Fetch fired orders + their food lines for a POS config. Read-only, cached, and
+ * single-flighted so concurrent callers (KDS + Cooking Timer + N tablets) share
+ * one Odoo round-trip per config within FEED_TTL_MS. Returns fired orders
+ * (already filtered by the hybrid trigger) and their lines grouped by order id.
+ */
+export async function fetchFiredOrders(configId: number): Promise<FiredFeed> {
+  const cached = feedCache.get(configId);
+  if (cached && Date.now() - cached.at < FEED_TTL_MS) return cached.data;
+
+  const existing = inFlight.get(configId);
+  if (existing) return existing;
+
+  const p = fetchFromOdoo(configId)
+    .then(data => { feedCache.set(configId, { at: Date.now(), data }); return data; })
+    .finally(() => { inFlight.delete(configId); });
+  inFlight.set(configId, p);
+  return p;
 }

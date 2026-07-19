@@ -88,7 +88,11 @@ function ensureCookTables() {
   db.prepare('DELETE FROM kds_line_ready WHERE ready_at < ?').run(cutoff);
 
   seedStations(db);
-  seedProfiles(db);
+  // The placeholder profiles carry STAGING What a Jerk product IDs. Only seed
+  // them on staging, so production never auto-maps a same-numbered but DIFFERENT
+  // product to the wrong cook profile. On production, profiles stay empty until
+  // a manager sets real mappings via the (step 5) Profiles screen.
+  if ((process.env.ODOO_URL || '').includes('89.167.124.0')) seedProfiles(db);
   _ctInit = true;
 }
 
@@ -352,26 +356,27 @@ export function advanceTimer(id: number, expectedStep: number): CookTimerDTO | n
   return result;
 }
 
-/** Explicit mute set (not a blind toggle). Rejected if the step already moved so
- *  a late mute of step N can't silence step N+1 (spec decision 8). */
+/** Explicit mute set (not a blind toggle). The step guard is a single atomic
+ *  conditional UPDATE, so a late mute of step N can't silence step N+1 even if
+ *  an advance lands between (spec decision 8). */
 export function setTimerMute(id: number, expectedStep: number, muted: boolean): CookTimerDTO | null {
   ensureCookTables();
   const db = getDb();
+  db.prepare("UPDATE cook_timers SET muted = ? WHERE id = ? AND state = 'running' AND current_step = ?")
+    .run(muted ? 1 : 0, id, expectedStep);
   const row = getRow(db, id);
-  if (!row) return null;
-  if (row.state !== 'running' || row.current_step !== expectedStep) return rowToDTO(db, row);
-  db.prepare('UPDATE cook_timers SET muted = ? WHERE id = ?').run(muted ? 1 : 0, id);
-  return rowToDTO(db, getRow(db, id)!);
+  return row ? rowToDTO(db, row) : null;
 }
 
 export function cancelTimer(id: number): CookTimerDTO | null {
   ensureCookTables();
   const db = getDb();
+  // Conditional on state='running' so a finish that already committed (ready
+  // rows written) can't be overwritten to 'cancelled' by a racing cancel.
+  db.prepare("UPDATE cook_timers SET state = 'cancelled', finished_at = ? WHERE id = ? AND state = 'running'")
+    .run(berlinStamp(), id);
   const row = getRow(db, id);
-  if (!row) return null;
-  if (row.state !== 'running') return rowToDTO(db, row); // already terminal
-  db.prepare("UPDATE cook_timers SET state = 'cancelled', finished_at = ? WHERE id = ?").run(berlinStamp(), id);
-  return rowToDTO(db, getRow(db, id)!);
+  return row ? rowToDTO(db, row) : null;
 }
 
 /** Terminal finish: write kds_line_ready for every covered line (idempotent). */
@@ -396,6 +401,10 @@ export function finishTimer(id: number, expectedStep?: number): CookTimerDTO | n
     if (!row) return null;
     if (row.state === 'finished') return rowToDTO(db, row);   // idempotent
     if (row.state !== 'running') return rowToDTO(db, row);    // cancelled
+    // Only the LAST step may finish. Without this a stray POST /finish {} would
+    // mark every covered line ready during an early step (premature ✓ on the KDS).
+    const stepCount = (db.prepare('SELECT COUNT(*) AS c FROM cook_profile_steps WHERE profile_id = ?').get(row.profile_id) as { c: number }).c;
+    if (row.current_step < stepCount - 1) return rowToDTO(db, row);
     if (typeof expectedStep === 'number' && row.current_step !== expectedStep) return rowToDTO(db, row);
     return finishTimerInner(db, row);
   })();

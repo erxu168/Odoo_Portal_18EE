@@ -10,16 +10,21 @@ const action = (): Step => ({ id: 2, seq: 1, label: 'Flip', durationSeconds: 0, 
 
 // --- time: offset-bearing Berlin stamps, DST-safe, never UTC -----------------
 
-test('berlinStamp emits an offset-bearing Berlin stamp and round-trips to the exact epoch', () => {
+test('berlinStamp emits an offset-bearing Berlin stamp and round-trips to the exact epoch (incl. ms)', () => {
   const summer = Date.UTC(2026, 6, 19, 13, 30, 0); // 15:30 Berlin (CEST +02:00)
   const s = berlinStamp(summer);
-  expect(s).toBe('2026-07-19T15:30:00+02:00');
+  expect(s).toBe('2026-07-19T15:30:00.000+02:00');
   expect(stampToEpoch(s)).toBe(summer);
 
   const winter = Date.UTC(2026, 0, 19, 13, 30, 0); // 14:30 Berlin (CET +01:00)
   const w = berlinStamp(winter);
-  expect(w).toBe('2026-01-19T14:30:00+01:00');
+  expect(w).toBe('2026-01-19T14:30:00.000+01:00');
   expect(stampToEpoch(w)).toBe(winter);
+
+  // Sub-second precision is preserved (no ~1s-early alarm).
+  const withMs = Date.UTC(2026, 6, 19, 13, 30, 0) + 742;
+  expect(berlinStamp(withMs)).toBe('2026-07-19T15:30:00.742+02:00');
+  expect(stampToEpoch(berlinStamp(withMs))).toBe(withMs);
 });
 
 test('berlinStamp is never a UTC toISOString()', () => {

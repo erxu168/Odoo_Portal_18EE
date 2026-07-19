@@ -24,9 +24,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ orders: [], error: 'No POS config ID set' });
     }
 
-    const { firedOrders, linesByOrder } = await fetchFiredOrders(configId, [
-      'id', 'order_id', 'full_product_name', 'qty', 'note', 'customer_note',
-    ]);
+    const { firedOrders, linesByOrder } = await fetchFiredOrders(configId);
 
     if (firedOrders.length === 0) {
       return NextResponse.json({ orders: [] });

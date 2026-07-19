@@ -67,6 +67,7 @@ export default function Pipeline() {
                       <span className="kds-poi-name">{item.name}</span>
                       {lookupSource(item.name, productConfig) && <SourceBadge dishName={item.name} />}
                       {item.note && !isAllergenOrAdditiveNote(item.note) && <span className="kds-s-note">{item.note}</span>}
+                      {item.timerReady && <span title="Cooked by the Cooking Timer" style={{ color: '#22c55e', fontSize: '12px', fontWeight: 800 }}>{'\u2713'}</span>}
                       {item.done && <span style={{ color: 'var(--green)', fontSize: '12px', fontWeight: 700 }}>{'\u2713'}</span>}
                     </div>
                   ))}

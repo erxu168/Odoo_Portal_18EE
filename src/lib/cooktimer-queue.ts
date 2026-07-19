@@ -32,9 +32,7 @@ function orderRef(o: FiredOrder): string {
 
 /** Currently-eligible cook lines keyed by pos line id. */
 export async function loadEligibleLines(configId: number): Promise<Map<number, EligibleLine>> {
-  const { firedOrders, linesByOrder } = await fetchFiredOrders(configId, [
-    'id', 'order_id', 'product_id', 'full_product_name', 'qty',
-  ]);
+  const { firedOrders, linesByOrder } = await fetchFiredOrders(configId);
   const profByProduct = getActiveProfilesByProduct();
   const claimed = getClaimedLineIds();
   const out = new Map<number, EligibleLine>();
