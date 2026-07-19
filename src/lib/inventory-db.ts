@@ -284,6 +284,79 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
     try { db.exec("ALTER TABLE product_drafts ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"); }
     catch (e) { if (!(e instanceof Error && /duplicate column/i.test(e.message))) throw e; }
   }
+
+  // ===
+  // Location-counting redesign (2026-07-19): multi-spot counting, out-of-stock
+  // vs not-counted, explicit pack/loose count mode. All additive &
+  // nullable/defaulted — legacy rows and open sessions keep working (a missing
+  // value = legacy single-location / inferred behaviour).
+  // ===
+
+  // product_flags: explicit count mode + the single-unit ("loose") word.
+  const pfCols2 = (db.prepare("PRAGMA table_info('product_flags')").all() as { name: string }[]).map(c => c.name);
+  if (!pfCols2.includes('count_mode')) db.exec("ALTER TABLE product_flags ADD COLUMN count_mode TEXT");   // 'simple' | 'pack_loose' (null = legacy infer)
+  if (!pfCols2.includes('loose_label')) db.exec("ALTER TABLE product_flags ADD COLUMN loose_label TEXT"); // e.g. 'bottles'
+
+  // count_entries: spot identity, out-of-stock, unit snapshots, converted Odoo qty.
+  const ceCols = (db.prepare("PRAGMA table_info('count_entries')").all() as { name: string }[]).map(c => c.name);
+  if (!ceCols.includes('count_location_id')) db.exec("ALTER TABLE count_entries ADD COLUMN count_location_id INTEGER NOT NULL DEFAULT 0");
+  if (!ceCols.includes('out_of_stock')) db.exec("ALTER TABLE count_entries ADD COLUMN out_of_stock INTEGER NOT NULL DEFAULT 0");
+  if (!ceCols.includes('count_mode')) db.exec("ALTER TABLE count_entries ADD COLUMN count_mode TEXT");
+  if (!ceCols.includes('pack_label')) db.exec("ALTER TABLE count_entries ADD COLUMN pack_label TEXT");
+  if (!ceCols.includes('loose_label')) db.exec("ALTER TABLE count_entries ADD COLUMN loose_label TEXT");
+  if (!ceCols.includes('odoo_qty')) db.exec("ALTER TABLE count_entries ADD COLUMN odoo_qty REAL");
+
+  // quick_counts: out-of-stock + unit snapshots + converted Odoo qty.
+  const qc2Cols = (db.prepare("PRAGMA table_info('quick_counts')").all() as { name: string }[]).map(c => c.name);
+  if (!qc2Cols.includes('out_of_stock')) db.exec("ALTER TABLE quick_counts ADD COLUMN out_of_stock INTEGER NOT NULL DEFAULT 0");
+  if (!qc2Cols.includes('count_mode')) db.exec("ALTER TABLE quick_counts ADD COLUMN count_mode TEXT");
+  if (!qc2Cols.includes('pack_label')) db.exec("ALTER TABLE quick_counts ADD COLUMN pack_label TEXT");
+  if (!qc2Cols.includes('loose_label')) db.exec("ALTER TABLE quick_counts ADD COLUMN loose_label TEXT");
+  if (!qc2Cols.includes('odoo_qty')) db.exec("ALTER TABLE quick_counts ADD COLUMN odoo_qty REAL");
+
+  // Per-list placements: a product sits at one or more spots WITHIN a specific
+  // list (template). Global product_locations stays for legacy/default physical
+  // placement; the builder writes here so editing one list never touches another.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS template_product_locations (
+      template_id INTEGER NOT NULL,
+      odoo_product_id INTEGER NOT NULL,
+      count_location_id INTEGER NOT NULL,
+      shelf_sort INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (template_id, odoo_product_id, count_location_id)
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_tpl_placements_tpl ON template_product_locations(template_id)');
+
+  // Per-session snapshot of what to count and where, frozen at session creation,
+  // so editing a template/placement mid-count never re-routes an open session.
+  // Legacy sessions have no rows here and fall back to live template resolution.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_count_items (
+      session_id INTEGER NOT NULL,
+      odoo_product_id INTEGER NOT NULL,
+      count_location_id INTEGER NOT NULL,
+      shelf_sort INTEGER NOT NULL DEFAULT 0,
+      requires_photo INTEGER NOT NULL DEFAULT 0,
+      count_mode TEXT,
+      pack_label TEXT,
+      loose_label TEXT,
+      units_per_crate REAL,
+      PRIMARY KEY (session_id, odoo_product_id, count_location_id)
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_items_session ON session_count_items(session_id)');
+
+  // One count row per (session, spot, product). Try UNIQUE; if a legacy DB has
+  // duplicate (session, product) rows at the default spot 0, fall back to a
+  // non-unique index and warn rather than crash startup (app-layer upsert keys
+  // on the triple regardless).
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_session_loc_product ON count_entries(session_id, count_location_id, product_id)');
+  } catch (e) {
+    console.warn('[inventory] duplicate legacy count rows — using non-unique (session,location,product) index', e);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_entries_session_loc_product ON count_entries(session_id, count_location_id, product_id)');
+  }
 }
 
 // ===
