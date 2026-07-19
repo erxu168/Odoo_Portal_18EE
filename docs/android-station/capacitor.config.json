@@ -1,6 +1,6 @@
 {
   "appId": "de.krawings.station",
-  "appName": "Kitchen Station",
+  "appName": "Krawings Department Device",
   "webDir": "www",
   "server": {
     "url": "https://portal.krawings.de",

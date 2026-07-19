@@ -1,6 +1,6 @@
-name: Build Kitchen Station APK
+name: Build Krawings Department Device APK
 
-# Cloud-builds the "Kitchen Station" Android app (a Capacitor wrapper of
+# Cloud-builds the "Krawings Department Device" Android app (a Capacitor wrapper of
 # https://portal.krawings.de — the shared kitchen tablet). This is the OPEN variant:
 # a normal app staff can leave (no kiosk lock-task). The finished .apk is published to
 # a rolling GitHub release so any tablet can install it directly. No local Android
@@ -51,7 +51,7 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
-      - name: Use the Kitchen Station Capacitor config
+      - name: Use the Krawings Department Device Capacitor config
         # The repo root has capacitor.config.ts (the Portal app: appId de.krawings.portal).
         # Capacitor loads config .ts > .js > .json, so unless we remove the .ts our copied
         # .json is IGNORED. Remove it so the station .json is the config Capacitor uses.
@@ -68,7 +68,7 @@ jobs:
         run: npx cap add android
 
       # NOTE: no kiosk lock-task step here — this is the OPEN variant. (The Time Clock
-      # app wires in native lock-task code; the Kitchen Station intentionally does not.)
+      # app wires in native lock-task code; the Krawings Department Device intentionally does not.)
 
       - name: Sync Capacitor into the native project
         run: npx cap sync android
@@ -111,5 +111,5 @@ jobs:
           gh release delete station-latest --repo "${{ github.repository }}" --yes --cleanup-tag || true
           gh release create station-latest krawings-station.apk \
             --repo "${{ github.repository }}" \
-            --title "Kitchen Station (latest build)" \
+            --title "Krawings Department Device (latest build)" \
             --notes "Auto-built from ${{ github.sha }}. On the tablet: open this page, tap krawings-station.apk, and allow install from unknown sources. Currently points at STAGING (portal.krawings.de)."
