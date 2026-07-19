@@ -8,25 +8,20 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
+import { getPermissionOverrides } from '@/lib/db';
 import {
   initInventoryTables, setProductPlacements, getPlacements,
   getLocationsForProduct, getCountLocation,
 } from '@/lib/inventory-db';
+import { canAccessCompany } from '@/lib/inventory-access';
 
 const KEY = 'inventory.location.manage';
-
-// Empty allowed list = all companies (e.g. an admin), matching locations/route.ts.
-function allows(allowed: number[], companyId: number): boolean {
-  return allowed.length === 0 || allowed.includes(companyId);
-}
 
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
 
-  const allowed = parseCompanyIds(user.allowed_company_ids);
   const { searchParams } = new URL(request.url);
   const locId = parseInt(searchParams.get('count_location_id') || '0', 10);
   const prodId = parseInt(searchParams.get('product_id') || '0', 10);
@@ -34,7 +29,7 @@ export async function GET(request: Request) {
   if (locId) {
     // Only expose a spot's placements to a caller allowed that location's company.
     const loc = getCountLocation(locId);
-    if (!loc || !allows(allowed, loc.company_id))
+    if (!loc || !canAccessCompany(user, loc.company_id))
       return NextResponse.json({ error: 'Location not found' }, { status: 404 });
     return NextResponse.json({ placements: getPlacements(locId) });
   }
@@ -42,7 +37,7 @@ export async function GET(request: Request) {
     // Filter to locations in the caller's companies (no cross-company leak).
     const ids = getLocationsForProduct(prodId).filter((id) => {
       const l = getCountLocation(id);
-      return l && allows(allowed, l.company_id);
+      return l && canAccessCompany(user, l.company_id);
     });
     return NextResponse.json({ location_ids: ids });
   }
@@ -63,8 +58,7 @@ export async function PUT(request: Request) {
 
   // Company scope: the target location must belong to one of the caller's companies.
   const loc = getCountLocation(count_location_id);
-  const allowed = parseCompanyIds(user.allowed_company_ids);
-  if (!loc || !allows(allowed, loc.company_id))
+  if (!loc || !canAccessCompany(user, loc.company_id))
     return NextResponse.json({ error: 'Location not found' }, { status: 404 });
 
   setProductPlacements(count_location_id, items.map((it: { odoo_product_id: number; shelf_sort?: number }, i: number) => ({

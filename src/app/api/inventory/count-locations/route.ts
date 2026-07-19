@@ -12,33 +12,25 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
+import { getPermissionOverrides } from '@/lib/db';
 import {
   initInventoryTables, createCountLocation, updateCountLocation,
   deleteCountLocation, listCountLocations, getCountLocation,
 } from '@/lib/inventory-db';
+import { canAccessCompany, resolveScopedCompany } from '@/lib/inventory-access';
 
 const KEY = 'inventory.location.manage';
-
-// An empty allowed list means "all companies" (e.g. an admin) — matches the
-// semantics of src/app/api/inventory/locations/route.ts.
-function allows(allowed: number[], companyId: number): boolean {
-  return allowed.length === 0 || allowed.includes(companyId);
-}
-
-function resolveCompany(allowed: number[], requested: number | null): number | null {
-  if (requested && allows(allowed, requested)) return requested;
-  return allowed.length > 0 ? allowed[0] : (requested || null);
-}
 
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
 
-  const allowed = parseCompanyIds(user.allowed_company_ids);
   const { searchParams } = new URL(request.url);
-  const companyId = resolveCompany(allowed, parseInt(searchParams.get('company_id') || '0', 10) || null);
+  const requested = parseInt(searchParams.get('company_id') || '0', 10) || null;
+  if (requested && !canAccessCompany(user, requested))
+    return NextResponse.json({ error: 'Location not found' }, { status: 404 });
+  const companyId = resolveScopedCompany(user, requested);
   if (!companyId) return NextResponse.json({ locations: [] });
   return NextResponse.json({ locations: listCountLocations(companyId) });
 }
@@ -50,9 +42,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden — manager role required' }, { status: 403 });
   initInventoryTables();
 
-  const allowed = parseCompanyIds(user.allowed_company_ids);
   const body = await request.json();
-  const companyId = resolveCompany(allowed, body.company_id ?? null);
+  const requested = body.company_id != null ? Number(body.company_id) : null;
+  if (requested && !canAccessCompany(user, requested))
+    return NextResponse.json({ error: 'That restaurant is not available to you' }, { status: 403 });
+  const companyId = resolveScopedCompany(user, requested);
   if (!companyId) return NextResponse.json({ error: 'No company available' }, { status: 400 });
   if (!body.name || !String(body.name).trim())
     return NextResponse.json({ error: 'name is required' }, { status: 400 });
@@ -91,8 +85,7 @@ export async function PUT(request: Request) {
   // Derive the company from the target row so multi-company managers edit the
   // right record; verify the caller is allowed that company.
   const loc = getCountLocation(id);
-  const allowed = parseCompanyIds(user.allowed_company_ids);
-  if (!loc || !allows(allowed, loc.company_id))
+  if (!loc || !canAccessCompany(user, loc.company_id))
     return NextResponse.json({ error: 'Location not found' }, { status: 404 });
 
   // Never let a client change company or re-parent (re-parenting isn't a Phase 1
@@ -115,8 +108,7 @@ export async function DELETE(request: Request) {
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
   const loc = getCountLocation(id);
-  const allowed = parseCompanyIds(user.allowed_company_ids);
-  if (!loc || !allows(allowed, loc.company_id))
+  if (!loc || !canAccessCompany(user, loc.company_id))
     return NextResponse.json({ error: 'Location not found' }, { status: 404 });
 
   deleteCountLocation(id, loc.company_id);

@@ -13,29 +13,22 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
+import { getPermissionOverrides } from '@/lib/db';
 import { initInventoryTables, listLocationKinds, addLocationKind, deleteLocationKind } from '@/lib/inventory-db';
+import { canAccessCompany, resolveScopedCompany } from '@/lib/inventory-access';
 
 const KEY = 'inventory.location.manage';
-
-// Same company semantics as count-locations: empty allowed list = all companies.
-function allows(allowed: number[], companyId: number): boolean {
-  return allowed.length === 0 || allowed.includes(companyId);
-}
-
-function resolveCompany(allowed: number[], requested: number | null): number | null {
-  if (requested && allows(allowed, requested)) return requested;
-  return allowed.length > 0 ? allowed[0] : (requested || null);
-}
 
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   initInventoryTables();
 
-  const allowed = parseCompanyIds(user.allowed_company_ids);
   const { searchParams } = new URL(request.url);
-  const companyId = resolveCompany(allowed, parseInt(searchParams.get('company_id') || '0', 10) || null);
+  const requested = parseInt(searchParams.get('company_id') || '0', 10) || null;
+  if (requested && !canAccessCompany(user, requested))
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const companyId = resolveScopedCompany(user, requested);
   if (!companyId) return NextResponse.json({ kinds: [] });
   return NextResponse.json({ kinds: listLocationKinds(companyId) });
 }
@@ -47,9 +40,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden — manager role required' }, { status: 403 });
   initInventoryTables();
 
-  const allowed = parseCompanyIds(user.allowed_company_ids);
   const body = await request.json();
-  const companyId = resolveCompany(allowed, body.company_id ?? null);
+  const requested = body.company_id != null ? Number(body.company_id) : null;
+  if (requested && !canAccessCompany(user, requested))
+    return NextResponse.json({ error: 'That restaurant is not available to you' }, { status: 403 });
+  const companyId = resolveScopedCompany(user, requested);
   if (!companyId) return NextResponse.json({ error: 'No company available' }, { status: 400 });
 
   const label = String(body.label || '').trim();
@@ -72,10 +67,12 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   initInventoryTables();
 
-  const allowed = parseCompanyIds(user.allowed_company_ids);
   const { searchParams } = new URL(request.url);
   const id = parseInt(searchParams.get('id') || '0', 10);
-  const companyId = resolveCompany(allowed, parseInt(searchParams.get('company_id') || '0', 10) || null);
+  const requested = parseInt(searchParams.get('company_id') || '0', 10) || null;
+  if (requested && !canAccessCompany(user, requested))
+    return NextResponse.json({ error: 'That restaurant is not available to you' }, { status: 403 });
+  const companyId = resolveScopedCompany(user, requested);
   if (!id || !companyId) return NextResponse.json({ error: 'id and company_id are required' }, { status: 400 });
 
   const result = deleteLocationKind(id, companyId);
