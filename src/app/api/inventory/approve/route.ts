@@ -13,6 +13,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+import { canAccessSession } from '@/lib/inventory-access';
 import {
   initInventoryTables,
   getSession,
@@ -35,6 +36,8 @@ export async function POST(request: Request) {
 
   const session = getSession(session_id);
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+  if (!canAccessSession(user, session))
+    return NextResponse.json({ error: 'This count belongs to another restaurant' }, { status: 403 });
   if (session.status !== 'submitted') {
     return NextResponse.json({ error: 'Session must be in submitted status' }, { status: 400 });
   }

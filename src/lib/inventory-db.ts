@@ -427,6 +427,9 @@ export function listSessions(filters?: {
   location_id?: number;
   assigned_user_id?: number;
   scheduled_date?: string;
+  // Manager/admin visibility: restrict to these companies (excludes null-company
+  // legacy sessions). Omit for an unrestricted admin (no company filter).
+  company_ids?: number[];
   // Staff visibility: a session is shown when it's assigned to this user, OR
   // it's not assigned to any person AND belongs to one of the user's companies
   // (how a shared department tablet sees "Anyone"/department lists).
@@ -439,6 +442,10 @@ export function listSessions(filters?: {
   if (filters?.template_id) { where.push('s.template_id = ?'); vals.push(filters.template_id); }
   if (filters?.location_id) { where.push('s.location_id = ?'); vals.push(filters.location_id); }
   if (filters?.assigned_user_id) { where.push('s.assigned_user_id = ?'); vals.push(filters.assigned_user_id); }
+  if (filters?.company_ids) {
+    if (filters.company_ids.length === 0) where.push('0 = 1');
+    else { where.push(`s.company_id IN (${filters.company_ids.map(() => '?').join(',')})`); vals.push(...filters.company_ids); }
+  }
   if (filters?.visibleTo) {
     const { userId, companyIds } = filters.visibleTo;
     if (companyIds.length > 0) {

@@ -12,7 +12,7 @@ import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
 import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap } from '@/lib/inventory-db';
-import { canAccessSession } from '@/lib/inventory-access';
+import { canAccessSession, companyScope } from '@/lib/inventory-access';
 import { resolveSessionRoute } from '@/lib/session-route';
 import { missedStops } from '@/lib/guided-route';
 import { logAudit } from '@/lib/db';
@@ -42,6 +42,9 @@ export async function GET(request: Request) {
   // Staff see sessions assigned to them PLUS unassigned ("Anyone"/department)
   // lists for their restaurant(s); managers/admins see all.
   const isStaff = !hasRole(user, 'manager');
+  // Managers/admins are scoped to their companies (unrestricted admin = no filter);
+  // staff use the assigned-or-unassigned-in-company visibility rule.
+  const scope = companyScope(user);
 
   const sessions = listSessions({
     status: (status || undefined) as undefined,
@@ -50,7 +53,7 @@ export async function GET(request: Request) {
     scheduled_date: date || undefined,
     ...(isStaff
       ? { visibleTo: { userId: user.id, companyIds: parseCompanyIds(user.allowed_company_ids) } }
-      : {}),
+      : (scope ? { company_ids: scope } : {})),
   });
 
   return NextResponse.json({ sessions });
@@ -120,6 +123,14 @@ export async function PUT(request: Request) {
   // Staff can submit; managers can approve/reject/reopen
   if (['approved', 'rejected'].includes(status) && !roleCan(user.role, 'inventory.review.approve', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  // Approve/reject also require the caller to own the session's restaurant.
+  if (['approved', 'rejected'].includes(status)) {
+    const session = getSession(id);
+    if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
+    if (!canAccessSession(user, session))
+      return NextResponse.json({ error: 'This count belongs to another restaurant' }, { status: 403 });
   }
 
   // On submit: enforce count completion + save proof photo

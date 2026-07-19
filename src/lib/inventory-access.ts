@@ -18,13 +18,16 @@ import { parseCompanyIds, type PortalUser } from '@/lib/db';
 import type { CountingSession } from '@/types/inventory';
 
 export function canAccessSession(user: PortalUser, session: CountingSession): boolean {
-  if (hasRole(user, 'manager')) return true;
-  if (session.assigned_user_id != null) return session.assigned_user_id === user.id;
-  // Unassigned-to-a-person → visible to staff of the session's company.
-  // A null company (legacy list, pre-dating this feature) stays person-only.
+  if (isUnrestrictedAdmin(user)) return true;
   const company = session.company_id ?? null;
-  if (company == null) return false;
-  return parseCompanyIds(user.allowed_company_ids).includes(company);
+  const inCompany = company != null && parseCompanyIds(user.allowed_company_ids).includes(company);
+  // Managers/admins: any session of a restaurant they're allowed — never another
+  // restaurant's. A legacy null-company session is left to an unrestricted admin.
+  if (hasRole(user, 'manager')) return inCompany;
+  // Staff: their own assigned session (explicit assignment wins), or an
+  // unassigned ("Anyone"/department) session in one of their companies.
+  if (session.assigned_user_id != null) return session.assigned_user_id === user.id;
+  return inCompany;
 }
 
 /**
