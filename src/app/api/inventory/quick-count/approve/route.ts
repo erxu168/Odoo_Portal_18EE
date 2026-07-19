@@ -54,10 +54,13 @@ export async function POST(request: Request) {
     if (qc.company_id != null) {
       const locRows = await odoo.searchRead('stock.location', [['id', '=', qc.location_id]], ['company_id'], { limit: 1 });
       const locCompany = locRows[0] && Array.isArray(locRows[0].company_id) ? locRows[0].company_id[0] : (locRows[0] ? locRows[0].company_id : false);
-      if (locCompany && locCompany !== qc.company_id) {
+      // Only push to Odoo when the location STILL belongs to exactly this count's
+      // restaurant. A shared (company_id=false) or missing location fails closed —
+      // no stock write to a location whose ownership can't be confirmed.
+      if (!locCompany || locCompany !== qc.company_id) {
         return NextResponse.json({
-          message: 'Approved and recorded. Stock not updated — this location now belongs to a different restaurant.',
-          warning: 'location-company-changed',
+          message: 'Approved and recorded. Stock not updated — this location is no longer tied to this restaurant.',
+          warning: 'location-company-mismatch',
         });
       }
     }

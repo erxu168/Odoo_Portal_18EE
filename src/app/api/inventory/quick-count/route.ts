@@ -18,9 +18,9 @@ import { crateTotal } from '@/lib/crate-units';
 // company. Best-effort: if Odoo is unreachable the quarantine in listQuickCounts
 // keeps un-backfilled rows hidden from non-admins.
 async function backfillQuickCountCompanies(): Promise<void> {
-  const missing = getQuickCountLocationsMissingCompany();
-  if (missing.length === 0) return;
   try {
+    const missing = getQuickCountLocationsMissingCompany();
+    if (missing.length === 0) return;
     const locs = await getOdoo().searchRead('stock.location', [['id', 'in', missing]], ['id', 'company_id'], { limit: missing.length });
     for (const l of locs as { id: number; company_id: [number, string] | false }[]) {
       const c = Array.isArray(l.company_id) ? l.company_id[0] : l.company_id;

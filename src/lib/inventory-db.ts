@@ -87,7 +87,6 @@ export function initInventoryTables() {
     CREATE INDEX IF NOT EXISTS idx_quick_status ON quick_counts(status);
     CREATE INDEX IF NOT EXISTS idx_quick_product ON quick_counts(product_id);
     CREATE INDEX IF NOT EXISTS idx_quick_counted_by ON quick_counts(counted_by);
-    CREATE INDEX IF NOT EXISTS idx_quick_company ON quick_counts(company_id);
 
     CREATE TABLE IF NOT EXISTS product_drafts (
       odoo_product_id INTEGER PRIMARY KEY,
@@ -258,8 +257,11 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   if (!qcCols.includes('company_id')) {
     try { db.exec('ALTER TABLE quick_counts ADD COLUMN company_id INTEGER'); }
     catch (e) { if (!(e instanceof Error && /duplicate column/i.test(e.message))) throw e; }
-    db.exec('CREATE INDEX IF NOT EXISTS idx_quick_company ON quick_counts(company_id)');
   }
+  // Index created HERE — after the column is guaranteed to exist for both fresh
+  // and migrated databases. Never in the CREATE-TABLE block, which on a legacy DB
+  // runs before this ALTER (a CREATE TABLE IF NOT EXISTS won't add the column).
+  db.exec('CREATE INDEX IF NOT EXISTS idx_quick_company ON quick_counts(company_id)');
 }
 
 // ===
