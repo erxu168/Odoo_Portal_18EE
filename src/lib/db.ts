@@ -341,6 +341,40 @@ export function getUserByApplicantId(applicantId: number): PortalUser | null {
 }
 
 /**
+ * Sync a login account's email to its linked employee's PROFILE email (the single source of
+ * truth). One-way (profile → login). Best-effort: a UNIQUE-email collision is reported, never
+ * thrown, so a profile edit can't fail because of a login-email clash.
+ * Returns: 'updated' | 'unchanged' | 'empty' | 'no_user' | 'collision'.
+ */
+export function setUserEmailByEmployeeId(
+  employeeId: number,
+  email: string,
+): 'updated' | 'unchanged' | 'empty' | 'no_user' | 'collision' {
+  const normalized = (email || '').toLowerCase().trim();
+  if (!normalized) return 'empty';
+  const db = getDb();
+  const row = db
+    .prepare('SELECT id, email FROM portal_users WHERE employee_id = ? AND active = 1')
+    .get(employeeId) as { id: number; email: string } | undefined;
+  if (!row) return 'no_user';
+  if ((row.email || '').toLowerCase().trim() === normalized) return 'unchanged';
+  try {
+    db.prepare('UPDATE portal_users SET email = ? WHERE id = ?').run(normalized, row.id);
+    return 'updated';
+  } catch (e) {
+    if (String((e as Error)?.message).includes('UNIQUE')) return 'collision';
+    throw e;
+  }
+}
+
+/** Active login accounts linked to an employee — used by the one-time email reconcile. */
+export function listEmployeeLinkedUsers(): { id: number; email: string; employee_id: number }[] {
+  return getDb()
+    .prepare('SELECT id, email, employee_id FROM portal_users WHERE employee_id IS NOT NULL AND active = 1')
+    .all() as { id: number; email: string; employee_id: number }[];
+}
+
+/**
  * Look up the portal account for an employee regardless of active state, with the
  * computed has_pin flag. Unlike getUserByEmployeeId (which filters active = 1),
  * this surfaces deactivated accounts so they can be reactivated.

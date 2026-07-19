@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
-import { parseCompanyIds } from '@/lib/db';
+import { parseCompanyIds, setUserEmailByEmployeeId } from '@/lib/db';
 import { EMPLOYEE_READ_FIELDS } from '@/types/hr';
 
 // Essentials — coerced (company/department -> number, active -> boolean).
@@ -119,12 +119,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (Object.keys(vals).length > 0) {
       await odoo.write('hr.employee', [employeeId], vals);
     }
+    // Profile Work email is the single source of truth — keep the linked portal login email
+    // in sync. Best-effort: a failure/collision never fails the profile save.
+    let emailSync: string | undefined;
+    if (vals.work_email !== undefined) {
+      try {
+        emailSync = setUserEmailByEmployeeId(employeeId, String(vals.work_email || ''));
+      } catch (e) {
+        console.error('[email-sync] failed for employee', employeeId, e);
+        emailSync = 'error';
+      }
+    }
     // Separate, final write so a same-request company change can't recompute over it.
     if (hasWorkPhone) {
       await odoo.write('hr.employee', [employeeId], { work_phone: workPhone });
     }
     const updated = [...Object.keys(vals), ...(hasWorkPhone ? ['work_phone'] : [])];
-    return NextResponse.json({ success: true, updated });
+    return NextResponse.json({ success: true, updated, emailSync });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('PATCH /api/hr/employee/[id] error:', err);
