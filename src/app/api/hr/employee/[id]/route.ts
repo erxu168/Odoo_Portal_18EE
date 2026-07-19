@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
-import { parseCompanyIds, setUserEmailByEmployeeId, getUserByEmployeeId } from '@/lib/db';
+import { parseCompanyIds, setUserEmail, getUserByEmployeeId } from '@/lib/db';
 import { EMPLOYEE_READ_FIELDS } from '@/types/hr';
 
 // Essentials — coerced (company/department -> number, active -> boolean).
@@ -123,15 +123,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     // in sync. Best-effort: a failure/collision never fails the profile save.
     let emailSync: string | undefined;
     if (vals.work_email !== undefined) {
-      // SECURITY: changing the login email is a credential change. A non-admin must NOT be able to
-      // re-point an ADMIN account's email (that + the public password-reset flow = account takeover).
-      // Mirror the "only admins may touch admin accounts" rule from the access-management route.
+      // SECURITY: changing the login email is a credential change. Resolve the linked account ONCE,
+      // then check its role AND update THAT SAME row — so a non-admin can never re-point an ADMIN
+      // account's email (that + the public password-reset flow = account takeover), even if duplicate
+      // links exist. Mirrors the "only admins may touch admin accounts" rule.
       const linked = getUserByEmployeeId(employeeId);
-      if (linked && linked.role === 'admin' && user.role !== 'admin') {
+      if (!linked) {
+        emailSync = 'no_user';
+      } else if (linked.role === 'admin' && user.role !== 'admin') {
         emailSync = 'skipped_admin_target';
       } else {
         try {
-          emailSync = setUserEmailByEmployeeId(employeeId, String(vals.work_email || ''));
+          emailSync = setUserEmail(linked.id, String(vals.work_email || ''));
         } catch (e) {
           console.error('[email-sync] failed for employee', employeeId, e);
           emailSync = 'error';

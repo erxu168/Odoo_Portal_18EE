@@ -370,24 +370,18 @@ export function setUserEmail(userId: number, email: string): EmailSyncOutcome {
   }
 }
 
-/**
- * Sync the login email of an employee's ACTIVE linked account to their PROFILE email (source of
- * truth). One-way (profile → login), best-effort. Returns 'no_user' if there is no active account.
- * SECURITY: this changes a login credential — callers must authorize the TARGET account's role
- * (a non-admin must not be able to re-point an admin account's email). See the PATCH route.
- */
-export function setUserEmailByEmployeeId(employeeId: number, email: string): EmailSyncOutcome | 'no_user' {
-  const row = getDb()
-    .prepare('SELECT id FROM portal_users WHERE employee_id = ? AND active = 1 ORDER BY id LIMIT 1')
-    .get(employeeId) as { id: number } | undefined;
-  if (!row) return 'no_user';
-  return setUserEmail(row.id, email);
-}
+// NOTE: no setUserEmailByEmployeeId helper — callers MUST resolve the account, authorize its role,
+// and update THAT SAME row by id (via setUserEmail), so the role-check and the update can never
+// target different rows when duplicate links exist. See the employee PATCH route.
 
-/** Login accounts linked to an employee (incl. deactivated) — used by the one-time email reconcile. */
+/**
+ * Login accounts linked to an employee (incl. deactivated) — used by the one-time email reconcile.
+ * ACTIVE accounts first so, if a duplicate link exists, the live account claims the (unique) email
+ * and any stale deactivated duplicate simply collides.
+ */
 export function listEmployeeLinkedUsers(): { id: number; email: string; employee_id: number }[] {
   return getDb()
-    .prepare('SELECT id, email, employee_id FROM portal_users WHERE employee_id IS NOT NULL ORDER BY id')
+    .prepare('SELECT id, email, employee_id FROM portal_users WHERE employee_id IS NOT NULL ORDER BY active DESC, id')
     .all() as { id: number; email: string; employee_id: number }[];
 }
 
