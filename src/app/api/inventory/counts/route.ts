@@ -69,16 +69,23 @@ export async function POST(request: Request) {
 
   initInventoryTables();
   const body = await request.json();
-  const { session_id, product_id, counted_qty, crate_qty, loose_qty, units_per_crate, system_qty, uom, notes, photos } = body;
+  const { session_id, product_id, count_location_id, out_of_stock, counted_qty, crate_qty, loose_qty, units_per_crate, system_qty, uom, notes, photos } = body;
+
+  // Which spot this count is for (0 = no specific spot / legacy client). Just a
+  // grouping key for the portal — session access is already gated below.
+  const locId = Number.isInteger(count_location_id) && count_location_id >= 0 ? count_location_id : 0;
+  // Explicit "none here" — recorded distinctly from a counted 0 or an uncounted row.
+  const isOut = out_of_stock === true;
 
   // When a crate split is provided, the base total is computed HERE (server is
   // the source of truth) so the value written to Odoo can never drift. Odoo
-  // still only ever receives the base-unit total via counted_qty.
-  const hasSplit = units_per_crate != null && Number(units_per_crate) > 0
+  // still only ever receives the base-unit total via counted_qty. Out of stock
+  // is a deliberate zero.
+  const hasSplit = !isOut && units_per_crate != null && Number(units_per_crate) > 0
     && (crate_qty !== undefined || loose_qty !== undefined);
-  const baseQty = hasSplit
+  const baseQty = isOut ? 0 : (hasSplit
     ? crateTotal(Number(crate_qty) || 0, Number(loose_qty) || 0, Number(units_per_crate))
-    : counted_qty;
+    : counted_qty);
 
   if (!session_id || !product_id || baseQty === undefined || baseQty === null) {
     return NextResponse.json({ error: 'session_id, product_id, counted_qty required' }, { status: 400 });
@@ -104,6 +111,8 @@ export async function POST(request: Request) {
 
   upsertCountEntry({
     session_id, product_id, counted_qty: baseQty,
+    count_location_id: locId,
+    out_of_stock: isOut,
     system_qty: system_qty ?? null,
     uom: uom || 'Units',
     notes,
@@ -117,7 +126,8 @@ export async function POST(request: Request) {
 
   if (Array.isArray(photos)) {
     const entries = getSessionEntries(session_id);
-    const entry = entries.find((e: any) => e.product_id === product_id);
+    // Match the row for THIS spot (same product can exist at several spots).
+    const entry = entries.find((e: any) => e.product_id === product_id && (e.count_location_id ?? 0) === locId);
     if (entry) setCountPhotos('count_entries', entry.id, photos);
   }
 
@@ -133,15 +143,19 @@ export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get('session_id');
   const productId = searchParams.get('product_id');
+  const locParam = searchParams.get('count_location_id');
   if (!sessionId || !productId) {
     return NextResponse.json({ error: 'session_id and product_id required' }, { status: 400 });
   }
+  // With a spot → remove just that spot's row; without → remove the product from
+  // every spot in the session (legacy behaviour).
+  const locId = locParam != null && locParam !== '' ? parseInt(locParam) : undefined;
 
   const session = getSession(parseInt(sessionId));
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
   if (!canAccessSession(user, session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (!isEditable(session.status)) return NextResponse.json({ error: 'This count can no longer be edited' }, { status: 400 });
 
-  deleteCountEntry(parseInt(sessionId), parseInt(productId));
+  deleteCountEntry(parseInt(sessionId), parseInt(productId), Number.isFinite(locId) ? locId : undefined);
   return NextResponse.json({ message: 'Count removed' });
 }
