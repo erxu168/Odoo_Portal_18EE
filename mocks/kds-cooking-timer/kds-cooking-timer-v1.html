@@ -215,9 +215,9 @@
     <div class="srow"><div class="sname"><span class="dot fry"></span>Deep Fry &amp; Smoker</div><div class="tog on" data-st="fry"></div></div>
     <div class="srow"><div class="sname"><span class="dot oven"></span>Oven</div><div class="tog on" data-st="oven"></div></div>
     <div class="srow"><div class="sname">Sound</div><div class="tog on" data-st="__sound"></div></div>
-    <div class="srow"><div class="sname">Demo: 10&times; speed</div><div class="tog on" data-st="__speed"></div></div>
+    <div class="srow"><div class="sname">Demo: 3-second steps</div><div class="tog on" data-st="__speed"></div></div>
     <button id="closeSettings">Close</button>
-    <div class="mocknote">Mock v1.5 &mdash; demo orders re-appear in the queue over time so you can keep testing. Every step end alarms and must be confirmed with a tap &mdash; nothing advances by itself. When a card flashes, tapping anywhere on it advances/finishes. SKIP and CANCEL need a second tap to confirm.</div>
+    <div class="mocknote">Mock v1.6 &mdash; demo orders re-appear in the queue over time so you can keep testing. Every step end alarms and must be confirmed with a tap &mdash; nothing advances by itself. When a card flashes, tapping anywhere on it advances/finishes. SKIP and CANCEL need a second tap to confirm.</div>
   </div>
 </div>
 
@@ -289,7 +289,7 @@ function sndDone(){ [0,.15,.3].forEach(w=>{tone(1760,.12,"square",.35,w); tone(8
 /* ================= helpers ================= */
 const $ = s=>document.querySelector(s);
 function fmt(s){ s=Math.max(0,Math.ceil(s)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
-function speedDiv(){ return state.speed?10:1; }
+function effSecs(s){ return state.speed?3:s.secs; } /* demo mode: every step runs 3s */
 function toast(msg){
   const t=$("#toast"); t.textContent=msg; t.classList.add("show");
   clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove("show"),2200);
@@ -352,8 +352,8 @@ function startTimers(items){ /* one timer covering 1..n order lines of the same 
 function stepOf(t){ return PROFILES[t.profile].steps[t.stepIdx]; }
 function stepRemaining(t){
   const s=stepOf(t);
-  const elapsed=(Date.now()-t.stepStart)/1000*speedDiv();
-  return s.secs-elapsed;
+  const elapsed=(Date.now()-t.stepStart)/1000;
+  return effSecs(s)-elapsed;
 }
 function nextStep(t){
   const p=PROFILES[t.profile];
@@ -392,7 +392,7 @@ setInterval(()=>{
       const isLast = t.stepIdx===PROFILES[t.profile].steps.length-1;
       if(isLast){ t.state="done"; t.lastBeep=Date.now(); dirty=true; if(!t.muted) sndDone(); }
       else { t.state="alarm"; t.lastBeep=Date.now(); dirty=true; if(!t.muted) sndAction(); }
-    } else if(rem<=s.secs*.15 && t.state!=="warnzone"){ t.state="warnzone"; dirty=true; }
+    } else if(rem<=effSecs(s)*.15 && t.state!=="warnzone"){ t.state="warnzone"; dirty=true; }
   });
   updateCounts();
   if(dirty) renderBoard();
@@ -409,7 +409,7 @@ function updateCounts(){
     if(t.state==="done"||t.state==="alarm"){ el.textContent="0:00"; return; }
     el.textContent=fmt(stepRemaining(t));
     const bar=document.getElementById("bar-"+t.id);
-    if(bar){ bar.style.width=Math.min(100,(1-stepRemaining(t)/s.secs)*100)+"%"; }
+    if(bar){ bar.style.width=Math.min(100,(1-stepRemaining(t)/effSecs(s))*100)+"%"; }
   });
   const d=new Date(); $("#clock").textContent=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
 }
