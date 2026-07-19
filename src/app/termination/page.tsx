@@ -7,6 +7,7 @@ import TermDashboard from '@/components/termination/TermDashboard';
 import TermList from '@/components/termination/TermList';
 import TermWizard from '@/components/termination/TermWizard';
 import TermDetail from '@/components/termination/TermDetail';
+import StartChecklistPrompt from '@/components/hr/StartChecklistPrompt';
 
 type Screen =
   | { type: 'dashboard' }
@@ -29,6 +30,8 @@ function TerminationInner() {
   const preselectId = Number(useSearchParams().get('employee')) || null;
   const [screen, setScreen] = useState<Screen>(preselectId ? { type: 'wizard' } : { type: 'dashboard' });
   const [history, setHistory] = useState<Screen[]>([]);
+  // After a termination is confirmed, offer the Leaving checklist for that person.
+  const [leavingPrompt, setLeavingPrompt] = useState<{ employeeId: number; terminationId: number } | null>(null);
 
   function navigate(s: Screen) {
     setHistory(h => [...h, screen]);
@@ -101,9 +104,10 @@ function TerminationInner() {
             preselectEmployeeId={preselectId ?? undefined}
             onBack={goBack}
             onHome={goDashboard}
-            onCreated={id => {
+            onCreated={(id, employeeId) => {
               setHistory([{ type: 'dashboard' }]);
               setScreen({ type: 'detail', id });
+              if (employeeId) setLeavingPrompt({ employeeId, terminationId: id });
             }}
           />
         );
@@ -122,6 +126,15 @@ function TerminationInner() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       {renderScreen()}
+      {leavingPrompt && (
+        <StartChecklistPrompt
+          employeeId={leavingPrompt.employeeId}
+          fixedStage="leaving"
+          terminationId={leavingPrompt.terminationId}
+          onStarted={() => setLeavingPrompt(null)}
+          onClose={() => setLeavingPrompt(null)}
+        />
+      )}
     </div>
   );
 }

@@ -19,7 +19,7 @@ interface Employee {
 
 interface TermWizardProps {
   onBack: () => void;
-  onCreated: (id: number) => void;
+  onCreated: (id: number, employeeId: number) => void;
   onHome: () => void;
   preselectEmployeeId?: number;
 }
@@ -157,7 +157,7 @@ export default function TermWizard({ onBack, onCreated, onHome, preselectEmploye
       if (!confirmJson.ok) throw new Error(confirmJson.error || 'Confirmation failed');
       const pdfRes = await fetch(`/api/termination/${createdRecordId}/pdf`, { method: 'POST' });
       if (!pdfRes.ok) { const pdfJson = await pdfRes.json(); throw new Error(pdfJson.error || 'PDF generation failed'); }
-      onCreated(createdRecordId);
+      onCreated(createdRecordId, selectedEmployee?.id ?? 0);
     } catch (err: unknown) { setError(err instanceof Error ? err.message : String(err)); }
     finally { setSubmitting(false); }
   }

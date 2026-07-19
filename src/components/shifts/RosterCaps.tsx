@@ -5,6 +5,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import { Badge, EmptyState, SearchBar, Sheet, Spinner } from '@/components/shifts/ui';
 import { ds } from '@/lib/design-system';
 import { useCompany } from '@/lib/company-context';
+import StartChecklistPrompt from '@/components/hr/StartChecklistPrompt';
 import type { ShiftEmployee } from '@/types/shifts';
 
 /**
@@ -78,6 +79,7 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
   const [editing, setEditing] = useState<ShiftEmployee | null>(null);
   const [capStr, setCapStr] = useState('');
   const [skill, setSkill] = useState<SkillLevel | null>(null);
+  const [promotionOffer, setPromotionOffer] = useState<{ employeeId: number; targetLevel: string; fromLevel: string | null } | null>(null);
   const [deptId, setDeptId] = useState<number | null>(null);
   const [roleIds, setRoleIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
@@ -172,9 +174,13 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const empId = editing.id;
+      const offer = data.promotion_offer as { target_level: string; from_level: string | null } | null | undefined;
       setEditing(null);
       setNeedsConfirm(false);
       await fetchRoster();
+      // On an upward level change, offer the matching promotion checklist.
+      if (offer) setPromotionOffer({ employeeId: empId, targetLevel: offer.target_level, fromLevel: offer.from_level });
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : 'Network error');
     } finally {
@@ -185,6 +191,17 @@ export default function RosterCaps({ companyId, onBack }: RosterCapsProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader supertitle="Planning" title="Roster & Caps" showBack onBack={onBack} />
+
+      {promotionOffer && (
+        <StartChecklistPrompt
+          employeeId={promotionOffer.employeeId}
+          fixedStage="promotion"
+          defaultTargetLevel={promotionOffer.targetLevel}
+          fromLevel={promotionOffer.fromLevel}
+          onStarted={() => setPromotionOffer(null)}
+          onClose={() => setPromotionOffer(null)}
+        />
+      )}
 
       <div className="pt-3">
         <SearchBar value={search} onChange={setSearch} placeholder="Search team…" />

@@ -14,6 +14,7 @@ import { setKioskPin } from '@/lib/shifts-db';
 import { fetchEmployees, recomputeWeekFlags } from '@/lib/shifts-odoo';
 import { currentWeekKey, offsetWeekKey } from '@/lib/shifts-time';
 import { requireManagerCompany, serverError } from '../../_manager';
+import { isPromotion } from '@/lib/staffing-logic';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,11 +49,16 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
       capChanged = true;
     }
 
+    // Skill is written SEPARATELY (below) so we can tell whether the change
+    // actually persisted — a promotion checklist must never be offered for a
+    // level change that silently failed.
+    let skillVal: false | '1' | '2' | '3' | undefined;
+    let toLevel: string | null | undefined;
     if ('skill' in body) {
       if (body.skill === null) {
-        employeeVals.x_skill_level = false;
+        skillVal = false; toLevel = null;
       } else if (body.skill === '1' || body.skill === '2' || body.skill === '3') {
-        employeeVals.x_skill_level = body.skill;
+        skillVal = body.skill; toLevel = body.skill;
       } else {
         return NextResponse.json(
           { error: 'skill must be null, "1", "2" or "3"' },
@@ -119,9 +125,23 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
       try {
         await odoo.write('hr.employee', [employeeId], employeeVals);
       } catch {
-        // The cap/skill/employment fields require the krawings_shift_selfservice
+        // The cap/employment fields require the krawings_shift_selfservice
         // addon. Where it's absent (e.g. production before the addon update), skip
         // this write so roles + PIN still save instead of failing the whole request.
+      }
+    }
+
+    // Skill write + promotion detection. On a confirmed upward level change we
+    // return a promotion_offer so the UI can offer the matching checklist.
+    let promotionOffer: { employee_id: number; target_level: string; from_level: string | null } | null = null;
+    if (skillVal !== undefined) {
+      let skillWriteOk = false;
+      try {
+        await odoo.write('hr.employee', [employeeId], { x_skill_level: skillVal });
+        skillWriteOk = true;
+      } catch { /* addon absent — skill not persisted, so no promotion offer */ }
+      if (skillWriteOk && isPromotion(employee.skill, toLevel) && toLevel) {
+        promotionOffer = { employee_id: employeeId, target_level: toLevel, from_level: employee.skill };
       }
     }
     // Standard field — write on its own so an addon-field failure above doesn't drop it.
@@ -139,7 +159,7 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
       await recomputeWeekFlags(companyId, offsetWeekKey(thisWeek, 1), [employeeId]);
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, promotion_offer: promotionOffer });
   } catch (err: unknown) {
     return serverError('PUT roster/[employeeId]', err);
   }
