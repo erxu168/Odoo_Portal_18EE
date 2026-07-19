@@ -26,6 +26,7 @@ const FREQ_LABELS: Record<string, string> = {
 
 export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProps) {
   const [sessions, setSessions] = useState<any[]>([]);
+  const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [locationFilter, setLocationFilter] = useState('all');
@@ -47,8 +48,16 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
         locations.length === 0 ? fetch('/api/inventory/locations') : null,
       ]);
 
-      const sessData = await sessRes.json();
-      setSessions(sessData.sessions || []);
+      if (!sessRes.ok) {
+        // Never fall through to the "All done for today!" empty state on an error —
+        // staff would skip real counts. Surface a distinct error instead.
+        setLoadError(true);
+        setSessions([]);
+      } else {
+        setLoadError(false);
+        const sessData = await sessRes.json();
+        setSessions(sessData.sessions || []);
+      }
 
       if (locRes) {
         const locData = await locRes.json();
@@ -56,6 +65,7 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
       }
     } catch (err) {
       console.error('Failed to fetch sessions:', err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -124,7 +134,9 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
 
       {/* Session cards */}
       <div className="px-4 pb-24">
-        {loading ? <Spinner /> : sessions.length === 0 ? (
+        {loading ? <Spinner /> : loadError ? (
+          <EmptyState icon={'⚠️'} title={"Couldn't load your lists"} body={'Something went wrong. Refresh or try again in a moment.'} />
+        ) : sessions.length === 0 ? (
           <EmptyState icon={empty.icon} title={empty.title} body={empty.body} />
         ) : (
           <div className="flex flex-col gap-3">

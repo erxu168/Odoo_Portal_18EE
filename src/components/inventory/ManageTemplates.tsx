@@ -74,24 +74,22 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
 
   async function handleSave(data: any) {
     try {
-      if (data.id) {
-        await fetch('/api/inventory/templates', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
-      } else {
-        await fetch('/api/inventory/templates', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-        });
+      const res = await fetch('/api/inventory/templates', {
+        method: data.id ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.error || 'Could not save the list. Please try again.');
+        return;   // keep the form open so the manager can fix it
       }
       setEditing(null);
       setCreating(false);
       fetchData();
     } catch (err) {
       console.error('Save failed:', err);
+      alert('Network error — the list was not saved.');
     }
   }
 
