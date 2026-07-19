@@ -66,8 +66,9 @@ test('desktop: clicking the Quick-add Date field opens the picker', async ({ pag
   await page.goto('/shifts');
   await page.getByText('Manage Shifts', { exact: true }).click();
   await page.getByRole('button', { name: /New shift/i }).first().click();
-  await page.getByText('Add shift', { exact: true }).waitFor({ timeout: 20_000 });
-  await page.getByLabel('Date', { exact: true }).click();
+  const qaDate = page.getByLabel('Date', { exact: true });
+  await qaDate.waitFor({ state: 'visible', timeout: 20_000 });
+  await qaDate.click();
   const picks = await page.evaluate(() => (window as unknown as { __picks: number }).__picks);
   expect(picks).toBeGreaterThan(0);
 });
