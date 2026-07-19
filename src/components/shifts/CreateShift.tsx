@@ -11,7 +11,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
-import { Badge, EmptyState, Spinner, ToggleSwitch } from '@/components/shifts/ui';
+import { Badge, EmptyState, openNativePicker, Spinner, ToggleSwitch } from '@/components/shifts/ui';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { ds } from '@/lib/design-system';
 import { arbzgConflicts, berlinISOWeekKey, berlinParts, nowOdooUtc, weekKeyDays } from '@/lib/shifts-time';
@@ -557,7 +557,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
           <div className={`${ds.card} p-4 flex flex-col gap-3`}>
             <div>
               <div className={LBL}>Date</div>
-              <input type="date" min={todayBerlin} value={date} onChange={e => setDate(e.target.value)} className={ds.input} />
+              <input type="date" min={todayBerlin} value={date} onChange={e => setDate(e.target.value)} onClick={openNativePicker} className={ds.input} />
               {date && (
                 <div className={`${HINT} mt-1.5 ${date < todayBerlin ? 'text-red-600 font-semibold' : ''}`}>
                   {date < todayBerlin ? `⚠ ${weekdayLabel(date)} is in the past` : weekdayLabel(date)}
@@ -783,7 +783,7 @@ export default function CreateShift({ companyId, isManager, onBack, prefill, onC
               <>
                 <div>
                   <div className={LBL}>Until (optional)</div>
-                  <input type="date" min={date} value={until} onChange={e => setUntil(e.target.value)} className={ds.input} />
+                  <input type="date" min={date} value={until} onChange={e => setUntil(e.target.value)} onClick={openNativePicker} className={ds.input} />
                   <div className={`${HINT} mt-1`}>Leave blank to keep repeating.</div>
                 </div>
                 <div className={HINT}>

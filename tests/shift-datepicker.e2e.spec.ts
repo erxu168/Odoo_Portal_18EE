@@ -48,6 +48,30 @@ test('desktop: clicking the week-jump date field opens the picker', async ({ pag
   expect(picks).toBeGreaterThan(0);
 });
 
+test('desktop: clicking the Quick-add Date field opens the picker', async ({ page, context }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __picks: number }).__picks = 0;
+    const proto = HTMLInputElement.prototype as unknown as { showPicker?: () => void };
+    const orig = proto.showPicker;
+    proto.showPicker = function (this: HTMLInputElement) {
+      (window as unknown as { __picks: number }).__picks++;
+      try {
+        return orig?.apply(this);
+      } catch {
+        /* headless */
+      }
+    };
+  });
+  await login(page, context);
+  await page.goto('/shifts');
+  await page.getByText('Manage Shifts', { exact: true }).click();
+  await page.getByRole('button', { name: /New shift/i }).first().click();
+  await page.getByText('Add shift', { exact: true }).waitFor({ timeout: 20_000 });
+  await page.getByLabel('Date', { exact: true }).click();
+  const picks = await page.evaluate(() => (window as unknown as { __picks: number }).__picks);
+  expect(picks).toBeGreaterThan(0);
+});
+
 test('week-jump wiring still changes the week when a date is chosen', async ({ page, context }) => {
   await login(page, context);
   await page.goto('/shifts');

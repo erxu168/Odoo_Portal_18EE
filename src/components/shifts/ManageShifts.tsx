@@ -2271,6 +2271,8 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 min={todayBerlin}
                 value={qaDate}
                 onChange={e => e.target.value && setQaDate(e.target.value)}
+                onClick={openNativePicker}
+                aria-label="Date"
                 className={ds.input}
               />
               <div className={`${HINT} mt-1`}>{dayLabel(qaDate)}</div>
@@ -2519,6 +2521,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 min={addDaysISO(days[days.length - 1], 1)}
                 max={addDaysISO(days[days.length - 1], 8 * 7)}
                 onChange={e => e.target.value && setDupUntil(e.target.value)}
+                onClick={openNativePicker}
                 className={ds.input}
               />
               <div className={`${HINT} mt-1`}>Up to 8 weeks ahead.</div>
@@ -2580,7 +2583,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
 
             <div>
               <div className={LBL}>Date</div>
-              <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className={ds.input} />
+              <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} onClick={openNativePicker} className={ds.input} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
