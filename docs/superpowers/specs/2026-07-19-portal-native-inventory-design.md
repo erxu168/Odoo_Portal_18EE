@@ -112,7 +112,10 @@ Every new endpoint (product-images, receipts, usage) reads the active company fr
 
 Each phase is independently testable and shippable; #1–2 give a working portal-native counting flow, #3–5 add pictures, receipts, and the consumption number.
 
-## Open questions
-- Product pictures: **image-only** vs **image + attached files** (PDF spec sheets)? Spec supports both; default is a primary image with optional file attachments.
+## Decisions (approved 2026-07-19)
+- **Decouple as spec'd** — Odoo stock write off (behind a flag), Odoo stays the read-only product source, portal owns inventory.
+- **Product pictures = one primary image per product** (camera or image upload). **Image-only** for now; per-product file attachments (PDF spec sheets) are **deferred**, not built.
+
+## Open questions (deferred, not blocking)
 - Receipts: manual entry + barcode now; a CSV/delivery-note import later?
 - Usage report period: two chosen counts (this spec) vs a rolling date range with nearest counts (later)?

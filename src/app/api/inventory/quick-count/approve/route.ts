@@ -15,6 +15,7 @@ import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, approveQuickCount, rejectQuickCount } from '@/lib/inventory-db';
 import { getDb } from '@/lib/db';
 import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
+import { inventoryOdooSyncEnabled } from '@/lib/inventory-config';
 
 
 export async function POST(request: Request) {
@@ -62,7 +63,9 @@ export async function POST(request: Request) {
 
   let warning: string | null = null;
 
-  try {
+  // Odoo stock write is opt-in (default off). When off, approval just records
+  // the count in the portal — the source of truth.
+  if (inventoryOdooSyncEnabled()) try {
     const odoo = getOdoo();
 
     // Guard against a location that changed company since the count: only push to

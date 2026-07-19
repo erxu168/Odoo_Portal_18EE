@@ -20,6 +20,7 @@ import {
   getSessionEntries,
   updateSessionStatus,
 } from '@/lib/inventory-db';
+import { inventoryOdooSyncEnabled } from '@/lib/inventory-config';
 
 
 export async function POST(request: Request) {
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
   }
   const writableProductIds = Array.from(writeByProduct.keys());
   const distinctProducts = new Set(entries.map(e => e.product_id)).size;
+  const odooSync = inventoryOdooSyncEnabled();
 
   // Best-effort Odoo sync. The portal is the record of the count; Odoo stock
   // is only updated for products Odoo actually tracks (storable). Non-storable
@@ -75,7 +77,7 @@ export async function POST(request: Request) {
   const failedEntries: { product_id: number; error: string }[] = [];
   let syncError: string | null = null;
 
-  if (writableProductIds.length > 0) {
+  if (odooSync && writableProductIds.length > 0) {
     try {
       const odoo = getOdoo();
 
@@ -160,7 +162,9 @@ export async function POST(request: Request) {
   const needsManual = failedEntries.length;
   const notSynced = distinctProducts - syncedProducts.length - needsManual;
   let warning: string | null = null;
-  if (syncError) {
+  if (!odooSync) {
+    warning = null;                       // portal is the record; nothing to sync to Odoo
+  } else if (syncError) {
     warning = `Approved and recorded. Couldn’t reach Odoo to update stock (${syncError}).`;
   } else if (needsManual > 0) {
     warning = `Approved. ${syncedProducts.length} updated in Odoo; ${needsManual} product${needsManual !== 1 ? 's' : ''} need manual adjustment in Odoo (several stock records exist).`;

@@ -13,6 +13,7 @@ import { canAccessSession } from '@/lib/inventory-access';
 import { getOdoo } from '@/lib/odoo';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { crateTotal } from '@/lib/crate-units';
+import { inventoryOdooSyncEnabled } from '@/lib/inventory-config';
 
 // A count line can only be written/removed while the session is still open.
 function isEditable(status: string): boolean {
@@ -38,9 +39,11 @@ export async function GET(request: Request) {
   const photoMap = getCountPhotosMap('count_entries', entries.map((e: any) => e.id));
   const hydrated = entries.map((e: any) => ({ ...e, photos: photoMap[e.id] || [] }));
 
-  // Fetch system quantities from Odoo stock.quant for this session's list products.
+  // System quantities (Odoo stock.quant variance) only when Odoo sync is on.
+  // Off by default: the portal count is the source of truth, no comparison to an
+  // unconfigured Odoo stock number.
   const systemQtys: Record<number, number> = {};
-  try {
+  if (inventoryOdooSyncEnabled()) try {
     const odoo = getOdoo();
     // Scope to this session's list products and sum ALL quants (including negative
     // dimensional rows), rather than only positive quants across the whole location.
