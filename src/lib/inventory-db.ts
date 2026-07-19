@@ -710,7 +710,9 @@ export function generateSessionForTemplate(templateId: number): number | null {
 export function upsertCountEntry(data: {
   session_id: number;
   product_id: number;
-  counted_qty: number;               // always the base-unit total (bottles)
+  count_location_id?: number;        // which spot (default 0 = no specific spot / legacy)
+  counted_qty: number;               // base-unit total (bottles); forced to 0 when out_of_stock
+  out_of_stock?: boolean;            // deliberate "none here" (≠ a counted 0, ≠ not-counted)
   system_qty?: number | null;
   uom: string;
   notes?: string;
@@ -718,13 +720,22 @@ export function upsertCountEntry(data: {
   crate_qty?: number | null;         // audit trail: crates as entered
   loose_qty?: number | null;         // audit trail: loose base units as entered
   units_per_crate?: number | null;   // snapshot of the crate size at count time
+  count_mode?: CountMode | null;     // snapshot of how it was counted
+  pack_label?: string | null;        // snapshot
+  loose_label?: string | null;       // snapshot
+  odoo_qty?: number | null;          // converted base qty safe for Odoo; null = portal-only (no average)
 }) {
   const db = getDb();
+  const locId = data.count_location_id ?? 0;
+  const oos = data.out_of_stock ? 1 : 0;
+  const countedQty = oos ? 0 : data.counted_qty;
+  // Keyed by (session, spot, product) so the SAME product can be counted at
+  // several spots in one session without overwriting itself.
   const existing = db.prepare(
-    'SELECT id FROM count_entries WHERE session_id = ? AND product_id = ?'
-  ).get(data.session_id, data.product_id) as { id: number } | undefined;
+    'SELECT id FROM count_entries WHERE session_id = ? AND count_location_id = ? AND product_id = ?'
+  ).get(data.session_id, locId, data.product_id) as { id: number } | undefined;
 
-  const diff = data.system_qty != null ? data.counted_qty - data.system_qty : null;
+  const diff = data.system_qty != null ? countedQty - data.system_qty : null;
 
   // Preserve an existing crate/loose split when a save doesn't carry crate
   // fields (e.g. a photo-only re-save of a crate product). Passing any crate
@@ -749,37 +760,55 @@ export function upsertCountEntry(data: {
     upc = null;
   }
 
+  const cmode = data.count_mode ?? null;
+  const plabel = data.pack_label ?? null;
+  const llabel = data.loose_label ?? null;
+  // Out = intentional zero for Odoo. Legacy callers (odoo_qty undefined) keep
+  // today's behaviour: write the counted qty. A new caller passes null to mean
+  // "portal-only, don't touch Odoo kg" (e.g. a simple count with no average).
+  const odooQty = oos ? 0 : (data.odoo_qty !== undefined ? data.odoo_qty : countedQty);
+
   if (existing) {
     db.prepare(`
-      UPDATE count_entries SET counted_qty = ?, system_qty = ?, diff = ?, uom = ?, notes = ?,
-        crate_qty = ?, loose_qty = ?, units_per_crate = ?, counted_at = ?
+      UPDATE count_entries SET counted_qty = ?, out_of_stock = ?, system_qty = ?, diff = ?, uom = ?, notes = ?,
+        crate_qty = ?, loose_qty = ?, units_per_crate = ?, count_mode = ?, pack_label = ?, loose_label = ?, odoo_qty = ?, counted_at = ?
       WHERE id = ?
-    `).run(data.counted_qty, data.system_qty ?? null, diff, data.uom, data.notes || null,
-      crateQty, looseQty, upc, now(), existing.id);
+    `).run(countedQty, oos, data.system_qty ?? null, diff, data.uom, data.notes || null,
+      crateQty, looseQty, upc, cmode, plabel, llabel, odooQty, now(), existing.id);
   } else {
     db.prepare(`
-      INSERT INTO count_entries (session_id, product_id, counted_qty, system_qty, diff, uom, notes,
-        crate_qty, loose_qty, units_per_crate, counted_by, counted_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(data.session_id, data.product_id, data.counted_qty, data.system_qty ?? null, diff, data.uom, data.notes || null,
-      crateQty, looseQty, upc, data.counted_by, now());
+      INSERT INTO count_entries (session_id, product_id, count_location_id, counted_qty, out_of_stock, system_qty, diff, uom, notes,
+        crate_qty, loose_qty, units_per_crate, count_mode, pack_label, loose_label, odoo_qty, counted_by, counted_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(data.session_id, data.product_id, locId, countedQty, oos, data.system_qty ?? null, diff, data.uom, data.notes || null,
+      crateQty, looseQty, upc, cmode, plabel, llabel, odooQty, data.counted_by, now());
   }
 }
 
-export function deleteCountEntry(session_id: number, product_id: number) {
+/**
+ * Delete count rows. With `count_location_id` → just that spot's row for the
+ * product; without it → every spot for that product in the session (legacy
+ * behaviour, e.g. removing a product entirely).
+ */
+export function deleteCountEntry(session_id: number, product_id: number, count_location_id?: number) {
   const db = getDb();
+  const where = count_location_id !== undefined
+    ? 'session_id = ? AND product_id = ? AND count_location_id = ?'
+    : 'session_id = ? AND product_id = ?';
+  const params: number[] = count_location_id !== undefined
+    ? [session_id, product_id, count_location_id]
+    : [session_id, product_id];
   // Find the entry ids first so we can delete their photos
-  const rows = db.prepare(
-    'SELECT id FROM count_entries WHERE session_id = ? AND product_id = ?'
-  ).all(session_id, product_id) as { id: number }[];
+  const rows = db.prepare(`SELECT id FROM count_entries WHERE ${where}`).all(...params) as { id: number }[];
   for (const r of rows) deleteCountPhotos('count_entries', r.id);
-  db.prepare('DELETE FROM count_entries WHERE session_id = ? AND product_id = ?')
-    .run(session_id, product_id);
+  db.prepare(`DELETE FROM count_entries WHERE ${where}`).run(...params);
 }
 
 export function getSessionEntries(session_id: number): CountEntry[] {
   const db = getDb();
-  return db.prepare('SELECT * FROM count_entries WHERE session_id = ? ORDER BY counted_at DESC').all(session_id) as CountEntry[];
+  const rows = db.prepare('SELECT * FROM count_entries WHERE session_id = ? ORDER BY counted_at DESC')
+    .all(session_id) as Record<string, unknown>[];
+  return rows.map(r => ({ ...(r as unknown as CountEntry), out_of_stock: !!r.out_of_stock }));
 }
 
 // ===
