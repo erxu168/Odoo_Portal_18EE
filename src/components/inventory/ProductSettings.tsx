@@ -18,7 +18,8 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
   const [products, setProducts] = useState<any[]>([]);
   const [flags, setFlags] = useState<Record<number, boolean>>({});
   const [crateSizes, setCrateSizes] = useState<Record<number, string>>({});   // per-product input strings ('' = none)
-  const [packLabels, setPackLabels] = useState<Record<number, string>>({});    // per-product count-by word
+  const [packLabels, setPackLabels] = useState<Record<number, string>>({});    // per-product count-by (pack) word
+  const [looseLabels, setLooseLabels] = useState<Record<number, string>>({});   // per-product single-unit word (pack+loose mode)
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<number | null>(null);
@@ -37,14 +38,17 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
         const photoMap: Record<number, boolean> = {};
         const crateMap: Record<number, string> = {};
         const labelMap: Record<number, string> = {};
+        const looseMap: Record<number, string> = {};
         (flagRes.flags || []).forEach((f: any) => {
           photoMap[f.odoo_product_id] = !!f.requires_photo;
           if (f.units_per_crate != null) crateMap[f.odoo_product_id] = String(f.units_per_crate);
           if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
+          if (f.loose_label) looseMap[f.odoo_product_id] = f.loose_label;
         });
         setFlags(photoMap);
         setCrateSizes(crateMap);
         setPackLabels(labelMap);
+        setLooseLabels(looseMap);
       } catch (err) {
         console.error('Failed to load product settings:', err);
       } finally {
@@ -75,20 +79,23 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     }
   }
 
-  // Save size + count-by label together. Empty/0 size clears it (count in base units).
-  async function commitPack(productId: number, rawSize: string, label: string) {
+  // Save size + count-by label + loose word together. Empty/0 size clears it
+  // (simple mode, count in base units); a size makes it pack+loose.
+  async function commitPack(productId: number, rawSize: string, label: string, loose: string) {
     const trimmed = (rawSize || '').trim();
     const size = trimmed === '' ? null : Number(trimmed);
     if (size !== null && (!Number.isFinite(size) || size < 0)) {
       setCrateSizes(prev => ({ ...prev, [productId]: '' }));
       return;
     }
+    const mode = size ? 'pack_loose' : 'simple';
+    const looseWord = size ? (loose || '').trim() : '';
     setSaving(productId);
     try {
       const res = await fetch(`/api/inventory/product-flags/${productId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ units_per_crate: size, pack_label: label }),
+        body: JSON.stringify({ units_per_crate: size, pack_label: label, count_mode: mode, loose_label: looseWord || null }),
       });
       if (res.ok) {
         setSavedId(productId);
@@ -154,7 +161,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                     <span className="text-[var(--fs-xs)] font-semibold text-gray-500 mr-1">Count by</span>
                     <select
                       value={label}
-                      onChange={(e) => { const v = e.target.value; setPackLabels(prev => ({ ...prev, [p.id]: v })); commitPack(p.id, crateSizes[p.id] ?? '', v); }}
+                      onChange={(e) => { const v = e.target.value; setPackLabels(prev => ({ ...prev, [p.id]: v })); commitPack(p.id, crateSizes[p.id] ?? '', v, looseLabels[p.id] ?? ''); }}
                       aria-label={`Count-by unit for ${p.name}`}
                       className="h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] font-semibold text-gray-900 bg-white outline-none focus:border-green-500"
                     >
@@ -164,7 +171,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                     <input
                       value={crateStr}
                       onChange={(e) => setCrateSizes(prev => ({ ...prev, [p.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
-                      onBlur={(e) => commitPack(p.id, e.target.value, label)}
+                      onBlur={(e) => commitPack(p.id, e.target.value, label, looseLabels[p.id] ?? '')}
                       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
                       inputMode="decimal"
                       placeholder="—"
@@ -172,9 +179,23 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                       className="w-14 h-9 border border-gray-300 rounded-lg text-center font-mono text-[var(--fs-base)] font-semibold text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/15"
                     />
                     <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
+                    {crateStr !== '' && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="text-[var(--fs-xs)] text-gray-500">· also count loose</span>
+                        <input
+                          value={looseLabels[p.id] ?? ''}
+                          onChange={(e) => setLooseLabels(prev => ({ ...prev, [p.id]: e.target.value.slice(0, 20) }))}
+                          onBlur={(e) => commitPack(p.id, crateSizes[p.id] ?? '', label, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          placeholder="bottles"
+                          aria-label={`Single-unit word for ${p.name}`}
+                          className="w-20 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] text-gray-900 outline-none focus:border-green-500"
+                        />
+                      </span>
+                    )}
                     {suggestion !== null && crateStr === '' && (
                       <button
-                        onClick={() => { setCrateSizes(prev => ({ ...prev, [p.id]: String(suggestion) })); commitPack(p.id, String(suggestion), label); }}
+                        onClick={() => { setCrateSizes(prev => ({ ...prev, [p.id]: String(suggestion) })); commitPack(p.id, String(suggestion), label, looseLabels[p.id] ?? ''); }}
                         className="text-[11px] font-bold text-blue-800 bg-blue-50 rounded-md px-2 py-1 active:bg-blue-100"
                       >
                         Suggest: {suggestion}

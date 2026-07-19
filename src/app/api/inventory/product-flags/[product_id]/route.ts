@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { initInventoryTables, setProductFlag, setProductCrateSize, setProductPackLabel } from '@/lib/inventory-db';
+import { initInventoryTables, setProductFlag, setProductCrateSize, setProductPackLabel, setProductCountMode, getProductFlags } from '@/lib/inventory-db';
 
 export async function PUT(
   request: Request,
@@ -31,7 +31,7 @@ export async function PUT(
   try {
     initInventoryTables();
     const body = await request.json();
-    const result: { success: true; requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null } = { success: true };
+    const result: { success: true; requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; count_mode?: string | null; loose_label?: string | null } = { success: true };
 
     if ('requires_photo' in body) {
       const requiresPhoto = !!body.requires_photo;
@@ -60,6 +60,29 @@ export async function PUT(
       const label = (raw == null || String(raw).trim() === '') ? null : String(raw).trim().toLowerCase().slice(0, 20);
       setProductPackLabel(productId, label, user.id);
       result.pack_label = label;
+    }
+
+    // count_mode + loose_label are linked (loose word only matters for
+    // pack_loose), so merge with the current row and write both together, while
+    // still honouring "only the keys present in the body change".
+    if ('count_mode' in body || 'loose_label' in body) {
+      const current = getProductFlags([productId])[0];
+      let mode = current?.count_mode ?? null;
+      let loose = current?.loose_label ?? null;
+      if ('count_mode' in body) {
+        const m = body.count_mode;
+        if (m !== null && m !== 'simple' && m !== 'pack_loose') {
+          return NextResponse.json({ error: 'Invalid count_mode' }, { status: 400 });
+        }
+        mode = m ?? null;
+      }
+      if ('loose_label' in body) {
+        const raw = body.loose_label;
+        loose = (raw == null || String(raw).trim() === '') ? null : String(raw).trim().toLowerCase().slice(0, 20);
+      }
+      setProductCountMode(productId, mode, loose, user.id);
+      result.count_mode = mode;
+      result.loose_label = loose;
     }
 
     return NextResponse.json(result);
