@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { companyScope } from '@/lib/inventory-access';
 
 export async function GET() {
   const user = requireAuth();
@@ -14,7 +15,13 @@ export async function GET() {
 
   try {
     const odoo = getOdoo();
-    const departments = await odoo.searchRead('hr.department', [],
+    // Company scope: managers/restricted admins see only their restaurants'
+    // departments (excludes shared/no-company ones, matching other HR endpoints);
+    // an unrestricted admin (undefined scope) sees all.
+    const scope = companyScope(user);
+    if (scope && scope.length === 0) return NextResponse.json({ departments: [] });
+    const domain = scope ? [['company_id', 'in', scope]] : [];
+    const departments = await odoo.searchRead('hr.department', domain,
       ['id', 'name', 'member_ids'],
       { order: 'name' }
     );

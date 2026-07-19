@@ -16,6 +16,7 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, listTemplates } from '@/lib/inventory-db';
+import { companyScope } from '@/lib/inventory-access';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -35,20 +36,28 @@ export async function GET(request: Request) {
   }
 
   initInventoryTables();
-  const ids = Array.from(new Set(listTemplates().flatMap(t => t.product_ids))).filter(Boolean) as number[];
+  // Company scope: managers/restricted admins see only their restaurants' usage;
+  // an unrestricted admin (undefined scope) sees all. Scope BOTH the count-list
+  // product set AND the stock moves, so neither shared products nor another
+  // restaurant's moves leak across companies.
+  const scope = companyScope(user);
+  if (scope && scope.length === 0) return NextResponse.json({ from, to, items: [] });
+  const ids = Array.from(new Set(listTemplates(scope ? { company_ids: scope } : undefined).flatMap(t => t.product_ids))).filter(Boolean) as number[];
   if (ids.length === 0) return NextResponse.json({ from, to, items: [] });
 
   try {
     const odoo = getOdoo();
     const LIMIT = 20000;
-    const moves = await odoo.searchRead('stock.move', [
+    const domain: unknown[] = [
       ['product_id', 'in', ids],
       ['state', '=', 'done'],
       ['date', '>=', `${from} 00:00:00`],
       ['date', '<=', `${to} 23:59:59`],
       ['location_id.usage', '=', 'internal'],
       ['location_dest_id.usage', '!=', 'internal'],
-    ], ['product_id', 'product_uom_qty', 'product_uom', 'location_dest_id'], { limit: LIMIT });
+    ];
+    if (scope) domain.push(['company_id', 'in', scope]);
+    const moves = await odoo.searchRead('stock.move', domain, ['product_id', 'product_uom_qty', 'product_uom', 'location_dest_id'], { limit: LIMIT });
 
     type Row = { product_id: number; name: string; uom: string; total: number; prep: number; sales: number };
     const agg = new Map<number, Row>();
