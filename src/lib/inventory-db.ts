@@ -524,7 +524,13 @@ export function createSession(data: {
     INSERT INTO counting_sessions (template_id, scheduled_date, location_id, company_id, assigned_user_id, status, created_at)
     VALUES (?, ?, ?, ?, ?, 'pending', ?)
   `).run(data.template_id, data.scheduled_date, data.location_id, companyId, data.assigned_user_id || null, now());
-  return r.lastInsertRowid as number;
+  const sessionId = r.lastInsertRowid as number;
+  // Freeze what/where to count now. Best-effort: a failure never blocks session
+  // creation — such a session simply has no snapshot and falls back to live
+  // template resolution when read.
+  try { snapshotSessionFromTemplate(sessionId, data.template_id); }
+  catch (e) { console.error('[inventory] session snapshot failed (using live resolution):', e); }
+  return sessionId;
 }
 
 export function listSessions(filters?: {
@@ -1089,6 +1095,41 @@ export function snapshotSessionItems(
     ));
   });
   tx(items);
+}
+
+/**
+ * Freeze a session's count items from its template: the template's per-spot
+ * placements when present, else the flat product list at the catch-all spot (0)
+ * for legacy templates. Captures each product's current unit settings so a later
+ * flag/template edit can't change an already-open session.
+ */
+export function snapshotSessionFromTemplate(sessionId: number, templateId: number): void {
+  const tmpl = getTemplate(templateId);
+  if (!tmpl) return;
+  const placements = getTemplatePlacements(templateId);
+  const pairs: { product_id: number; spot: number; shelf: number }[] = [];
+  if (placements.length > 0) {
+    placements.forEach((p, i) => pairs.push({ product_id: p.odoo_product_id, spot: p.count_location_id, shelf: p.shelf_sort ?? i }));
+  } else {
+    const pids: number[] = Array.isArray(tmpl.product_ids) ? (tmpl.product_ids as number[]) : [];
+    pids.forEach((pid, i) => pairs.push({ product_id: pid, spot: 0, shelf: i }));
+  }
+  if (pairs.length === 0) return;
+  const flagIds = Array.from(new Set(pairs.map(p => p.product_id)));
+  const flagMap = new Map(getProductFlags(flagIds).map(f => [f.odoo_product_id, f]));
+  snapshotSessionItems(sessionId, pairs.map(p => {
+    const f = flagMap.get(p.product_id);
+    return {
+      odoo_product_id: p.product_id,
+      count_location_id: p.spot,
+      shelf_sort: p.shelf,
+      requires_photo: !!f?.requires_photo,
+      count_mode: f?.count_mode ?? null,
+      pack_label: f?.pack_label ?? null,
+      loose_label: f?.loose_label ?? null,
+      units_per_crate: f?.units_per_crate ?? null,
+    };
+  }));
 }
 
 /** A session's snapshotted items (empty for legacy sessions → caller falls back to live resolution). */
