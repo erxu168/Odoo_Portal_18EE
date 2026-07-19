@@ -83,7 +83,8 @@
   }
   .tcard .thead{display:flex; justify-content:space-between; align-items:flex-start;}
   .tcard .name{font-size:19px; font-weight:800; line-height:1.1;}
-  .tcard .order{font-size:12px; color:var(--dim); font-weight:700; margin-top:2px;}
+  .tcard .order{font-size:12px; color:var(--dim); font-weight:700;}
+  .tcard .osub{display:flex; align-items:center; gap:8px; margin-top:4px;}
   .tcard .stepname{font-size:13px; font-weight:800; letter-spacing:1px; color:var(--dim); text-transform:uppercase;}
   .tcard .count{
     font-size:64px; font-weight:800; text-align:center; line-height:1;
@@ -116,13 +117,12 @@
   .abtn.done{background:var(--ok); color:#062e17;}
   .abtn:active{filter:brightness(1.15);}
   .cancel{
-    position:absolute; top:10px; right:10px; width:28px; height:28px; border-radius:8px;
-    border:1px solid var(--line); background:transparent; color:var(--faint); font-size:14px; cursor:pointer;
-    z-index:2;
+    height:36px; padding:0 12px; border-radius:10px; flex-shrink:0;
+    border:1px solid var(--urgent); background:rgba(239,68,68,.12); color:var(--urgent);
+    font-size:12px; font-weight:800; letter-spacing:.5px; cursor:pointer;
   }
   .cancel.sure{
-    width:auto; padding:0 12px; background:var(--urgent); border-color:var(--urgent);
-    color:#fff; font-size:12px; font-weight:800;
+    background:var(--urgent); border-color:var(--urgent); color:#fff;
   }
   /* done strip */
   #doneStrip{
@@ -203,7 +203,7 @@
     <div class="srow"><div class="sname">Sound</div><div class="tog on" data-st="__sound"></div></div>
     <div class="srow"><div class="sname">Demo: 10&times; speed</div><div class="tog on" data-st="__speed"></div></div>
     <button id="closeSettings">Close</button>
-    <div class="mocknote">Mock v1.1 &mdash; demo orders re-appear in the queue over time so you can keep testing. Step types: COOK (timed), REST (auto-advance, soft chime), ACTION (loud alarm, must tap). When a card flashes, tapping anywhere on it advances/finishes. SKIP and &#10005; need a second tap to confirm.</div>
+    <div class="mocknote">Mock v1.2 &mdash; demo orders re-appear in the queue over time so you can keep testing. Step types: COOK (timed), REST (auto-advance, soft chime), ACTION (loud alarm, must tap). When a card flashes, tapping anywhere on it advances/finishes. SKIP and CANCEL need a second tap to confirm.</div>
   </div>
 </div>
 
@@ -417,12 +417,14 @@ function renderBoard(){
     }
     const cancelBtn = t.confirm==="cancel"
       ? `<button class="cancel sure" data-act="cancel">SURE?</button>`
-      : `<button class="cancel" data-act="cancel">\u2715</button>`;
+      : `<button class="cancel" data-act="cancel">\u2715 CANCEL</button>`;
     card.innerHTML=`
-      ${cancelBtn}
       <div class="thead">
-        <div><div class="name">${p.name}</div><div class="order">${t.order}</div></div>
-        <span class="badge ${STATIONS[p.station].cls}">${STATIONS[p.station].name.toUpperCase()}</span>
+        <div><div class="name">${p.name}</div>
+          <div class="osub"><span class="order">${t.order}</span>
+          <span class="badge ${STATIONS[p.station].cls}">${STATIONS[p.station].name.toUpperCase()}</span></div>
+        </div>
+        ${cancelBtn}
       </div>
       <div class="stepname">${s.type==="rest"?"REST":s.label}${s.type!=="action"?"":" \u2014 ACTION"}</div>
       <div class="count" id="cnt-${t.id}">${s.type==="action"?"NOW":fmt(stepRemaining(t))}</div>
