@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCompany } from '@/lib/company-context';
+import { useTopBar } from '@/components/ui/TopBarContext';
 
 /**
  * StationHome — the home screen for a shared department tablet (kitchen station).
@@ -24,6 +25,7 @@ function initials(name: string) {
 export default function StationHome() {
   const router = useRouter();
   const { companyId, companyName, loading: companyLoading } = useCompany();
+  const { setHidden } = useTopBar();
 
   const [list, setList] = useState<any>(null);
   const [listReady, setListReady] = useState(false);
@@ -31,6 +33,12 @@ export default function StationHome() {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
+
+  // This launcher has its OWN blue hero header, so hide the global top bar while it's
+  // shown (and restore it on navigate-away) — otherwise two blue headers stack with a
+  // gap. The root's -mt-9 cancels the layout's reserved top-bar space so the hero sits
+  // flush at the top.
+  useEffect(() => { setHidden(true); return () => setHidden(false); }, [setHidden]);
 
   useEffect(() => {
     fetch('/api/tasks/today')
@@ -72,7 +80,7 @@ export default function StationHome() {
   const dateStr = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]}`;
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-8">
+    <div className="min-h-screen bg-gray-50 pb-8 -mt-9">
       {/* Station header */}
       <div className="bg-[#2563EB] px-5 pt-8 pb-5 rounded-b-[28px]">
         <div className="flex items-center justify-between">
