@@ -51,6 +51,8 @@ export default function TemplateForm({ template, locations, departments, onSave,
   const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(
     new Set(template?.product_ids || [])
   );
+  const [spots, setSpots] = useState<any[]>([]);                            // count_locations to place items at
+  const [placements, setPlacements] = useState<Record<number, number>>({}); // productId -> spot id (0 = no specific spot)
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState<string>('all');
@@ -91,6 +93,14 @@ export default function TemplateForm({ template, locations, departments, onSave,
           const userData = await userRes.json();
           setPortalUsers((userData.users || []).filter((u: any) => u.employee_id));
         } catch { /* ignore user fetch errors */ }
+        // Spots (count_locations) this list's items can be placed at. Failure is
+        // non-fatal — items just default to "no specific spot".
+        if (companyId) {
+          try {
+            const locData = await fetch(`/api/inventory/count-locations?company_id=${companyId}`).then((r) => r.json());
+            setSpots(locData.locations || []);
+          } catch { /* no spots available */ }
+        }
       } catch (err) {
         console.error('Failed to load products:', err);
       } finally {
@@ -137,7 +147,13 @@ export default function TemplateForm({ template, locations, departments, onSave,
 
   const filteredProducts = useMemo(() => {
     let list = allProducts.slice();
-    if (search) list = list.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+    if (search) {
+      const q = search.toLowerCase();
+      // Match internal name OR the order code (default_code); supplier-name
+      // search happens server-side (Phase 3) and would need a refetch.
+      list = list.filter((p) => p.name.toLowerCase().includes(q)
+        || (p.default_code && String(p.default_code).toLowerCase().includes(q)));
+    }
     if (catFilter !== 'all') list = list.filter((p) => p.categ_id?.[0] === Number(catFilter));
     if (selectionFilter === 'selected') list = list.filter((p) => selectedProductIds.has(p.id));
     if (selectionFilter === 'unselected') list = list.filter((p) => !selectedProductIds.has(p.id));
@@ -216,6 +232,12 @@ export default function TemplateForm({ template, locations, departments, onSave,
       company_id: (isEdit ? (template?.company_id ?? companyId) : companyId) || undefined,
       category_ids: catIds,
       product_ids: Array.from(selectedProductIds),
+      // Where each item is counted (spot). 0 = no specific spot. The server
+      // validates spots against this restaurant and snapshots them onto sessions.
+      placements: Array.from(selectedProductIds).map((pid) => ({
+        odoo_product_id: pid,
+        count_location_id: placements[pid] ?? 0,
+      })),
       assign_type: assignType,
       assign_id: assignId,
       active,
@@ -289,24 +311,38 @@ export default function TemplateForm({ template, locations, departments, onSave,
                 const uom = p.uom_id?.[1] || 'Units';
                 const catName = p.categ_id?.[1] || '';
                 return (
-                  <button key={p.id} onClick={() => toggleProduct(p.id)}
-                    className={`flex items-center gap-3 py-3 border-b border-gray-100 text-left active:bg-gray-50 transition-colors ${
-                      isSelected ? '' : 'opacity-60'
-                    }`}>
-                    <div className={`w-6 h-6 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                      isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'
-                    }`}>
-                      {isSelected && (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
-                          <path d="M20 6L9 17l-5-5"/>
-                        </svg>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
-                      <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{catName} &middot; {uom}</div>
-                    </div>
-                  </button>
+                  <div key={p.id} className={`border-b border-gray-100 ${isSelected ? '' : 'opacity-60'}`}>
+                    <button onClick={() => toggleProduct(p.id)}
+                      className="w-full flex items-center gap-3 py-3 text-left active:bg-gray-50 transition-colors">
+                      <div className={`w-6 h-6 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                        isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'
+                      }`}>
+                        {isSelected && (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
+                            <path d="M20 6L9 17l-5-5"/>
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
+                        <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
+                          {catName} &middot; {uom}{p.default_code ? ` · #${p.default_code}` : ''}{p.supplier_ref ? ` · ${p.supplier_ref}` : ''}
+                        </div>
+                      </div>
+                    </button>
+                    {isSelected && spots.length > 0 && (
+                      <div className="flex items-center gap-2 pb-3 pl-9">
+                        <span className="text-[var(--fs-xs)] text-gray-500">Spot</span>
+                        <select value={placements[p.id] ?? 0}
+                          onChange={(e) => setPlacements((prev) => ({ ...prev, [p.id]: Number(e.target.value) }))}
+                          aria-label={`Spot for ${p.name}`}
+                          className="h-8 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] text-gray-900 bg-white outline-none focus:border-green-500">
+                          <option value={0}>No specific spot</option>
+                          {spots.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
