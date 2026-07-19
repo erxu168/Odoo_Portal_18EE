@@ -1,1 +1,440 @@
-PLACEHOLDER
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>KDS Cooking Timer - Mock v1</title>
+<style>
+  :root{
+    --bg:#0c1015; --panel:#141a22; --card:#1a222d; --card-hi:#212b38;
+    --line:#2a3644; --text:#e8eef5; --dim:#8fa0b3; --faint:#5a6b7e;
+    --ok:#22c55e; --warn:#f59e0b; --urgent:#ef4444; --info:#38bdf8;
+    --grill:#f97316; --fry:#eab308; --oven:#ef4444;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    overflow:hidden; user-select:none;
+  }
+  #topbar{
+    height:56px; display:flex; align-items:center; gap:14px;
+    padding:0 16px; background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  #topbar .logo{font-weight:800; letter-spacing:.5px; font-size:17px;}
+  #topbar .logo span{color:var(--warn);}
+  #stationChips{display:flex; gap:8px;}
+  .chip{
+    font-size:12px; font-weight:700; padding:5px 12px; border-radius:999px;
+    border:1px solid var(--line); color:var(--dim); letter-spacing:.4px;
+  }
+  .chip.on{color:#0c1015;}
+  .chip.on.grill{background:var(--grill); border-color:var(--grill);}
+  .chip.on.fry{background:var(--fry); border-color:var(--fry);}
+  .chip.on.oven{background:var(--oven); border-color:var(--oven);}
+  #clock{margin-left:auto; font-variant-numeric:tabular-nums; font-size:20px; font-weight:700; color:var(--dim);}
+  #gear{
+    width:40px; height:40px; border-radius:10px; border:1px solid var(--line);
+    background:var(--card); color:var(--dim); font-size:18px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  #main{display:flex; height:calc(100% - 56px);}
+  #queue{
+    width:300px; min-width:300px; border-right:1px solid var(--line);
+    background:var(--panel); display:flex; flex-direction:column;
+  }
+  #queue h2{
+    font-size:12px; letter-spacing:1.5px; color:var(--faint); font-weight:800;
+    padding:14px 16px 8px;
+  }
+  #queueList{flex:1; overflow-y:auto; padding:0 12px 12px; display:flex; flex-direction:column; gap:10px;}
+  .qcard{
+    background:var(--card); border:1px solid var(--line); border-left:6px solid var(--ok);
+    border-radius:var(--radius); padding:12px 14px; cursor:pointer;
+    transition:transform .08s;
+  }
+  .qcard:active{transform:scale(.97);}
+  .qcard.age-warn{border-left-color:var(--warn);}
+  .qcard.age-urgent{border-left-color:var(--urgent); animation:pulseBorder 1.2s infinite;}
+  @keyframes pulseBorder{50%{box-shadow:0 0 0 3px rgba(239,68,68,.35);}}
+  .qcard .qtop{display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;}
+  .qcard .order{font-size:12px; color:var(--dim); font-weight:700;}
+  .qcard .age{font-size:12px; color:var(--faint); font-variant-numeric:tabular-nums;}
+  .qcard .name{font-size:18px; font-weight:800; line-height:1.15;}
+  .qcard .meta{display:flex; align-items:center; gap:8px; margin-top:8px;}
+  .badge{font-size:10px; font-weight:800; letter-spacing:.6px; padding:3px 8px; border-radius:6px; color:#0c1015;}
+  .badge.grill{background:var(--grill);} .badge.fry{background:var(--fry);} .badge.oven{background:var(--oven);}
+  .qcard .steps{font-size:11px; color:var(--faint);}
+  .qcard .tap{margin-top:10px; text-align:center; font-size:12px; font-weight:800; letter-spacing:1px; color:var(--ok);}
+  #queueEmpty{color:var(--faint); font-size:13px; text-align:center; margin-top:30px; padding:0 20px; line-height:1.5;}
+  #board{flex:1; overflow-y:auto; padding:16px; display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; align-content:start;}
+  #boardEmpty{grid-column:1/-1; text-align:center; color:var(--faint); margin-top:60px; font-size:15px; line-height:1.6;}
+  .tcard{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px; display:flex; flex-direction:column; gap:10px; position:relative; overflow:hidden;
+  }
+  .tcard .thead{display:flex; justify-content:space-between; align-items:flex-start;}
+  .tcard .name{font-size:19px; font-weight:800; line-height:1.1;}
+  .tcard .order{font-size:12px; color:var(--dim); font-weight:700; margin-top:2px;}
+  .tcard .stepname{font-size:13px; font-weight:800; letter-spacing:1px; color:var(--dim); text-transform:uppercase;}
+  .tcard .count{
+    font-size:64px; font-weight:800; text-align:center; line-height:1;
+    font-variant-numeric:tabular-nums; letter-spacing:-1px; padding:4px 0 2px;
+  }
+  .tcard.state-run .count{color:var(--ok);}
+  .tcard.state-warnzone .count{color:var(--warn);}
+  .tcard.state-alarm .count, .tcard.state-done .count{color:var(--urgent);}
+  .tcard.state-alarm, .tcard.state-done{animation:flash .55s infinite; border-color:var(--urgent);}
+  @keyframes flash{50%{background:#3a1418;}}
+  .rail{display:flex; align-items:center; gap:4px;}
+  .rseg{flex:1; display:flex; flex-direction:column; gap:4px;}
+  .rbar{height:6px; border-radius:3px; background:var(--line); overflow:hidden;}
+  .rbar>i{display:block; height:100%; width:0%; background:var(--ok);}
+  .rseg.donept .rbar>i{width:100%; background:var(--faint);}
+  .rseg.now .rbar>i{background:var(--ok);}
+  .tcard.state-warnzone .rseg.now .rbar>i{background:var(--warn);}
+  .tcard.state-alarm .rseg.now .rbar>i,.tcard.state-done .rseg.now .rbar>i{background:var(--urgent); width:100%;}
+  .rlabel{font-size:10px; font-weight:700; color:var(--faint); text-align:center; letter-spacing:.3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .rseg.now .rlabel{color:var(--text);}
+  .abtn{
+    border:none; border-radius:12px; padding:16px; font-size:17px; font-weight:800;
+    letter-spacing:.5px; cursor:pointer; background:var(--line); color:var(--dim);
+    width:100%;
+  }
+  .abtn.hot{background:var(--urgent); color:#fff;}
+  .abtn.next{background:var(--info); color:#06222e;}
+  .abtn.done{background:var(--ok); color:#062e17;}
+  .abtn:active{filter:brightness(1.15);}
+  .cancel{
+    position:absolute; top:10px; right:10px; width:28px; height:28px; border-radius:8px;
+    border:1px solid var(--line); background:transparent; color:var(--faint); font-size:14px; cursor:pointer;
+  }
+  #doneStrip{
+    position:fixed; bottom:0; left:300px; right:0; background:var(--panel);
+    border-top:1px solid var(--line); padding:8px 14px; display:flex; gap:8px; align-items:center;
+    min-height:44px; overflow-x:auto;
+  }
+  #doneStrip .dlabel{font-size:11px; font-weight:800; letter-spacing:1px; color:var(--faint);}
+  .dpill{font-size:12px; font-weight:700; color:var(--ok); border:1px solid var(--ok);
+    padding:4px 10px; border-radius:999px; white-space:nowrap; opacity:.85;}
+  #toast{
+    position:fixed; top:70px; left:50%; transform:translateX(-50%) translateY(-20px);
+    background:var(--ok); color:#062e17; font-weight:800; font-size:14px;
+    padding:10px 18px; border-radius:10px; opacity:0; pointer-events:none; transition:all .25s;
+    z-index:60;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  #overlay{
+    position:fixed; inset:0; background:rgba(5,8,12,.78); display:none;
+    align-items:center; justify-content:center; z-index:50;
+  }
+  #overlay.show{display:flex;}
+  #settings{
+    background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    width:min(430px,92vw); padding:24px;
+  }
+  #settings h3{font-size:16px; margin-bottom:4px;}
+  #settings p{font-size:12px; color:var(--faint); margin-bottom:16px;}
+  .srow{display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--line);}
+  .srow:last-of-type{border-bottom:none;}
+  .srow .sname{font-size:15px; font-weight:700; display:flex; align-items:center; gap:10px;}
+  .dot{width:12px; height:12px; border-radius:50%;}
+  .dot.grill{background:var(--grill);} .dot.fry{background:var(--fry);} .dot.oven{background:var(--oven);}
+  .tog{
+    width:52px; height:30px; border-radius:999px; background:var(--line); position:relative; cursor:pointer;
+    transition:background .15s;
+  }
+  .tog::after{
+    content:""; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%;
+    background:var(--dim); transition:all .15s;
+  }
+  .tog.on{background:var(--ok);}
+  .tog.on::after{left:25px; background:#fff;}
+  #closeSettings{margin-top:18px; width:100%; padding:13px; border-radius:12px; border:none;
+    background:var(--card-hi); color:var(--text); font-weight:800; font-size:15px; cursor:pointer;}
+  .mocknote{margin-top:14px; font-size:11px; color:var(--faint); line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="logo">KDS <span>Cooking Timer</span></div>
+  <div id="stationChips"></div>
+  <div id="clock">--:--</div>
+  <div id="gear" title="Settings">&#9881;</div>
+</div>
+
+<div id="main">
+  <div id="queue">
+    <h2>TO COOK</h2>
+    <div id="queueList"></div>
+  </div>
+  <div id="board"></div>
+</div>
+
+<div id="doneStrip"><span class="dlabel">READY &rarr; KDS</span></div>
+<div id="toast"></div>
+
+<div id="overlay">
+  <div id="settings">
+    <h3>Tablet settings</h3>
+    <p>This tablet shows items for the stations enabled below. Managers add new stations in the portal.</p>
+    <div class="srow"><div class="sname"><span class="dot grill"></span>Grill</div><div class="tog on" data-st="grill"></div></div>
+    <div class="srow"><div class="sname"><span class="dot fry"></span>Deep Fry &amp; Smoker</div><div class="tog on" data-st="fry"></div></div>
+    <div class="srow"><div class="sname"><span class="dot oven"></span>Oven</div><div class="tog on" data-st="oven"></div></div>
+    <div class="srow"><div class="sname">Sound</div><div class="tog on" data-st="__sound"></div></div>
+    <div class="srow"><div class="sname">Demo: 10&times; speed</div><div class="tog on" data-st="__speed"></div></div>
+    <button id="closeSettings">Close</button>
+    <div class="mocknote">Mock v1 - demo orders re-appear in the queue over time so you can keep testing. Step types: COOK (timed), REST (auto-advance, soft chime), ACTION (loud alarm, must tap).</div>
+  </div>
+</div>
+
+<script>
+const STATIONS = {
+  grill:{name:"Grill", cls:"grill"},
+  fry:{name:"Deep Fry & Smoker", cls:"fry"},
+  oven:{name:"Oven", cls:"oven"}
+};
+
+const PROFILES = {
+  fries:{name:"Fries", station:"fry", steps:[
+    {label:"1st Fry", type:"cook", secs:210},
+    {label:"Rest", type:"rest", secs:120},
+    {label:"2nd Fry", type:"cook", secs:150}
+  ]},
+  jerkhalf:{name:"Jerk Chicken \u00BD", station:"fry", steps:[
+    {label:"Smoke", type:"cook", secs:720},
+    {label:"Spray beer", type:"action", secs:0},
+    {label:"Smoke", type:"cook", secs:480}
+  ]},
+  festival:{name:"Festival (2)", station:"fry", steps:[
+    {label:"Fry", type:"cook", secs:240}
+  ]},
+  wings:{name:"Jerk Wings", station:"grill", steps:[
+    {label:"Grill", type:"cook", secs:300},
+    {label:"Flip", type:"action", secs:0},
+    {label:"Grill", type:"cook", secs:240}
+  ]},
+  mac:{name:"Mac & Cheese", station:"oven", steps:[
+    {label:"Bake", type:"cook", secs:360}
+  ]},
+  plantain:{name:"Fried Plantain", station:"fry", steps:[
+    {label:"Fry", type:"cook", secs:180}
+  ]}
+};
+
+let demoOrderNo = 742;
+const DEMO_FEED = ["fries","jerkhalf","wings","mac","festival","plantain"];
+
+const state = {
+  stations:{grill:true, fry:true, oven:true},
+  sound:true, speed:true,
+  queue:[], active:[], done:[]
+};
+let idSeq = 1;
+
+let AC=null;
+function ac(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); return AC; }
+function tone(freq,dur,type,gain,when){
+  if(!state.sound) return;
+  type=type||"square"; gain=gain||.25; when=when||0;
+  const c=ac(), o=c.createOscillator(), g=c.createGain();
+  o.type=type; o.frequency.value=freq; o.connect(g); g.connect(c.destination);
+  const t=c.currentTime+when;
+  g.gain.setValueAtTime(gain,t); g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  o.start(t); o.stop(t+dur);
+}
+function sndChime(){ tone(880,.25,"sine",.18); tone(1320,.35,"sine",.14,.12); }
+function sndAction(){ [0,.18,.36].forEach(function(w){tone(1400,.14,"square",.3,w);}); }
+function sndDone(){ [0,.15,.3].forEach(function(w){tone(1760,.12,"square",.35,w); tone(880,.12,"square",.3,w+.06);}); }
+
+const $ = function(s){return document.querySelector(s);};
+function fmt(s){ s=Math.max(0,Math.ceil(s)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
+function speedDiv(){ return state.speed?10:1; }
+function toast(msg){
+  const t=$("#toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._h); t._h=setTimeout(function(){t.classList.remove("show");},2200);
+}
+
+function pushDemoOrder(){
+  const key = DEMO_FEED[(demoOrderNo)%DEMO_FEED.length];
+  state.queue.push({ id:idSeq++, order:"#"+(demoOrderNo++), profile:key, arrived:Date.now() });
+  renderQueue();
+}
+function renderQueue(){
+  const list=$("#queueList"); list.innerHTML="";
+  const visible = state.queue.filter(function(q){return state.stations[PROFILES[q.profile].station];});
+  if(!visible.length){
+    list.innerHTML='<div id="queueEmpty">No items waiting for this station.<br>New POS orders appear here.</div>';
+    return;
+  }
+  visible.forEach(function(q){
+    const p=PROFILES[q.profile];
+    const ageS=(Date.now()-q.arrived)/1000;
+    const ageCls = ageS>120?"age-urgent":ageS>60?"age-warn":"";
+    const el=document.createElement("div");
+    el.className="qcard "+ageCls;
+    el.innerHTML='<div class="qtop"><span class="order">'+q.order+'</span><span class="age">'+fmt(ageS)+' waiting</span></div>'+
+      '<div class="name">'+p.name+'</div>'+
+      '<div class="meta"><span class="badge '+STATIONS[p.station].cls+'">'+STATIONS[p.station].name.toUpperCase()+'</span>'+
+      '<span class="steps">'+p.steps.map(function(s){return s.label;}).join(" \u2192 ")+'</span></div>'+
+      '<div class="tap">TAP TO START</div>';
+    el.onclick=function(){startTimer(q);};
+    list.appendChild(el);
+  });
+}
+
+function startTimer(q){
+  ac();
+  state.queue = state.queue.filter(function(x){return x.id!==q.id;});
+  state.active.push({
+    id:q.id, order:q.order, profile:q.profile, stepIdx:0,
+    stepStart:Date.now(), state:"run", lastBeep:0
+  });
+  renderQueue(); renderBoard();
+}
+function stepOf(t){ return PROFILES[t.profile].steps[t.stepIdx]; }
+function stepRemaining(t){
+  const s=stepOf(t);
+  const elapsed=(Date.now()-t.stepStart)/1000*speedDiv();
+  return s.secs-elapsed;
+}
+function nextStep(t){
+  const p=PROFILES[t.profile];
+  if(t.stepIdx>=p.steps.length-1){ finish(t); return; }
+  t.stepIdx++; t.stepStart=Date.now(); t.state="run";
+  const s=stepOf(t);
+  if(s.type==="action"){ t.state="alarm"; t.lastBeep=Date.now(); sndAction(); }
+  renderBoard();
+}
+function finish(t){
+  state.active=state.active.filter(function(x){return x.id!==t.id;});
+  state.done.unshift({name:PROFILES[t.profile].name, order:t.order});
+  state.done=state.done.slice(0,8);
+  toast("Marked ready on KDS \u2713 "+PROFILES[t.profile].name+" "+t.order);
+  renderBoard(); renderDone();
+}
+function cancelTimer(t){
+  state.active=state.active.filter(function(x){return x.id!==t.id;});
+  renderBoard();
+}
+
+setInterval(function(){
+  let dirty=false;
+  state.active.forEach(function(t){
+    const s=stepOf(t);
+    if(t.state==="alarm"||t.state==="done"){
+      if(Date.now()-t.lastBeep>1600){ t.lastBeep=Date.now(); if(t.state==="done"){sndDone();}else{sndAction();} }
+      return;
+    }
+    const rem=stepRemaining(t);
+    if(rem<=0){
+      const isLast = t.stepIdx===PROFILES[t.profile].steps.length-1;
+      if(isLast){ t.state="done"; t.lastBeep=Date.now(); sndDone(); dirty=true; }
+      else if(s.type==="rest"){ sndChime(); nextStep(t); dirty=true; }
+      else { t.state="alarm"; t.lastBeep=Date.now(); sndAction(); dirty=true; }
+    } else if(rem<=s.secs*.15 && t.state!=="warnzone"){ t.state="warnzone"; dirty=true; }
+  });
+  updateCounts();
+  if(dirty) renderBoard();
+  if(Date.now()-(window._qP||0)>5000){ window._qP=Date.now(); renderQueue(); }
+},250);
+
+function updateCounts(){
+  state.active.forEach(function(t){
+    const el=document.getElementById("cnt-"+t.id);
+    if(!el) return;
+    const s=stepOf(t);
+    if(t.state==="alarm"&&s.type==="action"){ el.textContent="NOW"; return; }
+    if(t.state==="done"||t.state==="alarm"){ el.textContent="0:00"; return; }
+    el.textContent=fmt(stepRemaining(t));
+    const bar=document.getElementById("bar-"+t.id);
+    if(bar){ bar.style.width=Math.min(100,(1-stepRemaining(t)/s.secs)*100)+"%"; }
+  });
+  const d=new Date(); $("#clock").textContent=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+}
+
+function renderBoard(){
+  const b=$("#board"); b.innerHTML="";
+  const visible=state.active.filter(function(t){return state.stations[PROFILES[t.profile].station];});
+  if(!visible.length){
+    b.innerHTML='<div id="boardEmpty">No timers running.<br>Tap an item in TO COOK to start it.</div>';
+    return;
+  }
+  visible.forEach(function(t){
+    const p=PROFILES[t.profile], s=stepOf(t);
+    const card=document.createElement("div");
+    card.className="tcard state-"+t.state;
+    const rail=p.steps.map(function(st,i){
+      const cls = i<t.stepIdx?"donept": i===t.stepIdx?"now":"";
+      const fillId = i===t.stepIdx?('id="bar-'+t.id+'"'):"";
+      return '<div class="rseg '+cls+'"><div class="rbar"><i '+fillId+'></i></div><div class="rlabel">'+st.label+'</div></div>';
+    }).join("");
+    let btn="";
+    if(t.state==="done"){
+      btn='<button class="abtn done" data-act="finish">DONE \u2192 READY ON KDS</button>';
+    } else if(t.state==="alarm" && s.type==="action"){
+      btn='<button class="abtn hot" data-act="ack">'+s.label.toUpperCase()+' \u2713</button>';
+    } else if(t.state==="alarm"){
+      const nxt=(PROFILES[t.profile].steps[t.stepIdx+1]||{label:"?"}).label.toUpperCase();
+      btn='<button class="abtn next" data-act="ack">START: '+nxt+'</button>';
+    } else {
+      btn='<button class="abtn" data-act="skip">SKIP STEP</button>';
+    }
+    card.innerHTML='<button class="cancel" data-act="cancel">\u2715</button>'+
+      '<div class="thead"><div><div class="name">'+p.name+'</div><div class="order">'+t.order+'</div></div>'+
+      '<span class="badge '+STATIONS[p.station].cls+'">'+STATIONS[p.station].name.toUpperCase()+'</span></div>'+
+      '<div class="stepname">'+(s.type==="rest"?"REST":s.label)+(s.type!=="action"?"":" \u2014 ACTION")+'</div>'+
+      '<div class="count" id="cnt-'+t.id+'">'+(s.type==="action"?"NOW":fmt(stepRemaining(t)))+'</div>'+
+      '<div class="rail">'+rail+'</div>'+btn;
+    card.querySelectorAll("[data-act]").forEach(function(el){
+      el.onclick=function(e){
+        e.stopPropagation();
+        const a=el.dataset.act;
+        if(a==="cancel"){ if(confirm("Cancel this timer?")) cancelTimer(t); }
+        if(a==="finish") finish(t);
+        if(a==="ack") nextStep(t);
+        if(a==="skip"){ if(confirm("Skip to next step?")) nextStep(t); }
+      };
+    });
+    b.appendChild(card);
+  });
+  updateCounts();
+}
+
+function renderDone(){
+  const st=$("#doneStrip");
+  st.innerHTML='<span class="dlabel">READY \u2192 KDS</span>'+
+    state.done.map(function(d){return '<span class="dpill">\u2713 '+d.name+' '+d.order+'</span>';}).join("");
+}
+
+function renderChips(){
+  $("#stationChips").innerHTML=Object.entries(STATIONS).map(function(e){
+    const k=e[0], v=e[1];
+    return '<span class="chip '+(state.stations[k]?("on "+v.cls):"")+'">'+v.name+'</span>';
+  }).join("");
+}
+$("#gear").onclick=function(){$("#overlay").classList.add("show");};
+$("#closeSettings").onclick=function(){$("#overlay").classList.remove("show");};
+document.querySelectorAll(".tog").forEach(function(tg){
+  tg.onclick=function(){
+    const k=tg.dataset.st;
+    tg.classList.toggle("on");
+    const on=tg.classList.contains("on");
+    if(k==="__sound") state.sound=on;
+    else if(k==="__speed") state.speed=on;
+    else state.stations[k]=on;
+    renderChips(); renderQueue(); renderBoard();
+  };
+});
+
+renderChips(); renderDone(); renderBoard();
+pushDemoOrder(); pushDemoOrder(); pushDemoOrder();
+setInterval(function(){ if(state.queue.length<5) pushDemoOrder(); }, 25000);
+renderQueue();
+</script>
+</body>
+</html>
