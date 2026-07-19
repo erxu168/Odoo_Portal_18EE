@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import StartChecklistPrompt from '@/components/hr/StartChecklistPrompt';
 import { useCompany } from '@/lib/company-context';
 
 interface Props {
@@ -27,6 +28,7 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
   const [justAdded, setJustAdded] = useState<string | null>(null);
   // After a normal create: show a panel offering the self-onboarding link.
   const [createdEmp, setCreatedEmp] = useState<{ id: number; name: string } | null>(null);
+  const [showJoiningPrompt, setShowJoiningPrompt] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState<'sent' | 'no_address' | 'failed' | 'skipped' | null>(null);
@@ -222,11 +224,25 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
 
           {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[var(--fs-sm)]">{error}</div>}
 
+          <button onClick={() => setShowJoiningPrompt(true)}
+            className="w-full py-3.5 bg-[#F5800A] text-white font-bold text-[var(--fs-sm)] rounded-xl shadow-[0_1px_3px_rgba(245,128,10,0.35)] active:opacity-90">
+            Start hire checklist
+          </button>
+
           <button onClick={() => onSaved(createdEmp.id, true)}
             className="w-full py-3.5 bg-white border border-gray-200 text-gray-700 font-bold text-[var(--fs-sm)] rounded-xl active:bg-gray-50">
             Done
           </button>
         </div>
+
+        {showJoiningPrompt && (
+          <StartChecklistPrompt
+            employeeId={createdEmp.id}
+            fixedStage="joining"
+            onStarted={() => onSaved(createdEmp.id, true)}
+            onClose={() => setShowJoiningPrompt(false)}
+          />
+        )}
       </div>
     );
   }

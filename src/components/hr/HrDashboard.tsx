@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import SortableTileGrid from '@/components/ui/SortableTileGrid';
+import MyLifecycleTasks from '@/components/hr/MyLifecycleTasks';
 import type { EmployeeData } from '@/types/hr';
 import { calculateOnboardingPercent } from '@/types/hr';
 
@@ -113,6 +114,9 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
               </div>
             </div>
           )}
+
+          {/* The employee's own lifecycle tasks (renders nothing when empty) */}
+          <MyLifecycleTasks />
 
           {/* Staff tiles */}
           <div className="p-5">
