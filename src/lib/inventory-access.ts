@@ -77,3 +77,13 @@ export function resolveScopedCompany(user: PortalUser, requested: number | null)
   const allowed = parseCompanyIds(user.allowed_company_ids);
   return allowed.length > 0 ? allowed[0] : null;
 }
+
+/**
+ * The companies a user is scoped to for LISTING queries, or `undefined` when the
+ * user is an unrestricted admin (apply no company filter). A non-admin's scope is
+ * exactly their allowed_company_ids — possibly `[]`, which must mean "see nothing".
+ */
+export function companyScope(user: PortalUser): number[] | undefined {
+  if (isUnrestrictedAdmin(user)) return undefined;
+  return parseCompanyIds(user.allowed_company_ids);
+}

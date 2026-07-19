@@ -105,6 +105,7 @@ export interface QuickCount {
   product_id: number;
   product_name?: string;
   location_id: number;
+  company_id: number | null;          // which restaurant (null = legacy, quarantined)
   counted_qty: number;                // base-unit total (bottles)
   uom: string;
   counted_by: number;

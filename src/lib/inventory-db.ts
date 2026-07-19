@@ -69,6 +69,7 @@ export function initInventoryTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       product_id INTEGER NOT NULL,
       location_id INTEGER NOT NULL,
+      company_id INTEGER,
       counted_qty REAL NOT NULL,
       uom TEXT NOT NULL DEFAULT 'Units',
       counted_by INTEGER NOT NULL,
@@ -86,6 +87,7 @@ export function initInventoryTables() {
     CREATE INDEX IF NOT EXISTS idx_quick_status ON quick_counts(status);
     CREATE INDEX IF NOT EXISTS idx_quick_product ON quick_counts(product_id);
     CREATE INDEX IF NOT EXISTS idx_quick_counted_by ON quick_counts(counted_by);
+    CREATE INDEX IF NOT EXISTS idx_quick_company ON quick_counts(company_id);
 
     CREATE TABLE IF NOT EXISTS product_drafts (
       odoo_product_id INTEGER PRIMARY KEY,
@@ -245,6 +247,18 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
     if (!cols.includes('crate_qty')) db.exec(`ALTER TABLE ${table} ADD COLUMN crate_qty REAL`);
     if (!cols.includes('loose_qty')) db.exec(`ALTER TABLE ${table} ADD COLUMN loose_qty REAL`);
     if (!cols.includes('units_per_crate')) db.exec(`ALTER TABLE ${table} ADD COLUMN units_per_crate REAL`);
+  }
+
+  // quick_counts company ownership — nullable: a synchronous SQLite migration
+  // can't derive the company from the Odoo location, so it's stamped on new
+  // counts and lazily backfilled from Odoo for legacy rows. Un-backfilled
+  // (null-company) rows stay quarantined — hidden from non-admin review and
+  // approvable only by an unrestricted admin.
+  const qcCols = (db.prepare("PRAGMA table_info('quick_counts')").all() as { name: string }[]).map(c => c.name);
+  if (!qcCols.includes('company_id')) {
+    try { db.exec('ALTER TABLE quick_counts ADD COLUMN company_id INTEGER'); }
+    catch (e) { if (!(e instanceof Error && /duplicate column/i.test(e.message))) throw e; }
+    db.exec('CREATE INDEX IF NOT EXISTS idx_quick_company ON quick_counts(company_id)');
   }
 }
 
@@ -664,6 +678,7 @@ export function getSessionEntries(session_id: number): CountEntry[] {
 export function createQuickCount(data: {
   product_id: number;
   location_id: number;
+  company_id: number;                // which restaurant — drives review scoping
   counted_qty: number;               // always the base-unit total (bottles)
   uom: string;
   counted_by: number;
@@ -673,20 +688,28 @@ export function createQuickCount(data: {
 }): number {
   const db = getDb();
   const r = db.prepare(`
-    INSERT INTO quick_counts (product_id, location_id, counted_qty, uom, counted_by, status, submitted_at,
+    INSERT INTO quick_counts (product_id, location_id, company_id, counted_qty, uom, counted_by, status, submitted_at,
       crate_qty, loose_qty, units_per_crate)
-    VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
-  `).run(data.product_id, data.location_id, data.counted_qty, data.uom, data.counted_by, now(),
+    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+  `).run(data.product_id, data.location_id, data.company_id, data.counted_qty, data.uom, data.counted_by, now(),
     data.crate_qty ?? null, data.loose_qty ?? null, data.units_per_crate ?? null);
   return r.lastInsertRowid as number;
 }
 
-export function listQuickCounts(filters?: { status?: string; counted_by?: number }): QuickCount[] {
+export function listQuickCounts(filters?: { status?: string; counted_by?: number; company_ids?: number[] }): QuickCount[] {
   const db = getDb();
   const where: string[] = [];
   const vals: unknown[] = [];
   if (filters?.status) { where.push('q.status = ?'); vals.push(filters.status); }
   if (filters?.counted_by) { where.push('q.counted_by = ?'); vals.push(filters.counted_by); }
+  // Company scope: when the caller is restricted to specific companies, only their
+  // rows are visible. A NULL company_id (legacy, not yet backfilled) is excluded by
+  // `IN`, so it stays quarantined from non-admins. An explicit empty scope yields no
+  // rows; an undefined company_ids (unrestricted admin) applies no company filter.
+  if (filters?.company_ids) {
+    if (filters.company_ids.length === 0) where.push('0 = 1');
+    else { where.push(`q.company_id IN (${filters.company_ids.map(() => '?').join(',')})`); vals.push(...filters.company_ids); }
+  }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
   return db.prepare(`
     SELECT q.*, u.name as counted_by_name
@@ -701,6 +724,20 @@ export function approveQuickCount(id: number, reviewed_by: number) {
   const db = getDb();
   db.prepare('UPDATE quick_counts SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
     .run('approved', reviewed_by, now(), id);
+}
+
+/** Distinct Odoo location ids of quick counts still missing a company (for lazy backfill). */
+export function getQuickCountLocationsMissingCompany(): number[] {
+  const db = getDb();
+  return (db.prepare('SELECT DISTINCT location_id FROM quick_counts WHERE company_id IS NULL').all() as { location_id: number }[])
+    .map(r => r.location_id);
+}
+
+/** Stamp `companyId` on legacy quick counts of `locationId` that were missing it. Returns rows changed. */
+export function setQuickCountCompanyByLocation(locationId: number, companyId: number): number {
+  const db = getDb();
+  return db.prepare('UPDATE quick_counts SET company_id = ? WHERE location_id = ? AND company_id IS NULL')
+    .run(companyId, locationId).changes as number;
 }
 
 /**

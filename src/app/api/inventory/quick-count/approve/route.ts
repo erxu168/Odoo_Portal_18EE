@@ -14,6 +14,7 @@ import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, approveQuickCount } from '@/lib/inventory-db';
 import { getDb } from '@/lib/db';
+import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
 
 
 export async function POST(request: Request) {
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  initInventoryTables();
   const body = await request.json();
   const { id } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
@@ -33,6 +35,11 @@ export async function POST(request: Request) {
   if (qc.status !== 'pending') {
     return NextResponse.json({ error: 'Already processed' }, { status: 400 });
   }
+  // Company ownership: only someone allowed this count's restaurant may approve it.
+  // A null-company legacy row (not yet backfilled) is approvable only by an
+  // unrestricted admin, so a manager can never approve another restaurant's count.
+  const okCompany = qc.company_id == null ? isUnrestrictedAdmin(user) : canAccessCompany(user, qc.company_id);
+  if (!okCompany) return NextResponse.json({ error: 'This count belongs to another restaurant' }, { status: 403 });
 
   // Update status FIRST so it's approved even if Odoo write fails
   approveQuickCount(id, user.id);
@@ -42,33 +49,45 @@ export async function POST(request: Request) {
   try {
     const odoo = getOdoo();
 
+    // Guard against a location that changed company since the count: only push to
+    // Odoo when the location still belongs to this count's restaurant.
+    if (qc.company_id != null) {
+      const locRows = await odoo.searchRead('stock.location', [['id', '=', qc.location_id]], ['company_id'], { limit: 1 });
+      const locCompany = locRows[0] && Array.isArray(locRows[0].company_id) ? locRows[0].company_id[0] : (locRows[0] ? locRows[0].company_id : false);
+      if (locCompany && locCompany !== qc.company_id) {
+        return NextResponse.json({
+          message: 'Approved and recorded. Stock not updated — this location now belongs to a different restaurant.',
+          warning: 'location-company-changed',
+        });
+      }
+    }
+
     const quants = await odoo.searchRead('stock.quant', [
       ['product_id', '=', qc.product_id],
       ['location_id', '=', qc.location_id],
-    ], ['id'], { limit: 1 });
+    ], ['id'], { limit: 2 });
 
-    if (quants.length > 0) {
-      await odoo.write('stock.quant', [quants[0].id], {
-        inventory_quantity: qc.counted_qty,
-        inventory_quantity_set: true,
-      });
+    if (quants.length > 1) {
+      // Several stock records (lot / package / owner dimensions) — don't guess which.
+      warning = 'Approved. Stock not updated — several stock records exist for this product at the location; adjust it directly in Odoo.';
     } else {
-      await odoo.create('stock.quant', {
-        product_id: qc.product_id,
-        location_id: qc.location_id,
-        inventory_quantity: qc.counted_qty,
-        inventory_quantity_set: true,
-      });
-    }
-
-    const toApply = await odoo.searchRead('stock.quant', [
-      ['product_id', '=', qc.product_id],
-      ['location_id', '=', qc.location_id],
-      ['inventory_quantity_set', '=', true],
-    ], ['id'], { limit: 10 });
-
-    if (toApply.length > 0) {
-      await odoo.call('stock.quant', 'action_apply_inventory', [toApply.map((q: any) => q.id)]);
+      let quantId: number;
+      if (quants.length === 1) {
+        quantId = quants[0].id;
+        await odoo.write('stock.quant', [quantId], {
+          inventory_quantity: qc.counted_qty,
+          inventory_quantity_set: true,
+        });
+      } else {
+        quantId = await odoo.create('stock.quant', {
+          product_id: qc.product_id,
+          location_id: qc.location_id,
+          inventory_quantity: qc.counted_qty,
+          inventory_quantity_set: true,
+        }) as number;
+      }
+      // Apply ONLY the quant we just wrote — never sweep other pending adjustments.
+      await odoo.call('stock.quant', 'action_apply_inventory', [[quantId]]);
     }
   } catch (err: any) {
     console.error('QC Odoo write failed (still approved):', err.message);
