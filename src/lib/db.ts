@@ -346,31 +346,48 @@ export function getUserByApplicantId(applicantId: number): PortalUser | null {
  * thrown, so a profile edit can't fail because of a login-email clash.
  * Returns: 'updated' | 'unchanged' | 'empty' | 'no_user' | 'collision'.
  */
-export function setUserEmailByEmployeeId(
-  employeeId: number,
-  email: string,
-): 'updated' | 'unchanged' | 'empty' | 'no_user' | 'collision' {
+export type EmailSyncOutcome = 'updated' | 'unchanged' | 'empty' | 'collision';
+
+/**
+ * Set a specific login account's email (by portal_users.id). Normalizes (lowercase+trim);
+ * empty → no change. Best-effort: a UNIQUE-email collision is reported via the error CODE
+ * (SQLITE_CONSTRAINT_UNIQUE), never thrown, so callers can't fail on a clash.
+ */
+export function setUserEmail(userId: number, email: string): EmailSyncOutcome {
   const normalized = (email || '').toLowerCase().trim();
   if (!normalized) return 'empty';
   const db = getDb();
-  const row = db
-    .prepare('SELECT id, email FROM portal_users WHERE employee_id = ? AND active = 1')
-    .get(employeeId) as { id: number; email: string } | undefined;
-  if (!row) return 'no_user';
+  const row = db.prepare('SELECT email FROM portal_users WHERE id = ?').get(userId) as { email: string } | undefined;
+  if (!row) return 'unchanged';
   if ((row.email || '').toLowerCase().trim() === normalized) return 'unchanged';
   try {
-    db.prepare('UPDATE portal_users SET email = ? WHERE id = ?').run(normalized, row.id);
+    db.prepare('UPDATE portal_users SET email = ? WHERE id = ?').run(normalized, userId);
     return 'updated';
   } catch (e) {
-    if (String((e as Error)?.message).includes('UNIQUE')) return 'collision';
+    const code = (e as { code?: string })?.code;
+    if (code === 'SQLITE_CONSTRAINT_UNIQUE' || String((e as Error)?.message).toUpperCase().includes('UNIQUE')) return 'collision';
     throw e;
   }
 }
 
-/** Active login accounts linked to an employee — used by the one-time email reconcile. */
+/**
+ * Sync the login email of an employee's ACTIVE linked account to their PROFILE email (source of
+ * truth). One-way (profile → login), best-effort. Returns 'no_user' if there is no active account.
+ * SECURITY: this changes a login credential — callers must authorize the TARGET account's role
+ * (a non-admin must not be able to re-point an admin account's email). See the PATCH route.
+ */
+export function setUserEmailByEmployeeId(employeeId: number, email: string): EmailSyncOutcome | 'no_user' {
+  const row = getDb()
+    .prepare('SELECT id FROM portal_users WHERE employee_id = ? AND active = 1 ORDER BY id LIMIT 1')
+    .get(employeeId) as { id: number } | undefined;
+  if (!row) return 'no_user';
+  return setUserEmail(row.id, email);
+}
+
+/** Login accounts linked to an employee (incl. deactivated) — used by the one-time email reconcile. */
 export function listEmployeeLinkedUsers(): { id: number; email: string; employee_id: number }[] {
   return getDb()
-    .prepare('SELECT id, email, employee_id FROM portal_users WHERE employee_id IS NOT NULL AND active = 1')
+    .prepare('SELECT id, email, employee_id FROM portal_users WHERE employee_id IS NOT NULL ORDER BY id')
     .all() as { id: number; email: string; employee_id: number }[];
 }
 
