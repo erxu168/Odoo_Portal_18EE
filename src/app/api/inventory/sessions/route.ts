@@ -120,9 +120,10 @@ export async function PUT(request: Request) {
   const { id, status, review_note, proof_photo } = body;
   if (!id || !status) return NextResponse.json({ error: 'id and status required' }, { status: 400 });
 
-  // Only these transitions exist — reject any other/arbitrary status outright so
-  // a client can't push a session into an unexpected state.
-  const VALID_STATUSES = ['submitted', 'approved', 'rejected', 'pending'];
+  // Only these transitions exist here. Approval goes through /api/inventory/approve
+  // (which writes Odoo stock) — never this generic endpoint — so 'approved' is not
+  // accepted here. Any other/arbitrary status is rejected outright.
+  const VALID_STATUSES = ['submitted', 'rejected', 'pending'];
   if (!VALID_STATUSES.includes(status)) {
     return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
   }
@@ -135,9 +136,14 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'This count belongs to another restaurant' }, { status: 403 });
   }
 
-  // Staff can submit; managers can approve/reject/reopen.
-  if (['approved', 'rejected'].includes(status) && !roleCan(user.role, 'inventory.review.approve', getPermissionOverrides())) {
+  // Managers reject/reopen; staff submit.
+  if (status === 'rejected' && !roleCan(user.role, 'inventory.review.approve', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  // A count can only be rejected while it is submitted (never overwrite an
+  // already-approved/pending one).
+  if (status === 'rejected' && session.status !== 'submitted') {
+    return NextResponse.json({ error: 'Only a submitted count can be rejected' }, { status: 400 });
   }
 
   // On submit: enforce count completion + save proof photo
@@ -168,10 +174,9 @@ export async function PUT(request: Request) {
       // Flat completion gate (unchanged, behavior-preserving).
       const template = getTemplate(session.template_id);
       if (template) {
-        const productIds: number[] = (() => {
-          try { return JSON.parse((template as unknown as Record<string, string>).product_ids || '[]'); } catch { return []; }
-        })();
-        const expectedCount = productIds.length > 0 ? productIds.length : 0;
+        // getTemplate returns product_ids already parsed to number[] (parseTemplate).
+        const productIds: number[] = Array.isArray(template.product_ids) ? template.product_ids : [];
+        const expectedCount = productIds.length;
         if (expectedCount > 0 && entries.length < expectedCount) {
           return NextResponse.json({
             error: `Please count all items before submitting. ${entries.length}/${expectedCount} counted.`,

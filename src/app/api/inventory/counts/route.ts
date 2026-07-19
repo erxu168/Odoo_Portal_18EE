@@ -95,9 +95,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid quantity' }, { status: 400 });
   }
   const tmpl = getTemplate(session.template_id);
-  const listIds: number[] = (() => {
-    try { return JSON.parse((tmpl as unknown as Record<string, string> | null)?.product_ids || '[]'); } catch { return []; }
-  })();
+  // getTemplate already returns product_ids as a parsed number[] (see parseTemplate).
+  const listIds: number[] = Array.isArray(tmpl?.product_ids) ? (tmpl!.product_ids as number[]) : [];
   if (listIds.length > 0 && !listIds.includes(Number(product_id))) {
     return NextResponse.json({ error: 'That product is not on this count list' }, { status: 400 });
   }
