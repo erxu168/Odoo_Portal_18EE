@@ -203,7 +203,7 @@
     <div class="srow"><div class="sname">Sound</div><div class="tog on" data-st="__sound"></div></div>
     <div class="srow"><div class="sname">Demo: 10&times; speed</div><div class="tog on" data-st="__speed"></div></div>
     <button id="closeSettings">Close</button>
-    <div class="mocknote">Mock v1.2 &mdash; demo orders re-appear in the queue over time so you can keep testing. Step types: COOK (timed), REST (auto-advance, soft chime), ACTION (loud alarm, must tap). When a card flashes, tapping anywhere on it advances/finishes. SKIP and CANCEL need a second tap to confirm.</div>
+    <div class="mocknote">Mock v1.3 &mdash; demo orders re-appear in the queue over time so you can keep testing. Every step end alarms and must be confirmed with a tap &mdash; nothing advances by itself. When a card flashes, tapping anywhere on it advances/finishes. SKIP and CANCEL need a second tap to confirm.</div>
   </div>
 </div>
 
@@ -362,7 +362,6 @@ setInterval(()=>{
     if(rem<=0){
       const isLast = t.stepIdx===PROFILES[t.profile].steps.length-1;
       if(isLast){ t.state="done"; t.lastBeep=Date.now(); dirty=true; sndDone(); }
-      else if(s.type==="rest"){ dirty=true; sndChime(); nextStep(t); }
       else { t.state="alarm"; t.lastBeep=Date.now(); dirty=true; sndAction(); }
     } else if(rem<=s.secs*.15 && t.state!=="warnzone"){ t.state="warnzone"; dirty=true; }
   });
