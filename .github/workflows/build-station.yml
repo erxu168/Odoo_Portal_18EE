@@ -73,11 +73,20 @@ jobs:
       - name: Sync Capacitor into the native project
         run: npx cap sync android
 
-      - name: Generate the app icon
+      - name: Generate the app icon (legacy + adaptive)
         run: |
           set -e
+          if ! command -v convert >/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick; fi
           mkdir -p assets
           cp docs/android-station/assets/icon-only.png assets/icon-only.png
+          # Modern Android launchers use the ADAPTIVE icon, which needs a foreground + a
+          # background. With only icon-only.png, @capacitor/assets keeps Capacitor's DEFAULT
+          # adaptive foreground (a generic blue mark) — so the launcher shows a default icon
+          # even though the legacy icon is correct. Derive both adaptive layers from the same
+          # art: the icon shrunk into the adaptive safe zone as the foreground, solid white
+          # as the background.
+          convert docs/android-station/assets/icon-only.png -resize 66% -background none -gravity center -extent 1024x1024 assets/icon-foreground.png
+          convert -size 1024x1024 xc:white assets/icon-background.png
           npx --yes @capacitor/assets generate --android
 
       - name: Build the debug APK
