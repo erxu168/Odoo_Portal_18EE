@@ -736,17 +736,19 @@ export function listQuickCounts(filters?: { status?: string; counted_by?: number
   `).all(...vals) as QuickCount[];
 }
 
-export function approveQuickCount(id: number, reviewed_by: number) {
+/** Approve a PENDING quick count atomically. Returns rows changed (0 = already decided). */
+export function approveQuickCount(id: number, reviewed_by: number): number {
   const db = getDb();
-  db.prepare('UPDATE quick_counts SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
-    .run('approved', reviewed_by, now(), id);
+  return db.prepare("UPDATE quick_counts SET status = 'approved', reviewed_by = ?, reviewed_at = ? WHERE id = ? AND status = 'pending'")
+    .run(reviewed_by, now(), id).changes as number;
 }
 
-/** Reject (discard) a quick count — never writes to Odoo stock. */
-export function rejectQuickCount(id: number, reviewed_by: number) {
+/** Reject (discard) a PENDING quick count — never writes to Odoo stock.
+ *  Atomic; returns rows changed (0 = already decided). */
+export function rejectQuickCount(id: number, reviewed_by: number): number {
   const db = getDb();
-  db.prepare('UPDATE quick_counts SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?')
-    .run('rejected', reviewed_by, now(), id);
+  return db.prepare("UPDATE quick_counts SET status = 'rejected', reviewed_by = ?, reviewed_at = ? WHERE id = ? AND status = 'pending'")
+    .run(reviewed_by, now(), id).changes as number;
 }
 
 /** Distinct Odoo location ids of quick counts still missing a company (for lazy backfill). */

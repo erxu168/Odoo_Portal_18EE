@@ -28,6 +28,10 @@ export async function POST(request: Request) {
   const body = await request.json();
   const { id, action } = body;
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  // Whitelist the action — an unknown/typo value must NOT silently approve.
+  if (action != null && action !== 'approve' && action !== 'reject') {
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+  }
 
   const db = getDb();
   const qc = db.prepare('SELECT * FROM quick_counts WHERE id = ?').get(id) as any;
@@ -44,12 +48,17 @@ export async function POST(request: Request) {
   // Reject = discard the count. It must NEVER write to Odoo stock (the button
   // previously called this same endpoint and silently APPROVED instead).
   if (action === 'reject') {
-    rejectQuickCount(id, user.id);
+    if (rejectQuickCount(id, user.id) === 0) {
+      return NextResponse.json({ error: 'Already processed' }, { status: 400 });
+    }
     return NextResponse.json({ message: 'Quick count rejected' });
   }
 
-  // Update status FIRST so it's approved even if Odoo write fails
-  approveQuickCount(id, user.id);
+  // Approve atomically — only if still pending — BEFORE any Odoo write, so a
+  // concurrent reject can't leave it rejected after stock was already written.
+  if (approveQuickCount(id, user.id) === 0) {
+    return NextResponse.json({ error: 'Already processed' }, { status: 400 });
+  }
 
   let warning: string | null = null;
 
