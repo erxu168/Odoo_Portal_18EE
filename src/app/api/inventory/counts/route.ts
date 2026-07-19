@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, setCountPhotos, getCountPhotosMap } from '@/lib/inventory-db';
+import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, getTemplate, setCountPhotos, getCountPhotosMap } from '@/lib/inventory-db';
 import { canAccessSession } from '@/lib/inventory-access';
 import { getOdoo } from '@/lib/odoo';
 import { resolveAttribution } from '@/lib/shift-attribution';
@@ -87,6 +87,20 @@ export async function POST(request: Request) {
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
   if (!canAccessSession(user, session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   if (!isEditable(session.status)) return NextResponse.json({ error: 'This count can no longer be edited' }, { status: 400 });
+
+  // Untrusted client input: the quantity must be a sane finite non-negative number,
+  // and the product must actually be on this session's list — its counts get written
+  // to Odoo stock on approval, so an arbitrary product/qty must never get in.
+  if (!Number.isFinite(baseQty) || baseQty < 0 || baseQty > 1e7) {
+    return NextResponse.json({ error: 'Invalid quantity' }, { status: 400 });
+  }
+  const tmpl = getTemplate(session.template_id);
+  const listIds: number[] = (() => {
+    try { return JSON.parse((tmpl as unknown as Record<string, string> | null)?.product_ids || '[]'); } catch { return []; }
+  })();
+  if (listIds.length > 0 && !listIds.includes(Number(product_id))) {
+    return NextResponse.json({ error: 'That product is not on this count list' }, { status: 400 });
+  }
 
   upsertCountEntry({
     session_id, product_id, counted_qty: baseQty,
