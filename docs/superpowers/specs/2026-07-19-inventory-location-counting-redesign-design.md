@@ -133,6 +133,40 @@ A blank `0` can't mean both "counted none" and "nobody counted it." So an item e
 | Catch-all | (virtual) | items in the list not placed in any spot render under "No specific spot" |
 | Odoo kg write | approve → `stock.quant` | demoted to best-effort/optional (already best-effort today) |
 
+## Data model — corrections from verification (2026-07-19, Codex cross-check)
+
+The Anthropic multi-agent verification could not run (session usage limit); the OpenAI **Codex** cross-check did, and reading the real code corrected several "reuses existing infra / no rebuild" claims above. The redesign is feasible but needs **real data-model work**, not just surfacing:
+
+**Claims corrected**
+- **Multi-location counting is NOT wired end-to-end.** `product_locations` allows multiple rows, but `guided-route.ts` deliberately selects ONE primary location, and `count_entries` is keyed by `(session, product)` — so the same product cannot currently be counted at two spots. Core to the redesign; needs new structure.
+- **`product_locations` is global (no `template_id`).** Using it as the builder's placement store would let editing one list's spots affect other lists. Needs a template-scoped placement table.
+- **Open sessions would drift** if a template/placement is edited mid-count. Needs a per-session snapshot of its items.
+- **Supplier search can't be a dotted `product.product` domain.** Vendor name/code live on `product.supplierinfo`; hydrate with a separate query and scope sellers to the active/shared company.
+- **Photo delta is bigger than "manager adjust only."** Today the photo UI appears only after a positive count and submit requires a photo only when qty>0; the photo-first + out-of-stock-bypass gating on the count screen is new work.
+- **Location photo/description editing already exists** in `LocationManager` (both fields) — only builder integration + the staff ⓘ modal are new (G is smaller than stated).
+- **`loose_label` alone is insufficient** — persist an explicit `count_mode` (`simple | pack_loose`) because `units_per_crate` can't reveal average-vs-pack-size.
+- **Odoo write is best-effort but not optional** — templates require an Odoo `location_id` and approve auto-writes; multiple spot rows for one product must be **summed** before writing `stock.quant` (current code would race several writes).
+- **Company scoping is broader than departments** — templates list ignores active company, `ManageTemplates` sends none, `/api/inventory/locations` lacks the cookie fallback, the person picker uses the admin-wide users endpoint; `product_flags` are global by product id (a shared product's settings leak across companies).
+
+**New/changed schema (all via the idempotent `migrateInventorySchema()` ALTER pattern)**
+- `product_flags`: `+ count_mode TEXT NULL` (simple|pack_loose), `+ loose_label TEXT NULL`.
+- **New `template_product_locations`** (`template_id, odoo_product_id, count_location_id, shelf_sort`; PK on the 3 ids) — per-list placements (replaces global `product_locations` for the builder).
+- **New `session_count_items`** — snapshot `(session_id, product_id, count_location_id, shelf_sort)` + `requires_photo, count_mode, labels, pack size/avg`; legacy sessions fall back to live resolution.
+- `count_entries`: `+ count_location_id INTEGER NOT NULL DEFAULT 0`, `+ out_of_stock INTEGER NOT NULL DEFAULT 0`, `+ count_mode/pack_label/loose_label` snapshots, `+ odoo_qty REAL NULL`; unique index `(session_id, count_location_id, product_id)` after de-duping legacy rows.
+- `quick_counts`: `+ out_of_stock INTEGER NOT NULL DEFAULT 0` + matching snapshots + `odoo_qty`.
+- No migration: `count_locations.photo/description`, `count_photos`, `session_location_status`.
+
+**Other risks to honor:** location delete → soft-delete (`active`); `count_photos` needs an entry id, so photo-before-count uses composite offline state; offline dedup keys must include spot id; simple counts with no average stay portal-only (never write "3 trays" as "3 kg"); quick-counts have no predefined list so "not counted" doesn't apply there; simple counts may be decimal but packs/loose/pack-size are non-negative integers.
+
+**Build order (each phase independently testable — its own plan):**
+1. **Data foundation** — migrations + db CRUD/types + unit tests (no UI).
+2. **Server semantics** — template placements save, session snapshot, counts route (location + state), approve aggregation + adjust.
+3. **Product naming search (E)** — products route + supplierinfo hydration + `displayName`.
+4. **Builder (A)** — location-organized editor + chosen-pinned picker + company scope.
+5. **Count UI (B)** — per-spot list, numpad, stacked/compact cells, out-of-stock, photo rows, location ⓘ.
+6. **Review (F, H)** — manager adjust + 3-state summaries.
+7. **Unit settings (C)** — ProductSettings count_mode/labels.
+
 ## Non-goals (this spec)
 
 - Precise Odoo stock valuation / recipe-cost accuracy from counts (portal is enough).
