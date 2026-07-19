@@ -76,23 +76,28 @@ export async function POST(request: Request) {
     }
 
     // Run every per-entry write/create in parallel. Per-entry try/catch
-    // is preserved so a single failure doesn't block the others.
+    // is preserved so a single failure doesn't block the others. Capture the
+    // exact quant id each entry touched so we apply ONLY those.
+    const appliedQuantIds: number[] = [];
     await Promise.all(entries.map(async (entry) => {
       try {
         const existingId = quantByProduct.get(entry.product_id);
+        let quantId: number;
         if (existingId) {
+          quantId = existingId;
           await odoo.write('stock.quant', [existingId], {
             inventory_quantity: entry.counted_qty,
             inventory_quantity_set: true,
           });
         } else {
-          await odoo.create('stock.quant', {
+          quantId = await odoo.create('stock.quant', {
             product_id: entry.product_id,
             location_id: session.location_id,
             inventory_quantity: entry.counted_qty,
             inventory_quantity_set: true,
-          });
+          }) as number;
         }
+        appliedQuantIds.push(quantId);
         syncedEntries.push(entry.product_id);
       } catch (entryErr: unknown) {
         const msg = entryErr instanceof Error ? entryErr.message : String(entryErr);
@@ -101,17 +106,11 @@ export async function POST(request: Request) {
       }
     }));
 
-    // Only apply inventory if at least some entries synced
-    if (syncedEntries.length > 0) {
-      const allQuants = await odoo.searchRead('stock.quant', [
-        ['location_id', '=', session.location_id],
-        ['inventory_quantity_set', '=', true],
-      ], ['id'], { limit: 1000 });
-
-      if (allQuants.length > 0) {
-        const quantIds = allQuants.map((q: { id: number }) => q.id);
-        await odoo.call('stock.quant', 'action_apply_inventory', [quantIds]);
-      }
+    // Apply ONLY the quants this approval wrote — never re-scan and sweep every
+    // pending inventory_quantity_set quant at the location (which could commit
+    // another session's or a manual, unrelated adjustment).
+    if (appliedQuantIds.length > 0) {
+      await odoo.call('stock.quant', 'action_apply_inventory', [appliedQuantIds]);
     }
   } catch (err: unknown) {
     // A whole-sync failure (e.g. Odoo unreachable) is non-fatal — the count is
