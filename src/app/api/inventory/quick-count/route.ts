@@ -67,6 +67,9 @@ export async function POST(request: Request) {
   if (!entries || !Array.isArray(entries) || !location_id) {
     return NextResponse.json({ error: 'entries array and location_id required' }, { status: 400 });
   }
+  if (entries.length > 500) {
+    return NextResponse.json({ error: 'Too many items in one submission (max 500).' }, { status: 400 });
+  }
 
   // The counting location's restaurant (from Odoo, never the client) drives review
   // scoping. Require an internal location tied to exactly one company; a shared or
@@ -107,6 +110,9 @@ export async function POST(request: Request) {
     const baseQty = hasSplit
       ? crateTotal(Number(entry.crate_qty) || 0, Number(entry.loose_qty) || 0, upc)
       : Number(entry.counted_qty);
+    if (!Number.isFinite(baseQty) || baseQty < 0 || baseQty > 1e7) {
+      return NextResponse.json({ error: `Invalid quantity for product ${entry.product_id}` }, { status: 400 });
+    }
     const id = createQuickCount({
       product_id: Number(entry.product_id),
       location_id,

@@ -76,8 +76,10 @@ export async function POST(request: Request) {
       limit: Math.max(200, productIds.length * 2),
     });
     const quantByProduct = new Map<number, number>();
+    const quantCountByProduct = new Map<number, number>();
     for (const q of existingQuants) {
       const pid = Array.isArray(q.product_id) ? q.product_id[0] : q.product_id;
+      quantCountByProduct.set(pid, (quantCountByProduct.get(pid) || 0) + 1);
       // First match wins so the choice is deterministic across calls.
       if (!quantByProduct.has(pid)) quantByProduct.set(pid, q.id);
     }
@@ -88,6 +90,12 @@ export async function POST(request: Request) {
     const appliedQuantIds: number[] = [];
     await Promise.all(entries.map(async (entry) => {
       try {
+        // Several stock records for one product@location (lot/package/owner) — don't
+        // guess which to overwrite; flag for manual Odoo adjustment (like quick-count).
+        if ((quantCountByProduct.get(entry.product_id) || 0) > 1) {
+          failedEntries.push({ product_id: entry.product_id, error: 'Several stock records exist (lot/package) — adjust in Odoo' });
+          return;
+        }
         const existingId = quantByProduct.get(entry.product_id);
         let quantId: number;
         if (existingId) {
