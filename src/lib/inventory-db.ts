@@ -19,6 +19,10 @@ import type {
 
 export function initInventoryTables() {
   const db = getDb();
+  // The CREATE block runs as ONE exec; if a single statement fails on a legacy DB
+  // (e.g. an index over a column an old table predates) it must NOT stop the column
+  // migrations below from running. Catch, log, and always continue to migrate.
+  try {
   db.exec(`
     CREATE TABLE IF NOT EXISTS counting_templates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,6 +163,9 @@ export function initInventoryTables() {
       UNIQUE(company_id, kind)
     );
   `);
+  } catch (e) {
+    console.error('[krawings_inventory] table/index init error (continuing to migrate):', e instanceof Error ? e.message : e);
+  }
   migrateInventorySchema(db);
 }
 

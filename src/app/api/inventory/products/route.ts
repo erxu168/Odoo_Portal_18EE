@@ -27,7 +27,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { registerDraftProduct, isDraftProduct, listTemplates } from '@/lib/inventory-db';
+import { initInventoryTables, registerDraftProduct, isDraftProduct, listTemplates } from '@/lib/inventory-db';
 
 // Process-level cache for the default category and UOM IDs.
 let _defaultCategId: number | null = null;
@@ -174,6 +174,7 @@ async function getDefaultUomId(): Promise<number> {
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  initInventoryTables();
 
   const { searchParams } = new URL(request.url);
   const categoryId = searchParams.get('category_id');
@@ -234,7 +235,12 @@ export async function GET(request: Request) {
             relevantIds = [];
           }
         }
-        if (relevantIds) {
+        // Relevance is a FOCUS hint, not a hard exclusion: only narrow to the
+        // relevant set when it's non-empty. An empty set (a company that doesn't
+        // yet touch any product) or a failed lookup must NOT collapse the screen
+        // to company-tagged-only (≈0, since products are shared) — fall back to
+        // "shared OR this company" so Settings/List-builder always show products.
+        if (relevantIds && relevantIds.length > 0) {
           domain.push('|', ['company_id', '=', activeCompany],
             '&', ['company_id', '=', false], ['id', 'in', relevantIds]);
         } else {
@@ -271,6 +277,7 @@ export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (!roleCan(user.role, 'inventory.product.create', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  initInventoryTables();
 
   try {
     const body = await request.json();
