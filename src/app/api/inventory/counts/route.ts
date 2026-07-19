@@ -38,21 +38,22 @@ export async function GET(request: Request) {
   const photoMap = getCountPhotosMap('count_entries', entries.map((e: any) => e.id));
   const hydrated = entries.map((e: any) => ({ ...e, photos: photoMap[e.id] || [] }));
 
-  // Fetch system quantities from Odoo stock.quant for this session's location
+  // Fetch system quantities from Odoo stock.quant for this session's list products.
   const systemQtys: Record<number, number> = {};
   try {
-    {
-      const odoo = getOdoo();
-      const quants = await odoo.searchRead('stock.quant',
-        [['location_id', '=', session.location_id], ['quantity', '>', 0]],
-        ['product_id', 'quantity'],
-        { limit: 1000 },
-      );
-      for (const q of quants) {
-        if (q.product_id) {
-          const pid = Array.isArray(q.product_id) ? q.product_id[0] : q.product_id;
-          systemQtys[pid] = (systemQtys[pid] || 0) + q.quantity;
-        }
+    const odoo = getOdoo();
+    // Scope to this session's list products and sum ALL quants (including negative
+    // dimensional rows), rather than only positive quants across the whole location.
+    const tmpl = getTemplate(session.template_id);
+    const pids: number[] = Array.isArray(tmpl?.product_ids) ? (tmpl!.product_ids as number[]) : [];
+    const domain: any[] = pids.length > 0
+      ? [['location_id', '=', session.location_id], ['product_id', 'in', pids]]
+      : [['location_id', '=', session.location_id]];
+    const quants = await odoo.searchRead('stock.quant', domain, ['product_id', 'quantity'], { limit: 5000 });
+    for (const q of quants) {
+      if (q.product_id) {
+        const pid = Array.isArray(q.product_id) ? q.product_id[0] : q.product_id;
+        systemQtys[pid] = (systemQtys[pid] || 0) + q.quantity;
       }
     }
   } catch (e) {

@@ -40,7 +40,9 @@ export default function NumpadModal({
   }
 
   function handleSave() {
-    if (buf === '' || buf === '0') {
+    // Empty buffer = clear/unset; an explicitly typed value (including "0") is a
+    // real count, so a physical stockout can be recorded and Odoo stock set to zero.
+    if (buf === '') {
       onSave(null);
     } else {
       const v = parseFloat(buf);
@@ -49,7 +51,7 @@ export default function NumpadModal({
   }
 
   const displayVal = buf || '0';
-  const isEmpty = !buf || buf === '0';
+  const isEmpty = !buf;   // only a truly empty buffer is "empty"; a typed "0" is a real value
   const catLeaf = leafCategory(category);
 
   return (

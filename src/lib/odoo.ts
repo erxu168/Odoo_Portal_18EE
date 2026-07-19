@@ -59,16 +59,25 @@ export class OdooClient {
       headers['Cookie'] = `session_id=${this.sessionId}`;
     }
 
-    const response = await fetch(`${this.url}${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: Date.now(),
-        method: 'call',
-        params,
-      }),
-    });
+    // Bound every RPC with a timeout so a hung Odoo can't block the request forever.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      response = await fetch(`${this.url}${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method: 'call',
+          params,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
 
     // Capture session cookie
     const setCookie = response.headers.get('set-cookie');
