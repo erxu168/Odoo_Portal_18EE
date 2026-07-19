@@ -11,6 +11,10 @@ export interface OdooProduct {
   uom_id: [number, string];
   type: string;
   barcode: string | false;
+  default_code?: string | null;   // order code ("Internal Reference" field)
+  display_name?: string;          // what staff see = internal product name
+  supplier_ref?: string | null;   // matched vendor name/code (search confirm only)
+  is_draft?: boolean;
 }
 
 export interface OdooLocation {

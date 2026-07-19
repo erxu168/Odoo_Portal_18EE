@@ -202,7 +202,46 @@ export async function GET(request: Request) {
     }
 
     if (categoryId) domain.push(['categ_id', '=', parseInt(categoryId)]);
-    if (search) domain.push(['name', 'ilike', search]);
+
+    // Product name search: match the internal name OR the order code
+    // (default_code) OR the supplier's name/code. Supplier fields live on
+    // product.supplierinfo (a separate model) so they can't be a reliable dotted
+    // domain — hydrate matching products in a second query, then OR their ids in.
+    // Staff always SEE the internal name; code/supplier are only ways to find it.
+    let supplierMatchIds: number[] = [];
+    const supplierByVariant: Record<number, string> = {};
+    const supplierByTmpl: Record<number, string> = {};
+    if (search) {
+      try {
+        const sellers = await odoo.searchRead('product.supplierinfo',
+          ['|', ['product_name', 'ilike', search], ['product_code', 'ilike', search]],
+          ['product_id', 'product_tmpl_id', 'product_name', 'product_code'],
+          { limit: 500 });
+        const tmplIds = new Set<number>();
+        for (const s of sellers) {
+          const text = (s.product_name || s.product_code || '').toString();
+          const variantId = Array.isArray(s.product_id) ? s.product_id[0] : null;
+          const tmplId = Array.isArray(s.product_tmpl_id) ? s.product_tmpl_id[0] : null;
+          if (variantId) {
+            supplierMatchIds.push(variantId);
+            if (text && !supplierByVariant[variantId]) supplierByVariant[variantId] = text;
+          } else if (tmplId) {
+            tmplIds.add(tmplId);
+            if (text && !supplierByTmpl[tmplId]) supplierByTmpl[tmplId] = text;
+          }
+        }
+        if (tmplIds.size > 0) {
+          const variants = await odoo.searchRead('product.product',
+            [['product_tmpl_id', 'in', Array.from(tmplIds)]], ['id'],
+            { limit: 2000, context: { active_test: false } });
+          for (const v of variants) supplierMatchIds.push(v.id);
+        }
+      } catch (e) {
+        // Best-effort: fall back to name + order-code matching only.
+        console.error('supplier search failed — matching name/order code only:', e);
+      }
+      domain.push('|', '|', ['name', 'ilike', search], ['default_code', 'ilike', search], ['id', 'in', supplierMatchIds]);
+    }
 
     // Company scope — only on the open browse (skipped when an explicit `ids`
     // filter was applied, since those are an already-curated set, e.g. a
@@ -264,16 +303,25 @@ export async function GET(request: Request) {
     }
 
     const products = await odoo.searchRead('product.product', domain,
-      ['id', 'name', 'categ_id', 'uom_id', 'type', 'barcode', 'active', 'available_in_pos', 'company_id'],
+      ['id', 'name', 'default_code', 'product_tmpl_id', 'categ_id', 'uom_id', 'type', 'barcode', 'active', 'available_in_pos', 'company_id'],
       { limit, order: 'categ_id, name', context: { active_test: false } }
     );
 
-    // Tag products that are portal-created drafts so the UI can flag them
-    // without confusing any archived product for a pending review.
-    const tagged = products.map((p: any) => ({
-      ...p,
-      is_draft: p.active === false && isDraftProduct(p.id),
-    }));
+    // Tag portal-created drafts, and surface the internal display name + order
+    // code + (when matched) the supplier's wording so the picker can show the
+    // friendly name with a confirming subtitle. display_name is always the
+    // internal product name — the order code/supplier are search/confirm aids.
+    const tagged = products.map((p: any) => {
+      const tmplId = Array.isArray(p.product_tmpl_id) ? p.product_tmpl_id[0] : null;
+      const supplierRef = supplierByVariant[p.id] || (tmplId != null ? supplierByTmpl[tmplId] : undefined);
+      return {
+        ...p,
+        default_code: p.default_code || null,
+        display_name: p.name,
+        supplier_ref: supplierRef || null,
+        is_draft: p.active === false && isDraftProduct(p.id),
+      };
+    });
 
     return NextResponse.json({ products: tagged });
   } catch (err: any) {
