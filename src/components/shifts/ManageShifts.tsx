@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import { Badge, EmptyState, Sheet, Spinner, ToggleSwitch, WeekNav } from '@/components/shifts/ui';
+import { Badge, EmptyState, openNativePicker, Sheet, Spinner, ToggleSwitch, WeekNav } from '@/components/shifts/ui';
 import { ds } from '@/lib/design-system';
 import { computeSweep, minutesToHHMM } from '@/lib/shift-timeline';
 import {
@@ -1921,6 +1921,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
                 type="date"
                 value={`${monthAnchor}-01`}
                 onChange={e => { if (e.target.value) setMonthAnchor(e.target.value.slice(0, 7)); }}
+                onClick={openNativePicker}
                 aria-label="Jump to a month"
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
               />

@@ -9,6 +9,20 @@ import { currentWeekKey, weekKeyDays } from '@/lib/shifts-time';
  * All font sizes use var(--fs-*) tokens.
  */
 
+/**
+ * Open a native date/time picker from a click. Mobile browsers open the picker
+ * on any tap of a <input type="date">, but DESKTOP browsers only open it from the
+ * (often invisible) calendar icon — a click on the field does nothing. Calling
+ * showPicker() inside the click gesture fixes desktop while leaving mobile as-is.
+ */
+export function openNativePicker(e: React.MouseEvent<HTMLInputElement>) {
+  try {
+    (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+  } catch {
+    /* older browsers / blocked context — the field still works via the icon + keyboard */
+  }
+}
+
 // --- Search Bar ---
 export function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
@@ -116,6 +130,7 @@ export function WeekNav({ weekKey, label, onPrev, onNext, onJumpDate, onToday }:
             type="date"
             value={pickerValue}
             onChange={e => { if (e.target.value) onJumpDate(e.target.value); }}
+            onClick={openNativePicker}
             aria-label="Jump to a date"
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />
