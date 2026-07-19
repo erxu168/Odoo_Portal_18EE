@@ -73,11 +73,11 @@ jobs:
       - name: Sync Capacitor into the native project
         run: npx cap sync android
 
-      - name: Generate the app icon (placeholder — reuses existing art; rebrand later)
+      - name: Generate the app icon
         run: |
           set -e
           mkdir -p assets
-          cp docs/android-timeclock/assets/icon-only.png assets/icon-only.png
+          cp docs/android-station/assets/icon-only.png assets/icon-only.png
           npx --yes @capacitor/assets generate --android
 
       - name: Build the debug APK

@@ -35,6 +35,6 @@ and attached to the run as an artifact.
 
 ## Icon
 
-The first build reuses the existing app art as a placeholder. To brand it, drop a
-`docs/android-station/assets/icon-only.png` (1024×1024) and point the workflow's icon
-step at it.
+`docs/android-station/assets/icon-only.png` (1024×1024) is the Kitchen Station app icon —
+the Krawings swoosh + tablet. To change it, replace that file (square, ≥1024×1024) and push;
+the workflow regenerates every Android density from it.
