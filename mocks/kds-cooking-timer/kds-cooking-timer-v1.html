@@ -178,6 +178,13 @@
   #closeSettings{margin-top:18px; width:100%; padding:13px; border-radius:12px; border:none;
     background:var(--card-hi); color:var(--text); font-weight:800; font-size:15px; cursor:pointer;}
   .mocknote{margin-top:14px; font-size:11px; color:var(--faint); line-height:1.5;}
+  .xn{color:var(--warn); font-size:.85em;}
+  .qbtns{display:flex; gap:8px; margin-top:10px;}
+  .qb{
+    flex:1; border:1px solid var(--ok); background:transparent; color:var(--ok);
+    border-radius:10px; padding:10px 0; font-size:13px; font-weight:800; letter-spacing:.5px; cursor:pointer;
+  }
+  .qb.all{background:var(--ok); color:#062e17;}
 </style>
 </head>
 <body>
@@ -210,7 +217,7 @@
     <div class="srow"><div class="sname">Sound</div><div class="tog on" data-st="__sound"></div></div>
     <div class="srow"><div class="sname">Demo: 10&times; speed</div><div class="tog on" data-st="__speed"></div></div>
     <button id="closeSettings">Close</button>
-    <div class="mocknote">Mock v1.4 &mdash; demo orders re-appear in the queue over time so you can keep testing. Every step end alarms and must be confirmed with a tap &mdash; nothing advances by itself. When a card flashes, tapping anywhere on it advances/finishes. SKIP and CANCEL need a second tap to confirm.</div>
+    <div class="mocknote">Mock v1.5 &mdash; demo orders re-appear in the queue over time so you can keep testing. Every step end alarms and must be confirmed with a tap &mdash; nothing advances by itself. When a card flashes, tapping anywhere on it advances/finishes. SKIP and CANCEL need a second tap to confirm.</div>
   </div>
 </div>
 
@@ -251,7 +258,7 @@ const PROFILES = {
 };
 
 let demoOrderNo = 742;
-const DEMO_FEED = ["fries","jerkhalf","wings","mac","festival","plantain"];
+const DEMO_FEED = ["fries","fries","jerkhalf","fries","wings","festival","mac","plantain"];
 
 /* ================= state ================= */
 const state = {
@@ -301,29 +308,43 @@ function renderQueue(){
     list.innerHTML='<div id="queueEmpty">No items waiting for this station.<br>New POS orders appear here.</div>';
     return;
   }
-  visible.forEach(q=>{
-    const p=PROFILES[q.profile];
+  /* group identical products so they can be batch-cooked */
+  const groups={};
+  visible.forEach(q=>{ (groups[q.profile]=groups[q.profile]||[]).push(q); });
+  Object.values(groups).forEach(items=>{
+    items.sort((a,b)=>a.arrived-b.arrived);
+    const q=items[0], p=PROFILES[q.profile], n=items.length;
     const ageS=(Date.now()-q.arrived)/1000;
     const ageCls = ageS>120?"age-urgent":ageS>60?"age-warn":"";
     const el=document.createElement("div");
     el.className="qcard "+ageCls;
+    const orderList = items.map(x=>x.order).join("  ");
     el.innerHTML=`
-      <div class="qtop"><span class="order">${q.order}</span><span class="age">${fmt(ageS)} waiting</span></div>
-      <div class="name">${p.name}</div>
+      <div class="qtop"><span class="order">${orderList}</span><span class="age">${fmt(ageS)} waiting</span></div>
+      <div class="name">${p.name}${n>1?` <span class="xn">\u00D7${n}</span>`:""}</div>
       <div class="meta"><span class="badge ${STATIONS[p.station].cls}">${STATIONS[p.station].name.toUpperCase()}</span>
         <span class="steps">${p.steps.map(s=>s.label).join(" \u2192 ")}</span></div>
-      <div class="tap">TAP TO START</div>`;
-    el.onclick=()=>startTimer(q);
+      ${n>1
+        ? `<div class="qbtns"><button class="qb" data-n="1">COOK 1</button><button class="qb all" data-n="${n}">COOK ALL \u00D7${n}</button></div>`
+        : `<div class="tap">TAP TO START</div>`}`;
+    if(n>1){
+      el.querySelectorAll(".qb").forEach(b=>{
+        b.onclick=(e)=>{ e.stopPropagation(); startTimers(items.slice(0, parseInt(b.dataset.n,10))); };
+      });
+    } else {
+      el.onclick=()=>startTimers(items);
+    }
     list.appendChild(el);
   });
 }
 
 /* ================= timers ================= */
-function startTimer(q){
+function startTimers(items){ /* one timer covering 1..n order lines of the same product */
   ac(); // unlock audio on gesture
-  state.queue = state.queue.filter(x=>x.id!==q.id);
+  const ids=new Set(items.map(x=>x.id));
+  state.queue = state.queue.filter(x=>!ids.has(x.id));
   state.active.push({
-    id:q.id, order:q.order, profile:q.profile, stepIdx:0,
+    id:idSeq++, orders:items.map(x=>x.order), profile:items[0].profile, stepIdx:0,
     stepStart:Date.now(), state:"run", lastBeep:0, confirm:null, confirmT:0, muted:false
   });
   renderQueue(); renderBoard();
@@ -345,9 +366,10 @@ function nextStep(t){
 }
 function finish(t){
   state.active=state.active.filter(x=>x.id!==t.id);
-  state.done.unshift({name:PROFILES[t.profile].name, order:t.order});
+  const p=PROFILES[t.profile];
+  t.orders.forEach(o=>state.done.unshift({name:p.name, order:o}));
   state.done=state.done.slice(0,8);
-  toast("Marked ready on KDS \u2713 "+PROFILES[t.profile].name+" "+t.order);
+  toast("Marked ready on KDS \u2713 "+p.name+(t.orders.length>1?" \u00D7"+t.orders.length:"")+" "+t.orders.join(" "));
   renderBoard(); renderDone();
 }
 function cancelTimer(t){
@@ -427,8 +449,8 @@ function renderBoard(){
     const muteBtn = `<button class="mute ${t.muted?"on":""}" data-act="mute" title="${t.muted?"Unmute":"Mute"} this item">${t.muted?"\uD83D\uDD07":"\uD83D\uDD0A"}</button>`;
     card.innerHTML=`
       <div class="thead">
-        <div><div class="name">${p.name}</div>
-          <div class="osub"><span class="order">${t.order}</span>
+        <div><div class="name">${p.name}${t.orders.length>1?` <span class="xn">\u00D7${t.orders.length}</span>`:""}</div>
+          <div class="osub"><span class="order">${t.orders.join("  ")}</span>
           <span class="badge ${STATIONS[p.station].cls}">${STATIONS[p.station].name.toUpperCase()}</span></div>
         </div>
         <div class="hbtns">${muteBtn}${cancelBtn}</div>
