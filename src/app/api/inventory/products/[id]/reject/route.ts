@@ -12,7 +12,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, deleteCountsForProduct } from '@/lib/inventory-db';
+import { initInventoryTables, deleteCountsForProduct, markDraftStatus } from '@/lib/inventory-db';
 
 export async function POST(
   _request: Request,
@@ -47,6 +47,7 @@ export async function POST(
     }
 
     const rowsDeleted = deleteCountsForProduct(draftId);
+    markDraftStatus(draftId, 'rejected');
     return NextResponse.json({ success: true, rows_deleted: rowsDeleted });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';

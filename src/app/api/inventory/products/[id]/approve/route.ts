@@ -20,7 +20,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, isDraftProduct } from '@/lib/inventory-db';
+import { initInventoryTables, isDraftProduct, markDraftStatus } from '@/lib/inventory-db';
 
 export async function POST(
   request: Request,
@@ -116,6 +116,7 @@ export async function POST(
     };
     if (cost !== null) writeVals.standard_price = cost;
     await odoo.write('product.product', [productId], writeVals);
+    markDraftStatus(productId, 'approved');
 
     // Create a supplier info row linking the vendor to the product.
     // product.supplierinfo.product_tmpl_id is the template; price is cost.

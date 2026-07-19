@@ -14,7 +14,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, reassignCountsForProduct } from '@/lib/inventory-db';
+import { initInventoryTables, reassignCountsForProduct, markDraftStatus } from '@/lib/inventory-db';
 
 export async function POST(
   request: Request,
@@ -89,6 +89,7 @@ export async function POST(
 
     // Reassign all count lines
     const rowsChanged = reassignCountsForProduct(draftId, targetId);
+    markDraftStatus(draftId, 'linked');
 
     return NextResponse.json({ success: true, rows_changed: rowsChanged });
   } catch (err: unknown) {

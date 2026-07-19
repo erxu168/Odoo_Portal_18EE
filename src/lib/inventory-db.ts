@@ -95,6 +95,7 @@ export function initInventoryTables() {
     CREATE TABLE IF NOT EXISTS product_drafts (
       odoo_product_id INTEGER PRIMARY KEY,
       barcode TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
       created_by INTEGER NOT NULL,
       created_at TEXT NOT NULL
     );
@@ -187,8 +188,14 @@ export function registerDraftProduct(odooProductId: number, barcode: string, cre
 
 export function isDraftProduct(odooProductId: number): boolean {
   const db = getDb();
-  const row = db.prepare(`SELECT 1 FROM product_drafts WHERE odoo_product_id = ?`).get(odooProductId);
+  const row = db.prepare(`SELECT 1 FROM product_drafts WHERE odoo_product_id = ? AND status = 'pending'`).get(odooProductId);
   return !!row;
+}
+
+/** Mark a draft resolved so it stops surfacing as a pending scan. */
+export function markDraftStatus(odooProductId: number, status: 'rejected' | 'linked' | 'approved'): void {
+  const db = getDb();
+  db.prepare(`UPDATE product_drafts SET status = ? WHERE odoo_product_id = ?`).run(status, odooProductId);
 }
 
 function now(): string {
@@ -269,6 +276,14 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   // and migrated databases. Never in the CREATE-TABLE block, which on a legacy DB
   // runs before this ALTER (a CREATE TABLE IF NOT EXISTS won't add the column).
   db.exec('CREATE INDEX IF NOT EXISTS idx_quick_company ON quick_counts(company_id)');
+
+  // product_drafts lifecycle status (pending → rejected/linked/approved) so a
+  // resolved draft stops surfacing as a pending scan.
+  const pdCols = (db.prepare("PRAGMA table_info('product_drafts')").all() as { name: string }[]).map(c => c.name);
+  if (!pdCols.includes('status')) {
+    try { db.exec("ALTER TABLE product_drafts ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"); }
+    catch (e) { if (!(e instanceof Error && /duplicate column/i.test(e.message))) throw e; }
+  }
 }
 
 // ===
