@@ -21,6 +21,7 @@ export function assigneeError(responsibleType: ResponsibleType, userId: number |
   if (!userId) return 'Pick the responsible person.';
   const u = getUserById(Number(userId));
   if (!u || !u.active || u.status !== 'active') return 'That person is not an active user.';
+  if (u.is_shared_device) return 'A shared-device account cannot be made responsible for a task.';
   if (!canAccessCompany(u, companyId)) return 'That person cannot be assigned in this company.';
   return null;
 }

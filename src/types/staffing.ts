@@ -52,7 +52,7 @@ export interface InstanceRow {
   from_level: string | null;
   reference_date: string;           // YYYY-MM-DD
   status: InstanceStatus;
-  started_by: number;
+  started_by: number | null;        // FK to portal_users, nulled if that user is deleted
   started_at: string;
   termination_id: number | null;
   start_key: string;

@@ -154,8 +154,8 @@ export async function PUT(req: NextRequest, { params }: { params: { employeeId: 
     if (skillVal !== undefined) {
       let skillWriteOk = false;
       try {
-        await odoo.write('hr.employee', [employeeId], { x_skill_level: skillVal });
-        skillWriteOk = true;
+        // odoo.write returns true on success; treat a non-true result as not-persisted.
+        skillWriteOk = (await odoo.write('hr.employee', [employeeId], { x_skill_level: skillVal })) === true;
       } catch { /* addon absent — skill not persisted, so no promotion offer */ }
       if (skillWriteOk && toLevel && isPromotion(employee.skill, toLevel)) {
         promotionOffer = { employee_id: employeeId, target_level: toLevel, from_level: employee.skill };

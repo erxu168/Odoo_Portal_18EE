@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   }
 
   const hour = berlinHour();
-  if (hour < 9 || hour >= 21) return NextResponse.json({ ok: true, sent: 0, skipped: 'quiet-hours' });
+  if (hour < 9 || hour >= 21) return NextResponse.json({ ok: true, claimed: 0, delivered: 0, skipped: 'quiet-hours' });
 
   const today = berlinToday();
   let claimed = 0;   // stages advanced this run (at-most-once)

@@ -30,6 +30,9 @@ export async function POST(req: NextRequest) {
     if (!b.company_id || !b.stage || !b.scope || !b.name?.trim()) {
       return NextResponse.json({ error: 'company_id, stage, scope and name are required' }, { status: 400 });
     }
+    if (!['joining', 'promotion', 'leaving'].includes(b.stage)) {
+      return NextResponse.json({ error: 'Invalid stage.' }, { status: 400 });
+    }
     if (!canAccessCompany(user, b.company_id)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     // Only valid stage×scope combinations — a Joining+Level row must never occupy
     // the promotion unique index, etc.

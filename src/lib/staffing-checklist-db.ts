@@ -413,14 +413,18 @@ export function setTaskStatus(
   db.prepare(
     `UPDATE staffing_instance_tasks SET status = ?, done_by = ?, done_at = ?, note = COALESCE(?, note) WHERE id = ?`,
   ).run(p.status, p.status === 'pending' ? null : p.done_by, doneAt, p.note ?? null, taskId);
-  // Auto-close the instance when no pending tasks remain (never re-open a cancelled one).
+  // Auto-close an OPEN instance when no pending tasks remain. We only ever touch
+  // an 'open' instance (never a done/cancelled one), so un-ticking a task in a
+  // completed checklist can NOT reopen it — that would clash with the
+  // one-open-per-stage unique index and leave inconsistent state.
   const row = db.prepare('SELECT instance_id FROM staffing_instance_tasks WHERE id = ?').get(taskId) as { instance_id: number } | undefined;
   if (row) {
     const pending = db.prepare(
       `SELECT COUNT(*) AS n FROM staffing_instance_tasks WHERE instance_id = ? AND status = 'pending'`,
     ).get(row.instance_id) as { n: number };
-    db.prepare(`UPDATE staffing_instances SET status = ? WHERE id = ? AND status != 'cancelled'`)
-      .run(pending.n === 0 ? 'done' : 'open', row.instance_id);
+    if (pending.n === 0) {
+      db.prepare(`UPDATE staffing_instances SET status = 'done' WHERE id = ? AND status = 'open'`).run(row.instance_id);
+    }
   }
 }
 
