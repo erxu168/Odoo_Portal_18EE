@@ -14,6 +14,7 @@ import { cacheSessionData, getCachedSessionData, updateCachedEntry } from '@/lib
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
 import { hasCrate, crateTotal, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
 import GuidedCountingFlow from './GuidedCountingFlow';
+import { useTopBar } from '@/components/ui/TopBarContext';
 
 interface CountingSessionProps {
   sessionId: number;
@@ -25,6 +26,15 @@ interface CountingSessionProps {
 type View = 'counting' | 'review';
 
 export default function CountingSession({ sessionId, userRole, onBack, onSubmit }: CountingSessionProps) {
+  // Full-focus counting: hide the global top bar + bottom tab bar for the whole
+  // count flow (same pattern the cook timer / KDS use) so the count screen isn't
+  // crowded by app chrome. Restored on unmount (back to the inventory dashboard).
+  const { setHidden: setChromeHidden } = useTopBar();
+  useEffect(() => {
+    setChromeHidden(true);
+    return () => setChromeHidden(false);
+  }, [setChromeHidden]);
+
   const [session, setSession] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [entries, setEntries] = useState<Record<number, number>>({});
@@ -606,14 +616,16 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     );
   }
 
-  // -- Scan FAB --
-  const scanFab = !isReadOnly && (
+  // -- Scan button (count header, top-right) --
+  // Lives in the header, not a floating FAB, so it can never sit on top of a
+  // product row's Count / Mark-out-of-stock control (the old FAB overlapped them).
+  const scanButton = !isReadOnly ? (
     <button
       onClick={() => setShowScanner(true)}
-      className="fixed bottom-28 right-5 z-[30] w-14 h-14 rounded-full bg-[#2563EB] text-white shadow-lg shadow-blue-600/40 flex items-center justify-center active:scale-95 active:bg-blue-700 transition-transform"
+      className="w-11 h-11 -mr-2 rounded-full flex items-center justify-center text-[#2563EB] active:bg-blue-50 transition-colors"
       aria-label="Scan barcode"
     >
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M3 7V5a2 2 0 012-2h2"/>
         <path d="M17 3h2a2 2 0 012 2v2"/>
         <path d="M21 17v2a2 2 0 01-2 2h-2"/>
@@ -625,7 +637,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         <line x1="14" y1="16" x2="17" y2="16"/>
       </svg>
     </button>
-  );
+  ) : null;
 
   // ============================
   // REVIEW VIEW
@@ -815,6 +827,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       <BackHeader onBack={onBack}
         title={session?.template_name || `Session #${sessionId}`}
         subtitle={`${locationName ? locationName + ' \u00B7 ' : ''}${totalCount} products`}
+        right={scanButton}
       />
 
       <OfflineBanner sync={sync} />
@@ -893,8 +906,6 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           </p>
         </div>
       )}
-
-      {scanFab}
 
       <BarcodeScanner
         open={showScanner}
