@@ -37,9 +37,9 @@ function ago(iso: string): string {
   return `${Math.round(h / 24)}d ago`;
 }
 
-const SURFACE_LABEL: Record<string, string> = { kds: 'KDS', kiosk: 'Kiosk', portal: 'Portal' };
+const SURFACE_LABEL: Record<string, string> = { kds: 'KDS', kiosk: 'Kiosk', portal: 'Portal', pos: 'POS' };
 
-const PLATFORM: Record<string, string> = { web: 'Web', android: 'Android', ios: 'iOS' };
+const PLATFORM: Record<string, string> = { web: 'Web', android: 'Android', ios: 'iOS', 'waj-till': 'Sunmi till' };
 function platformLabel(shell: string | null): string {
   if (!shell) return 'Device';
   return PLATFORM[shell.toLowerCase()] || shell.charAt(0).toUpperCase() + shell.slice(1);
@@ -226,7 +226,7 @@ export default function DeviceRestartSection() {
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300 flex-shrink-0"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
                 </button>
                 <div className="text-[12px] text-gray-500 truncate">
-                  {d.shell && d.shell !== 'web' ? `${d.shell} · ` : ''}
+                  {d.shell && d.shell !== 'web' ? `${platformLabel(d.shell)} · ` : ''}
                   {d.pending ? 'restart pending · ' : ''}last seen {ago(d.last_seen)}
                 </div>
               </div>
