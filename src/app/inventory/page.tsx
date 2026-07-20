@@ -15,6 +15,7 @@ import ProductSettings from '@/components/inventory/ProductSettings';
 import DrinksScanner from '@/components/inventory/DrinksScanner';
 import DrinksEditor from '@/components/inventory/DrinksEditor';
 import ConsumptionReport from '@/components/inventory/ConsumptionReport';
+import GoodsReceived from '@/components/inventory/GoodsReceived';
 
 type Screen =
   | { type: 'dashboard' }
@@ -28,6 +29,7 @@ type Screen =
   | { type: 'drinks-editor' }
   | { type: 'locations' }
   | { type: 'consumption' }
+  | { type: 'goods-received' }
   | { type: 'session'; sessionId: number };
 
 export default function InventoryPage() {
@@ -94,6 +96,15 @@ export default function InventoryPage() {
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <AppHeader title="MO Ingredients" subtitle="All ingredients from confirmed MOs" showBack onBack={goDashboard} />
         <MoIngredients userRole={userRole} />
+      </div>
+    );
+  }
+
+  if (screen.type === 'goods-received') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <AppHeader title="Goods received" subtitle="Log deliveries into stock" showBack onBack={goDashboard} />
+        <GoodsReceived />
       </div>
     );
   }

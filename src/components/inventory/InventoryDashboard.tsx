@@ -106,6 +106,20 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     },
+    {
+      id: 'goods-received',
+      label: 'Goods received',
+      color: 'bg-emerald-50 border-emerald-200', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-600',
+      sublabel: 'Log deliveries in',
+      badge: 0,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 8v13H3V8"/>
+          <path d="M1 3h22v5H1z"/>
+          <path d="M12 12v6M9 15l3 3 3-3"/>
+        </svg>
+      ),
+    },
     ...(can('inventory.template.manage') ? [{
       id: 'manage',
       label: 'Manage Lists',
