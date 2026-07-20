@@ -43,7 +43,7 @@ export function CompanyPill({ onSwitched }: { onSwitched: () => void }) {
       <button
         onClick={() => setOpen(true)}
         className="flex items-center gap-1.5 bg-white/15 border border-white/20 rounded-full px-3 h-10 text-white text-[var(--fs-xs)] font-semibold max-w-[140px] active:bg-white/25"
-        aria-label="Switch restaurant"
+        title="Switch restaurant"
       >
         <span className="truncate">{companyName}</span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="flex-shrink-0 opacity-75"><path d="M6 9l6 6 6-6" /></svg>
