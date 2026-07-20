@@ -183,3 +183,23 @@ export interface SessionCountItem {
   loose_label: string | null;
   units_per_crate: number | null;
 }
+
+/** A goods-received (purchased-in) entry — what came into stock, for the
+ *  opening + received − closing consumption math. Portal-owned, no Odoo. */
+export interface StockReceipt {
+  id: number;
+  company_id: number;
+  odoo_product_id: number;
+  count_location_id: number;       // 0 = no specific spot
+  qty_base: number;                // base-unit total (server-computed, like counts)
+  crate_qty: number | null;        // audit: packs as entered
+  loose_qty: number | null;        // audit: loose singles as entered
+  units_per_crate: number | null;  // pack size snapshot
+  uom: string;
+  note: string | null;
+  photo: string | null;            // optional delivery photo (base64)
+  received_by: number;
+  received_at: string;
+  received_by_name?: string;       // join for display
+  product_name?: string;           // resolved for display
+}

@@ -11,7 +11,7 @@ import type {
   CountingTemplate, CountingSession, CountEntry, QuickCount,
   Frequency, AssignType, SessionStatus,
   CountLocation, ProductPlacement, CountMode,
-  TemplatePlacement, SessionCountItem,
+  TemplatePlacement, SessionCountItem, StockReceipt,
 } from '@/types/inventory';
 
 // ===
@@ -366,6 +366,29 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
     console.warn('[inventory] duplicate legacy count rows — using non-unique (session,location,product) index', e);
     db.exec('CREATE INDEX IF NOT EXISTS idx_entries_session_loc_product ON count_entries(session_id, count_location_id, product_id)');
   }
+
+  // Goods received ("purchased-in") — portal-owned; feeds the opening + received
+  // − closing consumption report. No Odoo.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS stock_receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      odoo_product_id INTEGER NOT NULL,
+      count_location_id INTEGER NOT NULL DEFAULT 0,
+      qty_base REAL NOT NULL,
+      crate_qty REAL,
+      loose_qty REAL,
+      units_per_crate REAL,
+      uom TEXT NOT NULL DEFAULT 'Units',
+      note TEXT,
+      photo TEXT,
+      received_by INTEGER NOT NULL,
+      received_at TEXT NOT NULL
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_company ON stock_receipts(company_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_product ON stock_receipts(odoo_product_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_received_at ON stock_receipts(received_at)');
 }
 
 // ===
@@ -1149,6 +1172,76 @@ export function getSessionItems(sessionId: number): SessionCountItem[] {
     loose_label: (r.loose_label as string) ?? null,
     units_per_crate: r.units_per_crate != null ? Number(r.units_per_crate) : null,
   }));
+}
+
+// ===
+// GOODS RECEIVED ("purchased-in") — feeds the consumption report
+// ===
+
+export function createReceipt(data: {
+  company_id: number; odoo_product_id: number; count_location_id?: number;
+  qty_base: number; crate_qty?: number | null; loose_qty?: number | null; units_per_crate?: number | null;
+  uom?: string; note?: string | null; photo?: string | null; received_by: number; received_at?: string;
+}): number {
+  const db = getDb();
+  const r = db.prepare(`INSERT INTO stock_receipts
+    (company_id, odoo_product_id, count_location_id, qty_base, crate_qty, loose_qty, units_per_crate, uom, note, photo, received_by, received_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(data.company_id, data.odoo_product_id, data.count_location_id ?? 0, data.qty_base,
+      data.crate_qty ?? null, data.loose_qty ?? null, data.units_per_crate ?? null,
+      data.uom || 'Units', data.note ?? null, data.photo ?? null, data.received_by, data.received_at || now());
+  return r.lastInsertRowid as number;
+}
+
+export function listReceipts(filters: { company_ids?: number[]; product_id?: number; from?: string; to?: string; limit?: number }): StockReceipt[] {
+  const db = getDb();
+  const where: string[] = [];
+  const vals: unknown[] = [];
+  if (filters.company_ids) {
+    if (filters.company_ids.length === 0) where.push('0 = 1');
+    else { where.push(`r.company_id IN (${filters.company_ids.map(() => '?').join(',')})`); vals.push(...filters.company_ids); }
+  }
+  if (filters.product_id) { where.push('r.odoo_product_id = ?'); vals.push(filters.product_id); }
+  if (filters.from) { where.push('r.received_at >= ?'); vals.push(filters.from); }
+  if (filters.to) { where.push('r.received_at <= ?'); vals.push(filters.to); }
+  const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  return db.prepare(`
+    SELECT r.*, u.name AS received_by_name
+    FROM stock_receipts r
+    LEFT JOIN portal_users u ON u.id = r.received_by
+    ${clause}
+    ORDER BY r.received_at DESC
+    LIMIT ?
+  `).all(...vals, filters.limit ?? 500) as StockReceipt[];
+}
+
+/** Delete a receipt, bounded to the caller's companies (null = unrestricted admin). Returns rows changed. */
+export function deleteReceipt(id: number, companyIds: number[] | null): number {
+  const db = getDb();
+  if (companyIds && companyIds.length === 0) return 0;
+  if (companyIds) {
+    const ph = companyIds.map(() => '?').join(',');
+    return db.prepare(`DELETE FROM stock_receipts WHERE id = ? AND company_id IN (${ph})`).run(id, ...companyIds).changes as number;
+  }
+  return db.prepare('DELETE FROM stock_receipts WHERE id = ?').run(id).changes as number;
+}
+
+/** Sum received base qty per product over [from, to] for a company set (usage report). */
+export function sumReceiptsByProduct(companyIds: number[] | null, from: string, to: string): Record<number, number> {
+  const db = getDb();
+  const where: string[] = ['received_at >= ?', 'received_at <= ?'];
+  const vals: unknown[] = [from, to];
+  if (companyIds) {
+    if (companyIds.length === 0) return {};
+    where.push(`company_id IN (${companyIds.map(() => '?').join(',')})`);
+    vals.push(...companyIds);
+  }
+  const rows = db.prepare(
+    `SELECT odoo_product_id AS pid, SUM(qty_base) AS total FROM stock_receipts WHERE ${where.join(' AND ')} GROUP BY odoo_product_id`,
+  ).all(...vals) as { pid: number; total: number }[];
+  const out: Record<number, number> = {};
+  for (const r of rows) out[r.pid] = Number(r.total) || 0;
+  return out;
 }
 
 /**
