@@ -203,7 +203,7 @@ function now(): string {
   return new Date().toISOString();
 }
 
-function todayStr(): string {
+export function todayStr(): string {
   // Berlin day boundary so it matches restaurant local time (see berlin-date.ts)
   return berlinToday();
 }
@@ -231,6 +231,12 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   // person. Nullable: legacy lists stay person-only until re-saved.
   if (!tmplColNames.includes('company_id')) {
     db.exec("ALTER TABLE counting_templates ADD COLUMN company_id INTEGER");
+  }
+  // Ad-hoc lists: the single date (YYYY-MM-DD) the list generates a count on.
+  // Nullable; only meaningful when frequency='adhoc'. Legacy ad-hoc lists stay
+  // null (never auto-generate) until re-saved with a date.
+  if (!tmplColNames.includes('adhoc_date')) {
+    db.exec("ALTER TABLE counting_templates ADD COLUMN adhoc_date TEXT");
   }
 
   // Snapshot the company onto each session at creation, so later editing a
@@ -423,7 +429,12 @@ function shouldGenerateToday(tmpl: CountingTemplate): boolean {
     if (days.length === 0) return false;
     return days.includes(dayOfWeek);
   }
-  // adhoc + monthly: no auto-generation
+  // adhoc: generate only on its chosen date — the daily cron and the session-list
+  // load then create it on that Berlin day (once, thanks to the existence check).
+  if (tmpl.frequency === 'adhoc') {
+    return !!tmpl.adhoc_date && tmpl.adhoc_date === todayStr();
+  }
+  // monthly: not yet implemented
   return false;
 }
 
@@ -435,6 +446,7 @@ export function createTemplate(data: {
   name: string;
   frequency: Frequency;
   schedule_days?: number[];
+  adhoc_date?: string | null;
   location_id: number;
   company_id?: number | null;
   category_ids: number[];
@@ -446,10 +458,11 @@ export function createTemplate(data: {
   const db = getDb();
   const ts = now();
   const r = db.prepare(`
-    INSERT INTO counting_templates (name, frequency, schedule_days, location_id, company_id, category_ids, product_ids, assign_type, assign_id, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO counting_templates (name, frequency, schedule_days, adhoc_date, location_id, company_id, category_ids, product_ids, assign_type, assign_id, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.name, data.frequency, JSON.stringify(data.schedule_days || []),
+    data.adhoc_date ?? null,
     data.location_id, data.company_id ?? null,
     JSON.stringify(data.category_ids), JSON.stringify(data.product_ids || []),
     data.assign_type, data.assign_id, data.created_by, ts, ts
@@ -461,6 +474,7 @@ export function updateTemplate(id: number, data: Partial<{
   name: string;
   frequency: Frequency;
   schedule_days: number[];
+  adhoc_date: string | null;
   location_id: number;
   company_id: number | null;
   category_ids: number[];
@@ -475,6 +489,7 @@ export function updateTemplate(id: number, data: Partial<{
   if (data.name !== undefined) { sets.push('name = ?'); vals.push(data.name); }
   if (data.frequency !== undefined) { sets.push('frequency = ?'); vals.push(data.frequency); }
   if (data.schedule_days !== undefined) { sets.push('schedule_days = ?'); vals.push(JSON.stringify(data.schedule_days)); }
+  if (data.adhoc_date !== undefined) { sets.push('adhoc_date = ?'); vals.push(data.adhoc_date); }
   if (data.location_id !== undefined) { sets.push('location_id = ?'); vals.push(data.location_id); }
   if (data.company_id !== undefined) { sets.push('company_id = ?'); vals.push(data.company_id); }
   if (data.category_ids !== undefined) { sets.push('category_ids = ?'); vals.push(JSON.stringify(data.category_ids)); }
@@ -750,6 +765,32 @@ export function generateSessionForTemplate(templateId: number): number | null {
     company_id: tmpl.company_id ?? null,
     assigned_user_id: assignedUserId,
   });
+}
+
+/**
+ * Remove a template's generated-but-untouched sessions that no longer match its
+ * (new) ad-hoc date — so moving a one-off list's date can't leave an orphaned
+ * count behind AND spawn a second one. Only sessions that are still 'pending'
+ * with ZERO count entries are removed; anything staff started stays.
+ * keepDate null = no date survives (e.g. the list stopped being ad-hoc).
+ */
+export function deleteStalePendingSessions(templateId: number, keepDate: string | null): number {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT s.id FROM counting_sessions s
+    WHERE s.template_id = ? AND s.status = 'pending'
+      AND (? IS NULL OR s.scheduled_date != ?)
+      AND NOT EXISTS (SELECT 1 FROM count_entries e WHERE e.session_id = s.id)
+  `).all(templateId, keepDate, keepDate) as { id: number }[];
+  const wipe = db.transaction((ids: number[]) => {
+    for (const id of ids) {
+      db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(id);
+      db.prepare('DELETE FROM session_location_status WHERE session_id = ?').run(id);
+      db.prepare('DELETE FROM counting_sessions WHERE id = ?').run(id);
+    }
+  });
+  wipe(rows.map((r) => r.id));
+  return rows.length;
 }
 
 // ===

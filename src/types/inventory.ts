@@ -55,6 +55,7 @@ export interface CountingTemplate {
   name: string;
   frequency: Frequency;
   schedule_days: number[];  // JS weekday numbers: 0=Sun, 1=Mon, ..., 6=Sat
+  adhoc_date?: string | null;  // frequency='adhoc': the one day (YYYY-MM-DD) this list generates a count
   location_id: number;
   company_id?: number | null;  // which restaurant this list belongs to
   location_name?: string;

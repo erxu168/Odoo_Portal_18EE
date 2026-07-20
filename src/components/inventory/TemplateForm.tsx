@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { BackHeader, FilterBar, FilterPill, SearchBar, Spinner, ProductThumb } from './ui';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { BackHeader, FilterBar, FilterPill, SearchBar, Spinner, ProductThumb, leafCategory } from './ui';
 import { useCompany } from '@/lib/company-context';
+import { pluralizePack } from '@/lib/crate-units';
 
 const FREQUENCIES = [
   { id: 'daily', label: 'Daily' },
@@ -36,10 +37,11 @@ interface TemplateFormProps {
   onCancel: () => void;
 }
 
-export default function TemplateForm({ template, locations, departments, onSave, onCancel }: TemplateFormProps) {
-  const { companyId } = useCompany();
+export default function TemplateForm({ template, departments, onSave, onCancel }: TemplateFormProps) {
+  const { companyId, stockLocationId } = useCompany();
   const [name, setName] = useState(template?.name || '');
   const [frequency, setFrequency] = useState(template?.frequency || 'adhoc');
+  const [adhocDate, setAdhocDate] = useState<string>(template?.adhoc_date || '');
   const [scheduleDays, setScheduleDays] = useState<number[]>(template?.schedule_days || []);
   const [locationId, setLocationId] = useState<number | null>(template?.location_id || null);
   const [assignType, setAssignType] = useState<string | null>(template?.assign_type || null);
@@ -51,9 +53,10 @@ export default function TemplateForm({ template, locations, departments, onSave,
   const [selectedProductIds, setSelectedProductIds] = useState<Set<number>>(
     new Set(template?.product_ids || [])
   );
-  const [spots, setSpots] = useState<any[]>([]);                            // count_locations to place items at
-  const [placements, setPlacements] = useState<Record<number, number>>({}); // productId -> spot id (0 = no specific spot)
   const [productImageIds, setProductImageIds] = useState<Set<number>>(new Set()); // products with a picture
+  const [flags, setFlags] = useState<Record<number, any>>({});      // productId -> count config (pack_label, units_per_crate) for the unit hint
+  const [shiftTemplates, setShiftTemplates] = useState<any[]>([]);  // Planning shift templates (Opening/Mid/Closing) for "assign to a shift"
+  const [shiftLoadFailed, setShiftLoadFailed] = useState(false);    // fetch failed/forbidden ≠ "no shifts exist" — don't lie in the hint
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState<string>('all');
@@ -65,6 +68,10 @@ export default function TemplateForm({ template, locations, departments, onSave,
   const isEdit = !!template?.id;
 
   useEffect(() => {
+    // Cancellation guard: after a company switch (or unmount) this run's late
+    // responses must NOT write state — else company A's slower fetch can
+    // overwrite company B's products/shifts after the switch reset.
+    let stale = false;
     async function load() {
       try {
         // When editing, also fetch the template's already-selected products by
@@ -83,7 +90,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
         ]);
         try {
           const imgData = imgRes ? await imgRes.json() : null;
-          if (imgData) setProductImageIds(new Set<number>(imgData.with_images || []));
+          if (imgData && !stale) setProductImageIds(new Set<number>(imgData.with_images || []));
         } catch { /* thumbnails just fall back to the placeholder */ }
         const prodData = await prodRes.json();
         let prods = (prodData.products || []).filter((p: any) => p.active !== false);
@@ -96,33 +103,67 @@ export default function TemplateForm({ template, locations, departments, onSave,
             }
           } catch { /* ignore — browse list alone still works */ }
         }
+        if (stale) return;
         setAllProducts(prods);
         try {
           const userData = await userRes.json();
-          setPortalUsers((userData.users || []).filter((u: any) => u.employee_id));
+          if (!stale) setPortalUsers((userData.users || []).filter((u: any) => u.employee_id));
         } catch { /* ignore user fetch errors */ }
-        // Spots (count_locations) this list's items can be placed at. Failure is
-        // non-fatal — items just default to "no specific spot".
+        // Per-product count config (pack unit + kg conversion) so the editor can show
+        // "counted in bunches -> kg" inline, without opening Product settings.
+        try {
+          const flagData = await fetch('/api/inventory/product-flags').then((r) => r.json());
+          const fmap: Record<number, any> = {};
+          for (const f of (flagData.flags || [])) fmap[f.odoo_product_id] = f;
+          if (!stale) setFlags(fmap);
+        } catch { /* count-unit hints are best-effort */ }
+        // Shift templates (Opening/Mid/Closing) from the Planning module, so the
+        // "assign to a shift" picker is populated instead of empty.
         if (companyId) {
           try {
-            const locData = await fetch(`/api/inventory/count-locations?company_id=${companyId}`).then((r) => r.json());
-            setSpots(locData.locations || []);
-          } catch { /* no spots available */ }
+            const stData = await fetch(`/api/shifts/templates?company_id=${companyId}`).then((r) => r.json());
+            if (stale) return;
+            if (Array.isArray(stData.templates)) setShiftTemplates(stData.templates);
+            else setShiftLoadFailed(true);   // e.g. 403 for an override-granted staff account
+          } catch { if (!stale) setShiftLoadFailed(true); }
         }
       } catch (err) {
         console.error('Failed to load products:', err);
       } finally {
-        setLoadingProducts(false);
+        if (!stale) setLoadingProducts(false);
       }
     }
     load();
+    return () => { stale = true; };
   }, [companyId]);
 
   useEffect(() => {
-    if (!locationId && locations.length > 0) {
-      setLocationId(locations[0].id);
-    }
-  }, [locations, locationId]);
+    if (locationId) return;
+    // The list's stock location follows the active company (blue ribbon), not a
+    // manual pick. Deliberately NO fallback to some other location: the parent's
+    // locations list spans every company the manager may see, so borrowing its
+    // first entry could silently target another restaurant (the server would
+    // reject it with an unactionable error). No warehouse → explicit notice.
+    if (stockLocationId) setLocationId(stockLocationId);
+  }, [locationId, stockLocationId]);
+  // New list for a company that has no warehouse configured in Odoo — can't be
+  // saved; say so instead of a silently disabled button.
+  const noWarehouse = !locationId && !stockLocationId;
+
+  // A blue-ribbon company SWITCH mid-form must re-derive everything company-owned:
+  // the warehouse location (create only — an edited list keeps its own), the shift
+  // options (the big load effect refetches them for the new company), and a shift
+  // pick that belonged to the previous company. Ref-guarded so it fires only on a
+  // real switch, not on the initial company/warehouse arriving after mount.
+  const prevCompanyRef = useRef<number>(companyId);
+  useEffect(() => {
+    if (prevCompanyRef.current === companyId) return;
+    prevCompanyRef.current = companyId;
+    if (!isEdit) setLocationId(stockLocationId || null);
+    setShiftTemplates([]);
+    setShiftLoadFailed(false);
+    if (assignType === 'shift') setAssignId(null);
+  }, [companyId, stockLocationId, isEdit, assignType]);
 
   // Clear schedule_days when frequency changes away from weekly
   useEffect(() => {
@@ -172,6 +213,32 @@ export default function TemplateForm({ template, locations, departments, onSave,
     return allProducts.filter((p) => selectedProductIds.has(p.id));
   }, [allProducts, selectedProductIds]);
 
+  // "Counted in bunches · 1 bunch ≈ 0.05 kg" — how staff count this item + its base
+  // conversion (from product_flags). Display-only here; managed in Product settings.
+  function unitHint(p: any): string {
+    const base = p.uom_id?.[1] || 'Units';
+    const f = flags[p.id];
+    if (f?.pack_label) {
+      // The practical unit staff count in; the kg/base conversion is optional
+      // (a "bunch" can be configured without an average weight).
+      const packs = `Counted in ${pluralizePack(f.pack_label, 2)}`;
+      return f.units_per_crate ? `${packs} · 1 ${f.pack_label} ≈ ${f.units_per_crate} ${base}` : packs;
+    }
+    return `Counted in ${base} (base unit)`;
+  }
+
+  // Group a product list by category, showing the LEAF name only (keep the id as the
+  // key since two full paths can share a leaf name).
+  function groupByCategory(list: any[]): { id: number; name: string; items: any[] }[] {
+    const groups = new Map<number, { id: number; name: string; items: any[] }>();
+    for (const p of list) {
+      const id = p.categ_id?.[0] ?? 0;
+      if (!groups.has(id)) groups.set(id, { id, name: leafCategory(p.categ_id?.[1] || '') || 'Uncategorised', items: [] });
+      groups.get(id)!.items.push(p);
+    }
+    return Array.from(groups.values());
+  }
+
   function toggleProduct(productId: number) {
     setSelectedProductIds((prev) => {
       const next = new Set(prev);
@@ -217,7 +284,9 @@ export default function TemplateForm({ template, locations, departments, onSave,
 
   const selectedCount = selectedProductIds.size;
   const needsDays = frequency === 'weekly' && scheduleDays.length === 0;
-  const canSave = name.trim().length > 0 && locationId !== null && selectedCount > 0 && !needsDays;
+  const needsAdhocDate = frequency === 'adhoc' && !adhocDate;
+  const needsAssignee = !!assignType && !assignId;   // typed assignment must name someone
+  const canSave = name.trim().length > 0 && locationId !== null && selectedCount > 0 && !needsDays && !needsAdhocDate && !needsAssignee;
 
   async function handleSubmit() {
     if (!canSave) return;
@@ -232,6 +301,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
       name: name.trim(),
       frequency,
       schedule_days: frequency === 'weekly' ? scheduleDays : [],
+      adhoc_date: frequency === 'adhoc' ? adhocDate : null,
       location_id: locationId,
       // Which restaurant — drives tablet visibility. On edit, preserve the
       // list's own restaurant (there's no company picker here) so switching the
@@ -240,12 +310,9 @@ export default function TemplateForm({ template, locations, departments, onSave,
       company_id: (isEdit ? (template?.company_id ?? companyId) : companyId) || undefined,
       category_ids: catIds,
       product_ids: Array.from(selectedProductIds),
-      // Where each item is counted (spot). 0 = no specific spot. The server
-      // validates spots against this restaurant and snapshots them onto sessions.
-      placements: Array.from(selectedProductIds).map((pid) => ({
-        odoo_product_id: pid,
-        count_location_id: placements[pid] ?? 0,
-      })),
+      // Spot placements are deliberately NOT sent: the server leaves stored
+      // placements untouched when no array is present, so editing a list never
+      // wipes its guided spot layout. (Spot assignment gets its own UI later.)
       assign_type: assignType,
       assign_id: assignId,
       active,
@@ -278,7 +345,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
           <FilterPill active={catFilter === 'all'} label="All" onClick={() => setCatFilter('all')} />
           {categories.map((c) => (
             <FilterPill key={c.id} active={catFilter === String(c.id)}
-              label={c.name} count={c.count}
+              label={leafCategory(c.name)} count={c.count}
               onClick={() => setCatFilter(String(c.id))} />
           ))}
         </FilterBar>
@@ -304,7 +371,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
           <div className="px-4 pb-2">
             <button onClick={() => selectByCategory(Number(catFilter))}
               className="w-full py-2.5 rounded-lg bg-green-50 border border-green-200 text-green-700 text-[var(--fs-sm)] font-semibold active:bg-green-100">
-              Add entire category ({categories.find(c => String(c.id) === catFilter)?.name})
+              Add entire category ({leafCategory(categories.find(c => String(c.id) === catFilter)?.name || '')})
             </button>
           </div>
         )}
@@ -313,47 +380,39 @@ export default function TemplateForm({ template, locations, departments, onSave,
           {loadingProducts ? <Spinner /> : filteredProducts.length === 0 ? (
             <div className="text-center py-12 text-[var(--fs-base)] text-gray-400">No products match filters</div>
           ) : (
-            <div className="flex flex-col">
-              {filteredProducts.map((p) => {
-                const isSelected = selectedProductIds.has(p.id);
-                const uom = p.uom_id?.[1] || 'Units';
-                const catName = p.categ_id?.[1] || '';
-                return (
-                  <div key={p.id} className={`border-b border-gray-100 ${isSelected ? '' : 'opacity-60'}`}>
-                    <button onClick={() => toggleProduct(p.id)}
-                      className="w-full flex items-center gap-3 py-3 text-left active:bg-gray-50 transition-colors">
-                      <div className={`w-6 h-6 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                        isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'
-                      }`}>
-                        {isSelected && (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
-                            <path d="M20 6L9 17l-5-5"/>
-                          </svg>
-                        )}
-                      </div>
-                      <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
-                        <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
-                          {catName} &middot; {uom}{p.default_code ? ` · #${p.default_code}` : ''}{p.supplier_ref ? ` · ${p.supplier_ref}` : ''}
-                        </div>
-                      </div>
-                    </button>
-                    {isSelected && spots.length > 0 && (
-                      <div className="flex items-center gap-2 pb-3 pl-9">
-                        <span className="text-[var(--fs-xs)] text-gray-500">Spot</span>
-                        <select value={placements[p.id] ?? 0}
-                          onChange={(e) => setPlacements((prev) => ({ ...prev, [p.id]: Number(e.target.value) }))}
-                          aria-label={`Spot for ${p.name}`}
-                          className="h-8 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] text-gray-900 bg-white outline-none focus:border-green-500">
-                          <option value={0}>No specific spot</option>
-                          {spots.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                        </select>
-                      </div>
-                    )}
+            <div className="flex flex-col gap-4">
+              {groupByCategory(filteredProducts).map((group) => (
+                <div key={group.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-green-700 bg-green-50 px-4 py-2 border-b border-gray-100">
+                    {group.name} <span className="text-gray-400 font-semibold">({group.items.length})</span>
                   </div>
-                );
-              })}
+                  {group.items.map((p) => {
+                    const isSelected = selectedProductIds.has(p.id);
+                    return (
+                      <button key={p.id} onClick={() => toggleProduct(p.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-gray-100 last:border-b-0 transition-colors min-h-[52px] ${
+                          isSelected ? 'bg-green-50 active:bg-green-100' : 'bg-white active:bg-gray-50'
+                        }`}>
+                        <div className={`w-6 h-6 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                          isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'
+                        }`}>
+                          {isSelected && (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                          )}
+                        </div>
+                        <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-[var(--fs-base)] font-semibold truncate ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{p.name}</div>
+                          <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5 truncate">{unitHint(p)}</div>
+                        </div>
+                        <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold ${isSelected ? 'text-green-700' : 'text-gray-400'}`}>
+                          {isSelected ? 'Added' : '+ Add'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -431,22 +490,27 @@ export default function TemplateForm({ template, locations, departments, onSave,
             </div>
           )}
 
-          {/* Location */}
-          <div className="mb-5">
-            <label className="block text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Location</label>
-            <div className="flex gap-2 flex-wrap">
-              {locations.map((loc: any) => (
-                <button key={loc.id} onClick={() => setLocationId(loc.id)}
-                  className={`px-4 py-2.5 rounded-xl text-[var(--fs-base)] font-semibold border transition-all ${
-                    locationId === loc.id
-                      ? 'bg-green-50 border-green-200 text-green-800'
-                      : 'bg-white border-gray-200 text-gray-500'
-                  }`}>
-                  {loc.complete_name?.split('/')[0] || loc.name}
-                </button>
-              ))}
+          {noWarehouse && (
+            <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
+              <p className="text-[var(--fs-sm)] font-semibold text-amber-800">
+                This restaurant has no warehouse set up in Odoo yet, so counting lists can&rsquo;t be created for it.
+              </p>
             </div>
-          </div>
+          )}
+
+          {/* Ad-hoc date — the single day this one-off list is due */}
+          {frequency === 'adhoc' && (
+            <div className="mb-5">
+              <label className="block text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-500 mb-1.5">Count date</label>
+              <input type="date" value={adhocDate} onChange={(e) => setAdhocDate(e.target.value)}
+                min={new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Berlin' })}
+                className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-[var(--fs-base)] text-gray-900 outline-none focus:border-green-500 transition-colors" />
+              <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">The single day this one-off list appears for counting.</p>
+            </div>
+          )}
+
+          {/* Location picker removed — the list belongs to the company selected in the
+              blue ribbon (the single source of truth). location_id is derived, not chosen. */}
 
           {/* Assign to */}
           <div className="mb-5">
@@ -500,8 +564,19 @@ export default function TemplateForm({ template, locations, departments, onSave,
                 <select value={assignId || ''} onChange={(e) => setAssignId(e.target.value ? Number(e.target.value) : null)}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[var(--fs-base)] text-gray-900 outline-none">
                   <option value="">Choose shift...</option>
+                  {shiftTemplates.map((s: any) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}{s.startHHMM ? ` · ${s.startHHMM}–${s.endHHMM}` : ''}
+                    </option>
+                  ))}
                 </select>
-                <p className="text-[var(--fs-xs)] text-gray-400 mt-1">Planning roles will appear once configured in Odoo</p>
+                <p className="text-[var(--fs-xs)] text-gray-400 mt-1">
+                  {shiftLoadFailed
+                    ? 'Couldn’t load the shifts — close and reopen this list to retry.'
+                    : shiftTemplates.length === 0
+                      ? 'No shifts yet — add them in the Planning module.'
+                      : 'Shown as a label on the count — the whole restaurant can still open it.'}
+                </p>
               </div>
             )}
           </div>
@@ -543,27 +618,28 @@ export default function TemplateForm({ template, locations, departments, onSave,
               <div className="text-[var(--fs-sm)] text-gray-500 mt-1">Browse, search, and select products</div>
             </button>
           ) : (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              {selectedProducts.map((p, idx) => {
-                const uom = p.uom_id?.[1] || 'Units';
-                const catName = p.categ_id?.[1] || '';
-                return (
-                  <div key={p.id}
-                    className={`flex items-center gap-3 px-4 py-2.5 ${idx < selectedProducts.length - 1 ? 'border-b border-gray-100' : ''}`}>
-                    <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={36} />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
-                      <div className="text-[var(--fs-xs)] text-gray-400">{catName} &middot; {uom}</div>
-                    </div>
-                    <button onClick={() => removeProduct(p.id)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-500 flex-shrink-0">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                        <path d="M18 6L6 18M6 6l12 12"/>
-                      </svg>
-                    </button>
+            <div className="flex flex-col gap-3">
+              {groupByCategory(selectedProducts).map((group) => (
+                <div key={group.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                  <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-green-700 bg-green-50 px-4 py-2 border-b border-gray-100">
+                    {group.name} <span className="text-gray-400 font-semibold">({group.items.length})</span>
                   </div>
-                );
-              })}
+                  {group.items.map((p, idx) => (
+                    <div key={p.id}
+                      className={`flex items-center gap-3 px-4 py-2.5 ${idx < group.items.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                      <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={36} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
+                        <div className="text-[var(--fs-xs)] text-gray-400 truncate">{unitHint(p)}</div>
+                      </div>
+                      <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name}`}
+                        className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-500 flex-shrink-0">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -578,9 +654,15 @@ export default function TemplateForm({ template, locations, departments, onSave,
           className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-xl)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
           {saving
             ? 'Saving...'
-            : needsDays
-              ? 'Select days first'
-              : selectedCount === 0
+            : noWarehouse
+              ? 'No warehouse for this restaurant'
+              : needsAdhocDate
+              ? 'Pick a date first'
+              : needsDays
+                ? 'Select days first'
+                : needsAssignee
+                  ? 'Choose an assignee first'
+                  : selectedCount === 0
                 ? 'Add products to save'
                 : isEdit
                   ? `Save changes (${selectedCount} products)`

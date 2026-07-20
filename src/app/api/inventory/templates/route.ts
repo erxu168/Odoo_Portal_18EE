@@ -11,7 +11,15 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate, setTemplatePlacements, listCountLocations } from '@/lib/inventory-db';
+import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate, setTemplatePlacements, listCountLocations, todayStr, deleteStalePendingSessions } from '@/lib/inventory-db';
+import { listShiftTemplates } from '@/lib/shifts-db';
+
+/** A real calendar date in YYYY-MM-DD form (rejects e.g. 2026-02-30). */
+function isValidYmd(s: unknown): s is string {
+  if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+}
 
 /**
  * The stock location a list counts must belong to its restaurant (or be a
@@ -99,7 +107,7 @@ export async function POST(request: Request) {
 
   initInventoryTables();
   const body = await request.json();
-  const { name, frequency, schedule_days, location_id, category_ids, product_ids, assign_type, assign_id } = body;
+  const { name, frequency, schedule_days, adhoc_date, location_id, category_ids, product_ids, assign_type, assign_id } = body;
 
   if (!name || !location_id) {
     return NextResponse.json({ error: 'name and location_id are required' }, { status: 400 });
@@ -136,16 +144,52 @@ export async function POST(request: Request) {
     }
   }
 
+  // A typed assignment must be a known type naming a real target (a positive id —
+  // '' or 0 must not slip through and silently become "Anyone"). A shift must be
+  // one of this restaurant's Planning shift templates (metadata/label only —
+  // there is no shift-to-person resolution yet, so the session stays company-wide).
+  if (assign_type != null && !['person', 'department', 'shift'].includes(assign_type)) {
+    return NextResponse.json({ error: 'Unknown assignment type.' }, { status: 400 });
+  }
+  // Strict raw-type check on ANY non-null incoming id (even with no assign_type —
+  // junk like "abc"/true must never reach the DB), and a typed assignment must
+  // have one. No coercion: better-sqlite3 would store strings / 500 on bools.
+  if (assign_id != null && !(typeof assign_id === 'number' && Number.isInteger(assign_id) && assign_id > 0)) {
+    return NextResponse.json({ error: 'Choose who this list is assigned to.' }, { status: 400 });
+  }
+  if (assign_type && assign_id == null) {
+    return NextResponse.json({ error: 'Choose who this list is assigned to.' }, { status: 400 });
+  }
+  if (assign_type === 'shift' && !listShiftTemplates(companyId).some((t) => t.id === assign_id)) {
+    return NextResponse.json({ error: 'Pick a shift for this list.' }, { status: 400 });
+  }
+
+  // Ad-hoc lists generate a single count on a chosen, non-past date. Other
+  // frequencies never carry a date.
+  const freq = frequency || 'adhoc';
+  let adhocDate: string | null = null;
+  if (freq === 'adhoc') {
+    if (!isValidYmd(adhoc_date)) {
+      return NextResponse.json({ error: 'Pick a date for this one-off list.' }, { status: 400 });
+    }
+    if (adhoc_date < todayStr()) {
+      return NextResponse.json({ error: 'The count date can’t be in the past.' }, { status: 400 });
+    }
+    adhocDate = adhoc_date;
+  }
+
   const id = createTemplate({
     name,
-    frequency: frequency || 'adhoc',
+    frequency: freq,
     schedule_days: schedule_days || [],
+    adhoc_date: adhocDate,
     location_id,
     company_id: companyId,
     category_ids: category_ids || [],
     product_ids: product_ids || [],
     assign_type: assign_type || null,
-    assign_id: assign_id || null,
+    // Normalized: an id is only meaningful WITH a type (validated above).
+    assign_id: assign_type ? assign_id : null,
     created_by: user.id,
   });
 
@@ -222,7 +266,78 @@ export async function PUT(request: Request) {
     if (locErr) return NextResponse.json({ error: locErr }, { status: 400 });
   }
 
+  // Ad-hoc date on edit: an ad-hoc list must have a valid date; switching away
+  // from ad-hoc clears it. Only reject a PAST date when the date actually CHANGES
+  // — the editor always re-sends the stored date, and a legacy past-dated list
+  // must stay editable (rename it, deactivate it) without being forced forward.
+  const effFreq = 'frequency' in updates ? updates.frequency : existing.frequency;
+  if (effFreq === 'adhoc') {
+    const effDate = 'adhoc_date' in updates ? updates.adhoc_date : existing.adhoc_date;
+    if (!isValidYmd(effDate)) {
+      return NextResponse.json({ error: 'Pick a date for this one-off list.' }, { status: 400 });
+    }
+    const dateChanged = 'adhoc_date' in updates && updates.adhoc_date !== (existing.adhoc_date ?? null);
+    if (dateChanged && typeof updates.adhoc_date === 'string' && updates.adhoc_date < todayStr()) {
+      return NextResponse.json({ error: 'The count date can’t be in the past.' }, { status: 400 });
+    }
+  } else {
+    // Effective frequency is NOT ad-hoc: a date must never be stored. Clear a
+    // stale one on a frequency change; ignore a stray adhoc_date sent alongside
+    // other edits (it could otherwise lie dormant and activate on a later
+    // frequency-only switch, bypassing the past-date check).
+    if ('frequency' in updates) updates.adhoc_date = null;
+    else delete updates.adhoc_date;
+  }
+
+  // A typed assignment must be a known type naming a real, positive-id target;
+  // a shift must belong to this restaurant.
+  const effAssignType = 'assign_type' in updates ? updates.assign_type : existing.assign_type;
+  const effAssignId = 'assign_id' in updates ? updates.assign_id : existing.assign_id;
+  if (effAssignType != null && !['person', 'department', 'shift'].includes(effAssignType)) {
+    return NextResponse.json({ error: 'Unknown assignment type.' }, { status: 400 });
+  }
+  // Strict raw-type check on any INCOMING id (stored ids are already numbers) —
+  // no coercion, so a boolean/array/"1e0" can never reach the DB binding.
+  if ('assign_id' in updates && updates.assign_id != null
+      && !(typeof updates.assign_id === 'number' && Number.isInteger(updates.assign_id) && updates.assign_id > 0)) {
+    return NextResponse.json({ error: 'Choose who this list is assigned to.' }, { status: 400 });
+  }
+  if (effAssignType && !(typeof effAssignId === 'number' && Number.isInteger(effAssignId) && effAssignId > 0)) {
+    return NextResponse.json({ error: 'Choose who this list is assigned to.' }, { status: 400 });
+  }
+  if (effAssignType === 'shift' && effectiveCompany != null
+      && !listShiftTemplates(effectiveCompany).some((t) => t.id === effAssignId)) {
+    return NextResponse.json({ error: 'Pick a shift for this list.' }, { status: 400 });
+  }
+  // A person-assigned list: the assignee must belong to this restaurant (same
+  // rule as POST — session generation copies the assignment and access control
+  // trusts it, so a cross-company assignee would gain access).
+  if (effAssignType === 'person' && effectiveCompany != null) {
+    const assignee = getUserById(Number(effAssignId));
+    if (!assignee) return NextResponse.json({ error: 'That person was not found' }, { status: 400 });
+    const ac = parseCompanyIds(assignee.allowed_company_ids);
+    const assigneeUnrestricted = assignee.role === 'admin' && ac.length === 0;
+    if (!assigneeUnrestricted && !ac.includes(effectiveCompany)) {
+      return NextResponse.json({ error: 'That person is not in this restaurant' }, { status: 400 });
+    }
+  }
+
   updateTemplate(id, updates);
+
+  // Keep generated sessions consistent with a MOVED ad-hoc date: remove the old
+  // date's untouched pending session (else it lingers uncancellable AND the new
+  // date spawns a second count), and generate immediately when the new date is
+  // today — same behavior as create. Anything staff already started is kept.
+  if (effFreq === 'adhoc') {
+    if ('adhoc_date' in updates && updates.adhoc_date !== (existing.adhoc_date ?? null)) {
+      deleteStalePendingSessions(id, updates.adhoc_date as string);
+      generateSessionForTemplate(id);
+    }
+  } else if ('frequency' in updates && existing.frequency === 'adhoc') {
+    // No longer ad-hoc: future-dated untouched leftovers are removed; today's
+    // (if any) is kept — a daily/weekly list would regenerate it today anyway.
+    deleteStalePendingSessions(id, todayStr());
+  }
 
   // Replace placements when the builder sends them, scoped to the effective
   // company + the list's products. effectiveCompany is guaranteed non-null here
