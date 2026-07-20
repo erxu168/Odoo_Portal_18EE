@@ -1,9 +1,39 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { SearchBar, Spinner, EmptyState } from './ui';
 import { suggestCrateSizeFromName, baseIsMeasure } from '@/lib/crate-units';
 import { useCompany } from '@/lib/company-context';
+
+// Read a picked image (camera or file), downscale on-device to keep it small,
+// return a JPEG data URL. Falls back to the raw data URL if canvas is unavailable.
+async function fileToDownscaledDataUrl(file: File, maxDim = 1024, quality = 0.7): Promise<string> {
+  const dataUrl = await new Promise<string>((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result as string);
+    fr.onerror = () => rej(new Error('read failed'));
+    fr.readAsDataURL(file);
+  });
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => {
+      const i = new window.Image();
+      i.onload = () => res(i);
+      i.onerror = () => rej(new Error('decode failed'));
+      i.src = dataUrl;
+    });
+    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', quality);
+  } catch {
+    return dataUrl;
+  }
+}
 
 interface ProductSettingsProps {
   onBack: () => void;
@@ -20,6 +50,10 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
   const [crateSizes, setCrateSizes] = useState<Record<number, string>>({});   // per-product input strings ('' = none)
   const [packLabels, setPackLabels] = useState<Record<number, string>>({});    // per-product count-by (pack) word
   const [looseLabels, setLooseLabels] = useState<Record<number, string>>({});   // per-product single-unit word (pack+loose mode)
+  const [imageIds, setImageIds] = useState<Set<number>>(new Set());             // product ids that have a picture
+  const [photoTarget, setPhotoTarget] = useState<number | null>(null);          // which product a pick applies to
+  const [imgVer, setImgVer] = useState(0);                                      // cache-bust <img> after an update
+  const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<number | null>(null);
@@ -29,10 +63,12 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     async function load() {
       setLoading(true);
       try {
-        const [prodRes, flagRes] = await Promise.all([
+        const [prodRes, flagRes, imgRes] = await Promise.all([
           fetch(`/api/inventory/products?limit=500&include_pos=1${companyId ? `&company_id=${companyId}&relevant=1` : ''}`).then(r => r.json()),
           fetch('/api/inventory/product-flags').then(r => r.json()),
+          fetch('/api/inventory/product-images').then(r => r.json()).catch(() => ({ with_images: [] })),
         ]);
+        setImageIds(new Set<number>(imgRes.with_images || []));
         const prods = (prodRes.products || []).filter((p: any) => p.active !== false);
         setProducts(prods);
         const photoMap: Record<number, boolean> = {};
@@ -79,6 +115,34 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     }
   }
 
+  // Product picture: one hidden file input (accept image + capture) covers BOTH
+  // camera and upload. pickPhoto targets a product, onPhotoFile downscales + saves.
+  function pickPhoto(productId: number) {
+    setPhotoTarget(productId);
+    fileRef.current?.click();
+  }
+
+  async function onPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || photoTarget == null) return;
+    const targetId = photoTarget;
+    try {
+      const dataUrl = await fileToDownscaledDataUrl(file);
+      const res = await fetch(`/api/inventory/product-images/${targetId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataUrl }),
+      });
+      if (res.ok) {
+        setImageIds(prev => { const n = new Set(prev); n.add(targetId); return n; });
+        setImgVer(v => v + 1);
+      }
+    } catch (err) {
+      console.error('Failed to save product photo:', err);
+    }
+  }
+
   // Save size + count-by label + loose word together. Empty/0 size clears it
   // (simple mode, count in base units); a size makes it pack+loose.
   async function commitPack(productId: number, rawSize: string, label: string, loose: string) {
@@ -112,6 +176,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhotoFile} className="hidden" />
       <div className="px-4 pt-3 pb-2 flex items-center gap-3">
         <button onClick={onBack} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
@@ -141,6 +206,15 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
               return (
                 <div key={p.id} className="py-3.5 border-b border-gray-100 [content-visibility:auto] [contain-intrinsic-size:auto_92px]">
                   <div className="flex items-start justify-between gap-3">
+                    <button
+                      onClick={() => pickPhoto(p.id)}
+                      aria-label={`Photo for ${p.name}`}
+                      className="w-11 h-11 rounded-lg bg-gray-100 border border-gray-200 flex-shrink-0 flex items-center justify-center overflow-hidden active:opacity-80"
+                    >
+                      {imageIds.has(p.id)
+                        ? <img src={`/api/inventory/product-images/${p.id}?v=${imgVer}`} alt="" className="w-full h-full object-cover" />
+                        : <span className="text-[18px]">📷</span>}
+                    </button>
                     <div className="flex-1 min-w-0">
                       <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
                       <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{p.categ_id?.[1] || ''} · base {uom}</div>
