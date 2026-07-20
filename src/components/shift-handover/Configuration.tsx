@@ -25,7 +25,7 @@ function EditBtn({ onClick }: { onClick: () => void }) {
   );
 }
 
-export function Configuration({ onBack }: { onBack: () => void }) {
+export function Configuration({ companyPill, onBack }: { companyPill?: React.ReactNode; onBack: () => void }) {
   const [tab, setTab] = useState<Tab>('products');
   const [cfg, setCfg] = useState<any>(null);
   // { tab, item } — item null = add, item set = edit.
@@ -39,7 +39,12 @@ export function Configuration({ onBack }: { onBack: () => void }) {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <AppHeader supertitle="SHIFT HANDOVER" title="Configuration" subtitle="Products, containers & storage" showBack onBack={onBack}
-        action={<button onClick={() => setSheet({ tab, item: null })} className="bg-white/15 text-white text-[var(--fs-sm)] font-semibold rounded-xl px-3 h-10 active:bg-white/25">+ Add</button>} />
+        action={
+          <div className="flex items-center gap-1.5">
+            {companyPill}
+            <button onClick={() => setSheet({ tab, item: null })} className="bg-white/15 text-white text-[var(--fs-sm)] font-semibold rounded-xl px-3 h-10 active:bg-white/25">+ Add</button>
+          </div>
+        } />
       <div className="pt-3">
         <FilterBar>
           <FilterPill active={tab === 'products'} label="Products" onClick={() => setTab('products')} />

@@ -9,8 +9,8 @@ import { ACTION_PRIORITIES } from '@/lib/shift-handover/states';
 
 interface Action { id: number; instruction: string; priority: string; status: string; due_at: string | null; }
 
-export function Tasks({ operationalDate, canCreate, canManageCritical, onBack }: {
-  operationalDate: string; canCreate: boolean; canManageCritical: boolean; onBack: () => void;
+export function Tasks({ operationalDate, companyPill, canCreate, canManageCritical, onBack }: {
+  operationalDate: string; companyPill?: React.ReactNode; canCreate: boolean; canManageCritical: boolean; onBack: () => void;
 }) {
   const [actions, setActions] = useState<Action[] | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -30,7 +30,12 @@ export function Tasks({ operationalDate, canCreate, canManageCritical, onBack }:
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <AppHeader supertitle="SHIFT HANDOVER" title="Tasks" subtitle="Open next-actions" showBack onBack={onBack}
-        action={canCreate ? <button onClick={() => setShowAdd(true)} className="bg-white/15 text-white text-[var(--fs-sm)] font-semibold rounded-xl px-3 h-10 active:bg-white/25">+ Task</button> : undefined} />
+        action={
+          <div className="flex items-center gap-1.5">
+            {companyPill}
+            {canCreate && <button onClick={() => setShowAdd(true)} className="bg-white/15 text-white text-[var(--fs-sm)] font-semibold rounded-xl px-3 h-10 active:bg-white/25">+ Task</button>}
+          </div>
+        } />
       <div className="flex-1 px-4 py-4">
         <ErrorNote>{error}</ErrorNote>
         {actions === null ? <Spinner /> : actions.length === 0 ? (

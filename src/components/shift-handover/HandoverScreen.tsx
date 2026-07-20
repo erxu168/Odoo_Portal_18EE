@@ -28,19 +28,19 @@ function Section({ label, containers }: { label: string; containers: ContainerVi
   );
 }
 
-export function HandoverScreen({ operationalDate, shiftLabels, canSubmit, canAcknowledge, initialDetailId = null, onBack }: {
-  operationalDate: string; shiftLabels: string[]; canSubmit: boolean; canAcknowledge: boolean; initialDetailId?: number | null; onBack: () => void;
+export function HandoverScreen({ operationalDate, shiftLabels, companyPill, canSubmit, canAcknowledge, initialDetailId = null, onBack }: {
+  operationalDate: string; shiftLabels: string[]; companyPill?: React.ReactNode; canSubmit: boolean; canAcknowledge: boolean; initialDetailId?: number | null; onBack: () => void;
 }) {
   const [detailId, setDetailId] = useState<number | null>(initialDetailId);
   if (detailId != null) {
     return <HandoverDetail id={detailId} canAcknowledge={canAcknowledge} onBack={() => setDetailId(null)} />;
   }
-  return <HandoverMain operationalDate={operationalDate} shiftLabels={shiftLabels} canSubmit={canSubmit} onBack={onBack} onOpen={setDetailId} />;
+  return <HandoverMain operationalDate={operationalDate} shiftLabels={shiftLabels} companyPill={companyPill} canSubmit={canSubmit} onBack={onBack} onOpen={setDetailId} />;
 }
 
 // ── Main: live preview + submit + history list ───────────────────────────────
-function HandoverMain({ operationalDate, shiftLabels, canSubmit, onBack, onOpen }: {
-  operationalDate: string; shiftLabels: string[]; canSubmit: boolean; onBack: () => void; onOpen: (id: number) => void;
+function HandoverMain({ operationalDate, shiftLabels, companyPill, canSubmit, onBack, onOpen }: {
+  operationalDate: string; shiftLabels: string[]; companyPill?: React.ReactNode; canSubmit: boolean; onBack: () => void; onOpen: (id: number) => void;
 }) {
   const [preview, setPreview] = useState<any>(null);
   const [list, setList] = useState<any[] | null>(null);
@@ -57,7 +57,7 @@ function HandoverMain({ operationalDate, shiftLabels, canSubmit, onBack, onOpen 
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-24">
-      <AppHeader supertitle="SHIFT HANDOVER" title="Handover" subtitle={operationalDate} showBack onBack={onBack} />
+      <AppHeader supertitle="SHIFT HANDOVER" title="Handover" subtitle={operationalDate} showBack onBack={onBack} action={companyPill} />
 
       <div className="flex-1 px-4 py-4">
         {!preview ? <Spinner /> : (

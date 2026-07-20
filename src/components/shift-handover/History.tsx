@@ -21,8 +21,8 @@ const ACTION_TEXT: Record<string, string> = {
   'discrepancy.resolved': 'resolved a discrepancy',
 };
 
-export function History({ canViewAudit, onBack, onOpenHandover }: {
-  canViewAudit: boolean; onBack: () => void; onOpenHandover: (id: number) => void;
+export function History({ companyPill, canViewAudit, onBack, onOpenHandover }: {
+  companyPill?: React.ReactNode; canViewAudit: boolean; onBack: () => void; onOpenHandover: (id: number) => void;
 }) {
   const [tab, setTab] = useState<'handovers' | 'activity'>('handovers');
   const [handovers, setHandovers] = useState<any[] | null>(null);
@@ -36,7 +36,7 @@ export function History({ canViewAudit, onBack, onOpenHandover }: {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <AppHeader supertitle="SHIFT HANDOVER" title="History" subtitle="Handovers & audit trail" showBack onBack={onBack} />
+      <AppHeader supertitle="SHIFT HANDOVER" title="History" subtitle="Handovers & audit trail" showBack onBack={onBack} action={companyPill} />
       <div className="pt-3">
         <FilterBar>
           <FilterPill active={tab === 'handovers'} label="Handovers" onClick={() => setTab('handovers')} />

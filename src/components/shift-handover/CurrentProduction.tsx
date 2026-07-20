@@ -13,8 +13,8 @@ interface Batch {
   shift_label: string | null; active_count: number; outstanding_actions: number; containers: ContainerView[];
 }
 
-export function CurrentProduction({ cfg, operationalDate, canEdit, onBack, onRecord }: {
-  cfg: Cfg; operationalDate: string; canEdit: boolean; onBack: () => void; onRecord: () => void;
+export function CurrentProduction({ cfg, operationalDate, companyPill, canEdit, onBack, onRecord }: {
+  cfg: Cfg; operationalDate: string; companyPill?: React.ReactNode; canEdit: boolean; onBack: () => void; onRecord: () => void;
 }) {
   const [batches, setBatches] = useState<Batch[] | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
@@ -27,7 +27,12 @@ export function CurrentProduction({ cfg, operationalDate, canEdit, onBack, onRec
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <AppHeader supertitle="SHIFT HANDOVER" title="Current production" subtitle={operationalDate} showBack onBack={onBack}
-        action={canEdit ? <button onClick={onRecord} className="bg-white/15 text-white text-[var(--fs-sm)] font-semibold rounded-xl px-3 h-10 active:bg-white/25">+ Record</button> : undefined} />
+        action={
+          <div className="flex items-center gap-1.5">
+            {companyPill}
+            {canEdit && <button onClick={onRecord} className="bg-white/15 text-white text-[var(--fs-sm)] font-semibold rounded-xl px-3 h-10 active:bg-white/25">+ Record</button>}
+          </div>
+        } />
 
       <div className="flex-1 px-4 py-4">
         {batches === null ? <Spinner /> : batches.length === 0 ? (

@@ -18,7 +18,7 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
   { id: 'use_first', label: 'Use first' },
 ];
 
-export function StorageOverview({ cfg, canEdit, onBack }: { cfg: Cfg; canEdit: boolean; onBack: () => void }) {
+export function StorageOverview({ cfg, companyPill, canEdit, onBack }: { cfg: Cfg; companyPill?: React.ReactNode; canEdit: boolean; onBack: () => void }) {
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [editId, setEditId] = useState<number | null>(null);
@@ -33,7 +33,7 @@ export function StorageOverview({ cfg, canEdit, onBack }: { cfg: Cfg; canEdit: b
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <AppHeader supertitle="SHIFT HANDOVER" title="Storage overview" subtitle={`${total} active container${total !== 1 ? 's' : ''}`} showBack onBack={onBack} />
+      <AppHeader supertitle="SHIFT HANDOVER" title="Storage overview" subtitle={`${total} active container${total !== 1 ? 's' : ''}`} showBack onBack={onBack} action={companyPill} />
       <div className="pt-3">
         <FilterBar>
           {FILTERS.map((f) => <FilterPill key={f.id} active={filter === f.id} label={f.label} onClick={() => setFilter(f.id)} />)}

@@ -10,8 +10,8 @@ export interface Overview {
 
 interface Tile { id: string; label: string; sub: string; icon: string; badge?: number; danger?: boolean }
 
-export function Dashboard({ overview, operationalDate, can, onOpen }: {
-  overview: Overview | null; operationalDate: string; can: (screen: string) => boolean; onOpen: (screen: string) => void;
+export function Dashboard({ overview, operationalDate, headerAction, can, onOpen }: {
+  overview: Overview | null; operationalDate: string; headerAction?: React.ReactNode; can: (screen: string) => boolean; onOpen: (screen: string) => void;
 }) {
   const o = overview;
   const tiles: Tile[] = [
@@ -27,7 +27,7 @@ export function Dashboard({ overview, operationalDate, can, onOpen }: {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader supertitle="INVENTORY" title="Shift Handover" subtitle={operationalDate} />
+      <AppHeader supertitle="INVENTORY" title="Shift Handover" subtitle={operationalDate} action={headerAction} />
       <div className="px-4 py-4">
         {o && (
           <div className="grid grid-cols-4 gap-2 mb-4">

@@ -19,8 +19,8 @@ function blankDraft(prep: string, key: number): Draft {
   return { key, container_type_id: null, fill_level: 100, storage_location_id: null, preparation_state: prep, availability_state: 'not_ready', use_first: false, next_action: '', photos: [] };
 }
 
-export function RecordProduction({ cfg, operationalDate, onDone, onBack }: {
-  cfg: Cfg; operationalDate: string; onDone: () => void; onBack: () => void;
+export function RecordProduction({ cfg, operationalDate, companyPill, onDone, onBack }: {
+  cfg: Cfg; operationalDate: string; companyPill?: React.ReactNode; onDone: () => void; onBack: () => void;
 }) {
   const [product, setProduct] = useState<Product | null>(null);
   const [shiftLabel, setShiftLabel] = useState<string>('');
@@ -64,7 +64,7 @@ export function RecordProduction({ cfg, operationalDate, onDone, onBack }: {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col pb-28">
-      <AppHeader supertitle="SHIFT HANDOVER" title="Record production" subtitle={operationalDate} showBack onBack={onBack} />
+      <AppHeader supertitle="SHIFT HANDOVER" title="Record production" subtitle={operationalDate} showBack onBack={onBack} action={companyPill} />
 
       <div className="px-4 py-4 flex-1">
         <ErrorNote>{error}</ErrorNote>
