@@ -208,7 +208,7 @@ export async function GET(request: Request) {
     // product.supplierinfo (a separate model) so they can't be a reliable dotted
     // domain — hydrate matching products in a second query, then OR their ids in.
     // Staff always SEE the internal name; code/supplier are only ways to find it.
-    let supplierMatchIds: number[] = [];
+    const supplierMatchIds: number[] = [];
     const supplierByVariant: Record<number, string> = {};
     const supplierByTmpl: Record<number, string> = {};
     if (search) {
