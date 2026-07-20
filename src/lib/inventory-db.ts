@@ -1248,10 +1248,14 @@ export function deleteReceipt(id: number, companyIds: number[] | null, ownerUser
   return db.prepare(`DELETE FROM stock_receipts WHERE ${conds.join(' AND ')}`).run(...vals).changes as number;
 }
 
-/** Sum received base qty per product over [from, to] for a company set (usage report). */
+/**
+ * Sum received base qty per product over (from, to] for a company set (usage report).
+ * Lower bound is EXCLUSIVE so a delivery already reflected in the opening count
+ * isn't added again as "received".
+ */
 export function sumReceiptsByProduct(companyIds: number[] | null, from: string, to: string): Record<number, number> {
   const db = getDb();
-  const where: string[] = ['received_at >= ?', 'received_at <= ?'];
+  const where: string[] = ['received_at > ?', 'received_at <= ?'];
   const vals: unknown[] = [from, to];
   if (companyIds) {
     if (companyIds.length === 0) return {};

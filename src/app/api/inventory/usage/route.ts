@@ -9,12 +9,17 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { initInventoryTables, getSession, getSessionEntries, sumReceiptsByProduct } from '@/lib/inventory-db';
 import { canAccessSession } from '@/lib/inventory-access';
 
 export async function GET(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'inventory.consumption.view', getPermissionOverrides())) {
+    return NextResponse.json({ error: 'Manager access required' }, { status: 403 });
+  }
   initInventoryTables();
 
   const { searchParams } = new URL(request.url);
@@ -33,6 +38,20 @@ export async function GET(request: Request) {
   if ((opening.company_id ?? null) !== (closing.company_id ?? null)) {
     return NextResponse.json({ error: 'Both counts must belong to the same restaurant' }, { status: 400 });
   }
+  if (openingId === closingId) {
+    return NextResponse.json({ error: 'Pick two different counts' }, { status: 400 });
+  }
+  // Must be opening + closing of the SAME list, so the products line up.
+  if (opening.template_id !== closing.template_id) {
+    return NextResponse.json({ error: 'Both counts must be of the same list' }, { status: 400 });
+  }
+  // Ordered: the opening count must come on/before the closing count. Use the
+  // count's finish time (submitted_at) when available, else its creation.
+  const openBoundary = opening.submitted_at || opening.created_at;
+  const closeBoundary = closing.submitted_at || closing.created_at;
+  if (openBoundary > closeBoundary) {
+    return NextResponse.json({ error: 'The opening count must be on or before the closing count' }, { status: 400 });
+  }
 
   // Each product's base-unit total in a session (summed across spots).
   function totals(sessionId: number): Record<number, number> {
@@ -45,11 +64,10 @@ export async function GET(request: Request) {
   const openTotals = totals(openingId);
   const closeTotals = totals(closingId);
 
-  // Received window = the opening day 00:00 → the closing day 23:59 (inclusive).
-  const fromDate = (opening.scheduled_date || String(opening.created_at).slice(0, 10)) + 'T00:00:00.000Z';
-  const toDate = (closing.scheduled_date || String(closing.created_at).slice(0, 10)) + 'T23:59:59.999Z';
+  // Received window = strictly AFTER the opening count, up to the closing count,
+  // so a delivery already reflected in the opening stock isn't counted twice.
   const companyIds = opening.company_id != null ? [opening.company_id] : null;
-  const received = sumReceiptsByProduct(companyIds, fromDate, toDate);
+  const received = sumReceiptsByProduct(companyIds, openBoundary, closeBoundary);
 
   const productIds = Array.from(new Set<number>([
     ...Object.keys(openTotals).map(Number),
@@ -78,8 +96,8 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.json({
-    from: fromDate,
-    to: toDate,
+    from: openBoundary,
+    to: closeBoundary,
     opening_date: opening.scheduled_date,
     closing_date: closing.scheduled_date,
     rows,
