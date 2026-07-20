@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
 import { getLocations } from '@/lib/shift-handover/queries';
-import { createCountLocation, getCountLocation, updateCountLocation, deleteCountLocation } from '@/lib/inventory-db';
+import { createCountLocation, getCountLocation, updateCountLocation } from '@/lib/inventory-db';
 import { locationDescendantIds, locationInUse } from '@/lib/shift-handover/db';
 
 // Storage locations REUSE the shared count_locations tree.
@@ -53,8 +53,11 @@ export async function PATCH(request: Request) {
   return NextResponse.json({ ok: true });
 }
 
-// DELETE — remove a location (and its empty sub-locations). Blocked if it or a
-// sub-location still holds a container, so we never orphan a container's place.
+// DELETE — remove a location (and its sub-locations). Storage locations are the
+// SHARED count_locations tree (inventory history references them), so we SOFT-remove
+// (active = 0) the whole subtree rather than hard-delete and orphan inventory rows
+// like count_entries / session_location_status. Blocked if it (or a sub-location)
+// still holds a handover container, so we never orphan a container's place.
 export async function DELETE(request: Request) {
   const authz = authorize(CAP.configure, { requireResolvedActor: true });
   if (!authz.ok) return jsonError(authz.status, authz.error);
@@ -66,6 +69,6 @@ export async function DELETE(request: Request) {
   if (!id || !loc || loc.company_id !== companyId) return jsonError(404, 'Location not found.');
   const ids = locationDescendantIds(id, companyId);
   if (locationInUse(ids)) return jsonError(409, 'This location (or a sub-location) still holds a container. Move those first, or rename it instead.');
-  deleteCountLocation(id, companyId); // cascades empty sub-locations + placements
+  for (const lid of ids) updateCountLocation(lid, companyId, { active: false }); // soft-remove subtree
   return NextResponse.json({ ok: true });
 }

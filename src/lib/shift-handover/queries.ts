@@ -8,7 +8,6 @@ import { buildLocationTree } from '@/lib/location-tree';
 import { buildHandoverSections, type HandoverSections } from './snapshot';
 import { liveContainersForDate, liveActionsForDate } from './commands';
 import {
-  getDb,
   listBatches, listContainersByBatch, listContainers,
   listActions, listHandovers, getHandover, getBatch, getContainer,
   listPhotos, countActivePhotos, listSnapshotContainers, listSnapshotActions,
@@ -142,16 +141,12 @@ export function listHandoverHistory(companyIds: number[] | undefined, filters?: 
 
 // ── Config ───────────────────────────────────────────────────────────────────
 export function getConfig(companyId: number) {
-  // The config screen shows INACTIVE entries too (so a "Removed" one can be
-  // re-activated). listCountLocations() is active-only, so read locations
-  // directly here; pickers keep using the active-only /locations route.
-  const locRows = (getDb().prepare(
-    'SELECT id, parent_id, company_id, name, kind, active, sort_order FROM count_locations WHERE company_id = ? ORDER BY sort_order, id',
-  ).all(companyId) as Record<string, unknown>[]).map((r) => ({ ...r, active: !!r.active }));
+  // Locations are shared with Inventory and "removed" = soft-hidden (active=0),
+  // so active-only here means a removed location simply disappears from the list.
   return {
     products: listHandoverProducts(companyId, { includeInactive: true }),
     container_types: listContainerTypes(companyId, { includeInactive: true }),
-    locations: buildLocationTree(locRows as never),
+    locations: buildLocationTree(listCountLocations(companyId) as never),
   };
 }
 
