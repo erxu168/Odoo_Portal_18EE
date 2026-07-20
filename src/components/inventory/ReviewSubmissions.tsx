@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
+import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState, ProductThumb } from './ui';
 import StandardFilter from '@/components/ui/StandardFilter';
 import PhotoLightbox from './PhotoLightbox';
 import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
@@ -20,6 +20,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [reviewSession, setReviewSession] = useState<any>(null);
   const [reviewProducts, setReviewProducts] = useState<any[]>([]);
   const [reviewEntries, setReviewEntries] = useState<any[]>([]);
+  const [productImageIds, setProductImageIds] = useState<Set<number>>(new Set());
   const [reviewLoading, setReviewLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState<'approve' | 'reject' | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -39,6 +40,14 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       .then((r) => r.json())
       .then((d) => setLocations(d.locations || []))
       .catch(() => { /* non-fatal */ });
+  }, []);
+
+  // Products that have a picture — for the recognition thumbnail on each row.
+  useEffect(() => {
+    fetch('/api/inventory/product-images')
+      .then((r) => r.ok ? r.json() : { with_images: [] })
+      .then((d) => setProductImageIds(new Set<number>(d.with_images || [])))
+      .catch(() => { /* thumbnails fall back to the placeholder */ });
   }, []);
 
   function locationName(id: number | null | undefined): string | null {
@@ -343,8 +352,21 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     const entryByProduct: Record<number, any> = {};
     reviewEntries.forEach((e: any) => { entryMap[e.product_id] = e.counted_qty; entryByProduct[e.product_id] = e; });
     const hasAnyCrate = reviewEntries.some((e: any) => hasCrate(e.units_per_crate));
+    // Out of stock = counted, but every entry (a product may sit at several spots)
+    // is the explicit out-of-stock zero. These stay in the counted list (so a
+    // draft keeps its review panel and any photos still render) with an
+    // out-of-stock badge; only the summary tallies them separately.
+    const entriesByProduct: Record<number, any[]> = {};
+    reviewEntries.forEach((e: any) => { (entriesByProduct[e.product_id] ||= []).push(e); });
+    const isOutOfStock = (pid: number) => {
+      const es = entriesByProduct[pid];
+      return !!es && es.length > 0 && es.every((e: any) => e.out_of_stock);
+    };
     const countedProducts = reviewProducts.filter(p => entryMap[p.id] !== undefined);
     const uncountedProducts = reviewProducts.filter(p => entryMap[p.id] === undefined);
+    const outOfStockCount = countedProducts.filter(p => isOutOfStock(p.id)).length;
+    const trueCountedCount = countedProducts.length - outOfStockCount;
+    const addressedCount = countedProducts.length; // everything the staffer resolved (counted or out-of-stock)
     const isSubmitted = reviewSession.status === 'submitted';
     const hasUnresolvedDrafts = countedProducts.some((p: any) => p.is_draft && !draftDecisions[p.id]);
 
@@ -380,20 +402,24 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-[var(--fs-base)] font-bold text-gray-900">Count summary</span>
-                  <span className="text-[var(--fs-sm)] font-mono text-gray-500">{countedProducts.length}/{reviewProducts.length}</span>
+                  <span className="text-[var(--fs-sm)] font-mono text-gray-500">{addressedCount}/{reviewProducts.length}</span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
-                  <div className={`h-full rounded-full ${countedProducts.length === reviewProducts.length ? 'bg-green-500' : 'bg-amber-500'}`}
-                    style={{ width: `${reviewProducts.length > 0 ? (countedProducts.length / reviewProducts.length) * 100 : 0}%` }} />
+                  <div className={`h-full rounded-full ${addressedCount === reviewProducts.length ? 'bg-green-500' : 'bg-amber-500'}`}
+                    style={{ width: `${reviewProducts.length > 0 ? (addressedCount / reviewProducts.length) * 100 : 0}%` }} />
                 </div>
-                <div className="flex gap-3">
+                <div className="flex gap-2.5">
                   <div className="flex-1 bg-green-50 rounded-xl p-3 text-center">
-                    <div className="text-[20px] font-bold text-green-700 font-mono">{countedProducts.length}</div>
+                    <div className="text-[20px] font-bold text-green-700 font-mono">{trueCountedCount}</div>
                     <div className="text-[var(--fs-xs)] text-green-600 font-semibold">Counted</div>
+                  </div>
+                  <div className="flex-1 bg-red-50 rounded-xl p-3 text-center">
+                    <div className="text-[20px] font-bold text-red-700 font-mono">{outOfStockCount}</div>
+                    <div className="text-[var(--fs-xs)] text-red-600 font-semibold">Out of stock</div>
                   </div>
                   <div className="flex-1 bg-amber-50 rounded-xl p-3 text-center">
                     <div className="text-[20px] font-bold text-amber-700 font-mono">{uncountedProducts.length}</div>
-                    <div className="text-[var(--fs-xs)] text-amber-600 font-semibold">Uncounted</div>
+                    <div className="text-[var(--fs-xs)] text-amber-600 font-semibold">Not counted</div>
                   </div>
                 </div>
               </div>
@@ -423,7 +449,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   const hasSysQty = sysQty !== undefined && sysQty !== null;
                   const diff = hasSysQty ? val - sysQty : null;
                   const diffPct = hasSysQty && sysQty > 0 ? Math.round((diff! / sysQty) * 100) : null;
-                  const isVariance = diffPct !== null && Math.abs(diffPct) > 10;
+                  const isOut = isOutOfStock(p.id);
+                  const isVariance = !isOut && diffPct !== null && Math.abs(diffPct) > 10;
                   const isDraft = p.is_draft === true;
                   const decision = draftDecisions[p.id];
                   const entry = entryByProduct[p.id];
@@ -438,13 +465,16 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                     <div key={p.id}>
                       <div className={`flex items-center justify-between py-2.5 border-b ${isVariance ? 'border-red-100 bg-red-50/50' : 'border-gray-100'}`}>
                         <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isVariance ? 'bg-red-100' : 'bg-green-100'}`}>
-                            {isVariance ? (
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${isOut || isVariance ? 'bg-red-100' : 'bg-green-100'}`}>
+                            {isOut ? (
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="3" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                            ) : isVariance ? (
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="3" strokeLinecap="round"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
                             ) : (
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                             )}
                           </div>
+                          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={36} />
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-[var(--fs-base)] text-gray-900 truncate">{p.name}</span>
@@ -458,8 +488,11 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                                   'bg-red-100 text-red-700 border border-red-200'
                                 }`}>{decision}</span>
                               )}
+                              {isOut && (
+                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 flex-shrink-0">Out of stock</span>
+                              )}
                             </div>
-                            {hasSysQty && (
+                            {!isOut && hasSysQty && (
                               <span className={`text-[var(--fs-xs)] ${isVariance ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
                                 System: {sysQty} {uom} {diff !== null && `(${diff > 0 ? '+' : ''}${diff})`}
                               </span>
@@ -485,11 +518,13 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                             })()}
                           </div>
                         </div>
-                        <span className="text-[14px] font-mono font-semibold text-gray-900 flex-shrink-0 ml-3 text-right">
-                          {isCrate && dispMode === 'split' && split ? (
-                            <span>{formatSplit(split.crates, split.loose, uom, packLabel)}</span>
+                        <span className="text-[14px] font-mono font-semibold flex-shrink-0 ml-3 text-right">
+                          {isOut ? (
+                            <span className="text-red-600 font-sans font-semibold">None here</span>
+                          ) : isCrate && dispMode === 'split' && split ? (
+                            <span className="text-gray-900">{formatSplit(split.crates, split.loose, uom, packLabel)}</span>
                           ) : (
-                            <>{val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></>
+                            <span className="text-gray-900">{val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></span>
                           )}
                         </span>
                       </div>
@@ -513,6 +548,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   return (<div key={p.id} className="flex items-center justify-between py-2.5 border-b border-gray-100 opacity-50">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0"><span className="text-gray-400 text-[var(--fs-xs)] font-bold">--</span></div>
+                      <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={32} />
                       <span className="text-[var(--fs-base)] text-gray-500 truncate">{p.name}</span>
                     </div>
                     <span className="text-[var(--fs-sm)] text-gray-400 flex-shrink-0 ml-3">-- {uom}</span>
@@ -542,7 +578,9 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                 <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8">
                   <h3 className="text-[17px] font-bold text-gray-900 mb-2">{showConfirm === 'approve' ? 'Approve this count?' : 'Reject this count?'}</h3>
                   <p className="text-[var(--fs-base)] text-gray-500 mb-5">
-                    {showConfirm === 'approve' ? `This will accept ${countedProducts.length} counted items and update inventory in Odoo.` : 'The staff member will be notified and can recount.'}
+                    {showConfirm === 'approve'
+                      ? `This will accept ${trueCountedCount} counted item${trueCountedCount !== 1 ? 's' : ''}${outOfStockCount > 0 ? ` and ${outOfStockCount} marked out of stock` : ''}.`
+                      : 'The staff member will be notified and can recount.'}
                   </p>
                   <div className="flex gap-3">
                     <button onClick={() => setShowConfirm(null)} className="flex-1 py-3.5 rounded-xl bg-gray-100 text-gray-700 text-[14px] font-semibold active:bg-gray-200">Cancel</button>

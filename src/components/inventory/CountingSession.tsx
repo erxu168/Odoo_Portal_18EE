@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState, leafCategory } from './ui';
+import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState, leafCategory, ProductThumb } from './ui';
 import NumpadModal from './NumpadModal';
 import CrateCountSheet from './CrateCountSheet';
 import FilePicker from "@/components/ui/FilePicker";
@@ -40,6 +40,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [proofPhoto, setProofPhoto] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [flags, setFlags] = useState<Record<number, boolean>>({});
+  const [productImageIds, setProductImageIds] = useState<Set<number>>(new Set()); // products with a picture (thumbnail)
   const [rowPhotos, setRowPhotos] = useState<Record<number, string[]>>({});
   // -- Crate (multi-UoM) counting --
   const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});          // product_id -> base units per pack
@@ -185,6 +186,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       }
     }).catch(() => {});
   }, [sessionId]);
+
+  // Which products have a picture — so each row shows a recognition thumbnail.
+  useEffect(() => {
+    fetch('/api/inventory/product-images')
+      .then(r => r.ok ? r.json() : { with_images: [] })
+      .then(d => setProductImageIds(new Set<number>(d.with_images || [])))
+      .catch(() => {});
+  }, []);
 
   // Guided route: the session's locations + each stop's counted/skipped status.
   useEffect(() => {
@@ -510,6 +519,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     return (
       <div className="py-3 border-b border-gray-100">
         <div className="flex items-center gap-3">
+          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={48} />
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-1.5 flex-wrap">
               <span className="text-[var(--fs-xxl)] font-semibold text-gray-900 truncate">{p.name}</span>

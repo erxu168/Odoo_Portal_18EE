@@ -170,3 +170,32 @@ export function EmptyState({ icon, title, body }: { icon?: React.ReactNode; titl
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[var(--fs-xs)] font-semibold text-gray-400 tracking-widest uppercase px-5 pt-4 pb-2">{children}</h2>;
 }
+
+// --- Product Thumbnail ---
+// Shows a product's primary picture where the product appears (count screen,
+// list builder, review). `has` comes from the screen's one-time fetch of
+// /api/inventory/product-images (the id set), so image-less products render the
+// neutral placeholder instead of firing a 404. The <img> is browser-cached.
+export function ProductThumb({ productId, has, size = 44, className = '' }: {
+  productId: number; has: boolean; size?: number; className?: string;
+}) {
+  return (
+    <div
+      className={`flex-shrink-0 rounded-lg bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center ${className}`}
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+    >
+      {has ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={`/api/inventory/product-images/${productId}`} alt="" loading="lazy" className="w-full h-full object-cover" />
+      ) : (
+        <svg width={Math.round(size * 0.5)} height={Math.round(size * 0.5)} viewBox="0 0 24 24" fill="none"
+             stroke="#C4C4C4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2.5" />
+          <circle cx="8.5" cy="9" r="1.5" />
+          <path d="M21 15l-5-5L5 21" />
+        </svg>
+      )}
+    </div>
+  );
+}

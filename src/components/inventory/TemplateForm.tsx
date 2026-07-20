@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { BackHeader, FilterBar, FilterPill, SearchBar, Spinner } from './ui';
+import { BackHeader, FilterBar, FilterPill, SearchBar, Spinner, ProductThumb } from './ui';
 import { useCompany } from '@/lib/company-context';
 
 const FREQUENCIES = [
@@ -53,6 +53,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
   );
   const [spots, setSpots] = useState<any[]>([]);                            // count_locations to place items at
   const [placements, setPlacements] = useState<Record<number, number>>({}); // productId -> spot id (0 = no specific spot)
+  const [productImageIds, setProductImageIds] = useState<Set<number>>(new Set()); // products with a picture
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState<string>('all');
@@ -70,13 +71,20 @@ export default function TemplateForm({ template, locations, departments, onSave,
         // explicit ids — they must stay visible even if outside the company's
         // relevant set (e.g. selected before the relevance filter existed).
         const selectedIds: number[] = template?.product_ids || [];
-        const [prodRes, userRes, selRes] = await Promise.all([
+        const [prodRes, userRes, selRes, imgRes] = await Promise.all([
           fetch(`/api/inventory/products?limit=500&include_pos=1${companyId ? `&company_id=${companyId}&relevant=1` : ''}`),
           fetch('/api/admin/users'),
           selectedIds.length > 0
             ? fetch(`/api/inventory/products?ids=${selectedIds.join(',')}&limit=1000`)
             : null,
+          // Isolated so a network error here can't abort product/user loading —
+          // thumbnails just fall back to the placeholder.
+          fetch('/api/inventory/product-images').catch(() => null),
         ]);
+        try {
+          const imgData = imgRes ? await imgRes.json() : null;
+          if (imgData) setProductImageIds(new Set<number>(imgData.with_images || []));
+        } catch { /* thumbnails just fall back to the placeholder */ }
         const prodData = await prodRes.json();
         let prods = (prodData.products || []).filter((p: any) => p.active !== false);
         if (selRes) {
@@ -323,6 +331,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
                           </svg>
                         )}
                       </div>
+                      <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
                       <div className="flex-1 min-w-0">
                         <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
                         <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">
@@ -541,6 +550,7 @@ export default function TemplateForm({ template, locations, departments, onSave,
                 return (
                   <div key={p.id}
                     className={`flex items-center gap-3 px-4 py-2.5 ${idx < selectedProducts.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                    <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={36} />
                     <div className="flex-1 min-w-0">
                       <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
                       <div className="text-[var(--fs-xs)] text-gray-400">{catName} &middot; {uom}</div>
