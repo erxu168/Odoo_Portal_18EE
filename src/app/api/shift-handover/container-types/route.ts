@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
-import { listContainerTypes, createContainerType, updateContainerType, getContainerType } from '@/lib/shift-handover/db';
+import { listContainerTypes, createContainerType, updateContainerType, getContainerType, containerTypeInUse, deleteContainerTypeRow } from '@/lib/shift-handover/db';
 
 export async function GET(request: Request) {
   const authz = authorize(CAP.view);
@@ -37,5 +37,19 @@ export async function PATCH(request: Request) {
   const ct = getContainerType(id);
   if (!id || !ct || ct.company_id !== companyId) return jsonError(404, 'Container type not found.');
   updateContainerType(id, companyId, { name: body.name, category: body.category, capacity_label: body.capacity_label, reference_photo: body.reference_photo, internal_code: body.internal_code, active: body.active });
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(request: Request) {
+  const authz = authorize(CAP.configure, { requireResolvedActor: true });
+  if (!authz.ok) return jsonError(authz.status, authz.error);
+  initHandoverTables();
+  const companyId = resolveCompany(request, authz.user);
+  if (!companyId) return jsonError(400, 'Choose a restaurant first.');
+  const id = parseInt(new URL(request.url).searchParams.get('id') || '0', 10);
+  const ct = getContainerType(id);
+  if (!id || !ct || ct.company_id !== companyId) return jsonError(404, 'Container type not found.');
+  if (containerTypeInUse(id)) return jsonError(409, 'This container type is in use. Rename it instead of deleting.');
+  deleteContainerTypeRow(id, companyId);
   return NextResponse.json({ ok: true });
 }

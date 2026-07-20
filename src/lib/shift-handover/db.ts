@@ -407,6 +407,40 @@ export function updateContainerType(id: number, companyId: number, d: Partial<{
   getDb().prepare(`UPDATE handover_container_types SET ${sets.join(', ')} WHERE id = ? AND company_id = ?`).run(...vals);
 }
 
+// ── Config deletion + in-use guards ──────────────────────────────────────────
+/** True if a product has any recorded batch (so its history depends on it). */
+export function productHasBatches(id: number): boolean {
+  return !!getDb().prepare('SELECT 1 FROM handover_batches WHERE product_id = ? LIMIT 1').get(id);
+}
+export function deleteHandoverProduct(id: number, companyId: number): void {
+  getDb().prepare('DELETE FROM handover_products WHERE id = ? AND company_id = ?').run(id, companyId);
+}
+/** True if a container type is used by any container. */
+export function containerTypeInUse(id: number): boolean {
+  return !!getDb().prepare('SELECT 1 FROM handover_containers WHERE container_type_id = ? LIMIT 1').get(id);
+}
+export function deleteContainerTypeRow(id: number, companyId: number): void {
+  getDb().prepare('DELETE FROM handover_container_types WHERE id = ? AND company_id = ?').run(id, companyId);
+}
+/** A location + all its descendants (for delete/cascade safety), scoped by company. */
+export function locationDescendantIds(rootId: number, companyId: number): number[] {
+  const db = getDb();
+  const ids: number[] = []; const seen = new Set<number>();
+  const walk = (pid: number) => {
+    if (seen.has(pid)) return; seen.add(pid); ids.push(pid);
+    (db.prepare('SELECT id FROM count_locations WHERE parent_id = ? AND company_id = ?').all(pid, companyId) as { id: number }[])
+      .forEach((r) => walk(r.id));
+  };
+  walk(rootId);
+  return ids;
+}
+/** True if any of these locations holds a container. */
+export function locationInUse(ids: number[]): boolean {
+  if (!ids.length) return false;
+  const ph = ids.map(() => '?').join(',');
+  return !!getDb().prepare(`SELECT 1 FROM handover_containers WHERE storage_location_id IN (${ph}) LIMIT 1`).get(...ids);
+}
+
 // ── Batches ──────────────────────────────────────────────────────────────────
 export function createBatch(d: {
   company_id: number; operational_date: string; product_id: number; product_name: string;

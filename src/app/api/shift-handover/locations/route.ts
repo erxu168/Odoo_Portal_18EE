@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
 import { getLocations } from '@/lib/shift-handover/queries';
-import { createCountLocation, getCountLocation } from '@/lib/inventory-db';
+import { createCountLocation, getCountLocation, updateCountLocation, deleteCountLocation } from '@/lib/inventory-db';
+import { locationDescendantIds, locationInUse } from '@/lib/shift-handover/db';
 
 // Storage locations REUSE the shared count_locations tree.
 export async function GET(request: Request) {
@@ -31,4 +32,40 @@ export async function POST(request: Request) {
   }
   const id = createCountLocation({ company_id: companyId, parent_id: parentId, name: body.name.trim(), kind: body.kind || 'area', created_by: authz.actor.userId });
   return NextResponse.json({ ok: true, id }, { status: 201 });
+}
+
+// PATCH — rename / re-kind / (de)activate a storage location.
+export async function PATCH(request: Request) {
+  const authz = authorize(CAP.configure, { requireResolvedActor: true });
+  if (!authz.ok) return jsonError(authz.status, authz.error);
+  initHandoverTables();
+  const companyId = resolveCompany(request, authz.user);
+  if (!companyId) return jsonError(400, 'Choose a restaurant first.');
+  const body = await request.json();
+  const id = parseInt(String(body?.id), 10);
+  const loc = getCountLocation(id);
+  if (!id || !loc || loc.company_id !== companyId) return jsonError(404, 'Location not found.');
+  if (body.name !== undefined && !String(body.name).trim()) return jsonError(400, 'A location name is required.');
+  updateCountLocation(id, companyId, {
+    name: body.name !== undefined ? String(body.name).trim() : undefined,
+    kind: body.kind, active: body.active,
+  });
+  return NextResponse.json({ ok: true });
+}
+
+// DELETE — remove a location (and its empty sub-locations). Blocked if it or a
+// sub-location still holds a container, so we never orphan a container's place.
+export async function DELETE(request: Request) {
+  const authz = authorize(CAP.configure, { requireResolvedActor: true });
+  if (!authz.ok) return jsonError(authz.status, authz.error);
+  initHandoverTables();
+  const companyId = resolveCompany(request, authz.user);
+  if (!companyId) return jsonError(400, 'Choose a restaurant first.');
+  const id = parseInt(new URL(request.url).searchParams.get('id') || '0', 10);
+  const loc = getCountLocation(id);
+  if (!id || !loc || loc.company_id !== companyId) return jsonError(404, 'Location not found.');
+  const ids = locationDescendantIds(id, companyId);
+  if (locationInUse(ids)) return jsonError(409, 'This location (or a sub-location) still holds a container. Move those first, or rename it instead.');
+  deleteCountLocation(id, companyId); // cascades empty sub-locations + placements
+  return NextResponse.json({ ok: true });
 }
