@@ -210,7 +210,7 @@ function TaskForm({ templateId, existing, assignees, onClose, onSaved }: {
             <div className="text-[13px] font-semibold text-gray-700">Deadline</div>
             <div className="text-[11px] text-gray-500">Days after the start / change date</div>
           </div>
-          <Toggle on={hasDeadline} onToggle={() => setHasDeadline(v => !v)} />
+          <Toggle on={hasDeadline} onToggle={() => setHasDeadline(v => !v)} label="Deadline" />
         </div>
         {hasDeadline && (
           <div className="mt-3 flex items-center gap-3">
@@ -219,7 +219,7 @@ function TaskForm({ templateId, existing, assignees, onClose, onSaved }: {
             <span className="text-[13px] text-gray-500">days</span>
             <div className="ml-auto flex items-center gap-2">
               <span className="text-[13px] text-gray-700">🔔 Remind</span>
-              <Toggle on={reminder} onToggle={() => setReminder(v => !v)} />
+              <Toggle on={reminder} onToggle={() => setReminder(v => !v)} label="Send reminder" />
             </div>
           </div>
         )}
@@ -252,9 +252,10 @@ function Seg2({ options, value, onChange }: { options: [string, string][]; value
     </div>
   );
 }
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
-    <button onClick={onToggle} className={`w-[46px] h-[27px] rounded-full relative transition-colors ${on ? 'bg-[#F5800A]' : 'bg-gray-300'}`}>
+    <button onClick={onToggle} aria-label={label} aria-pressed={on}
+      className={`w-[46px] h-[27px] rounded-full relative transition-colors ${on ? 'bg-[#F5800A]' : 'bg-gray-300'}`}>
       <span className={`absolute top-[3px] w-[21px] h-[21px] rounded-full bg-white shadow transition-all ${on ? 'left-[22px]' : 'left-[3px]'}`} />
     </button>
   );
