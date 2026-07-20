@@ -8,7 +8,7 @@ import { usePathname } from 'next/navigation';
  * KDS uses position:fixed and needs zero constraints from the parent.
  */
 
-const FULL_SCREEN_ROUTES = ['/recipes', '/hr'];
+const FULL_SCREEN_ROUTES = ['/recipes', '/hr', '/shift-handover'];
 const FULL_VIEWPORT_ROUTES = ['/kds', '/kiosk', '/confirm-shift'];
 // Wide routes: no phone-width cap — the module's own screens choose their width
 // (grid screens go wide on desktop, list/form screens self-center). Phones are

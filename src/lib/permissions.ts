@@ -120,6 +120,19 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   // editing is admin-only in v1; running & ticking checklists is manager+admin.
   { key: 'staffing.templates.manage', module: 'hr', label: 'Set up lifecycle checklists (master lists)', defaultRoles: ['admin'] },
   { key: 'staffing.instances.manage', module: 'hr', label: 'Start & manage lifecycle checklists',        defaultRoles: ['manager', 'admin'] },
+
+  // ── Shift Handover — per-container production handover (portal-only, no Odoo stock). ──
+  // Recording/viewing/tasks are all-roles (kitchen staff record production). Submitting and
+  // acknowledging a handover, resolving discrepancies, and configuring are leader/manager work.
+  { key: 'handover.view',                   module: 'shift-handover', label: 'View production, storage & handovers',              defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'handover.production.record',      module: 'shift-handover', label: 'Record production & update containers',             defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'handover.action.create',          module: 'shift-handover', label: 'Create & complete tasks',                           defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'handover.action.manage_critical', module: 'shift-handover', label: 'Manage food-safety-critical tasks',                 defaultRoles: ['manager', 'admin'] },
+  { key: 'handover.submit',                 module: 'shift-handover', label: 'Submit a shift handover',                           defaultRoles: ['manager', 'admin'] },
+  { key: 'handover.acknowledge',            module: 'shift-handover', label: 'Acknowledge an incoming handover',                   defaultRoles: ['manager', 'admin'] },
+  { key: 'handover.discrepancy.resolve',    module: 'shift-handover', label: 'Resolve handover discrepancies',                    defaultRoles: ['manager', 'admin'] },
+  { key: 'handover.history.view',           module: 'shift-handover', label: 'View handover history & audit trail',               defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'handover.configure',              module: 'shift-handover', label: 'Configure products, container types & photo rules', defaultRoles: ['admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {

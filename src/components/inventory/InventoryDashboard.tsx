@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import SortableTileGrid from '@/components/ui/SortableTileGrid';
 
@@ -16,6 +17,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
   const [capabilities, setCapabilities] = useState<string[]>([]);
 
+  const router = useRouter();
   const canManage = userRole === 'manager' || userRole === 'admin';
   const can = (k: string) => capabilities.includes(k);
 
@@ -210,6 +212,20 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     }] : []),
+    // Portal-only Shift Handover submodule (its own /shift-handover route).
+    ...(can('handover.view') ? [{
+      id: 'shift-handover',
+      href: '/shift-handover',
+      label: 'Shift Handover',
+      color: 'bg-green-50 border-green-200', iconBg: 'bg-green-100', iconColor: 'text-green-600',
+      sublabel: 'Per-container handover',
+      badge: 0,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
+        </svg>
+      ),
+    }] : []),
   ];
 
   return (
@@ -226,7 +242,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
           storageKey="inventory_tile_order"
           savedOrder={savedOrder}
           renderItem={(tile) => (
-            <button onClick={() => onNavigate(tile.id)}
+            <button onClick={() => ((tile as any).href ? router.push((tile as any).href) : onNavigate(tile.id))}
               className={`w-full relative p-4 rounded-2xl border ${(tile as any).color || 'bg-white border-gray-200'} text-left active:scale-[0.97] transition-transform shadow-sm`}>
               {tile.badge > 0 && (
                 <span className="absolute top-3 right-3 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-[22px] text-center">
