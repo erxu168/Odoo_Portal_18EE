@@ -50,6 +50,7 @@
                             <field name="photo_required"/>
                             <field name="photo_uploaded"/>
                             <field name="is_ad_hoc" string="Ad-hoc"/>
+                            <field name="is_setup_guide" string="Setup guide" optional="hide"/>
                         </list>
                     </field>
                 </sheet>

@@ -1,15 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { TaskList, TaskListLine, DayPart } from '@/lib/odoo-tasks';
+import { TaskList, TaskListLine, DayPart, SubtaskToggleResult } from '@/lib/odoo-tasks';
 import TaskRow from './TaskRow';
+import SetupGuideView from './SetupGuideView';
 
 interface Props {
   taskList: TaskList;
   onComplete: (taskId: number) => Promise<void>;
-  onSubtaskToggle: (taskLineId: number, subtaskId: number, done: boolean) => Promise<void>;
+  onSubtaskToggle: (taskLineId: number, subtaskId: number, done: boolean) => Promise<SubtaskToggleResult | void>;
   onPhotoUpload: (taskId: number) => Promise<void>;
   onNoteSave?: (taskId: number, note: string) => Promise<void>;
+  /** Refresh the list — used so setup-guide auto-complete/reopen moves rows between sections. */
+  onReload?: () => Promise<void> | void;
   readOnly?: boolean;
 }
 
@@ -31,7 +34,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function ChecklistCard({ taskList, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, readOnly = false }: Props) {
+export default function ChecklistCard({ taskList, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false }: Props) {
   const grouped: Record<DayPart, TaskListLine[]> = { opening: [], mid_day: [], closing: [] };
   for (const line of taskList.lines) grouped[line.day_part].push(line);
 
@@ -50,6 +53,7 @@ export default function ChecklistCard({ taskList, onComplete, onSubtaskToggle, o
             onSubtaskToggle={onSubtaskToggle}
             onPhotoUpload={onPhotoUpload}
             onNoteSave={onNoteSave}
+            onReload={onReload}
             readOnly={readOnly}
           />
         );
@@ -66,10 +70,11 @@ interface SectionProps {
   onSubtaskToggle: Props['onSubtaskToggle'];
   onPhotoUpload: Props['onPhotoUpload'];
   onNoteSave: Props['onNoteSave'];
+  onReload: Props['onReload'];
   readOnly: boolean;
 }
 
-function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, readOnly }: SectionProps) {
+function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly }: SectionProps) {
   const [open, setOpen] = useState(true);
   const [showCompleted, setShowCompleted] = useState(false);
 
@@ -117,6 +122,7 @@ function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, 
                   onSubtaskToggle={onSubtaskToggle}
                   onPhotoUpload={onPhotoUpload}
                   onNoteSave={onNoteSave}
+                  onReload={onReload}
                   readOnly={readOnly}
                 />
               ))}
@@ -157,6 +163,16 @@ function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, 
                           {task.completed_by_name ? ` · ${task.completed_by_name}` : ''}
                           {task.photo_uploaded ? ' · \u{1F4F8}' : ''}
                         </p>
+                        {task.is_setup_guide && (
+                          <SetupGuideView
+                            task={task}
+                            photoUrl={task.has_setup_photo ? `/api/tasks/lines/${task.id}/setup-photo` : null}
+                            onSubtaskToggle={onSubtaskToggle}
+                            onReload={onReload}
+                            readOnly={readOnly}
+                            defaultCollapsed
+                          />
+                        )}
                         {task.note && (
                           <div className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200 text-xs text-yellow-900">
                             <span className="font-semibold">📝 Note: </span>{task.note}

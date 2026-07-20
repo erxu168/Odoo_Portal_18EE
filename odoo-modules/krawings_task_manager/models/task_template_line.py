@@ -1,4 +1,10 @@
+import mimetypes
+
 from odoo import api, fields, models
+
+
+def _guess_image_mime(filename):
+    return mimetypes.guess_type(filename or '')[0] or 'image/jpeg'
 
 
 DAY_PART_SELECTION = [
@@ -58,6 +64,16 @@ class KrawingsTaskTemplateLine(models.Model):
         'krawings.task.template.subtask', 'line_id', copy=True,
     )
 
+    # ── Setup guide (mise en place) ──────────────────────────────────────
+    # When set, this task is a visual station-setup guide: one reference photo
+    # with numbered pins (its subtasks). Photo kept out of normal search_read
+    # (Binary attachment); the portal serves it as raw bytes via its own route.
+    is_setup_guide = fields.Boolean(
+        help='Turn this task into a visual setup guide (reference photo + numbered pins).',
+    )
+    setup_photo = fields.Binary(attachment=True)
+    setup_photo_filename = fields.Char()
+
     # ── Recurrence rule (per task) ───────────────────────────────────────
     # Keys here are read by recurrence.applies_on() via rule_from_record().
     recurrence_type = fields.Selection(
@@ -108,7 +124,9 @@ class KrawingsTaskTemplateLine(models.Model):
         if not line_ids:
             return []
         recs = self.env['ir.attachment'].sudo().search_read(
-            [('res_model', '=', self._name), ('res_id', 'in', line_ids)],
+            # res_field=False excludes field-backed binaries (the setup_photo).
+            [('res_model', '=', self._name), ('res_id', 'in', line_ids),
+             ('res_field', '=', False)],
             ['id', 'res_id', 'name', 'mimetype', 'file_size'],
             order='id asc',
         )
@@ -135,6 +153,35 @@ class KrawingsTaskTemplateLine(models.Model):
             'mimetype': mimetype or False,
         })
         return att.id
+
+    # ── Setup-guide reference photo ──────────────────────────────────────
+
+    def set_setup_photo(self, data_base64, filename, clear_pins=False):
+        """Store / replace this template line's reference photo. Passing a falsy
+        payload clears it. `clear_pins` drops existing pins because their coords
+        are meaningless on a new image."""
+        self.ensure_one()
+        self.write({
+            'setup_photo': data_base64 or False,
+            'setup_photo_filename': (filename or False) if data_base64 else False,
+        })
+        if clear_pins and self.subtask_ids:
+            self.subtask_ids.unlink()
+        return True
+
+    @api.model
+    def get_setup_photo(self, line_id):
+        """Return {filename, mimetype, data_base64} for the template line's
+        reference photo, or False. The portal serves this as raw image bytes."""
+        rec = self.sudo().browse(int(line_id))
+        if not rec.exists() or not rec.setup_photo:
+            return False
+        raw = rec.setup_photo
+        return {
+            'filename': rec.setup_photo_filename or 'setup.jpg',
+            'mimetype': _guess_image_mime(rec.setup_photo_filename),
+            'data_base64': raw.decode('ascii') if isinstance(raw, bytes) else raw,
+        }
 
 
 class KrawingsTaskTemplateLineException(models.Model):

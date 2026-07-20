@@ -160,8 +160,18 @@ class KrawingsTaskTemplate(models.Model):
                     'module_link_type': tline.module_link_type,
                     'is_ad_hoc': False,
                     'source_template_line_id': tline.id,
+                    # Setup-guide snapshot (D4): each daily line keeps its own copy
+                    # of the reference photo + the pins; the filestore dedupes bytes.
+                    'is_setup_guide': tline.is_setup_guide,
+                    'setup_photo': tline.setup_photo,
+                    'setup_photo_filename': tline.setup_photo_filename or False,
                     'subtask_ids': [
-                        (0, 0, {'name': st.name, 'sequence': st.sequence})
+                        (0, 0, {
+                            'name': st.name,
+                            'sequence': st.sequence,
+                            'pin_x': st.pin_x,
+                            'pin_y': st.pin_y,
+                        })
                         for st in tline.subtask_ids
                     ],
                 }))

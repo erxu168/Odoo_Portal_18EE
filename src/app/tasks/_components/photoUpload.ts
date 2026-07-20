@@ -3,7 +3,7 @@
 // JPEG at 0.85 client-side, which typically yields 100-300 KB and avoids the
 // body-size and timeout failures we saw with raw uploads.
 
-async function compressImage(file: File, maxLongEdge: number, quality: number): Promise<{ base64: string; filename: string }> {
+export async function compressImage(file: File, maxLongEdge: number, quality: number): Promise<{ base64: string; filename: string }> {
   const dataUrl = await new Promise<string>((res, rej) => {
     const reader = new FileReader();
     reader.onload = () => res(reader.result as string);

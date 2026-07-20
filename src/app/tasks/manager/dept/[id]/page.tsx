@@ -63,11 +63,14 @@ export default function DeptReviewPage({ params }: PageProps) {
   }
 
   async function handleSubtaskToggle(lineId: number, subtaskId: number, done: boolean) {
-    await fetch(`/api/tasks/lines/${lineId}/subtasks/${subtaskId}`, {
+    const res = await fetch(`/api/tasks/lines/${lineId}/subtasks/${subtaskId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ done }),
     });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Failed to toggle subtask');
+    return { is_setup_guide: !!body.is_setup_guide, line_completed: !!body.line_completed };
   }
 
   async function handlePhotoUpload(lineId: number) {
@@ -210,6 +213,7 @@ export default function DeptReviewPage({ params }: PageProps) {
               onSubtaskToggle={handleSubtaskToggle}
               onPhotoUpload={handlePhotoUpload}
               onNoteSave={handleNoteSave}
+              onReload={load}
               readOnly={isPast || isFuture}
             />
           </>

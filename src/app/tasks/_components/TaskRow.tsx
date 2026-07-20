@@ -1,17 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { TaskListLine, TaskSubtask, ModuleLink } from '@/lib/odoo-tasks';
+import { TaskListLine, TaskSubtask, ModuleLink, SubtaskToggleResult } from '@/lib/odoo-tasks';
 import SubtaskList from './SubtaskList';
 import AttachmentList from './AttachmentList';
+import SetupGuideView from './SetupGuideView';
 
 interface Props {
   task: TaskListLine;
   taskListId: number;
   onComplete: (taskId: number) => Promise<void>;
-  onSubtaskToggle: (taskLineId: number, subtaskId: number, done: boolean) => Promise<void>;
+  onSubtaskToggle: (taskLineId: number, subtaskId: number, done: boolean) => Promise<SubtaskToggleResult | void>;
   onPhotoUpload: (taskId: number) => Promise<void>;
   onNoteSave?: (taskId: number, note: string) => Promise<void>;
+  onReload?: () => Promise<void> | void;
   readOnly?: boolean;
 }
 
@@ -48,7 +50,7 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, readOnly = false }: Props) {
+export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false }: Props) {
   const [subtasks, setSubtasks]     = useState<TaskSubtask[]>(task.subtasks);
   // Count of photos uploaded against this task — derived from runtime-scoped image attachments
   // plus a transient "just uploaded" counter for instant feedback before the parent reload settles.
@@ -67,6 +69,38 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
   const [noteDirty, setNoteDirty]   = useState(false);
 
   if (task.state === 'done') return null;
+
+  // Setup guides are pin-driven: no tap-to-complete row — the SetupGuideView
+  // owns the photo, the check-off list, and auto-completion.
+  if (task.is_setup_guide) {
+    return (
+      <div className="relative px-4 py-3.5 border-b border-gray-100 last:border-0">
+        {task.is_ad_hoc && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500" aria-hidden="true" />}
+        <div className="flex items-start justify-between gap-2">
+          <p className={`font-semibold text-sm leading-snug ${task.state === 'overdue' ? 'text-red-700' : 'text-gray-800'}`}>
+            {task.name}
+          </p>
+          <span className="text-[10px] font-bold uppercase tracking-wide text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full flex-shrink-0">
+            📍 Setup guide
+          </span>
+        </div>
+        {task.deadline_datetime && (
+          <span className={`mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+            task.state === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-700'
+          }`}>
+            {task.state === 'overdue' ? '⚠ Overdue' : `⏱ By ${formatTime(task.deadline_datetime)}`}
+          </span>
+        )}
+        <SetupGuideView
+          task={task}
+          photoUrl={task.has_setup_photo ? `/api/tasks/lines/${task.id}/setup-photo` : null}
+          onSubtaskToggle={onSubtaskToggle}
+          onReload={onReload}
+          readOnly={readOnly}
+        />
+      </div>
+    );
+  }
 
   const allSubtasksDone = subtasks.length === 0 || subtasks.every(s => s.done);
   const isLocked        = subtasks.length > 0 && !allSubtasksDone;

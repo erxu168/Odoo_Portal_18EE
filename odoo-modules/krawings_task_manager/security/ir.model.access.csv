@@ -13,3 +13,5 @@ access_task_list_line_user,krawings.task.list.line user,model_krawings_task_list
 access_task_list_line_manager,krawings.task.list.line manager,model_krawings_task_list_line,hr.group_hr_manager,1,1,1,1
 access_task_list_subtask_user,krawings.task.list.subtask user,model_krawings_task_list_subtask,base.group_user,1,1,1,0
 access_task_list_subtask_manager,krawings.task.list.subtask manager,model_krawings_task_list_subtask,hr.group_hr_manager,1,1,1,1
+access_task_item_user,krawings.task.item user,model_krawings_task_item,base.group_user,1,0,0,0
+access_task_item_manager,krawings.task.item manager,model_krawings_task_item,hr.group_hr_manager,1,1,1,1

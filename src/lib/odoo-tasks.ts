@@ -23,6 +23,9 @@ export interface TaskSubtask {
   done: boolean;
   toggled_at: string | null;
   toggled_by_id: number | null;
+  /** Setup-guide pin position, fraction of the reference image (0–1). 0/0 when not a pin. */
+  pin_x: number;
+  pin_y: number;
 }
 
 export interface TaskAttachment {
@@ -56,6 +59,10 @@ export interface TaskListLine {
   note_at: string | null;
   note_by_id: number | null;
   note_by_name: string | null;
+  /** Setup-guide: this daily line is a visual station-setup guide. */
+  is_setup_guide: boolean;
+  /** Whether this line carries its own snapshot reference photo (derived from the filename, no binary fetched). */
+  has_setup_photo: boolean;
 }
 
 export interface TaskList {
@@ -119,9 +126,23 @@ export interface TaskTemplateLine {
   photo_required: boolean;
   photo_instructions: string | null;
   module_link_type: ModuleLink;
-  subtasks: { id: number; name: string; sequence: number }[];
+  subtasks: TemplatePin[];
   attachments: TaskAttachment[];
   recurrence: RecurrenceRule;
+  /** Setup-guide flag + whether a reference photo is present (filename-derived, no binary). */
+  is_setup_guide: boolean;
+  has_setup_photo: boolean;
+}
+
+/** A template subtask. On a setup-guide line it doubles as a pin (pin_x/pin_y in 0–1, optional catalog item). */
+export interface TemplatePin {
+  id: number;
+  name: string;
+  sequence: number;
+  pin_x: number;
+  pin_y: number;
+  item_id: number | null;
+  item_name: string | null;
 }
 
 export interface TaskTemplate {
@@ -241,10 +262,13 @@ const LINE_FIELDS = [
   'completed_at', 'completed_by_id', 'completed_by_name',
   'is_ad_hoc', 'source_template_line_id', 'subtask_ids',
   'note', 'note_at', 'note_by_id', 'note_by_name',
+  // Setup guide: filename only (never the binary — served via its own route).
+  'is_setup_guide', 'setup_photo_filename',
 ];
 
 const SUBTASK_FIELDS = [
   'id', 'line_id', 'name', 'sequence', 'done', 'toggled_at', 'toggled_by_id',
+  'pin_x', 'pin_y',
 ];
 
 async function hydrateListRecord(rec: any): Promise<TaskList> {
@@ -269,6 +293,9 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
       done: !!s.done,
       toggled_at: odooDtToIso(s.toggled_at),
       toggled_by_id: m2oId(s.toggled_by_id),
+      // Preserve coordinate 0 (a valid edge pin) — don't use `|| 0` on a number.
+      pin_x: typeof s.pin_x === 'number' ? s.pin_x : 0,
+      pin_y: typeof s.pin_y === 'number' ? s.pin_y : 0,
     });
     subtasksByLine.set(lid, arr);
   }
@@ -307,6 +334,8 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
     note_at: odooDtToIso(l.note_at),
     note_by_id: m2oId(l.note_by_id),
     note_by_name: l.note_by_name || null,
+    is_setup_guide: !!l.is_setup_guide,
+    has_setup_photo: !!l.setup_photo_filename,
   }));
 
   // Sort: opening → mid_day → closing, then sequence
@@ -447,11 +476,22 @@ export async function getLineSummary(lineId: number): Promise<{ line_name: strin
   };
 }
 
-export async function toggleSubtask(subtaskId: number, done: boolean, employeeId: number): Promise<void> {
-  await getOdoo().call(
+export interface SubtaskToggleResult {
+  /** Whether the parent line is a setup guide (pin-driven completion). */
+  is_setup_guide: boolean;
+  /** Whether the parent line is now completed (guides auto-complete when all pins are done). */
+  line_completed: boolean;
+}
+
+export async function toggleSubtask(subtaskId: number, done: boolean, employeeId: number): Promise<SubtaskToggleResult> {
+  const res = await getOdoo().call(
     'krawings.task.list.subtask', 'toggle',
     [[subtaskId], done, employeeId],
   );
+  return {
+    is_setup_guide: !!(res && res.is_setup_guide),
+    line_completed: !!(res && res.line_completed),
+  };
 }
 
 export async function addAdHocLine(
@@ -520,9 +560,11 @@ const TEMPLATE_LINE_FIELDS = [
   'recurrence_one_off_date', 'recurrence_weekdays', 'recurrence_monthly_mode',
   'recurrence_day_of_month', 'recurrence_weekday_pos', 'recurrence_weekday',
   'recurrence_month', 'exception_ids',
+  // Setup guide: filename only (never the binary).
+  'is_setup_guide', 'setup_photo_filename',
 ];
 
-const TEMPLATE_SUBTASK_FIELDS = ['id', 'line_id', 'name', 'sequence'];
+const TEMPLATE_SUBTASK_FIELDS = ['id', 'line_id', 'name', 'sequence', 'pin_x', 'pin_y', 'item_id'];
 const TEMPLATE_EXCEPTION_FIELDS = ['id', 'line_id', 'date', 'note'];
 
 function dateOrNull(v: any): string | null {
@@ -572,11 +614,20 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
   const subtasks = allSubtaskIds.length
     ? await odoo.searchRead('krawings.task.template.subtask', [['id', 'in', allSubtaskIds]], TEMPLATE_SUBTASK_FIELDS, { limit: 1000 })
     : [];
-  const subByLine = new Map<number, { id: number; name: string; sequence: number }[]>();
+  const subByLine = new Map<number, TemplatePin[]>();
   for (const s of subtasks) {
     const lid = m2oId(s.line_id)!;
     const arr = subByLine.get(lid) || [];
-    arr.push({ id: s.id, name: s.name, sequence: s.sequence });
+    arr.push({
+      id: s.id,
+      name: s.name,
+      sequence: s.sequence,
+      // Preserve coordinate 0 (a valid edge pin) — don't use `|| 0` on a number.
+      pin_x: typeof s.pin_x === 'number' ? s.pin_x : 0,
+      pin_y: typeof s.pin_y === 'number' ? s.pin_y : 0,
+      item_id: m2oId(s.item_id),
+      item_name: m2oName(s.item_id),
+    });
     subByLine.set(lid, arr);
   }
   Array.from(subByLine.values()).forEach(arr => arr.sort((a, b) => a.sequence - b.sequence));
@@ -623,6 +674,8 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     module_link_type: (l.module_link_type || 'none') as ModuleLink,
     subtasks: subByLine.get(l.id) || [],
     attachments: tplAttsByLine.get(l.id) || [],
+    is_setup_guide: !!l.is_setup_guide,
+    has_setup_photo: !!l.setup_photo_filename,
     recurrence: {
       type: (l.recurrence_type || 'daily') as RecurrenceType,
       interval: l.recurrence_interval || 1,
@@ -663,8 +716,9 @@ export interface TemplateLineInput {
   photo_required?: boolean;
   photo_instructions?: string | null;
   module_link_type?: ModuleLink;
-  subtasks?: { id?: number; name: string; sequence?: number }[];
+  subtasks?: { id?: number; name: string; sequence?: number; pin_x?: number; pin_y?: number; item_id?: number | null }[];
   recurrence?: RecurrenceRule;
+  is_setup_guide?: boolean;
 }
 
 export interface TemplateInput {
@@ -727,6 +781,7 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
     photo_instructions: line.photo_instructions || false,
     module_link_type: line.module_link_type || 'none',
   };
+  if (line.is_setup_guide !== undefined) vals.is_setup_guide = !!line.is_setup_guide;
   if (line.recurrence) Object.assign(vals, recurrenceVals(line.recurrence));
   let lineId = line.id;
   if (lineId) {
@@ -743,7 +798,11 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
     const toDelete = existing.filter((e: any) => !keepIds.has(e.id)).map((e: any) => e.id);
     if (toDelete.length) await odoo.unlink('krawings.task.template.subtask', toDelete);
     for (const s of line.subtasks) {
-      const sVals = { line_id: lineId, name: s.name, sequence: s.sequence ?? 10 };
+      const sVals: any = { line_id: lineId, name: s.name, sequence: s.sequence ?? 10 };
+      // Pins: carry coordinates + optional catalog link when provided (setup guides).
+      if (s.pin_x !== undefined) sVals.pin_x = s.pin_x;
+      if (s.pin_y !== undefined) sVals.pin_y = s.pin_y;
+      if (s.item_id !== undefined) sVals.item_id = s.item_id || false;
       if (s.id) await odoo.write('krawings.task.template.subtask', [s.id], sVals);
       else await odoo.create('krawings.task.template.subtask', sVals);
     }
@@ -806,6 +865,26 @@ export interface DepartmentOption {
   name: string;
   company_id: number;
   company_name: string;
+}
+
+/** Whether a template line belongs to the given template — a cheap IDOR guard for line routes. */
+export async function templateLineBelongsToTemplate(templateId: number, lineId: number): Promise<boolean> {
+  if (!templateId || !lineId) return false;
+  const rows = await getOdoo().searchRead(
+    'krawings.task.template.line', [['id', '=', lineId]], ['template_id'], { limit: 1 },
+  );
+  if (!rows.length) return false;
+  return m2oId(rows[0].template_id) === templateId;
+}
+
+/** Company that owns a department, or null if not found. Used to company-scope routes. */
+export async function getDepartmentCompany(departmentId: number): Promise<number | null> {
+  if (!departmentId) return null;
+  const rows = await getOdoo().searchRead(
+    'hr.department', [['id', '=', departmentId]], ['company_id'], { limit: 1 },
+  );
+  if (!rows.length) return null;
+  return m2oId(rows[0].company_id);
 }
 
 export async function listDepartments(allowedCompanyIds: number[]): Promise<DepartmentOption[]> {

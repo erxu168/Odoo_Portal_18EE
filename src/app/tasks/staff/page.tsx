@@ -110,10 +110,10 @@ export default function StaffPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ done }),
     });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || 'Failed to toggle subtask');
-    }
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Failed to toggle subtask');
+    // Setup guides drive their own reload via ChecklistCard's onReload when completion flips.
+    return { is_setup_guide: !!body.is_setup_guide, line_completed: !!body.line_completed };
   }
 
   async function handlePhotoUpload(lineId: number) {
@@ -301,6 +301,7 @@ export default function StaffPage() {
               onSubtaskToggle={handleSubtaskToggle}
               onPhotoUpload={handlePhotoUpload}
               onNoteSave={handleNoteSave}
+              onReload={load}
               readOnly={isPast || isFuture}
             />
           </>
