@@ -1,0 +1,388 @@
+<title>Krawings Portal — Waves 1 & 2 Mocks</title>
+<style>
+  :root{
+    --canvas:#F5F6F8; --card:#FFFFFF; --ink:#111827; --ink2:#6B7280; --ink3:#9CA3AF;
+    --line:#E5E7EB; --line2:#F3F4F6; --brand:#2563EB; --action:#16A34A;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --canvas:#0F1216; --card:#191E26; --ink:#E8EAEE; --ink2:#9AA3B0; --ink3:#6E7683; --line:#2A313C; --line2:#232935; }
+  }
+  :root[data-theme="dark"]{ --canvas:#0F1216; --card:#191E26; --ink:#E8EAEE; --ink2:#9AA3B0; --ink3:#6E7683; --line:#2A313C; --line2:#232935; }
+  :root[data-theme="light"]{ --canvas:#F5F6F8; --card:#FFFFFF; --ink:#111827; --ink2:#6B7280; --ink3:#9CA3AF; --line:#E5E7EB; --line2:#F3F4F6; }
+
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--canvas); color:var(--ink); line-height:1.5;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif; padding:20px 16px 72px; }
+  .wrap{ max-width:1160px; margin:0 auto; display:flex; flex-direction:column; gap:30px; }
+
+  .hero{ background:var(--brand); border-radius:0 0 28px 28px; margin:-20px -16px 0; padding:44px 22px 20px; position:relative; overflow:hidden; }
+  .hero .glow{ position:absolute; top:-40px; right:-20px; width:180px; height:180px; border-radius:50%;
+    background:radial-gradient(circle, rgba(245,128,10,0.10) 0%, transparent 70%); }
+  .hero-inner{ max-width:1160px; margin:0 auto; display:flex; align-items:center; gap:14px; flex-wrap:wrap; position:relative; }
+  .hero .sq{ width:48px; height:48px; border-radius:12px; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.14); display:flex; align-items:center; justify-content:center; font-size:20px; }
+  .hero .htxt{ flex:1; min-width:220px; }
+  .hero .sup{ font-size:10px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.55); margin-bottom:2px; }
+  .hero h1{ font-size:22px; font-weight:700; color:#fff; margin:0; line-height:1.2; }
+  .hero .sub{ font-size:12px; color:rgba(255,255,255,.5); margin-top:2px; }
+  .hero .pill{ background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.22); border-radius:999px; padding:8px 14px; color:#fff; font-size:12px; font-weight:600; }
+
+  .lede{ font-size:15px; color:var(--ink2); max-width:70ch; margin:0 4px; }
+  .lede b{ color:var(--ink); }
+  .wave-h{ display:flex; align-items:baseline; gap:12px; margin:8px 4px 0; flex-wrap:wrap; }
+  .wave-h .wn{ font-size:12px; font-weight:800; letter-spacing:.08em; color:var(--brand); }
+  .wave-h h2{ font-size:19px; font-weight:700; margin:0; }
+  .wave-h .cnt{ font-size:13px; color:var(--ink3); }
+  .divider{ height:1px; background:var(--line); margin:2px 0; }
+
+  .row{ display:flex; gap:30px; flex-wrap:wrap; align-items:flex-start; }
+  .item{ flex:1 1 300px; max-width:340px; }
+  .cap{ font-size:13px; color:var(--ink2); margin:12px 2px 0; }
+  .cap b{ color:var(--ink); }
+  .chg{ margin:8px 2px 0; padding-left:0; list-style:none; }
+  .chg li{ font-size:12.5px; color:var(--ink2); margin-bottom:4px; padding-left:16px; position:relative; }
+  .chg li::before{ content:"→"; position:absolute; left:0; color:var(--action); font-weight:700; }
+  .chg li b{ color:var(--ink); }
+
+  /* phone (depicts the app → always light) */
+  .phone{ width:100%; background:#F9FAFB; border:1px solid var(--line); border-radius:26px; overflow:hidden; box-shadow:0 8px 26px rgba(15,23,42,.13); color:#111827; }
+  .hdr{ background:#2563EB; border-radius:0 0 24px 24px; padding:30px 14px 11px; display:flex; align-items:center; gap:9px; position:relative; overflow:hidden; }
+  .hdr.orange{ background:#F97316; border-radius:0; padding:18px 16px 14px; display:block; }
+  .hdr .glow{ position:absolute; top:-38px; right:-18px; width:150px; height:150px; border-radius:50%; background:radial-gradient(circle, rgba(245,128,10,0.10) 0%, transparent 70%); }
+  .sq{ width:40px; height:40px; border-radius:11px; background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.10); display:flex; align-items:center; justify-content:center; flex:0 0 auto; position:relative; }
+  .sq svg{ width:19px; height:19px; stroke:#fff; stroke-width:2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+  .sq.av{ background:#16A34A; color:#fff; font-weight:700; font-size:15px; border:2px solid rgba(255,255,255,.2); }
+  .htx{ flex:1; min-width:0; position:relative; }
+  .sup{ font-size:8.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:rgba(255,255,255,.5); }
+  .ti{ font-size:17px; font-weight:700; color:#fff; line-height:1.25; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .subd{ font-size:10.5px; color:rgba(255,255,255,.45); }
+  .pillp{ display:flex; align-items:center; gap:4px; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.20); border-radius:999px; padding:0 10px; height:34px; color:#fff; font-size:10.5px; font-weight:600; flex:0 0 auto; position:relative; max-width:118px; }
+  .pillp .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pillp.flat{ background:transparent; border-color:transparent; padding-right:2px; }
+
+  .body{ padding:12px 13px 16px; }
+  .kpis{ display:grid; gap:6px; margin-bottom:12px; }
+  .kpi{ background:#fff; border:1px solid #E5E7EB; border-radius:11px; text-align:center; padding:8px 2px; }
+  .kpi b{ display:block; font-size:15px; font-weight:700; color:#111827; font-variant-numeric:tabular-nums; }
+  .kpi.alert b{ color:#DC2626; }
+  .kpi span{ font-size:8px; color:#9CA3AF; text-transform:uppercase; letter-spacing:.04em; }
+  .over{ font-size:8.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:#9CA3AF; margin:2px 2px 7px; }
+
+  .tiles{ display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+  .tile{ position:relative; background:#fff; border:1px solid #E5E7EB; border-radius:15px; padding:12px; min-height:92px; }
+  .ico{ width:38px; height:38px; border-radius:10px; background:#F1F3F5; display:flex; align-items:center; justify-content:center; font-size:19px; margin-bottom:7px; }
+  .tl{ font-weight:700; font-size:12.5px; line-height:1.2; color:#111827; }
+  .ts{ font-size:9.5px; color:#9CA3AF; margin-top:2px; }
+  .badge{ position:absolute; top:9px; right:9px; min-width:19px; height:19px; padding:0 5px; border-radius:999px; background:#16A34A; color:#fff; font-size:9.5px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .badge.red{ background:#EF4444; }
+  .tile.dis{ opacity:.5; }
+
+  /* hero cards / lists inside phones */
+  .herocard{ background:#fff; border:1px solid #E5E7EB; border-radius:14px; padding:11px 12px; margin-bottom:11px; display:flex; align-items:center; gap:10px; }
+  .herocard .hc-ico{ width:38px; height:38px; border-radius:10px; background:#EFF6FF; color:#2563EB; display:flex; align-items:center; justify-content:center; font-size:18px; flex:0 0 auto; }
+  .herocard .hc-t{ font-size:12.5px; font-weight:700; }
+  .herocard .hc-s{ font-size:10px; color:#9CA3AF; }
+  .prog{ height:5px; background:#E5E7EB; border-radius:999px; margin-top:5px; overflow:hidden; }
+  .prog i{ display:block; height:100%; background:#16A34A; border-radius:999px; }
+  .list{ background:#fff; border:1px solid #E5E7EB; border-radius:14px; overflow:hidden; }
+  .list .lr{ display:flex; align-items:center; gap:9px; padding:9px 11px; border-bottom:1px solid #F3F4F6; font-size:12px; }
+  .list .lr:last-child{ border-bottom:none; }
+  .av2{ width:26px; height:26px; border-radius:50%; background:#F1F3F5; color:#6B7280; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .checkrow{ display:flex; align-items:center; gap:10px; padding:10px 11px; border-bottom:1px solid #F3F4F6; }
+  .checkrow:last-child{ border-bottom:none; }
+  .ck{ width:22px; height:22px; border-radius:50%; border:2px solid #D1D5DB; flex:0 0 auto; }
+  .ck.done{ border-color:#16A34A; background:#16A34A; }
+  .ck.over{ border-color:#DC2626; color:#DC2626; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px; }
+  .cktext{ font-size:12px; font-weight:600; color:#374151; }
+  .cktext.done{ color:#9CA3AF; text-decoration:line-through; }
+  .cktext.over{ color:#B91C1C; }
+
+  .beforestrip{ border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-top:6px; }
+  .beforestrip .lab{ font-size:10.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--ink3); padding:6px 10px; background:var(--line2); }
+  .ob{ background:#F97316; color:#fff; padding:12px 14px; }
+  .ob .d{ font-size:9px; color:rgba(255,255,255,.85); }
+  .ob .g{ font-size:14px; font-weight:700; }
+
+  .note{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; font-size:13.5px; color:var(--ink2); }
+  .note b{ color:var(--ink); }
+  .dict{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .dict span{ background:var(--line2); border:1px solid var(--line); border-radius:8px; padding:3px 8px; font-size:11.5px; color:var(--ink2); }
+
+  @media (prefers-reduced-motion: reduce){ *{ transition:none!important; animation:none!important; } }
+</style>
+
+<div class="hero">
+  <div class="glow"></div>
+  <div class="hero-inner">
+    <div class="sq">📱</div>
+    <div class="htxt">
+      <div class="sup">Krawings Portal · Design Standard</div>
+      <h1>Waves 1 &amp; 2 — the mocks</h1>
+      <div class="sub">For sign-off · 21.07.2026 · drawn from each screen's real tiles &amp; live numbers · no code written yet</div>
+    </div>
+    <div class="pill">What a Jerk ▾</div>
+  </div>
+</div>
+
+<div class="wrap">
+  <p class="lede">Every frame below is the <b>same screen you already use</b>, restyled to the approved standard — real tile names, real
+  live counters, nothing invented. Numbers shown are realistic samples. The recipe is identical everywhere now: <b>blue header with the
+  restaurant pill → white stat chips → white action cards with emoji</b>. Color shows up only where it means something.</p>
+
+  <!-- ================= WAVE 1 ================= -->
+  <div class="wave-h"><span class="wn">WAVE 1</span><h2>The two home screens</h2><span class="cnt">most-seen screens · the showcase</span></div>
+  <div class="divider"></div>
+
+  <div class="row">
+    <!-- Personal home -->
+    <div class="item">
+      <div class="phone">
+        <div class="hdr">
+          <div class="glow"></div>
+          <div class="sq av">M</div>
+          <div class="htx"><div class="sup">Good afternoon</div><div class="ti">Marco</div><div class="subd">Tuesday, 21 July 2026</div></div>
+          <div class="pillp"><span class="nm">What a Jerk</span><span style="font-size:7px;opacity:.75">▼</span></div>
+        </div>
+        <div class="body">
+          <div class="herocard"><div class="hc-ico">📋</div><div style="flex:1"><div class="hc-t">Your shift tasks</div><div class="hc-s">8 of 12 done</div><div class="prog"><i style="width:67%"></i></div></div></div>
+          <div class="over">Apps</div>
+          <div class="tiles">
+            <div class="tile"><div class="ico">🏭</div><div class="tl">Manufacturing</div><div class="ts">Prep &amp; production</div><div class="badge red">3</div></div>
+            <div class="tile"><div class="ico">👨‍🍳</div><div class="tl">Chef Guide</div><div class="ts">Cooking guides</div></div>
+            <div class="tile"><div class="ico">📦</div><div class="tl">Inventory</div><div class="ts">Stock counting</div></div>
+            <div class="tile"><div class="ico">🛒</div><div class="tl">Purchase</div><div class="ts">Orders &amp; suppliers</div></div>
+            <div class="tile"><div class="ico">📅</div><div class="tl">Planning</div><div class="ts">Shifts &amp; covers</div></div>
+            <div class="tile"><div class="ico">✅</div><div class="tl">My Tasks</div><div class="ts">Daily checklist</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>Personal home</b> — the launcher every staff member lands on.</p>
+      <ul class="chg">
+        <li>Tiles go from gray squares with blue icons to <b>white cards with emoji</b></li>
+        <li>Header gains the <b>restaurant pill</b> (matches every module)</li>
+        <li>Keeps the greeting, avatar &amp; shift-tasks card; the live <b>Manufacturing count</b> stays a red badge</li>
+      </ul>
+    </div>
+
+    <!-- Station home -->
+    <div class="item">
+      <div class="phone">
+        <div class="hdr">
+          <div class="glow"></div>
+          <div class="htx" style="flex:1"><div class="sup">Kitchen Station</div><div class="ti">What a Jerk</div></div>
+          <div style="text-align:right;position:relative"><div class="subd" style="font-size:11px;color:rgba(255,255,255,.9);font-weight:600">Sunday, 21 July</div><div class="subd" style="font-family:monospace">14:32</div></div>
+        </div>
+        <div class="body">
+          <div class="herocard"><div class="hc-ico" style="background:#DCFCE7;color:#16A34A">✔︎</div><div style="flex:1"><div class="hc-t">Today's tasks</div><div class="hc-s">9 of 14 done</div><div class="prog"><i style="width:64%"></i></div></div></div>
+          <div class="tiles">
+            <div class="tile"><div class="ico">👨‍🍳</div><div class="tl">Cooking Guide</div><div class="ts">Menu dishes</div></div>
+            <div class="tile"><div class="ico">📦</div><div class="tl">Inventory</div><div class="ts">Stock counting</div></div>
+            <div class="tile"><div class="ico">🛒</div><div class="tl">Purchase</div><div class="ts">Orders</div></div>
+            <div class="tile"><div class="ico">🔄</div><div class="tl">Shift Handover</div><div class="ts">Review &amp; submit</div></div>
+          </div>
+          <div class="over" style="margin-top:12px">On today</div>
+          <div class="list">
+            <div class="lr"><div class="av2">HK</div>Hana Kim</div>
+            <div class="lr"><div class="av2">MB</div>Marco Bauer</div>
+            <div class="lr"><div class="av2">YT</div>Yuki Tanaka</div>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>Shared-tablet station home</b> — the kitchen's always-on screen.</p>
+      <ul class="chg">
+        <li>Same white-emoji tiles; keeps its <b>tasks card</b> &amp; <b>who's on today</b> list</li>
+        <li>Already had the standard blue header — now the tiles match too</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ================= WAVE 2 ================= -->
+  <div class="wave-h" style="margin-top:14px"><span class="wn">WAVE 2</span><h2>Everyday staff modules</h2><span class="cnt">5 dashboards · the biggest visible change</span></div>
+  <div class="divider"></div>
+
+  <div class="row">
+    <!-- Tasks (staff) -->
+    <div class="item">
+      <div class="phone">
+        <div class="hdr">
+          <div class="glow"></div>
+          <div class="sq"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+          <div class="htx"><div class="sup">Tasks</div><div class="ti">Today's checklist</div><div class="subd">Montag, 21. Juli</div></div>
+        </div>
+        <div class="body">
+          <div class="kpis" style="grid-template-columns:1fr 1fr 1fr">
+            <div class="kpi"><b>8</b><span>Done</span></div>
+            <div class="kpi"><b>4</b><span>Left</span></div>
+            <div class="kpi alert"><b>1</b><span>Overdue</span></div>
+          </div>
+          <div class="over">Opening</div>
+          <div class="list">
+            <div class="checkrow"><div class="ck done"></div><div class="cktext done">Turn on fryers &amp; grill</div></div>
+            <div class="checkrow"><div class="ck over">!</div><div class="cktext over">Check cold-store temps</div></div>
+            <div class="checkrow"><div class="ck"></div><div class="cktext">Stock front counter</div></div>
+            <div class="checkrow"><div class="ck"></div><div class="cktext">Prep jerk marinade</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>Staff tasks</b> — today's odd one out.</p>
+      <ul class="chg">
+        <li><b>Orange header → the standard blue header</b> (see below)</li>
+        <li>Adds a <b>Done / Left / Overdue</b> chip row — the overdue count was already fetched, just never shown</li>
+        <li>Checklist itself is unchanged</li>
+      </ul>
+      <div class="beforestrip">
+        <div class="lab">Before — today's flat orange header</div>
+        <div class="ob"><div class="d">Montag, 21. Juli</div><div class="g">Good afternoon 👋</div></div>
+      </div>
+    </div>
+
+    <!-- Inventory -->
+    <div class="item">
+      <div class="phone">
+        <div class="hdr">
+          <div class="glow"></div>
+          <div class="sq"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+          <div class="htx"><div class="sup">Inventory</div><div class="ti">Stock counting</div><div class="subd">3 lists waiting</div></div>
+          <div class="pillp flat"><span class="nm">What a Jerk</span></div>
+        </div>
+        <div class="body">
+          <div class="kpis" style="grid-template-columns:1fr 1fr 1fr">
+            <div class="kpi alert"><b>3</b><span>Waiting</span></div>
+            <div class="kpi"><b>2</b><span>To review</span></div>
+            <div class="kpi"><b>12</b><span>Lists</span></div>
+          </div>
+          <div class="tiles">
+            <div class="tile"><div class="ico">📋</div><div class="tl">My Lists</div><div class="ts">3 waiting</div><div class="badge red">3</div></div>
+            <div class="tile"><div class="ico">🔍</div><div class="tl">Quick Count</div><div class="ts">Count any item</div></div>
+            <div class="tile"><div class="ico">🧾</div><div class="tl">MO Ingredients</div><div class="ts">Confirmed needs</div></div>
+            <div class="tile"><div class="ico">📥</div><div class="tl">Goods received</div><div class="ts">Log deliveries</div></div>
+            <div class="tile"><div class="ico">✅</div><div class="tl">Review</div><div class="ts">2 to check</div><div class="badge red">2</div></div>
+            <div class="tile"><div class="ico">🔄</div><div class="tl">Shift Handover</div><div class="ts">Per-container</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>Inventory</b> — 12 tiles today, all pastel-colored.</p>
+      <ul class="chg">
+        <li>Colored tiles → <b>calm white cards</b>; the <b>pill goes quiet</b> for single-restaurant staff</li>
+        <li>New chip row surfaces <b>Waiting / To review / Lists</b> (already counted, just buried in tile badges)</li>
+      </ul>
+    </div>
+
+    <!-- Purchase -->
+    <div class="item">
+      <div class="phone">
+        <div class="hdr">
+          <div class="glow"></div>
+          <div class="sq"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+          <div class="htx"><div class="sup">Purchase</div><div class="ti">Order from suppliers</div><div class="subd">21.07.2026</div></div>
+          <div class="pillp"><span class="nm">What a Jerk</span><span style="font-size:7px;opacity:.75">▼</span></div>
+        </div>
+        <div class="body">
+          <div class="kpis" style="grid-template-columns:1fr 1fr 1fr">
+            <div class="kpi"><b>5</b><span>In cart</span></div>
+            <div class="kpi"><b>2</b><span>To receive</span></div>
+            <div class="kpi alert"><b>1</b><span>Approvals</span></div>
+          </div>
+          <div class="tiles">
+            <div class="tile"><div class="ico">🛍️</div><div class="tl">Place Order</div><div class="ts">Browse suppliers</div></div>
+            <div class="tile"><div class="ico">🛒</div><div class="tl">Cart</div><div class="ts">5 items</div><div class="badge">5</div></div>
+            <div class="tile"><div class="ico">📥</div><div class="tl">Receive</div><div class="ts">2 deliveries</div><div class="badge red">2</div></div>
+            <div class="tile"><div class="ico">🕐</div><div class="tl">History</div><div class="ts">Past orders</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>Purchase</b> — already close; mostly tidying.</p>
+      <ul class="chg">
+        <li>Cart / Receive tiles keep their live badges; the orange approval banner stays as a <b>warning</b> (that's meaningful color)</li>
+        <li>Chip row lifts <b>cart, deliveries &amp; approvals</b> to the top</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="row">
+    <!-- Manufacturing -->
+    <div class="item">
+      <div class="phone">
+        <div class="hdr">
+          <div class="glow"></div>
+          <div class="sq"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+          <div class="htx"><div class="sup">Manufacturing</div><div class="ti">Prep &amp; production</div><div class="subd">21.07.2026</div></div>
+          <div class="pillp flat"><span class="nm">What a Jerk</span></div>
+        </div>
+        <div class="body">
+          <div class="kpis" style="grid-template-columns:1fr 1fr 1fr 1fr">
+            <div class="kpi alert"><b>3</b><span>Active</span></div>
+            <div class="kpi"><b>7</b><span>Pick</span></div>
+            <div class="kpi"><b>24</b><span>Recipes</span></div>
+            <div class="kpi"><b>5</b><span>Done</span></div>
+          </div>
+          <div class="tiles">
+            <div class="tile"><div class="ico">🏭</div><div class="tl">Manufacturing</div><div class="ts">Active orders</div><div class="badge red">3</div></div>
+            <div class="tile"><div class="ico">📋</div><div class="tl">Pick List</div><div class="ts">Collect ingredients</div><div class="badge">7</div></div>
+            <div class="tile"><div class="ico">📖</div><div class="tl">Recipes</div><div class="ts">Bills of materials</div><div class="badge">24</div></div>
+            <div class="tile"><div class="ico">✔️</div><div class="tl">Completed</div><div class="ts">Finished orders</div><div class="badge">5</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>Manufacturing</b> — the module the reference look grew out of.</p>
+      <ul class="chg">
+        <li>Full 4-chip row (Active / Pick / Recipes / Done) — all four counts were fetched, three went unused</li>
+        <li>Tiles already had emoji-style line icons; now standard white cards</li>
+      </ul>
+    </div>
+
+    <!-- Chef Guide -->
+    <div class="item">
+      <div class="phone">
+        <div class="hdr">
+          <div class="glow"></div>
+          <div class="sq"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+          <div class="htx"><div class="sup">Chef Guide</div><div class="ti">Chef Guide</div><div class="subd">What a Jerk</div></div>
+          <div class="pillp" style="background:rgba(255,255,255,.10)"><span class="nm">⚙️</span></div>
+        </div>
+        <div class="body">
+          <div class="kpis" style="grid-template-columns:1fr 1fr 1fr">
+            <div class="kpi"><b>18</b><span>Dishes</span></div>
+            <div class="kpi"><b>9</b><span>Sauces</span></div>
+            <div class="kpi alert"><b>1</b><span>Approvals</span></div>
+          </div>
+          <div class="tiles">
+            <div class="tile"><div class="ico">📖</div><div class="tl">Cooking Guide</div><div class="ts">Menu dishes</div></div>
+            <div class="tile"><div class="ico">🥫</div><div class="tl">Production Guide</div><div class="ts">Sauces &amp; prep</div></div>
+            <div class="tile"><div class="ico">⏺️</div><div class="tl">Record</div><div class="ts">Create guides</div></div>
+            <div class="tile"><div class="ico">✏️</div><div class="tl">Edit Recipes</div><div class="ts">Create &amp; modify</div></div>
+            <div class="tile"><div class="ico">✅</div><div class="tl">Approvals</div><div class="ts">Review changes</div><div class="badge red">1</div></div>
+            <div class="tile"><div class="ico">📊</div><div class="tl">Stats</div><div class="ts">Cook history</div></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>Chef Guide</b> — keeps its settings-gear action in the header.</p>
+      <ul class="chg">
+        <li>Live recipe counts (dishes / sauces) become chips; <b>Approvals</b> keeps its red pending badge</li>
+        <li>Amber sync banner stays (meaningful warning); tiles go white</li>
+      </ul>
+    </div>
+
+    <!-- Emoji dictionary note fills the 3rd slot -->
+    <div class="item">
+      <div class="note">
+        <b>One emoji per idea, everywhere.</b> Wave 0 writes a shared dictionary into the design guide so the same concept always uses the
+        same emoji across all modules — no module invents its own.
+        <div class="dict">
+          <span>🏭 Production</span><span>📦 Inventory</span><span>🛒 Purchase</span><span>👨‍🍳 Chef Guide</span>
+          <span>🥫 Sauces/prep</span><span>📋 Lists</span><span>🔍 Count</span><span>📥 Receive</span>
+          <span>✅ Tasks/approve</span><span>🔄 Handover</span><span>📅 Planning</span><span>📊 Reports</span>
+          <span>🏷️ Labels</span><span>📖 Recipes</span><span>⚙️ Settings</span>
+        </div>
+        <p style="margin:12px 0 0"><b>Interface machinery</b> (home, back, close, chevrons, checkmarks) uses one thin-line icon set — the white
+        outline icons already in the header. Never emoji, never a second style.</p>
+      </div>
+      <p class="cap">This is what keeps 15 modules feeling like <b>one app</b>, not fifteen.</p>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:6px">
+    <b>What happens next, if you approve these:</b> Wave 0 (the shared building blocks + rulebook) lands first with no visible change,
+    then Wave 1 ships the two home screens, then Wave 2 ships these five — each as its own update on staging, each real-browser tested
+    before it's called done. Anything here you'd tweak — an emoji, a stat choice, a label — is easiest to change now, on the mock.
+  </div>
+</div>
