@@ -93,6 +93,12 @@ export interface ShiftSettings {
   attendanceOvertimeGraceMin: number;
   /** Attendance: allow a too-early clock-in (record + warn); when false it's refused. */
   attendanceAllowEarly: boolean;
+  /** Attendance rules: show the "I Understand" policy screen before clock-in. */
+  attendanceRulesEnabled: boolean;
+  /** Attendance rules: the policy text (manager-editable). */
+  attendanceRulesText: string;
+  /** Attendance rules: how often staff must re-acknowledge. */
+  attendanceRulesCadence: 'every_clockin' | 'daily' | 'on_change';
 }
 
 /** Snapshot of the slot at cover-request creation time. */

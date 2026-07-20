@@ -67,7 +67,9 @@ function beep(): void {
 export default function KioskPage() {
   const [settings, setSettings] = useState<KioskSettingsT | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [screen, setScreen] = useState<'grid' | 'pin' | 'setup' | 'done'>('grid');
+  const [screen, setScreen] = useState<'grid' | 'pin' | 'setup' | 'done' | 'rules'>('grid');
+  const [rulesText, setRulesText] = useState('');
+  const [ackPin, setAckPin] = useState('');
   const [staff, setStaff] = useState<KioskStaff[]>([]);
   const [selected, setSelected] = useState<KioskStaff | null>(null);
   const [pin, setPin] = useState('');
@@ -186,7 +188,7 @@ export default function KioskPage() {
   }
 
   const submitPin = useCallback(
-    async (finalPin: string, action: PunchAction) => {
+    async (finalPin: string, action: PunchAction, acknowledged = false) => {
       if (!selected || !companyId) return;
       setBusy(true);
       setPinError(false);
@@ -194,10 +196,22 @@ export default function KioskPage() {
         const r = await fetch('/api/kiosk/punch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ company_id: companyId, employee_id: selected.employeeId, pin: finalPin, action }),
+          body: JSON.stringify({
+            company_id: companyId,
+            employee_id: selected.employeeId,
+            pin: finalPin,
+            action,
+            acknowledged,
+            device: settings?.tabletName || null,
+          }),
         });
         const d = await r.json();
-        if (r.ok && d.ok) {
+        if (r.ok && d.needsAck) {
+          // Attendance-rules gate: show the policy, then re-punch with acknowledged=true.
+          setRulesText(typeof d.rulesText === 'string' ? d.rulesText : '');
+          setAckPin(finalPin);
+          setScreen('rules');
+        } else if (r.ok && d.ok) {
           if (settings?.sound) beep();
           setResult(d as PunchResult);
           setScreen('done');
@@ -219,7 +233,7 @@ export default function KioskPage() {
         setBusy(false);
       }
     },
-    [selected, companyId, settings?.sound, backToGrid],
+    [selected, companyId, settings?.sound, settings?.tabletName, backToGrid],
   );
 
   function keyPress(digit: string) {
@@ -415,6 +429,31 @@ export default function KioskPage() {
             className="mt-8 bg-green-600 text-white px-10 py-3.5 rounded-full text-lg font-bold active:bg-green-700"
           >
             Done
+          </button>
+        </div>
+      </div>
+    );
+  } else if (screen === 'rules' && selected) {
+    // ---- Attendance-rules acknowledgement (before clock-in only) ----
+    content = (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        {header}
+        <div className="flex-1 flex flex-col items-center p-6 overflow-y-auto">
+          <div className="text-6xl mb-1">📋</div>
+          <div className="text-2xl font-extrabold text-gray-900">Before you clock in, {firstName(selected.name)}</div>
+          <div className="text-gray-500 font-semibold mt-1 mb-4">Please read and confirm</div>
+          <div className="w-full max-w-lg bg-white border border-gray-200 rounded-2xl p-6 text-left whitespace-pre-line text-[var(--fs-md)] text-gray-800 leading-relaxed">
+            {rulesText}
+          </div>
+          <button
+            onClick={() => submitPin(ackPin, 'in', true)}
+            disabled={busy}
+            className="mt-6 w-full max-w-lg bg-green-600 text-white text-xl font-extrabold py-4 rounded-2xl active:bg-green-700 disabled:opacity-50"
+          >
+            {busy ? 'One moment…' : 'I Understand'}
+          </button>
+          <button onClick={backToGrid} className="mt-3 text-gray-500 font-bold py-2 active:text-gray-700">
+            Cancel
           </button>
         </div>
       </div>

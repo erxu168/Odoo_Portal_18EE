@@ -13,6 +13,7 @@
  */
 import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { getDb } from '@/lib/db';
+import { DEFAULT_ATTENDANCE_RULES } from '@/lib/attendance-rules';
 import type { ReminderStage } from '@/lib/shift-confirm';
 import type {
   CoverRequest,
@@ -96,6 +97,19 @@ function ensureTables(): void {
       confirm_by_hours REAL NOT NULL DEFAULT 24,
       updated_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS attendance_ack (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      employee_id INTEGER NOT NULL,
+      acked_at TEXT NOT NULL,
+      ack_date TEXT NOT NULL,
+      device TEXT,
+      rules_hash TEXT NOT NULL,
+      rules_text TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS idx_ack_company_date ON attendance_ack(company_id, ack_date);
+    CREATE INDEX IF NOT EXISTS idx_ack_emp ON attendance_ack(company_id, employee_id, acked_at);
 
     CREATE TABLE IF NOT EXISTS shift_notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -280,6 +294,9 @@ function ensureTables(): void {
     ['attendance_early_window_min', 'INTEGER NOT NULL DEFAULT 10'],
     ['attendance_overtime_grace_min', 'INTEGER NOT NULL DEFAULT 20'],
     ['attendance_allow_early', 'INTEGER NOT NULL DEFAULT 1'],
+    ['attendance_rules_enabled', 'INTEGER NOT NULL DEFAULT 0'],
+    ['attendance_rules_text', "TEXT NOT NULL DEFAULT ''"],
+    ['attendance_rules_cadence', "TEXT NOT NULL DEFAULT 'daily'"],
   ] as const) {
     try { db.exec(`ALTER TABLE shift_settings ADD COLUMN ${col} ${def}`); }
     catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
@@ -702,16 +719,22 @@ interface SettingsRow {
   attendance_early_window_min?: number;
   attendance_overtime_grace_min?: number;
   attendance_allow_early?: number;
+  attendance_rules_enabled?: number;
+  attendance_rules_text?: string;
+  attendance_rules_cadence?: string;
 }
 
 /** Defaults for the employer on-cost (AG) percentages when a row predates them. */
 const AG_COST_DEFAULTS = { agCostMinijob: 30, agCostRegular: 21 };
 
-/** Attendance-policy defaults (grace + enforcement) when a row predates them. */
+/** Attendance-policy defaults (grace + enforcement + rules) when a row predates them. */
 const ATTENDANCE_DEFAULTS = {
   attendanceEarlyWindowMin: 10,
   attendanceOvertimeGraceMin: 20,
   attendanceAllowEarly: true,
+  attendanceRulesEnabled: false,
+  attendanceRulesText: DEFAULT_ATTENDANCE_RULES,
+  attendanceRulesCadence: 'daily',
 } as const;
 
 /** Defaults for the email-reminder fields (also used when a settings row predates them). */
@@ -765,6 +788,12 @@ export function getShiftSettings(companyId: number): ShiftSettings {
     attendanceEarlyWindowMin: row.attendance_early_window_min ?? ATTENDANCE_DEFAULTS.attendanceEarlyWindowMin,
     attendanceOvertimeGraceMin: row.attendance_overtime_grace_min ?? ATTENDANCE_DEFAULTS.attendanceOvertimeGraceMin,
     attendanceAllowEarly: (row.attendance_allow_early ?? 1) === 1,
+    attendanceRulesEnabled: (row.attendance_rules_enabled ?? 0) === 1,
+    attendanceRulesText: row.attendance_rules_text || DEFAULT_ATTENDANCE_RULES,
+    attendanceRulesCadence:
+      row.attendance_rules_cadence === 'every_clockin' || row.attendance_rules_cadence === 'on_change'
+        ? row.attendance_rules_cadence
+        : 'daily',
   };
 }
 
@@ -778,8 +807,8 @@ export function companiesRequiringConfirmation(): number[] {
 export function saveShiftSettings(s: ShiftSettings): void {
   ensureTables();
   getDb().prepare(`
-    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, ag_cost_minijob, ag_cost_regular, attendance_early_window_min, attendance_overtime_grace_min, attendance_allow_early, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, ag_cost_minijob, ag_cost_regular, attendance_early_window_min, attendance_overtime_grace_min, attendance_allow_early, attendance_rules_enabled, attendance_rules_text, attendance_rules_cadence, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(company_id) DO UPDATE SET
       require_approval = excluded.require_approval,
       answer_deadline_hours = excluded.answer_deadline_hours,
@@ -799,6 +828,9 @@ export function saveShiftSettings(s: ShiftSettings): void {
       attendance_early_window_min = excluded.attendance_early_window_min,
       attendance_overtime_grace_min = excluded.attendance_overtime_grace_min,
       attendance_allow_early = excluded.attendance_allow_early,
+      attendance_rules_enabled = excluded.attendance_rules_enabled,
+      attendance_rules_text = excluded.attendance_rules_text,
+      attendance_rules_cadence = excluded.attendance_rules_cadence,
       updated_at = excluded.updated_at
   `).run(
     s.companyId,
@@ -820,7 +852,58 @@ export function saveShiftSettings(s: ShiftSettings): void {
     s.attendanceEarlyWindowMin,
     s.attendanceOvertimeGraceMin,
     s.attendanceAllowEarly ? 1 : 0,
+    s.attendanceRulesEnabled ? 1 : 0,
+    s.attendanceRulesText,
+    s.attendanceRulesCadence,
     nowISO(),
+  );
+}
+
+// -- Attendance-rules acknowledgements (Phase 2) ---------------------------------
+
+/** Record that an employee acknowledged the rules on a device. */
+export function recordAttendanceAck(
+  companyId: number,
+  employeeId: number,
+  device: string | null,
+  rulesHashVal: string,
+  ackDate: string,
+  rulesTextSnapshot: string,
+): void {
+  ensureTables();
+  getDb()
+    .prepare('INSERT INTO attendance_ack (company_id, employee_id, acked_at, ack_date, device, rules_hash, rules_text) VALUES (?,?,?,?,?,?,?)')
+    .run(companyId, employeeId, nowISO(), ackDate, device, rulesHashVal, rulesTextSnapshot);
+}
+
+/** Whether this employee has acknowledged today, and whether they acknowledged the current text. */
+export function attendanceAckState(
+  companyId: number,
+  employeeId: number,
+  ackDate: string,
+  rulesHashVal: string,
+): { ackedToday: boolean; ackedCurrentHash: boolean } {
+  ensureTables();
+  const db = getDb();
+  const today = db
+    .prepare('SELECT 1 FROM attendance_ack WHERE company_id=? AND employee_id=? AND ack_date=? LIMIT 1')
+    .get(companyId, employeeId, ackDate);
+  const forHash = db
+    .prepare('SELECT 1 FROM attendance_ack WHERE company_id=? AND employee_id=? AND rules_hash=? LIMIT 1')
+    .get(companyId, employeeId, rulesHashVal);
+  return { ackedToday: !!today, ackedCurrentHash: !!forHash };
+}
+
+/** Latest acknowledgement per employee on a given Berlin date (for the manager report). */
+export function attendanceAcksOn(companyId: number, ackDate: string): { employeeId: number; ackedAt: string; device: string | null }[] {
+  ensureTables();
+  return (
+    getDb()
+      .prepare(
+        `SELECT employee_id AS employeeId, MAX(acked_at) AS ackedAt, device
+         FROM attendance_ack WHERE company_id=? AND ack_date=? GROUP BY employee_id`,
+      )
+      .all(companyId, ackDate) as { employeeId: number; ackedAt: string; device: string | null }[]
   );
 }
 

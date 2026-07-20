@@ -7,8 +7,10 @@
  * (company, employee, ip) to blunt PIN brute-force, and consider a per-device token.
  */
 import { NextResponse } from 'next/server';
-import { verifyKioskPin } from '@/lib/shifts-db';
+import { verifyKioskPin, getShiftSettings, attendanceAckState, recordAttendanceAck } from '@/lib/shifts-db';
 import { kioskPunch, type KioskAction } from '@/lib/shifts-kiosk';
+import { needsAcknowledgement, rulesHash } from '@/lib/attendance-rules';
+import { berlinParts, nowOdooUtc } from '@/lib/shifts-time';
 import { checkRateLimit, clientIpFromHeaders } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
@@ -49,6 +51,25 @@ export async function POST(request: Request) {
 
     if (!/^\d{4}$/.test(pin) || !verifyKioskPin(companyId, employeeId, pin)) {
       return NextResponse.json({ error: 'Wrong PIN' }, { status: 401 });
+    }
+
+    // Attendance-rules gate (PIN already verified): before a CLOCK-IN, optionally
+    // require the person to read the policy and tap "I Understand".
+    if (action === 'in') {
+      const settings = getShiftSettings(companyId);
+      if (settings.attendanceRulesEnabled) {
+        const hash = rulesHash(settings.attendanceRulesText);
+        const ackDate = berlinParts(nowOdooUtc()).date;
+        if (body.acknowledged === true) {
+          const device = typeof body.device === 'string' ? body.device.slice(0, 120) : null;
+          recordAttendanceAck(companyId, employeeId, device, hash, ackDate, settings.attendanceRulesText);
+        } else {
+          const st = attendanceAckState(companyId, employeeId, ackDate, hash);
+          if (needsAcknowledgement(settings.attendanceRulesCadence, st)) {
+            return NextResponse.json({ needsAck: true, rulesText: settings.attendanceRulesText });
+          }
+        }
+      }
     }
 
     const result = await kioskPunch(companyId, employeeId, action);

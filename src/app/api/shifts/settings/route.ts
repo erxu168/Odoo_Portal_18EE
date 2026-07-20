@@ -53,6 +53,20 @@ function readMinutes(v: unknown, fallback: number): number | null {
   return typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 240 ? v : null;
 }
 
+/** Attendance policy text (1–8000 chars, trimmed). */
+function readRulesText(v: unknown, fallback: string): string | null {
+  if (v === undefined) return fallback;
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t.length >= 1 && t.length <= 8000 ? t : null;
+}
+
+type Cadence = ShiftSettings['attendanceRulesCadence'];
+function readCadence(v: unknown, fallback: Cadence): Cadence | null {
+  if (v === undefined) return fallback;
+  return v === 'every_clockin' || v === 'daily' || v === 'on_change' ? v : null;
+}
+
 export async function PUT(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -79,8 +93,14 @@ export async function PUT(req: NextRequest) {
     const attendanceEarlyWindowMin = readMinutes(body.attendanceEarlyWindowMin, current.attendanceEarlyWindowMin);
     const attendanceOvertimeGraceMin = readMinutes(body.attendanceOvertimeGraceMin, current.attendanceOvertimeGraceMin);
     const attendanceAllowEarly = readBool(body.attendanceAllowEarly, current.attendanceAllowEarly);
+    const attendanceRulesEnabled = readBool(body.attendanceRulesEnabled, current.attendanceRulesEnabled);
+    const attendanceRulesText = readRulesText(body.attendanceRulesText, current.attendanceRulesText);
+    const attendanceRulesCadence = readCadence(body.attendanceRulesCadence, current.attendanceRulesCadence);
 
     if (
+      attendanceRulesEnabled === null ||
+      attendanceRulesText === null ||
+      attendanceRulesCadence === null ||
       attendanceEarlyWindowMin === null ||
       attendanceOvertimeGraceMin === null ||
       attendanceAllowEarly === null ||
@@ -123,6 +143,9 @@ export async function PUT(req: NextRequest) {
       attendanceEarlyWindowMin,
       attendanceOvertimeGraceMin,
       attendanceAllowEarly,
+      attendanceRulesEnabled,
+      attendanceRulesText,
+      attendanceRulesCadence,
     };
     saveShiftSettings(settings);
 

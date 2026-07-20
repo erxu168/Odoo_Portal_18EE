@@ -38,6 +38,9 @@ interface SettingsForm {
   attendanceEarlyWindowMin: number;
   attendanceOvertimeGraceMin: number;
   attendanceAllowEarly: boolean;
+  attendanceRulesEnabled: boolean;
+  attendanceRulesText: string;
+  attendanceRulesCadence: 'every_clockin' | 'daily' | 'on_change';
 }
 
 const ANSWER_HOURS = [4, 8, 12, 24];
@@ -109,6 +112,7 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
   // AG-rate inputs are free numbers → edit locally, commit on blur (the instant-
   // save would otherwise PUT invalid half-typed values).
   const [agMiniStr, setAgMiniStr] = useState('');
+  const [rulesStr, setRulesStr] = useState('');
   const [agRegStr, setAgRegStr] = useState('');
 
   const fetchSettings = useCallback(async () => {
@@ -138,6 +142,12 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
         attendanceEarlyWindowMin: minOr(s.attendanceEarlyWindowMin, 10),
         attendanceOvertimeGraceMin: minOr(s.attendanceOvertimeGraceMin, 20),
         attendanceAllowEarly: bool(s.attendanceAllowEarly, true),
+        attendanceRulesEnabled: bool(s.attendanceRulesEnabled, false),
+        attendanceRulesText: str(s.attendanceRulesText, ''),
+        attendanceRulesCadence:
+          s.attendanceRulesCadence === 'every_clockin' || s.attendanceRulesCadence === 'on_change'
+            ? s.attendanceRulesCadence
+            : 'daily',
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -182,8 +192,9 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
     if (form) {
       setAgMiniStr(String(form.agCostMinijob));
       setAgRegStr(String(form.agCostRegular));
+      setRulesStr(form.attendanceRulesText);
     }
-  }, [form?.agCostMinijob, form?.agCostRegular]);
+  }, [form?.agCostMinijob, form?.agCostRegular, form?.attendanceRulesText]);
 
   function commitAg(field: 'agCostMinijob' | 'agCostRegular', raw: string, current: number, resync: (s: string) => void) {
     const parsed = parseFloat(raw.replace(',', '.'));
@@ -526,6 +537,57 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
             <div className="mx-4 mt-1.5 text-[var(--fs-sm)] text-gray-400 leading-snug">
               A clock-in after the scheduled start is always marked late.
             </div>
+
+            <SectionTitle>Attendance rules</SectionTitle>
+            <div className="mx-4 bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] overflow-hidden">
+              <SettingRow
+                title="Show rules before clock-in"
+                hint="Staff read the policy and tap &ldquo;I Understand&rdquo; before they clock in."
+                divider={false}
+                control={
+                  <ToggleSwitch
+                    on={form.attendanceRulesEnabled}
+                    onToggle={() => update({ attendanceRulesEnabled: !form.attendanceRulesEnabled })}
+                  />
+                }
+              />
+              {form.attendanceRulesEnabled && (
+                <SettingRow
+                  title="Ask each person"
+                  hint="How often they must acknowledge."
+                  divider
+                  control={
+                    <select
+                      className={selectClass}
+                      aria-label="How often to show the rules"
+                      value={form.attendanceRulesCadence}
+                      onChange={e => update({ attendanceRulesCadence: e.target.value as SettingsForm['attendanceRulesCadence'] })}
+                    >
+                      <option value="daily">Once a day</option>
+                      <option value="every_clockin">Every clock-in</option>
+                      <option value="on_change">When the rules change</option>
+                    </select>
+                  }
+                />
+              )}
+            </div>
+            {form.attendanceRulesEnabled && (
+              <div className="mx-4 mt-2">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1.5 px-1">Policy text</div>
+                <textarea
+                  value={rulesStr}
+                  onChange={e => setRulesStr(e.target.value)}
+                  onBlur={() => {
+                    const t = rulesStr.replace(/\s+$/, '');
+                    if (t && t !== form.attendanceRulesText) update({ attendanceRulesText: t });
+                    else if (!t) setRulesStr(form.attendanceRulesText);
+                  }}
+                  rows={12}
+                  aria-label="Attendance policy text shown on the kiosk"
+                  className="w-full bg-white border border-gray-200 rounded-xl p-3.5 text-[var(--fs-sm)] text-gray-800 leading-relaxed outline-none focus:border-green-600 resize-y"
+                />
+              </div>
+            )}
 
             {onOpenPatterns && (
               <>
