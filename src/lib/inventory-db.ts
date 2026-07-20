@@ -11,7 +11,7 @@ import type {
   CountingTemplate, CountingSession, CountEntry, QuickCount,
   Frequency, AssignType, SessionStatus,
   CountLocation, ProductPlacement, CountMode,
-  TemplatePlacement, SessionCountItem, StockReceipt,
+  TemplatePlacement, SessionCountItem, StockReceipt, ProductImage,
 } from '@/types/inventory';
 
 // ===
@@ -389,6 +389,18 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_company ON stock_receipts(company_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_product ON stock_receipts(odoo_product_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_received_at ON stock_receipts(received_at)');
+
+  // Product pictures (one primary image per product) — portal-owned, set by
+  // camera or upload. Keyed by product id (metadata, like product_flags).
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS product_images (
+      odoo_product_id INTEGER PRIMARY KEY,
+      image TEXT NOT NULL,
+      mime TEXT,
+      updated_by INTEGER,
+      updated_at TEXT
+    )
+  `);
 }
 
 // ===
@@ -1242,6 +1254,39 @@ export function sumReceiptsByProduct(companyIds: number[] | null, from: string, 
   const out: Record<number, number> = {};
   for (const r of rows) out[r.pid] = Number(r.total) || 0;
   return out;
+}
+
+// ===
+// PRODUCT PICTURES (one primary image per product)
+// ===
+
+export function setProductImage(productId: number, image: string, mime: string | null, userId: number): void {
+  const db = getDb();
+  db.prepare(`INSERT INTO product_images (odoo_product_id, image, mime, updated_by, updated_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(odoo_product_id) DO UPDATE SET
+      image = excluded.image, mime = excluded.mime,
+      updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
+    .run(productId, image, mime, userId, now());
+}
+
+export function getProductImage(productId: number): { image: string; mime: string | null } | null {
+  const db = getDb();
+  const r = db.prepare('SELECT image, mime FROM product_images WHERE odoo_product_id = ?').get(productId) as
+    { image: string; mime: string | null } | undefined;
+  return r ? { image: r.image, mime: r.mime ?? null } : null;
+}
+
+export function deleteProductImage(productId: number): void {
+  const db = getDb();
+  db.prepare('DELETE FROM product_images WHERE odoo_product_id = ?').run(productId);
+}
+
+/** Product ids that have a picture — so a UI shows a thumbnail only where present. */
+export function listProductImageIds(): number[] {
+  const db = getDb();
+  return (db.prepare('SELECT odoo_product_id FROM product_images').all() as { odoo_product_id: number }[])
+    .map(r => r.odoo_product_id);
 }
 
 /**

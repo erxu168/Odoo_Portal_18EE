@@ -203,3 +203,12 @@ export interface StockReceipt {
   received_by_name?: string;       // join for display
   product_name?: string;           // resolved for display
 }
+
+/** One primary product picture (camera or upload), portal-owned. */
+export interface ProductImage {
+  odoo_product_id: number;
+  image: string;                   // base64 data URL
+  mime: string | null;
+  updated_by: number | null;
+  updated_at: string | null;
+}
