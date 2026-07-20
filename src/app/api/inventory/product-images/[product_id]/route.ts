@@ -33,9 +33,16 @@ export async function GET(_request: Request, { params }: { params: { product_id:
   const m = /^data:([^;]+);base64,([\s\S]*)$/.exec(img.image);
   if (m) {
     const buf = Buffer.from(m[2], 'base64');
+    // Never reflect an arbitrary/embedded MIME (e.g. svg) as the response type,
+    // and stop the browser sniffing it into something executable.
+    const safe = /^image\/(png|jpe?g|webp)$/i.test(m[1]) ? m[1] : 'application/octet-stream';
     return new NextResponse(buf, {
       status: 200,
-      headers: { 'Content-Type': m[1], 'Cache-Control': 'private, max-age=300' },
+      headers: {
+        'Content-Type': safe,
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'private, max-age=300',
+      },
     });
   }
   // Not a data URL (shouldn't happen) — hand back what we have.
@@ -54,8 +61,10 @@ export async function PUT(request: Request, { params }: { params: { product_id: 
 
   const body = await request.json();
   const image = body.image;
-  if (typeof image !== 'string' || !image.startsWith('data:image/')) {
-    return NextResponse.json({ error: 'image (data URL) required' }, { status: 400 });
+  // Only raster images. Reject SVG (data:image/svg+xml) — it can carry script and
+  // becomes a stored-XSS vector when served same-origin under its own MIME.
+  if (typeof image !== 'string' || !/^data:image\/(png|jpe?g|webp);base64,/i.test(image)) {
+    return NextResponse.json({ error: 'image must be a PNG, JPEG or WebP photo' }, { status: 400 });
   }
   // Cap size (~6 MB decoded). Clients should downscale before upload.
   if (image.length > 8_000_000) {

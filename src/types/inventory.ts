@@ -202,6 +202,7 @@ export interface StockReceipt {
   received_at: string;
   received_by_name?: string;       // join for display
   product_name?: string;           // resolved for display
+  has_photo?: boolean;             // bulk lists set this instead of shipping the blob
 }
 
 /** One primary product picture (camera or upload), portal-owned. */

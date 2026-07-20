@@ -1217,25 +1217,35 @@ export function listReceipts(filters: { company_ids?: number[]; product_id?: num
   if (filters.from) { where.push('r.received_at >= ?'); vals.push(filters.from); }
   if (filters.to) { where.push('r.received_at <= ?'); vals.push(filters.to); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
-  return db.prepare(`
-    SELECT r.*, u.name AS received_by_name
+  // Explicit columns — never ship the base64 photo blob in a bulk list (it can be
+  // large × up to 500 rows). Callers fetch a photo individually if needed.
+  const rows = db.prepare(`
+    SELECT r.id, r.company_id, r.odoo_product_id, r.count_location_id, r.qty_base,
+           r.crate_qty, r.loose_qty, r.units_per_crate, r.uom, r.note,
+           (r.photo IS NOT NULL) AS has_photo, r.received_by, r.received_at,
+           u.name AS received_by_name
     FROM stock_receipts r
     LEFT JOIN portal_users u ON u.id = r.received_by
     ${clause}
     ORDER BY r.received_at DESC
     LIMIT ?
-  `).all(...vals, filters.limit ?? 500) as StockReceipt[];
+  `).all(...vals, filters.limit ?? 500) as Record<string, unknown>[];
+  return rows.map(r => ({ ...(r as unknown as StockReceipt), photo: null, has_photo: !!r.has_photo }));
 }
 
-/** Delete a receipt, bounded to the caller's companies (null = unrestricted admin). Returns rows changed. */
-export function deleteReceipt(id: number, companyIds: number[] | null): number {
+/**
+ * Delete a receipt, bounded to the caller's companies (null = unrestricted admin).
+ * When `ownerUserId` is given, also require the receipt to be that user's own
+ * (non-managers may only remove their own submissions). Returns rows changed.
+ */
+export function deleteReceipt(id: number, companyIds: number[] | null, ownerUserId?: number): number {
   const db = getDb();
   if (companyIds && companyIds.length === 0) return 0;
-  if (companyIds) {
-    const ph = companyIds.map(() => '?').join(',');
-    return db.prepare(`DELETE FROM stock_receipts WHERE id = ? AND company_id IN (${ph})`).run(id, ...companyIds).changes as number;
-  }
-  return db.prepare('DELETE FROM stock_receipts WHERE id = ?').run(id).changes as number;
+  const conds: string[] = ['id = ?'];
+  const vals: unknown[] = [id];
+  if (companyIds) { conds.push(`company_id IN (${companyIds.map(() => '?').join(',')})`); vals.push(...companyIds); }
+  if (ownerUserId !== undefined) { conds.push('received_by = ?'); vals.push(ownerUserId); }
+  return db.prepare(`DELETE FROM stock_receipts WHERE ${conds.join(' AND ')}`).run(...vals).changes as number;
 }
 
 /** Sum received base qty per product over [from, to] for a company set (usage report). */

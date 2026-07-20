@@ -9,8 +9,9 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { requireAuth } from '@/lib/auth';
-import { parseCompanyIds } from '@/lib/db';
-import { initInventoryTables, createReceipt, listReceipts, deleteReceipt } from '@/lib/inventory-db';
+import { parseCompanyIds, getPermissionOverrides } from '@/lib/db';
+import { roleCan } from '@/lib/permissions';
+import { initInventoryTables, createReceipt, listReceipts, deleteReceipt, listCountLocations } from '@/lib/inventory-db';
 import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
 import { crateTotal } from '@/lib/crate-units';
 
@@ -68,7 +69,19 @@ export async function POST(request: Request) {
   if (!Number.isFinite(qtyBase) || qtyBase <= 0 || qtyBase > 1e7) {
     return NextResponse.json({ error: 'Enter a valid quantity' }, { status: 400 });
   }
-  const locId = Number.isInteger(count_location_id) && count_location_id >= 0 ? count_location_id : 0;
+  let locId = Number.isInteger(count_location_id) && count_location_id >= 0 ? count_location_id : 0;
+  // A spot must be THIS restaurant's count_location (or the 0 catch-all) — never
+  // another company's; silently drop an invalid one to the catch-all.
+  if (locId !== 0 && !listCountLocations(company).some((l) => l.id === locId)) locId = 0;
+
+  // Optional delivery photo: raster only + size-capped (no SVG/XSS, no huge blobs).
+  let photoVal: string | null = null;
+  if (typeof photo === 'string' && photo) {
+    if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(photo) || photo.length > 8_000_000) {
+      return NextResponse.json({ error: 'Photo must be a small PNG/JPEG/WebP image' }, { status: 400 });
+    }
+    photoVal = photo;
+  }
 
   const id = createReceipt({
     company_id: company,
@@ -80,7 +93,7 @@ export async function POST(request: Request) {
     units_per_crate: hasSplit ? Number(units_per_crate) : null,
     uom: uom || 'Units',
     note: note ? String(note).slice(0, 500) : null,
-    photo: typeof photo === 'string' ? photo : null,
+    photo: photoVal,
     received_by: user.id,
   });
   return NextResponse.json({ id, message: 'Receipt logged' }, { status: 201 });
@@ -95,7 +108,10 @@ export async function DELETE(request: Request) {
   const id = searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   const bound = isUnrestrictedAdmin(user) ? null : parseCompanyIds(user.allowed_company_ids);
-  const changed = deleteReceipt(parseInt(id), bound);
+  // Managers can remove any receipt in their restaurants; everyone else only
+  // their own submissions.
+  const isManager = roleCan(user.role, 'inventory.review.approve', getPermissionOverrides());
+  const changed = deleteReceipt(parseInt(id), bound, isManager ? undefined : user.id);
   if (changed === 0) return NextResponse.json({ error: 'Not found or not yours' }, { status: 404 });
   return NextResponse.json({ message: 'Receipt removed' });
 }
