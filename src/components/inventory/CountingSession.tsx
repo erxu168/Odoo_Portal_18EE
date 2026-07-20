@@ -45,6 +45,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});          // product_id -> base units per pack
   const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});         // product_id -> count-by label
   const [crateSplits, setCrateSplits] = useState<Record<number, { crates: number; loose: number }>>({});
+  const [oos, setOos] = useState<Set<number>>(new Set());   // productIds marked OUT OF STOCK (deliberate none ≠ not-counted)
   const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
   // -- Guided route (Phase 2) --
   const [route, setRoute] = useState<{ guided: boolean; stops: any[] } | null>(null);
@@ -83,8 +84,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       const entryMap: Record<number, number> = {};
       const photoMap: Record<number, string[]> = {};
       const splitMap: Record<number, { crates: number; loose: number }> = {};
+      const oosSet = new Set<number>();
       for (const e of entriesArr || []) {
         entryMap[e.product_id] = e.counted_qty;
+        if (e.out_of_stock) oosSet.add(e.product_id);
         if (Array.isArray(e.photos) && e.photos.length > 0) {
           photoMap[e.product_id] = e.photos;
         }
@@ -93,6 +96,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         }
       }
       setEntries(entryMap);
+      setOos(oosSet);
       setRowPhotos(photoMap);
       setCrateSplits(splitMap);
       setSystemQtys(sysQtys || {});
@@ -295,6 +299,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   }
 
   async function saveCount(productId: number, qty: number | null, uom: string) {
+    // A real count (or a clear) overrides an out-of-stock mark for this product.
+    setOos((prev) => { if (!prev.has(productId)) return prev; const n = new Set(prev); n.delete(productId); return n; });
     if (qty === null || qty === undefined) {
       setEntries((prev) => { const next = { ...prev }; delete next[productId]; return next; });
       void updateCachedEntry(sessionId, productId, { counted_qty: null });
@@ -317,6 +323,35 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     }
   }
 
+  // Mark (or unmark) a product OUT OF STOCK — a deliberate "none here", distinct
+  // from a not-counted row. On = record a 0 with the out_of_stock flag; off =
+  // clear the entry back to not-counted. Approval records it in the portal.
+  async function saveOutOfStock(product: any, on: boolean) {
+    const uom = product.uom_id?.[1] || 'Units';
+    if (on) {
+      setOos((prev) => { const n = new Set(prev); n.add(product.id); return n; });
+      setEntries((prev) => ({ ...prev, [product.id]: 0 }));
+      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom });
+      const res = await trackedMutate({
+        url: '/api/inventory/counts',
+        method: 'POST',
+        body: { session_id: sessionId, product_id: product.id, out_of_stock: true, counted_qty: 0, uom },
+        dedupKey: `save:${sessionId}:${product.id}`,
+      });
+      if (res.queued) void sync.refresh();
+    } else {
+      setOos((prev) => { const n = new Set(prev); n.delete(product.id); return n; });
+      setEntries((prev) => { const next = { ...prev }; delete next[product.id]; return next; });
+      void updateCachedEntry(sessionId, product.id, { counted_qty: null });
+      const res = await trackedMutate({
+        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}`,
+        method: 'DELETE',
+        dedupKey: `delete:${sessionId}:${product.id}`,
+      });
+      if (res.queued) void sync.refresh();
+    }
+  }
+
   function handleScanCount(productId: number, qty: number, uom: string) {
     saveCount(productId, qty, uom);
   }
@@ -328,6 +363,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   // Save a crate + loose count. Stores the base-unit total (what Odoo gets)
   // plus the crate/loose split for audit + review replay. total 0 clears it.
   async function saveCrateCount(product: any, crates: number, loose: number) {
+    setOos((prev) => { if (!prev.has(product.id)) return prev; const n = new Set(prev); n.delete(product.id); return n; });
     const size = crateSizes[product.id] || 0;
     const uom = product.uom_id?.[1] || 'Units';
     const total = crateTotal(crates, loose, size);
@@ -520,6 +556,18 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             </div>
           )}
         </div>
+        {!isReadOnly && (
+          <div className="mt-2">
+            <button
+              onClick={() => saveOutOfStock(p, !oos.has(p.id))}
+              className={`text-[11px] font-bold rounded-full px-2.5 py-1 border transition-colors ${
+                oos.has(p.id) ? 'text-red-600 border-red-200 bg-red-50' : 'text-gray-400 border-gray-200 active:bg-gray-50'
+              }`}
+            >
+              {oos.has(p.id) ? '✓ Out of stock' : 'Mark out of stock'}
+            </button>
+          </div>
+        )}
         {flagged && !isReadOnly && (val ?? 0) > 0 && (
           <div className="mt-2">
             <PhotoCaptureStrip
