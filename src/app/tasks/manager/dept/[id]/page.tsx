@@ -9,9 +9,12 @@ import AdHocModal, { type AdHocSubmitVals } from '../../../_components/AdHocModa
 import { uploadTaskPhoto } from '../../../_components/photoUpload';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
+import { berlinToday } from '@/lib/berlin-date';
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  // Berlin, not UTC: toISOString() points at YESTERDAY between 00:00–02:00
+  // Berlin (summer), making the page open a read-only past list as "today".
+  return berlinToday();
 }
 
 interface PageProps {

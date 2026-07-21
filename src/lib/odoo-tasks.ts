@@ -7,6 +7,7 @@
  * are owned by hr.department and spawned daily by Odoo cron.
  */
 
+import { berlinToday } from './berlin-date';
 import { getOdoo } from './odoo';
 
 // ── Types ─────────────────────────────────────
@@ -215,7 +216,9 @@ export interface DashboardData {
 // ── Helpers ───────────────────────────────────
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Berlin, not UTC: toISOString() points at YESTERDAY between 00:00–02:00
+  // Berlin (summer) — /api/tasks/today would serve the read-only past list.
+  return berlinToday();
 }
 
 function odooDtToIso(dt: string | false | null): string | null {

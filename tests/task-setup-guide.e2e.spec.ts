@@ -100,11 +100,14 @@ async function findOrCreateTemplate(page: Page): Promise<{ tplId: number; deptId
 async function labelPin(page: Page, itemName: string) {
   const sheet = page.locator('input[placeholder="Search or type a new item…"]');
   await expect(sheet).toBeVisible();
+  // The catalog loads async and the sheet re-renders when items arrive — wait
+  // for the loading indicator to clear so the buttons are stable before clicking.
+  await page.getByText('Loading items…').waitFor({ state: 'hidden', timeout: 15_000 }).catch(() => {});
   await sheet.fill(itemName);
   const addNew = page.getByRole('button', { name: `+ Add "${itemName}"` });
   const existing = page.getByRole('button', { name: itemName, exact: true });
-  if (await addNew.isVisible().catch(() => false)) await addNew.click();
-  else await existing.first().click();
+  if (await existing.first().isVisible().catch(() => false)) await existing.first().click();
+  else await addNew.click();
   await expect(sheet).toBeHidden({ timeout: 10_000 });
 }
 
@@ -117,11 +120,17 @@ test.describe.serial('station setup guide', () => {
 
     const found = await findOrCreateTemplate(page);
     deptId = found.deptId;
-    await page.goto(`/tasks/manager/templates/${found.tplId}`);
 
-    // Open the guide task: edit if it exists, else add it.
-    const row = page.locator('p.font-semibold', { hasText: TASK_NAME }).first();
-    if (await row.isVisible().catch(() => false)) {
+    // Decide edit-vs-add from the API, not DOM visibility — a slow page load
+    // once raced this check and created a duplicate template line.
+    const tplData = await (await page.request.get(`/api/tasks/templates/${found.tplId}`)).json();
+    const lineExists = ((tplData.template?.lines || []) as { name: string }[])
+      .some(l => l.name === TASK_NAME);
+
+    await page.goto(`/tasks/manager/templates/${found.tplId}`);
+    if (lineExists) {
+      const row = page.locator('p.font-semibold', { hasText: TASK_NAME }).first();
+      await row.waitFor({ timeout: 20_000 });
       await row.locator('xpath=ancestor::div[contains(@class,"px-4")][1]').getByRole('button', { name: 'Edit' }).click();
     } else {
       await page.getByRole('button', { name: '+ Add task' }).click();
@@ -140,8 +149,9 @@ test.describe.serial('station setup guide', () => {
     const img = page.locator('img[alt="Setup reference"]');
     await expect(img).toBeVisible({ timeout: 20_000 });
 
-    // Ensure 2 pins exist (pin list rows show "Remove").
-    const pinRows = page.getByRole('button', { name: 'Remove', exact: true });
+    // Ensure 2 pins exist (pin LIST rows show "Remove"; the photo controls have
+    // their own Remove button, so scope to <li> to count only pins).
+    const pinRows = page.locator('li').getByRole('button', { name: 'Remove', exact: true });
     if ((await pinRows.count()) < 2) {
       const box = await img.boundingBox();
       expect(box).toBeTruthy();
@@ -181,41 +191,52 @@ test.describe.serial('station setup guide', () => {
 
     await page.goto(`/tasks/manager/dept/${deptId}`);
     // Dismiss the app drawer if it opened, and wait for the list data
-    // ("X / Y done · Z%" header) — the chip check must not race the fetch.
+    // ("X / Y done · Z%" header) — element checks must not race the fetch.
     await page.keyboard.press('Escape').catch(() => {});
     await expect(page.getByText(/done ·/).first()).toBeVisible({ timeout: 30_000 });
-    const chip = page.getByText('📍 Setup guide').first();
+
+    // The department may legitimately carry OTHER setup guides — every check
+    // below is scoped to the E2E task's own card/rows.
+    const lineState = async () => {
+      const r = await page.request.get(`/api/tasks/list/${list_id}`);
+      return (((await r.json()).list.lines || []) as { name: string; state: string }[])
+        .find(l => l.name === TASK_NAME)?.state;
+    };
+    // TaskRow's guide card root carries px-4 padding; the innermost such div
+    // holding the task name is the card (page wrappers match too — take last).
+    const activeCard = () => page
+      .locator('div[class*="px-4"]', { has: page.locator(`p:text-is("${TASK_NAME}")`) })
+      .filter({ has: page.getByText('📍 Setup guide') })
+      .last();
+    const completedRow = () => page
+      .locator('li', { has: page.locator(`p:text-is("${TASK_NAME}")`) })
+      .first();
 
     // Self-heal: a previous aborted run may have left the guide completed.
-    if (!(await chip.isVisible().catch(() => false))) {
+    if (await lineState() === 'done') {
       await page.getByRole('button', { name: /✅ Completed/ }).first().click();
-      await page.getByRole('button', { name: /Review \/ adjust setup/ }).first().click();
-      await page.getByRole('button', { name: /^Uncheck / }).first().click();
-      await expect(chip).toBeVisible({ timeout: 20_000 });
+      await completedRow().getByRole('button', { name: /Review \/ adjust setup/ }).click();
+      await completedRow().getByRole('button', { name: /^Uncheck / }).first().click();
+      await expect.poll(lineState, { timeout: 20_000 }).toBe('pending');
+      await page.reload();
+      await expect(page.getByText(/done ·/).first()).toBeVisible({ timeout: 30_000 });
     }
 
-    // The guide row has NO tap-to-complete affordance — completion is pin-driven.
-    await expect(page.getByText(TASK_NAME).first()).toBeVisible();
-
-    // Check every pin; the task auto-completes on the last one.
+    // Check every pin of THIS guide; the task auto-completes on the last one.
+    await expect(activeCard()).toBeVisible({ timeout: 20_000 });
     for (let guard = 0; guard < 6; guard++) {
-      const check = page.getByRole('button', { name: /^Check / }).first();
+      const check = activeCard().getByRole('button', { name: /^Check / }).first();
       if (!(await check.isVisible().catch(() => false))) break;
       await check.click();
       await page.waitForTimeout(1200); // server toggle + possible reload
     }
-    await expect(page.getByText('📍 Setup guide')).toBeHidden({ timeout: 20_000 });
+    await expect.poll(lineState, { timeout: 20_000 }).toBe('done');
     await page.getByRole('button', { name: /✅ Completed/ }).first().click();
-    await expect(page.locator('p.line-through', { hasText: TASK_NAME })).toBeVisible();
+    await expect(completedRow().locator('p.line-through')).toBeVisible();
 
     // Reopen from the completed section: Review / adjust setup → uncheck a pin.
-    await page.getByRole('button', { name: /Review \/ adjust setup/ }).first().click();
-    await page.getByRole('button', { name: /^Uncheck / }).first().click();
-    await expect(page.getByText('📍 Setup guide').first()).toBeVisible({ timeout: 20_000 });
-
-    // API cross-check: the line is pending again.
-    const after = await page.request.get(`/api/tasks/list/${list_id}`);
-    const lineAfter = ((await after.json()).list.lines || []).find((l: { name: string }) => l.name === TASK_NAME);
-    expect(lineAfter.state).toBe('pending');
+    await completedRow().getByRole('button', { name: /Review \/ adjust setup/ }).click();
+    await completedRow().getByRole('button', { name: /^Uncheck / }).first().click();
+    await expect.poll(lineState, { timeout: 20_000 }).toBe('pending');
   });
 });

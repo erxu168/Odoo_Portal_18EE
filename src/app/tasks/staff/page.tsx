@@ -11,6 +11,7 @@ import Toast from '@/components/ui/Toast';
 import { useToast } from '../_components/useToast';
 import AppHeader from '@/components/ui/AppHeader';
 import { KpiRow, KpiChip } from '@/components/ui/KpiChip';
+import { berlinToday } from '@/lib/berlin-date';
 
 interface TodayResponse {
   context: EmployeeContext | null;
@@ -20,7 +21,9 @@ interface TodayResponse {
 }
 
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Berlin, not UTC: toISOString() points at YESTERDAY between 00:00–02:00
+  // Berlin (summer) — the staff page would show a read-only past list as today.
+  return berlinToday();
 }
 
 type Role = 'staff' | 'manager' | 'admin';
