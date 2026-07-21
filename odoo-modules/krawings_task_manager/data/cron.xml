@@ -6,8 +6,11 @@
             <field name="model_id" ref="model_krawings_task_template"/>
             <field name="state">code</field>
             <field name="code">model._cron_spawn_daily_task_lists()</field>
+            <!-- Hourly + idempotent: each pass spawns lists only for companies
+                 whose kw_task_spawn_hour (Europe/Berlin) has been reached, so
+                 the effective spawn time is the per-company setting. -->
             <field name="interval_number">1</field>
-            <field name="interval_type">days</field>
+            <field name="interval_type">hours</field>
             <field name="active" eval="True"/>
         </record>
     </data>

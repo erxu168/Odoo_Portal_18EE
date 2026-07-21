@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, time
 
+import psycopg2
 import pytz
 
 from odoo import api, fields, models
@@ -9,6 +10,11 @@ from odoo.exceptions import UserError
 from .recurrence import applies_on, rule_from_record
 
 _logger = logging.getLogger(__name__)
+
+# Business timezone for all task scheduling. Deliberately fixed rather than
+# derived from the server / cron user / RPC context, so spawn timing and
+# deadline conversion cannot drift when any of those run in UTC.
+BERLIN_TZ = pytz.timezone('Europe/Berlin')
 
 
 class KrawingsTaskTemplate(models.Model):
@@ -39,33 +45,73 @@ class KrawingsTaskTemplate(models.Model):
     def spawn_today_lists(self):
         """Public RPC entry: spawn today's lists for every department. Safe to
         call from the portal (manager Spawn button). Idempotent — calling
-        again does not duplicate today's lists."""
-        return self._cron_spawn_daily_task_lists()
+        again does not duplicate today's lists. A manual click means "spawn
+        now", so the per-company spawn hour is ignored."""
+        return self._spawn_daily_task_lists(force=True)
 
     @api.model
     def _cron_spawn_daily_task_lists(self):
-        """Cron entry: spawn today's lists for every department that has at
-        least one applicable template line firing today."""
-        today = fields.Date.context_today(self)
+        """Cron entry (runs hourly): spawn today's lists for every department
+        whose company's configured spawn hour (Europe/Berlin) has been
+        reached. Hourly + idempotent makes this self-healing — a run missed
+        while the server was down is caught up on the next pass, and DST
+        shifts need no special handling because the gate is evaluated in
+        local time. sudo() so an internal scheduled job covers every
+        restaurant regardless of the cron user's company context."""
+        return self.sudo()._spawn_daily_task_lists(force=False)
+
+    @api.model
+    def _berlin_now(self):
+        """Current wall-clock time in the business timezone (Europe/Berlin)."""
+        return fields.Datetime.now().replace(tzinfo=pytz.UTC).astimezone(BERLIN_TZ)
+
+    @api.model
+    def _spawn_daily_task_lists(self, force=False):
+        """Spawn today's (Europe/Berlin) lists for every department that has
+        at least one active template. With force=False, a department is only
+        processed once local time has reached its company's
+        ``kw_task_spawn_hour`` (default 2 = 02:00)."""
+        berlin_now = self._berlin_now()
+        today = berlin_now.date()
         TaskList = self.env['krawings.task.list']
         # Group by department to avoid spawning the same list twice when a
         # department has multiple active templates.
         depts = self.env['hr.department']
         for tpl in self.search([('active', '=', True)]):
             depts |= tpl.department_id
+        # One batched query for today's existing lists instead of one per
+        # department on every hourly pass.
+        have_today = {
+            rec['department_id'][0]
+            for rec in TaskList.search_read([('date', '=', today)], ['department_id'])
+            if rec.get('department_id')
+        }
         spawned = 0
         skipped = 0
+        waiting = 0
         for dept in depts:
-            existing = TaskList.search([('date', '=', today), ('department_id', '=', dept.id)], limit=1)
-            if existing:
+            if not force:
+                if not dept.company_id:
+                    _logger.warning(
+                        '[krawings_task_manager] department %s (%s) has no company; '
+                        'using default spawn hour 2 — fix the department assignment',
+                        dept.id, dept.name,
+                    )
+                # Integer field: an unset value reads as 0, which is a valid
+                # hour (midnight) — only a missing company falls back to 2.
+                spawn_hour = dept.company_id.kw_task_spawn_hour if dept.company_id else 2
+                if berlin_now.hour < spawn_hour:
+                    waiting += 1
+                    continue
+            if dept.id in have_today:
                 skipped += 1
                 continue
             new_list = self._build_list_for_dept_date(dept, today)
             if new_list:
                 spawned += 1
         _logger.info(
-            '[krawings_task_manager] cron complete: %s spawned, %s skipped',
-            spawned, skipped,
+            '[krawings_task_manager] spawn pass complete (%s): %s spawned, %s already existed, %s before spawn hour',
+            'manual' if force else 'cron', spawned, skipped, waiting,
         )
 
     @api.model
@@ -87,7 +133,10 @@ class KrawingsTaskTemplate(models.Model):
             ('active', '=', True),
             ('department_id', '=', department.id),
         ])
-        tz = pytz.timezone(self.env.user.tz or 'Europe/Berlin')
+        # Fixed business timezone: deadline times entered on template lines
+        # mean Berlin wall-clock, regardless of which user's context (cron
+        # user, portal service account, …) executes the spawn.
+        tz = BERLIN_TZ
 
         line_vals = []
         chosen_template = None
@@ -121,12 +170,25 @@ class KrawingsTaskTemplate(models.Model):
 
         # Even if no lines fire we still create an empty list so manager
         # ad-hoc additions and "no list yet" UX have a record to attach to.
-        return TaskList.create({
-            'date': target_date,
-            'department_id': department.id,
-            'template_id': chosen_template.id if chosen_template else False,
-            'line_ids': line_vals,
-        })
+        # The savepoint makes the check-then-create genuinely idempotent
+        # under concurrency: if the hourly cron and the portal's manual
+        # Spawn button race, the loser hits the uniq_date_department
+        # constraint and treats it as "already exists".
+        try:
+            with self.env.cr.savepoint():
+                return TaskList.create({
+                    'date': target_date,
+                    'department_id': department.id,
+                    'template_id': chosen_template.id if chosen_template else False,
+                    'line_ids': line_vals,
+                })
+        except psycopg2.IntegrityError:
+            _logger.info(
+                '[krawings_task_manager] concurrent spawn for dept %s on %s — '
+                'another worker created the list first',
+                department.id, target_date,
+            )
+            return False
 
     def _spawn_for_date(self, target_date):
         """Compatibility helper retained for callers that still expect a
@@ -137,7 +199,7 @@ class KrawingsTaskTemplate(models.Model):
 
     def action_spawn_today(self):
         """Manual trigger from form view."""
-        today = fields.Date.context_today(self)
+        today = self._berlin_now().date()
         any_spawned = False
         for tpl in self:
             if self._build_list_for_dept_date(tpl.department_id, today):

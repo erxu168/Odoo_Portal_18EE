@@ -1,6 +1,6 @@
 {
     'name': 'Krawings Task Manager',
-    'version': '18.0.3.1.0',
+    'version': '18.0.4.0.0',
     'category': 'Human Resources',
     'summary': 'Department-based daily task lists for Krawings Portal PWA',
     'description': """
@@ -15,7 +15,8 @@ Templates:
   - Deadlines as time-of-day, photo evidence flag, optional module link
 
 Daily instances:
-  - Spawned by cron at 00:05 from any template whose day-of-week matches
+  - Spawned by an hourly cron once each company's configurable spawn hour
+    (res.company.kw_task_spawn_hour, Europe/Berlin, default 02:00) is reached
   - Anyone in the department can complete any task
   - Manager can add ad-hoc one-off tasks to today's instance
   - Past instances are immutable history

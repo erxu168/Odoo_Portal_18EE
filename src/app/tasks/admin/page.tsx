@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/auth';
 import AppHeader from '@/components/ui/AppHeader';
 import ManagerTabs from '../_components/ManagerTabs';
+import SpawnTimeSettings from '../_components/SpawnTimeSettings';
 
 export default function AdminPage() {
   const user = getCurrentUser();
@@ -37,27 +38,11 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">Cron schedule</p>
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">Deadline check interval</label>
-              <div className="flex gap-2">
-                <input type="number" defaultValue={5} className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                <select className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
-                  <option>minutes</option><option>hours</option>
-                </select>
-              </div>
-            </div>
-            <button className="bg-orange-500 text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-orange-600 transition-colors">
-              Save Settings
-            </button>
-          </div>
-        </section>
+        <SpawnTimeSettings />
 
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-700">
           <p className="font-semibold mb-1">⚙️ Stored in Odoo</p>
-          <p className="text-xs">Settings are persisted as <code className="font-mono bg-blue-100 px-1 rounded">ir.config_parameter</code> key-value pairs on Odoo 18 EE.</p>
+          <p className="text-xs">The checklist creation time is saved on each company record in Odoo, so it stays in sync everywhere.</p>
         </div>
       </div>
     </div>
