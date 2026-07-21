@@ -88,14 +88,38 @@ report** — which step was skipped and why. Never let the missing cross-check b
 
 ## Deploy Process
 
+Deploys are SERIALIZED with a lock — two agents building at once corrupts
+`.next` (`_ssgManifest.js ENOENT`, happened 2026-07-21). Always deploy through
+`flock`; if the lock is held, it waits (up to 10 min) instead of colliding:
+
 ```
-cd /opt/krawings-portal
-git pull
-npm run build
-systemctl restart krawings-portal
+ssh root@89.167.124.0 "flock -w 600 /tmp/kw-deploy.lock -c '
+  cd /opt/krawings-portal && git pull && npm run build && systemctl restart krawings-portal'"
 ```
 
-Always `npm run build` before restart — catches TypeScript errors.
+Always `npm run build` before restart — catches TypeScript errors. If a build
+fails with a missing-file ENOENT at the very end, suspect a concurrent build:
+take the lock and rebuild once alone (`rm -rf .next` first).
+
+## Concurrent Claude Sessions (binding — collisions happened 2026-07-21)
+
+Two Claude sessions working in THIS checkout at the same time caused real
+incidents: a `git stash` in one session swept the other's uncommitted work
+(recovered only via `git fsck`), two dev servers corrupted the shared `.next`,
+and simultaneous staging builds broke each other. Rules:
+
+1. **One checkout per session.** If another session may be active here, work in
+   your own clone (e.g. `git clone /Users/ethan/Odoo_Portal_18EE ~/portal-<name>`
+   — symlink `node_modules`, copy `.env.local` + `data/portal.db`) and sync
+   through GitHub `main`. The clone is disposable; GitHub is the meeting point.
+2. **Never `git stash`, `git reset`, `git checkout -- .`, or any
+   whole-tree git operation in a checkout you might share.** Pathspec-limited
+   commands only (`git commit -- <your files>`).
+3. **Commit + push after every completed phase** — never hold hours of
+   uncommitted work in a shared tree.
+4. **One dev server per checkout.** Before `npm run dev`, check
+   `ps aux | grep next` — if a server is already running here, use your own clone.
+5. **Deploys always via the flock command above.**
 
 ## Critical Dev Rules
 
