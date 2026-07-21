@@ -48,7 +48,7 @@ test('admin can see and round-trip a spawn-time change', async ({ page }) => {
 
   try {
     await page.goto('/tasks/admin', { waitUntil: 'networkidle' });
-    await expect(page.getByText('Checklist creation time')).toBeVisible();
+    await expect(page.getByText('Checklist creation time', { exact: true })).toBeVisible();
 
     const select = page.locator(`select[aria-label="Checklist creation time for ${target.name}"]`);
     await expect(select).toBeVisible({ timeout: 20_000 });
