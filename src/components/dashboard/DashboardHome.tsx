@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import SortableTileGrid from '@/components/ui/SortableTileGrid';
+import { ActionGrid, ActionCard } from '@/components/ui/ActionCard';
 import CookPlanModal, { type CookPlanItem } from '@/components/prep-planner/CookPlanModal';
 import { DEFAULT_COMPANY_ID } from '@/components/prep-planner/companies';
 import { GOVERNED_MODULE_IDS } from '@/lib/modules';
@@ -22,71 +22,26 @@ interface Tile {
   subtitle: string;
   href: string | null;
   minRole: string;
-  icon: React.ReactNode;
+  emoji: string;
   scope?: 'cooking' | 'production';
 }
 
 const TILES: Tile[] = [
-  {
-    id: 'production', label: 'Manufacturing', subtitle: 'Prep & production orders', href: '/manufacturing', minRole: 'staff',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>,
-  },
-  {
-    id: 'recipes', label: 'Chef Guide', subtitle: 'Cooking guides', href: '/recipes', minRole: 'staff', scope: 'cooking',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>,
-  },
-  {
-    id: 'production-guide', label: 'Production Guide', subtitle: 'Sauces, prep & batches', href: '/recipes', minRole: 'manager', scope: 'production',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20V8l5 4V8l5 4V4l10 8v8H2z"/></svg>,
-  },
-  {
-    id: 'inventory', label: 'Inventory', subtitle: 'Stock counting & tracking', href: '/inventory', minRole: 'staff',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg>,
-  },
-  {
-    id: 'purchase', label: 'Purchase', subtitle: 'Orders & suppliers', href: '/purchase', minRole: 'staff',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/></svg>,
-  },
-  {
-    id: 'hr', label: 'HR', subtitle: 'Profile & onboarding', href: '/hr', minRole: 'staff',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
-  },
-  {
-    id: 'credentials', label: 'Supplier Logins', subtitle: 'Vendor credentials', href: '/admin/credentials', minRole: 'manager',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>,
-  },
-  {
-    id: 'tablets', label: 'Shared Tablets', subtitle: 'Kitchen tablet access', href: '/admin/tablets', minRole: 'manager',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="10" y1="18" x2="14" y2="18"/></svg>,
-  },
-  {
-    id: 'rentals', label: 'Rentals', subtitle: 'Properties & tenancies', href: '/rentals', minRole: 'admin',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
-  },
-  {
-    id: 'prep-planner', label: 'Prep Planner', subtitle: 'Demand forecasts & prep targets', href: '/prep-planner', minRole: 'manager',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="3" y1="20" x2="21" y2="20"/></svg>,
-  },
-  {
-    id: 'sales', label: 'Sales', subtitle: 'What a Jerk revenue & top sellers', href: '/sales', minRole: 'manager',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
-  },
-  {
-    id: 'shifts', label: 'Planning', subtitle: 'Shifts, claims & covers', href: '/shifts', minRole: 'staff',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
-  },
-  {
-    id: 'tasks', label: 'My Tasks', subtitle: 'Daily department checklist', href: '/tasks', minRole: 'staff',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>,
-  },
-  {
-    id: 'leave', label: 'Leave', subtitle: 'Coming soon', href: null, minRole: 'staff',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>,
-  },
-  {
-    id: 'payroll', label: 'Payroll', subtitle: 'Coming soon', href: null, minRole: 'staff',
-    icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
-  },
+  { id: 'production', label: 'Manufacturing', subtitle: 'Prep & production orders', href: '/manufacturing', minRole: 'staff', emoji: '🏭' },
+  { id: 'recipes', label: 'Chef Guide', subtitle: 'Cooking guides', href: '/recipes', minRole: 'staff', scope: 'cooking', emoji: '👨‍🍳' },
+  { id: 'production-guide', label: 'Production Guide', subtitle: 'Sauces, prep & batches', href: '/recipes', minRole: 'manager', scope: 'production', emoji: '🥫' },
+  { id: 'inventory', label: 'Inventory', subtitle: 'Stock counting & tracking', href: '/inventory', minRole: 'staff', emoji: '📦' },
+  { id: 'purchase', label: 'Purchase', subtitle: 'Orders & suppliers', href: '/purchase', minRole: 'staff', emoji: '🛒' },
+  { id: 'hr', label: 'HR', subtitle: 'Profile & onboarding', href: '/hr', minRole: 'staff', emoji: '👤' },
+  { id: 'credentials', label: 'Supplier Logins', subtitle: 'Vendor credentials', href: '/admin/credentials', minRole: 'manager', emoji: '🔑' },
+  { id: 'tablets', label: 'Shared Tablets', subtitle: 'Kitchen tablet access', href: '/admin/tablets', minRole: 'manager', emoji: '📱' },
+  { id: 'rentals', label: 'Rentals', subtitle: 'Properties & tenancies', href: '/rentals', minRole: 'admin', emoji: '🏠' },
+  { id: 'prep-planner', label: 'Prep Planner', subtitle: 'Demand forecasts & prep targets', href: '/prep-planner', minRole: 'manager', emoji: '📊' },
+  { id: 'sales', label: 'Sales', subtitle: 'What a Jerk revenue & top sellers', href: '/sales', minRole: 'manager', emoji: '📈' },
+  { id: 'shifts', label: 'Planning', subtitle: 'Shifts, claims & covers', href: '/shifts', minRole: 'staff', emoji: '📅' },
+  { id: 'tasks', label: 'My Tasks', subtitle: 'Daily department checklist', href: '/tasks', minRole: 'staff', emoji: '✅' },
+  { id: 'leave', label: 'Leave', subtitle: 'Coming soon', href: null, minRole: 'staff', emoji: '🌴' },
+  { id: 'payroll', label: 'Payroll', subtitle: 'Coming soon', href: null, minRole: 'staff', emoji: '💳' },
 ];
 
 const ROLE_LEVEL: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
@@ -289,17 +244,11 @@ export default function DashboardHome() {
           <div className="px-5 pt-4">
             <button
               onClick={() => setCookPlanOpen(true)}
-              className={`w-full rounded-2xl border p-4 flex items-center gap-3 text-left shadow-sm active:scale-[0.98] transition-transform ${
-                allDone ? 'bg-green-50 border-green-200' : 'bg-cyan-50 border-cyan-200'
+              className={`w-full rounded-2xl border p-4 flex items-center gap-3 text-left active:scale-[0.98] transition-transform ${
+                allDone ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200'
               }`}
             >
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                allDone ? 'bg-green-100 text-green-600' : 'bg-cyan-100 text-cyan-600'
-              }`}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
-                </svg>
-              </div>
+              <div className="w-11 h-11 rounded-xl bg-[#F1F3F5] flex items-center justify-center flex-shrink-0 text-2xl" aria-hidden="true">🍳</div>
               <div className="flex-1 min-w-0">
                 <div className="text-[var(--fs-md)] font-bold text-gray-900">Today&rsquo;s prep</div>
                 <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">
@@ -309,7 +258,7 @@ export default function DashboardHome() {
                 </div>
               </div>
               {!allDone && (
-                <span className="min-w-[22px] h-6 px-2 rounded-full bg-cyan-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-6 text-center">
+                <span className="min-w-[22px] h-6 px-2 rounded-full bg-green-600 text-white text-[var(--fs-xs)] font-bold font-mono leading-6 text-center">
                   {pending}
                 </span>
               )}
@@ -324,16 +273,20 @@ export default function DashboardHome() {
       {/* App tiles */}
       <div className="px-5 pt-3">
         <p className="text-[var(--fs-xs)] font-bold text-gray-400 tracking-widest uppercase mb-3">Apps</p>
-        <SortableTileGrid
+        <ActionGrid
           items={visibleTiles}
           getItemId={(t) => t.id}
-          storageKey="dashboard_tile_order"
-          savedOrder={savedOrder}
+          sortable={{ storageKey: 'dashboard_tile_order', savedOrder }}
           renderItem={(tile) => {
             const count = badges[tile.id] || 0;
             const disabled = !tile.href;
             return (
-              <button
+              <ActionCard
+                emoji={tile.emoji}
+                label={tile.label}
+                subtitle={tile.subtitle}
+                disabled={disabled}
+                badge={count > 0 ? { value: count, ariaLabel: `${count} waiting` } : undefined}
                 onClick={() => {
                   if (!tile.href) return;
                   if (tile.href === '/recipes') {
@@ -342,23 +295,7 @@ export default function DashboardHome() {
                   }
                   router.push(tile.href);
                 }}
-                className={`relative rounded-2xl border border-gray-200 bg-[#F1F3F5] p-4 flex flex-col items-center justify-center text-center aspect-square shadow-sm w-full active:scale-[0.97] transition-transform ${
-                  disabled ? 'opacity-50' : ''
-                }`}
-              >
-                {count > 0 && (
-                  <span className="absolute top-2 right-2 min-w-[22px] h-6 px-2 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-6 text-center">{count}</span>
-                )}
-                <div className={`w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 mb-2 bg-white ${
-                  disabled ? 'text-gray-400' : 'text-[#2563EB]'
-                }`}>
-                  {tile.icon}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[var(--fs-md)] font-bold text-gray-900 leading-tight">{tile.label}</div>
-                  <div className="text-[var(--fs-xs)] text-gray-500 mt-1 leading-tight">{tile.subtitle}</div>
-                </div>
-              </button>
+              />
             );
           }}
         />
