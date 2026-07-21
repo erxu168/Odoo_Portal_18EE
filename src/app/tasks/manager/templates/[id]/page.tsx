@@ -633,7 +633,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
         try {
           const delRes = await fetch(`/api/tasks/templates/${tplId}/lines/${line.id}/setup-photo?clear_pins=1`, { method: 'DELETE' });
           const delBody = await delRes.json().catch(() => ({}));
-          photoCleanupFailed = !delBody.ok;
+          photoCleanupFailed = !delRes.ok || !delBody.ok;
         } catch { photoCleanupFailed = true; }
       }
 

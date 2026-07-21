@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
+import { berlinToday } from '@/lib/berlin-date';
 import { parseCompanyIds } from '@/lib/db';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { uploadLinePhoto, resyncSetupGuide, getListLineScope } from '@/lib/odoo-tasks';
@@ -21,7 +22,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (allowed.length && scope.companyId && !allowed.includes(scope.companyId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    if (scope.date && scope.date < new Date().toISOString().slice(0, 10)) {
+    // Berlin-local "today" — UTC would leave yesterday's list writable for 1-2h
+    // around midnight (task dates are evaluated in Europe/Berlin).
+    if (scope.date && scope.date < berlinToday()) {
       return NextResponse.json({ error: 'Past task lists are read-only' }, { status: 403 });
     }
     const result = await uploadLinePhoto(id, body.filename, body.data_base64);
