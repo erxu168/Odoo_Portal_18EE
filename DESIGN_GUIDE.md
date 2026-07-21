@@ -95,8 +95,8 @@ the planned waves.
 |---|---|---|
 | 0 | Shared primitives + governance | ✅ migrated |
 | 0 | Shift Handover (reference) | ✅ migrated |
-| 1 | Personal home, Station home | ⏳ pending |
-| 2 | Tasks, Inventory, Purchase, Manufacturing, Chef Guide | ⏳ pending |
+| 1 | Personal home, Station home | ✅ migrated |
+| 2 | Tasks, Inventory, Purchase, Manufacturing, Chef Guide | ✅ migrated |
 | 3 | Planning, HR, Prep Planner, Rentals, Reports, Terminations, Sales, Admin | ⏳ pending |
 | 4 | KDS, cook-timer, kiosk (dark ops — typography/touch/status only) | ⏳ pending |
 
