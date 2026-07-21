@@ -17,6 +17,10 @@ class KrawingsTaskTemplateSubtask(models.Model):
     # Stored as fractions of the reference image so they survive different
     # screen sizes; the portal converts to %. On a setup-guide line EVERY
     # subtask is a pin (v1 invariant).
+    pin_photo_seq = fields.Integer(
+        default=0,
+        help='Sequence of the setup photo this pin sits on (multi-photo guides).',
+    )
     pin_x = fields.Float(help='0.0–1.0, fraction across the reference image.')
     pin_y = fields.Float(help='0.0–1.0, fraction down the reference image.')
     item_id = fields.Many2one(

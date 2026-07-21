@@ -3,9 +3,11 @@ import { requireAuth, requireCapability, AuthError, type PortalUser } from '@/li
 import { parseCompanyIds } from '@/lib/db';
 import { templateLineBelongsToTemplate, getTemplateCompany } from '@/lib/odoo-tasks';
 import {
-  setTemplateLineSetupPhoto,
+  addTemplateLinePhoto,
+  removeTemplateLinePhoto,
   clearTemplateLineSetupPhoto,
   getTemplateSetupPhoto,
+  getSetupPhotoBySeq,
 } from '@/lib/setup-guide';
 
 export const dynamic = 'force-dynamic';
@@ -53,14 +55,18 @@ function detectImageMime(base64: string): string | null {
   return null;
 }
 
-// GET — serve the template line's reference photo as raw image bytes (manager editor).
-export async function GET(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+// GET — serve one of the template line's reference photos as raw image bytes
+// (manager editor). `?seq=N` selects a photo of a multi-photo guide; default first.
+export async function GET(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
   try {
     const user = requireAuth();
     const parsed = ids(params);
     if (!parsed) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     await assertScope(user, parsed.templateId, parsed.lineId);
-    const photo = await getTemplateSetupPhoto(parsed.lineId);
+    const seqRaw = req.nextUrl.searchParams.get('seq');
+    const photo = seqRaw !== null && !Number.isNaN(parseInt(seqRaw, 10))
+      ? await getSetupPhotoBySeq('template', parsed.lineId, parseInt(seqRaw, 10))
+      : await getTemplateSetupPhoto(parsed.lineId);
     if (!photo) return NextResponse.json({ error: 'No photo' }, { status: 404 });
     const buf = Buffer.from(photo.data_base64, 'base64');
     return new NextResponse(buf, {
@@ -96,9 +102,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string;
     const mime = detectImageMime(base64);
     if (!mime) return NextResponse.json({ error: 'File is not a valid image' }, { status: 415 });
     const ext = mime.split('/')[1].replace('jpeg', 'jpg');
-    const filename = `setup.${ext}`;
-    await setTemplateLineSetupPhoto(parsed.lineId, base64, filename, !!body?.clear_pins);
-    return NextResponse.json({ ok: true });
+    // Append a new photo, or replace the photo at `seq` when provided.
+    const seq = typeof body?.seq === 'number' ? body.seq : undefined;
+    const filename = `setup-${seq ?? 'new'}.${ext}`;
+    const savedSeq = await addTemplateLinePhoto(parsed.lineId, base64, filename, seq);
+    return NextResponse.json({ ok: true, seq: savedSeq });
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     const message = err instanceof Error ? err.message : 'Failed to upload photo';
@@ -106,13 +114,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string;
   }
 }
 
-// DELETE — remove the reference photo (optionally clearing pins). Manager/admin, company-scoped.
+// DELETE — `?seq=N` removes ONE photo (+ any orphaned pins on it, server-side);
+// without seq: legacy clear-ALL photos (optionally clearing pins). Manager/admin, company-scoped.
 export async function DELETE(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
   try {
     const user = requireCapability('tasks.template.manage');
     const parsed = ids(params);
     if (!parsed) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     await assertScope(user, parsed.templateId, parsed.lineId);
+    const seqRaw = req.nextUrl.searchParams.get('seq');
+    if (seqRaw !== null && !Number.isNaN(parseInt(seqRaw, 10))) {
+      await removeTemplateLinePhoto(parsed.lineId, parseInt(seqRaw, 10));
+      return NextResponse.json({ ok: true });
+    }
     const clearPins = req.nextUrl.searchParams.get('clear_pins') === '1';
     await clearTemplateLineSetupPhoto(parsed.lineId, clearPins);
     return NextResponse.json({ ok: true });

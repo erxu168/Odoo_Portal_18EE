@@ -65,14 +65,19 @@ class KrawingsTaskTemplateLine(models.Model):
     )
 
     # ── Setup guide (mise en place) ──────────────────────────────────────
-    # When set, this task is a visual station-setup guide: one reference photo
-    # with numbered pins (its subtasks). Photo kept out of normal search_read
-    # (Binary attachment); the portal serves it as raw bytes via its own route.
+    # When set, this task is a visual station-setup guide: one or more
+    # reference photos with numbered pins (its subtasks). Photos live on
+    # krawings.task.setup.photo (kept out of normal search_read; the portal
+    # serves bytes via a dedicated route). The single setup_photo Binary is
+    # LEGACY (pre-multi-photo) — migrated into a photo row on upgrade.
     is_setup_guide = fields.Boolean(
-        help='Turn this task into a visual setup guide (reference photo + numbered pins).',
+        help='Turn this task into a visual setup guide (reference photos + numbered pins).',
     )
-    setup_photo = fields.Binary(attachment=True)
-    setup_photo_filename = fields.Char()
+    setup_photo = fields.Binary(attachment=True)         # legacy, no longer written
+    setup_photo_filename = fields.Char()                 # legacy, no longer written
+    setup_photo_ids = fields.One2many(
+        'krawings.task.setup.photo', 'template_line_id',
+    )
 
     # ── Recurrence rule (per task) ───────────────────────────────────────
     # Keys here are read by recurrence.applies_on() via rule_from_record().
@@ -154,29 +159,69 @@ class KrawingsTaskTemplateLine(models.Model):
         })
         return att.id
 
-    # ── Setup-guide reference photo ──────────────────────────────────────
+    # ── Setup-guide reference photos (multi-photo) ───────────────────────
+
+    def add_setup_photo(self, data_base64, filename, seq=None):
+        """Append (or replace, when `seq` names an existing slot) a reference
+        photo. Replacing drops that photo's pins — their coordinates are
+        meaningless on a new image. Returns the photo's sequence number."""
+        self.ensure_one()
+        Photo = self.env['krawings.task.setup.photo'].sudo()
+        if seq is not None:
+            seq = int(seq)
+            existing = Photo.search([
+                ('template_line_id', '=', self.id), ('sequence', '=', seq),
+            ], limit=1)
+            if existing:
+                # Pins are NOT touched here: the editor saves the pin set (with
+                # any stale pins already removed) BEFORE uploading photos, so a
+                # server-side unlink would destroy just-saved pins.
+                existing.write({'image': data_base64, 'filename': filename or False})
+                return seq
+        else:
+            seqs = self.setup_photo_ids.mapped('sequence')
+            seq = (max(seqs) + 1) if seqs else 0
+        Photo.create({
+            'template_line_id': self.id,
+            'sequence': seq,
+            'image': data_base64,
+            'filename': filename or False,
+        })
+        return seq
+
+    def remove_setup_photo(self, seq):
+        """Delete one reference photo and every pin placed on it."""
+        self.ensure_one()
+        seq = int(seq)
+        self.setup_photo_ids.filtered(lambda p: p.sequence == seq).unlink()
+        self.subtask_ids.filtered(lambda s: s.pin_photo_seq == seq).unlink()
+        return True
 
     def set_setup_photo(self, data_base64, filename, clear_pins=False):
-        """Store / replace this template line's reference photo. Passing a falsy
-        payload clears it. `clear_pins` drops existing pins because their coords
-        are meaningless on a new image."""
+        """LEGACY single-photo entry (kept for API compat): writes photo slot 0;
+        falsy payload clears ALL photos. `clear_pins` drops every pin."""
         self.ensure_one()
-        self.write({
-            'setup_photo': data_base64 or False,
-            'setup_photo_filename': (filename or False) if data_base64 else False,
-        })
+        if data_base64:
+            self.add_setup_photo(data_base64, filename, seq=0)
+        else:
+            self.setup_photo_ids.unlink()
+            self.write({'setup_photo': False, 'setup_photo_filename': False})
         if clear_pins and self.subtask_ids:
             self.subtask_ids.unlink()
         return True
 
     @api.model
     def get_setup_photo(self, line_id, allowed_company_ids=None):
-        """Return {filename, mimetype, data_base64} for the template line's
-        reference photo, or False. The portal serves this as raw image bytes.
-
-        `allowed_company_ids` scopes access to the owning template's company."""
+        """LEGACY single-photo read: serves the line's first photo (company-scoped).
+        Falls back to the pre-multi-photo Binary for un-migrated rows."""
         rec = self.sudo().browse(int(line_id))
-        if not rec.exists() or not rec.setup_photo:
+        if not rec.exists():
+            return False
+        first = rec.setup_photo_ids.sorted('sequence')[:1]
+        if first:
+            return self.env['krawings.task.setup.photo'].get_photo(
+                'template', rec.id, first.sequence, allowed_company_ids)
+        if not rec.setup_photo:
             return False
         if allowed_company_ids:
             company_id = rec.template_id.company_id.id

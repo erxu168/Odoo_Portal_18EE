@@ -1,5 +1,6 @@
 from . import res_company
 from . import task_item
+from . import task_setup_photo
 from . import task_template
 from . import task_template_line
 from . import task_template_subtask

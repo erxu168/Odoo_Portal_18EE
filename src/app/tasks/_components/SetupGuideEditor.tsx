@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PinnableImage from '@/components/ui/PinnableImage';
 
 export interface GuidePin {
@@ -8,7 +8,18 @@ export interface GuidePin {
   name: string;
   pin_x: number;
   pin_y: number;
+  /** Sequence of the photo this pin sits on. */
+  pin_photo_seq: number;
   item_id?: number | null;
+}
+
+/** One reference photo as the editor sees it — a server photo or a pending upload. */
+export interface EditorPhoto {
+  seq: number;
+  /** Display source: server route URL, or a local data URL while pending. */
+  url: string;
+  /** Set while the photo hasn't been uploaded yet (uploaded on save). */
+  pendingBase64?: string;
 }
 
 interface StationItem { id: number; name: string; }
@@ -17,28 +28,37 @@ interface Props {
   departmentId: number;
   pins: GuidePin[];
   onPinsChange: (pins: GuidePin[]) => void;
-  /** Preview source: an existing served URL, or a local object/data URL for a freshly-picked photo. */
-  photoUrl: string | null;
-  onPickPhoto: (file: File) => void;
-  onRemovePhoto: () => void;
+  photos: EditorPhoto[];
+  onAddPhoto: (file: File) => void;
+  onReplacePhoto: (seq: number, file: File) => void;
+  onRemovePhoto: (seq: number) => void;
 }
 
 /**
- * Manager editor for a setup guide: one reference photo, numbered pins placed on
- * it, each labelled from the per-department item catalog (add-new on the fly).
- * The pins ARE the line's subtasks — the parent modal owns the pin array and
- * sends it as `subtasks` on save.
+ * Manager editor for a setup guide: one or more reference photos, numbered pins
+ * placed on them (drag to move), each labelled from the per-department item
+ * catalog (add-new on the fly). Pins ARE the line's subtasks — the parent modal
+ * owns both arrays and persists them on save. Pin numbers are GLOBAL across
+ * photos (the order of the pins array).
  */
 export default function SetupGuideEditor({
-  departmentId, pins, onPinsChange, photoUrl, onPickPhoto, onRemovePhoto,
+  departmentId, pins, onPinsChange, photos, onAddPhoto, onReplacePhoto, onRemovePhoto,
 }: Props) {
   const [items, setItems] = useState<StationItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [pending, setPending] = useState<{ x: number; y: number } | null>(null);
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState(false);
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [imgError, setImgError] = useState(false);
+  const [activeGlobal, setActiveGlobal] = useState<number | null>(null);
+  const [activeSeq, setActiveSeq] = useState<number | null>(photos[0]?.seq ?? null);
+  const [imgError, setImgError] = useState<Set<number>>(new Set());
+
+  // Keep the active photo valid as photos come and go.
+  useEffect(() => {
+    if (activeSeq === null || !photos.some(p => p.seq === activeSeq)) {
+      setActiveSeq(photos[0]?.seq ?? null);
+    }
+  }, [photos, activeSeq]);
 
   useEffect(() => {
     if (!departmentId) return;
@@ -50,9 +70,19 @@ export default function SetupGuideEditor({
       .finally(() => setLoadingItems(false));
   }, [departmentId]);
 
+  const activePhoto = photos.find(p => p.seq === activeSeq) || null;
+  // Pins of the active photo, keeping their GLOBAL index for numbering.
+  const activePins = useMemo(
+    () => pins.map((p, gi) => ({ ...p, gi })).filter(p => p.pin_photo_seq === activeSeq),
+    [pins, activeSeq],
+  );
+
   function placePinFromItem(item: StationItem) {
-    if (!pending) return;
-    onPinsChange([...pins, { name: item.name, pin_x: pending.x, pin_y: pending.y, item_id: item.id }]);
+    if (!pending || activeSeq === null) return;
+    onPinsChange([...pins, {
+      name: item.name, pin_x: pending.x, pin_y: pending.y,
+      pin_photo_seq: activeSeq, item_id: item.id,
+    }]);
     setPending(null);
     setNewName('');
   }
@@ -69,7 +99,6 @@ export default function SetupGuideEditor({
       });
       const body = await res.json();
       if (!body.ok) throw new Error(body.error || 'Failed to add item');
-      // Merge into the catalog (idempotent add may return an existing item).
       setItems(prev => prev.some(i => i.id === body.item.id) ? prev : [...prev, body.item].sort((a, b) => a.name.localeCompare(b.name)));
       placePinFromItem(body.item);
     } catch (e) {
@@ -79,69 +108,112 @@ export default function SetupGuideEditor({
     }
   }
 
-  function removePin(index: number) {
-    onPinsChange(pins.filter((_, i) => i !== index));
-    setActiveIndex(null);
+  function removePinGlobal(gi: number) {
+    onPinsChange(pins.filter((_, i) => i !== gi));
+    setActiveGlobal(null);
   }
 
   const filtered = newName.trim()
     ? items.filter(i => i.name.toLowerCase().includes(newName.trim().toLowerCase()))
     : items;
   const exactMatch = items.some(i => i.name.toLowerCase() === newName.trim().toLowerCase());
+  const photoNo = (seq: number) => photos.findIndex(p => p.seq === seq) + 1;
 
   return (
     <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-3 space-y-3">
       <p className="text-[11px] text-gray-600 leading-snug">
-        📍 Upload one clear photo of the finished station, then tap the photo to drop a numbered
+        📍 Add one or more photos of the finished station, then tap a photo to drop a numbered
         pin for each item — drag a pin to move it. Staff check off each pin as they set it up.
       </p>
 
-      {!photoUrl ? (
+      {/* Photo strip */}
+      {photos.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {photos.map(p => (
+            <button
+              key={p.seq}
+              type="button"
+              onClick={() => setActiveSeq(p.seq)}
+              className={`relative flex-shrink-0 rounded-lg overflow-hidden border-2 ${
+                p.seq === activeSeq ? 'border-orange-500 ring-2 ring-orange-200' : 'border-gray-200'
+              }`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={p.url} alt={`Photo ${photoNo(p.seq)}`} className="h-14 w-20 object-cover" />
+              <span className="absolute bottom-0.5 left-1 text-[10px] font-bold text-white drop-shadow">
+                {photoNo(p.seq)}
+              </span>
+              {p.pendingBase64 && (
+                <span className="absolute top-0.5 right-1 text-[9px] font-bold text-amber-200 drop-shadow">●</span>
+              )}
+            </button>
+          ))}
+          <label className="flex-shrink-0 h-14 w-20 rounded-lg border-2 border-dashed border-orange-400 bg-white flex items-center justify-center text-orange-600 text-xl font-bold cursor-pointer hover:bg-orange-50">
+            +
+            <input
+              type="file" className="hidden" accept="image/*"
+              onChange={e => { const f = e.target.files?.[0]; if (f) onAddPhoto(f); e.target.value = ''; }}
+            />
+          </label>
+        </div>
+      )}
+
+      {photos.length === 0 ? (
         <label className="flex flex-col items-center justify-center gap-1 px-3 py-6 bg-white border-2 border-dashed border-orange-400 rounded-lg text-xs font-semibold text-orange-700 cursor-pointer hover:bg-orange-100">
           <span className="text-2xl">📷</span>
           Tap to add the reference photo
           <input
-            type="file"
-            className="hidden"
-            accept="image/*"
-            onChange={e => { const f = e.target.files?.[0]; if (f) onPickPhoto(f); e.target.value = ''; }}
+            type="file" className="hidden" accept="image/*"
+            onChange={e => { const f = e.target.files?.[0]; if (f) onAddPhoto(f); e.target.value = ''; }}
           />
         </label>
-      ) : (
+      ) : activePhoto && (
         <div className="space-y-2">
-          {imgError ? (
+          {imgError.has(activePhoto.seq) ? (
             <div className="px-3 py-6 bg-white border border-red-200 rounded-lg text-xs text-red-600 text-center">
-              Couldn&apos;t load the reference photo. Replace it below.
+              Couldn&apos;t load this photo. Replace or remove it below.
             </div>
           ) : (
             <div className="flex justify-center bg-white rounded-lg p-1">
               <PinnableImage
-                src={photoUrl}
-                pins={pins}
+                src={activePhoto.url}
+                pins={activePins.map(p => ({ pin_x: p.pin_x, pin_y: p.pin_y, label: p.name, number: p.gi + 1 }))}
                 mode="edit"
-                activeIndex={activeIndex}
+                activeIndex={activeGlobal !== null ? activePins.findIndex(p => p.gi === activeGlobal) : null}
                 onPlace={(x, y) => { setPending({ x, y }); setNewName(''); }}
-                onPinMove={(i, x, y) => onPinsChange(pins.map((p, idx) => idx === i ? { ...p, pin_x: x, pin_y: y } : p))}
-                onPinClick={(i) => setActiveIndex(a => a === i ? null : i)}
-                onImageError={() => setImgError(true)}
+                onPinMove={(i, x, y) => {
+                  const gi = activePins[i]?.gi;
+                  if (gi === undefined) return;
+                  onPinsChange(pins.map((p, idx) => idx === gi ? { ...p, pin_x: x, pin_y: y } : p));
+                }}
+                onPinClick={(i) => {
+                  const gi = activePins[i]?.gi;
+                  setActiveGlobal(a => a === gi ? null : gi ?? null);
+                }}
+                onImageError={() => setImgError(prev => new Set(prev).add(activePhoto.seq))}
               />
             </div>
           )}
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-gray-500">{pins.length} pin{pins.length === 1 ? '' : 's'} placed</span>
+            <span className="text-[11px] text-gray-500">
+              {photos.length > 1 ? `Photo ${photoNo(activePhoto.seq)} of ${photos.length} · ` : ''}
+              {pins.length} pin{pins.length === 1 ? '' : 's'} total
+            </span>
             <div className="flex items-center gap-3">
               <label className="text-[11px] font-semibold text-orange-600 cursor-pointer hover:text-orange-700">
                 Replace photo
                 <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) { setImgError(false); onPickPhoto(f); } e.target.value = ''; }}
+                  type="file" className="hidden" accept="image/*"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) { setImgError(prev => { const n = new Set(prev); n.delete(activePhoto.seq); return n; }); onReplacePhoto(activePhoto.seq, f); }
+                    e.target.value = '';
+                  }}
                 />
               </label>
               <button
                 type="button"
-                onClick={() => { if (confirm('Remove the reference photo and all pins?')) { setImgError(false); onRemovePhoto(); } }}
+                onClick={() => { if (confirm('Remove this photo and its pins?')) onRemovePhoto(activePhoto.seq); }}
                 className="text-[11px] font-semibold text-red-500 hover:text-red-600"
               >
                 Remove
@@ -151,19 +223,23 @@ export default function SetupGuideEditor({
         </div>
       )}
 
-      {/* Placed-pin list */}
+      {/* Placed-pin list (all photos, global numbering) */}
       {pins.length > 0 && (
         <ul className="space-y-1">
-          {pins.map((p, i) => (
+          {pins.map((p, gi) => (
             <li
-              key={p.id ?? `new-${i}`}
-              onMouseEnter={() => setActiveIndex(i)}
-              onMouseLeave={() => setActiveIndex(null)}
-              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs border ${activeIndex === i ? 'bg-orange-100 border-orange-300' : 'bg-white border-gray-200'}`}
+              key={p.id ?? `new-${gi}`}
+              onMouseEnter={() => setActiveGlobal(gi)}
+              onMouseLeave={() => setActiveGlobal(null)}
+              onClick={() => { if (p.pin_photo_seq !== activeSeq) setActiveSeq(p.pin_photo_seq); }}
+              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs border ${activeGlobal === gi ? 'bg-orange-100 border-orange-300' : 'bg-white border-gray-200'}`}
             >
-              <span className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold flex-shrink-0">{i + 1}</span>
+              <span className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold flex-shrink-0">{gi + 1}</span>
               <span className="flex-1 min-w-0 truncate text-gray-800">{p.name}</span>
-              <button type="button" onClick={() => removePin(i)} className="text-[11px] text-red-500 hover:text-red-600 flex-shrink-0">Remove</button>
+              {photos.length > 1 && (
+                <span className="text-[10px] font-semibold text-gray-400 flex-shrink-0">📷 {photoNo(p.pin_photo_seq)}</span>
+              )}
+              <button type="button" onClick={(e) => { e.stopPropagation(); removePinGlobal(gi); }} className="text-[11px] text-red-500 hover:text-red-600 flex-shrink-0">Remove</button>
             </li>
           ))}
         </ul>

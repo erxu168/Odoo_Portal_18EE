@@ -26,6 +26,8 @@ export interface TaskSubtask {
   /** Setup-guide pin position, fraction of the reference image (0–1). 0/0 when not a pin. */
   pin_x: number;
   pin_y: number;
+  /** Sequence of the setup photo the pin sits on (multi-photo guides). */
+  pin_photo_seq: number;
 }
 
 export interface TaskAttachment {
@@ -61,8 +63,10 @@ export interface TaskListLine {
   note_by_name: string | null;
   /** Setup-guide: this daily line is a visual station-setup guide. */
   is_setup_guide: boolean;
-  /** Whether this line carries its own snapshot reference photo (derived from the filename, no binary fetched). */
+  /** Whether this line carries at least one snapshot reference photo (no binary fetched). */
   has_setup_photo: boolean;
+  /** Sequences of this line's setup photos, display order (multi-photo guides). */
+  setup_photo_seqs: number[];
 }
 
 export interface TaskList {
@@ -129,9 +133,11 @@ export interface TaskTemplateLine {
   subtasks: TemplatePin[];
   attachments: TaskAttachment[];
   recurrence: RecurrenceRule;
-  /** Setup-guide flag + whether a reference photo is present (filename-derived, no binary). */
+  /** Setup-guide flag + whether at least one reference photo is present (no binary). */
   is_setup_guide: boolean;
   has_setup_photo: boolean;
+  /** Sequences of this line's setup photos, display order (multi-photo guides). */
+  setup_photo_seqs: number[];
 }
 
 /** A template subtask. On a setup-guide line it doubles as a pin (pin_x/pin_y in 0–1, optional catalog item). */
@@ -141,6 +147,8 @@ export interface TemplatePin {
   sequence: number;
   pin_x: number;
   pin_y: number;
+  /** Sequence of the setup photo the pin sits on (multi-photo guides). */
+  pin_photo_seq: number;
   item_id: number | null;
   item_name: string | null;
 }
@@ -268,8 +276,28 @@ const LINE_FIELDS = [
 
 const SUBTASK_FIELDS = [
   'id', 'line_id', 'name', 'sequence', 'done', 'toggled_at', 'toggled_by_id',
-  'pin_x', 'pin_y',
+  'pin_x', 'pin_y', 'pin_photo_seq',
 ];
+
+/** Batch-fetch setup-photo sequences for lines (never the image binary).
+ * `parentField` is 'list_line_id' or 'template_line_id'. */
+async function fetchPhotoSeqsByLine(parentField: string, lineIds: number[]): Promise<Map<number, number[]>> {
+  const map = new Map<number, number[]>();
+  if (!lineIds.length) return map;
+  const rows = await getOdoo().searchRead(
+    'krawings.task.setup.photo',
+    [[parentField, 'in', lineIds]],
+    ['id', parentField, 'sequence'],
+    { limit: 1000, order: 'sequence asc' },
+  );
+  for (const r of rows) {
+    const lid = m2oId(r[parentField])!;
+    const arr = map.get(lid) || [];
+    arr.push(r.sequence ?? 0);
+    map.set(lid, arr);
+  }
+  return map;
+}
 
 async function hydrateListRecord(rec: any): Promise<TaskList> {
   const odoo = getOdoo();
@@ -296,10 +324,14 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
       // Preserve coordinate 0 (a valid edge pin) — don't use `|| 0` on a number.
       pin_x: typeof s.pin_x === 'number' ? s.pin_x : 0,
       pin_y: typeof s.pin_y === 'number' ? s.pin_y : 0,
+      pin_photo_seq: typeof s.pin_photo_seq === 'number' ? s.pin_photo_seq : 0,
     });
     subtasksByLine.set(lid, arr);
   }
   Array.from(subtasksByLine.values()).forEach(arr => arr.sort((a, b) => a.sequence - b.sequence));
+
+  // Setup-guide photos: sequences only, batched (bytes come via their own route).
+  const photoSeqsByLine = await fetchPhotoSeqsByLine('list_line_id', lineIds);
 
   // Fetch attachments for all list lines in one batch (combines own + inherited from template).
   const attRaw: any[] = lineIds.length
@@ -335,7 +367,9 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
     note_by_id: m2oId(l.note_by_id),
     note_by_name: l.note_by_name || null,
     is_setup_guide: !!l.is_setup_guide,
-    has_setup_photo: !!l.setup_photo_filename,
+    // Photo rows are canonical; the legacy filename covers un-migrated lines.
+    setup_photo_seqs: photoSeqsByLine.get(l.id) || (l.setup_photo_filename ? [0] : []),
+    has_setup_photo: (photoSeqsByLine.get(l.id) || []).length > 0 || !!l.setup_photo_filename,
   }));
 
   // Sort: opening → mid_day → closing, then sequence
@@ -581,7 +615,7 @@ const TEMPLATE_LINE_FIELDS = [
   'is_setup_guide', 'setup_photo_filename',
 ];
 
-const TEMPLATE_SUBTASK_FIELDS = ['id', 'line_id', 'name', 'sequence', 'pin_x', 'pin_y', 'item_id'];
+const TEMPLATE_SUBTASK_FIELDS = ['id', 'line_id', 'name', 'sequence', 'pin_x', 'pin_y', 'pin_photo_seq', 'item_id'];
 const TEMPLATE_EXCEPTION_FIELDS = ['id', 'line_id', 'date', 'note'];
 
 function dateOrNull(v: any): string | null {
@@ -642,12 +676,16 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
       // Preserve coordinate 0 (a valid edge pin) — don't use `|| 0` on a number.
       pin_x: typeof s.pin_x === 'number' ? s.pin_x : 0,
       pin_y: typeof s.pin_y === 'number' ? s.pin_y : 0,
+      pin_photo_seq: typeof s.pin_photo_seq === 'number' ? s.pin_photo_seq : 0,
       item_id: m2oId(s.item_id),
       item_name: m2oName(s.item_id),
     });
     subByLine.set(lid, arr);
   }
   Array.from(subByLine.values()).forEach(arr => arr.sort((a, b) => a.sequence - b.sequence));
+
+  // Setup-guide photos per template line (sequences only, batched).
+  const tplPhotoSeqs = await fetchPhotoSeqsByLine('template_line_id', lines.map((l: any) => l.id));
 
   // Attachments per template line (single batch call)
   const tplLineIds: number[] = lines.map((l: any) => l.id);
@@ -692,7 +730,8 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     subtasks: subByLine.get(l.id) || [],
     attachments: tplAttsByLine.get(l.id) || [],
     is_setup_guide: !!l.is_setup_guide,
-    has_setup_photo: !!l.setup_photo_filename,
+    setup_photo_seqs: tplPhotoSeqs.get(l.id) || (l.setup_photo_filename ? [0] : []),
+    has_setup_photo: (tplPhotoSeqs.get(l.id) || []).length > 0 || !!l.setup_photo_filename,
     recurrence: {
       type: (l.recurrence_type || 'daily') as RecurrenceType,
       interval: l.recurrence_interval || 1,
@@ -733,7 +772,7 @@ export interface TemplateLineInput {
   photo_required?: boolean;
   photo_instructions?: string | null;
   module_link_type?: ModuleLink;
-  subtasks?: { id?: number; name: string; sequence?: number; pin_x?: number; pin_y?: number; item_id?: number | null }[];
+  subtasks?: { id?: number; name: string; sequence?: number; pin_x?: number; pin_y?: number; pin_photo_seq?: number; item_id?: number | null }[];
   recurrence?: RecurrenceRule;
   is_setup_guide?: boolean;
 }
@@ -816,9 +855,10 @@ export async function upsertTemplateLine(templateId: number, line: TemplateLineI
     if (toDelete.length) await odoo.unlink('krawings.task.template.subtask', toDelete);
     for (const s of line.subtasks) {
       const sVals: any = { line_id: lineId, name: s.name, sequence: s.sequence ?? 10 };
-      // Pins: carry coordinates + optional catalog link when provided (setup guides).
+      // Pins: carry coordinates + photo link + optional catalog link (setup guides).
       if (s.pin_x !== undefined) sVals.pin_x = s.pin_x;
       if (s.pin_y !== undefined) sVals.pin_y = s.pin_y;
+      if (s.pin_photo_seq !== undefined) sVals.pin_photo_seq = s.pin_photo_seq;
       if (s.item_id !== undefined) sVals.item_id = s.item_id || false;
       if (s.id) await odoo.write('krawings.task.template.subtask', [s.id], sVals);
       else await odoo.create('krawings.task.template.subtask', sVals);

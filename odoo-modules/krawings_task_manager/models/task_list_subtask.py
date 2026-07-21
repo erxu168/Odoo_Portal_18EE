@@ -17,6 +17,10 @@ class KrawingsTaskListSubtask(models.Model):
     toggled_by_id = fields.Many2one('hr.employee', readonly=True, ondelete='set null')
 
     # ── Setup-guide pin (copied from the template subtask at spawn) ──────
+    pin_photo_seq = fields.Integer(
+        default=0,
+        help='Sequence of the setup photo this pin sits on (multi-photo guides).',
+    )
     pin_x = fields.Float(help='0.0–1.0, fraction across the reference image.')
     pin_y = fields.Float(help='0.0–1.0, fraction down the reference image.')
 

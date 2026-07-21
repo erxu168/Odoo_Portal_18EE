@@ -48,12 +48,16 @@ class KrawingsTaskListLine(models.Model):
     subtask_ids = fields.One2many('krawings.task.list.subtask', 'line_id')
 
     # ── Setup guide (mise en place) — snapshot copied from the template at spawn.
-    # Each daily line keeps its OWN photo copy (immutable per-day history); the
-    # Odoo filestore checksum-dedupes identical bytes. Kept out of normal
-    # search_read; the portal serves it as raw bytes via its own route.
+    # Each daily line keeps its OWN photo copies (immutable per-day history); the
+    # Odoo filestore checksum-dedupes identical bytes. Photos live on
+    # krawings.task.setup.photo, kept out of normal search_read; the portal
+    # serves bytes via a dedicated route. The single Binary is LEGACY.
     is_setup_guide = fields.Boolean()
-    setup_photo = fields.Binary(attachment=True)
-    setup_photo_filename = fields.Char()
+    setup_photo = fields.Binary(attachment=True)         # legacy, no longer written
+    setup_photo_filename = fields.Char()                 # legacy, no longer written
+    setup_photo_ids = fields.One2many(
+        'krawings.task.setup.photo', 'list_line_id',
+    )
 
     photo_uploaded = fields.Boolean(compute='_compute_photo_uploaded', store=False)
     state = fields.Selection([
@@ -153,13 +157,18 @@ class KrawingsTaskListLine(models.Model):
 
     @api.model
     def get_setup_photo(self, line_id, allowed_company_ids=None):
-        """Return {filename, mimetype, data_base64} for this daily line's OWN
-        snapshot photo, or False. The portal serves this as raw image bytes.
-
-        `allowed_company_ids` scopes access to the line's company — closes the
-        IDOR where any authenticated user could fetch any line id's photo."""
+        """LEGACY single-photo read for this daily line: serves the first photo
+        row (company-scoped), falling back to the pre-multi-photo Binary for
+        un-migrated rows. Multi-photo reads go through
+        krawings.task.setup.photo.get_photo('list', line_id, seq)."""
         rec = self.sudo().browse(int(line_id))
-        if not rec.exists() or not rec.setup_photo:
+        if not rec.exists():
+            return False
+        first = rec.setup_photo_ids.sorted('sequence')[:1]
+        if first:
+            return self.env['krawings.task.setup.photo'].get_photo(
+                'list', rec.id, first.sequence, allowed_company_ids)
+        if not rec.setup_photo:
             return False
         if allowed_company_ids:
             company_id = rec.list_id.company_id.id

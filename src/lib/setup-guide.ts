@@ -92,3 +92,38 @@ export async function getListLineSetupPhoto(
   );
   return r || null;
 }
+
+// ── Multi-photo (photos linked to pins by stable sequence) ────
+
+/** One specific photo of a template ('template') or daily ('list') line, company-scoped. */
+export async function getSetupPhotoBySeq(
+  kind: 'template' | 'list',
+  lineId: number,
+  seq: number,
+  allowedCompanyIds: number[] = [],
+): Promise<SetupPhotoBytes | null> {
+  const r: any = await getOdoo().call(
+    'krawings.task.setup.photo', 'get_photo', [kind, lineId, seq, allowedCompanyIds],
+  );
+  return r || null;
+}
+
+/** Append a photo (seq omitted) or replace the photo at `seq`. Returns the photo's sequence. */
+export async function addTemplateLinePhoto(
+  templateLineId: number,
+  base64: string,
+  filename: string,
+  seq?: number,
+): Promise<number> {
+  return getOdoo().call(
+    'krawings.task.template.line', 'add_setup_photo',
+    [[templateLineId], base64, filename, seq ?? null],
+  );
+}
+
+/** Delete one photo (and any pins still on it, server-side orphan safety). */
+export async function removeTemplateLinePhoto(templateLineId: number, seq: number): Promise<void> {
+  await getOdoo().call(
+    'krawings.task.template.line', 'remove_setup_photo', [[templateLineId], seq],
+  );
+}

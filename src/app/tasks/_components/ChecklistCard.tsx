@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { TaskList, TaskListLine, DayPart, SubtaskToggleResult } from '@/lib/odoo-tasks';
-import TaskRow, { setupPhotoUrl } from './TaskRow';
+import TaskRow, { setupPhotoUrlFor } from './TaskRow';
 import SetupGuideView from './SetupGuideView';
 
 interface Props {
@@ -166,7 +166,7 @@ function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, 
                         {task.is_setup_guide && (
                           <SetupGuideView
                             task={task}
-                            photoUrl={setupPhotoUrl(task)}
+                            photoUrlFor={setupPhotoUrlFor(task)}
                             onSubtaskToggle={onSubtaskToggle}
                             onReload={onReload}
                             readOnly={readOnly}

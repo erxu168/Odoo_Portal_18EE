@@ -50,15 +50,14 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-/** Resolve the setup-guide photo URL. Real daily lines serve their own snapshot;
- * manager-preview lines use synthetic negative ids, so they read the TEMPLATE
- * line's photo (via source_template_line_id) instead of a nonexistent daily one. */
-export function setupPhotoUrl(task: TaskListLine): string | null {
-  if (!task.has_setup_photo) return null;
+/** Per-photo URL builder for a setup guide. Real daily lines serve their own
+ * snapshots; manager-preview lines use synthetic negative ids, so they read the
+ * TEMPLATE line's photos (via source_template_line_id) instead. */
+export function setupPhotoUrlFor(task: TaskListLine): (seq: number) => string {
   if (task.id < 0 && task.source_template_line_id) {
-    return `/api/tasks/template-lines/${task.source_template_line_id}/setup-photo`;
+    return (seq) => `/api/tasks/template-lines/${task.source_template_line_id}/setup-photo?seq=${seq}`;
   }
-  return `/api/tasks/lines/${task.id}/setup-photo`;
+  return (seq) => `/api/tasks/lines/${task.id}/setup-photo?seq=${seq}`;
 }
 
 export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false }: Props) {
@@ -104,7 +103,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         )}
         <SetupGuideView
           task={task}
-          photoUrl={setupPhotoUrl(task)}
+          photoUrlFor={setupPhotoUrlFor(task)}
           onSubtaskToggle={onSubtaskToggle}
           onReload={onReload}
           readOnly={readOnly}

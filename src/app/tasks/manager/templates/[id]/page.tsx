@@ -9,7 +9,7 @@ import { useCompany } from '@/lib/company-context';
 import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import RecurrenceEditor from '../../../_components/RecurrenceEditor';
-import SetupGuideEditor, { type GuidePin } from '../../../_components/SetupGuideEditor';
+import SetupGuideEditor, { type GuidePin, type EditorPhoto } from '../../../_components/SetupGuideEditor';
 import { compressImage } from '../../../_components/photoUpload';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
@@ -120,6 +120,7 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
       module_link_type: tl.module_link_type,
       is_setup_guide: tl.is_setup_guide,
       has_setup_photo: tl.has_setup_photo,
+      setup_photo_seqs: tl.setup_photo_seqs,
       state: 'pending',
       completed_at: null,
       completed_by_id: null,
@@ -135,6 +136,7 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
         toggled_by_id: null,
         pin_x: s.pin_x,
         pin_y: s.pin_y,
+        pin_photo_seq: s.pin_photo_seq,
       })),
       attachments: tl.attachments,
       note: null,
@@ -492,9 +494,9 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
   const [photoRequired, setPhotoReq]  = useState(line?.photo_required ?? false);
   const [photoInstructions, setPhotoInstr] = useState(line?.photo_instructions ?? '');
   const [moduleLink, setModuleLink]   = useState<ModuleLink>(line?.module_link_type ?? 'none');
-  // One subtask array carries both plain subtasks and setup-guide pins (pin_x/pin_y/item_id).
+  // One subtask array carries both plain subtasks and setup-guide pins (pin_x/pin_y/photo/item).
   const [subtasks, setSubtasks]       = useState<GuidePin[]>(
-    line?.subtasks.map(s => ({ id: s.id, name: s.name, pin_x: s.pin_x, pin_y: s.pin_y, item_id: s.item_id })) ?? [],
+    line?.subtasks.map(s => ({ id: s.id, name: s.name, pin_x: s.pin_x, pin_y: s.pin_y, pin_photo_seq: s.pin_photo_seq, item_id: s.item_id })) ?? [],
   );
   const [recurrence, setRecurrence]   = useState<RecurrenceRule>(line?.recurrence ?? defaultRecurrence());
   const [attachments, setAttachments] = useState<TaskAttachment[]>(line?.attachments ?? []);
@@ -503,33 +505,53 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
 
-  // ── Setup guide ─────────────────────────────────────────────
+  // ── Setup guide (multi-photo) ───────────────────────────────
+  // `photos` mixes server photos (URL route) and pending uploads (data URL,
+  // uploaded on save with their client-assigned seq). Removed server photos are
+  // collected and DELETEd on save.
   const [isSetupGuide, setIsSetupGuide] = useState(line?.is_setup_guide ?? false);
-  // Preview src: a freshly-picked local image, else the server-served template photo (if any).
-  const [pendingPhoto, setPendingPhoto] = useState<{ base64: string; filename: string; dataUrl: string } | null>(null);
-  const [hasExistingPhoto, setHasExistingPhoto] = useState(line?.has_setup_photo ?? false);
-  const photoUrl = pendingPhoto
-    ? pendingPhoto.dataUrl
-    : (hasExistingPhoto && line?.id ? `/api/tasks/templates/${tplId}/lines/${line.id}/setup-photo` : null);
+  const [photos, setPhotos] = useState<EditorPhoto[]>(
+    (line?.setup_photo_seqs ?? []).map(seq => ({
+      seq,
+      url: `/api/tasks/templates/${tplId}/lines/${line!.id}/setup-photo?seq=${seq}`,
+    })),
+  );
+  const [removedSeqs, setRemovedSeqs] = useState<number[]>([]);
 
-  async function pickSetupPhoto(file: File) {
+  function nextSeq(): number {
+    const used = [...photos.map(p => p.seq), ...removedSeqs];
+    return used.length ? Math.max(...used) + 1 : 0;
+  }
+
+  async function addSetupPhoto(file: File) {
     try {
-      const { base64, filename } = await compressImage(file, 1280, 0.85);
-      // Replacing the image invalidates old pin coordinates.
-      if ((pendingPhoto || hasExistingPhoto) && subtasks.length > 0) {
-        if (!confirm('Replacing the photo clears the pins you already placed. Continue?')) return;
-        setSubtasks([]);
-      }
-      setPendingPhoto({ base64, filename, dataUrl: `data:image/jpeg;base64,${base64}` });
+      const { base64 } = await compressImage(file, 1280, 0.85);
+      setPhotos(prev => [...prev, { seq: nextSeq(), url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64 }]);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Could not read image');
     }
   }
 
-  function removeSetupPhoto() {
-    setPendingPhoto(null);
-    setHasExistingPhoto(false);
-    setSubtasks([]);
+  async function replaceSetupPhoto(seq: number, file: File) {
+    const hasPins = subtasks.some(s => s.pin_photo_seq === seq);
+    if (hasPins && !confirm('Replacing this photo clears the pins placed on it. Continue?')) return;
+    try {
+      const { base64 } = await compressImage(file, 1280, 0.85);
+      if (hasPins) setSubtasks(prev => prev.filter(s => s.pin_photo_seq !== seq));
+      setPhotos(prev => prev.map(p => p.seq === seq
+        ? { seq, url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64 }
+        : p));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Could not read image');
+    }
+  }
+
+  function removeSetupPhoto(seq: number) {
+    const target = photos.find(p => p.seq === seq);
+    if (!target) return;
+    setPhotos(prev => prev.filter(p => p.seq !== seq));
+    setSubtasks(prev => prev.filter(s => s.pin_photo_seq !== seq));
+    if (!target.pendingBase64) setRemovedSeqs(prev => [...prev, seq]);
   }
 
   async function uploadAttachment(file: File) {
@@ -576,9 +598,9 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
   async function submit() {
     if (!name.trim()) { setError('Name required'); return; }
     const cleanSubtasks = subtasks.filter(s => s.name.trim());
-    // A setup guide needs exactly one photo and at least one pin.
+    // A setup guide needs at least one photo and at least one pin.
     if (isSetupGuide) {
-      if (!pendingPhoto && !hasExistingPhoto) { setError('Add a reference photo for the setup guide'); return; }
+      if (photos.length === 0) { setError('Add at least one reference photo for the setup guide'); return; }
       if (cleanSubtasks.length === 0) { setError('Add at least one pin to the setup guide'); return; }
     }
     setSubmitting(true); setError(null);
@@ -602,8 +624,8 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
             id: s.id,
             name: s.name.trim(),
             sequence: (i + 1) * 10,
-            // Carry pin coordinates + catalog link only for guides.
-            ...(isSetupGuide ? { pin_x: s.pin_x, pin_y: s.pin_y, item_id: s.item_id ?? null } : {}),
+            // Carry pin coordinates + photo link + catalog link only for guides.
+            ...(isSetupGuide ? { pin_x: s.pin_x, pin_y: s.pin_y, pin_photo_seq: s.pin_photo_seq, item_id: s.item_id ?? null } : {}),
           })),
           recurrence,
         }),
@@ -611,30 +633,46 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
       const body = await res.json();
       if (!body.ok) throw new Error(body.error || 'Failed');
 
-      // Resolve the line id for attachment uploads. PATCH doesn't return the id,
-      // but we already have it on `line.id`. POST returns body.line_id for new lines.
+      // Resolve the line id for photo/attachment uploads. PATCH doesn't return the
+      // id, but we already have it on `line.id`. POST returns body.line_id.
       const lineId: number | undefined = line?.id ?? body.line_id;
 
-      // Upload the setup-guide reference photo once the line exists.
-      if (isSetupGuide && pendingPhoto && lineId) {
-        const upRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/setup-photo`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data_base64: pendingPhoto.base64, clear_pins: false }),
-        });
-        const upBody = await upRes.json().catch(() => ({}));
-        if (!upBody.ok) throw new Error(upBody.error || 'Task saved, but the photo upload failed — reopen to retry.');
+      // Upload every pending photo with its client-assigned seq (pins reference it).
+      if (isSetupGuide && lineId) {
+        for (const p of photos) {
+          if (!p.pendingBase64) continue;
+          const upRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/setup-photo`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data_base64: p.pendingBase64, seq: p.seq }),
+          });
+          const upBody = await upRes.json().catch(() => ({}));
+          if (!upRes.ok || !upBody.ok) {
+            throw new Error(upBody.error || 'Task saved, but a photo upload failed — reopen to retry.');
+          }
+        }
       }
 
       let photoCleanupFailed = false;
-      if (!(isSetupGuide && pendingPhoto) && line?.id && line.has_setup_photo
-          && (!isSetupGuide || (!pendingPhoto && !hasExistingPhoto))) {
-        // Guide turned off, or its photo was removed — delete the now-orphaned binary server-side.
-        try {
-          const delRes = await fetch(`/api/tasks/templates/${tplId}/lines/${line.id}/setup-photo?clear_pins=1`, { method: 'DELETE' });
-          const delBody = await delRes.json().catch(() => ({}));
-          photoCleanupFailed = !delRes.ok || !delBody.ok;
-        } catch { photoCleanupFailed = true; }
+      if (lineId) {
+        // Individual photos the manager removed (server photos only).
+        for (const seq of removedSeqs) {
+          try {
+            const delRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/setup-photo?seq=${seq}`, { method: 'DELETE' });
+            const delBody = await delRes.json().catch(() => ({}));
+            if (!delRes.ok || !delBody.ok) photoCleanupFailed = true;
+          } catch { photoCleanupFailed = true; }
+        }
+        // Guide turned off entirely — clear all photos. Do NOT clear pins: the
+        // upsert above already saved the subtasks the manager kept (now plain
+        // subtasks); their stale pin coords are ignored while the flag is off.
+        if (!isSetupGuide && line?.has_setup_photo) {
+          try {
+            const delRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/setup-photo`, { method: 'DELETE' });
+            const delBody = await delRes.json().catch(() => ({}));
+            if (!delRes.ok || !delBody.ok) photoCleanupFailed = true;
+          } catch { photoCleanupFailed = true; }
+        }
       }
 
       let uploadedCount = 0;
@@ -744,8 +782,9 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
               departmentId={departmentId}
               pins={subtasks}
               onPinsChange={setSubtasks}
-              photoUrl={photoUrl}
-              onPickPhoto={pickSetupPhoto}
+              photos={photos}
+              onAddPhoto={addSetupPhoto}
+              onReplacePhoto={replaceSetupPhoto}
               onRemovePhoto={removeSetupPhoto}
             />
           ) : (
@@ -761,7 +800,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
                       className="text-xs text-red-500 hover:text-red-600 px-2">Remove</button>
                   </div>
                 ))}
-                <button onClick={() => setSubtasks(prev => [...prev, { name: '', pin_x: 0, pin_y: 0 }])}
+                <button onClick={() => setSubtasks(prev => [...prev, { name: '', pin_x: 0, pin_y: 0, pin_photo_seq: 0 }])}
                   className="text-xs font-semibold text-orange-600 hover:text-orange-700">
                   + Add subtask
                 </button>

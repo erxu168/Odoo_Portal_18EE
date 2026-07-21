@@ -161,14 +161,23 @@ class KrawingsTaskTemplate(models.Model):
                     'is_ad_hoc': False,
                     'source_template_line_id': tline.id,
                     # Setup-guide snapshot (D4): each daily line keeps its own copy
-                    # of the reference photo + the pins; the filestore dedupes bytes.
+                    # of every reference photo + the pins; photo sequences are
+                    # preserved so pin_photo_seq needs no remapping. The
+                    # filestore checksum-dedupes identical photo bytes.
                     'is_setup_guide': tline.is_setup_guide,
-                    'setup_photo': tline.setup_photo,
-                    'setup_photo_filename': tline.setup_photo_filename or False,
+                    'setup_photo_ids': [
+                        (0, 0, {
+                            'sequence': p.sequence,
+                            'image': p.image,
+                            'filename': p.filename or False,
+                        })
+                        for p in tline.setup_photo_ids
+                    ],
                     'subtask_ids': [
                         (0, 0, {
                             'name': st.name,
                             'sequence': st.sequence,
+                            'pin_photo_seq': st.pin_photo_seq,
                             'pin_x': st.pin_x,
                             'pin_y': st.pin_y,
                         })

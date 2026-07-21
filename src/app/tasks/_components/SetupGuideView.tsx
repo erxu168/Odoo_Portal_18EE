@@ -6,7 +6,8 @@ import PinnableImage from '@/components/ui/PinnableImage';
 
 interface Props {
   task: TaskListLine;
-  photoUrl: string | null;
+  /** URL for one of the line's setup photos (multi-photo guides pass each seq). */
+  photoUrlFor: (seq: number) => string;
   onSubtaskToggle: (lineId: number, subtaskId: number, done: boolean) => Promise<SubtaskToggleResult | void>;
   /** Called when the guide's completion state flips, so the parent can refresh the list. */
   onReload?: () => Promise<void> | void;
@@ -16,13 +17,14 @@ interface Props {
 }
 
 /**
- * Staff view of a setup guide: the annotated reference photo + a numbered
- * check-off list. Ticking every pin auto-completes the task server-side;
- * unchecking a pin on a completed guide reopens it. Both transitions trigger a
- * parent reload so the row moves between the active and completed sections.
+ * Staff view of a setup guide: the annotated reference photo(s) + one numbered
+ * check-off list. Pin numbers are GLOBAL across photos. Ticking every pin
+ * auto-completes the task server-side; unchecking a pin on a completed guide
+ * reopens it. Both transitions trigger a parent reload so the row moves
+ * between the active and completed sections.
  */
 export default function SetupGuideView({
-  task, photoUrl, onSubtaskToggle, onReload, readOnly = false, defaultCollapsed = false,
+  task, photoUrlFor, onSubtaskToggle, onReload, readOnly = false, defaultCollapsed = false,
 }: Props) {
   const [subtasks, setSubtasks] = useState<TaskSubtask[]>(
     [...task.subtasks].sort((a, b) => a.sequence - b.sequence || a.id - b.id),
@@ -30,7 +32,7 @@ export default function SetupGuideView({
   const [busy, setBusy] = useState<Set<number>>(new Set());
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const [imgError, setImgError] = useState(false);
+  const [imgError, setImgError] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   const wasCompleted = task.state === 'done';
@@ -56,7 +58,9 @@ export default function SetupGuideView({
     }
   }
 
-  const pins = subtasks.map(s => ({ pin_x: s.pin_x, pin_y: s.pin_y, label: s.name, done: s.done }));
+  // Photos in display order; pins keep their GLOBAL index for numbering.
+  const photoSeqs = task.setup_photo_seqs || [];
+  const photoNo = (seq: number) => photoSeqs.indexOf(seq) + 1;
 
   return (
     <div className="mt-1">
@@ -72,18 +76,35 @@ export default function SetupGuideView({
 
       {!collapsed && (
         <div className="mt-2 space-y-2">
-          {photoUrl && !imgError && (
-            <div className="flex justify-center bg-gray-50 rounded-lg p-1">
-              <PinnableImage
-                src={photoUrl}
-                pins={pins}
-                mode="view"
-                activeIndex={activeIndex}
-                onPinClick={(i) => setActiveIndex(a => a === i ? null : i)}
-                onImageError={() => setImgError(true)}
-              />
-            </div>
-          )}
+          {photoSeqs.filter(seq => !imgError.has(seq)).map(seq => {
+            const photoPins = subtasks
+              .map((s, gi) => ({ s, gi }))
+              .filter(({ s }) => (s.pin_photo_seq ?? 0) === seq);
+            return (
+              <div key={seq}>
+                {photoSeqs.length > 1 && (
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">
+                    📷 Photo {photoNo(seq)} of {photoSeqs.length}
+                  </p>
+                )}
+                <div className="flex justify-center bg-gray-50 rounded-lg p-1">
+                  <PinnableImage
+                    src={photoUrlFor(seq)}
+                    pins={photoPins.map(({ s, gi }) => ({
+                      pin_x: s.pin_x, pin_y: s.pin_y, label: s.name, done: s.done, number: gi + 1,
+                    }))}
+                    mode="view"
+                    activeIndex={activeIndex !== null ? photoPins.findIndex(p => p.gi === activeIndex) : null}
+                    onPinClick={(i) => {
+                      const gi = photoPins[i]?.gi;
+                      setActiveIndex(a => a === gi ? null : gi ?? null);
+                    }}
+                    onImageError={() => setImgError(prev => new Set(prev).add(seq))}
+                  />
+                </div>
+              </div>
+            );
+          })}
 
           <div className="flex items-center justify-between px-0.5">
             <p className={`text-xs font-semibold ${allDone ? 'text-green-600' : 'text-gray-500'}`}>

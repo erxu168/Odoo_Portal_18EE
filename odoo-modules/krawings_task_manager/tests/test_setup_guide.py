@@ -54,15 +54,14 @@ class TestSetupGuide(TransactionCase):
             'name': 'Set up sauce station',
             'day_part': 'opening',
             'is_setup_guide': True,
-            'setup_photo': TINY_JPEG,
-            'setup_photo_filename': 'station.jpg',
         })
+        cls.tline.add_setup_photo(TINY_JPEG, 'station.jpg')       # → seq 0
         cls.item_board = cls.Item.add_for_department(cls.dept.id, 'Cutting board')
         cls.env['krawings.task.template.subtask'].create([
             {'line_id': cls.tline.id, 'name': 'Cutting board', 'sequence': 10,
-             'pin_x': 0.25, 'pin_y': 0.4, 'item_id': cls.item_board['id']},
+             'pin_x': 0.25, 'pin_y': 0.4, 'pin_photo_seq': 0, 'item_id': cls.item_board['id']},
             {'line_id': cls.tline.id, 'name': 'Sauce bottles', 'sequence': 20,
-             'pin_x': 0.75, 'pin_y': 0.55},
+             'pin_x': 0.75, 'pin_y': 0.55, 'pin_photo_seq': 0},
         ])
 
     def _spawn_today(self):
@@ -81,16 +80,55 @@ class TestSetupGuide(TransactionCase):
     def test_spawn_copies_flag_photo_and_pins(self):
         line = self._guide_line(self._spawn_today())
         self.assertTrue(line.is_setup_guide)
-        self.assertEqual(line.setup_photo_filename, 'station.jpg')
-        self.assertEqual(line.setup_photo, self.tline.setup_photo,
+        photos = line.setup_photo_ids
+        self.assertEqual(len(photos), 1)
+        self.assertEqual(photos.sequence, 0)
+        self.assertEqual(photos.filename, 'station.jpg')
+        self.assertEqual(photos.image, self.tline.setup_photo_ids.image,
                          'daily line must carry its own snapshot of the photo')
         pins = line.subtask_ids.sorted('sequence')
         self.assertEqual(len(pins), 2)
         self.assertAlmostEqual(pins[0].pin_x, 0.25)
         self.assertAlmostEqual(pins[1].pin_y, 0.55)
-        # Editing the template photo later must NOT touch the spawned snapshot.
-        self.tline.set_setup_photo(TINY_JPEG, 'new.jpg', clear_pins=False)
-        self.assertEqual(line.setup_photo_filename, 'station.jpg')
+        self.assertEqual(set(pins.mapped('pin_photo_seq')), {0})
+        # Replacing the template photo later must NOT touch the spawned snapshot.
+        self.tline.add_setup_photo(TINY_JPEG, 'new.jpg', seq=0)
+        self.assertEqual(line.setup_photo_ids.filename, 'station.jpg')
+
+    def test_multi_photo_spawn_and_removal(self):
+        # Second photo + a pin on it.
+        seq = self.tline.add_setup_photo(TINY_JPEG, 'shelf.jpg')
+        self.assertEqual(seq, 1)
+        self.env['krawings.task.template.subtask'].create({
+            'line_id': self.tline.id, 'name': 'Labels', 'sequence': 30,
+            'pin_x': 0.5, 'pin_y': 0.5, 'pin_photo_seq': 1,
+        })
+        line = self._guide_line(self._spawn_today())
+        self.assertEqual(line.setup_photo_ids.mapped('sequence'), [0, 1],
+                         'spawn must copy every photo with its sequence')
+        self.assertEqual(
+            line.subtask_ids.filtered(lambda s: s.pin_photo_seq == 1).mapped('name'),
+            ['Labels'])
+        # Per-seq portal read works on the daily copy.
+        served = self.env['krawings.task.setup.photo'].get_photo(
+            'list', line.id, 1, [self.company.id])
+        self.assertEqual(served['filename'], 'shelf.jpg')
+        # Removing template photo 1 drops it and ONLY its pin.
+        self.tline.remove_setup_photo(1)
+        self.assertEqual(self.tline.setup_photo_ids.mapped('sequence'), [0])
+        self.assertEqual(len(self.tline.subtask_ids), 2)
+        self.assertFalse(self.tline.subtask_ids.filtered(lambda s: s.pin_photo_seq == 1))
+
+    def test_legacy_set_setup_photo_writes_photo_row(self):
+        tline2 = self.env['krawings.task.template.line'].create({
+            'template_id': self.tpl.id, 'name': 'Legacy guide',
+            'day_part': 'opening', 'is_setup_guide': True,
+        })
+        tline2.set_setup_photo(TINY_JPEG, 'legacy.jpg')
+        self.assertEqual(tline2.setup_photo_ids.mapped('sequence'), [0])
+        served = self.env['krawings.task.template.line'].get_setup_photo(
+            tline2.id, [self.company.id])
+        self.assertEqual(served['filename'], 'legacy.jpg')
 
     def test_pin_bounds_validated(self):
         with self.assertRaises(ValidationError):
@@ -166,10 +204,11 @@ class TestSetupGuide(TransactionCase):
 
     def test_setup_photo_is_not_a_proof_photo(self):
         line = self._guide_line(self._spawn_today())
+        self.assertTrue(line.setup_photo_ids, 'guide line must carry its snapshot photos')
         self.assertFalse(line.photo_uploaded,
-                         'the field-backed setup photo must not satisfy photo_required')
+                         'setup photos must not satisfy photo_required')
         atts = self.ListLine.list_attachments([line.id])
-        self.assertFalse(atts, 'setup photo must not appear in the generic attachment list')
+        self.assertFalse(atts, 'setup photos must not appear in the generic attachment list')
 
     def test_photo_required_guide_completes_on_proof_via_resync(self):
         line = self._guide_line(self._spawn_today())
@@ -183,13 +222,17 @@ class TestSetupGuide(TransactionCase):
 
     def test_setup_photo_not_served_via_generic_attachment_fetch(self):
         line = self._guide_line(self._spawn_today())
+        # The photo binary lives on krawings.task.setup.photo (attachment=True).
+        # NB: ir.attachment search silently excludes field-backed rows unless
+        # res_field is referenced in the domain.
         att = self.env['ir.attachment'].sudo().search([
-            ('res_model', '=', 'krawings.task.list.line'),
-            ('res_id', '=', line.id),
-            ('res_field', '=', 'setup_photo'),
+            ('res_model', '=', 'krawings.task.setup.photo'),
+            ('res_id', 'in', line.setup_photo_ids.ids),
+            ('res_field', '=', 'image'),
         ], limit=1)
         self.assertTrue(att, 'binary attachment=True must store an ir.attachment')
-        self.assertFalse(self.ListLine.get_attachment_data(att.id))
+        self.assertFalse(self.ListLine.get_attachment_data(att.id),
+                         'generic fetch must reject setup-photo attachments (foreign res_model)')
 
     def test_get_setup_photo_company_scoped(self):
         line = self._guide_line(self._spawn_today())
