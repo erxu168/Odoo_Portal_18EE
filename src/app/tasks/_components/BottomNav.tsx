@@ -17,7 +17,7 @@ export default function BottomNav() {
         return (
           <Link key={item.href} href={item.href} className="flex-1 flex flex-col items-center py-2 gap-0.5">
             <span className="text-lg">{item.icon}</span>
-            <span className={`text-[10.5px] font-semibold ${active ? 'text-orange-500' : 'text-gray-400'}`}>{item.label}</span>
+            <span className={`text-[10.5px] font-semibold ${active ? 'text-green-600' : 'text-gray-400'}`}>{item.label}</span>
           </Link>
         );
       })}

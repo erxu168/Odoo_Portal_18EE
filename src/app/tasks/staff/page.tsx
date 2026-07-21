@@ -9,6 +9,8 @@ import { uploadTaskPhoto } from '../_components/photoUpload';
 import NotificationsToggle from '../_components/NotificationsToggle';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../_components/useToast';
+import AppHeader from '@/components/ui/AppHeader';
+import { KpiRow, KpiChip } from '@/components/ui/KpiChip';
 
 interface TodayResponse {
   context: EmployeeContext | null;
@@ -177,22 +179,27 @@ export default function StaffPage() {
   const todayLabel = mounted
     ? new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })
     : '';
-  const greeting   = mounted
-    ? (() => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; })()
-    : '';
   const list = data?.list ?? null;
   const ctx  = data?.context ?? null;
   const showManagerControls = isManagerOrAdmin && !!ctx?.department_id;
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50 max-w-[430px] mx-auto">
-      <div className="bg-orange-500 px-5 pt-5 pb-4 flex-shrink-0">
-        <p className="text-orange-100 text-xs font-medium">{todayLabel}</p>
-        <p className="text-white text-lg font-bold mt-0.5">{greeting} 👋</p>
-        {ctx?.department_name && (
-          <p className="text-orange-100 text-sm mt-0.5">{ctx.department_name}</p>
-        )}
-      </div>
+      <AppHeader
+        supertitle={ctx?.department_name ? ctx.department_name.toUpperCase() : 'TASKS'}
+        title={isToday ? "Today's checklist" : `Checklist · ${date}`}
+        subtitle={todayLabel}
+      />
+
+      {list && list.line_count > 0 && (
+        <div className="px-4 pt-4">
+          <KpiRow columns={3}>
+            <KpiChip value={list.completed_count} label="Done" />
+            <KpiChip value={Math.max(0, list.line_count - list.completed_count)} label="Left" />
+            <KpiChip value={list.overdue_count ?? 0} label="Overdue" tone={(list.overdue_count ?? 0) > 0 ? 'danger' : 'default'} />
+          </KpiRow>
+        </div>
+      )}
 
       {showManagerControls && (
         <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-2">
@@ -200,12 +207,12 @@ export default function StaffPage() {
             type="date"
             value={date}
             onChange={e => setDate(e.target.value)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 flex-1 min-w-0"
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 flex-1 min-w-0"
           />
           {!isToday && (
             <button
               onClick={() => setDate(today)}
-              className="text-xs font-semibold text-orange-600 hover:text-orange-700 px-2 flex-shrink-0"
+              className="text-xs font-semibold text-green-700 hover:text-green-800 px-2 flex-shrink-0"
             >
               Today
             </button>
@@ -214,7 +221,7 @@ export default function StaffPage() {
             <button
               onClick={() => setShowAdd(true)}
               disabled={!ctx?.department_id}
-              className="bg-orange-500 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-orange-600 disabled:opacity-50 flex-shrink-0"
+              className="bg-green-600 text-white text-sm font-semibold px-3 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 flex-shrink-0"
             >
               + Add
             </button>
@@ -258,7 +265,7 @@ export default function StaffPage() {
               <button
                 onClick={handleCreateList}
                 disabled={creating}
-                className="mt-4 bg-orange-500 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                className="mt-4 bg-green-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 {creating ? 'Creating…' : `Create list for ${date}`}
               </button>
@@ -272,7 +279,7 @@ export default function StaffPage() {
             {showManagerControls && !isPast && (
               <button
                 onClick={() => setShowAdd(true)}
-                className="mt-4 bg-orange-500 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-orange-600"
+                className="mt-4 bg-green-600 text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-green-700"
               >
                 + Add first task
               </button>

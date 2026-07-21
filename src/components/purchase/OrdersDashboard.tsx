@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import SortableTileGrid from '@/components/ui/SortableTileGrid';
+import { KpiRow, KpiChip } from '@/components/ui/KpiChip';
+import { ActionGrid, ActionCard } from '@/components/ui/ActionCard';
+import { ChevronRightIcon } from '@/components/ui/ChromeIcons';
 
 // ─────────────────────────────────────────────
-// OrdersDashboard — 2×2 tile grid for Purchase landing
-// Replaces horizontal tab bar (Order | Cart | Receive | History)
+// OrdersDashboard — Purchase landing (design standard: KPI chips + white cards)
 // ─────────────────────────────────────────────
 
 type Tab = 'order' | 'cart' | 'receive' | 'history';
@@ -20,73 +21,12 @@ interface OrdersDashboardProps {
   locationId: number;
 }
 
-const TemplatesIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
-    <rect x="9" y="3" width="6" height="4" rx="1" />
-    <line x1="9" y1="12" x2="15" y2="12" />
-    <line x1="9" y1="16" x2="13" y2="16" />
-  </svg>
-);
-
-const ApprovalIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 11l3 3L22 4" />
-    <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-  </svg>
-);
-
-const ChevronRight = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="9 18 15 12 9 6" />
-  </svg>
-);
-
-// SVG icons — inline for zero dependencies
-const PlaceOrderIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-    <polyline points="14 2 14 8 20 8" />
-    <line x1="12" y1="18" x2="12" y2="12" />
-    <line x1="9" y1="15" x2="15" y2="15" />
-  </svg>
-);
-
-const CartIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="9" cy="21" r="1" />
-    <circle cx="20" cy="21" r="1" />
-    <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" />
-  </svg>
-);
-
-const ReceiveIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
-    <polyline points="7.5 4.21 12 6.81 16.5 4.21" />
-    <polyline points="7.5 19.79 7.5 14.6 3 12" />
-    <polyline points="21 12 16.5 14.6 16.5 19.79" />
-    <line x1="12" y1="22.08" x2="12" y2="12" />
-  </svg>
-);
-
-const HistoryIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <polyline points="12 6 12 12 16 14" />
-  </svg>
-);
-
 interface TileConfig {
   id: Tab;
   label: string;
   sublabel: string;
-  icon: React.ReactNode;
-  badgeCount: number;
-  badgeColor: string;
-  color: string;
-  iconBg: string;
-  iconColor: string;
+  emoji: string;
+  badge: number;
 }
 
 export default function OrdersDashboard({
@@ -109,66 +49,38 @@ export default function OrdersDashboard({
   }, []);
 
   const tiles: TileConfig[] = [
-    {
-      id: 'order',
-      label: 'Place Order',
-      sublabel: 'Browse suppliers',
-      icon: <PlaceOrderIcon />,
-      badgeCount: 0,
-      badgeColor: '',
-      color: 'bg-orange-50 border-orange-200', iconBg: 'bg-orange-100', iconColor: 'text-[#F5800A]',
-    },
-    {
-      id: 'cart',
-      label: 'Cart',
-      sublabel: cartItemCount > 0 ? `${cartItemCount} items` : 'No items yet',
-      icon: <CartIcon />,
-      badgeCount: cartItemCount,
-      badgeColor: 'bg-green-600',
-      color: 'bg-green-50 border-green-200', iconBg: 'bg-green-100', iconColor: 'text-green-600',
-    },
-    {
-      id: 'receive',
-      label: 'Receive',
-      sublabel: pendingDeliveryCount > 0 ? `${pendingDeliveryCount} pending` : 'No deliveries',
-      icon: <ReceiveIcon />,
-      badgeCount: pendingDeliveryCount,
-      badgeColor: 'bg-blue-500',
-      color: 'bg-amber-50 border-amber-200', iconBg: 'bg-amber-100', iconColor: 'text-amber-600',
-    },
-    {
-      id: 'history',
-      label: 'History',
-      sublabel: 'Past orders',
-      icon: <HistoryIcon />,
-      badgeCount: 0,
-      badgeColor: '',
-      color: 'bg-gray-50 border-gray-200', iconBg: 'bg-gray-100', iconColor: 'text-gray-600',
-    },
+    { id: 'order', label: 'Place Order', sublabel: 'Browse suppliers', emoji: '🛍️', badge: 0 },
+    { id: 'cart', label: 'Cart', sublabel: cartItemCount > 0 ? `${cartItemCount} items` : 'No items yet', emoji: '🛒', badge: cartItemCount },
+    { id: 'receive', label: 'Receive', sublabel: pendingDeliveryCount > 0 ? `${pendingDeliveryCount} pending` : 'No deliveries', emoji: '📥', badge: pendingDeliveryCount },
+    { id: 'history', label: 'History', sublabel: 'Past orders', emoji: '🕐', badge: 0 },
   ];
 
   return (
     <div>
       <div className="px-4 py-4">
-        {/* Approvals banner — surfaces submitted deliveries waiting for a manager */}
+        <KpiRow columns={3} className="mb-4">
+          <KpiChip value={cartItemCount} label="In cart" />
+          <KpiChip value={pendingDeliveryCount} label="To receive" />
+          <KpiChip value={awaitingApprovalCount} label="Approvals" />
+        </KpiRow>
+
+        {/* Approvals banner — surfaces submitted deliveries waiting for a manager (semantic warning) */}
         {awaitingApprovalCount > 0 && (
           <button
             onClick={() => onNavigate('receive')}
-            className="w-full flex items-center gap-3 rounded-2xl border border-[#F5800A] bg-[#FFF4E6] p-4 mb-4 text-left active:scale-[0.98] transition-transform shadow-sm"
+            className="w-full flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 mb-4 text-left active:scale-[0.98] transition-transform"
           >
-            <div className="w-11 h-11 rounded-xl bg-[#F5800A] text-white flex items-center justify-center flex-shrink-0">
-              <ApprovalIcon />
-            </div>
+            <div className="w-11 h-11 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-2xl" aria-hidden="true">⏳</div>
             <div className="flex-1 min-w-0">
-              <div className="text-[16px] font-bold text-[#1A1A1A]">
+              <div className="text-[var(--fs-md)] font-bold text-gray-900">
                 {awaitingApprovalCount} {awaitingApprovalCount === 1 ? 'delivery' : 'deliveries'}{' '}
                 {isManager ? 'need your approval' : 'awaiting approval'}
               </div>
-              <div className="text-[13px] text-[#6B7280] mt-0.5">
+              <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">
                 {isManager ? 'Tap to review and approve' : 'A manager will review these'}
               </div>
             </div>
-            <span className="text-[#F5800A] flex-shrink-0"><ChevronRight /></span>
+            <span className="text-amber-600 flex-shrink-0"><ChevronRightIcon size={18} /></span>
           </button>
         )}
 
@@ -176,44 +88,31 @@ export default function OrdersDashboard({
         {isManager && onManageTemplates && (
           <button
             onClick={onManageTemplates}
-            className="w-full flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 mb-4 text-left active:scale-[0.98] transition-transform shadow-sm"
+            className="w-full flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 mb-4 text-left active:scale-[0.98] transition-transform"
           >
-            <div className="w-11 h-11 rounded-xl bg-orange-100 text-[#F5800A] flex items-center justify-center flex-shrink-0">
-              <TemplatesIcon />
-            </div>
+            <div className="w-11 h-11 rounded-xl bg-[#F1F3F5] flex items-center justify-center flex-shrink-0 text-2xl" aria-hidden="true">🗂️</div>
             <div className="flex-1 min-w-0">
-              <div className="text-[16px] font-bold text-[#1A1A1A]">Order Templates</div>
-              <div className="text-[13px] text-[#6B7280] mt-0.5">Build &amp; edit your reusable order lists</div>
+              <div className="text-[var(--fs-md)] font-bold text-gray-900">Order Templates</div>
+              <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">Build &amp; edit your reusable order lists</div>
             </div>
-            <span className="text-gray-300 flex-shrink-0"><ChevronRight /></span>
+            <span className="text-gray-300 flex-shrink-0"><ChevronRightIcon size={18} /></span>
           </button>
         )}
 
-        {/* 2×2 grid — drag-and-drop reorderable */}
-        <SortableTileGrid
+        <ActionGrid
           items={tiles}
           getItemId={(t) => t.id}
-          storageKey="purchase_tile_order"
-          savedOrder={savedOrder}
+          sortable={{ storageKey: 'purchase_tile_order', savedOrder }}
           renderItem={(tile) => (
-            <button
+            <ActionCard
+              emoji={tile.emoji}
+              label={tile.label}
+              subtitle={tile.sublabel}
               onClick={() => onNavigate(tile.id)}
-              className={`w-full relative rounded-2xl border ${tile.color} shadow-sm p-4 text-left active:scale-[0.97] transition-transform`}
-            >
-              {tile.badgeCount > 0 && (
-                <span className="absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[var(--fs-xs)] font-bold font-mono leading-5 text-center">
-                  {tile.badgeCount}
-                </span>
-              )}
-              <div className={`w-11 h-11 rounded-xl ${tile.iconBg} ${tile.iconColor} flex items-center justify-center mb-3`}>
-                {tile.icon}
-              </div>
-              <div className="text-[var(--fs-md)] font-bold text-gray-900">{tile.label}</div>
-              <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{tile.sublabel}</div>
-            </button>
+              badge={tile.badge > 0 ? { value: tile.badge, ariaLabel: `${tile.badge}` } : undefined}
+            />
           )}
         />
-
       </div>
     </div>
   );
