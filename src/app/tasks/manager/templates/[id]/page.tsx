@@ -9,6 +9,8 @@ import { useCompany } from '@/lib/company-context';
 import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import RecurrenceEditor from '../../../_components/RecurrenceEditor';
+import SetupGuideEditor, { type GuidePin } from '../../../_components/SetupGuideEditor';
+import { compressImage } from '../../../_components/photoUpload';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
 
@@ -116,6 +118,8 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
       photo_uploaded: false,
       photo_instructions: tl.photo_instructions,
       module_link_type: tl.module_link_type,
+      is_setup_guide: tl.is_setup_guide,
+      has_setup_photo: tl.has_setup_photo,
       state: 'pending',
       completed_at: null,
       completed_by_id: null,
@@ -129,6 +133,8 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
         done: false,
         toggled_at: null,
         toggled_by_id: null,
+        pin_x: s.pin_x,
+        pin_y: s.pin_y,
       })),
       attachments: tl.attachments,
       note: null,
@@ -445,6 +451,7 @@ export default function TemplateEditPage({ params }: PageProps) {
       {(showAddLine || editingLine) && (
         <LineModal
           tplId={tplId}
+          departmentId={tpl.department_id}
           line={editingLine}
           onClose={() => { setShowAddLine(false); setEditingLine(null); }}
           onSaved={async (msg) => {
@@ -462,6 +469,7 @@ export default function TemplateEditPage({ params }: PageProps) {
 
 interface LineModalProps {
   tplId: number;
+  departmentId: number;
   line: TaskTemplateLine | null;
   onClose: () => void;
   onSaved: (toastMessage?: string) => Promise<void>;
@@ -477,15 +485,16 @@ interface PendingAttachment {
   size: number;
 }
 
-function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
+function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalProps) {
   const [name, setName]               = useState(line?.name ?? '');
   const [dayPart, setDayPart]         = useState<DayPart>(line?.day_part ?? 'opening');
   const [deadline, setDeadline]       = useState(floatToHHMM(line?.deadline_time));
   const [photoRequired, setPhotoReq]  = useState(line?.photo_required ?? false);
   const [photoInstructions, setPhotoInstr] = useState(line?.photo_instructions ?? '');
   const [moduleLink, setModuleLink]   = useState<ModuleLink>(line?.module_link_type ?? 'none');
-  const [subtasks, setSubtasks]       = useState<{ id?: number; name: string }[]>(
-    line?.subtasks.map(s => ({ id: s.id, name: s.name })) ?? [],
+  // One subtask array carries both plain subtasks and setup-guide pins (pin_x/pin_y/item_id).
+  const [subtasks, setSubtasks]       = useState<GuidePin[]>(
+    line?.subtasks.map(s => ({ id: s.id, name: s.name, pin_x: s.pin_x, pin_y: s.pin_y, item_id: s.item_id })) ?? [],
   );
   const [recurrence, setRecurrence]   = useState<RecurrenceRule>(line?.recurrence ?? defaultRecurrence());
   const [attachments, setAttachments] = useState<TaskAttachment[]>(line?.attachments ?? []);
@@ -493,6 +502,35 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
+
+  // ── Setup guide ─────────────────────────────────────────────
+  const [isSetupGuide, setIsSetupGuide] = useState(line?.is_setup_guide ?? false);
+  // Preview src: a freshly-picked local image, else the server-served template photo (if any).
+  const [pendingPhoto, setPendingPhoto] = useState<{ base64: string; filename: string; dataUrl: string } | null>(null);
+  const [hasExistingPhoto, setHasExistingPhoto] = useState(line?.has_setup_photo ?? false);
+  const photoUrl = pendingPhoto
+    ? pendingPhoto.dataUrl
+    : (hasExistingPhoto && line?.id ? `/api/tasks/templates/${tplId}/lines/${line.id}/setup-photo` : null);
+
+  async function pickSetupPhoto(file: File) {
+    try {
+      const { base64, filename } = await compressImage(file, 1280, 0.85);
+      // Replacing the image invalidates old pin coordinates.
+      if ((pendingPhoto || hasExistingPhoto) && subtasks.length > 0) {
+        if (!confirm('Replacing the photo clears the pins you already placed. Continue?')) return;
+        setSubtasks([]);
+      }
+      setPendingPhoto({ base64, filename, dataUrl: `data:image/jpeg;base64,${base64}` });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Could not read image');
+    }
+  }
+
+  function removeSetupPhoto() {
+    setPendingPhoto(null);
+    setHasExistingPhoto(false);
+    setSubtasks([]);
+  }
 
   async function uploadAttachment(file: File) {
     setUploadingFile(true);
@@ -537,6 +575,12 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
 
   async function submit() {
     if (!name.trim()) { setError('Name required'); return; }
+    const cleanSubtasks = subtasks.filter(s => s.name.trim());
+    // A setup guide needs exactly one photo and at least one pin.
+    if (isSetupGuide) {
+      if (!pendingPhoto && !hasExistingPhoto) { setError('Add a reference photo for the setup guide'); return; }
+      if (cleanSubtasks.length === 0) { setError('Add at least one pin to the setup guide'); return; }
+    }
     setSubmitting(true); setError(null);
     try {
       const url = line
@@ -553,9 +597,14 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
           photo_required: photoRequired,
           photo_instructions: photoRequired && photoInstructions.trim() ? photoInstructions.trim() : null,
           module_link_type: moduleLink,
-          subtasks: subtasks
-            .filter(s => s.name.trim())
-            .map((s, i) => ({ id: s.id, name: s.name.trim(), sequence: (i + 1) * 10 })),
+          is_setup_guide: isSetupGuide,
+          subtasks: cleanSubtasks.map((s, i) => ({
+            id: s.id,
+            name: s.name.trim(),
+            sequence: (i + 1) * 10,
+            // Carry pin coordinates + catalog link only for guides.
+            ...(isSetupGuide ? { pin_x: s.pin_x, pin_y: s.pin_y, item_id: s.item_id ?? null } : {}),
+          })),
           recurrence,
         }),
       });
@@ -565,6 +614,22 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
       // Resolve the line id for attachment uploads. PATCH doesn't return the id,
       // but we already have it on `line.id`. POST returns body.line_id for new lines.
       const lineId: number | undefined = line?.id ?? body.line_id;
+
+      // Upload the setup-guide reference photo once the line exists.
+      if (isSetupGuide && pendingPhoto && lineId) {
+        const upRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/setup-photo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data_base64: pendingPhoto.base64, clear_pins: false }),
+        });
+        const upBody = await upRes.json().catch(() => ({}));
+        if (!upBody.ok) throw new Error(upBody.error || 'Task saved, but the photo upload failed — reopen to retry.');
+      } else if (line?.id && line.has_setup_photo && (!isSetupGuide || (!pendingPhoto && !hasExistingPhoto))) {
+        // Guide turned off, or its photo was removed — delete the now-orphaned binary server-side.
+        await fetch(`/api/tasks/templates/${tplId}/lines/${line.id}/setup-photo?clear_pins=1`, { method: 'DELETE' })
+          .catch(() => {});
+      }
+
       let uploadedCount = 0;
       let uploadFailures = 0;
       if (lineId && pendingAtts.length > 0) {
@@ -657,24 +722,44 @@ function LineModal({ tplId, line, onClose, onSaved }: LineModalProps) {
               <p className="text-[11px] text-gray-400 mt-1">Shown to staff above the photo upload button.</p>
             </div>
           )}
-          <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Subtasks</label>
-            <div className="space-y-1.5">
-              {subtasks.map((s, i) => (
-                <div key={i} className="flex gap-2">
-                  <input value={s.name} onChange={e => setSubtasks(prev => prev.map((p, idx) => idx === i ? { ...p, name: e.target.value } : p))}
-                    placeholder="Subtask name"
-                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  <button onClick={() => setSubtasks(prev => prev.filter((_, idx) => idx !== i))}
-                    className="text-xs text-red-500 hover:text-red-600 px-2">Remove</button>
-                </div>
-              ))}
-              <button onClick={() => setSubtasks(prev => [...prev, { name: '' }])}
-                className="text-xs font-semibold text-orange-600 hover:text-orange-700">
-                + Add subtask
-              </button>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={isSetupGuide}
+              onChange={e => setIsSetupGuide(e.target.checked)}
+            />
+            <span>📍 Setup guide <span className="text-gray-400 font-normal">(photo with numbered pins)</span></span>
+          </label>
+
+          {isSetupGuide ? (
+            <SetupGuideEditor
+              departmentId={departmentId}
+              pins={subtasks}
+              onPinsChange={setSubtasks}
+              photoUrl={photoUrl}
+              onPickPhoto={pickSetupPhoto}
+              onRemovePhoto={removeSetupPhoto}
+            />
+          ) : (
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Subtasks</label>
+              <div className="space-y-1.5">
+                {subtasks.map((s, i) => (
+                  <div key={i} className="flex gap-2">
+                    <input value={s.name} onChange={e => setSubtasks(prev => prev.map((p, idx) => idx === i ? { ...p, name: e.target.value } : p))}
+                      placeholder="Subtask name"
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                    <button onClick={() => setSubtasks(prev => prev.filter((_, idx) => idx !== i))}
+                      className="text-xs text-red-500 hover:text-red-600 px-2">Remove</button>
+                  </div>
+                ))}
+                <button onClick={() => setSubtasks(prev => [...prev, { name: '', pin_x: 0, pin_y: 0 }])}
+                  className="text-xs font-semibold text-orange-600 hover:text-orange-700">
+                  + Add subtask
+                </button>
+              </div>
             </div>
-          </div>
+          )}
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Schedule</label>
             <RecurrenceEditor value={recurrence} onChange={setRecurrence} />

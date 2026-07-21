@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability, AuthError } from '@/lib/auth';
-import { templateLineBelongsToTemplate } from '@/lib/odoo-tasks';
+import { requireAuth, requireCapability, AuthError, type PortalUser } from '@/lib/auth';
+import { parseCompanyIds } from '@/lib/db';
+import { templateLineBelongsToTemplate, getTemplateCompany } from '@/lib/odoo-tasks';
 import {
   setTemplateLineSetupPhoto,
   clearTemplateLineSetupPhoto,
@@ -19,21 +20,49 @@ function ids(params: { id: string; lineId: string }): { templateId: number; line
   return { templateId, lineId };
 }
 
+/** The line must belong to the template AND the template's company must be allowed. */
+async function assertScope(user: PortalUser, templateId: number, lineId: number): Promise<void> {
+  if (!(await templateLineBelongsToTemplate(templateId, lineId))) {
+    throw new AuthError('Not found', 404);
+  }
+  const allowed = parseCompanyIds(user.allowed_company_ids);
+  if (allowed.length) {
+    const company = await getTemplateCompany(templateId);
+    if (company !== null && !allowed.includes(company)) throw new AuthError('Forbidden', 403);
+  }
+}
+
+/** Validate the base64 payload really begins with a known raster-image signature —
+ * never trust the filename/Content-Type (blocks SVG/HTML smuggling). */
+function detectImageMime(base64: string): string | null {
+  let head: Buffer;
+  try { head = Buffer.from(base64.slice(0, 24), 'base64'); } catch { return null; }
+  if (head.length < 4) return null;
+  if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg';
+  if (head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47) return 'image/png';
+  if (head[0] === 0x47 && head[1] === 0x49 && head[2] === 0x46) return 'image/gif';
+  if (head[0] === 0x52 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x46
+      && head.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  return null;
+}
+
 // GET — serve the template line's reference photo as raw image bytes (manager editor).
 export async function GET(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
   try {
-    requireAuth();
+    const user = requireAuth();
     const parsed = ids(params);
     if (!parsed) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
-    if (!(await templateLineBelongsToTemplate(parsed.templateId, parsed.lineId))) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
+    await assertScope(user, parsed.templateId, parsed.lineId);
     const photo = await getTemplateSetupPhoto(parsed.lineId);
     if (!photo) return NextResponse.json({ error: 'No photo' }, { status: 404 });
     const buf = Buffer.from(photo.data_base64, 'base64');
     return new NextResponse(buf, {
       status: 200,
-      headers: { 'Content-Type': photo.mimetype || 'image/jpeg', 'Cache-Control': 'no-store' },
+      headers: {
+        'Content-Type': photo.mimetype || 'image/jpeg',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      },
     });
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
@@ -42,23 +71,25 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string;
   }
 }
 
-// POST — upload/replace the reference photo. Manager/admin. `clear_pins` drops stale pins.
+// POST — upload/replace the reference photo. Manager/admin, company-scoped. `clear_pins` drops stale pins.
 export async function POST(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
   try {
-    requireCapability('tasks.template.manage');
+    const user = requireCapability('tasks.template.manage');
     const parsed = ids(params);
     if (!parsed) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
-    if (!(await templateLineBelongsToTemplate(parsed.templateId, parsed.lineId))) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
+    await assertScope(user, parsed.templateId, parsed.lineId);
     const body = await req.json();
     const base64: string = body?.data_base64 || '';
-    const filename: string = (body?.filename || 'setup.jpg').toString();
     if (!base64) return NextResponse.json({ error: 'data_base64 required' }, { status: 400 });
     // Rough decoded-size guard (base64 is ~4/3 of the raw bytes).
     if (base64.length * 0.75 > MAX_BYTES) {
       return NextResponse.json({ error: 'Image too large' }, { status: 413 });
     }
+    // Validate real image bytes; derive the stored filename extension from the signature.
+    const mime = detectImageMime(base64);
+    if (!mime) return NextResponse.json({ error: 'File is not a valid image' }, { status: 415 });
+    const ext = mime.split('/')[1].replace('jpeg', 'jpg');
+    const filename = `setup.${ext}`;
     await setTemplateLineSetupPhoto(parsed.lineId, base64, filename, !!body?.clear_pins);
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -68,15 +99,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string;
   }
 }
 
-// DELETE — remove the reference photo (optionally clearing pins). Manager/admin.
+// DELETE — remove the reference photo (optionally clearing pins). Manager/admin, company-scoped.
 export async function DELETE(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
   try {
-    requireCapability('tasks.template.manage');
+    const user = requireCapability('tasks.template.manage');
     const parsed = ids(params);
     if (!parsed) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
-    if (!(await templateLineBelongsToTemplate(parsed.templateId, parsed.lineId))) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
+    await assertScope(user, parsed.templateId, parsed.lineId);
     const clearPins = req.nextUrl.searchParams.get('clear_pins') === '1';
     await clearTemplateLineSetupPhoto(parsed.lineId, clearPins);
     return NextResponse.json({ ok: true });

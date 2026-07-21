@@ -170,12 +170,18 @@ class KrawingsTaskTemplateLine(models.Model):
         return True
 
     @api.model
-    def get_setup_photo(self, line_id):
+    def get_setup_photo(self, line_id, allowed_company_ids=None):
         """Return {filename, mimetype, data_base64} for the template line's
-        reference photo, or False. The portal serves this as raw image bytes."""
+        reference photo, or False. The portal serves this as raw image bytes.
+
+        `allowed_company_ids` scopes access to the owning template's company."""
         rec = self.sudo().browse(int(line_id))
         if not rec.exists() or not rec.setup_photo:
             return False
+        if allowed_company_ids:
+            company_id = rec.template_id.company_id.id
+            if company_id and company_id not in [int(c) for c in allowed_company_ids]:
+                return False
         raw = rec.setup_photo
         return {
             'filename': rec.setup_photo_filename or 'setup.jpg',

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
-import { uploadLinePhoto } from '@/lib/odoo-tasks';
+import { resolveAttribution } from '@/lib/shift-attribution';
+import { uploadLinePhoto, resyncSetupGuide } from '@/lib/odoo-tasks';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    requireAuth();
+    const user = requireAuth();
     const id = parseInt(params.id, 10);
     if (Number.isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     const body = await req.json();
@@ -12,6 +13,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ error: 'data_base64 and filename are required' }, { status: 400 });
     }
     const result = await uploadLinePhoto(id, body.filename, body.data_base64);
+    // If this line is a photo-required setup guide with all pins done, the proof
+    // photo now satisfies the gate — re-drive completion (no-op otherwise).
+    const { employeeId } = resolveAttribution(user);
+    if (employeeId) await resyncSetupGuide(id, employeeId);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });

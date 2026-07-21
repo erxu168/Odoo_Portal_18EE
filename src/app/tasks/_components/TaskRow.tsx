@@ -50,6 +50,17 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
+/** Resolve the setup-guide photo URL. Real daily lines serve their own snapshot;
+ * manager-preview lines use synthetic negative ids, so they read the TEMPLATE
+ * line's photo (via source_template_line_id) instead of a nonexistent daily one. */
+export function setupPhotoUrl(task: TaskListLine): string | null {
+  if (!task.has_setup_photo) return null;
+  if (task.id < 0 && task.source_template_line_id) {
+    return `/api/tasks/template-lines/${task.source_template_line_id}/setup-photo`;
+  }
+  return `/api/tasks/lines/${task.id}/setup-photo`;
+}
+
 export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false }: Props) {
   const [subtasks, setSubtasks]     = useState<TaskSubtask[]>(task.subtasks);
   // Count of photos uploaded against this task — derived from runtime-scoped image attachments
@@ -93,7 +104,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         )}
         <SetupGuideView
           task={task}
-          photoUrl={task.has_setup_photo ? `/api/tasks/lines/${task.id}/setup-photo` : null}
+          photoUrl={setupPhotoUrl(task)}
           onSubtaskToggle={onSubtaskToggle}
           onReload={onReload}
           readOnly={readOnly}

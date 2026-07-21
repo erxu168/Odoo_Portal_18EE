@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
+import { parseCompanyIds } from '@/lib/db';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { toggleSubtask } from '@/lib/odoo-tasks';
 
@@ -13,12 +14,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!employeeId) {
       return NextResponse.json({ error: 'No employee record linked' }, { status: 409 });
     }
+    const lineId = parseInt(params.id, 10);
     const sid = parseInt(params.sid, 10);
-    if (Number.isNaN(sid)) return NextResponse.json({ error: 'Invalid subtask id' }, { status: 400 });
+    if (Number.isNaN(lineId) || Number.isNaN(sid)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     const body = await req.json();
-    // The addon toggle locks the parent line and drives setup-guide auto-complete,
-    // returning the resulting line state so the client can refresh.
-    const result = await toggleSubtask(sid, !!body.done, employeeId);
+    // The addon validates subtask↔line ownership + company + past-list immutability,
+    // locks the parent line, drives auto-complete, and returns line state.
+    const result = await toggleSubtask(lineId, sid, !!body.done, employeeId, parseCompanyIds(user.allowed_company_ids));
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });

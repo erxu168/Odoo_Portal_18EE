@@ -21,6 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       module_link_type: (body.module_link_type || 'none') as ModuleLink,
       subtasks: body.subtasks,
       recurrence: body.recurrence,
+      is_setup_guide: body.is_setup_guide,
     });
     return NextResponse.json({ ok: true, line_id: lineId });
   } catch (err) {

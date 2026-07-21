@@ -483,10 +483,19 @@ export interface SubtaskToggleResult {
   line_completed: boolean;
 }
 
-export async function toggleSubtask(subtaskId: number, done: boolean, employeeId: number): Promise<SubtaskToggleResult> {
+export async function toggleSubtask(
+  lineId: number,
+  subtaskId: number,
+  done: boolean,
+  employeeId: number,
+  allowedCompanyIds: number[] = [],
+): Promise<SubtaskToggleResult> {
+  // Goes through the addon's validated entry point: it checks the subtask belongs
+  // to `lineId`, the line's company is allowed, and the day is not read-only —
+  // server-side, inside the mutation transaction (closes the toggle IDOR).
   const res = await getOdoo().call(
-    'krawings.task.list.subtask', 'toggle',
-    [[subtaskId], done, employeeId],
+    'krawings.task.list.line', 'portal_toggle_subtask',
+    [lineId, subtaskId, done, employeeId, allowedCompanyIds],
   );
   return {
     is_setup_guide: !!(res && res.is_setup_guide),
@@ -543,6 +552,16 @@ export async function uploadLinePhoto(lineId: number, fileName: string, base64Da
     datas: base64Data,
   });
   return { attachment_id: id };
+}
+
+/** Re-drive setup-guide completion after a proof photo is added/removed. No-op
+ * for non-guide lines. Best-effort — never blocks the photo upload itself. */
+export async function resyncSetupGuide(lineId: number, employeeId: number): Promise<void> {
+  try {
+    await getOdoo().call('krawings.task.list.line', 'resync_setup_guide', [[lineId], employeeId]);
+  } catch {
+    /* completion is recomputed on the next read; don't fail the upload */
+  }
 }
 
 // ── Templates ─────────────────────────────────
@@ -875,6 +894,16 @@ export async function templateLineBelongsToTemplate(templateId: number, lineId: 
   );
   if (!rows.length) return false;
   return m2oId(rows[0].template_id) === templateId;
+}
+
+/** Company that owns a template, or null if not found. Used to company-scope template routes. */
+export async function getTemplateCompany(templateId: number): Promise<number | null> {
+  if (!templateId) return null;
+  const rows = await getOdoo().searchRead(
+    'krawings.task.template', [['id', '=', templateId]], ['company_id'], { limit: 1 },
+  );
+  if (!rows.length) return null;
+  return m2oId(rows[0].company_id);
 }
 
 /** Company that owns a department, or null if not found. Used to company-scope routes. */

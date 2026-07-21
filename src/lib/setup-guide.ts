@@ -73,16 +73,22 @@ export async function clearTemplateLineSetupPhoto(templateLineId: number, clearP
   );
 }
 
-export async function getTemplateSetupPhoto(templateLineId: number): Promise<SetupPhotoBytes | null> {
+export async function getTemplateSetupPhoto(
+  templateLineId: number,
+  allowedCompanyIds: number[] = [],
+): Promise<SetupPhotoBytes | null> {
   const r: any = await getOdoo().call(
-    'krawings.task.template.line', 'get_setup_photo', [templateLineId],
+    'krawings.task.template.line', 'get_setup_photo', [templateLineId, allowedCompanyIds],
   );
   return r || null;
 }
 
-export async function getListLineSetupPhoto(listLineId: number): Promise<SetupPhotoBytes | null> {
+export async function getListLineSetupPhoto(
+  listLineId: number,
+  allowedCompanyIds: number[] = [],
+): Promise<SetupPhotoBytes | null> {
   const r: any = await getOdoo().call(
-    'krawings.task.list.line', 'get_setup_photo', [listLineId],
+    'krawings.task.list.line', 'get_setup_photo', [listLineId, allowedCompanyIds],
   );
   return r || null;
 }
