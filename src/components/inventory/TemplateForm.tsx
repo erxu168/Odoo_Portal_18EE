@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { BackHeader, FilterBar, FilterPill, SearchBar, Spinner, ProductThumb, leafCategory } from './ui';
+import { BackHeader, SearchBar, ProductThumb, leafCategory } from './ui';
 import SpotSheet from './SpotSheet';
+import AddProductsSheet from './AddProductsSheet';
 import { useCompany } from '@/lib/company-context';
 import { pluralizePack } from '@/lib/crate-units';
 
@@ -61,13 +62,11 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const [homeSpots, setHomeSpots] = useState<Record<number, number[]>>({});     // productId -> spot ids
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});     // spot id -> "Area · Spot"
   const [spotSheetFor, setSpotSheetFor] = useState<any | null>(null);           // product whose spots are being edited
-  const [trayOpen, setTrayOpen] = useState(false);                              // "On this list" tray expanded
   const [shiftTemplates, setShiftTemplates] = useState<any[]>([]);  // Planning shift templates (Opening/Mid/Closing) for "assign to a shift"
   const [shiftLoadFailed, setShiftLoadFailed] = useState(false);    // fetch failed/forbidden ≠ "no shifts exist" — don't lie in the hint
   const [loadingProducts, setLoadingProducts] = useState(true);
-  const [search, setSearch] = useState('');
-  const [catFilter, setCatFilter] = useState<string>('all');
-  const [selectionFilter, setSelectionFilter] = useState<'all' | 'selected' | 'unselected'>('all');
+  const [search, setSearch] = useState('');           // filter within THIS LIST
+  const [addOpen, setAddOpen] = useState(false);       // Add-products sheet
 
   const [step, setStep] = useState<'config' | 'products'>('config');
   const [portalUsers, setPortalUsers] = useState<any[]>([]);
@@ -232,34 +231,6 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     });
   }
 
-  const categories = useMemo(() => {
-    const catMap = new Map<number, { id: number; name: string; count: number }>();
-    for (const p of allProducts) {
-      if (p.categ_id) {
-        const [id, catName] = p.categ_id;
-        const existing = catMap.get(id);
-        if (existing) existing.count++;
-        else catMap.set(id, { id, name: catName, count: 1 });
-      }
-    }
-    return Array.from(catMap.values()).sort((a, b) => b.count - a.count);
-  }, [allProducts]);
-
-  const filteredProducts = useMemo(() => {
-    let list = allProducts.slice();
-    if (search) {
-      const q = search.toLowerCase();
-      // Match internal name OR the order code (default_code); supplier-name
-      // search happens server-side (Phase 3) and would need a refetch.
-      list = list.filter((p) => p.name.toLowerCase().includes(q)
-        || (p.default_code && String(p.default_code).toLowerCase().includes(q)));
-    }
-    if (catFilter !== 'all') list = list.filter((p) => p.categ_id?.[0] === Number(catFilter));
-    if (selectionFilter === 'selected') list = list.filter((p) => selectedProductIds.has(p.id));
-    if (selectionFilter === 'unselected') list = list.filter((p) => !selectedProductIds.has(p.id));
-    return list;
-  }, [allProducts, search, catFilter, selectionFilter, selectedProductIds]);
-
   const selectedProducts = useMemo(() => {
     return allProducts.filter((p) => selectedProductIds.has(p.id));
   }, [allProducts, selectedProductIds]);
@@ -307,32 +278,6 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     });
   }
 
-  function selectAllVisible() {
-    setSelectedProductIds((prev) => {
-      const next = new Set(prev);
-      for (const p of filteredProducts) next.add(p.id);
-      return next;
-    });
-  }
-
-  function deselectAllVisible() {
-    setSelectedProductIds((prev) => {
-      const next = new Set(prev);
-      for (const p of filteredProducts) next.delete(p.id);
-      return next;
-    });
-  }
-
-  function selectByCategory(catId: number) {
-    setSelectedProductIds((prev) => {
-      const next = new Set(prev);
-      for (const p of allProducts) {
-        if (p.categ_id?.[0] === catId) next.add(p.id);
-      }
-      return next;
-    });
-  }
-
   const selectedCount = selectedProductIds.size;
   const needsDays = frequency === 'weekly' && scheduleDays.length === 0;
   const needsAdhocDate = frequency === 'adhoc' && !adhocDate;
@@ -373,6 +318,12 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
 
   // ========== PRODUCT PICKER STEP ==========
   if (step === 'products') {
+    // THE LIST is the screen: only what's been added, grouped by category, with
+    // spot chips + remove. Adding happens in the search-first AddProductsSheet —
+    // no 200-row checkbox wall to lose your place in.
+    const listFiltered = search
+      ? selectedProducts.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
+      : selectedProducts;
     return (
       <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col">
         <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200 flex items-center justify-between">
@@ -381,8 +332,8 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             Back
           </button>
           <div className="text-center">
-            <div className="text-[var(--fs-lg)] font-bold text-gray-900">Select products</div>
-            <div className="text-[var(--fs-xs)] text-gray-500">{selectedCount} selected</div>
+            <div className="text-[var(--fs-lg)] font-bold text-gray-900">This list</div>
+            <div className="text-[var(--fs-xs)] text-gray-500">{selectedCount} product{selectedCount !== 1 ? 's' : ''}</div>
           </div>
           <button onClick={() => setStep('config')}
             className="bg-green-600 text-white text-[var(--fs-base)] font-bold px-4 py-2 rounded-xl active:bg-green-700 shadow-sm">
@@ -390,113 +341,41 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           </button>
         </div>
 
-        <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
-
-        {/* Pinned "On this list" tray — the selection never scrolls out of sight. */}
-        {selectedCount > 0 && (
-          <div className="mx-4 mb-2 bg-green-50 border-[1.5px] border-green-300 rounded-xl px-3 py-2">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-bold tracking-wider uppercase text-green-800">On this list · {selectedCount}</span>
-              <button onClick={() => setTrayOpen((o) => !o)} className="text-[11px] font-bold text-green-700 active:opacity-70">
-                {trayOpen ? 'Collapse ▴' : 'View all ▾'}
-              </button>
+        {selectedCount === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
+            <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mb-3">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
             </div>
-            {trayOpen ? (
-              <div className="max-h-44 overflow-y-auto flex flex-col gap-1">
-                {selectedProducts.map((p) => (
-                  <div key={p.id} className="flex items-center gap-2 bg-white border border-green-200 rounded-lg px-2 py-1.5">
-                    <span className="flex-1 min-w-0 truncate text-[var(--fs-sm)] font-semibold text-gray-900">{p.name}</span>
-                    <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name}`}
-                      className="w-5 h-5 rounded-full bg-green-100 text-green-800 text-[11px] font-bold flex items-center justify-center active:bg-red-100 active:text-red-600">×</button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-                {selectedProducts.map((p) => (
-                  <span key={p.id} className="flex-shrink-0 flex items-center gap-1.5 bg-white border border-green-200 rounded-full pl-2.5 pr-1.5 py-1 text-[11px] font-bold text-green-900 whitespace-nowrap">
-                    {p.name}
-                    <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name}`}
-                      className="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] font-bold flex items-center justify-center active:bg-red-100 active:text-red-600">×</button>
-                  </span>
-                ))}
-              </div>
+            <p className="text-[var(--fs-lg)] font-bold text-gray-900 mb-1">Nothing on this list yet</p>
+            <p className="text-[var(--fs-sm)] text-gray-500 mb-5 max-w-[240px]">Add the products staff should count — search or browse by category.</p>
+          </div>
+        ) : (
+          <>
+            {selectedCount > 12 && (
+              <SearchBar value={search} onChange={setSearch} placeholder="Find on this list..." />
             )}
-          </div>
-        )}
-
-        <FilterBar>
-          <FilterPill active={catFilter === 'all'} label="All" onClick={() => setCatFilter('all')} />
-          {categories.map((c) => (
-            <FilterPill key={c.id} active={catFilter === String(c.id)}
-              label={leafCategory(c.name)} count={c.count}
-              onClick={() => setCatFilter(String(c.id))} />
-          ))}
-        </FilterBar>
-
-        <FilterBar>
-          <FilterPill active={selectionFilter === 'all'} label={`All (${allProducts.length})`} onClick={() => setSelectionFilter('all')} />
-          <FilterPill active={selectionFilter === 'selected'} label={`Selected (${selectedCount})`} onClick={() => setSelectionFilter('selected')} />
-          <FilterPill active={selectionFilter === 'unselected'} label={`Unselected (${allProducts.length - selectedCount})`} onClick={() => setSelectionFilter('unselected')} />
-        </FilterBar>
-
-        <div className="flex gap-2 px-4 pb-2">
-          <button onClick={selectAllVisible}
-            className="flex-1 py-2 rounded-lg bg-green-50 border border-green-200 text-green-800 text-[var(--fs-sm)] font-semibold active:bg-green-100">
-            Select all visible ({filteredProducts.length})
-          </button>
-          <button onClick={deselectAllVisible}
-            className="flex-1 py-2 rounded-lg bg-white border border-gray-200 text-gray-500 text-[var(--fs-sm)] font-semibold active:bg-gray-50">
-            Deselect all visible
-          </button>
-        </div>
-
-        {catFilter !== 'all' && (
-          <div className="px-4 pb-2">
-            <button onClick={() => selectByCategory(Number(catFilter))}
-              className="w-full py-2.5 rounded-lg bg-green-50 border border-green-200 text-green-700 text-[var(--fs-sm)] font-semibold active:bg-green-100">
-              Add entire category ({leafCategory(categories.find(c => String(c.id) === catFilter)?.name || '')})
-            </button>
-          </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto px-4 pb-8">
-          {loadingProducts ? <Spinner /> : filteredProducts.length === 0 ? (
-            <div className="text-center py-12 text-[var(--fs-base)] text-gray-400">No products match filters</div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {groupByCategory(filteredProducts).map((group) => (
-                <div key={group.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                  <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-green-700 bg-green-50 px-4 py-2 border-b border-gray-100">
-                    {group.name} <span className="text-gray-400 font-semibold">({group.items.length})</span>
-                  </div>
-                  {group.items.map((p) => {
-                    const isSelected = selectedProductIds.has(p.id);
-                    return (
-                      <div key={p.id}
-                        className={`border-b border-gray-100 last:border-b-0 transition-colors ${isSelected ? 'bg-green-50' : 'bg-white'}`}>
-                        <button onClick={() => toggleProduct(p.id)}
-                          className={`w-full flex items-center gap-3 px-4 pt-2.5 pb-1 text-left min-h-[48px] ${isSelected ? 'active:bg-green-100' : 'active:bg-gray-50'}`}>
-                          <div className={`w-6 h-6 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                            isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'
-                          }`}>
-                            {isSelected && (
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                            )}
-                          </div>
+            <div className="flex-1 overflow-y-auto px-4 pb-4 pt-2">
+              <div className="flex flex-col gap-4">
+                {groupByCategory(listFiltered).map((group) => (
+                  <div key={group.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-green-700 bg-green-50 px-4 py-2 border-b border-gray-100">
+                      {group.name} <span className="text-gray-400 font-semibold">({group.items.length})</span>
+                    </div>
+                    {group.items.map((p) => (
+                      <div key={p.id} className="border-b border-gray-100 last:border-b-0 px-4 py-2.5">
+                        <div className="flex items-center gap-3">
                           <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
                           <div className="flex-1 min-w-0">
-                            <div className={`text-[var(--fs-base)] font-semibold truncate ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{p.name}</div>
-                            <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5 truncate">{unitHint(p)}</div>
+                            <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
+                            <div className="text-[var(--fs-xs)] text-gray-400 truncate">{unitHint(p)}</div>
                           </div>
-                          <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold ${isSelected ? 'text-green-700' : 'text-gray-400'}`}>
-                            {isSelected ? 'Added' : '+ Add'}
-                          </span>
-                        </button>
-                        {/* Home-spot chips — a SIBLING control (valid + keyboardable), aligned under the name */}
-                        <button onClick={() => setSpotSheetFor(p)}
-                          aria-label={`Change where ${p.name} is counted`}
-                          className="w-full flex flex-wrap gap-1 px-4 pb-2 pl-[92px] text-left active:opacity-80">
+                          <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name} from the list`}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-500 flex-shrink-0">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                          </button>
+                        </div>
+                        <button onClick={() => setSpotSheetFor(p)} aria-label={`Change where ${p.name} is counted`}
+                          className="mt-1 flex flex-wrap gap-1 pl-[52px] text-left active:opacity-80">
                           {(homeSpots[p.id] || []).length > 0 ? (
                             (homeSpots[p.id] || []).map((sid) => (
                               <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
@@ -510,20 +389,34 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
                           )}
                         </button>
                       </div>
-                    );
-                  })}
-                </div>
-              ))}
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
-          )}
-        </div>
+          </>
+        )}
 
-        <div className="px-4 pb-4 pt-2">
-          <button onClick={() => setStep('config')}
+        <div className="px-4 pb-4 pt-2 bg-gray-50">
+          <button onClick={() => setAddOpen(true)}
             className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-xl)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">
-            Done &mdash; {selectedCount} product{selectedCount !== 1 ? 's' : ''} selected
+            + Add products
           </button>
         </div>
+
+        {addOpen && (
+          <AddProductsSheet
+            products={allProducts}
+            selectedIds={selectedProductIds}
+            onToggle={toggleProduct}
+            onAddMany={(ids) => setSelectedProductIds((prev) => new Set([...Array.from(prev), ...ids]))}
+            productImageIds={productImageIds}
+            homeSpots={homeSpots}
+            spotLabels={spotLabels}
+            unitHint={unitHint}
+            onClose={() => setAddOpen(false)}
+          />
+        )}
 
         {spotSheetFor && companyId && (
           <SpotSheet
@@ -538,6 +431,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
       </div>
     );
   }
+
 
   // ========== CONFIG STEP ==========
   return (
