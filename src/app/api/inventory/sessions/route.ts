@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
-import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap } from '@/lib/inventory-db';
+import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems } from '@/lib/inventory-db';
 import { canAccessSession, companyScope } from '@/lib/inventory-access';
 import { resolveSessionRoute } from '@/lib/session-route';
 import { missedStops } from '@/lib/guided-route';
@@ -186,7 +186,20 @@ export async function PUT(request: Request) {
         }, { status: 400 });
       }
     } else {
-      // Flat completion gate (unchanged, behavior-preserving).
+      // Flat completion gate. MODERN sessions validate against the FROZEN
+      // snapshot lines (per product+spot) — a template edited after creation
+      // can neither hide required lines nor demand new ones.
+      const snapshot = getSessionItems(session.id);
+      if (snapshot.length > 0) {
+        const have = new Set(entries.map((e: any) => `${e.product_id}:${e.count_location_id ?? 0}`));
+        const missing = snapshot.filter((it: any) => !have.has(`${it.odoo_product_id}:${it.count_location_id}`));
+        if (missing.length > 0) {
+          return NextResponse.json({
+            error: `Please count all items before submitting. ${snapshot.length - missing.length}/${snapshot.length} counted.`,
+            code: 'INCOMPLETE_COUNT',
+          }, { status: 400 });
+        }
+      } else {
       const template = getTemplate(session.template_id);
       if (template) {
         // getTemplate returns product_ids already parsed to number[] (parseTemplate).
@@ -203,6 +216,7 @@ export async function PUT(request: Request) {
             }, { status: 400 });
           }
         }
+      }
       }
     }
 

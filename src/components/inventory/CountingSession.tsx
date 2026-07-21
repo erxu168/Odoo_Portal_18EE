@@ -132,10 +132,17 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       const sess = (sessRes.sessions || []).find((s: any) => s.id === sessionId);
 
+      // MODERN sessions: the FROZEN snapshot decides what to count — template
+      // edits after creation must not add/hide lines. Legacy: template as before.
+      const snapItems: any[] = countRes.items || [];
       let productIds: number[] = [];
       let categoryIds: number[] = [];
-      try { productIds = JSON.parse(sess?.template_product_ids || '[]'); } catch { productIds = []; }
-      try { categoryIds = JSON.parse(sess?.template_category_ids || '[]'); } catch { categoryIds = []; }
+      if (snapItems.length > 0) {
+        productIds = Array.from(new Set<number>(snapItems.map((it: any) => it.odoo_product_id)));
+      } else {
+        try { productIds = JSON.parse(sess?.template_product_ids || '[]'); } catch { productIds = []; }
+        try { categoryIds = JSON.parse(sess?.template_category_ids || '[]'); } catch { categoryIds = []; }
+      }
 
       let loadedProducts: any[] = [];
 
@@ -318,6 +325,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     if (statusFilter === 'uncounted') list = list.filter((l) => entries[K(l.pid, l.loc)] === undefined);
     return list;
   }, [lines, filtered, statusFilter, entries]);
+
+  // Product-level totals for the barcode scanner (its display + increment base
+  // is per product; multi-spot products go through the spot-choice sheet).
+  const productTotals = React.useMemo(() => {
+    const m: Record<number, number> = {};
+    lines.forEach((l) => { const v = entries[K(l.pid, l.loc)]; if (v !== undefined) m[l.pid] = (m[l.pid] || 0) + v; });
+    return m;
+  }, [lines, entries]);
 
   const countedCount = lines.filter((l) => entries[K(l.pid, l.loc)] !== undefined).length;
   const totalCount = lines.length;
@@ -920,7 +935,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           stops={route.stops}
           productsById={productsById}
           statuses={guidedStatuses}
-          renderRow={(p, bucketId) => <ProductRow p={p} loc={bucketId} />}
+          renderRow={(p, bucketId) => <ProductRow p={p} loc={items.length > 0 ? bucketId : 0} />}
           onFinishStop={(b) => postStopStatus(b, 'counted', null)}
           onSkipStop={(b, r) => postStopStatus(b, 'skipped', r)}
           onReview={() => setView('review')}
@@ -1015,7 +1030,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         open={showScanner}
         onClose={() => { setShowScanner(false); setHwBarcode(undefined); }}
         products={products}
-        entries={entries}
+        entries={productTotals}
         totalCount={totalCount}
         countedCount={countedCount}
         onCount={handleScanCount}

@@ -43,16 +43,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Session must be in submitted status' }, { status: 400 });
   }
 
+  // Atomically claim the approval (only from 'submitted') BEFORE reading the
+  // entries — a manager line-correction checks for 'submitted' too, so once the
+  // claim lands no late correction can slip between our read and the write.
+  if (updateSessionStatus(session_id, 'approved', { reviewed_by: user.id, review_note, fromStatus: 'submitted' }) === 0) {
+    return NextResponse.json({ error: 'This count was just changed by someone else — reload.' }, { status: 409 });
+  }
   const entries = getSessionEntries(session_id);
   if (entries.length === 0) {
     return NextResponse.json({ error: 'No count entries to approve' }, { status: 400 });
-  }
-
-  // Atomically claim the approval (only from 'submitted') BEFORE the Odoo write, so
-  // a concurrent reject/approve can't race. The approval then stands even if the
-  // Odoo sync fails (best-effort), matching prior behavior.
-  if (updateSessionStatus(session_id, 'approved', { reviewed_by: user.id, review_note, fromStatus: 'submitted' }) === 0) {
-    return NextResponse.json({ error: 'This count was just changed by someone else — reload.' }, { status: 409 });
   }
 
   // Aggregate per product BEFORE touching Odoo. The same product can be counted

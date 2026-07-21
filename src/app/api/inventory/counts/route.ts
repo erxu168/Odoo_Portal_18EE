@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, getTemplate, setCountPhotos, getCountPhotosMap, getSessionItems, getSessionLocations } from '@/lib/inventory-db';
+import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, getTemplate, setCountPhotos, getCountPhotosMap, getSessionItems, getSessionLocations, updateSessionStatus } from '@/lib/inventory-db';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { canAccessSession } from '@/lib/inventory-access';
@@ -36,6 +36,13 @@ export async function GET(request: Request) {
   const session = getSession(parseInt(sessionId));
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
   if (!canAccessSession(user, session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+  // Opening a pending count claims it as IN PROGRESS — so "apply layout to
+  // today" can never regenerate a session a device (possibly offline by now)
+  // has already opened.
+  if (session.status === 'pending') {
+    try { updateSessionStatus(parseInt(sessionId), 'in_progress'); } catch { /* status is advisory here */ }
+  }
 
   const entries = getSessionEntries(parseInt(sessionId));
   const photoMap = getCountPhotosMap('count_entries', entries.map((e: any) => e.id));
@@ -136,6 +143,15 @@ export async function POST(request: Request) {
     }
   }
 
+  // A reviewer correction FIXES an existing line — on a legacy session (no
+  // snapshot to validate against) it must never introduce a new product row.
+  if (isReviewerCorrection && snapshot.length === 0) {
+    const exists = getSessionEntries(session_id).some(
+      (e: any) => e.product_id === Number(product_id) && (e.count_location_id ?? 0) === locId,
+    );
+    if (!exists) return NextResponse.json({ error: 'Corrections can only change lines that were counted' }, { status: 400 });
+  }
+
   upsertCountEntry({
     session_id, product_id, counted_qty: baseQty,
     count_location_id: locId,
@@ -146,9 +162,12 @@ export async function POST(request: Request) {
     counted_by: resolveAttribution(user).userId,
     // undefined (not null) when no split → upsertCountEntry preserves any
     // existing crate split (e.g. a later photo-only save of a crate product).
-    crate_qty: hasSplit ? (Number(crate_qty) || 0) : undefined,
-    loose_qty: hasSplit ? (Number(loose_qty) || 0) : undefined,
-    units_per_crate: hasSplit ? Number(units_per_crate) : undefined,
+    // A plain-number manager correction CLEARS any stale crate/loose audit
+    // split (the correction is a base-quantity statement); normal saves without
+    // a split keep preserving an existing one (undefined).
+    crate_qty: hasSplit ? (Number(crate_qty) || 0) : (isReviewerCorrection ? null : undefined),
+    loose_qty: hasSplit ? (Number(loose_qty) || 0) : (isReviewerCorrection ? null : undefined),
+    units_per_crate: hasSplit ? Number(units_per_crate) : (isReviewerCorrection ? null : undefined),
   });
 
   if (Array.isArray(photos)) {

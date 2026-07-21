@@ -377,6 +377,31 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_session_items_session ON session_count_items(session_id)');
 
+  // Multi-spot approval SUMS a product's rows — legacy duplicate
+  // (session, spot, product) rows would multiply stock. Dedupe (keep the
+  // NEWEST row, drop older ones + their photos) so the unique line index can
+  // always be enforced.
+  const dupRows = db.prepare(`
+    SELECT session_id, count_location_id, product_id, COUNT(*) n, MAX(id) keep
+    FROM count_entries GROUP BY session_id, count_location_id, product_id HAVING n > 1
+  `).all() as { session_id: number; count_location_id: number; product_id: number; keep: number }[];
+  if (dupRows.length > 0) {
+    const wipeDupes = db.transaction(() => {
+      for (const d of dupRows) {
+        const olds = db.prepare(
+          'SELECT id FROM count_entries WHERE session_id = ? AND count_location_id = ? AND product_id = ? AND id != ?'
+        ).all(d.session_id, d.count_location_id, d.product_id, d.keep) as { id: number }[];
+        for (const o of olds) {
+          db.prepare("DELETE FROM count_photos WHERE source_table = 'count_entries' AND source_id = ?").run(o.id);
+          db.prepare('DELETE FROM count_entries WHERE id = ?').run(o.id);
+        }
+      }
+    });
+    wipeDupes();
+    console.warn(`[inventory] deduped ${dupRows.length} duplicate count line group(s) (kept newest)`);
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_entries_line ON count_entries(session_id, count_location_id, product_id)');
+
   // Frozen SPOT metadata per session (name/kind/walk order at freeze time) —
   // renaming, reordering, or archiving a spot in the Locations tree must never
   // rewrite an open session's walk or a historical count's labels.
@@ -966,10 +991,11 @@ export function upsertCountEntry(data: {
   if (existing) {
     db.prepare(`
       UPDATE count_entries SET counted_qty = ?, out_of_stock = ?, system_qty = ?, diff = ?, uom = ?, notes = ?,
-        crate_qty = ?, loose_qty = ?, units_per_crate = ?, count_mode = ?, pack_label = ?, loose_label = ?, odoo_qty = ?, counted_at = ?
+        crate_qty = ?, loose_qty = ?, units_per_crate = ?, count_mode = ?, pack_label = ?, loose_label = ?, odoo_qty = ?,
+        counted_by = ?, counted_at = ?
       WHERE id = ?
     `).run(countedQty, oos, data.system_qty ?? null, diff, data.uom, data.notes || null,
-      crateQty, looseQty, upc, cmode, plabel, llabel, odooQty, now(), existing.id);
+      crateQty, looseQty, upc, cmode, plabel, llabel, odooQty, data.counted_by, now(), existing.id);
   } else {
     db.prepare(`
       INSERT INTO count_entries (session_id, product_id, count_location_id, counted_qty, out_of_stock, system_qty, diff, uom, notes,

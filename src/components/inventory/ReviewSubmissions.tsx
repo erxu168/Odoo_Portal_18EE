@@ -113,8 +113,13 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         setReviewSkips(sk);
       } catch { setReviewSkips({}); }
 
-      let productIds: number[] = [];
-      try { productIds = JSON.parse(sess.template_product_ids || '[]'); } catch { productIds = []; }
+      // Frozen snapshot decides the product set for modern sessions.
+      let productIds: number[] = (countRes.items || []).length > 0
+        ? Array.from(new Set<number>((countRes.items || []).map((it: any) => it.odoo_product_id)))
+        : [];
+      if (productIds.length === 0) {
+        try { productIds = JSON.parse(sess.template_product_ids || '[]'); } catch { productIds = []; }
+      }
 
       let productList: any[] = [];
       if (productIds.length > 0) {
@@ -582,8 +587,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                               </div>
                             )}
                             {(() => {
-                              const entry = reviewEntries.find((e: any) => e.product_id === p.id);
-                              const entryPhotos: string[] = (entry?.photos || []) as string[];
+                              const entryPhotos: string[] = (entriesByProduct[p.id] || [])
+                                .flatMap((e: any) => (e.photos || []) as string[]);
                               if (entryPhotos.length === 0) return null;
                               return (
                                 <div className="flex items-center gap-1.5 mt-1.5">
