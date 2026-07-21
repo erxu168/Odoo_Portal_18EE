@@ -11,7 +11,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate, setTemplatePlacements, listCountLocations, todayStr, deleteStalePendingSessions } from '@/lib/inventory-db';
+import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate, todayStr, deleteStalePendingSessions } from '@/lib/inventory-db';
 import { listShiftTemplates } from '@/lib/shifts-db';
 
 /** A real calendar date in YYYY-MM-DD form (rejects e.g. 2026-02-30). */
@@ -34,28 +34,6 @@ async function locationCompanyError(locationId: number, companyId: number): Prom
   const locCompany = Array.isArray(loc) ? loc[0] : loc;      // false = shared
   if (locCompany && locCompany !== companyId) return 'That location belongs to another restaurant';
   return null;
-}
-
-/**
- * Persist a list's per-spot placements. Keeps only well-formed rows whose spot
- * is the catch-all (0) or a real count_location of THIS restaurant, and whose
- * product is on the list — so a builder payload can't place into another
- * company's spot or add stray products. Skips entirely when no array is sent
- * (a legacy client that doesn't manage placements leaves them untouched).
- */
-function savePlacements(templateId: number, companyId: number, productIds: number[], raw: unknown): void {
-  if (!Array.isArray(raw)) return;
-  const validLoc = new Set<number>([0, ...listCountLocations(companyId).map(l => l.id)]);
-  const productSet = new Set<number>(productIds.map(Number));
-  const placements = raw
-    .map((r: any) => ({
-      odoo_product_id: Number(r?.odoo_product_id),
-      count_location_id: Number(r?.count_location_id),
-      shelf_sort: Number.isFinite(Number(r?.shelf_sort)) ? Number(r.shelf_sort) : undefined,
-    }))
-    .filter(p => Number.isFinite(p.odoo_product_id) && productSet.has(p.odoo_product_id)
-      && Number.isInteger(p.count_location_id) && validLoc.has(p.count_location_id));
-  setTemplatePlacements(templateId, placements);
 }
 
 
@@ -192,10 +170,6 @@ export async function POST(request: Request) {
     assign_id: assign_type ? assign_id : null,
     created_by: user.id,
   });
-
-  // Save per-spot placements (builder sends them) BEFORE session generation, so
-  // the session snapshot captures where each item is counted.
-  savePlacements(id, companyId, Array.isArray(product_ids) ? product_ids : [], body.placements);
 
   // Auto-generate a counting session for today (respects frequency + schedule_days)
   const sessionId = generateSessionForTemplate(id);
@@ -337,15 +311,6 @@ export async function PUT(request: Request) {
     // No longer ad-hoc: future-dated untouched leftovers are removed; today's
     // (if any) is kept — a daily/weekly list would regenerate it today anyway.
     deleteStalePendingSessions(id, todayStr());
-  }
-
-  // Replace placements when the builder sends them, scoped to the effective
-  // company + the list's products. effectiveCompany is guaranteed non-null here
-  // (a legacy list with no company is rejected above).
-  if (effectiveCompany != null) {
-    const pids: number[] = Array.isArray(updates.product_ids) ? updates.product_ids
-      : (Array.isArray(existing.product_ids) ? existing.product_ids as number[] : []);
-    savePlacements(id, effectiveCompany, pids, body.placements);
   }
 
   return NextResponse.json({ message: 'Template updated' });

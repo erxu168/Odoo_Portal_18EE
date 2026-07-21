@@ -12,7 +12,7 @@ import type {
   CountingTemplate, CountingSession, CountEntry, QuickCount,
   Frequency, AssignType, SessionStatus,
   CountLocation, ProductPlacement, CountMode,
-  TemplatePlacement, SessionCountItem, StockReceipt, ProductImage,
+  SessionCountItem, StockReceipt, ProductImage,
 } from '@/types/inventory';
 
 // ===
@@ -153,6 +153,11 @@ export function initInventoryTables() {
       skip_reason TEXT,
       updated_at TEXT,
       PRIMARY KEY (session_id, count_location_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS inventory_migrations (
+      key TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS location_kinds (
@@ -462,6 +467,72 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
       updated_at TEXT
     )
   `);
+
+  // ── ONE-TIME data migrations — LAST, so every table above exists ──
+  // Flags table created independently too — the big schema exec above is one
+  // unit; a legacy-schema failure there must not leave the flag lookups broken.
+  db.exec('CREATE TABLE IF NOT EXISTS inventory_migrations (key TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
+  const migApplied = (key: string) => !!db.prepare('SELECT 1 FROM inventory_migrations WHERE key = ?').get(key);
+  const markMig = db.prepare('INSERT OR IGNORE INTO inventory_migrations (key, applied_at) VALUES (?, ?)');
+
+  // ONE-TIME: fold per-list spot assignments (template_product_locations) into
+  // the products' global HOME SPOTS (product_locations) — the single record the
+  // whole module now reads. Copy + flag are one transaction; only spots that
+  // still exist are imported; when several lists placed the same product at the
+  // same spot, the smallest shelf_sort wins (deterministic). Flag-guarded so a
+  // manager's later deliberate spot removal is never resurrected on boot.
+  {
+    const hasTplTable = db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='template_product_locations'"
+    ).get();
+    // Flag check INSIDE the transaction — two initializing workers can't both
+    // apply (the second sees the flag or its marker INSERT is ignored).
+    const tx = db.transaction(() => {
+      if (migApplied('tpl_placements_to_home_spots')) return;
+      if (hasTplTable) {
+        db.exec(`
+          INSERT OR IGNORE INTO product_locations (odoo_product_id, count_location_id, shelf_sort)
+          SELECT t.odoo_product_id, t.count_location_id, MIN(t.shelf_sort)
+          FROM template_product_locations t
+          JOIN count_locations cl ON cl.id = t.count_location_id
+          WHERE t.count_location_id != 0
+          GROUP BY t.odoo_product_id, t.count_location_id
+        `);
+      }
+      markMig.run('tpl_placements_to_home_spots', now());
+    });
+    tx();
+  }
+
+  // ONE-TIME: freeze legacy sessions (created before session snapshots existed)
+  // as flat spot-0 items. Without this, the guided route would resolve them
+  // from LIVE home spots while their count rows sit at spot 0 — editing a home
+  // spot could then re-route an old open/reviewable count. Only sessions of
+  // explicit-product templates are frozen (category-only lists stay guided:false).
+  {
+    const tx = db.transaction(() => {
+      if (migApplied('freeze_legacy_sessions_flat')) return;
+      const legacy = db.prepare(`
+        SELECT s.id AS session_id, t.product_ids AS product_ids
+        FROM counting_sessions s
+        JOIN counting_templates t ON t.id = s.template_id
+        WHERE NOT EXISTS (SELECT 1 FROM session_count_items i WHERE i.session_id = s.id)
+      `).all() as { session_id: number; product_ids: string }[];
+      const ins = db.prepare(`
+        INSERT OR IGNORE INTO session_count_items
+          (session_id, odoo_product_id, count_location_id, shelf_sort, requires_photo, count_mode, pack_label, loose_label, units_per_crate)
+        VALUES (?, ?, 0, ?, 0, NULL, NULL, NULL, NULL)
+      `);
+      for (const row of legacy) {
+        let pids: number[] = [];
+        try { pids = JSON.parse(row.product_ids || '[]'); } catch { pids = []; }
+        pids.forEach((pid, i) => { if (Number.isInteger(pid) && pid > 0) ins.run(row.session_id, pid, i); });
+      }
+      markMig.run('freeze_legacy_sessions_flat', now());
+    });
+    tx();
+  }
+
 }
 
 // ===
@@ -1267,29 +1338,7 @@ export function setProductCountMode(
 // TEMPLATE PLACEMENTS (product ↔ spot, scoped to ONE list)
 // ===
 
-/** Replace all of a template's placements in one transaction. */
-export function setTemplatePlacements(
-  templateId: number,
-  placements: { odoo_product_id: number; count_location_id: number; shelf_sort?: number }[],
-): void {
-  const db = getDb();
-  const tx = db.transaction((rows: typeof placements) => {
-    db.prepare('DELETE FROM template_product_locations WHERE template_id = ?').run(templateId);
-    const ins = db.prepare(
-      'INSERT OR IGNORE INTO template_product_locations (template_id, odoo_product_id, count_location_id, shelf_sort) VALUES (?, ?, ?, ?)',
-    );
-    rows.forEach((p, i) => ins.run(templateId, p.odoo_product_id, p.count_location_id, p.shelf_sort ?? i));
-  });
-  tx(placements);
-}
 
-/** A template's placements, ordered by spot then shelf. */
-export function getTemplatePlacements(templateId: number): TemplatePlacement[] {
-  const db = getDb();
-  return db.prepare(
-    'SELECT template_id, odoo_product_id, count_location_id, shelf_sort FROM template_product_locations WHERE template_id = ? ORDER BY count_location_id, shelf_sort, odoo_product_id',
-  ).all(templateId) as TemplatePlacement[];
-}
 
 // ===
 // SESSION COUNT ITEMS (frozen "what/where to count" snapshot per session)
@@ -1324,30 +1373,31 @@ export function snapshotSessionItems(
 export function snapshotSessionFromTemplate(sessionId: number, templateId: number): void {
   const tmpl = getTemplate(templateId);
   if (!tmpl) return;
-  const placements = getTemplatePlacements(templateId);
   const pids: number[] = Array.isArray(tmpl.product_ids) ? (tmpl.product_ids as number[]) : [];
+  // The walking route comes from the products' GLOBAL home spots
+  // (product_locations) — the one record all three editing doors write.
+  // (template_product_locations is retired; its rows were folded in by the
+  // one-time migration.) The validSpots filter below still scopes to THIS
+  // restaurant's spots, so a product's spots in another company are ignored.
+  // Home spots are GLOBAL, so a product may also live at ANOTHER restaurant's
+  // spots. Those must be dropped BEFORE the placed/unplaced split — a foreign
+  // placement converted to the catch-all would create a hidden duplicate
+  // "General" line next to the product's real local line. After filtering, a
+  // product with no valid local spot gets exactly ONE catch-all line.
+  const validSpots = new Set<number>(
+    tmpl.company_id != null ? listCountLocations(tmpl.company_id).map((l) => l.id) : [],
+  );
+  const placements = getPlacementsForProducts(pids)
+    .filter((p) => pids.includes(p.odoo_product_id) && validSpots.has(p.count_location_id));
   const pairs: { product_id: number; spot: number; shelf: number }[] = [];
-  if (placements.length > 0) {
-    // Only placements whose spot still exists AND belongs to this list's
-    // restaurant count; a stale/foreign placement falls back to the catch-all.
-    const validSpots = new Set<number>(
-      tmpl.company_id != null ? listCountLocations(tmpl.company_id).map((l) => l.id) : [],
-    );
-    const placed = new Set<number>();
-    placements.forEach((p, i) => {
-      if (!pids.includes(p.odoo_product_id)) return;   // placement for a product no longer on the list
-      const spot = validSpots.has(p.count_location_id) ? p.count_location_id : 0;
-      pairs.push({ product_id: p.odoo_product_id, spot, shelf: p.shelf_sort ?? i });
-      if (spot !== 0) placed.add(p.odoo_product_id);
-    });
-    // A product on the list but placed nowhere still gets counted — one line at
-    // the catch-all spot (0), never silently dropped.
-    pids.forEach((pid, i) => {
-      if (!pairs.some((q) => q.product_id === pid)) pairs.push({ product_id: pid, spot: 0, shelf: i });
-    });
-  } else {
-    pids.forEach((pid, i) => pairs.push({ product_id: pid, spot: 0, shelf: i }));
-  }
+  placements.forEach((p, i) => {
+    pairs.push({ product_id: p.odoo_product_id, spot: p.count_location_id, shelf: p.shelf_sort ?? i });
+  });
+  // A product on the list but placed nowhere locally still gets counted — one
+  // line at the catch-all spot (0), never silently dropped.
+  pids.forEach((pid, i) => {
+    if (!pairs.some((q) => q.product_id === pid)) pairs.push({ product_id: pid, spot: 0, shelf: i });
+  });
   if (pairs.length === 0) return;
 
   // Freeze the SPOT metadata (name/kind/walk order) for every real spot used,
@@ -1743,6 +1793,74 @@ export function getLocationsForProduct(productId: number): number[] {
   const db = getDb();
   return (db.prepare('SELECT count_location_id FROM product_locations WHERE odoo_product_id = ?').all(productId) as { count_location_id: number }[])
     .map((r) => r.count_location_id);
+}
+
+/**
+ * Every placement across ONE restaurant's active spots — the map a screen needs
+ * to show each product's home-spot chips in one query.
+ */
+export function listPlacementsForCompany(companyId: number): ProductPlacement[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT pl.odoo_product_id, pl.count_location_id, pl.shelf_sort
+    FROM product_locations pl
+    JOIN count_locations cl ON cl.id = pl.count_location_id
+    WHERE cl.company_id = ? AND cl.active = 1
+    ORDER BY pl.count_location_id, pl.shelf_sort, pl.odoo_product_id
+  `).all(companyId) as ProductPlacement[];
+}
+
+/**
+ * Product-first home-spot edit: make `spotIds` the product's spots WITHIN one
+ * restaurant. Spots of other companies are untouched. Kept placements keep
+ * their shelf order; newly added spots append at the end of that spot's shelf
+ * (MAX+10). Caller must have validated that every id belongs to `companyId`.
+ */
+export function setProductSpots(productId: number, spotIds: number[], companyId: number): void {
+  setProductsSpotsBulk(companyId, [{ product_id: productId, spot_ids: spotIds }]);
+}
+
+/**
+ * Replace several products' home spots within one restaurant in ONE
+ * transaction — either every product applies or none does (an "Arrange spots"
+ * save must never half-commit). Revalidates every requested spot INSIDE the
+ * transaction: a spot deleted mid-flight aborts the whole edit.
+ */
+export function setProductsSpotsBulk(
+  companyId: number,
+  entries: { product_id: number; spot_ids: number[] }[],
+): void {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    const valid = new Set((db.prepare(
+      'SELECT id FROM count_locations WHERE company_id = ? AND active = 1'
+    ).all(companyId) as { id: number }[]).map((r) => r.id));
+    const maxSort = db.prepare('SELECT COALESCE(MAX(shelf_sort), 0) AS m FROM product_locations WHERE count_location_id = ?');
+    const del = db.prepare('DELETE FROM product_locations WHERE odoo_product_id = ? AND count_location_id = ?');
+    const ins = db.prepare('INSERT OR IGNORE INTO product_locations (odoo_product_id, count_location_id, shelf_sort) VALUES (?, ?, ?)');
+    const currentOf = db.prepare(`
+      SELECT pl.count_location_id FROM product_locations pl
+      JOIN count_locations cl ON cl.id = pl.count_location_id
+      WHERE pl.odoo_product_id = ? AND cl.company_id = ?
+    `);
+    for (const e of entries) {
+      for (const id of e.spot_ids) {
+        if (!valid.has(id)) throw new Error(`Spot ${id} is not an active spot of company ${companyId}`);
+      }
+      const current = (currentOf.all(e.product_id, companyId) as { count_location_id: number }[])
+        .map((r) => r.count_location_id);
+      const next = new Set(e.spot_ids);
+      for (const id of current) if (!next.has(id)) del.run(e.product_id, id);
+      const have = new Set(current);
+      for (const id of e.spot_ids) {
+        if (!have.has(id)) {
+          const m = (maxSort.get(id) as { m: number }).m;
+          ins.run(e.product_id, id, m + 10);
+        }
+      }
+    }
+  });
+  tx();
 }
 
 /** All placements for a set of products (used to build a session's guided route). */

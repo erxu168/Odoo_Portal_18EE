@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { SearchBar, Spinner, EmptyState } from './ui';
+import SpotSheet from './SpotSheet';
 import { suggestCrateSizeFromName, baseIsMeasure } from '@/lib/crate-units';
 import { useCompany } from '@/lib/company-context';
 
@@ -52,6 +53,41 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
   const [looseLabels, setLooseLabels] = useState<Record<number, string>>({});   // per-product single-unit word (pack+loose mode)
   const [imageIds, setImageIds] = useState<Set<number>>(new Set());             // product ids that have a picture
   const [photoTarget, setPhotoTarget] = useState<number | null>(null);          // which product a pick applies to
+  // HOME SPOTS — the global product↔spot record (same one the list builder and
+  // the Locations screen edit). Chips per product; SpotSheet edits them.
+  const [homeSpots, setHomeSpots] = useState<Record<number, number[]>>({});
+  const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});
+  const [spotSheetFor, setSpotSheetFor] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (!companyId) return;
+    let stale = false;
+    // Reset first — a failed load must show "no data", never the PREVIOUS
+    // restaurant's chips.
+    setHomeSpots({});
+    setSpotLabels({});
+    (async () => {
+      try {
+        const [plRes, locRes] = await Promise.all([
+          fetch(`/api/inventory/product-locations?company_id=${companyId}`).then((r) => r.ok ? r.json() : Promise.reject(new Error('placements'))),
+          fetch(`/api/inventory/count-locations?company_id=${companyId}`).then((r) => r.ok ? r.json() : Promise.reject(new Error('locations'))),
+        ]);
+        if (stale) return;
+        const map: Record<number, number[]> = {};
+        (plRes.placements || []).forEach((pl: any) => { (map[pl.odoo_product_id] ||= []).push(pl.count_location_id); });
+        setHomeSpots(map);
+        const locs: any[] = locRes.locations || [];
+        const byId = new Map<number, any>(locs.map((l) => [l.id, l]));
+        const labels: Record<number, string> = {};
+        locs.forEach((l) => {
+          const parent = l.parent_id != null ? byId.get(l.parent_id) : null;
+          labels[l.id] = parent ? `${parent.name} · ${l.name}` : l.name;
+        });
+        setSpotLabels(labels);
+      } catch { /* chips degrade gracefully */ }
+    })();
+    return () => { stale = true; };
+  }, [companyId]);
   const [imgVer, setImgVer] = useState(0);                                      // cache-bust <img> after an update
   const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
@@ -282,12 +318,42 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                       </span>
                     )}
                   </div>
+
+                  {/* HOME SPOTS — where this product lives / is counted (global record) */}
+                  <button
+                    onClick={() => setSpotSheetFor(p)}
+                    aria-label={`Change where ${p.name} is counted`}
+                    className="mt-2 flex flex-wrap gap-1 text-left active:opacity-80"
+                  >
+                    {(homeSpots[p.id] || []).length > 0 ? (
+                      (homeSpots[p.id] || []).map((sid) => (
+                        <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
+                          📍 {spotLabels[sid] || `Spot ${sid}`}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-dashed border-amber-300">
+                        📍 No spot yet — tap to set
+                      </span>
+                    )}
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {spotSheetFor && companyId && (
+        <SpotSheet
+          product={spotSheetFor}
+          hasImage={imageIds.has(spotSheetFor.id)}
+          companyId={companyId}
+          initialSpotIds={homeSpots[spotSheetFor.id] || []}
+          onSaved={(ids) => setHomeSpots((m) => ({ ...m, [spotSheetFor.id]: ids }))}
+          onClose={() => setSpotSheetFor(null)}
+        />
+      )}
     </div>
   );
 }

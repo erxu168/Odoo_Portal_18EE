@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { BackHeader, FilterBar, FilterPill, SearchBar, Spinner, ProductThumb, leafCategory } from './ui';
+import SpotSheet from './SpotSheet';
 import { useCompany } from '@/lib/company-context';
 import { pluralizePack } from '@/lib/crate-units';
 
@@ -55,6 +56,12 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   );
   const [productImageIds, setProductImageIds] = useState<Set<number>>(new Set()); // products with a picture
   const [flags, setFlags] = useState<Record<number, any>>({});      // productId -> count config (pack_label, units_per_crate) for the unit hint
+  // HOME SPOTS — the global product↔spot record every door edits. The map shows
+  // each row's spot chips; the SpotSheet edits them (saved immediately).
+  const [homeSpots, setHomeSpots] = useState<Record<number, number[]>>({});     // productId -> spot ids
+  const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});     // spot id -> "Area · Spot"
+  const [spotSheetFor, setSpotSheetFor] = useState<any | null>(null);           // product whose spots are being edited
+  const [trayOpen, setTrayOpen] = useState(false);                              // "On this list" tray expanded
   const [shiftTemplates, setShiftTemplates] = useState<any[]>([]);  // Planning shift templates (Opening/Mid/Closing) for "assign to a shift"
   const [shiftLoadFailed, setShiftLoadFailed] = useState(false);    // fetch failed/forbidden ≠ "no shifts exist" — don't lie in the hint
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -66,6 +73,40 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const [portalUsers, setPortalUsers] = useState<any[]>([]);
 
   const isEdit = !!template?.id;
+
+  // Home-spot map + spot labels for the chips (one request each). Failure is
+  // non-fatal — chips just show "No spot yet" until the sheet is opened.
+  useEffect(() => {
+    if (!companyId) return;
+    let stale = false;
+    // Reset first — a failed load must show "no data", never the PREVIOUS
+    // restaurant's chips.
+    setHomeSpots({});
+    setSpotLabels({});
+    (async () => {
+      try {
+        const [plRes, locRes] = await Promise.all([
+          fetch(`/api/inventory/product-locations?company_id=${companyId}`).then((r) => r.ok ? r.json() : Promise.reject(new Error('placements'))),
+          fetch(`/api/inventory/count-locations?company_id=${companyId}`).then((r) => r.ok ? r.json() : Promise.reject(new Error('locations'))),
+        ]);
+        if (stale) return;
+        const map: Record<number, number[]> = {};
+        (plRes.placements || []).forEach((p: any) => {
+          (map[p.odoo_product_id] ||= []).push(p.count_location_id);
+        });
+        setHomeSpots(map);
+        const locs: any[] = locRes.locations || [];
+        const byId = new Map<number, any>(locs.map((l) => [l.id, l]));
+        const labels: Record<number, string> = {};
+        locs.forEach((l) => {
+          const parent = l.parent_id != null ? byId.get(l.parent_id) : null;
+          labels[l.id] = parent ? `${parent.name} · ${l.name}` : l.name;
+        });
+        setSpotLabels(labels);
+      } catch { /* chips degrade gracefully */ }
+    })();
+    return () => { stale = true; };
+  }, [companyId]);
 
   useEffect(() => {
     // Cancellation guard: after a company switch (or unmount) this run's late
@@ -351,6 +392,39 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
 
         <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
 
+        {/* Pinned "On this list" tray — the selection never scrolls out of sight. */}
+        {selectedCount > 0 && (
+          <div className="mx-4 mb-2 bg-green-50 border-[1.5px] border-green-300 rounded-xl px-3 py-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold tracking-wider uppercase text-green-800">On this list · {selectedCount}</span>
+              <button onClick={() => setTrayOpen((o) => !o)} className="text-[11px] font-bold text-green-700 active:opacity-70">
+                {trayOpen ? 'Collapse ▴' : 'View all ▾'}
+              </button>
+            </div>
+            {trayOpen ? (
+              <div className="max-h-44 overflow-y-auto flex flex-col gap-1">
+                {selectedProducts.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2 bg-white border border-green-200 rounded-lg px-2 py-1.5">
+                    <span className="flex-1 min-w-0 truncate text-[var(--fs-sm)] font-semibold text-gray-900">{p.name}</span>
+                    <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name}`}
+                      className="w-5 h-5 rounded-full bg-green-100 text-green-800 text-[11px] font-bold flex items-center justify-center active:bg-red-100 active:text-red-600">×</button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                {selectedProducts.map((p) => (
+                  <span key={p.id} className="flex-shrink-0 flex items-center gap-1.5 bg-white border border-green-200 rounded-full pl-2.5 pr-1.5 py-1 text-[11px] font-bold text-green-900 whitespace-nowrap">
+                    {p.name}
+                    <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name}`}
+                      className="w-4 h-4 rounded-full bg-green-100 text-green-800 text-[10px] font-bold flex items-center justify-center active:bg-red-100 active:text-red-600">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <FilterBar>
           <FilterPill active={catFilter === 'all'} label="All" onClick={() => setCatFilter('all')} />
           {categories.map((c) => (
@@ -399,26 +473,43 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
                   {group.items.map((p) => {
                     const isSelected = selectedProductIds.has(p.id);
                     return (
-                      <button key={p.id} onClick={() => toggleProduct(p.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-gray-100 last:border-b-0 transition-colors min-h-[52px] ${
-                          isSelected ? 'bg-green-50 active:bg-green-100' : 'bg-white active:bg-gray-50'
-                        }`}>
-                        <div className={`w-6 h-6 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
-                          isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'
-                        }`}>
-                          {isSelected && (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                      <div key={p.id}
+                        className={`border-b border-gray-100 last:border-b-0 transition-colors ${isSelected ? 'bg-green-50' : 'bg-white'}`}>
+                        <button onClick={() => toggleProduct(p.id)}
+                          className={`w-full flex items-center gap-3 px-4 pt-2.5 pb-1 text-left min-h-[48px] ${isSelected ? 'active:bg-green-100' : 'active:bg-gray-50'}`}>
+                          <div className={`w-6 h-6 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                            isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'
+                          }`}>
+                            {isSelected && (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                            )}
+                          </div>
+                          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-[var(--fs-base)] font-semibold truncate ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{p.name}</div>
+                            <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5 truncate">{unitHint(p)}</div>
+                          </div>
+                          <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold ${isSelected ? 'text-green-700' : 'text-gray-400'}`}>
+                            {isSelected ? 'Added' : '+ Add'}
+                          </span>
+                        </button>
+                        {/* Home-spot chips — a SIBLING control (valid + keyboardable), aligned under the name */}
+                        <button onClick={() => setSpotSheetFor(p)}
+                          aria-label={`Change where ${p.name} is counted`}
+                          className="w-full flex flex-wrap gap-1 px-4 pb-2 pl-[92px] text-left active:opacity-80">
+                          {(homeSpots[p.id] || []).length > 0 ? (
+                            (homeSpots[p.id] || []).map((sid) => (
+                              <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
+                                📍 {spotLabels[sid] || `Spot ${sid}`}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-dashed border-amber-300">
+                              📍 No spot yet — tap to set
+                            </span>
                           )}
-                        </div>
-                        <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
-                        <div className="flex-1 min-w-0">
-                          <div className={`text-[var(--fs-base)] font-semibold truncate ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>{p.name}</div>
-                          <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5 truncate">{unitHint(p)}</div>
-                        </div>
-                        <span className={`flex-shrink-0 text-[var(--fs-xs)] font-bold ${isSelected ? 'text-green-700' : 'text-gray-400'}`}>
-                          {isSelected ? 'Added' : '+ Add'}
-                        </span>
-                      </button>
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -433,6 +524,17 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             Done &mdash; {selectedCount} product{selectedCount !== 1 ? 's' : ''} selected
           </button>
         </div>
+
+        {spotSheetFor && companyId && (
+          <SpotSheet
+            product={spotSheetFor}
+            hasImage={productImageIds.has(spotSheetFor.id)}
+            companyId={companyId}
+            initialSpotIds={homeSpots[spotSheetFor.id] || []}
+            onSaved={(ids) => setHomeSpots((m) => ({ ...m, [spotSheetFor.id]: ids }))}
+            onClose={() => setSpotSheetFor(null)}
+          />
+        )}
       </div>
     );
   }

@@ -4,11 +4,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { BackHeader, Spinner, ProductThumb } from './ui';
 
 /**
- * "Arrange spots" — where each product of ONE counting list is physically
- * counted. Spot cards in walking order; the same product may be added to
- * several spots (each becomes its own count line, summed on approval);
- * anything unplaced counts at "General". Saving affects FUTURE counts; an
- * untouched pending count for today can take the new layout immediately.
+ * "Arrange spots" — where this list's products are physically counted.
+ *
+ * These are the products' GLOBAL home spots (the same record the list builder,
+ * Product Settings and the Locations screen edit) — arranging here updates the
+ * products EVERYWHERE, not just on this list. Spot cards in walking order; the
+ * same product may live at several spots (each becomes its own count line,
+ * summed on approval); anything unplaced counts at "General". Saving affects
+ * FUTURE counts; an untouched pending count for today can take the new layout
+ * immediately.
  */
 export default function TemplatePlacementEditor({ templateId, templateName, onBack }: {
   templateId: number; templateName: string; onBack: () => void;
@@ -48,7 +52,12 @@ export default function TemplatePlacementEditor({ templateId, templateName, onBa
   const spotsOf = (pid: number) => placements.filter((p) => p.odoo_product_id === pid).map((p) => p.count_location_id);
   const unplaced = productIds.filter((pid) => spotsOf(pid).length === 0);
 
+  // Products the manager actually TOUCHED — only those are replaced on save
+  // (patch semantics), so a stale layout can't wipe another door's newer edits.
+  const [touched, setTouched] = useState<Set<number>>(new Set());
+
   function toggle(pid: number, sid: number) {
+    setTouched((prev) => { const n = new Set(prev); n.add(pid); return n; });
     setPlacements((prev) => {
       const has = prev.some((p) => p.odoo_product_id === pid && p.count_location_id === sid);
       if (has) return prev.filter((p) => !(p.odoo_product_id === pid && p.count_location_id === sid));
@@ -57,19 +66,28 @@ export default function TemplatePlacementEditor({ templateId, templateName, onBa
   }
 
   async function save() {
+    // Snapshot what this request covers — a product toggled WHILE the request
+    // is in flight stays touched and rides the next save.
+    const sent = new Set(touched);
     setSaving(true); setError(null); setSavedMsg(null);
     try {
       const res = await fetch(`/api/inventory/templates/${templateId}/placements`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          placements: placements.map((p, i) => ({ ...p, shelf_sort: i })),
+          // Only touched products' rows are sent + named in `products` — the
+          // server replaces exactly those and leaves the rest alone.
+          placements: placements
+            .filter((p) => sent.has(p.odoo_product_id))
+            .map((p, i) => ({ ...p, shelf_sort: i })),
+          products: Array.from(sent),
           apply_today: applyToday && todayUntouched,
         }),
       });
       const d = await res.json();
       if (!res.ok) { setError(d.error || 'Could not save.'); return; }
       setTodayUntouched(!!d.today_session_untouched);
-      setSavedMsg(d.applied_today ? 'Saved — today’s count now uses this layout.' : 'Saved — applies from the next count.');
+      setTouched((prev) => new Set(Array.from(prev).filter((id) => !sent.has(id))));
+      setSavedMsg(d.applied_today ? 'Saved everywhere — today’s count now uses this layout.' : 'Saved everywhere — applies from each list’s next count.');
     } catch { setError('Network error — not saved.'); }
     finally { setSaving(false); }
   }
