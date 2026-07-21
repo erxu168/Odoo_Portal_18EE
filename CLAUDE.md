@@ -86,20 +86,44 @@ report** — which step was skipped and why. Never let the missing cross-check b
 - Portal path: `/opt/krawings-portal`
 - Repo: `erxu168/Odoo_Portal_18EE` — single branch: `main`
 
-## Deploy Process
+## Deploy Process — STAGING AUTODEPLOYS. Just push to `main`.
 
-Deploys are SERIALIZED with a lock — two agents building at once corrupts
-`.next` (`_ssgManifest.js ENOENT`, happened 2026-07-21). Always deploy through
-`flock`; if the lock is held, it waits (up to 10 min) instead of colliding:
+**To deploy: push to `main` and wait ≤2 minutes. Do nothing else.**
 
+Staging runs a cron autodeploy every 2 minutes
+(`*/2 * * * * /usr/local/bin/portal-autodeploy.sh`, source: `ops/portal-autodeploy.sh`
++ `ops/portal-lib.sh`). When it sees `origin/main` is ahead it does a **safe,
+atomic** deploy: builds in an isolated git worktree at `/opt/portal-build`
+(live site untouched), then swaps the finished `.next` into `/opt/krawings-portal`
+and restarts. It keeps `.next.prev` for an **instant rollback** and quarantines a
+SHA that fails to build. It self-serializes on `$LOCK_DIR/deploy.lock`.
+
+**⛔ NEVER build in the live directory.** Do NOT run
+`cd /opt/krawings-portal && npm run build` / `rm -rf .next` / `systemctl restart`
+by hand, and do NOT use any `flock /tmp/kw-deploy.lock` command. That builds in
+place with a *different* lock than the cron autodeploy, so the two collide
+mid-cutover and leave a mismatched React client manifest → the whole site 500s
+(`Could not find the module ".../app-router.js#" in the React Client Manifest`;
+this exact incident happened 2026-07-21 and self-healed only when the running
+autodeploy finished its swap). The old `flock /tmp/kw-deploy.lock … rm -rf .next`
+instructions were wrong — that is what caused the outage.
+
+**Need it out faster than the 2-min poll?** Trigger the *real* script (it takes
+its own lock and does the same safe worktree build + atomic swap):
 ```
-ssh root@89.167.124.0 "flock -w 600 /tmp/kw-deploy.lock -c '
-  cd /opt/krawings-portal && git pull && npm run build && systemctl restart krawings-portal'"
+ssh root@89.167.124.0 /usr/local/bin/portal-autodeploy.sh
 ```
 
-Always `npm run build` before restart — catches TypeScript errors. If a build
-fails with a missing-file ENOENT at the very end, suspect a concurrent build:
-take the lock and rebuild once alone (`rm -rf .next` first).
+**Verify a deploy:** `curl -sS -o /dev/null -w '%{http_code}\n' https://portal.krawings.de/login`
+should be `200`; `ssh root@89.167.124.0 'cd /opt/krawings-portal && git rev-parse --short HEAD'`
+should match `origin/main`. Autodeploy logs: `/var/log/portal-sync/autodeploy.log`
+and `/var/log/portal-sync/*-<ts>.log`.
+
+Build errors are a `main` problem, not a deploy problem: a build that fails in the
+worktree never reaches the live site (rollback + SHA quarantine). Fix the code on
+`main` and push again. Local pre-push sanity check: `npx tsc --noEmit`
+(the tree needs `NODE_OPTIONS=--max-old-space-size=4096` for a full `next build`,
+else the worker OOMs into phantom `.next` ENOENT errors).
 
 ## Concurrent Claude Sessions (binding — collisions happened 2026-07-21)
 
