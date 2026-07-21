@@ -93,7 +93,7 @@ export default function SetupGuideEditor({
     <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-3 space-y-3">
       <p className="text-[11px] text-gray-600 leading-snug">
         📍 Upload one clear photo of the finished station, then tap the photo to drop a numbered
-        pin for each item. Staff check off each pin as they set it up.
+        pin for each item — drag a pin to move it. Staff check off each pin as they set it up.
       </p>
 
       {!photoUrl ? (
@@ -121,6 +121,7 @@ export default function SetupGuideEditor({
                 mode="edit"
                 activeIndex={activeIndex}
                 onPlace={(x, y) => { setPending({ x, y }); setNewName(''); }}
+                onPinMove={(i, x, y) => onPinsChange(pins.map((p, idx) => idx === i ? { ...p, pin_x: x, pin_y: y } : p))}
                 onPinClick={(i) => setActiveIndex(a => a === i ? null : i)}
                 onImageError={() => setImgError(true)}
               />
