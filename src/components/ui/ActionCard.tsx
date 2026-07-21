@@ -37,7 +37,7 @@ export function ActionCard({ emoji, label, subtitle, badge, className = '', disa
     <button
       type="button"
       disabled={disabled}
-      className={`relative w-full bg-white rounded-2xl border border-gray-200 p-4 text-left transition-transform min-h-[104px] flex flex-col ${
+      className={`relative w-full h-full bg-white rounded-2xl border border-gray-200 p-4 text-left transition-transform min-h-[104px] flex flex-col ${
         disabled ? 'opacity-50' : 'active:scale-[0.97]'
       } ${className}`}
       {...rest}
