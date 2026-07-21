@@ -55,8 +55,13 @@
                                         <field name="photo_instructions"/>
                                         <field name="module_link_type"/>
                                         <field name="is_setup_guide"/>
-                                        <field name="setup_photo_filename" invisible="1"/>
-                                        <field name="setup_photo" widget="image" filename="setup_photo_filename" invisible="not is_setup_guide"/>
+                                        <field name="setup_photo_ids" invisible="not is_setup_guide">
+                                            <list editable="bottom">
+                                                <field name="sequence"/>
+                                                <field name="filename"/>
+                                                <field name="image" widget="image" filename="filename"/>
+                                            </list>
+                                        </field>
                                     </group>
                                     <group string="Recurrence">
                                         <field name="recurrence_type"/>

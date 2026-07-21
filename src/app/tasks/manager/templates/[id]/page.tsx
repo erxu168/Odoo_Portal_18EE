@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, use } from 'react';
+import { useEffect, useRef, useState, useCallback, use } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule, DepartmentOption } from '@/lib/odoo-tasks';
@@ -517,16 +517,18 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
     })),
   );
   const [removedSeqs, setRemovedSeqs] = useState<number[]>([]);
-
-  function nextSeq(): number {
-    const used = [...photos.map(p => p.seq), ...removedSeqs];
-    return used.length ? Math.max(...used) + 1 : 0;
-  }
+  // New lines: remember the id created by the first successful save, so a retry
+  // after a failed photo upload PATCHes instead of POSTing a duplicate task.
+  const [createdLineId, setCreatedLineId] = useState<number | null>(null);
+  // Monotonic seq allocator, bumped SYNCHRONOUSLY (before the async image
+  // compression) so two overlapping "add photo" picks can't collide.
+  const seqRef = useRef<number>(Math.max(-1, ...(line?.setup_photo_seqs ?? [])) + 1);
 
   async function addSetupPhoto(file: File) {
+    const seq = seqRef.current++;
     try {
       const { base64 } = await compressImage(file, 1280, 0.85);
-      setPhotos(prev => [...prev, { seq: nextSeq(), url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64 }]);
+      setPhotos(prev => [...prev, { seq, url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64 }]);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Could not read image');
     }
@@ -605,10 +607,12 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
     }
     setSubmitting(true); setError(null);
     try {
-      const url = line
-        ? `/api/tasks/templates/${tplId}/lines/${line.id}`
+      // A retry after a failed photo upload must PATCH the already-created line.
+      const existingId = line?.id ?? createdLineId;
+      const url = existingId
+        ? `/api/tasks/templates/${tplId}/lines/${existingId}`
         : `/api/tasks/templates/${tplId}/lines`;
-      const method = line ? 'PATCH' : 'POST';
+      const method = existingId ? 'PATCH' : 'POST';
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -634,22 +638,41 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
       if (!body.ok) throw new Error(body.error || 'Failed');
 
       // Resolve the line id for photo/attachment uploads. PATCH doesn't return the
-      // id, but we already have it on `line.id`. POST returns body.line_id.
-      const lineId: number | undefined = line?.id ?? body.line_id;
+      // id, but we already have it. POST returns body.line_id — remember it so a
+      // retry can't create a duplicate task.
+      const lineId: number | undefined = existingId ?? body.line_id;
+      if (!existingId && body.line_id) setCreatedLineId(body.line_id);
 
-      // Upload every pending photo with its client-assigned seq (pins reference it).
+      // Upload every pending photo with its client-assigned seq (pins reference
+      // it). Failures keep the modal open with only the FAILED photos still
+      // pending — pressing Save again retries just those against the same line.
       if (isSetupGuide && lineId) {
+        const uploadedSeqs: number[] = [];
+        let uploadError: string | null = null;
         for (const p of photos) {
           if (!p.pendingBase64) continue;
-          const upRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/setup-photo`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ data_base64: p.pendingBase64, seq: p.seq }),
-          });
-          const upBody = await upRes.json().catch(() => ({}));
-          if (!upRes.ok || !upBody.ok) {
-            throw new Error(upBody.error || 'Task saved, but a photo upload failed — reopen to retry.');
+          try {
+            const upRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/setup-photo`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ data_base64: p.pendingBase64, seq: p.seq }),
+            });
+            const upBody = await upRes.json().catch(() => ({}));
+            if (!upRes.ok || !upBody.ok) uploadError = upBody.error || 'A photo upload failed';
+            else uploadedSeqs.push(p.seq);
+          } catch {
+            uploadError = 'A photo upload failed';
           }
+        }
+        if (uploadedSeqs.length) {
+          setPhotos(prev => prev.map(p => uploadedSeqs.includes(p.seq)
+            ? { seq: p.seq, url: p.url }   // no longer pending; dataURL keeps displaying
+            : p));
+        }
+        if (uploadError) {
+          setError(`${uploadError} — press Save to retry the remaining photo(s).`);
+          setSubmitting(false);
+          return;
         }
       }
 

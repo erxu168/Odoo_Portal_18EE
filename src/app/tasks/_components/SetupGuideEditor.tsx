@@ -46,7 +46,9 @@ export default function SetupGuideEditor({
 }: Props) {
   const [items, setItems] = useState<StationItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
-  const [pending, setPending] = useState<{ x: number; y: number } | null>(null);
+  // A tapped-but-not-yet-labelled pin. The photo seq is captured at TAP time so
+  // switching/removing photos while the label sheet is open can't mis-assign it.
+  const [pending, setPending] = useState<{ x: number; y: number; seq: number } | null>(null);
   const [newName, setNewName] = useState('');
   const [adding, setAdding] = useState(false);
   const [activeGlobal, setActiveGlobal] = useState<number | null>(null);
@@ -78,10 +80,12 @@ export default function SetupGuideEditor({
   );
 
   function placePinFromItem(item: StationItem) {
-    if (!pending || activeSeq === null) return;
+    if (!pending) return;
+    // The target photo may have been removed while the label sheet was open.
+    if (!photos.some(p => p.seq === pending.seq)) { setPending(null); setNewName(''); return; }
     onPinsChange([...pins, {
       name: item.name, pin_x: pending.x, pin_y: pending.y,
-      pin_photo_seq: activeSeq, item_id: item.id,
+      pin_photo_seq: pending.seq, item_id: item.id,
     }]);
     setPending(null);
     setNewName('');
@@ -180,7 +184,11 @@ export default function SetupGuideEditor({
                 pins={activePins.map(p => ({ pin_x: p.pin_x, pin_y: p.pin_y, label: p.name, number: p.gi + 1 }))}
                 mode="edit"
                 activeIndex={activeGlobal !== null ? activePins.findIndex(p => p.gi === activeGlobal) : null}
-                onPlace={(x, y) => { setPending({ x, y }); setNewName(''); }}
+                onPlace={(x, y) => {
+                  if (activeSeq === null) return;
+                  setPending({ x, y, seq: activeSeq });
+                  setNewName('');
+                }}
                 onPinMove={(i, x, y) => {
                   const gi = activePins[i]?.gi;
                   if (gi === undefined) return;

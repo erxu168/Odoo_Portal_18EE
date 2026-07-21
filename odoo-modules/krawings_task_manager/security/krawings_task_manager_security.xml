@@ -11,5 +11,14 @@
             <field name="model_id" ref="model_krawings_task_template"/>
             <field name="domain_force">[('company_id', 'in', company_ids)]</field>
         </record>
+        <!-- Child model: record rules don't propagate through Many2one, so scope
+             the photo rows (and their Binary image) through whichever parent is set. -->
+        <record id="rule_task_setup_photo_company" model="ir.rule">
+            <field name="name">Setup photo: company multi-company rule</field>
+            <field name="model_id" ref="model_krawings_task_setup_photo"/>
+            <field name="domain_force">['|',
+                ('template_line_id.template_id.company_id', 'in', company_ids),
+                ('list_line_id.list_id.company_id', 'in', company_ids)]</field>
+        </record>
     </data>
 </odoo>

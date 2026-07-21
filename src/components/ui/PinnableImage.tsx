@@ -51,7 +51,7 @@ export default function PinnableImage({
   const wrapRef = useRef<HTMLDivElement>(null);
   // Live position of the pin being dragged (render-only; committed on drop).
   const [drag, setDrag] = useState<{ index: number; x: number; y: number } | null>(null);
-  const gesture = useRef<{ index: number; startX: number; startY: number; moved: boolean } | null>(null);
+  const gesture = useRef<{ pointerId: number; index: number; startX: number; startY: number; moved: boolean } | null>(null);
   // Suppress the synthetic click that follows a drag's pointerup.
   const justDragged = useRef(false);
 
@@ -74,14 +74,16 @@ export default function PinnableImage({
   function onPinPointerDown(index: number) {
     return (e: React.PointerEvent<HTMLButtonElement>) => {
       if (mode !== 'edit' || !onPinMove) return;
+      // One gesture at a time: a second finger on another pin is ignored.
+      if (gesture.current) return;
       e.currentTarget.setPointerCapture(e.pointerId);
-      gesture.current = { index, startX: e.clientX, startY: e.clientY, moved: false };
+      gesture.current = { pointerId: e.pointerId, index, startX: e.clientX, startY: e.clientY, moved: false };
     };
   }
 
   function onPinPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
     const g = gesture.current;
-    if (!g) return;
+    if (!g || e.pointerId !== g.pointerId) return;
     if (!g.moved) {
       if (Math.hypot(e.clientX - g.startX, e.clientY - g.startY) < DRAG_THRESHOLD) return;
       g.moved = true;
@@ -92,8 +94,8 @@ export default function PinnableImage({
 
   function onPinPointerUp(e: React.PointerEvent<HTMLButtonElement>) {
     const g = gesture.current;
+    if (!g || e.pointerId !== g.pointerId) return;
     gesture.current = null;
-    if (!g) return;
     if (g.moved) {
       const f = fractions(e);
       if (f && onPinMove) onPinMove(g.index, f.x, f.y);
@@ -136,7 +138,11 @@ export default function PinnableImage({
             onPointerDown={onPinPointerDown(i)}
             onPointerMove={onPinPointerMove}
             onPointerUp={onPinPointerUp}
-            onPointerCancel={() => { gesture.current = null; setDrag(null); }}
+            onPointerCancel={(e) => {
+              if (gesture.current && e.pointerId === gesture.current.pointerId) {
+                gesture.current = null; setDrag(null);
+              }
+            }}
             style={{
               left: `${x * 100}%`,
               top: `${y * 100}%`,
