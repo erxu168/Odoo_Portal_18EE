@@ -7,6 +7,7 @@
  */
 import { getDb } from './db';
 import { berlinToday, berlinWeekday } from './berlin-date';
+import { buildLocationTree } from './location-tree';
 import type {
   CountingTemplate, CountingSession, CountEntry, QuickCount,
   Frequency, AssignType, SessionStatus,
@@ -376,6 +377,21 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   `);
   db.exec('CREATE INDEX IF NOT EXISTS idx_session_items_session ON session_count_items(session_id)');
 
+  // Frozen SPOT metadata per session (name/kind/walk order at freeze time) —
+  // renaming, reordering, or archiving a spot in the Locations tree must never
+  // rewrite an open session's walk or a historical count's labels.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_count_locations (
+      session_id INTEGER NOT NULL,
+      count_location_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT,
+      walk_order INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (session_id, count_location_id)
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_session_locs_session ON session_count_locations(session_id)');
+
   // One count row per (session, spot, product). Try UNIQUE; if a legacy DB has
   // duplicate (session, product) rows at the default spot 0, fall back to a
   // non-unique index and warn rather than crash startup (app-layer upsert keys
@@ -589,11 +605,18 @@ export function createSession(data: {
     VALUES (?, ?, ?, ?, ?, 'pending', ?)
   `).run(data.template_id, data.scheduled_date, data.location_id, companyId, data.assigned_user_id || null, now());
   const sessionId = r.lastInsertRowid as number;
-  // Freeze what/where to count now. Best-effort: a failure never blocks session
-  // creation — such a session simply has no snapshot and falls back to live
-  // template resolution when read.
-  try { snapshotSessionFromTemplate(sessionId, data.template_id); }
-  catch (e) { console.error('[inventory] session snapshot failed (using live resolution):', e); }
+  // Freeze what/where to count NOW. A modern session must not exist without its
+  // snapshot (the count screen, spot validation, and review all read it), so a
+  // freeze failure rolls the session back and surfaces instead of silently
+  // producing a session that resolves from the mutable template.
+  try {
+    snapshotSessionFromTemplate(sessionId, data.template_id);
+  } catch (e) {
+    db.prepare('DELETE FROM session_count_locations WHERE session_id = ?').run(sessionId);
+    db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(sessionId);
+    db.prepare('DELETE FROM counting_sessions WHERE id = ?').run(sessionId);
+    throw e;
+  }
   return sessionId;
 }
 
@@ -835,6 +858,44 @@ export function deleteStalePendingSessions(templateId: number, keepDate: string 
   });
   wipe(rows.map((r) => r.id));
   return rows.length;
+}
+
+/**
+ * "Apply the new spot layout to today": delete today's session ONLY when it is
+ * still pending with zero count entries, then regenerate it (fresh snapshot of
+ * the current placements). Returns the new session id, or null when today's
+ * count was already started/submitted (never destroy staff work) or none is due.
+ */
+/** Today's session id when it is still safe to replace (pending, zero entries). */
+export function untouchedTodaySessionId(templateId: number): number | null {
+  const db = getDb();
+  const row = db.prepare(
+    'SELECT id, status FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+  ).get(templateId, todayStr()) as { id: number; status: string } | undefined;
+  if (!row || row.status !== 'pending') return null;
+  const touched = db.prepare('SELECT 1 FROM count_entries WHERE session_id = ? LIMIT 1').get(row.id);
+  return touched ? null : row.id;
+}
+
+export function regenerateTodaySession(templateId: number): number | null {
+  const db = getDb();
+  const today = todayStr();
+  const existing = db.prepare(
+    'SELECT id, status FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+  ).get(templateId, today) as { id: number; status: string } | undefined;
+  if (existing) {
+    if (existing.status !== 'pending') return null;
+    const touched = db.prepare('SELECT 1 FROM count_entries WHERE session_id = ? LIMIT 1').get(existing.id);
+    if (touched) return null;
+    const wipe = db.transaction(() => {
+      db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(existing.id);
+      db.prepare('DELETE FROM session_count_locations WHERE session_id = ?').run(existing.id);
+      db.prepare('DELETE FROM session_location_status WHERE session_id = ?').run(existing.id);
+      db.prepare('DELETE FROM counting_sessions WHERE id = ?').run(existing.id);
+    });
+    wipe();
+  }
+  return generateSessionForTemplate(templateId);
 }
 
 // ===
@@ -1227,14 +1288,53 @@ export function snapshotSessionFromTemplate(sessionId: number, templateId: numbe
   const tmpl = getTemplate(templateId);
   if (!tmpl) return;
   const placements = getTemplatePlacements(templateId);
+  const pids: number[] = Array.isArray(tmpl.product_ids) ? (tmpl.product_ids as number[]) : [];
   const pairs: { product_id: number; spot: number; shelf: number }[] = [];
   if (placements.length > 0) {
-    placements.forEach((p, i) => pairs.push({ product_id: p.odoo_product_id, spot: p.count_location_id, shelf: p.shelf_sort ?? i }));
+    // Only placements whose spot still exists AND belongs to this list's
+    // restaurant count; a stale/foreign placement falls back to the catch-all.
+    const validSpots = new Set<number>(
+      tmpl.company_id != null ? listCountLocations(tmpl.company_id).map((l) => l.id) : [],
+    );
+    const placed = new Set<number>();
+    placements.forEach((p, i) => {
+      if (!pids.includes(p.odoo_product_id)) return;   // placement for a product no longer on the list
+      const spot = validSpots.has(p.count_location_id) ? p.count_location_id : 0;
+      pairs.push({ product_id: p.odoo_product_id, spot, shelf: p.shelf_sort ?? i });
+      if (spot !== 0) placed.add(p.odoo_product_id);
+    });
+    // A product on the list but placed nowhere still gets counted — one line at
+    // the catch-all spot (0), never silently dropped.
+    pids.forEach((pid, i) => {
+      if (!pairs.some((q) => q.product_id === pid)) pairs.push({ product_id: pid, spot: 0, shelf: i });
+    });
   } else {
-    const pids: number[] = Array.isArray(tmpl.product_ids) ? (tmpl.product_ids as number[]) : [];
     pids.forEach((pid, i) => pairs.push({ product_id: pid, spot: 0, shelf: i }));
   }
   if (pairs.length === 0) return;
+
+  // Freeze the SPOT metadata (name/kind/walk order) for every real spot used,
+  // so later renames/re-orders/archival can't rewrite this session's walk.
+  const usedSpots = Array.from(new Set(pairs.map((p) => p.spot).filter((s) => s !== 0)));
+  if (usedSpots.length > 0 && tmpl.company_id != null) {
+    const all = listCountLocations(tmpl.company_id);
+    const walk = new Map<number, number>();
+    let wi = 0;
+    const assign = (nodes: ReturnType<typeof buildLocationTree>) => {
+      for (const n of nodes as any[]) { walk.set(n.id, wi++); assign(n.children || []); }
+    };
+    assign(buildLocationTree(all as any) as any);
+    const db = getDb();
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM session_count_locations WHERE session_id = ?').run(sessionId);
+      const ins = db.prepare('INSERT OR IGNORE INTO session_count_locations (session_id, count_location_id, name, kind, walk_order) VALUES (?, ?, ?, ?, ?)');
+      for (const sid of usedSpots) {
+        const loc = all.find((l) => l.id === sid);
+        if (loc) ins.run(sessionId, sid, loc.name, loc.kind ?? null, walk.get(sid) ?? loc.sort_order ?? 0);
+      }
+    });
+    tx();
+  }
   const flagIds = Array.from(new Set(pairs.map(p => p.product_id)));
   const flagMap = new Map(getProductFlags(flagIds).map(f => [f.odoo_product_id, f]));
   snapshotSessionItems(sessionId, pairs.map(p => {
@@ -1250,6 +1350,14 @@ export function snapshotSessionFromTemplate(sessionId: number, templateId: numbe
       units_per_crate: f?.units_per_crate ?? null,
     };
   }));
+}
+
+/** A session's frozen spot metadata (name/kind/walk order at freeze). */
+export function getSessionLocations(sessionId: number): { count_location_id: number; name: string; kind: string | null; walk_order: number }[] {
+  const db = getDb();
+  return db.prepare(
+    'SELECT count_location_id, name, kind, walk_order FROM session_count_locations WHERE session_id = ? ORDER BY walk_order, count_location_id',
+  ).all(sessionId) as { count_location_id: number; name: string; kind: string | null; walk_order: number }[];
 }
 
 /** A session's snapshotted items (empty for legacy sessions → caller falls back to live resolution). */

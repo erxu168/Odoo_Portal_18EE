@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState, ProductThumb } from './ui';
 import StandardFilter from '@/components/ui/StandardFilter';
 import PhotoLightbox from './PhotoLightbox';
+import NumpadModal from './NumpadModal';
 import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
 
 interface ReviewSubmissionsProps {
@@ -23,6 +24,12 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [productImageIds, setProductImageIds] = useState<Set<number>>(new Set());
   const [reviewLoading, setReviewLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState<'approve' | 'reject' | null>(null);
+  // MULTI-SPOT review: the session's frozen lines + spot names + skipped stops,
+  // and the manager's single-line correction modal.
+  const [reviewItems, setReviewItems] = useState<any[]>([]);
+  const [reviewSpots, setReviewSpots] = useState<any[]>([]);
+  const [reviewSkips, setReviewSkips] = useState<Record<number, string>>({});
+  const [editLine, setEditLine] = useState<{ product: any; loc: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<{ from: string; to: string } | null>(null);
   const [reviewQC, setReviewQC] = useState<any>(null);
@@ -96,6 +103,15 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       const countRes = await fetch(`/api/inventory/counts?session_id=${sess.id}`).then(r => r.json());
       setReviewEntries(countRes.entries || []);
       setReviewSystemQtys(countRes.system_qtys || {});
+      setReviewItems(countRes.items || []);
+      setReviewSpots(countRes.spots || []);
+      // Skipped stops (with reasons) — an uncounted line at a skipped spot shows WHY.
+      try {
+        const rt = await fetch(`/api/inventory/sessions/${sess.id}/route`).then(r => r.ok ? r.json() : null);
+        const sk: Record<number, string> = {};
+        (rt?.stops || []).forEach((st: any) => { if (st.status === 'skipped') sk[st.bucket_id] = st.skip_reason || 'skipped'; });
+        setReviewSkips(sk);
+      } catch { setReviewSkips({}); }
 
       let productIds: number[] = [];
       try { productIds = JSON.parse(sess.template_product_ids || '[]'); } catch { productIds = []; }
@@ -142,6 +158,28 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     } finally {
       setReviewLoading(false);
     }
+  }
+
+  // Manager single-line correction on a SUBMITTED count (attributed + noted
+  // server-side). Updates the local entry list so totals re-derive instantly.
+  async function saveLineEdit(v: number | null) {
+    const target = editLine;
+    setEditLine(null);
+    if (!target || v == null || !reviewSession) return;
+    const uom = target.product.uom_id?.[1] || 'Units';
+    try {
+      const res = await fetch('/api/inventory/counts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: reviewSession.id, product_id: target.product.id, count_location_id: target.loc, counted_qty: v, uom }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setErrorMsg(d.error || 'Could not save the correction.'); return; }
+      setReviewEntries((prev: any[]) => {
+        const idx = prev.findIndex((e) => e.product_id === target.product.id && (e.count_location_id ?? 0) === target.loc);
+        const row = { ...(idx >= 0 ? prev[idx] : { product_id: target.product.id, count_location_id: target.loc, photos: [] }), counted_qty: v, out_of_stock: 0, notes: 'Manager correction' };
+        if (idx >= 0) { const n = [...prev]; n[idx] = row; return n; }
+        return [...prev, row];
+      });
+    } catch { setErrorMsg('Network error \u2014 correction not saved.'); }
   }
 
   async function handleSessionAction(action: 'approve' | 'reject') {
@@ -348,9 +386,17 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
 
   // ======== SESSION DETAIL VIEW ========
   if (reviewSession) {
+    // Product-level value = the SUM of its spot lines (multi-spot).
     const entryMap: Record<number, number> = {};
     const entryByProduct: Record<number, any> = {};
-    reviewEntries.forEach((e: any) => { entryMap[e.product_id] = e.counted_qty; entryByProduct[e.product_id] = e; });
+    reviewEntries.forEach((e: any) => {
+      entryMap[e.product_id] = (entryMap[e.product_id] || 0) + (Number(e.counted_qty) || 0);
+      entryByProduct[e.product_id] = e;
+    });
+    const hasSpotLayout = reviewItems.some((it: any) => it.count_location_id !== 0);
+    const spotName = (loc: number) => loc === 0 ? 'General' : (reviewSpots.find((sp: any) => sp.count_location_id === loc)?.name || `Spot ${loc}`);
+    const snapshotLinesOf: Record<number, number[]> = {};
+    reviewItems.forEach((it: any) => { (snapshotLinesOf[it.odoo_product_id] ||= []).push(it.count_location_id); });
     const hasAnyCrate = reviewEntries.some((e: any) => hasCrate(e.units_per_crate));
     // Out of stock = counted, but every entry (a product may sit at several spots)
     // is the explicit out-of-stock zero. These stay in the counted list (so a
@@ -364,6 +410,13 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     };
     const countedProducts = reviewProducts.filter(p => entryMap[p.id] !== undefined);
     const uncountedProducts = reviewProducts.filter(p => entryMap[p.id] === undefined);
+    // PARTIAL: counted somewhere, but at least one of its frozen spot lines has
+    // no entry — the total is understated and must never look complete.
+    const partialProducts = countedProducts.filter((p: any) => {
+      const want = snapshotLinesOf[p.id]?.length || 0;
+      const have = (entriesByProduct[p.id] || []).length;
+      return want > have;
+    });
     const outOfStockCount = countedProducts.filter(p => isOutOfStock(p.id)).length;
     const trueCountedCount = countedProducts.length - outOfStockCount;
     const addressedCount = countedProducts.length; // everything the staffer resolved (counted or out-of-stock)
@@ -489,13 +542,44 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                                 }`}>{decision}</span>
                               )}
                               {isOut && (
-                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 flex-shrink-0">Out of stock</span>
+                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 flex-shrink-0">{hasSpotLayout ? 'None anywhere' : 'Out of stock'}</span>
+                              )}
+                              {partialProducts.includes(p) && (
+                                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0">
+                                  counted {(entriesByProduct[p.id] || []).length} of {snapshotLinesOf[p.id]?.length || 0} spots
+                                </span>
                               )}
                             </div>
                             {!isOut && hasSysQty && (
                               <span className={`text-[var(--fs-xs)] ${isVariance ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
                                 System: {sysQty} {uom} {diff !== null && `(${diff > 0 ? '+' : ''}${diff})`}
                               </span>
+                            )}
+                            {hasSpotLayout && (snapshotLinesOf[p.id] || [0]).length > 0 && (
+                              <div className="mt-1 flex flex-col gap-0.5">
+                                {(snapshotLinesOf[p.id] || [0]).map((loc: number) => {
+                                  const le = (entriesByProduct[p.id] || []).find((e: any) => (e.count_location_id ?? 0) === loc);
+                                  const skipped = reviewSkips[loc];
+                                  return (
+                                    <button key={loc} disabled={!isSubmitted}
+                                      onClick={() => setEditLine({ product: p, loc })}
+                                      className="flex items-center gap-2 text-left active:bg-gray-50 rounded-md px-1 -mx-1">
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>{spotName(loc)}</span>
+                                      {le ? (
+                                        <span className={`text-[var(--fs-xs)] font-mono font-bold ${le.out_of_stock ? 'text-red-600' : 'text-gray-700'}`}>
+                                          {le.out_of_stock ? 'none here' : `${le.counted_qty} ${uom}`}
+                                          {String(le.notes || '').startsWith('Manager correction') && <span className="text-amber-600 font-sans font-semibold"> {'\u00B7'} edited</span>}
+                                        </span>
+                                      ) : (
+                                        <span className="text-[var(--fs-xs)] font-semibold text-amber-700">
+                                          not counted{skipped ? ` \u00B7 skipped: \u201C${skipped}\u201D` : ''}
+                                        </span>
+                                      )}
+                                      {isSubmitted && <span className="text-[10px] text-gray-300">{'\u270E'}</span>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             )}
                             {(() => {
                               const entry = reviewEntries.find((e: any) => e.product_id === p.id);
@@ -581,6 +665,12 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                     {showConfirm === 'approve'
                       ? `This will accept ${trueCountedCount} counted item${trueCountedCount !== 1 ? 's' : ''}${outOfStockCount > 0 ? ` and ${outOfStockCount} marked out of stock` : ''}.`
                       : 'The staff member will be notified and can recount.'}
+                    {showConfirm === 'approve' && partialProducts.length > 0 && (
+                      <span className="block mt-2 text-amber-700 font-semibold">
+                        {'\u26A0'} {partialProducts.length} product{partialProducts.length !== 1 ? 's were' : ' was'} only PARTLY counted
+                        ({partialProducts.map((pp: any) => pp.name).join(', ')}) {'\u2014'} the totals include only the counted spots.
+                      </span>
+                    )}
                   </p>
                   <div className="flex gap-3">
                     <button onClick={() => setShowConfirm(null)} className="flex-1 py-3.5 rounded-xl bg-gray-100 text-gray-700 text-[14px] font-semibold active:bg-gray-200">Cancel</button>
@@ -591,6 +681,21 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   </div>
                 </div>
               </div>
+            )}
+
+            {editLine && (
+              <NumpadModal
+                open
+                productName={`${editLine.product.name} \u00B7 ${editLine.loc === 0 ? 'General' : (reviewSpots.find((sp: any) => sp.count_location_id === editLine.loc)?.name || 'Spot')}`}
+                category="Manager correction"
+                uom={editLine.product.uom_id?.[1] || 'Units'}
+                showSystemQty={false}
+                systemQty={null}
+                locationName=""
+                initialValue={(() => { const e = reviewEntries.find((x: any) => x.product_id === editLine.product.id && (x.count_location_id ?? 0) === editLine.loc); return e ? e.counted_qty : null; })()}
+                onSave={saveLineEdit}
+                onClose={() => setEditLine(null)}
+              />
             )}
           </>
         )}

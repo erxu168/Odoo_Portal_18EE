@@ -37,13 +37,17 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
   const [session, setSession] = useState<any>(null);
   const [products, setProducts] = useState<any[]>([]);
-  const [entries, setEntries] = useState<Record<number, number>>({});
+  // MULTI-SPOT: everything per-LINE, keyed `${product_id}:${count_location_id}`.
+  // Legacy sessions (no snapshot) use loc 0 for every line — same shape.
+  const [entries, setEntries] = useState<Record<string, number>>({});
+  const [items, setItems] = useState<{ odoo_product_id: number; count_location_id: number; requires_photo?: boolean }[]>([]);
+  const [spotNames, setSpotNames] = useState<Record<number, string>>({});
   const [systemQtys, setSystemQtys] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [numpad, setNumpad] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
+  const [numpad, setNumpad] = useState<{ open: boolean; product: any | null; loc: number }>({ open: false, product: null, loc: 0 });
   const [submitting, setSubmitting] = useState(false);
   const [view, setView] = useState<View>('counting');
   const [showConfirm, setShowConfirm] = useState(false);
@@ -51,13 +55,15 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [flags, setFlags] = useState<Record<number, boolean>>({});
   const [productImageIds, setProductImageIds] = useState<Set<number>>(new Set()); // products with a picture (thumbnail)
-  const [rowPhotos, setRowPhotos] = useState<Record<number, string[]>>({});
+  const [rowPhotos, setRowPhotos] = useState<Record<string, string[]>>({});
   // -- Crate (multi-UoM) counting --
   const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});          // product_id -> base units per pack
   const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});         // product_id -> count-by label
-  const [crateSplits, setCrateSplits] = useState<Record<number, { crates: number; loose: number }>>({});
-  const [oos, setOos] = useState<Set<number>>(new Set());   // productIds marked OUT OF STOCK (deliberate none ≠ not-counted)
-  const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
+  const [crateSplits, setCrateSplits] = useState<Record<string, { crates: number; loose: number }>>({});
+  const [oos, setOos] = useState<Set<string>>(new Set());   // lines marked OUT OF STOCK (deliberate none ≠ not-counted)
+  const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null; loc: number }>({ open: false, product: null, loc: 0 });
+  // Scan hit a product counted at several spots → ask which one.
+  const [spotChoice, setSpotChoice] = useState<{ product: any; qty: number; uom: string } | null>(null);
   // -- Guided route (Phase 2) --
   const [route, setRoute] = useState<{ guided: boolean; stops: any[] } | null>(null);
   const [guidedStatuses, setGuidedStatuses] = useState<Record<number, { status: string; skip_reason: string | null }>>({});
@@ -77,7 +83,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setSearch('');
       setCatFilter('all');
       setStatusFilter('all');
-      openNumpad(product);
+      // Multi-spot: default to the first line still uncounted (walk order).
+      const locs = spotsOfProduct.get(product.id) || [0];
+      const target = locs.find((l) => entries[K(product.id, l)] === undefined) ?? locs[0];
+      openNumpad(product, target);
     }
   }
 
@@ -92,18 +101,19 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     // Helper: apply a payload (from network or cache) to state.
     function apply(sess: any, products: any[], entriesArr: any[], sysQtys: Record<number, number>) {
       setSession(sess);
-      const entryMap: Record<number, number> = {};
-      const photoMap: Record<number, string[]> = {};
-      const splitMap: Record<number, { crates: number; loose: number }> = {};
-      const oosSet = new Set<number>();
+      const entryMap: Record<string, number> = {};
+      const photoMap: Record<string, string[]> = {};
+      const splitMap: Record<string, { crates: number; loose: number }> = {};
+      const oosSet = new Set<string>();
       for (const e of entriesArr || []) {
-        entryMap[e.product_id] = e.counted_qty;
-        if (e.out_of_stock) oosSet.add(e.product_id);
+        const k = `${e.product_id}:${e.count_location_id ?? 0}`;
+        entryMap[k] = e.counted_qty;
+        if (e.out_of_stock) oosSet.add(k);
         if (Array.isArray(e.photos) && e.photos.length > 0) {
-          photoMap[e.product_id] = e.photos;
+          photoMap[k] = e.photos;
         }
         if (e.crate_qty != null || e.loose_qty != null) {
-          splitMap[e.product_id] = { crates: Number(e.crate_qty) || 0, loose: Number(e.loose_qty) || 0 };
+          splitMap[k] = { crates: Number(e.crate_qty) || 0, loose: Number(e.loose_qty) || 0 };
         }
       }
       setEntries(entryMap);
@@ -146,6 +156,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       }
 
       apply(sess, loadedProducts, countRes.entries || [], countRes.system_qtys || {});
+      // Frozen snapshot: one line per (product, spot). Legacy sessions have none
+      // -> every product becomes a single loc-0 line (derived in `lines` below).
+      setItems(countRes.items || []);
+      const sn: Record<number, string> = {};
+      (countRes.spots || []).forEach((sp: any) => { sn[sp.count_location_id] = sp.name; });
+      setSpotNames(sn);
 
       // Cache to IDB for offline use. flags are populated separately and
       // patched into the cache by the flags effect.
@@ -157,12 +173,18 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         flags: {},
         crateSizes: {},
         crateLabels: {},
+        items: countRes.items || [],
+        spots: countRes.spots || [],
       });
     } catch (err) {
       console.warn('Network fetch failed, attempting cache fallback:', err);
       const cached = await getCachedSessionData(sessionId);
       if (cached) {
         apply(cached.session, cached.products, cached.entries, cached.systemQtys);
+        if (Array.isArray((cached as any).items)) setItems((cached as any).items);
+        const csn: Record<number, string> = {};
+        ((cached as any).spots || []).forEach((sp: any) => { csn[sp.count_location_id] = sp.name; });
+        setSpotNames(csn);
         if (cached.flags) setFlags(cached.flags);
         if (cached.crateSizes) setCrateSizes(cached.crateSizes);
         if (cached.crateLabels) setCrateLabels(cached.crateLabels);
@@ -262,32 +284,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         return leaf === catFilter;
       });
     }
-    if (statusFilter === 'counted') list = list.filter((p) => entries[p.id] !== undefined);
-    if (statusFilter === 'uncounted') list = list.filter((p) => entries[p.id] === undefined);
     return list;
-  }, [products, search, catFilter, statusFilter, entries]);
-
-  // Group filtered products by leaf category
-  const grouped = React.useMemo(() => {
-    const groups: { catName: string; items: any[] }[] = [];
-    const catMap = new Map<string, any[]>();
-    const catOrder: string[] = [];
-
-    for (const p of filtered) {
-      const cat = leafCategory(p.categ_id?.[1] || 'Other');
-      if (!catMap.has(cat)) {
-        catMap.set(cat, []);
-        catOrder.push(cat);
-      }
-      catMap.get(cat)!.push(p);
-    }
-
-    for (const catName of catOrder) {
-      groups.push({ catName, items: catMap.get(catName)! });
-    }
-
-    return groups;
-  }, [filtered]);
+  }, [products, search, catFilter]);
 
   const productsById = React.useMemo(() => {
     const m: Record<number, any> = {};
@@ -295,10 +293,59 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     return m;
   }, [products]);
 
-  const countedCount = Object.keys(entries).length;
-  const totalCount = products.length;
-  const uncountedProducts = products.filter(p => entries[p.id] === undefined);
-  const countedProducts = products.filter(p => entries[p.id] !== undefined);
+  // The session's count LINES: one per frozen (product, spot) pair; legacy
+  // sessions synthesize one loc-0 line per product. `K` is the state key.
+  const K = (pid: number, loc: number) => `${pid}:${loc}`;
+  const lines = React.useMemo(() => {
+    if (items.length > 0) {
+      return items
+        .filter((it) => productsById[it.odoo_product_id])
+        .map((it) => ({ pid: it.odoo_product_id, loc: it.count_location_id }));
+    }
+    return products.map((p) => ({ pid: p.id, loc: 0 }));
+  }, [items, products, productsById]);
+  const spotsOfProduct = React.useMemo(() => {
+    const m = new Map<number, number[]>();
+    lines.forEach((l) => { const a = m.get(l.pid) || []; a.push(l.loc); m.set(l.pid, a); });
+    return m;
+  }, [lines]);
+  const spotLabel = (loc: number) => (loc === 0 ? 'General' : (spotNames[loc] || `Spot ${loc}`));
+  const hasSpots = React.useMemo(() => lines.some((l) => l.loc !== 0), [lines]);
+
+  const filteredLines = React.useMemo(() => {
+    let list = lines.filter((l) => filtered.some((p) => p.id === l.pid));
+    if (statusFilter === 'counted') list = list.filter((l) => entries[K(l.pid, l.loc)] !== undefined);
+    if (statusFilter === 'uncounted') list = list.filter((l) => entries[K(l.pid, l.loc)] === undefined);
+    return list;
+  }, [lines, filtered, statusFilter, entries]);
+
+  const countedCount = lines.filter((l) => entries[K(l.pid, l.loc)] !== undefined).length;
+  const totalCount = lines.length;
+  const uncountedLines = lines.filter((l) => entries[K(l.pid, l.loc)] === undefined);
+  const countedLines = lines.filter((l) => entries[K(l.pid, l.loc)] !== undefined);
+
+  // Group filtered LINES by their product's leaf category
+  const grouped = React.useMemo(() => {
+    const groups: { catName: string; items: { pid: number; loc: number }[] }[] = [];
+    const catMap = new Map<string, { pid: number; loc: number }[]>();
+    const catOrder: string[] = [];
+
+    for (const l of filteredLines) {
+      const cat = leafCategory(productsById[l.pid]?.categ_id?.[1] || 'Other');
+      if (!catMap.has(cat)) {
+        catMap.set(cat, []);
+        catOrder.push(cat);
+      }
+      catMap.get(cat)!.push(l);
+    }
+
+    for (const catName of catOrder) {
+      groups.push({ catName, items: catMap.get(catName)! });
+    }
+
+    return groups;
+  }, [filteredLines, productsById]);
+
 
   // A count save/delete wrapped so it counts as "in flight" — submission waits
   // for these to settle, otherwise a save racing behind submit would hit the
@@ -317,26 +364,27 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     }
   }
 
-  async function saveCount(productId: number, qty: number | null, uom: string) {
-    // A real count (or a clear) overrides an out-of-stock mark for this product.
-    setOos((prev) => { if (!prev.has(productId)) return prev; const n = new Set(prev); n.delete(productId); return n; });
+  async function saveCount(productId: number, loc: number, qty: number | null, uom: string) {
+    const k = K(productId, loc);
+    // A real count (or a clear) overrides an out-of-stock mark for this line.
+    setOos((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
     if (qty === null || qty === undefined) {
-      setEntries((prev) => { const next = { ...prev }; delete next[productId]; return next; });
-      void updateCachedEntry(sessionId, productId, { counted_qty: null });
+      setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
+      void updateCachedEntry(sessionId, productId, { counted_qty: null }, loc);
       const res = await trackedMutate({
-        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${productId}`,
+        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${productId}&count_location_id=${loc}`,
         method: 'DELETE',
-        dedupKey: `delete:${sessionId}:${productId}`,
+        dedupKey: `delete:${sessionId}:${productId}:${loc}`,
       });
       if (res.queued) void sync.refresh();
     } else {
-      setEntries((prev) => ({ ...prev, [productId]: qty }));
-      void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom });
+      setEntries((prev) => ({ ...prev, [k]: qty }));
+      void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom }, loc);
       const res = await trackedMutate({
         url: '/api/inventory/counts',
         method: 'POST',
-        body: { session_id: sessionId, product_id: productId, counted_qty: qty, uom },
-        dedupKey: `save:${sessionId}:${productId}`,
+        body: { session_id: sessionId, product_id: productId, count_location_id: loc, counted_qty: qty, uom },
+        dedupKey: `save:${sessionId}:${productId}:${loc}`,
       });
       if (res.queued) void sync.refresh();
     }
@@ -345,93 +393,101 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   // Mark (or unmark) a product OUT OF STOCK — a deliberate "none here", distinct
   // from a not-counted row. On = record a 0 with the out_of_stock flag; off =
   // clear the entry back to not-counted. Approval records it in the portal.
-  async function saveOutOfStock(product: any, on: boolean) {
+  async function saveOutOfStock(product: any, loc: number, on: boolean) {
     const uom = product.uom_id?.[1] || 'Units';
+    const k = K(product.id, loc);
     if (on) {
-      setOos((prev) => { const n = new Set(prev); n.add(product.id); return n; });
-      setEntries((prev) => ({ ...prev, [product.id]: 0 }));
-      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom });
+      setOos((prev) => { const n = new Set(prev); n.add(k); return n; });
+      setEntries((prev) => ({ ...prev, [k]: 0 }));
+      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom }, loc);
       const res = await trackedMutate({
         url: '/api/inventory/counts',
         method: 'POST',
-        body: { session_id: sessionId, product_id: product.id, out_of_stock: true, counted_qty: 0, uom },
-        dedupKey: `save:${sessionId}:${product.id}`,
+        body: { session_id: sessionId, product_id: product.id, count_location_id: loc, out_of_stock: true, counted_qty: 0, uom },
+        dedupKey: `save:${sessionId}:${product.id}:${loc}`,
       });
       if (res.queued) void sync.refresh();
     } else {
-      setOos((prev) => { const n = new Set(prev); n.delete(product.id); return n; });
-      setEntries((prev) => { const next = { ...prev }; delete next[product.id]; return next; });
-      void updateCachedEntry(sessionId, product.id, { counted_qty: null });
+      setOos((prev) => { const n = new Set(prev); n.delete(k); return n; });
+      setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
+      void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
       const res = await trackedMutate({
-        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}`,
+        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}&count_location_id=${loc}`,
         method: 'DELETE',
-        dedupKey: `delete:${sessionId}:${product.id}`,
+        dedupKey: `delete:${sessionId}:${product.id}:${loc}`,
       });
       if (res.queued) void sync.refresh();
     }
   }
 
   function handleScanCount(productId: number, qty: number, uom: string) {
-    saveCount(productId, qty, uom);
+    const spots = spotsOfProduct.get(productId) || [0];
+    if (spots.length <= 1) {
+      saveCount(productId, spots[0] ?? 0, qty, uom);
+    } else {
+      // Counted at several spots — ask which one this scan was for.
+      setSpotChoice({ product: productsById[productId] || { id: productId, name: `#${productId}` }, qty, uom });
+    }
   }
 
-  function openCrateSheet(product: any) {
-    setCrateSheet({ open: true, product });
+  function openCrateSheet(product: any, loc: number) {
+    setCrateSheet({ open: true, product, loc });
   }
 
   // Save a crate + loose count. Stores the base-unit total (what Odoo gets)
   // plus the crate/loose split for audit + review replay. total 0 clears it.
-  async function saveCrateCount(product: any, crates: number, loose: number) {
-    setOos((prev) => { if (!prev.has(product.id)) return prev; const n = new Set(prev); n.delete(product.id); return n; });
+  async function saveCrateCount(product: any, loc: number, crates: number, loose: number) {
+    const k = K(product.id, loc);
+    setOos((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
     const size = crateSizes[product.id] || 0;
     const uom = product.uom_id?.[1] || 'Units';
     const total = crateTotal(crates, loose, size);
-    setCrateSheet({ open: false, product: null });
+    setCrateSheet({ open: false, product: null, loc: 0 });
 
     if (total <= 0) {
-      setEntries((prev) => { const next = { ...prev }; delete next[product.id]; return next; });
-      setCrateSplits((prev) => { const next = { ...prev }; delete next[product.id]; return next; });
-      void updateCachedEntry(sessionId, product.id, { counted_qty: null });
+      setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
+      setCrateSplits((prev) => { const next = { ...prev }; delete next[k]; return next; });
+      void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
       const res = await trackedMutate({
-        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}`,
+        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}&count_location_id=${loc}`,
         method: 'DELETE',
-        dedupKey: `delete:${sessionId}:${product.id}`,
+        dedupKey: `delete:${sessionId}:${product.id}:${loc}`,
       });
       if (res.queued) void sync.refresh();
       return;
     }
 
-    setEntries((prev) => ({ ...prev, [product.id]: total }));
-    setCrateSplits((prev) => ({ ...prev, [product.id]: { crates, loose } }));
+    setEntries((prev) => ({ ...prev, [k]: total }));
+    setCrateSplits((prev) => ({ ...prev, [k]: { crates, loose } }));
     void updateCachedEntry(sessionId, product.id, {
       counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size,
-    });
+    }, loc);
     const res = await trackedMutate({
       url: '/api/inventory/counts',
       method: 'POST',
-      body: { session_id: sessionId, product_id: product.id, counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size },
-      dedupKey: `save:${sessionId}:${product.id}`,
+      body: { session_id: sessionId, product_id: product.id, count_location_id: loc, counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size },
+      dedupKey: `save:${sessionId}:${product.id}:${loc}`,
     });
     if (res.queued) void sync.refresh();
   }
 
-  function stepQty(product: any, delta: number) {
-    const current = entries[product.id];
+  function stepQty(product: any, loc: number, delta: number) {
+    const current = entries[K(product.id, loc)];
     const val = current !== undefined ? current : 0;
     const next = Math.max(0, val + delta);
     if (next === 0 && (current === undefined || current === 0) && delta < 0) return;
-    saveCount(product.id, next, product.uom_id?.[1] || 'Units');
+    saveCount(product.id, loc, next, product.uom_id?.[1] || 'Units');
   }
 
-  function openNumpad(product: any) {
-    setNumpad({ open: true, product });
+  function openNumpad(product: any, loc: number) {
+    setNumpad({ open: true, product, loc });
   }
 
   function handleNumpadSave(value: number | null) {
     if (numpad.product) {
-      saveCount(numpad.product.id, value, numpad.product.uom_id?.[1] || 'Units');
+      saveCount(numpad.product.id, numpad.loc, value, numpad.product.uom_id?.[1] || 'Units');
     }
-    setNumpad({ open: false, product: null });
+    setNumpad({ open: false, product: null, loc: 0 });
   }
 
   function handlePhotoCapture(e: React.ChangeEvent<HTMLInputElement>) {
@@ -515,17 +571,20 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   // Guided mode: staff walk location-by-location when the list has a real route.
   const guidedMode = !!route?.guided && canSubmit;
 
-  // -- Product row component --
-  function ProductRow({ p }: { p: any }) {
-    const val = entries[p.id] ?? null;
+  // -- Count line row: one product at ONE spot --
+  function ProductRow({ p, loc = 0 }: { p: any; loc?: number }) {
+    const k = K(p.id, loc);
+    const val = entries[k] ?? null;
     const uom = p.uom_id?.[1] || 'Units';
     const flagged = !!flags[p.id];
-    const prodPhotos = rowPhotos[p.id] || [];
+    const prodPhotos = rowPhotos[k] || [];
     const size = crateSizes[p.id];
     const isCrate = hasCrate(size);
     const label = crateLabels[p.id] ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
     const measure = baseIsMeasure(uom);
-    const split = crateSplits[p.id] ?? (val != null ? splitFromTotal(val, size) : null);
+    const split = crateSplits[k] ?? (val != null ? splitFromTotal(val, size) : null);
+    // Sibling lines: the SAME product counted at other spots — the double-count guard.
+    const siblings = (spotsOfProduct.get(p.id) || []).filter((l) => l !== loc);
     return (
       <div className="py-3 border-b border-gray-100">
         <div className="flex items-center gap-3">
@@ -544,11 +603,25 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   Photo required
                 </span>
               )}
+              {hasSpots && (
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
+                  {spotLabel(loc)}
+                </span>
+              )}
             </div>
+            {siblings.length > 0 && (
+              <div className="text-[11px] text-blue-700 mt-0.5 font-medium">
+                Count only what{'\u2019'}s here{' \u00B7 '}
+                {siblings.map((sl) => {
+                  const sv = entries[K(p.id, sl)];
+                  return `${spotLabel(sl)}: ${sv !== undefined ? `${sv} \u2713` : 'not yet counted'}`;
+                }).join(' \u00B7 ')}
+              </div>
+            )}
           </div>
           {isCrate && !isReadOnly ? (
             <button
-              onClick={() => openCrateSheet(p)}
+              onClick={() => openCrateSheet(p, loc)}
               className={`flex-shrink-0 text-right border rounded-xl px-3 py-2 min-w-[94px] active:bg-gray-50 ${val != null ? 'border-green-500 bg-green-50' : 'border-dashed border-gray-300'}`}
             >
               {val != null ? (
@@ -564,9 +637,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             </button>
           ) : !isReadOnly ? (
             <Stepper value={val} uom={uom}
-              onMinus={() => stepQty(p, -1)}
-              onPlus={() => stepQty(p, 1)}
-              onTap={() => openNumpad(p)} />
+              onMinus={() => stepQty(p, loc, -1)}
+              onPlus={() => stepQty(p, loc, 1)}
+              onTap={() => openNumpad(p, loc)} />
           ) : (
             <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700 text-right">
               {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
@@ -579,12 +652,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         {!isReadOnly && (
           <div className="mt-2">
             <button
-              onClick={() => saveOutOfStock(p, !oos.has(p.id))}
+              onClick={() => saveOutOfStock(p, loc, !oos.has(k))}
               className={`text-[11px] font-bold rounded-full px-2.5 py-1 border transition-colors ${
-                oos.has(p.id) ? 'text-red-600 border-red-200 bg-red-50' : 'text-gray-400 border-gray-200 active:bg-gray-50'
+                oos.has(k) ? 'text-red-600 border-red-200 bg-red-50' : 'text-gray-400 border-gray-200 active:bg-gray-50'
               }`}
             >
-              {oos.has(p.id) ? '✓ Out of stock' : 'Mark out of stock'}
+              {oos.has(k) ? `\u2713 None here` : hasSpots ? 'None at this spot' : 'Mark out of stock'}
             </button>
           </div>
         )}
@@ -593,19 +666,20 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             <PhotoCaptureStrip
               photos={prodPhotos}
               onChange={async (next) => {
-                setRowPhotos(prev => ({ ...prev, [p.id]: next }));
-                void updateCachedEntry(sessionId, p.id, { counted_qty: val ?? undefined, uom, photos: next });
+                setRowPhotos(prev => ({ ...prev, [k]: next }));
+                void updateCachedEntry(sessionId, p.id, { counted_qty: val ?? undefined, uom, photos: next }, loc);
                 const res = await trackedMutate({
                   url: '/api/inventory/counts',
                   method: 'POST',
                   body: {
                     session_id: sessionId,
                     product_id: p.id,
+                    count_location_id: loc,
                     counted_qty: val,
                     uom,
                     photos: next,
                   },
-                  dedupKey: `save:${sessionId}:${p.id}`,
+                  dedupKey: `save:${sessionId}:${p.id}:${loc}`,
                 });
                 if (res.queued) void sync.refresh();
               }}
@@ -674,13 +748,13 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 <div className="text-[var(--fs-xs)] text-green-600 font-semibold">Counted</div>
               </div>
               <div className="flex-1 bg-amber-50 rounded-xl p-3 text-center">
-                <div className="text-[var(--fs-xxl)] font-bold text-amber-700 font-mono">{uncountedProducts.length}</div>
+                <div className="text-[var(--fs-xxl)] font-bold text-amber-700 font-mono">{uncountedLines.length}</div>
                 <div className="text-[var(--fs-xs)] text-amber-600 font-semibold">Uncounted</div>
               </div>
             </div>
           </div>
 
-          {uncountedProducts.length > 0 && (
+          {uncountedLines.length > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-3">
               <div className="flex items-start gap-2.5">
                 <span className="text-amber-600 mt-0.5">
@@ -688,7 +762,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 </span>
                 <div>
                   <p className="text-[var(--fs-base)] font-semibold text-amber-800">
-                    {uncountedProducts.length} item{uncountedProducts.length > 1 ? 's' : ''} not counted
+                    {uncountedLines.length} item{uncountedLines.length > 1 ? 's' : ''} not counted
                   </p>
                   <p className="text-[var(--fs-xs)] text-amber-700 mt-0.5">
                     Uncounted items will be submitted as not counted. You can go back and count them.
@@ -729,23 +803,28 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pb-36">
-          {countedProducts.length > 0 && (
+          {countedLines.length > 0 && (
             <>
               <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mt-2 mb-2">Counted items</p>
-              {countedProducts.map((p) => {
-                const val = entries[p.id];
+              {countedLines.map((l) => {
+                const p = productsById[l.pid] || { id: l.pid, name: `#${l.pid}` };
+                const k = K(l.pid, l.loc);
+                const val = entries[k];
                 const uom = p.uom_id?.[1] || 'Units';
                 const size = crateSizes[p.id];
                 const isCrate = hasCrate(size);
                 const label = crateLabels[p.id] ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
-                const split = crateSplits[p.id] ?? (val != null ? splitFromTotal(val, size) : null);
+                const split = crateSplits[k] ?? (val != null ? splitFromTotal(val, size) : null);
                 return (
-                  <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-gray-100">
+                  <div key={k} className="flex items-center justify-between py-2.5 border-b border-gray-100">
                     <div className="flex items-baseline gap-1.5 flex-1 min-w-0">
                       <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 self-center">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
                       </div>
                       <span className="text-[var(--fs-lg)] text-gray-900 truncate">{p.name}</span>
+                      {hasSpots && (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${l.loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>{spotLabel(l.loc)}</span>
+                      )}
                     </div>
                     <div className="flex-shrink-0 ml-3 text-right">
                       <span className="text-[var(--fs-lg)] font-mono font-semibold text-gray-900">
@@ -761,18 +840,22 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             </>
           )}
 
-          {uncountedProducts.length > 0 && (
+          {uncountedLines.length > 0 && (
             <>
               <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mt-4 mb-2">Not counted</p>
-              {uncountedProducts.map((p) => {
+              {uncountedLines.map((l) => {
+                const p = productsById[l.pid] || { id: l.pid, name: `#${l.pid}` };
                 const uom = p.uom_id?.[1] || 'Units';
                 return (
-                  <div key={p.id} className="flex items-center justify-between py-2.5 border-b border-gray-100 opacity-50">
+                  <div key={K(l.pid, l.loc)} className="flex items-center justify-between py-2.5 border-b border-gray-100 opacity-50">
                     <div className="flex items-baseline gap-1.5 flex-1 min-w-0">
                       <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0 self-center">
                         <span className="text-gray-400 text-[var(--fs-xs)] font-bold">--</span>
                       </div>
                       <span className="text-[var(--fs-lg)] text-gray-500 truncate">{p.name}</span>
+                      {hasSpots && (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${l.loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>{spotLabel(l.loc)}</span>
+                      )}
                     </div>
                     <span className="text-[var(--fs-sm)] text-gray-400 flex-shrink-0 ml-3">-- {uom}</span>
                   </div>
@@ -797,7 +880,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               <h3 className="text-[var(--fs-xl)] font-bold text-gray-900 mb-2">Submit this count?</h3>
               <p className="text-[var(--fs-base)] text-gray-500 mb-1">
                 {countedCount} of {totalCount} items counted.
-                {uncountedProducts.length > 0 && ` ${uncountedProducts.length} item${uncountedProducts.length > 1 ? 's' : ''} will be marked as not counted.`}
+                {uncountedLines.length > 0 && ` ${uncountedLines.length} item${uncountedLines.length > 1 ? 's' : ''} will be marked as not counted.`}
               </p>
               <p className="text-[var(--fs-base)] text-gray-500 mb-5">
                 You will not be able to edit after submitting. A manager will review your count.
@@ -826,7 +909,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <BackHeader onBack={onBack}
         title={session?.template_name || `Session #${sessionId}`}
-        subtitle={`${locationName ? locationName + ' \u00B7 ' : ''}${totalCount} products`}
+        subtitle={`${locationName ? locationName + ' \u00B7 ' : ''}${totalCount} ${hasSpots ? 'count lines' : 'products'}`}
         right={scanButton}
       />
 
@@ -837,7 +920,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           stops={route.stops}
           productsById={productsById}
           statuses={guidedStatuses}
-          renderRow={(p) => <ProductRow p={p} />}
+          renderRow={(p, bucketId) => <ProductRow p={p} loc={bucketId} />}
           onFinishStop={(b) => postStopStatus(b, 'counted', null)}
           onSkipStop={(b, r) => postStopStatus(b, 'skipped', r)}
           onReview={() => setView('review')}
@@ -876,14 +959,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 pt-4 pb-2">
                   {group.catName}
                 </div>
-                {group.items.map((p) => <ProductRow key={p.id} p={p} />)}
+                {group.items.map((l) => <ProductRow key={K(l.pid, l.loc)} p={productsById[l.pid]} loc={l.loc} />)}
               </div>
             ))}
           </div>
         ) : (
           /* Flat list (when filtered by category or searching) */
           <div className="flex flex-col">
-            {filtered.map((p) => <ProductRow key={p.id} p={p} />)}
+            {filteredLines.map((l) => <ProductRow key={K(l.pid, l.loc)} p={productsById[l.pid]} loc={l.loc} />)}
           </div>
         )}
       </div>
@@ -907,6 +990,27 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         </div>
       )}
 
+      {spotChoice && (
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-end justify-center" onClick={() => setSpotChoice(null)}>
+          <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[var(--fs-lg)] font-bold text-gray-900 mb-1">Which spot?</h3>
+            <p className="text-[var(--fs-sm)] text-gray-500 mb-3">{spotChoice.product.name} is counted at several spots {'\u2014'} where is this {spotChoice.qty}?</p>
+            {(spotsOfProduct.get(spotChoice.product.id) || []).map((sl) => {
+              const cur = entries[K(spotChoice.product.id, sl)];
+              return (
+                <button key={sl}
+                  onClick={() => { saveCount(spotChoice.product.id, sl, spotChoice.qty, spotChoice.uom); setSpotChoice(null); }}
+                  className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl border border-gray-200 font-semibold mb-2 active:bg-gray-50">
+                  <span>{spotLabel(sl)}</span>
+                  <span className="text-[var(--fs-sm)] text-gray-400 font-mono">{cur !== undefined ? `${cur} \u2713` : '\u2014'}</span>
+                </button>
+              );
+            })}
+            <button onClick={() => setSpotChoice(null)} className="w-full py-3.5 rounded-xl bg-gray-100 font-bold mt-1">Cancel</button>
+          </div>
+        </div>
+      )}
+
       <BarcodeScanner
         open={showScanner}
         onClose={() => { setShowScanner(false); setHwBarcode(undefined); }}
@@ -927,12 +1031,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           productName={numpad.product?.name || ''}
           category={numpad.product?.categ_id?.[1] || ''}
           uom={numpad.product?.uom_id?.[1] || 'Units'}
-          initialValue={numpad.product ? (entries[numpad.product.id] ?? null) : null}
+          initialValue={numpad.product ? (entries[K(numpad.product.id, numpad.loc)] ?? null) : null}
           showSystemQty={userRole !== 'staff'}
           systemQty={numpad.product ? (systemQtys[numpad.product.id] ?? null) : null}
           locationName={locationName}
           onSave={handleNumpadSave}
-          onClose={() => setNumpad({ open: false, product: null })}
+          onClose={() => setNumpad({ open: false, product: null, loc: 0 })}
         />
       )}
 
@@ -943,13 +1047,13 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           unitsPerCrate={crateSizes[crateSheet.product.id] || 0}
           uom={crateSheet.product.uom_id?.[1] || 'Units'}
           packLabel={crateLabels[crateSheet.product.id] ?? (baseIsMeasure(crateSheet.product.uom_id?.[1] || 'Units') ? 'piece' : 'crate')}
-          initialCrates={crateSplits[crateSheet.product.id]?.crates ?? splitFromTotal(entries[crateSheet.product.id] ?? 0, crateSizes[crateSheet.product.id]).crates}
-          initialLoose={crateSplits[crateSheet.product.id]?.loose ?? splitFromTotal(entries[crateSheet.product.id] ?? 0, crateSizes[crateSheet.product.id]).loose}
+          initialCrates={crateSplits[K(crateSheet.product.id, crateSheet.loc)]?.crates ?? splitFromTotal(entries[K(crateSheet.product.id, crateSheet.loc)] ?? 0, crateSizes[crateSheet.product.id]).crates}
+          initialLoose={crateSplits[K(crateSheet.product.id, crateSheet.loc)]?.loose ?? splitFromTotal(entries[K(crateSheet.product.id, crateSheet.loc)] ?? 0, crateSizes[crateSheet.product.id]).loose}
           showSystemQty={userRole !== 'staff'}
           systemQty={systemQtys[crateSheet.product.id] ?? null}
           locationName={locationName}
-          onSave={(crates, loose) => saveCrateCount(crateSheet.product, crates, loose)}
-          onClose={() => setCrateSheet({ open: false, product: null })}
+          onSave={(crates, loose) => saveCrateCount(crateSheet.product, crateSheet.loc, crates, loose)}
+          onClose={() => setCrateSheet({ open: false, product: null, loc: 0 })}
         />
       )}
     </div>

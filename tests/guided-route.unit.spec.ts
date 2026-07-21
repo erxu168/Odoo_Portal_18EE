@@ -50,7 +50,7 @@ test('nested locations walk depth-first (area -> its shelves), not by flat sort_
   expect(stops.map((s) => s.bucket_id)).toEqual([3, 4, 5]);
 });
 
-test('a product in two locations is placed at its PRIMARY (earliest walk) stop only', () => {
+test('MULTI-SPOT: a product in two locations appears at BOTH stops (one line each)', () => {
   const { stops } = buildGuidedRoute({
     productIds: [100],
     placements: [
@@ -60,8 +60,23 @@ test('a product in two locations is placed at its PRIMARY (earliest walk) stop o
     locations,
     statuses: [],
   });
+  expect(stops).toHaveLength(2);
+  expect(stops.map((s) => s.bucket_id)).toEqual([1, 2]);   // walking order preserved
+  expect(stops[0].product_ids).toEqual([100]);
+  expect(stops[1].product_ids).toEqual([100]);
+});
+
+test('MULTI-SPOT: duplicate (product, spot) placements collapse to one line', () => {
+  const { stops } = buildGuidedRoute({
+    productIds: [100],
+    placements: [
+      { odoo_product_id: 100, count_location_id: 1, shelf_sort: 5 },
+      { odoo_product_id: 100, count_location_id: 1, shelf_sort: 9 },
+    ],
+    locations,
+    statuses: [],
+  });
   expect(stops).toHaveLength(1);
-  expect(stops[0].bucket_id).toBe(1);
   expect(stops[0].product_ids).toEqual([100]);
 });
 

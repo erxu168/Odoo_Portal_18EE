@@ -8,6 +8,7 @@
 import {
   getSession, getTemplate, getPlacementsForProducts,
   getCountLocationsByIds, listCountLocations, getSessionLocationStatuses,
+  getSessionItems, getSessionLocations,
 } from './inventory-db';
 import { buildGuidedRoute, type RouteStop } from './guided-route';
 
@@ -15,6 +16,36 @@ export function resolveSessionRoute(sessionId: number): { guided: boolean; stops
   const session = getSession(sessionId);
   if (!session) return { guided: false, stops: [] };
 
+  // MODERN sessions: resolve from the FROZEN snapshot — the items (one per
+  // product+spot pair) and the frozen spot names/walk order. Template or
+  // Locations edits after creation can never re-route an open count.
+  const items = getSessionItems(sessionId);
+  if (items.length > 0) {
+    const frozen = getSessionLocations(sessionId);
+    const liveById = new Map(getCountLocationsByIds(frozen.map((f) => f.count_location_id)).map((l) => [l.id, l]));
+    const locations = frozen.map((f) => {
+      const live = liveById.get(f.count_location_id);
+      return {
+        id: f.count_location_id,
+        parent_id: null,                       // frozen walk is already linearized
+        name: f.name,                          // name AT FREEZE TIME
+        kind: f.kind ?? (live?.kind ?? 'area'),
+        photo: live?.photo ?? null,            // photo is cosmetic — live is fine
+        description: live?.description ?? null,
+        sort_order: f.walk_order,
+      };
+    });
+    const placements = items.map((it) => ({
+      odoo_product_id: it.odoo_product_id,
+      count_location_id: it.count_location_id,
+      shelf_sort: it.shelf_sort,
+    }));
+    const productIds = Array.from(new Set(items.map((it) => it.odoo_product_id)));
+    const statuses = getSessionLocationStatuses(sessionId);
+    return buildGuidedRoute({ productIds, placements, locations, statuses });
+  }
+
+  // LEGACY sessions (no snapshot): live template + global placements, as before.
   const template = getTemplate(session.template_id);
   const productIds = template?.product_ids ?? [];
   if (!Array.isArray(productIds) || productIds.length === 0) return { guided: false, stops: [] };

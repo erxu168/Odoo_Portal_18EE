@@ -22,7 +22,7 @@ interface Props {
   stops: Stop[];
   productsById: Record<number, { id: number; name: string }>;
   statuses: Record<number, { status: string; skip_reason: string | null }>;
-  renderRow: (product: { id: number; name: string }) => React.ReactNode;
+  renderRow: (product: { id: number; name: string }, bucketId: number) => React.ReactNode;
   onFinishStop: (bucketId: number) => void;
   onSkipStop: (bucketId: number, reason: string) => void;
   onReview: () => void;
@@ -61,7 +61,7 @@ export default function GuidedCountingFlow({ stops, productsById, statuses, rend
         <div className="flex-1 overflow-y-auto px-4 pb-44">
           {products.length === 0
             ? <p className="text-center text-gray-400 py-8 text-[var(--fs-sm)]">No products here.</p>
-            : products.map((p) => <div key={p.id}>{renderRow(p)}</div>)}
+            : products.map((p) => <div key={p.id}>{renderRow(p, s.bucket_id)}</div>)}
         </div>
         <div className="px-4 py-3 flex gap-3 border-t border-gray-100 bg-white">
           <button onClick={() => setSkipFor(s.bucket_id)} className="flex-1 py-3.5 rounded-xl border border-orange-200 text-orange-700 font-bold active:bg-orange-50">Skip location</button>

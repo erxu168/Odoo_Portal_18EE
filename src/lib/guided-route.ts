@@ -5,9 +5,9 @@
  * of "stops" (one per count location, in walking order, products in shelf
  * order), plus a final "Everything else" stop for products not yet placed.
  *
- * Scoping note (Phase 2): a product placed in several locations is counted ONCE
- * at its PRIMARY location (the earliest stop it belongs to). Counting the same
- * product separately per location and summing is a future enhancement.
+ * MULTI-SPOT: a product placed at several locations appears at EVERY one of
+ * them — each (product, spot) is its own count line, and approval sums the
+ * spots. A product with no placement lands once in "Everything else".
  */
 
 import { buildLocationTree } from './location-tree';
@@ -72,27 +72,22 @@ export function buildGuidedRoute(params: {
     placementsByProduct.set(p.odoo_product_id, arr);
   });
 
-  // Primary placement = the one that comes EARLIEST in the walking order
-  // (DFS index), so a product in several nested locations lands at the first
-  // stop you actually reach.
-  const primaryOf = (pid: number): { count_location_id: number; shelf_sort: number } | null => {
-    const arr = placementsByProduct.get(pid);
-    if (!arr || arr.length === 0) return null;
-    return arr.slice().sort((a, b) => {
-      const wa = walkOrder.get(a.count_location_id) ?? locById.get(a.count_location_id)!.sort_order;
-      const wb = walkOrder.get(b.count_location_id) ?? locById.get(b.count_location_id)!.sort_order;
-      return wa - wb || a.count_location_id - b.count_location_id;
-    })[0];
-  };
-
+  // MULTI-SPOT: a product joins EVERY stop it's placed at (deduped per
+  // (product, spot) pair) — each occurrence is its own count line. Products
+  // with no valid placement land once in "Everything else".
   const groups = new Map<number, { pid: number; shelf_sort: number }[]>();
   const unplaced: number[] = [];
   productIds.forEach((pid) => {
-    const prim = primaryOf(pid);
-    if (!prim) { unplaced.push(pid); return; }
-    const g = groups.get(prim.count_location_id) || [];
-    g.push({ pid, shelf_sort: prim.shelf_sort });
-    groups.set(prim.count_location_id, g);
+    const arr = placementsByProduct.get(pid);
+    if (!arr || arr.length === 0) { unplaced.push(pid); return; }
+    const seen = new Set<number>();
+    for (const p of arr) {
+      if (seen.has(p.count_location_id)) continue;   // duplicate pair → one line
+      seen.add(p.count_location_id);
+      const g = groups.get(p.count_location_id) || [];
+      g.push({ pid, shelf_sort: p.shelf_sort });
+      groups.set(p.count_location_id, g);
+    }
   });
 
   const stops: RouteStop[] = [];

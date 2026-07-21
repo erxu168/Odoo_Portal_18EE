@@ -10,8 +10,9 @@
  *   2. Queue mutations (POST/PUT/DELETE) that happen while offline and
  *      replay them when the network returns.
  *
- * Conflict model: per (session_id, product_id), last-write-wins. The server
- * upsert is idempotent so replaying a stale mutation is safe.
+ * Conflict model: per (session_id, product_id, count_location_id) line,
+ * last-write-wins. The server upsert is idempotent so replaying a stale
+ * mutation is safe. Legacy records without a spot are treated as spot 0.
  *
  * SSR safety: every public function checks `typeof window` and no-ops on
  * the server side.
@@ -31,6 +32,8 @@ export interface CachedSessionData {
   flags: Record<number, boolean>;
   crateSizes?: Record<number, number>;   // per-product pack size, for offline pack counting
   crateLabels?: Record<number, string>;  // per-product count-by label (crate/bunch/piece…)
+  items?: any[];                         // frozen (product, spot) lines of the session
+  spots?: any[];                         // frozen spot names for the badges
   cachedAt: number;
 }
 
@@ -150,6 +153,7 @@ export async function updateCachedEntry(
     loose_qty?: number | null;
     units_per_crate?: number | null;
   },
+  countLocationId: number = 0,
 ): Promise<void> {
   if (!isBrowser()) return;
   try {
@@ -157,7 +161,7 @@ export async function updateCachedEntry(
       const row = await reqToPromise(store.get(sessionId)) as CachedSessionData | undefined;
       if (!row) return;
       const entries = Array.isArray(row.entries) ? [...row.entries] : [];
-      const idx = entries.findIndex((e: any) => e.product_id === productId);
+      const idx = entries.findIndex((e: any) => e.product_id === productId && (e.count_location_id ?? 0) === countLocationId);
       if (patch.counted_qty === null || patch.counted_qty === undefined && patch.photos === undefined) {
         // qty cleared → remove
         if (patch.counted_qty === null && idx >= 0) {
@@ -178,6 +182,7 @@ export async function updateCachedEntry(
         } else {
           entries.push({
             product_id: productId,
+            count_location_id: countLocationId,
             counted_qty: patch.counted_qty,
             uom: patch.uom || 'Units',
             photos: patch.photos || [],

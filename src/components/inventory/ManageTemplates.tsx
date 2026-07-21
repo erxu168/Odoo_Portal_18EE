@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState, SectionTitle } from './ui';
 import TemplateForm from './TemplateForm';
+import TemplatePlacementEditor from './TemplatePlacementEditor';
 
 interface ManageTemplatesProps {
   onBack: () => void;
@@ -17,6 +18,7 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
   const [assignFilter, setAssignFilter] = useState('all');
   const [editing, setEditing] = useState<any | null>(null);
   const [creating, setCreating] = useState(false);
+  const [arranging, setArranging] = useState<any | null>(null);   // list whose spot layout is open
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -94,6 +96,16 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
   }
 
   // Show form
+  if (arranging) {
+    return (
+      <TemplatePlacementEditor
+        templateId={arranging.id}
+        templateName={arranging.name}
+        onBack={() => setArranging(null)}
+      />
+    );
+  }
+
   if (creating || editing) {
     return (
       <TemplateForm
@@ -144,8 +156,10 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
             {filtered.map((tpl: any) => {
               const catCount = (tpl.category_ids || []).length;
               return (
-                <button key={tpl.id} onClick={() => setEditing(tpl)}
-                  className="bg-white border border-gray-200 rounded-2xl p-4 text-left active:scale-[0.98] transition-all">
+                <div key={tpl.id}
+                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                <button onClick={() => setEditing(tpl)}
+                  className="w-full p-4 text-left active:bg-gray-50 transition-all">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-[var(--fs-lg)] font-bold text-gray-900">{tpl.name}</span>
                     <span className={`text-[var(--fs-xs)] px-2 py-0.5 rounded-md font-semibold ${tpl.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -165,6 +179,11 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
                     )}
                   </div>
                 </button>
+                <button onClick={() => setArranging(tpl)}
+                  className="w-full px-4 py-2.5 border-t border-gray-100 text-left text-[var(--fs-sm)] font-bold text-green-700 active:bg-green-50">
+                  {'\uD83D\uDCCD'} Arrange spots
+                </button>
+                </div>
               );
             })}
           </div>
