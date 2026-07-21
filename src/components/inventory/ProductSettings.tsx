@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { SearchBar, Spinner, EmptyState } from './ui';
 import SpotSheet from './SpotSheet';
+import ProductDetail from './ProductDetail';
 import { suggestCrateSizeFromName, baseIsMeasure } from '@/lib/crate-units';
 import { useCompany } from '@/lib/company-context';
 
@@ -58,6 +59,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
   const [homeSpots, setHomeSpots] = useState<Record<number, number[]>>({});
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});
   const [spotSheetFor, setSpotSheetFor] = useState<any | null>(null);
+  const [detailFor, setDetailFor] = useState<any | null>(null);        // product page
 
   useEffect(() => {
     if (!companyId) return;
@@ -251,10 +253,14 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                         ? <img src={`/api/inventory/product-images/${p.id}?v=${imgVer}`} alt="" className="w-full h-full object-cover" />
                         : <span className="text-[18px]">📷</span>}
                     </button>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
+                    <button onClick={() => setDetailFor(p)} aria-label={`Open ${p.name}`}
+                      className="flex-1 min-w-0 text-left active:opacity-70">
+                      <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate flex items-center gap-1">
+                        {p.name}
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
+                      </div>
                       <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{p.categ_id?.[1] || ''} · base {uom}</div>
-                    </div>
+                    </button>
                     <button
                       onClick={() => togglePhoto(p.id)}
                       aria-label="Photo required"
@@ -344,6 +350,24 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
         )}
       </div>
 
+      {detailFor && (
+        <ProductDetail
+          product={detailFor}
+          hasImage={imageIds.has(detailFor.id)}
+          onClose={() => setDetailFor(null)}
+          onChanged={(patch) => {
+            if (patch.name !== undefined || patch.uom !== undefined) {
+              setProducts((prev: any[]) => prev.map((x) => x.id === detailFor.id
+                ? { ...x, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
+                : x));
+            }
+            if (patch.imageAdded) {
+              setImageIds((prev) => { const n = new Set(prev); n.add(detailFor.id); return n; });
+              setImgVer((v) => v + 1);
+            }
+          }}
+        />
+      )}
       {spotSheetFor && companyId && (
         <SpotSheet
           product={spotSheetFor}
