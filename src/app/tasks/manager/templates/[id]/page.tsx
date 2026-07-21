@@ -528,7 +528,10 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
     const seq = seqRef.current++;
     try {
       const { base64 } = await compressImage(file, 1280, 0.85);
-      setPhotos(prev => [...prev, { seq, url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64 }]);
+      // Insert in seq order: overlapping compressions finish out of order, and
+      // the server sorts by seq — keep the on-screen order identical.
+      setPhotos(prev => [...prev, { seq, url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64 }]
+        .sort((a, b) => a.seq - b.seq));
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Could not read image');
     }
@@ -647,7 +650,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
       // it). Failures keep the modal open with only the FAILED photos still
       // pending — pressing Save again retries just those against the same line.
       if (isSetupGuide && lineId) {
-        const uploadedSeqs: number[] = [];
+        const uploaded: { seq: number; base64: string }[] = [];
         let uploadError: string | null = null;
         for (const p of photos) {
           if (!p.pendingBase64) continue;
@@ -659,15 +662,18 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
             });
             const upBody = await upRes.json().catch(() => ({}));
             if (!upRes.ok || !upBody.ok) uploadError = upBody.error || 'A photo upload failed';
-            else uploadedSeqs.push(p.seq);
+            else uploaded.push({ seq: p.seq, base64: p.pendingBase64 });
           } catch {
             uploadError = 'A photo upload failed';
           }
         }
-        if (uploadedSeqs.length) {
-          setPhotos(prev => prev.map(p => uploadedSeqs.includes(p.seq)
-            ? { seq: p.seq, url: p.url }   // no longer pending; dataURL keeps displaying
-            : p));
+        if (uploaded.length) {
+          // Clear pending ONLY when the payload still matches what we uploaded —
+          // a replacement made while the upload was in flight stays pending.
+          setPhotos(prev => prev.map(p =>
+            uploaded.some(u => u.seq === p.seq && u.base64 === p.pendingBase64)
+              ? { seq: p.seq, url: p.url }   // no longer pending; dataURL keeps displaying
+              : p));
         }
         if (uploadError) {
           setError(`${uploadError} — press Save to retry the remaining photo(s).`);
