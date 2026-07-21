@@ -313,7 +313,9 @@ class KrawingsTaskListLine(models.Model):
         line.invalidate_recordset(['completed_at'])
         return {
             'is_setup_guide': line.is_setup_guide,
-            'line_completed': bool(line.completed_at),
+            # Only guides complete via subtask toggles; keep the old contract of
+            # reporting no completion for ordinary subtasks.
+            'line_completed': bool(line.is_setup_guide and line.completed_at),
         }
 
     def set_note(self, note, employee):

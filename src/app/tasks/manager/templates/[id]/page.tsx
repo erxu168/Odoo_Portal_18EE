@@ -624,10 +624,17 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
         });
         const upBody = await upRes.json().catch(() => ({}));
         if (!upBody.ok) throw new Error(upBody.error || 'Task saved, but the photo upload failed — reopen to retry.');
-      } else if (line?.id && line.has_setup_photo && (!isSetupGuide || (!pendingPhoto && !hasExistingPhoto))) {
+      }
+
+      let photoCleanupFailed = false;
+      if (!(isSetupGuide && pendingPhoto) && line?.id && line.has_setup_photo
+          && (!isSetupGuide || (!pendingPhoto && !hasExistingPhoto))) {
         // Guide turned off, or its photo was removed — delete the now-orphaned binary server-side.
-        await fetch(`/api/tasks/templates/${tplId}/lines/${line.id}/setup-photo?clear_pins=1`, { method: 'DELETE' })
-          .catch(() => {});
+        try {
+          const delRes = await fetch(`/api/tasks/templates/${tplId}/lines/${line.id}/setup-photo?clear_pins=1`, { method: 'DELETE' });
+          const delBody = await delRes.json().catch(() => ({}));
+          photoCleanupFailed = !delBody.ok;
+        } catch { photoCleanupFailed = true; }
       }
 
       let uploadedCount = 0;
@@ -653,7 +660,8 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
       const baseMsg = line ? 'Task saved' : 'Task added';
       const fileNote = uploadedCount > 0 ? ` · ${uploadedCount} file${uploadedCount === 1 ? '' : 's'} uploaded` : '';
       const failNote = uploadFailures > 0 ? ` · ${uploadFailures} file upload${uploadFailures === 1 ? '' : 's'} failed` : '';
-      await onSaved(`${baseMsg}${fileNote}${failNote}`);
+      const photoNote = photoCleanupFailed ? ' · old photo not removed — reopen to retry' : '';
+      await onSaved(`${baseMsg}${fileNote}${failNote}${photoNote}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed');
       setSubmitting(false);

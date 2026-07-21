@@ -555,13 +555,11 @@ export async function uploadLinePhoto(lineId: number, fileName: string, base64Da
 }
 
 /** Re-drive setup-guide completion after a proof photo is added/removed. No-op
- * for non-guide lines. Best-effort — never blocks the photo upload itself. */
+ * for non-guide lines. Best-effort so a resync hiccup never fails the upload — a
+ * rare failure leaves the (photo-required) guide pending until the next pin
+ * toggle re-syncs it; the caller may surface the thrown error if it wants. */
 export async function resyncSetupGuide(lineId: number, employeeId: number): Promise<void> {
-  try {
-    await getOdoo().call('krawings.task.list.line', 'resync_setup_guide', [[lineId], employeeId]);
-  } catch {
-    /* completion is recomputed on the next read; don't fail the upload */
-  }
+  await getOdoo().call('krawings.task.list.line', 'resync_setup_guide', [[lineId], employeeId]);
 }
 
 // ── Templates ─────────────────────────────────
@@ -894,6 +892,23 @@ export async function templateLineBelongsToTemplate(templateId: number, lineId: 
   );
   if (!rows.length) return false;
   return m2oId(rows[0].template_id) === templateId;
+}
+
+/** The company + date of the daily list a line belongs to — used to company-scope
+ * and past-list-guard line-level routes (e.g. proof-photo upload). */
+export async function getListLineScope(lineId: number): Promise<{ companyId: number | null; date: string | null } | null> {
+  if (!lineId) return null;
+  const rows = await getOdoo().searchRead(
+    'krawings.task.list.line', [['id', '=', lineId]], ['list_id'], { limit: 1 },
+  );
+  if (!rows.length) return null;
+  const listId = m2oId(rows[0].list_id);
+  if (!listId) return { companyId: null, date: null };
+  const lists = await getOdoo().searchRead(
+    'krawings.task.list', [['id', '=', listId]], ['company_id', 'date'], { limit: 1 },
+  );
+  if (!lists.length) return { companyId: null, date: null };
+  return { companyId: m2oId(lists[0].company_id), date: lists[0].date || null };
 }
 
 /** Company that owns a template, or null if not found. Used to company-scope template routes. */

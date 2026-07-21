@@ -34,15 +34,22 @@ async function assertScope(user: PortalUser, templateId: number, lineId: number)
 
 /** Validate the base64 payload really begins with a known raster-image signature —
  * never trust the filename/Content-Type (blocks SVG/HTML smuggling). */
+const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
 function detectImageMime(base64: string): string | null {
   let head: Buffer;
   try { head = Buffer.from(base64.slice(0, 24), 'base64'); } catch { return null; }
-  if (head.length < 4) return null;
+  if (head.length < 12) return null;
+  // JPEG: FF D8 FF (SOI + first marker).
   if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg';
-  if (head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47) return 'image/png';
-  if (head[0] === 0x47 && head[1] === 0x49 && head[2] === 0x46) return 'image/gif';
-  if (head[0] === 0x52 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x46
-      && head.slice(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  // PNG: full 8-byte magic.
+  if (head.subarray(0, 8).equals(PNG_SIG)) return 'image/png';
+  // GIF: "GIF87a" / "GIF89a".
+  const g = head.subarray(0, 6).toString('ascii');
+  if (g === 'GIF87a' || g === 'GIF89a') return 'image/gif';
+  // WEBP: "RIFF"...."WEBP".
+  if (head.subarray(0, 4).toString('ascii') === 'RIFF'
+      && head.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
   return null;
 }
 

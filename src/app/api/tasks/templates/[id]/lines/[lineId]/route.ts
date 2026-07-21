@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireCapability, AuthError } from '@/lib/auth';
-import { upsertTemplateLine, deleteTemplateLine, type DayPart, type ModuleLink } from '@/lib/odoo-tasks';
+import { upsertTemplateLine, deleteTemplateLine, templateLineBelongsToTemplate, type DayPart, type ModuleLink } from '@/lib/odoo-tasks';
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
   try {
@@ -9,6 +9,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const lineId = parseInt(params.lineId, 10);
     if (Number.isNaN(templateId) || Number.isNaN(lineId)) {
       return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    }
+    // The line must already belong to this template — prevents moving/editing an
+    // arbitrary line via a mismatched URL (upsertTemplateLine rewrites template_id).
+    if (!(await templateLineBelongsToTemplate(templateId, lineId))) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     const body = await req.json();
     await upsertTemplateLine(templateId, {
@@ -35,8 +40,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string; lineId: string } }) {
   try {
     requireCapability('tasks.template.manage');
+    const templateId = parseInt(params.id, 10);
     const lineId = parseInt(params.lineId, 10);
-    if (Number.isNaN(lineId)) return NextResponse.json({ error: 'Invalid line id' }, { status: 400 });
+    if (Number.isNaN(templateId) || Number.isNaN(lineId)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+    if (!(await templateLineBelongsToTemplate(templateId, lineId))) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     await deleteTemplateLine(lineId);
     return NextResponse.json({ ok: true });
   } catch (err) {
