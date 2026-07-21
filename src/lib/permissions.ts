@@ -86,6 +86,11 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'inventory.productsettings.manage', module: 'inventory', label: 'Edit product settings (packs, photo rule)',      defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.location.manage',       module: 'inventory', label: 'Set up count locations (map, shelves, photos)',     defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.product.create',        module: 'inventory', label: 'Create a product via scan',                      defaultRoles: ['staff', 'manager', 'admin'] },
+  // Behavior-preserving keys for tiles that were hard-coded before (staff saw MO
+  // Ingredients; drinks tools were manager+). Defaults = today's behavior; an
+  // admin can now adjust them per role like every other action.
+  { key: 'inventory.moingredients.view',    module: 'inventory', label: 'View MO ingredient needs',                       defaultRoles: ['staff', 'manager', 'admin'] },
+  { key: 'inventory.drinks.manage',         module: 'inventory', label: 'Scan & edit POS drinks',                         defaultRoles: ['manager', 'admin'] },
 
   // ── Prep Planner — a manager-only module (nav tile minRole=manager). Its item/link/forecast
   // API routes had NO server auth at all (open hole); gating them to manager+admin matches the

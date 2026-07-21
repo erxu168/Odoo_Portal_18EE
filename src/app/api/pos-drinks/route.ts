@@ -23,6 +23,8 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 
 // What a Jerk (Kottbusser Damm 96) — branch under Ssam Korean BBQ. Verified on
@@ -153,8 +155,9 @@ export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const role = (user as any).role || 'staff';
-  if (role === 'staff') {
+  // Capability-gated (default manager+admin, admin-adjustable) — matches the
+  // dashboard tile + screen gate so an override works end-to-end, not UI-only.
+  if (!roleCan((user as any).role || 'staff', 'inventory.drinks.manage', getPermissionOverrides())) {
     return NextResponse.json({ error: 'Only managers can add drinks' }, { status: 403 });
   }
 

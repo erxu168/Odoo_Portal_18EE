@@ -7,15 +7,15 @@ import SortableTileGrid from '@/components/ui/SortableTileGrid';
 
 interface InventoryDashboardProps {
   userRole: string;
+  capabilities: string[];   // single source: the parent page's (seeded with staff defaults)
   onNavigate: (screen: string) => void;
   onHome: () => void;
 }
 
-export default function InventoryDashboard({ userRole, onNavigate, onHome }: InventoryDashboardProps) {
+export default function InventoryDashboard({ userRole, capabilities, onNavigate, onHome }: InventoryDashboardProps) {
   const [stats, setStats] = useState({ pending: 0, submitted: 0, quickPending: 0, templates: 0 });
   const [loading, setLoading] = useState(true);
   const [savedOrder, setSavedOrder] = useState<string[] | null>(null);
-  const [capabilities, setCapabilities] = useState<string[]>([]);
 
   const router = useRouter();
   const canManage = userRole === 'manager' || userRole === 'admin';
@@ -26,9 +26,10 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
   }, [canManage]);
 
   useEffect(() => {
+    // Tile-order preference only — capabilities come from the parent so the
+    // tiles and the screen router can never disagree.
     fetch('/api/auth/me').then(r => r.json()).then(d => {
       if (d.user?.preferences?.inventory_tile_order) setSavedOrder(d.user.preferences.inventory_tile_order);
-      if (Array.isArray(d.user?.capabilities)) setCapabilities(d.user.capabilities);
     }).catch(() => {});
   }, []);
 
@@ -93,7 +94,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     },
-    {
+    ...(can('inventory.moingredients.view') ? [{
       id: 'mo-ingredients',
       label: 'MO Ingredients',
       color: 'bg-orange-50 border-orange-200', iconBg: 'bg-orange-100', iconColor: 'text-orange-600',
@@ -107,7 +108,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
           <circle cx="7" cy="18" r="1.5" fill="currentColor" stroke="none"/>
         </svg>
       ),
-    },
+    }] : []),
     {
       id: 'goods-received',
       label: 'Goods received',
@@ -159,7 +160,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     }] : []),
-    ...(canManage ? [{
+    ...(can('inventory.drinks.manage') ? [{
       id: 'drinks-scanner',
       label: 'Drinks Scanner',
       color: 'bg-pink-50 border-pink-200', iconBg: 'bg-pink-100', iconColor: 'text-pink-600',
@@ -174,7 +175,7 @@ export default function InventoryDashboard({ userRole, onNavigate, onHome }: Inv
         </svg>
       ),
     }] : []),
-    ...(canManage ? [{
+    ...(can('inventory.drinks.manage') ? [{
       id: 'drinks-editor',
       label: 'Edit Drinks',
       color: 'bg-rose-50 border-rose-200', iconBg: 'bg-rose-100', iconColor: 'text-rose-600',

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireAuth, AuthError } from '@/lib/auth';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 
 /**
  * GET /api/manufacturing-orders/pick-list
@@ -9,7 +11,12 @@ import { requireAuth, AuthError } from '@/lib/auth';
  */
 export async function GET(request: Request) {
   try {
-    requireAuth();
+    const user = requireAuth();
+    // Same capability as the MO Ingredients tile/screen (default: all roles) —
+    // revoking it for a role must close the data, not just hide the button.
+    if (!roleCan(user.role, 'inventory.moingredients.view', getPermissionOverrides())) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
     const odoo = getOdoo();
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get('company_id');

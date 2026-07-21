@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { allowedActionKeysForRole, type Role } from '@/lib/permissions';
 import LocationManager from '@/components/inventory/LocationManager';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
@@ -36,16 +37,20 @@ export default function InventoryPage() {
   const router = useRouter();
   const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
   const [userRole, setUserRole] = useState<string>('staff');
-  const [capabilities, setCapabilities] = useState<string[]>([]);
+  // Seed with the STAFF defaults (the safe floor): baseline tiles like MO
+  // Ingredients render immediately — no flash-hide while /api/auth/me is in
+  // flight, and a failed fetch can never hide them. Privileged tiles only appear
+  // once the server confirms them.
+  const [capabilities, setCapabilities] = useState<string[]>(() => allowedActionKeysForRole('staff', {}));
 
   useEffect(() => {
     fetch('/api/auth/me').then((r) => r.json()).then((d) => {
       if (d.user?.role) setUserRole(d.user.role);
       if (Array.isArray(d.user?.capabilities)) setCapabilities(d.user.capabilities);
+      else if (d.user?.role) setCapabilities(allowedActionKeysForRole(d.user.role as Role, {}));
     }).catch(() => {});
   }, []);
 
-  const canManage = userRole === 'manager' || userRole === 'admin';
   const can = (k: string) => capabilities.includes(k);
 
   function goHome() { router.push('/'); }
@@ -55,6 +60,7 @@ export default function InventoryPage() {
     return (
       <InventoryDashboard
         userRole={userRole}
+        capabilities={capabilities}
         onNavigate={(id) => setScreen({ type: id as any })}
         onHome={goHome}
       />
@@ -91,7 +97,7 @@ export default function InventoryPage() {
     );
   }
 
-  if (screen.type === 'mo-ingredients') {
+  if (screen.type === 'mo-ingredients' && can('inventory.moingredients.view')) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <AppHeader title="MO Ingredients" subtitle="All ingredients from confirmed MOs" showBack onBack={goDashboard} />
@@ -138,7 +144,7 @@ export default function InventoryPage() {
     return <LocationManager onBack={goDashboard} />;
   }
 
-  if (screen.type === 'drinks-scanner' && canManage) {
+  if (screen.type === 'drinks-scanner' && can('inventory.drinks.manage')) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <AppHeader title="Drinks Scanner" subtitle="Scan to barcode What a Jerk drinks" showBack onBack={goDashboard} />
@@ -147,7 +153,7 @@ export default function InventoryPage() {
     );
   }
 
-  if (screen.type === 'drinks-editor' && canManage) {
+  if (screen.type === 'drinks-editor' && can('inventory.drinks.manage')) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <AppHeader title="Edit Drinks" subtitle="Change a drink's name, price, tax, unit or section" showBack onBack={goDashboard} />
@@ -170,6 +176,7 @@ export default function InventoryPage() {
   return (
     <InventoryDashboard
       userRole={userRole}
+      capabilities={capabilities}
       onNavigate={(id) => setScreen({ type: id as any })}
       onHome={goHome}
     />
