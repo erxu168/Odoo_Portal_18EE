@@ -24,3 +24,14 @@ export function berlinToday(): string {
 export function berlinWeekday(): number {
   return berlinNow().getDay();
 }
+
+/**
+ * Strict calendar-day check: a string 'YYYY-MM-DD' that round-trips through a
+ * real UTC date — rejects impossible days like 2026-02-31 (which Date would
+ * silently roll into March) and non-string values.
+ */
+export function isCanonicalDay(d: unknown): d is string {
+  if (typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  const t = Date.parse(d + 'T00:00:00Z');
+  return Number.isFinite(t) && new Date(t).toISOString().slice(0, 10) === d;
+}

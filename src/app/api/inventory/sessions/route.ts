@@ -11,8 +11,9 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
-import { initInventoryTables, createSession, listSessions, getSession, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems } from '@/lib/inventory-db';
+import { initInventoryTables, createSession, listSessions, getSession, getSessionByTemplateAndDate, isUniqueViolation, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems } from '@/lib/inventory-db';
 import { canAccessSession, companyScope } from '@/lib/inventory-access';
+import { isCanonicalDay } from '@/lib/berlin-date';
 import { resolveSessionRoute } from '@/lib/session-route';
 import { missedStops } from '@/lib/guided-route';
 import { logAudit } from '@/lib/db';
@@ -83,6 +84,12 @@ export async function POST(request: Request) {
   if (!template_id || !scheduled_date) {
     return NextResponse.json({ error: 'template_id and scheduled_date required' }, { status: 400 });
   }
+  // Canonical day only — every date comparison downstream (dedupe, usage
+  // ordering, Berlin-day windows) relies on a strict, REAL YYYY-MM-DD (an
+  // impossible day like 2026-02-31 would silently roll into March).
+  if (!isCanonicalDay(scheduled_date)) {
+    return NextResponse.json({ error: 'scheduled_date must be a valid YYYY-MM-DD day' }, { status: 400 });
+  }
 
   // Location + company come from the template (never the client) so a session
   // can't be pointed at another restaurant's stock location.
@@ -116,13 +123,31 @@ export async function POST(request: Request) {
     }
   }
 
-  const id = createSession({
-    template_id,
-    scheduled_date,
-    location_id: tmpl.location_id,
-    company_id: tmpl.company_id ?? null,
-    assigned_user_id,
-  });
+  // A list has at most one count per day (idx_sessions_template_date). Creating
+  // for a day that already has one returns THAT session instead of tripping the
+  // unique index into a 500 — the manual create is idempotent per (list, day).
+  const existing = getSessionByTemplateAndDate(template_id, scheduled_date);
+  if (existing) {
+    return NextResponse.json({ id: existing.id, message: 'A count for this list and day already exists' });
+  }
+  let id: number;
+  try {
+    id = createSession({
+      template_id,
+      scheduled_date,
+      location_id: tmpl.location_id,
+      company_id: tmpl.company_id ?? null,
+      assigned_user_id,
+    });
+  } catch (e) {
+    // Lost a create race — the day's session appeared between our check and the
+    // insert. ONLY a duplicate-key violation is a race; a snapshot/schema/storage
+    // failure is real and must surface even if a competing row happens to exist.
+    if (!isUniqueViolation(e)) throw e;
+    const winner = getSessionByTemplateAndDate(template_id, scheduled_date);
+    if (!winner) throw e;
+    return NextResponse.json({ id: winner.id, message: 'A count for this list and day already exists' });
+  }
   return NextResponse.json({ id, message: 'Session created' }, { status: 201 });
 }
 

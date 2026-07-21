@@ -625,24 +625,35 @@ export function createSession(data: {
   const companyId = data.company_id !== undefined
     ? data.company_id
     : (getTemplate(data.template_id)?.company_id ?? null);
-  const r = db.prepare(`
-    INSERT INTO counting_sessions (template_id, scheduled_date, location_id, company_id, assigned_user_id, status, created_at)
-    VALUES (?, ?, ?, ?, ?, 'pending', ?)
-  `).run(data.template_id, data.scheduled_date, data.location_id, companyId, data.assigned_user_id || null, now());
-  const sessionId = r.lastInsertRowid as number;
-  // Freeze what/where to count NOW. A modern session must not exist without its
-  // snapshot (the count screen, spot validation, and review all read it), so a
-  // freeze failure rolls the session back and surfaces instead of silently
-  // producing a session that resolves from the mutable template.
-  try {
+  // Session row + its frozen snapshot are ONE transaction: a modern session
+  // must never be observable without its snapshot (the count screen, spot
+  // validation, review — and a concurrent duplicate-create returning this row
+  // as the "winner" — all read it). A freeze failure rolls everything back and
+  // surfaces. snapshotSessionFromTemplate's inner transaction nests as a
+  // savepoint under better-sqlite3.
+  const tx = db.transaction((): number => {
+    const r = db.prepare(`
+      INSERT INTO counting_sessions (template_id, scheduled_date, location_id, company_id, assigned_user_id, status, created_at)
+      VALUES (?, ?, ?, ?, ?, 'pending', ?)
+    `).run(data.template_id, data.scheduled_date, data.location_id, companyId, data.assigned_user_id || null, now());
+    const sessionId = r.lastInsertRowid as number;
     snapshotSessionFromTemplate(sessionId, data.template_id);
-  } catch (e) {
-    db.prepare('DELETE FROM session_count_locations WHERE session_id = ?').run(sessionId);
-    db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(sessionId);
-    db.prepare('DELETE FROM counting_sessions WHERE id = ?').run(sessionId);
-    throw e;
-  }
-  return sessionId;
+    return sessionId;
+  });
+  return tx();
+}
+
+/**
+ * The (at most one) session of a template on a given day — uniqueness is
+ * guaranteed by idx_sessions_template_date. Used to make the manual
+ * session-create idempotent per (list, day) instead of tripping the index.
+ */
+export function getSessionByTemplateAndDate(templateId: number, scheduledDate: string): CountingSession | null {
+  const db = getDb();
+  const row = db.prepare(
+    'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+  ).get(templateId, scheduledDate) as { id: number } | undefined;
+  return row ? getSession(row.id) : null;
 }
 
 export function listSessions(filters?: {
@@ -740,7 +751,7 @@ export function updateSessionStatus(id: number, status: SessionStatus, extra?: {
 /** A lost create-race on the unique (template_id, scheduled_date) index — the
  *  ONLY error the generators may swallow; anything else (disk full, lock,
  *  schema) must surface. */
-function isUniqueViolation(e: unknown): boolean {
+export function isUniqueViolation(e: unknown): boolean {
   const code = (e as { code?: string })?.code || '';
   const msg = e instanceof Error ? e.message : '';
   // Exactly a duplicate-key violation — a NOT NULL / FK / CHECK failure is a

@@ -13,6 +13,8 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { initInventoryTables, getSession, getSessionEntries, sumReceiptsByProduct } from '@/lib/inventory-db';
 import { canAccessSession } from '@/lib/inventory-access';
+import { berlinMidnightMs } from '@/lib/waj-sales-time';
+import { isCanonicalDay } from '@/lib/berlin-date';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -45,11 +47,18 @@ export async function GET(request: Request) {
   if (opening.template_id !== closing.template_id) {
     return NextResponse.json({ error: 'Both counts must be of the same list' }, { status: 400 });
   }
-  // Ordered: the opening count must come on/before the closing count. Use the
-  // count's finish time (submitted_at) when available, else its creation.
-  const openBoundary = opening.submitted_at || opening.created_at;
-  const closeBoundary = closing.submitted_at || closing.created_at;
-  if (openBoundary > closeBoundary) {
+  // Ordered by the count DAY (scheduled_date) — the same key the UI pairs
+  // counts by. Deliberately NOT by activity timestamps: a backfilled count can
+  // be submitted out of order, which must not reject a valid date-ordered pair.
+  const openDate = opening.scheduled_date || String(opening.created_at).slice(0, 10);
+  const closeDate = closing.scheduled_date || String(closing.created_at).slice(0, 10);
+  // Defensive: a malformed or impossible legacy date would mis-order
+  // lexicographically, roll into another month, or blow up the Berlin-day
+  // conversion — reject it instead.
+  if (!isCanonicalDay(openDate) || !isCanonicalDay(closeDate)) {
+    return NextResponse.json({ error: 'One of these counts has no valid date' }, { status: 400 });
+  }
+  if (openDate > closeDate) {
     return NextResponse.json({ error: 'The opening count must be on or before the closing count' }, { status: 400 });
   }
 
@@ -66,6 +75,28 @@ export async function GET(request: Request) {
 
   // Received window = strictly AFTER the opening count, up to the closing count,
   // so a delivery already reflected in the opening stock isn't counted twice.
+  // Each boundary is the count's real finish time when it has one; an
+  // unfinished count falls back to the END of its scheduled BERLIN day — the
+  // business day is Europe/Berlin, not UTC (DST-correct via the shared
+  // sales-time helper). Deliveries logged during the closing day still count
+  // while that count is in progress; opening-day deliveries before an
+  // unfinished opening are conservatively excluded.
+  const nextDay = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+  const berlinDayStart = (d: string) => new Date(berlinMidnightMs(d)).toISOString();
+  const berlinDayEnd = (d: string) => new Date(berlinMidnightMs(nextDay(d)) - 1).toISOString();
+  let openBoundary = opening.submitted_at || berlinDayEnd(openDate);
+  let closeBoundary = closing.submitted_at || berlinDayEnd(closeDate);
+  if (openDate === closeDate && (!opening.submitted_at || !closing.submitted_at || openBoundary > closeBoundary)) {
+    // Legacy same-day duplicate (the unique index blocks new ones) without a
+    // trustworthy intraday order → EMPTY window: that day's deliveries are
+    // ambiguous and must never be double-counted.
+    openBoundary = closeBoundary = berlinDayEnd(closeDate);
+  } else if (openBoundary > closeBoundary) {
+    // Out-of-order backfill across days: finish times are meaningless for
+    // windowing — fall back to whole-day boundaries.
+    openBoundary = berlinDayStart(openDate);
+    closeBoundary = berlinDayEnd(closeDate);
+  }
   const companyIds = opening.company_id != null ? [opening.company_id] : null;
   const received = sumReceiptsByProduct(companyIds, openBoundary, closeBoundary);
 
