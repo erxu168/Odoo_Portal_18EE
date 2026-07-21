@@ -68,6 +68,16 @@ function ensureTables() {
       done_at INTEGER
     );
 
+    -- Per-line cook timers driven by the station tablets (grill/pot/fryer/…).
+    -- A row exists between START COOK and DONE; deleted on DONE. Pruned by
+    -- kds_completed_orders cleanup — if the order is gone, so are its timers.
+    CREATE TABLE IF NOT EXISTS kds_cook_timers (
+      order_id   INTEGER NOT NULL,
+      item_id    TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      PRIMARY KEY (order_id, item_id)
+    );
+
     -- Permanent prep-time archive. Unlike kds_completed_orders (pruned after
     -- 3 days) this is NEVER pruned, so day-of-week prep trends build up over
     -- time. One row per order, written when the order is marked done.
@@ -100,6 +110,11 @@ function ensureTables() {
   // Prune completed-order stages older than 3 days so the table stays small.
   db.prepare('DELETE FROM kds_completed_orders WHERE COALESCE(done_at, ready_at, 0) < ?')
     .run(Date.now() - 3 * 24 * 3600 * 1000);
+  // Any cook timer left behind by a since-completed order is stale — clean up.
+  db.exec(
+    'DELETE FROM kds_cook_timers WHERE order_id NOT IN (SELECT order_id FROM kds_completed_orders) AND started_at < ' +
+    String(Date.now() - 12 * 3600 * 1000)
+  );
   seedProductConfig(db);
   _initialized = true;
 }
