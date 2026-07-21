@@ -239,6 +239,20 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
     db.exec("ALTER TABLE counting_templates ADD COLUMN adhoc_date TEXT");
   }
 
+  // One session per (template, day) — enforced at the DB so concurrent
+  // generators (cron + a session-list load) can never double-insert. Fail-open:
+  // if historical duplicates exist the index is skipped (never delete data in a
+  // migration); it will be created on a later boot once they're cleaned up.
+  const dupes = db.prepare(`
+    SELECT template_id, scheduled_date, COUNT(*) AS n FROM counting_sessions
+    GROUP BY template_id, scheduled_date HAVING n > 1
+  `).all();
+  if (dupes.length === 0) {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_template_date ON counting_sessions(template_id, scheduled_date)');
+  } else {
+    console.warn(`[inventory] skipped unique (template_id, scheduled_date) index — ${dupes.length} duplicate pair(s) need manual cleanup first`);
+  }
+
   // Snapshot the company onto each session at creation, so later editing a
   // template's company can never re-tag historical sessions' visibility/routing.
   const sessCols2 = db.prepare("PRAGMA table_info('counting_sessions')").all() as { name: string }[];
@@ -675,6 +689,18 @@ export function updateSessionStatus(id: number, status: SessionStatus, extra?: {
   }
 }
 
+/** A lost create-race on the unique (template_id, scheduled_date) index — the
+ *  ONLY error the generators may swallow; anything else (disk full, lock,
+ *  schema) must surface. */
+function isUniqueViolation(e: unknown): boolean {
+  const code = (e as { code?: string })?.code || '';
+  const msg = e instanceof Error ? e.message : '';
+  // Exactly a duplicate-key violation — a NOT NULL / FK / CHECK failure is a
+  // real bug and must NOT be mistaken for a lost race.
+  return code === 'SQLITE_CONSTRAINT_UNIQUE' || code === 'SQLITE_CONSTRAINT_PRIMARYKEY'
+    || msg.includes('UNIQUE constraint failed');
+}
+
 /**
  * Generate counting sessions for today from all active templates.
  * Respects frequency + schedule_days:
@@ -719,14 +745,21 @@ export function generateTodaySessions(companyIds?: number[]): { created: number;
       assignedUserId = tmpl.assign_id;
     }
 
-    createSession({
-      template_id: tmpl.id,
-      scheduled_date: today,
-      location_id: tmpl.location_id,
-      company_id: tmpl.company_id ?? null,
-      assigned_user_id: assignedUserId,
-    });
-    created++;
+    try {
+      createSession({
+        template_id: tmpl.id,
+        scheduled_date: today,
+        location_id: tmpl.location_id,
+        company_id: tmpl.company_id ?? null,
+        assigned_user_id: assignedUserId,
+      });
+      created++;
+    } catch (e) {
+      // Lost a create race — another caller already made today's session.
+      // Anything that is NOT the unique-index violation is a real failure.
+      if (!isUniqueViolation(e)) throw e;
+      skipped++;
+    }
   }
 
   return { created, skipped };
@@ -758,13 +791,24 @@ export function generateSessionForTemplate(templateId: number): number | null {
     assignedUserId = tmpl.assign_id;
   }
 
-  return createSession({
-    template_id: templateId,
-    scheduled_date: today,
-    location_id: tmpl.location_id,
-    company_id: tmpl.company_id ?? null,
-    assigned_user_id: assignedUserId,
-  });
+  try {
+    return createSession({
+      template_id: templateId,
+      scheduled_date: today,
+      location_id: tmpl.location_id,
+      company_id: tmpl.company_id ?? null,
+      assigned_user_id: assignedUserId,
+    });
+  } catch (e) {
+    // Lost a create race (unique index) — return the winner's session instead.
+    // Any other failure is real and must surface, not read as "not scheduled".
+    if (!isUniqueViolation(e)) throw e;
+    const winner = db.prepare(
+      'SELECT id FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
+    ).get(templateId, today) as { id: number } | undefined;
+    if (!winner) throw e;   // constraint error but no competing row — not a race
+    return winner.id;
+  }
 }
 
 /**
