@@ -43,7 +43,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
   hasImage: boolean;
   onClose: () => void;
   /** Fired after any successful save so the caller can refresh its list. */
-  onChanged: (patch: { name?: string; uom?: [number, string]; imageAdded?: boolean }) => void;
+  onChanged: (patch: { name?: string; uom?: [number, string]; imageAdded?: boolean; flags?: { requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; loose_label?: string | null }; spots?: number[] }) => void;
 }) {
   const { companyId } = useCompany();
   const [name, setName] = useState(product.name);
@@ -136,6 +136,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); flash('err', d.error || 'Could not save'); return; }
       flash('ok', 'Saved');
+      onChanged({ flags: { units_per_crate: size, pack_label: nextLabel || null, loose_label: nextLoose.trim() || null } });
     } catch { flash('err', 'Network error — not saved'); }
     finally { setBusy(null); }
   }
@@ -148,7 +149,8 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requires_photo: next }),
       });
-      if (!res.ok) setRequiresPhoto(!next);
+      if (!res.ok) { setRequiresPhoto(!next); return; }
+      onChanged({ flags: { requires_photo: next } });
     } catch { setRequiresPhoto(!next); }
   }
 
@@ -257,6 +259,16 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
                   className="text-[11px] font-bold text-blue-800 bg-blue-50 rounded-md px-2 py-1">Suggest: {suggestion}</button>
               )}
             </div>
+            {packSize !== '' && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <span className="text-[var(--fs-xs)] text-gray-500">Single-unit word (loose)</span>
+                <input value={looseLabel}
+                  onChange={(e) => setLooseLabel(e.target.value.slice(0, 20))}
+                  onBlur={(e) => savePack(packSize, packLabel || (measure ? 'piece' : 'crate'), e.target.value)}
+                  placeholder="bottles"
+                  className="w-24 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)]" />
+              </div>
+            )}
             <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">Leave the size blank to count in {uomName} only.</p>
           </div>
 
@@ -292,7 +304,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
           hasImage={img}
           companyId={companyId}
           initialSpotIds={homeSpots}
-          onSaved={(ids) => setHomeSpots(ids)}
+          onSaved={(ids) => { setHomeSpots(ids); onChanged({ spots: ids }); }}
           onClose={() => setSpotSheet(false)}
         />
       )}

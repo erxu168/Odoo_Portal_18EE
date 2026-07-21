@@ -40,7 +40,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: 'Invalid unit of measure' }, { status: 400 });
     }
     vals.uom_id = uomId;
-    vals.uom_po_id = uomId;
+    // uom_po_id (purchase unit) is set below ONLY when the unit family changes —
+    // a same-family change must not destroy e.g. "stock in Units, buy in boxes".
   }
   if (Object.keys(vals).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
@@ -53,8 +54,21 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       { limit: 1, context: { active_test: false } });
     if (rows.length === 0) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     if (vals.uom_id) {
-      const uom = await odoo.searchRead('uom.uom', [['id', '=', vals.uom_id as number], ['active', '=', true]], ['id'], { limit: 1 });
+      const uom = await odoo.searchRead('uom.uom', [['id', '=', vals.uom_id as number], ['active', '=', true]], ['id', 'category_id'], { limit: 1 });
       if (uom.length === 0) return NextResponse.json({ error: 'That unit no longer exists' }, { status: 400 });
+      // Compare unit FAMILIES (uom.category): same family → keep the purchase
+      // unit as-is; different family → the old purchase unit becomes invalid in
+      // Odoo, so realign it to the new base unit.
+      const curr = await odoo.searchRead('product.product', [['id', '=', productId]],
+        ['uom_id'], { limit: 1, context: { active_test: false } });
+      const currUomId = Array.isArray(curr[0]?.uom_id) ? curr[0].uom_id[0] : null;
+      if (currUomId) {
+        const currUom = await odoo.searchRead('uom.uom', [['id', '=', currUomId]], ['category_id'], { limit: 1 });
+        const catOf = (r: any) => (Array.isArray(r?.category_id) ? r.category_id[0] : r?.category_id);
+        if (currUom.length > 0 && catOf(uom[0]) !== catOf(currUom[0])) {
+          vals.uom_po_id = vals.uom_id;
+        }
+      }
     }
     await odoo.write('product.product', [productId], vals);
     return NextResponse.json({ message: 'Product updated' });

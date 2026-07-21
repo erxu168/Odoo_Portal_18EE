@@ -356,6 +356,14 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
           hasImage={imageIds.has(detailFor.id)}
           onClose={() => setDetailFor(null)}
           onChanged={(patch) => {
+            if (patch.flags) {
+              const f = patch.flags;
+              if (f.requires_photo !== undefined) setFlags((prev) => ({ ...prev, [detailFor.id]: !!f.requires_photo }));
+              if (f.units_per_crate !== undefined) setCrateSizes((prev) => ({ ...prev, [detailFor.id]: f.units_per_crate == null ? '' : String(f.units_per_crate) }));
+              if (f.pack_label !== undefined) setPackLabels((prev) => ({ ...prev, [detailFor.id]: f.pack_label || '' }));
+              if (f.loose_label !== undefined) setLooseLabels((prev) => ({ ...prev, [detailFor.id]: f.loose_label || '' }));
+            }
+            if (patch.spots) setHomeSpots((prev) => ({ ...prev, [detailFor.id]: patch.spots as number[] }));
             if (patch.name !== undefined || patch.uom !== undefined) {
               setProducts((prev: any[]) => prev.map((x) => x.id === detailFor.id
                 ? { ...x, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
