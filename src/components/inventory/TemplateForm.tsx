@@ -156,10 +156,20 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   // pick that belonged to the previous company. Ref-guarded so it fires only on a
   // real switch, not on the initial company/warehouse arriving after mount.
   const prevCompanyRef = useRef<number>(companyId);
+  const [companyChangedMidEdit, setCompanyChangedMidEdit] = useState(false);
   useEffect(() => {
+    if (!companyId) return;                 // provider still hydrating — not a switch
+    if (prevCompanyRef.current === 0) {     // first REAL company arriving ≠ a switch
+      prevCompanyRef.current = companyId;
+      return;
+    }
     if (prevCompanyRef.current === companyId) return;
     prevCompanyRef.current = companyId;
     if (!isEdit) setLocationId(stockLocationId || null);
+    // Mid-EDIT the list still belongs to its own restaurant, but the form's data
+    // (products, departments, shifts) now loads for the NEW one — a save would
+    // mix companies. Block it and ask for a reopen.
+    else setCompanyChangedMidEdit(true);
     setShiftTemplates([]);
     setShiftLoadFailed(false);
     if (assignType === 'shift') setAssignId(null);
@@ -286,7 +296,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const needsDays = frequency === 'weekly' && scheduleDays.length === 0;
   const needsAdhocDate = frequency === 'adhoc' && !adhocDate;
   const needsAssignee = !!assignType && !assignId;   // typed assignment must name someone
-  const canSave = name.trim().length > 0 && locationId !== null && selectedCount > 0 && !needsDays && !needsAdhocDate && !needsAssignee;
+  const canSave = name.trim().length > 0 && locationId !== null && selectedCount > 0 && !needsDays && !needsAdhocDate && !needsAssignee && !companyChangedMidEdit;
 
   async function handleSubmit() {
     if (!canSave) return;
@@ -490,6 +500,14 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             </div>
           )}
 
+          {companyChangedMidEdit && (
+            <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
+              <p className="text-[var(--fs-sm)] font-semibold text-amber-800">
+                You switched restaurants while editing. Close this list and reopen it to keep everything consistent.
+              </p>
+            </div>
+          )}
+
           {noWarehouse && (
             <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl p-3.5">
               <p className="text-[var(--fs-sm)] font-semibold text-amber-800">
@@ -654,9 +672,11 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-xl)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all disabled:opacity-40 disabled:shadow-none">
           {saving
             ? 'Saving...'
-            : noWarehouse
-              ? 'No warehouse for this restaurant'
-              : needsAdhocDate
+            : companyChangedMidEdit
+              ? 'Restaurant changed — reopen this list'
+              : noWarehouse
+                ? 'No warehouse for this restaurant'
+                : needsAdhocDate
               ? 'Pick a date first'
               : needsDays
                 ? 'Select days first'
