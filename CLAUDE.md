@@ -136,7 +136,7 @@ Staff < Manager < Admin
 - Every module MUST have a dashboard landing screen (2x2 tile grid)
 - Every list view MUST have a search bar
 - Every page MUST have a home button
-- One primary action per screen (big orange button at bottom)
+- One primary action per screen (big green button at bottom — `ui/PrimaryButton`)
 - Never show ERP jargon — use plain language from ux-rules.ts
 - Never show colour-only status — always icon + colour + text
 

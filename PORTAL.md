@@ -189,11 +189,11 @@ Department-scoped daily checklists (no shift coupling). Backed by Odoo addon `kr
 
 **Files: `src/lib/design-system.ts` + `tailwind.config.ts`**
 
-### Brand
-- Primary orange: `#F5800A`
-- Dark: `#E86000` / Darker: `#C05200` / Light: `#FFF4E6`
-- Tailwind scale: `krawings-50` through `krawings-900`
-- Use `bg-krawings-500`, `text-krawings-600`, `border-krawings-200` in Tailwind
+### Brand (design standard — approved 2026-07-21)
+- **Header blue `#2563EB`** — the module header (`ui/AppHeader`) only.
+- **Action green `#16A34A`** (dark `#15803D`) — buttons, selections, focus.
+- Reference implementation: the Shift Handover module. Full rules in `DESIGN_GUIDE.md`.
+- The old `krawings-*` orange Tailwind scale is **deprecated / legacy-only** — do not use it.
 
 ### Touch targets (larger than standard — wet hands / gloves)
 - Primary action buttons: `h-14` (56px)
@@ -230,9 +230,10 @@ Department-scoped daily checklists (no shift coupling). Backed by Odoo addon `kr
 - `ready` → ✅ Ready to start
 
 ### Current migration status
-Manufacturing module uses **emerald green** accent (legacy).
-All new modules use Krawings orange from the start.
-Manufacturing will be migrated to orange in a dedicated session.
+The whole portal migrated **to green `#16A34A`** as the action color (2026-03-21).
+Blue `#2563EB` is the header color. The design standard (approved 2026-07-21,
+`docs/superpowers/specs/2026-07-21-portal-design-standard-design.md`) is now
+rolling out wave by wave — see the migration table in `DESIGN_GUIDE.md`.
 
 ---
 
@@ -278,8 +279,8 @@ Use `errorMessages` map from `ux-rules.ts`. Never show raw server errors.
 - `admin`: KPIs, full view
 
 ### One primary action per screen
-One big orange button at the bottom. All other actions are ghost/outline.
-Never two equally-prominent buttons.
+One big **green** button (`ui/PrimaryButton`) at the bottom. All other actions are
+ghost/outline. Never two equally-prominent buttons.
 
 ### Offline-first
 Kitchen WiFi unreliable. Never block staff due to network.

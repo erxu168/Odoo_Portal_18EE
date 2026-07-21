@@ -2,6 +2,8 @@
 
 import React from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { KpiRow, KpiChip } from '@/components/ui/KpiChip';
+import { ActionGrid, ActionCard } from '@/components/ui/ActionCard';
 
 export interface Overview {
   batches_today: number; active_containers: number; open_actions: number; critical_actions: number;
@@ -30,35 +32,27 @@ export function Dashboard({ overview, operationalDate, headerAction, can, onOpen
       <AppHeader supertitle="INVENTORY" title="Shift Handover" subtitle={operationalDate} action={headerAction} />
       <div className="px-4 py-4">
         {o && (
-          <div className="grid grid-cols-4 gap-2 mb-4">
-            <Kpi n={o.active_containers} label="In storage" />
-            <Kpi n={o.use_first} label="Use first" />
-            <Kpi n={o.open_actions} label="Tasks" danger={!!o.critical_actions} />
-            <Kpi n={o.on_hold} label="On hold" danger={!!o.on_hold} />
-          </div>
+          <KpiRow columns={4} className="mb-4">
+            <KpiChip value={o.active_containers} label="In storage" />
+            <KpiChip value={o.use_first} label="Use first" />
+            <KpiChip value={o.open_actions} label="Tasks" tone={o.critical_actions ? 'danger' : 'default'} />
+            <KpiChip value={o.on_hold} label="On hold" tone={o.on_hold ? 'danger' : 'default'} />
+          </KpiRow>
         )}
-        <div className="grid grid-cols-2 gap-3">
-          {visible.map((t) => (
-            <button key={t.id} onClick={() => onOpen(t.id)} className="relative bg-white rounded-2xl border border-gray-200 p-4 text-left active:scale-[0.97] transition-transform min-h-[104px] flex flex-col">
-              <div className="w-11 h-11 rounded-xl bg-[#F1F3F5] flex items-center justify-center text-2xl mb-2">{t.icon}</div>
-              <div className="text-[var(--fs-base)] font-bold text-gray-900 leading-tight">{t.label}</div>
-              <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{t.sub}</div>
-              {!!t.badge && t.badge > 0 && (
-                <span className={`absolute top-3 right-3 min-w-[22px] h-[22px] px-1.5 rounded-full text-white text-[var(--fs-xs)] font-bold flex items-center justify-center ${t.danger ? 'bg-red-500' : 'bg-green-600'}`}>{t.badge}</span>
-              )}
-            </button>
-          ))}
-        </div>
+        <ActionGrid
+          items={visible}
+          getItemId={(t) => t.id}
+          renderItem={(t) => (
+            <ActionCard
+              emoji={t.icon}
+              label={t.label}
+              subtitle={t.sub}
+              onClick={() => onOpen(t.id)}
+              badge={t.badge ? { value: t.badge, tone: t.danger ? 'danger' : 'count' } : undefined}
+            />
+          )}
+        />
       </div>
-    </div>
-  );
-}
-
-function Kpi({ n, label, danger }: { n: number; label: string; danger?: boolean }) {
-  return (
-    <div className="rounded-xl bg-white border border-gray-200 py-2.5 text-center">
-      <div className={`text-[var(--fs-xl)] font-bold ${danger && n > 0 ? 'text-red-600' : 'text-gray-900'}`}>{n}</div>
-      <div className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</div>
     </div>
   );
 }

@@ -2,12 +2,11 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
+import { HomeIcon, BackIcon } from './ChromeIcons';
 
 /**
- * Unified header component for the entire Krawings Portal.
- * Replaces: Purchase dark header, Manufacturing white header, Inventory dark header.
- *
- * Design: Dark navy (#2563EB) with white text.
+ * Unified header component for the entire Krawings Portal — the design standard's
+ * header card. Blue (#2563EB) with white text, rounded bottom corners.
  * Layout: [back/home] [supertitle + title + subtitle] [action?] [home?]
  *
  * Props:
@@ -16,7 +15,7 @@ import { useRouter } from 'next/navigation';
  *   subtitle   - secondary info (location, reference, count)
  *   showBack   - show back arrow instead of home icon on left
  *   onBack     - callback for back arrow
- *   action     - optional right-side action button JSX
+ *   action     - optional right-side action button JSX (e.g. <CompanyPill />)
  */
 interface AppHeaderProps {
   supertitle?: string;
@@ -26,19 +25,6 @@ interface AppHeaderProps {
   onBack?: () => void;
   action?: React.ReactNode;
 }
-
-const HomeIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-    <polyline points="9 22 9 12 15 12 15 22"/>
-  </svg>
-);
-
-const BackIcon = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
-    <path d="M15 19l-7-7 7-7"/>
-  </svg>
-);
 
 export default function AppHeader({ supertitle, title, subtitle, showBack, onBack, action }: AppHeaderProps) {
   const router = useRouter();
@@ -53,9 +39,10 @@ export default function AppHeader({ supertitle, title, subtitle, showBack, onBac
       <div className="flex items-center gap-3 relative pb-3">
         <button
           onClick={showBack ? onBack : goHome}
-          className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
+          aria-label={showBack ? 'Back' : 'Home'}
+          className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center text-white active:bg-white/20 transition-colors"
         >
-          {showBack ? <BackIcon /> : <HomeIcon />}
+          {showBack ? <BackIcon size={22} /> : <HomeIcon size={22} />}
         </button>
         <div className="flex-1 min-w-0">
           {supertitle && (
@@ -72,10 +59,11 @@ export default function AppHeader({ supertitle, title, subtitle, showBack, onBac
         {showBack && (
           <button
             onClick={goHome}
-            className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center active:bg-white/20 transition-colors"
+            aria-label="Home"
+            className="w-[clamp(44px,12vw,55px)] h-[clamp(44px,12vw,55px)] rounded-xl bg-white/10 border border-white/10 flex items-center justify-center text-white active:bg-white/20 transition-colors"
             title="Dashboard"
           >
-            <HomeIcon />
+            <HomeIcon size={22} />
           </button>
         )}
       </div>

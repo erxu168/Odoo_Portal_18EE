@@ -6,6 +6,102 @@
 
 ---
 
+## The Standard (approved 2026-07-21)
+
+> **Reference implementation: the Shift Handover module** (`src/components/shift-handover/`).
+> Its home screen is the normative example every module home should look like.
+> Spec: `docs/superpowers/specs/2026-07-21-portal-design-standard-design.md`.
+
+### Screen recipe (module home) — top to bottom
+
+1. **Header card** — `ui/AppHeader`: blue `#2563EB`, `rounded-b-[28px]`, uppercase
+   overline (module name) + bold white title + white/45 subtitle (usually the date),
+   a 44px+ white/10 home/back square, and a right-side **action slot** carrying the
+   **company pill** (`ui/CompanyPill`).
+2. **KPI stat chips** — `ui/KpiRow` + `ui/KpiChip`, up to 4: white, bordered,
+   `rounded-xl`, big number + 10px uppercase gray label. Number is red **only** when
+   the stat is an actionable problem (overdue / blocked). Red always means "look here".
+3. **Action cards** — `ui/ActionGrid` + `ui/ActionCard`, 2 columns: **white**
+   `rounded-2xl` cards, emoji in a 44px `#F1F3F5` square, bold title, gray subtitle,
+   optional corner count badge (green, or red when it needs attention),
+   `active:scale-[0.97]`.
+4. Page background `bg-gray-50`, content `px-4`, flat cards (no shadows).
+
+### The two rules that matter most
+
+- **White cards. No pastel tile colors.** Color appears only when it carries
+  information (a badge, a warning, a status). A calm surface is what makes a red
+  badge impossible to miss.
+- **Color is information.** Blue `#2563EB` = headers. Green `#16A34A` = the one
+  interactive color (buttons, selections, focus). Red/amber = problems/warnings.
+  Everything else is gray. The brand is **not** orange (`#F5800A` is legacy-only).
+
+### Symbols — two jobs, two styles
+
+- **Emoji tell staff _what_** — on action cards and module tiles. Same concept =
+  same emoji in every module (dictionary below). No module invents its own.
+- **Line icons run the _machinery_** — home, back, close, chevrons, checkmarks come
+  from the one thin-line set `ui/ChromeIcons` (stroke-2, `currentColor`, aria-hidden).
+  Never emoji for chrome, never a second icon style.
+- **Status is never symbol- or color-only** — always word + tinted badge.
+
+#### Emoji dictionary (extend here; never improvise per-module)
+
+| Concept | Emoji | | Concept | Emoji |
+|---|---|---|---|---|
+| Manufacturing / production | 🏭 | | Tasks / approve | ✅ |
+| Chef / cooking guide | 👨‍🍳 | | Recipes / BOM | 📖 |
+| Production guide (sauces/prep) | 🥫 | | Pick list / lists | 📋 |
+| Inventory | 📦 | | Quick count / search | 🔍 |
+| Purchase / place order | 🛒 | | Ingredients (MO needs) | 🧾 |
+| Cart | 🛒 | | Goods received / receive | 📥 |
+| HR / profile | 👤 | | Completed / finished | ✔️ |
+| Planning / shifts | 📅 | | Label print | 🏷️ |
+| Prep planner | 📊 | | Storage / cold | 🧊 |
+| Sales / revenue | 📈 | | Shift handover | 🔄 |
+| Rentals | 🏠 | | Settings | ⚙️ |
+| Supplier logins | 🔑 | | Record / create | ⏺️ |
+| Shared tablets | 📱 | | Edit | ✏️ |
+| Stats / reports | 📊 | | Locations | 📍 |
+
+### Shared building blocks (import from `@/components/ui/`)
+
+`AppHeader`, `CompanyPill`, `KpiRow`/`KpiChip`, `ActionGrid`/`ActionCard`,
+`BottomSheet`, `OptionGrid`, `PrimaryButton`, `Chip`, `Field`, `Select`,
+`ChromeIcons`. **Never hand-roll a bottom sheet, KPI chip, or action card again.**
+
+```tsx
+<AppHeader supertitle="INVENTORY" title="Stock counting" subtitle={date}
+  action={<CompanyPill onSwitched={() => location.reload()} />} />
+<KpiRow columns={3}>
+  <KpiChip value={3} label="Waiting" tone="danger" />
+  <KpiChip value={2} label="To review" />
+  <KpiChip value={12} label="Lists" />
+</KpiRow>
+<ActionGrid items={tiles} getItemId={t => t.id} sortable={{ storageKey: 'inventory_tile_order', savedOrder }}
+  renderItem={t => <ActionCard emoji={t.emoji} label={t.label} subtitle={t.sub}
+    onClick={() => go(t.id)} badge={t.count ? { value: t.count } : undefined} />} />
+```
+
+### Migration ratchet
+
+New screens MUST use the standard and these primitives. Any legacy screen touched
+for other reasons migrates the components it touches. No big-bang restyles outside
+the planned waves.
+
+### Migration status by screen
+
+| Wave | Screens | Status |
+|---|---|---|
+| 0 | Shared primitives + governance | ✅ migrated |
+| 0 | Shift Handover (reference) | ✅ migrated |
+| 1 | Personal home, Station home | ⏳ pending |
+| 2 | Tasks, Inventory, Purchase, Manufacturing, Chef Guide | ⏳ pending |
+| 3 | Planning, HR, Prep Planner, Rentals, Reports, Terminations, Sales, Admin | ⏳ pending |
+| 4 | KDS, cook-timer, kiosk (dark ops — typography/touch/status only) | ⏳ pending |
+
+---
+
 ## 0. Navigation — EVERY page must have a way home
 
 **This is non-negotiable.** Every module page must always show a button to return to the dashboard.
@@ -38,8 +134,12 @@ Color MUST carry meaning. If it doesn't, use gray.
 | Due soon / warning | `#F59E0B` (amber-500) | Due soon badges, pending approval, low stock |
 | Info / active | `#2563EB` (blue-600) | Informational badges, counts, active states |
 | Completed / success | `#16A34A` (green-600) | Done badges, confirmed, received, approved |
-| Brand (accent only) | `#F5800A` (orange) | Primary buttons, active tabs, brand highlights |
+| Header | `#2563EB` (blue-600) | The module header (`ui/AppHeader`) only |
+| Action | `#16A34A` (green-600) | Primary buttons, selected states, focus rings |
 | Neutral | `#6B7280` (gray-500) | Everything else — default icons, labels, borders |
+
+> The action color is **green**, not orange. `#F5800A` orange is **legacy-only** —
+> do not use it or the `krawings-*` Tailwind scale in new code.
 
 ### Tinted backgrounds (for badges and cards)
 
@@ -131,11 +231,12 @@ DO NOT use thick colored borders or full colored outlines.
 
 ## 5. Header styling
 
-- Keep dark background (`#1A1F2E`)
-- Reduce gradient intensity by 50-70%: `rgba(245,128,10,0.08)` not `0.15`
-- Remove bright orange hotspot
-- Header should NOT compete with content below it
-- **Always include a home button** (see rule 0)
+- **Use `ui/AppHeader`** — the standard blue `#2563EB` header with `rounded-b-[28px]`.
+- Keep the faint orange radial glow subtle (`rgba(245,128,10,0.08)`), no bright hotspot.
+- Header should NOT compete with content below it.
+- **Always include a home button** (see rule 0).
+- Dark navy `#1A1F2E` chrome is for the full-screen **ops tools only** (kiosk, KDS,
+  cook-timer) — never for a normal module header.
 
 ---
 
@@ -148,14 +249,14 @@ DO NOT use thick colored borders or full colored outlines.
 
 ---
 
-## 7. App tiles (dashboard)
+## 7. App tiles (dashboard) → use `ui/ActionCard`
 
-All tiles use the SAME style:
-- Background: `#F1F3F5` (light gray)
-- Icon color: `#2563EB` (blue) by default
-- Only badges carry meaning (red for alerts, blue for counts)
+All action cards use the SAME style (see "The Standard" above):
+- Card: **white** `#FFFFFF`, `rounded-2xl`, 1px `#E5E7EB` border, no shadow
+- Icon: an **emoji** in a 44px `#F1F3F5` rounded square (from the emoji dictionary)
+- Only the corner count badge carries meaning (green for counts, red for attention)
 
-NO per-tile custom colors. NO colored icon backgrounds.
+NO per-tile pastel backgrounds. NO colored icon backgrounds. NO blue SVG tile icons.
 
 ---
 

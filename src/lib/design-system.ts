@@ -25,7 +25,8 @@
 // COLOURS — semantic only
 // ─────────────────────────────────────────────
 export const colors = {
-  // Brand — Krawings forest green (primary accent)
+  // Brand — Krawings forest green is the ACTION/interactive color (buttons,
+  // selections, focus). The module header is blue #2563EB (see headerBg).
   brand:       '#16A34A',
   brandDark:   '#15803D',
   brandLight:  '#F0FDF4',
@@ -48,8 +49,10 @@ export const colors = {
   dark800: '#1F2937',
   dark700: '#374151',
 
-  // Header
-  headerBg: '#1A1F2E',
+  // Header — standard module header (AppHeader) is blue.
+  // Dark ops-tool chrome (#1A1F2E) is kiosk / KDS / cook-timer only.
+  headerBg: '#2563EB',
+  headerDark: '#1A1F2E',
   headerGlow: 'rgba(22,163,74,0.08)',  // reduced from 0.15
 
   // Semantic — the ONLY allowed status colors
@@ -171,7 +174,7 @@ const badges = {
 
   // Warning / pending states
   due_soon:    { bg: '#FEF3C7', text: '#92400E', label: 'Due soon' },
-  pending:     { bg: '#F0FDF4', text: '#C2410C', label: 'Pending' },
+  pending:     { bg: '#FEF3C7', text: '#92400E', label: 'Pending' },
   approval:    { bg: '#FEF3C7', text: '#92400E', label: 'Approval' },
   progress:    { bg: '#FEF3C7', text: '#92400E', label: 'In progress' },
   to_close:    { bg: '#FEF3C7', text: '#92400E', label: 'To close' },
@@ -199,7 +202,7 @@ const badges = {
   draft_plan:  { bg: '#F3F4F6', text: '#374151', label: 'Draft' },
 
   // Role badges
-  manager:     { bg: '#F0FDF4', text: '#C2410C', label: 'Manager' },
+  manager:     { bg: '#FEF3C7', text: '#92400E', label: 'Manager' },
   admin:       { bg: '#FEE2E2', text: '#991B1B', label: 'Admin' },
 } as const;
 
@@ -227,7 +230,6 @@ export function getBadgeClass(state: string): string {
   if (b.bg === '#FEF3C7') return 'bg-amber-100 text-amber-800';
   if (b.bg === '#DBEAFE') return 'bg-blue-100 text-blue-800';
   if (b.bg === '#DCFCE7') return 'bg-green-100 text-green-800';
-  if (b.bg === '#F0FDF4') return 'bg-green-50 text-orange-800';
   return 'bg-gray-100 text-gray-700';
 }
 
