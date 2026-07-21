@@ -66,9 +66,11 @@ export default function TemplatePlacementEditor({ templateId, templateName, onBa
   }
 
   async function save() {
-    // Snapshot what this request covers — a product toggled WHILE the request
-    // is in flight stays touched and rides the next save.
+    // Claim the touched set at REQUEST START: a product toggled while the
+    // request is in flight re-enters `touched` fresh and rides the next save —
+    // even if it was part of this request. On failure the claim is merged back.
     const sent = new Set(touched);
+    setTouched(new Set());
     setSaving(true); setError(null); setSavedMsg(null);
     try {
       const res = await fetch(`/api/inventory/templates/${templateId}/placements`, {
@@ -84,11 +86,17 @@ export default function TemplatePlacementEditor({ templateId, templateName, onBa
         }),
       });
       const d = await res.json();
-      if (!res.ok) { setError(d.error || 'Could not save.'); return; }
+      if (!res.ok) {
+        setError(d.error || 'Could not save.');
+        setTouched((prev) => new Set([...Array.from(prev), ...Array.from(sent)]));
+        return;
+      }
       setTodayUntouched(!!d.today_session_untouched);
-      setTouched((prev) => new Set(Array.from(prev).filter((id) => !sent.has(id))));
       setSavedMsg(d.applied_today ? 'Saved everywhere — today’s count now uses this layout.' : 'Saved everywhere — applies from each list’s next count.');
-    } catch { setError('Network error — not saved.'); }
+    } catch {
+      setError('Network error — not saved.');
+      setTouched((prev) => new Set([...Array.from(prev), ...Array.from(sent)]));
+    }
     finally { setSaving(false); }
   }
 
