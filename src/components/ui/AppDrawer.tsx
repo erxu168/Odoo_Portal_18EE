@@ -146,6 +146,8 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
               <p className="px-3 py-2 text-[12px] font-bold text-gray-400 tracking-widest uppercase">Admin</p>
               {isAdmin && (
                 <>
+                  <NavItem label="Admin home" href="/admin" current={pathname} onClick={navigate}
+                    icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>} />
                   <NavItem label="Access rules" href="/admin/permissions" current={pathname} onClick={navigate}
                     icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>} />
                   <NavItem label="Termination" href="/hr/termination" current={pathname} onClick={navigate}
