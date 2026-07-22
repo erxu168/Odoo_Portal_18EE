@@ -43,6 +43,18 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     // uom_po_id (purchase unit) is set below ONLY when the unit family changes —
     // a same-family change must not destroy e.g. "stock in Units, buy in boxes".
   }
+  if (body.categ_id !== undefined) {
+    const catId = Number(body.categ_id);
+    if (!Number.isInteger(catId) || catId <= 0) {
+      return NextResponse.json({ error: 'Invalid category' }, { status: 400 });
+    }
+    vals.categ_id = catId;
+  }
+  if (body.barcode !== undefined) {
+    const bc = String(body.barcode).trim();
+    if (bc.length > 64) return NextResponse.json({ error: 'Barcode too long' }, { status: 400 });
+    vals.barcode = bc === '' ? false : bc;   // Odoo: false clears the barcode
+  }
   if (Object.keys(vals).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
   }

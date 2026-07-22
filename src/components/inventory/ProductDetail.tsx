@@ -57,6 +57,9 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [name, setName] = useState(product.name);
   const [uomId, setUomId] = useState<number>(product.uom_id?.[0] || 0);
   const [uoms, setUoms] = useState<{ id: number; name: string }[]>([]);
+  const [catId, setCatId] = useState<number>(product.categ_id?.[0] || 0);
+  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
+  const [barcode, setBarcode] = useState<string>(product.barcode || '');
   const [img, setImg] = useState(hasImage);
   const [imgVer, setImgVer] = useState(0);
   const [requiresPhoto, setRequiresPhoto] = useState(false);
@@ -99,6 +102,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           setLooseLabel(f.loose_label || '');
         }
         setUoms(uomRes.uoms || []);
+        fetch('/api/inventory/categories').then((r) => r.ok ? r.json() : { categories: [] }).then((cd) => setCategories(cd.categories || [])).catch(() => {});
         const locs: any[] = (locRes as any).locations || [];
         const companySpots = new Set(locs.map((l) => l.id));
         setHomeSpots(((spotRes.location_ids || []) as number[]).filter((id) => companySpots.has(id)));
@@ -119,7 +123,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     setTimeout(() => setMsg(null), kind === 'ok' ? 1800 : 4000);
   }
 
-  async function saveMaster(patch: { name?: string; uom_id?: number }) {
+  async function saveMaster(patch: { name?: string; uom_id?: number; categ_id?: number; barcode?: string }) {
     if (readOnly) return false;
     setBusy('master');
     try {
@@ -309,8 +313,8 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           {/* Photo rule */}
           <button onClick={togglePhotoRule} disabled={readOnly} className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 disabled:opacity-70">
             <span className="text-[var(--fs-base)] font-semibold text-gray-900">Photo required when counting</span>
-            <span className={`relative w-11 h-[26px] rounded-full transition-colors ${requiresPhoto ? 'bg-[#F5800A]' : 'bg-gray-300'}`}>
-              <span className={`absolute top-[3px] w-5 h-5 rounded-full bg-white shadow transition-transform ${requiresPhoto ? 'translate-x-[22px]' : 'translate-x-[3px]'}`} />
+            <span className={`relative inline-block w-11 h-[26px] rounded-full flex-shrink-0 transition-colors ${requiresPhoto ? 'bg-[#F5800A]' : 'bg-gray-300'}`}>
+              <span className={`absolute top-[3px] left-[3px] w-5 h-5 rounded-full bg-white shadow transition-transform ${requiresPhoto ? 'translate-x-[18px]' : 'translate-x-0'}`} />
             </span>
           </button>
 
@@ -324,10 +328,23 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             )}
           </button>
 
-          {/* Read-only master data */}
-          <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-8 text-[var(--fs-sm)] text-gray-500">
-            <div className="flex justify-between py-1"><span>Category</span><span className="text-gray-800 font-semibold">{product.categ_id?.[1] || '—'}</span></div>
-            <div className="flex justify-between py-1"><span>Barcode</span><span className="text-gray-800 font-mono">{product.barcode || '—'}</span></div>
+          {/* Category — editable (Odoo product.category) */}
+          <label className={label} htmlFor="pd-cat">Category</label>
+          <select id="pd-cat" value={catId} disabled={readOnly || busy === 'master'}
+            onChange={async (e) => { const next = Number(e.target.value); const prev = catId; setCatId(next); if (!(await saveMaster({ categ_id: next }))) setCatId(prev); }}
+            className={`${box} mb-4`}>
+            {catId !== 0 && !categories.some((c) => c.id === catId) && <option value={catId}>{product.categ_id?.[1] || 'Current category'}</option>}
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+
+          {/* Barcode — editable */}
+          <label className={label} htmlFor="pd-barcode">Barcode</label>
+          <div className="flex gap-2 mb-8">
+            <input id="pd-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} disabled={readOnly}
+              placeholder="Scan or type…" className={`${box} font-mono`} />
+            <button onClick={() => (barcode.trim() !== (product.barcode || '')) && saveMaster({ barcode: barcode.trim() })}
+              disabled={readOnly || busy === 'master' || barcode.trim() === (product.barcode || '')}
+              className="px-4 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">Save</button>
           </div>
         </div>
       )}
