@@ -26,7 +26,7 @@ interface SpotRow {
   sort_order: number;
 }
 
-export default function SpotSheet({ product, hasImage, companyId, initialSpotIds, onSaved, onClose }: {
+export default function SpotSheet({ product, hasImage, companyId, initialSpotIds, onSaved, onClose, baseZ = 110 }: {
   product: { id: number; name: string };
   hasImage: boolean;
   companyId: number;
@@ -35,6 +35,8 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   /** Called with the saved spot ids so the caller can update its map. */
   onSaved: (spotIds: number[]) => void;
   onClose: () => void;
+  /** z-index so this can stack above a ProductDetail overlay. */
+  baseZ?: number;
 }) {
   const [spots, setSpots] = useState<SpotRow[]>([]);
   const [chosen, setChosen] = useState<Set<number>>(new Set(initialSpotIds));
@@ -128,7 +130,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   }
 
   return (
-    <div className="fixed inset-0 z-[110] bg-black/50 flex items-end" role="dialog" aria-label={`Home spots for ${product.name}`}>
+    <div className="fixed inset-0 bg-black/50 flex items-end" style={{ zIndex: baseZ }} role="dialog" aria-label={`Home spots for ${product.name}`}>
       <div className="bg-white w-full max-w-lg mx-auto rounded-t-2xl flex flex-col max-h-[92vh]">
         <div className="px-5 pt-4 pb-3 border-b border-gray-100">
           <div className="flex items-center justify-between">

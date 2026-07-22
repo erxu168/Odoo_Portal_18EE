@@ -4,6 +4,9 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { BackHeader, SearchBar, ProductThumb, leafCategory } from './ui';
 import SpotSheet from './SpotSheet';
 import AddProductsSheet from './AddProductsSheet';
+import ProductDetail from './ProductDetail';
+import RecordLink from '@/components/ui/RecordLink';
+import { recordHref } from '@/lib/record-links';
 import { useCompany } from '@/lib/company-context';
 import { pluralizePack } from '@/lib/crate-units';
 
@@ -62,6 +65,8 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const [homeSpots, setHomeSpots] = useState<Record<number, number[]>>({});     // productId -> spot ids
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});     // spot id -> "Area · Spot"
   const [spotSheetFor, setSpotSheetFor] = useState<any | null>(null);           // product whose spots are being edited
+  const [productEditFor, setProductEditFor] = useState<any | null>(null);       // drill-down: product editor overlay
+  const [canEditProduct, setCanEditProduct] = useState(false);                  // capability for product master edits
   const [shiftTemplates, setShiftTemplates] = useState<any[]>([]);  // Planning shift templates (Opening/Mid/Closing) for "assign to a shift"
   const [shiftLoadFailed, setShiftLoadFailed] = useState(false);    // fetch failed/forbidden ≠ "no shifts exist" — don't lie in the hint
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -72,6 +77,15 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const [portalUsers, setPortalUsers] = useState<any[]>([]);
 
   const isEdit = !!template?.id;
+
+  // Product master edits need their own capability (a template manager may lack
+  // it) — the drill-down still opens, just read-only, per the drill-down standard.
+  useEffect(() => {
+    fetch('/api/auth/me').then((r) => r.ok ? r.json() : null).then((d) => {
+      const caps: string[] = d?.user?.capabilities || [];
+      setCanEditProduct(caps.includes('inventory.productsettings.manage'));
+    }).catch(() => {});
+  }, []);
 
   // Home-spot map + spot labels for the chips (one request each). Failure is
   // non-fatal — chips just show "No spot yet" until the sheet is opened.
@@ -369,6 +383,8 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
                             <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
                             <div className="text-[var(--fs-xs)] text-gray-400 truncate">{unitHint(p)}</div>
                           </div>
+                          {/* Drill-down: open the product itself (fix name / unit / photo) */}
+                          <RecordLink type="product" id={p.id} label={p.name} onOpen={() => setProductEditFor(p)} />
                           <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name} from the list`}
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-500 flex-shrink-0">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -414,6 +430,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             homeSpots={homeSpots}
             spotLabels={spotLabels}
             unitHint={unitHint}
+            onEditProduct={(p) => setProductEditFor(p)}
             onClose={() => setAddOpen(false)}
           />
         )}
@@ -426,6 +443,29 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             initialSpotIds={homeSpots[spotSheetFor.id] || []}
             onSaved={(ids) => setHomeSpots((m) => ({ ...m, [spotSheetFor.id]: ids }))}
             onClose={() => setSpotSheetFor(null)}
+          />
+        )}
+
+        {/* Drill-down overlay: the product's own editor, stacked ABOVE the add
+            sheet (baseZ 120) so the half-built list underneath is untouched.
+            "Full page ↗" lets the manager leave the flow deliberately. */}
+        {productEditFor && (
+          <ProductDetail
+            product={productEditFor}
+            hasImage={productImageIds.has(productEditFor.id)}
+            readOnly={!canEditProduct}
+            baseZ={120}
+            fullPageHref={recordHref('product', productEditFor.id)}
+            onClose={() => setProductEditFor(null)}
+            onChanged={(patch) => {
+              if (patch.name === undefined && patch.uom === undefined) return;
+              setAllProducts((prev) => prev.map((x) => x.id === productEditFor.id
+                ? { ...x, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
+                : x));
+              setProductEditFor((cur: any) => cur && cur.id === productEditFor.id
+                ? { ...cur, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
+                : cur);
+            }}
           />
         )}
       </div>

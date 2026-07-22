@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { SearchBar, FilterBar, FilterPill, ProductThumb, leafCategory } from './ui';
+import { FilterBar, FilterPill, ProductThumb, leafCategory } from './ui';
+import RecordLink from '@/components/ui/RecordLink';
 
 /**
  * "Add products" popup for the list builder.
@@ -13,7 +14,7 @@ import { SearchBar, FilterBar, FilterPill, ProductThumb, leafCategory } from './
  * lives on the screen behind this sheet.
  */
 export default function AddProductsSheet({
-  products, selectedIds, onToggle, onAddMany, productImageIds, homeSpots, spotLabels, unitHint, onClose,
+  products, selectedIds, onToggle, onAddMany, productImageIds, homeSpots, spotLabels, unitHint, onEditProduct, onClose,
 }: {
   products: any[];
   selectedIds: Set<number>;
@@ -23,6 +24,8 @@ export default function AddProductsSheet({
   homeSpots: Record<number, number[]>;
   spotLabels: Record<number, string>;
   unitHint: (p: any) => string;
+  /** Drill-down: open the product's editor overlay (fix a typo / wrong unit). */
+  onEditProduct: (product: any) => void;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState('');
@@ -113,28 +116,32 @@ export default function AddProductsSheet({
             const added = selectedIds.has(p.id);
             const spots = homeSpots[p.id] || [];
             return (
-              <button key={p.id} onClick={() => onToggle(p.id)}
-                className={`w-full flex items-center gap-3 py-2.5 border-b border-gray-100 text-left active:opacity-80 ${added ? 'opacity-90' : ''}`}>
-                <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
-                  <div className="text-[var(--fs-xs)] text-gray-400 truncate">{unitHint(p)}</div>
-                  {spots.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {spots.map((sid) => (
-                        <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
-                          📍 {spotLabels[sid] || `Spot ${sid}`}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <span className={`flex-shrink-0 text-[var(--fs-sm)] font-bold px-3 py-1.5 rounded-lg border-[1.5px] ${
-                  added ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-green-600 text-green-700'
-                }`}>
-                  {added ? '✓ Added' : '+ Add'}
-                </span>
-              </button>
+              <div key={p.id} className={`flex items-center gap-1 border-b border-gray-100 ${added ? 'opacity-95' : ''}`}>
+                <button onClick={() => onToggle(p.id)}
+                  className="flex-1 min-w-0 flex items-center gap-3 py-2.5 text-left active:opacity-80">
+                  <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-400 truncate">{unitHint(p)}</div>
+                    {spots.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {spots.map((sid) => (
+                          <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
+                            📍 {spotLabels[sid] || `Spot ${sid}`}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <span className={`flex-shrink-0 text-[var(--fs-sm)] font-bold px-3 py-1.5 rounded-lg border-[1.5px] ${
+                    added ? 'bg-green-600 border-green-600 text-white' : 'bg-white border-green-600 text-green-700'
+                  }`}>
+                    {added ? '✓ Added' : '+ Add'}
+                  </span>
+                </button>
+                {/* Drill-down: fix the product itself (typo / wrong unit) — overlay keeps this sheet open */}
+                <RecordLink type="product" id={p.id} label={p.name} onOpen={() => onEditProduct(p)} />
+              </div>
             );
           })}
           {visible.length > 200 && (

@@ -38,12 +38,19 @@ async function downscale(file: File, maxDim = 1024, quality = 0.7): Promise<stri
   } catch { return dataUrl; }
 }
 
-export default function ProductDetail({ product, hasImage, onClose, onChanged }: {
+export default function ProductDetail({ product, hasImage, onClose, onChanged, readOnly = false, fullPageHref, baseZ = 100 }: {
   product: { id: number; name: string; uom_id?: [number, string]; categ_id?: [number, string]; barcode?: string | false };
   hasImage: boolean;
   onClose: () => void;
   /** Fired after any successful save so the caller can refresh its list. */
   onChanged: (patch: { name?: string; uom?: [number, string]; imageAdded?: boolean; flags?: { requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; loose_label?: string | null }; spots?: number[] }) => void;
+  /** View-only (no edit capability) — inputs disabled, no writes. */
+  readOnly?: boolean;
+  /** When shown as an in-flow overlay, the canonical page URL — renders an
+   *  "Open full page ↗" link so the user can leave the flow deliberately. */
+  fullPageHref?: string;
+  /** Base z-index (Tailwind numeric) so this can stack ABOVE another sheet. */
+  baseZ?: number;
 }) {
   const { companyId } = useCompany();
   const [name, setName] = useState(product.name);
@@ -104,6 +111,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
   }
 
   async function saveMaster(patch: { name?: string; uom_id?: number }) {
+    if (readOnly) return false;
     setBusy('master');
     try {
       const res = await fetch(`/api/inventory/products/${product.id}`, {
@@ -122,6 +130,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
   }
 
   async function savePack(nextSize: string, nextLabel: string, nextLoose: string) {
+    if (readOnly) return;
     setBusy('pack');
     try {
       const size = nextSize.trim() === '' ? null : Number(nextSize);
@@ -142,6 +151,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
   }
 
   async function togglePhotoRule() {
+    if (readOnly) return;
     const next = !requiresPhoto;
     setRequiresPhoto(next);
     try {
@@ -155,6 +165,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
   }
 
   async function onPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    if (readOnly) return;
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
@@ -177,15 +188,23 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
   const box = 'w-full border-2 border-gray-200 rounded-xl px-3 py-3 bg-gray-50 text-[var(--fs-base)] text-gray-900 outline-none focus:border-green-500';
 
   return (
-    <div className="fixed inset-0 z-[100] bg-gray-50 flex flex-col" role="dialog" aria-label={`Product: ${product.name}`}>
+    <div className="fixed inset-0 bg-gray-50 flex flex-col" style={{ zIndex: baseZ }} role="dialog" aria-label={`Product: ${product.name}`}>
       <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200 flex items-center justify-between">
         <button onClick={onClose} className="flex items-center gap-1 text-gray-500 text-[var(--fs-base)] font-semibold active:opacity-70">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
           Back
         </button>
-        <div className="text-[var(--fs-lg)] font-bold text-gray-900">Product</div>
-        <div className="w-14 text-right">
-          {msg && <span className={`text-[11px] font-bold ${msg.kind === 'ok' ? 'text-green-600' : 'text-red-600'}`}>{msg.kind === 'ok' ? '✓' : '!'}</span>}
+        <div className="text-[var(--fs-lg)] font-bold text-gray-900">Product{readOnly && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400 align-middle">view only</span>}</div>
+        <div className="min-w-[56px] text-right">
+          {/* Drill-out: from an in-flow overlay, jump to the record's own page. */}
+          {fullPageHref ? (
+            <a href={fullPageHref} className="inline-flex items-center gap-1 text-[11px] font-bold text-green-700 active:opacity-70" aria-label="Open the full product page">
+              Full page
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+            </a>
+          ) : (
+            msg && <span className={`text-[11px] font-bold ${msg.kind === 'ok' ? 'text-green-600' : 'text-red-600'}`}>{msg.kind === 'ok' ? '✓' : '!'}</span>
+          )}
         </div>
       </div>
 
@@ -197,7 +216,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {/* Photo */}
           <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhotoFile} className="hidden" />
-          <button onClick={() => fileRef.current?.click()} disabled={busy === 'photo'}
+          <button onClick={() => fileRef.current?.click()} disabled={busy === 'photo' || readOnly}
             className="w-full mb-4 rounded-2xl border-2 border-dashed border-gray-300 bg-white overflow-hidden active:opacity-80 disabled:opacity-50"
             aria-label="Change product photo">
             {img ? (
@@ -214,9 +233,9 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
           {/* Name */}
           <label className={label} htmlFor="pd-name">Name</label>
           <div className="flex gap-2 mb-4">
-            <input id="pd-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} className={box} />
+            <input id="pd-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} disabled={readOnly} className={box} />
             <button onClick={() => name.trim() !== product.name && saveMaster({ name: name.trim() })}
-              disabled={busy === 'master' || name.trim() === product.name || name.trim().length < 2}
+              disabled={readOnly || busy === 'master' || name.trim() === product.name || name.trim().length < 2}
               className="px-4 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">Save</button>
           </div>
 
@@ -229,7 +248,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
               setUomId(next);
               if (!(await saveMaster({ uom_id: next }))) setUomId(prev);
             }}
-            disabled={busy === 'master'}
+            disabled={busy === 'master' || readOnly}
             className={`${box} mb-1`}>
             {uoms.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
@@ -242,13 +261,13 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
           <div className="bg-white border border-gray-200 rounded-xl p-3 mb-4">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[var(--fs-xs)] font-semibold text-gray-500">Count by</span>
-              <select value={packLabel || (measure ? 'piece' : 'crate')}
+              <select value={packLabel || (measure ? 'piece' : 'crate')} disabled={readOnly}
                 onChange={(e) => { setPackLabel(e.target.value); savePack(packSize, e.target.value, looseLabel); }}
-                className="h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] font-semibold bg-white">
+                className="h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] font-semibold bg-white disabled:opacity-60">
                 {PACK_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
               <span className="text-[var(--fs-xs)] text-gray-500">1 {packLabel || (measure ? 'piece' : 'crate')} {measure ? '≈' : '='}</span>
-              <input value={packSize}
+              <input value={packSize} disabled={readOnly}
                 onChange={(e) => setPackSize(e.target.value.replace(/[^0-9.]/g, ''))}
                 onBlur={(e) => savePack(e.target.value, packLabel || (measure ? 'piece' : 'crate'), looseLabel)}
                 inputMode="decimal" placeholder="—"
@@ -262,7 +281,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
             {packSize !== '' && (
               <div className="flex items-center gap-1.5 mt-2">
                 <span className="text-[var(--fs-xs)] text-gray-500">Single-unit word (loose)</span>
-                <input value={looseLabel}
+                <input value={looseLabel} disabled={readOnly}
                   onChange={(e) => setLooseLabel(e.target.value.slice(0, 20))}
                   onBlur={(e) => savePack(packSize, packLabel || (measure ? 'piece' : 'crate'), e.target.value)}
                   placeholder="bottles"
@@ -273,7 +292,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
           </div>
 
           {/* Photo rule */}
-          <button onClick={togglePhotoRule} className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4">
+          <button onClick={togglePhotoRule} disabled={readOnly} className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 disabled:opacity-70">
             <span className="text-[var(--fs-base)] font-semibold text-gray-900">Photo required when counting</span>
             <span className={`relative w-11 h-[26px] rounded-full transition-colors ${requiresPhoto ? 'bg-[#F5800A]' : 'bg-gray-300'}`}>
               <span className={`absolute top-[3px] w-5 h-5 rounded-full bg-white shadow transition-transform ${requiresPhoto ? 'translate-x-[22px]' : 'translate-x-[3px]'}`} />
@@ -282,7 +301,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
 
           {/* Home spots */}
           <label className={label}>Where it lives (counted at each)</label>
-          <button onClick={() => setSpotSheet(true)} className="w-full flex flex-wrap gap-1.5 bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 text-left active:bg-gray-50">
+          <button onClick={() => !readOnly && setSpotSheet(true)} disabled={readOnly} className="w-full flex flex-wrap gap-1.5 bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 text-left active:bg-gray-50 disabled:opacity-70">
             {homeSpots.length > 0 ? homeSpots.map((sid) => (
               <span key={sid} className="text-[11px] font-bold px-2 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200">📍 {spotLabels[sid] || `Spot ${sid}`}</span>
             )) : (
@@ -303,6 +322,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged }:
           product={{ id: product.id, name }}
           hasImage={img}
           companyId={companyId}
+          baseZ={baseZ + 10}
           initialSpotIds={homeSpots}
           onSaved={(ids) => { setHomeSpots(ids); onChanged({ spots: ids }); }}
           onClose={() => setSpotSheet(false)}
