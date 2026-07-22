@@ -188,6 +188,30 @@ Staff < Manager < Admin
 - Never show ERP jargon — use plain language from ux-rules.ts
 - Never show colour-only status — always icon + colour + text
 
+## Canonical Record Page Rule (binding — all portal modules)
+
+Every important business object (employee, product, inventory item, supplier, PO, shift handover,
+production batch, attendance, recipe, equipment, customer, incident, task, …) has ONE **canonical
+record page** — the authoritative page for a single record. Full spec: vault
+`claude-memory/feedback_canonical_record_page.md`.
+
+- **Anywhere a record appears** (list, dashboard, table, card, search result, notification, report,
+  calendar, Kanban, activity feed, related-record section), clicking its name / primary identifier
+  opens that record's canonical page.
+- **Stable, shareable, record-based URL** — e.g. `/products/456`, `/staff/123`. Never a route that
+  depends on where it was opened from; never a duplicate detail view isolated inside one module.
+- **Before creating any detail page, check whether a canonical page already exists** — reuse / link /
+  extend it; do NOT create a second competing page. If none exists, create it, give it the stable
+  route, and point all lists/references at it.
+- Canonical page = one record; clear identity + status; key info; links to RELATED records (each
+  opening ITS OWN canonical page); permitted actions (edit/archive/approve/assign/print/export/delete)
+  respecting permissions; clear back-to-parent nav; works on direct URL + refresh + desktop/mobile.
+- Modals / drawers / quick-previews are fine for fast inspection but must include an "Open full
+  record" action — they never REPLACE the canonical page.
+- Editing happens on the canonical page or an edit form that returns to it; no duplicate edit forms
+  for the same record (same model / validation / permissions / business logic).
+- In-repo example: `/products/[id]` is the canonical product page; `/inventory/product/[id]` redirects to it.
+
 ## Test Users
 
 | Name | Role | employee_id | Password |
