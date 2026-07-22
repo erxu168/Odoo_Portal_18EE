@@ -2010,11 +2010,10 @@ export function addLocationKind(companyId: number, label: string, userId: number
   if (!clean) return null;
   const kind = clean.toLowerCase();
   // Duplicate if either the stored kind or the visible label matches — the
-  // defaults have kind ≠ label ("dry" / "Dry store"), so check both.
-  const dupe = db.prepare(
-    'SELECT id FROM location_kinds WHERE company_id = ? AND (lower(kind) = ? OR lower(label) = ?)'
-  ).get(companyId, kind, kind);
-  if (dupe) return null;
+  // defaults have kind ≠ label ("dry" / "Dry store"), so check both. Compare in
+  // JS (SQLite lower() only folds ASCII; German names like "Kühlraum" are real).
+  const existing = db.prepare('SELECT kind, label FROM location_kinds WHERE company_id = ?').all(companyId) as { kind: string; label: string }[];
+  if (existing.some((r) => (r.kind || '').toLowerCase() === kind || (r.label || '').toLowerCase() === kind)) return null;
   const maxSort = (db.prepare(
     'SELECT COALESCE(MAX(sort_order), 0) AS m FROM location_kinds WHERE company_id = ?'
   ).get(companyId) as { m: number }).m;
@@ -2051,6 +2050,27 @@ export function deleteLocationKind(id: number, companyId: number): { ok: boolean
   if (used > 0) return { ok: false, in_use: used };
   db.prepare('DELETE FROM location_kinds WHERE id = ? AND company_id = ?').run(id, companyId);
   return { ok: true, in_use: 0 };
+}
+
+/**
+ * Rename a kind's visible LABEL only — the `kind` slug is left untouched so every
+ * location already tagged with it stays linked (locations reference the slug, and
+ * the label is resolved from here for display). Refused if another type in the
+ * company already uses that name.
+ */
+export function renameLocationKind(id: number, companyId: number, label: string): { ok: boolean; dupe?: boolean } {
+  const db = getDb();
+  const clean = label.trim().replace(/\s+/g, ' ');
+  if (!clean) return { ok: false };
+  const rows = db.prepare('SELECT id, kind, label FROM location_kinds WHERE company_id = ?').all(companyId) as { id: number; kind: string; label: string }[];
+  if (!rows.some((r) => r.id === id)) return { ok: false };
+  // Compare in JS: SQLite lower() only folds ASCII, but German type names
+  // (Kühlraum…) are realistic. JS toLowerCase() is Unicode-correct.
+  const lower = clean.toLowerCase();
+  const dupe = rows.some((r) => r.id !== id && ((r.kind || '').toLowerCase() === lower || (r.label || '').toLowerCase() === lower));
+  if (dupe) return { ok: false, dupe: true };
+  db.prepare('UPDATE location_kinds SET label = ? WHERE id = ? AND company_id = ?').run(clean, id, companyId);
+  return { ok: true };
 }
 
 // ── "Count by" unit vocabulary (pack_labels) — GLOBAL, manager-editable ──

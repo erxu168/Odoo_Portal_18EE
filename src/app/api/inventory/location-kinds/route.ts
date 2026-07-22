@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
  * /api/inventory/location-kinds
  * GET    — list a company's location types (seeds the six defaults on first use)
  * POST   — add a type (manager/admin)          body: { company_id?, label }
+ * PATCH  — rename a type (manager/admin)        body: { id, company_id?, label }
  * DELETE — remove a type (manager/admin)       ?id= — refused while in use
  *
  * The type list feeds the "Type" dropdown in the Locations setup screen.
@@ -14,7 +15,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { initInventoryTables, listLocationKinds, addLocationKind, deleteLocationKind } from '@/lib/inventory-db';
+import { initInventoryTables, listLocationKinds, addLocationKind, deleteLocationKind, renameLocationKind } from '@/lib/inventory-db';
 import { canAccessCompany, resolveScopedCompany } from '@/lib/inventory-access';
 
 const KEY = 'inventory.location.manage';
@@ -58,6 +59,30 @@ export async function POST(request: Request) {
   const row = addLocationKind(companyId, label, user.id);
   if (!row) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
   return NextResponse.json({ kind: row }, { status: 201 });
+}
+
+export async function PATCH(request: Request) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, KEY, getPermissionOverrides()))
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  initInventoryTables();
+
+  const body = await request.json().catch(() => ({}));
+  const id = Number(body.id);
+  const requested = body.company_id != null ? Number(body.company_id) : null;
+  if (requested && !canAccessCompany(user, requested))
+    return NextResponse.json({ error: 'That restaurant is not available to you' }, { status: 403 });
+  const companyId = resolveScopedCompany(user, requested);
+  const label = String(body.label || '').trim();
+  if (!id || !companyId) return NextResponse.json({ error: 'id and company_id are required' }, { status: 400 });
+  if (!label) return NextResponse.json({ error: 'label is required' }, { status: 400 });
+  if (label.length > 40) return NextResponse.json({ error: 'Keep the type under 40 characters' }, { status: 400 });
+
+  const result = renameLocationKind(id, companyId, label);
+  if (!result.ok && result.dupe) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
+  if (!result.ok) return NextResponse.json({ error: 'Type not found' }, { status: 404 });
+  return NextResponse.json({ message: 'Type renamed' });
 }
 
 export async function DELETE(request: Request) {

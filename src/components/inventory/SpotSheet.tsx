@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Spinner, ProductThumb } from './ui';
 import { buildLocationTree } from '@/lib/location-tree';
 import LocationForm, { type KindRow } from './LocationForm';
+import ManageKinds from './ManageKinds';
 
 /**
  * "Where does it live?" — edit ONE product's home spots (multi-select).
@@ -49,7 +50,19 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);   // "+ New location" form open
+  const [editing, setEditing] = useState<SpotRow | null>(null);   // location whose details are being edited
+  const [formSaving, setFormSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [managingKinds, setManagingKinds] = useState(false);      // "Edit types" sheet open
   const [kinds, setKinds] = useState<KindRow[]>([]);
+  // Creating/editing a location + managing types all require this capability —
+  // gate the affordances on it so a template-only user never hits a 403 dead-end.
+  const [canManageLocations, setCanManageLocations] = useState(false);
+  useEffect(() => {
+    fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((d) => {
+      setCanManageLocations(((d?.user?.capabilities as string[]) || []).includes('inventory.location.manage'));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -118,37 +131,81 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
     }
   }
 
+  async function refreshSpots() {
+    const r = await fetch(`/api/inventory/count-locations?company_id=${companyId}`);
+    if (r.ok) setSpots((await r.json()).locations || []);
+  }
+
   // Quick-create a location without leaving the picker (no navigation dead-end):
   // the SAME shared LocationForm the Locations manager uses. New locations are
   // top-level areas (reorganise later in the manager); auto-ticked on create.
   async function createLocation(loc: { name?: string; kind?: string; description?: string | null; photo?: string | null }) {
+    setFormSaving(true); setFormError(null);
     try {
       const res = await fetch('/api/inventory/count-locations', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ company_id: companyId, parent_id: null, name: loc.name, kind: loc.kind, description: loc.description ?? null, photo: loc.photo ?? null }),
       });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || 'Could not create the location'); return; }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setFormError(d.error || 'Could not create the location'); return; }
       const { id: newId } = await res.json();
-      // Refresh the spot list and tick the new one.
-      const r = await fetch(`/api/inventory/count-locations?company_id=${companyId}`);
-      if (r.ok) setSpots((await r.json()).locations || []);
-      if (newId) setChosen((prev) => new Set(prev).add(newId));
+      // Success — show + tick the new location immediately (optimistic), so a
+      // failed background refresh can't hide a location that WAS created.
+      if (newId) {
+        const newRow: SpotRow = { id: newId, parent_id: null, name: (loc.name || '').trim(), kind: loc.kind || 'area', photo: loc.photo ?? null, description: loc.description ?? null, sort_order: 9999 };
+        setSpots((prev) => prev.some((s) => s.id === newId) ? prev : [...prev, newRow]);
+        setChosen((prev) => new Set(prev).add(newId));
+      }
       setCreating(false);
-    } catch { setError('Network error — location not created'); }
+      refreshSpots().catch(() => {});   // best-effort reconcile (real sort_order/parent)
+    } catch { setFormError('Network error — location not created'); }
+    finally { setFormSaving(false); }
+  }
+
+  // Edit a location's details in place (no dead-end): opens the SAME shared
+  // LocationForm on the tapped spot, PUTs the change, then refreshes the list so
+  // the new name/photo/note shows immediately. Selection (chosen) is unaffected.
+  async function updateLocation(loc: { name?: string; kind?: string; description?: string | null; photo?: string | null }) {
+    if (!editing) return;
+    setFormSaving(true); setFormError(null);
+    try {
+      const res = await fetch('/api/inventory/count-locations', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editing.id, name: loc.name, kind: loc.kind, description: loc.description ?? null, photo: loc.photo ?? null }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setFormError(d.error || 'Could not save the location'); return; }
+      // Success — reflect the edit locally so it shows even if the refresh
+      // fails, and so a refresh network error is never reported as "not saved".
+      const eid = editing.id;
+      setSpots((prev) => prev.map((s) => s.id === eid
+        ? { ...s, name: (loc.name ?? s.name), kind: (loc.kind ?? s.kind), description: loc.description ?? null, photo: loc.photo ?? null }
+        : s));
+      setEditing(null);
+      refreshSpots().catch(() => {});   // best-effort reconcile
+    } catch { setFormError('Network error — not saved'); }
+    finally { setFormSaving(false); }
   }
 
   function SpotToggle({ s, indent }: { s: SpotRow; indent: boolean }) {
     const on = chosen.has(s.id);
     return (
-      <button onClick={() => toggle(s.id)}
-        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-colors ${indent ? 'ml-0' : ''} ${
-          on ? 'bg-green-50 border-green-500' : 'bg-white border-gray-200 active:bg-gray-50'
-        }`}>
-        <span className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center ${on ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'}`}>
-          {on && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
-        </span>
-        <span className={`flex-1 min-w-0 truncate text-[var(--fs-base)] font-semibold ${on ? 'text-green-900' : 'text-gray-800'}`}>{s.name}</span>
-      </button>
+      <div className={`w-full flex items-center rounded-xl border transition-colors ${indent ? 'ml-0' : ''} ${
+        on ? 'bg-green-50 border-green-500' : 'bg-white border-gray-200'
+      }`}>
+        <button onClick={() => toggle(s.id)} className="flex-1 min-w-0 flex items-center gap-2.5 px-3 py-2.5 text-left active:opacity-80">
+          <span className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center ${on ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'}`}>
+            {on && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+          </span>
+          <span className={`flex-1 min-w-0 truncate text-[var(--fs-base)] font-semibold ${on ? 'text-green-900' : 'text-gray-800'}`}>{s.name}</span>
+        </button>
+        {/* Drill-down: edit this location's details in place — no dead-end.
+            Only for users who can actually manage locations (else it 403s). */}
+        {canManageLocations && (
+          <button onClick={() => { setFormError(null); setEditing(s); }} aria-label={`Edit ${s.name}`}
+            className="px-3 py-2.5 text-gray-400 active:text-gray-700 flex-shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -192,7 +249,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
               </div>
             </div>
           ))}
-          {!loading && (
+          {!loading && canManageLocations && (
             <button onClick={() => setCreating(true)}
               className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50">
               + New location
@@ -212,13 +269,32 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         </div>
       </div>
 
-      {creating && (
+      {(creating || editing) && (
         <LocationForm
-          initial={{}}
+          initial={editing ? { id: editing.id, name: editing.name, kind: editing.kind, description: editing.description, photo: editing.photo } : {}}
           kinds={kinds}
           baseZ={baseZ + 10}
-          onCancel={() => setCreating(false)}
-          onSave={createLocation}
+          saving={formSaving}
+          error={formError}
+          onManageKinds={canManageLocations ? () => setManagingKinds(true) : undefined}
+          onCancel={() => { setCreating(false); setEditing(null); setFormError(null); }}
+          onSave={editing ? updateLocation : createLocation}
+        />
+      )}
+
+      {managingKinds && (
+        <ManageKinds
+          companyId={companyId}
+          kinds={kinds}
+          locations={spots}
+          baseZ={baseZ + 20}
+          onChanged={async () => {
+            try {
+              const r = await fetch(`/api/inventory/location-kinds?company_id=${companyId}`);
+              if (r.ok) setKinds((await r.json()).kinds || []);
+            } catch { /* keep the current list */ }
+          }}
+          onClose={() => setManagingKinds(false)}
         />
       )}
     </div>

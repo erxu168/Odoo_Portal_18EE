@@ -68,7 +68,7 @@ export default function LocationForm({ initial, kinds, onManageKinds, onCancel, 
         <select value={kind} onChange={(e) => setKind(e.target.value)} className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50">
           {options.map((k) => <option key={k.id} value={k.kind}>{k.label}</option>)}
         </select>
-        <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Where to stand (optional)</label>
+        <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Notes (optional)</label>
         <input value={description || ''} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Back-left wall, top two shelves"
                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50" />
         <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Photo (optional)</label>
