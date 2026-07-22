@@ -64,6 +64,25 @@ export function buildLocationOptions(flat: FlatLocation[]): Array<{ value: numbe
   return flat.map((l) => ({ value: l.id, label: path(l.id) })).sort((a, b) => a.label.localeCompare(b.label));
 }
 
+// ── Date/time helpers (shift log) ────────────────────────────────────────────
+/** "17:25" from an ISO timestamp (tablet-local, which is Berlin for the kitchens). */
+export function fmtTime(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+/** "Tue 22 Jul" from a 'YYYY-MM-DD' operational date (parsed at noon UTC, no TZ rollover). */
+export function fmtDayShort(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+}
+/** Add whole days to a 'YYYY-MM-DD' string, returning 'YYYY-MM-DD'. */
+export function shiftDayAdd(dateStr: string, delta: number): string {
+  const d = new Date(`${dateStr}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
 export function useAsync() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

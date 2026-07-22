@@ -19,17 +19,17 @@ import { resolveAttribution } from '@/lib/shift-attribution';
 
 const MODULE_ID = 'shift-handover';
 
-/** Capability keys — must match rows added to PERMISSION_ACTIONS in permissions.ts. */
+/**
+ * Capability keys — must match rows in PERMISSION_ACTIONS in permissions.ts.
+ * The shift log has just three:
+ *   view   — read the log (staff+)
+ *   post   — add notes, photos, storage, acknowledge heads-ups, edit/delete own (staff+)
+ *   manage — edit/delete anyone's notes, manage log types (manager+)
+ */
 export const CAP = {
   view: 'handover.view',
-  record: 'handover.production.record',
-  actionCreate: 'handover.action.create',
-  actionManageCritical: 'handover.action.manage_critical',
-  submit: 'handover.submit',
-  acknowledge: 'handover.acknowledge',
-  discrepancyResolve: 'handover.discrepancy.resolve',
-  configure: 'handover.configure',
-  historyView: 'handover.history.view',
+  post: 'handover.production.record',
+  manage: 'handover.configure',
 } as const;
 
 export interface HandoverActor {

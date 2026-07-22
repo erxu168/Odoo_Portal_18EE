@@ -2,113 +2,91 @@
  * Shift Handover — persistence layer.
  *
  * Portal-only: every row lives in the shared portal SQLite DB (data/portal.db)
- * via getDb(). No Odoo stock / MO / quant / lot dependency. Follows the
- * inventory-db.ts conventions: an exported initHandoverTables() called at the
- * top of each API route (idempotent CREATE ... IF NOT EXISTS + guarded ALTER
- * migrations), snake_case tables prefixed `handover_`, integer booleans, ISO
- * timestamps, INTEGER PRIMARY KEY ids, per-row company_id scoping.
+ * via getDb(). No Odoo dependency. Three small tables model the whole module:
+ *   handover_log_types    — manager-configurable entry chips (emoji + name)
+ *   handover_log_entries  — the daily feed (a note and/or photos)
+ *   handover_storage_items— persistent "In storage now", lives until marked used
+ * Photos reuse the shared handover_photos table (entity_type = 'log_entry').
  *
- * Submitted-handover snapshots and the canonical event log are made immutable by
- * BEFORE UPDATE/DELETE triggers — a submitted handover cannot be silently edited.
+ * Follows the inventory-db.ts conventions: idempotent initHandoverTables()
+ * called at the top of each API route (CREATE ... IF NOT EXISTS + guarded ALTER
+ * migrations), snake_case `handover_` tables, integer booleans, ISO timestamps.
  */
 import { getDb } from '@/lib/db';
-import { initInventoryTables } from '@/lib/inventory-db';
-import type {
-  HandoverProduct,
-  HandoverContainerType,
-  HandoverBatch,
-  HandoverContainer,
-  HandoverPhoto,
-  HandoverAction,
-  HandoverRecord,
-  HandoverDiscrepancy,
-  HandoverEvent,
-} from './types';
+import type { LogType, LogEntry, StorageItem, HandoverPhoto } from './types';
 
 export function nowISO(): string {
   return new Date().toISOString();
 }
+const b = (v: unknown) => (v ? 1 : 0);
+
+/** The out-of-the-box entry types seeded for a restaurant on first use. */
+export const DEFAULT_LOG_TYPES: Array<{ name: string; emoji: string; is_alert?: boolean; is_storage?: boolean }> = [
+  { name: 'Cooked', emoji: '🍗' },
+  { name: 'Stored', emoji: '🧊', is_storage: true },
+  { name: 'Cleaned', emoji: '🧽' },
+  { name: 'Oil changed', emoji: '🛢️' },
+  { name: 'Heads-up', emoji: '⚠️', is_alert: true },
+  { name: 'Note', emoji: '📝' },
+];
 
 let _inited = false;
 
 export function initHandoverTables(): void {
   const db = getDb();
   if (_inited) return;
-  // Give concurrent kitchen writers room instead of failing on a locked DB.
   try { db.pragma('busy_timeout = 5000'); } catch { /* best effort */ }
-  // We REUSE the inventory count_locations tree for storage locations, so make
-  // sure those tables exist even if no inventory route has run yet.
-  try { initInventoryTables(); } catch (e) { console.error('[shift-handover] inventory table init failed:', e); }
 
   try {
     db.exec(`
-      CREATE TABLE IF NOT EXISTS handover_products (
+      CREATE TABLE IF NOT EXISTS handover_log_types (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         company_id INTEGER NOT NULL,
         name TEXT NOT NULL,
-        kind TEXT NOT NULL DEFAULT 'finished',
-        unit TEXT,
-        odoo_product_id INTEGER,
-        photo_policy TEXT NOT NULL DEFAULT 'optional',
-        active INTEGER NOT NULL DEFAULT 1,
+        emoji TEXT NOT NULL DEFAULT '📝',
+        is_alert INTEGER NOT NULL DEFAULT 0,
+        is_storage INTEGER NOT NULL DEFAULT 0,
         sort_order INTEGER NOT NULL DEFAULT 0,
+        active INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
 
-      CREATE TABLE IF NOT EXISTS handover_container_types (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        category TEXT,
-        capacity_label TEXT,
-        reference_photo TEXT,
-        internal_code TEXT,
-        active INTEGER NOT NULL DEFAULT 1,
-        sort_order INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS handover_batches (
+      CREATE TABLE IF NOT EXISTS handover_log_entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         company_id INTEGER NOT NULL,
         operational_date TEXT NOT NULL,
-        product_id INTEGER NOT NULL,
-        product_name TEXT NOT NULL,
-        shift_label TEXT,
-        batch_code TEXT,
-        produced_by_user_id INTEGER,
-        produced_by_name TEXT,
-        produced_at TEXT NOT NULL,
+        type_id INTEGER,
+        type_name TEXT NOT NULL,
+        type_emoji TEXT NOT NULL DEFAULT '📝',
+        is_alert INTEGER NOT NULL DEFAULT 0,
         note TEXT,
-        status TEXT NOT NULL DEFAULT 'open',
-        version INTEGER NOT NULL DEFAULT 1,
+        storage_item_id INTEGER,
+        author_user_id INTEGER,
+        author_name TEXT,
+        acknowledged_by_user_id INTEGER,
+        acknowledged_by_name TEXT,
+        acknowledged_at TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        edited_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
 
-      CREATE TABLE IF NOT EXISTS handover_containers (
+      CREATE TABLE IF NOT EXISTS handover_storage_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         company_id INTEGER NOT NULL,
-        batch_id INTEGER NOT NULL,
-        product_id INTEGER NOT NULL,
-        container_code TEXT NOT NULL,
-        container_type_id INTEGER,
-        fill_level INTEGER CHECK (fill_level IN (0, 25, 50, 75, 100)),
-        quantity_method TEXT,
-        exact_quantity REAL,
-        unit TEXT,
-        preparation_state TEXT,
-        availability_state TEXT,
-        storage_location_id INTEGER,
+        name TEXT NOT NULL,
+        location_text TEXT,
         use_first INTEGER NOT NULL DEFAULT 0,
-        next_action TEXT,
-        note TEXT,
-        status TEXT NOT NULL DEFAULT 'active',
-        version INTEGER NOT NULL DEFAULT 1,
-        created_by_user_id INTEGER,
-        created_by_name TEXT,
+        status TEXT NOT NULL DEFAULT 'here',
+        entry_id INTEGER,
+        added_by_user_id INTEGER,
+        added_by_name TEXT,
+        added_at TEXT NOT NULL,
+        used_by_user_id INTEGER,
+        used_by_name TEXT,
+        used_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -128,126 +106,6 @@ export function initHandoverTables(): void {
         replaced_photo_id INTEGER
       );
 
-      CREATE TABLE IF NOT EXISTS handover_actions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id INTEGER NOT NULL,
-        operational_date TEXT NOT NULL,
-        batch_id INTEGER,
-        container_id INTEGER,
-        handover_id INTEGER,
-        instruction TEXT NOT NULL,
-        priority TEXT NOT NULL DEFAULT 'normal',
-        assigned_role TEXT,
-        due_at TEXT,
-        status TEXT NOT NULL DEFAULT 'open',
-        completed_by_user_id INTEGER,
-        completed_by_name TEXT,
-        completed_at TEXT,
-        completion_note TEXT,
-        completion_photo_id INTEGER,
-        version INTEGER NOT NULL DEFAULT 1,
-        created_by_user_id INTEGER,
-        created_by_name TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS handover_handovers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id INTEGER NOT NULL,
-        operational_date TEXT NOT NULL,
-        outgoing_shift_label TEXT,
-        incoming_shift_label TEXT,
-        status TEXT NOT NULL DEFAULT 'draft',
-        summary_note TEXT,
-        submitted_by_user_id INTEGER,
-        submitted_by_name TEXT,
-        submitted_at TEXT,
-        snapshot_hash TEXT,
-        acknowledged_by_user_id INTEGER,
-        acknowledged_by_name TEXT,
-        acknowledged_at TEXT,
-        ack_outcome TEXT,
-        superseded_by_id INTEGER,
-        version INTEGER NOT NULL DEFAULT 1,
-        created_by_user_id INTEGER,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS handover_snapshot_containers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        handover_id INTEGER NOT NULL,
-        company_id INTEGER NOT NULL,
-        container_id INTEGER,
-        batch_id INTEGER,
-        product_name TEXT,
-        product_kind TEXT,
-        container_code TEXT,
-        container_type_name TEXT,
-        fill_level INTEGER,
-        preparation_state TEXT,
-        availability_state TEXT,
-        storage_location_id INTEGER,
-        storage_location_name TEXT,
-        use_first INTEGER,
-        next_action TEXT,
-        recorded_by_name TEXT,
-        recorded_at TEXT,
-        photos_json TEXT,
-        section TEXT,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS handover_snapshot_actions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        handover_id INTEGER NOT NULL,
-        company_id INTEGER NOT NULL,
-        action_id INTEGER,
-        instruction TEXT,
-        priority TEXT,
-        status TEXT,
-        due_at TEXT,
-        container_code TEXT,
-        product_name TEXT,
-        created_at TEXT NOT NULL
-      );
-
-      CREATE TABLE IF NOT EXISTS handover_discrepancies (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id INTEGER NOT NULL,
-        handover_id INTEGER NOT NULL,
-        snapshot_container_id INTEGER,
-        discrepancy_type TEXT NOT NULL,
-        expected_value TEXT,
-        reported_value TEXT,
-        note TEXT,
-        photo_id INTEGER,
-        reported_by_user_id INTEGER,
-        reported_by_name TEXT,
-        reported_at TEXT NOT NULL,
-        resolved_by_user_id INTEGER,
-        resolved_by_name TEXT,
-        resolved_at TEXT,
-        resolution_note TEXT,
-        status TEXT NOT NULL DEFAULT 'open'
-      );
-
-      CREATE TABLE IF NOT EXISTS handover_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        company_id INTEGER NOT NULL,
-        actor_user_id INTEGER,
-        actor_name TEXT,
-        entity_type TEXT NOT NULL,
-        entity_id INTEGER,
-        action TEXT NOT NULL,
-        before_json TEXT,
-        after_json TEXT,
-        reason TEXT,
-        operational_date TEXT,
-        created_at TEXT NOT NULL
-      );
-
       CREATE TABLE IF NOT EXISTS handover_idempotency (
         key TEXT NOT NULL,
         company_id INTEGER NOT NULL,
@@ -257,57 +115,20 @@ export function initHandoverTables(): void {
         PRIMARY KEY (key, company_id, scope)
       );
 
-      CREATE INDEX IF NOT EXISTS idx_ho_batches_co_date ON handover_batches(company_id, operational_date);
-      CREATE INDEX IF NOT EXISTS idx_ho_containers_batch ON handover_containers(batch_id);
-      CREATE INDEX IF NOT EXISTS idx_ho_containers_co_status ON handover_containers(company_id, status);
-      CREATE INDEX IF NOT EXISTS idx_ho_containers_loc ON handover_containers(storage_location_id);
+      CREATE INDEX IF NOT EXISTS idx_ho_types_co ON handover_log_types(company_id, active, sort_order);
+      CREATE INDEX IF NOT EXISTS idx_ho_entries_co_date ON handover_log_entries(company_id, operational_date, active);
+      CREATE INDEX IF NOT EXISTS idx_ho_storage_co_status ON handover_storage_items(company_id, status);
       CREATE INDEX IF NOT EXISTS idx_ho_photos_entity ON handover_photos(entity_type, entity_id);
-      CREATE INDEX IF NOT EXISTS idx_ho_actions_co_status ON handover_actions(company_id, status);
-      CREATE INDEX IF NOT EXISTS idx_ho_handovers_co_date ON handover_handovers(company_id, operational_date);
-      CREATE INDEX IF NOT EXISTS idx_ho_snapcont_handover ON handover_snapshot_containers(handover_id);
-      CREATE INDEX IF NOT EXISTS idx_ho_snapact_handover ON handover_snapshot_actions(handover_id);
-      CREATE INDEX IF NOT EXISTS idx_ho_discrep_handover ON handover_discrepancies(handover_id);
-      CREATE INDEX IF NOT EXISTS idx_ho_events_co_date ON handover_events(company_id, operational_date);
-
-      -- At most one in-progress handover per (company, date, outgoing shift).
-      CREATE UNIQUE INDEX IF NOT EXISTS uidx_ho_active_handover
-        ON handover_handovers(company_id, operational_date, outgoing_shift_label)
-        WHERE status IN ('draft', 'submitted');
-
-      -- Immutability: a submitted snapshot and the canonical event log can never
-      -- be updated or deleted, so a locked handover cannot be silently rewritten.
-      CREATE TRIGGER IF NOT EXISTS trg_ho_snapcont_noupdate
-        BEFORE UPDATE ON handover_snapshot_containers
-        BEGIN SELECT RAISE(ABORT, 'handover snapshot is immutable'); END;
-      CREATE TRIGGER IF NOT EXISTS trg_ho_snapcont_nodelete
-        BEFORE DELETE ON handover_snapshot_containers
-        BEGIN SELECT RAISE(ABORT, 'handover snapshot is immutable'); END;
-      CREATE TRIGGER IF NOT EXISTS trg_ho_snapact_noupdate
-        BEFORE UPDATE ON handover_snapshot_actions
-        BEGIN SELECT RAISE(ABORT, 'handover snapshot is immutable'); END;
-      CREATE TRIGGER IF NOT EXISTS trg_ho_snapact_nodelete
-        BEFORE DELETE ON handover_snapshot_actions
-        BEGIN SELECT RAISE(ABORT, 'handover snapshot is immutable'); END;
-      CREATE TRIGGER IF NOT EXISTS trg_ho_events_noupdate
-        BEFORE UPDATE ON handover_events
-        BEGIN SELECT RAISE(ABORT, 'handover audit log is append-only'); END;
-      CREATE TRIGGER IF NOT EXISTS trg_ho_events_nodelete
-        BEFORE DELETE ON handover_events
-        BEGIN SELECT RAISE(ABORT, 'handover audit log is append-only'); END;
     `);
   } catch (e) {
-    console.error('[shift-handover] table/index/trigger init error (continuing to migrate):', e);
+    console.error('[shift-handover] table/index init error (continuing to migrate):', e);
   }
 
   migrateHandoverSchema();
   _inited = true;
 }
 
-/**
- * Additive, idempotent migrations for future columns. Uses the inventory-db.ts
- * idiom: read PRAGMA table_info, ALTER only when missing, tolerate a concurrent
- * duplicate-column race. No user_version scheme (matches the repo convention).
- */
+/** Additive, idempotent migrations for future columns (inventory-db.ts idiom). */
 function migrateHandoverSchema(): void {
   const db = getDb();
   const addColumn = (table: string, col: string, ddl: string) => {
@@ -320,452 +141,216 @@ function migrateHandoverSchema(): void {
       }
     }
   };
-  // (No migrations yet — new columns go here, e.g.)
-  // addColumn('handover_products', 'kg_per_full_container', 'kg_per_full_container REAL');
+  // New columns go here, e.g. addColumn('handover_log_types', 'colour', 'colour TEXT');
   void addColumn;
 }
 
-// ── small helpers ────────────────────────────────────────────────────────────
-const b = (v: unknown) => (v ? 1 : 0);
-function inClause(ids: number[]): string {
-  return ids.map(() => '?').join(',');
+// ── Log types ────────────────────────────────────────────────────────────────
+/** Seed the six default types the first time a restaurant opens the module. */
+export function ensureDefaultLogTypes(companyId: number): void {
+  const db = getDb();
+  const existing = db.prepare('SELECT COUNT(*) AS n FROM handover_log_types WHERE company_id = ?').get(companyId) as { n: number };
+  if (existing.n > 0) return;
+  const ts = nowISO();
+  const insert = db.prepare(
+    `INSERT INTO handover_log_types (company_id, name, emoji, is_alert, is_storage, sort_order, active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+  );
+  const seed = db.transaction(() => {
+    DEFAULT_LOG_TYPES.forEach((t, i) => insert.run(companyId, t.name, t.emoji, b(t.is_alert), b(t.is_storage), i + 1, ts, ts));
+  });
+  try { seed(); } catch (e) { console.error('[shift-handover] seed default types failed:', e); }
 }
 
-// ── Products ─────────────────────────────────────────────────────────────────
-export function listHandoverProducts(companyId: number, opts?: { includeInactive?: boolean }): HandoverProduct[] {
-  const db = getDb();
+export function listLogTypes(companyId: number, opts?: { includeInactive?: boolean }): LogType[] {
   const where = opts?.includeInactive ? '' : 'AND active = 1';
-  return db.prepare(
-    `SELECT * FROM handover_products WHERE company_id = ? ${where} ORDER BY sort_order, name`,
-  ).all(companyId) as HandoverProduct[];
+  return getDb().prepare(
+    `SELECT * FROM handover_log_types WHERE company_id = ? ${where} ORDER BY sort_order, id`,
+  ).all(companyId) as LogType[];
 }
-export function getHandoverProduct(id: number): HandoverProduct | null {
-  return (getDb().prepare('SELECT * FROM handover_products WHERE id = ?').get(id) as HandoverProduct) ?? null;
+export function getLogType(id: number): LogType | null {
+  return (getDb().prepare('SELECT * FROM handover_log_types WHERE id = ?').get(id) as LogType) ?? null;
 }
-export function createHandoverProduct(d: {
-  company_id: number; name: string; kind?: string; unit?: string | null;
-  odoo_product_id?: number | null; photo_policy?: string; sort_order?: number;
-}): number {
+export function nextTypeSortOrder(companyId: number): number {
+  const r = getDb().prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM handover_log_types WHERE company_id = ?').get(companyId) as { m: number };
+  return r.m + 1;
+}
+export function createLogType(d: { company_id: number; name: string; emoji: string; is_alert?: boolean; is_storage?: boolean; sort_order?: number }): number {
   const ts = nowISO();
   const r = getDb().prepare(
-    `INSERT INTO handover_products (company_id, name, kind, unit, odoo_product_id, photo_policy, active, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-  ).run(d.company_id, d.name, d.kind || 'finished', d.unit ?? null, d.odoo_product_id ?? null,
-    d.photo_policy || 'optional', d.sort_order ?? 0, ts, ts);
+    `INSERT INTO handover_log_types (company_id, name, emoji, is_alert, is_storage, sort_order, active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+  ).run(d.company_id, d.name, d.emoji || '📝', b(d.is_alert), b(d.is_storage), d.sort_order ?? 0, ts, ts);
   return r.lastInsertRowid as number;
 }
-export function updateHandoverProduct(id: number, companyId: number, d: Partial<{
-  name: string; kind: string; unit: string | null; photo_policy: string; active: boolean; sort_order: number;
-}>): void {
+export function updateLogType(id: number, companyId: number, d: Partial<{ name: string; emoji: string; is_alert: boolean; sort_order: number; active: boolean }>): void {
   const sets: string[] = []; const vals: unknown[] = [];
   const put = (c: string, v: unknown) => { sets.push(`${c} = ?`); vals.push(v); };
   if (d.name !== undefined) put('name', d.name);
-  if (d.kind !== undefined) put('kind', d.kind);
-  if (d.unit !== undefined) put('unit', d.unit);
-  if (d.photo_policy !== undefined) put('photo_policy', d.photo_policy);
-  if (d.active !== undefined) put('active', b(d.active));
+  if (d.emoji !== undefined) put('emoji', d.emoji);
+  if (d.is_alert !== undefined) put('is_alert', b(d.is_alert));
   if (d.sort_order !== undefined) put('sort_order', d.sort_order);
-  if (!sets.length) return;
-  put('updated_at', nowISO()); vals.push(id, companyId);
-  getDb().prepare(`UPDATE handover_products SET ${sets.join(', ')} WHERE id = ? AND company_id = ?`).run(...vals);
-}
-
-// ── Container types ──────────────────────────────────────────────────────────
-export function listContainerTypes(companyId: number, opts?: { includeInactive?: boolean }): HandoverContainerType[] {
-  const where = opts?.includeInactive ? '' : 'AND active = 1';
-  return getDb().prepare(
-    `SELECT * FROM handover_container_types WHERE company_id = ? ${where} ORDER BY sort_order, name`,
-  ).all(companyId) as HandoverContainerType[];
-}
-export function getContainerType(id: number): HandoverContainerType | null {
-  return (getDb().prepare('SELECT * FROM handover_container_types WHERE id = ?').get(id) as HandoverContainerType) ?? null;
-}
-export function createContainerType(d: {
-  company_id: number; name: string; category?: string | null; capacity_label?: string | null;
-  reference_photo?: string | null; internal_code?: string | null; sort_order?: number;
-}): number {
-  const ts = nowISO();
-  const r = getDb().prepare(
-    `INSERT INTO handover_container_types (company_id, name, category, capacity_label, reference_photo, internal_code, active, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
-  ).run(d.company_id, d.name, d.category ?? null, d.capacity_label ?? null, d.reference_photo ?? null,
-    d.internal_code ?? null, d.sort_order ?? 0, ts, ts);
-  return r.lastInsertRowid as number;
-}
-export function updateContainerType(id: number, companyId: number, d: Partial<{
-  name: string; category: string | null; capacity_label: string | null; reference_photo: string | null;
-  internal_code: string | null; active: boolean; sort_order: number;
-}>): void {
-  const sets: string[] = []; const vals: unknown[] = [];
-  const put = (c: string, v: unknown) => { sets.push(`${c} = ?`); vals.push(v); };
-  for (const k of ['name', 'category', 'capacity_label', 'reference_photo', 'internal_code', 'sort_order'] as const) {
-    if (d[k] !== undefined) put(k, d[k]);
-  }
   if (d.active !== undefined) put('active', b(d.active));
   if (!sets.length) return;
   put('updated_at', nowISO()); vals.push(id, companyId);
-  getDb().prepare(`UPDATE handover_container_types SET ${sets.join(', ')} WHERE id = ? AND company_id = ?`).run(...vals);
+  getDb().prepare(`UPDATE handover_log_types SET ${sets.join(', ')} WHERE id = ? AND company_id = ?`).run(...vals);
 }
-
-// ── Config deletion + in-use guards ──────────────────────────────────────────
-/** True if a product has any recorded batch (so its history depends on it). */
-export function productHasBatches(id: number): boolean {
-  return !!getDb().prepare('SELECT 1 FROM handover_batches WHERE product_id = ? LIMIT 1').get(id);
-}
-export function deleteHandoverProduct(id: number, companyId: number): void {
-  getDb().prepare('DELETE FROM handover_products WHERE id = ? AND company_id = ?').run(id, companyId);
-}
-/** True if a container type is used by any container. */
-export function containerTypeInUse(id: number): boolean {
-  return !!getDb().prepare('SELECT 1 FROM handover_containers WHERE container_type_id = ? LIMIT 1').get(id);
-}
-export function deleteContainerTypeRow(id: number, companyId: number): void {
-  getDb().prepare('DELETE FROM handover_container_types WHERE id = ? AND company_id = ?').run(id, companyId);
-}
-/** A location + all its descendants (for delete/cascade safety), scoped by company. */
-export function locationDescendantIds(rootId: number, companyId: number): number[] {
-  const db = getDb();
-  const ids: number[] = []; const seen = new Set<number>();
-  const walk = (pid: number) => {
-    if (seen.has(pid)) return; seen.add(pid); ids.push(pid);
-    (db.prepare('SELECT id FROM count_locations WHERE parent_id = ? AND company_id = ?').all(pid, companyId) as { id: number }[])
-      .forEach((r) => walk(r.id));
-  };
-  walk(rootId);
-  return ids;
-}
-/** True if any of these locations holds a container. */
-export function locationInUse(ids: number[]): boolean {
-  if (!ids.length) return false;
-  const ph = ids.map(() => '?').join(',');
-  return !!getDb().prepare(`SELECT 1 FROM handover_containers WHERE storage_location_id IN (${ph}) LIMIT 1`).get(...ids);
-}
-
-// ── Batches ──────────────────────────────────────────────────────────────────
-export function createBatch(d: {
-  company_id: number; operational_date: string; product_id: number; product_name: string;
-  shift_label?: string | null; batch_code?: string | null; produced_by_user_id?: number | null;
-  produced_by_name?: string | null; produced_at?: string; note?: string | null;
-}): number {
-  const ts = nowISO();
-  const r = getDb().prepare(
-    `INSERT INTO handover_batches (company_id, operational_date, product_id, product_name, shift_label, batch_code, produced_by_user_id, produced_by_name, produced_at, note, status, version, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?)`,
-  ).run(d.company_id, d.operational_date, d.product_id, d.product_name, d.shift_label ?? null,
-    d.batch_code ?? null, d.produced_by_user_id ?? null, d.produced_by_name ?? null,
-    d.produced_at || ts, d.note ?? null, ts, ts);
-  return r.lastInsertRowid as number;
-}
-export function getBatch(id: number): HandoverBatch | null {
-  return (getDb().prepare('SELECT * FROM handover_batches WHERE id = ?').get(id) as HandoverBatch) ?? null;
-}
-export function listBatches(companyIds: number[] | undefined, filters?: {
-  operational_date?: string; status?: string;
-}): HandoverBatch[] {
-  const where: string[] = []; const vals: unknown[] = [];
-  if (companyIds !== undefined) {
-    if (companyIds.length === 0) return [];
-    where.push(`company_id IN (${inClause(companyIds)})`); vals.push(...companyIds);
-  }
-  if (filters?.operational_date) { where.push('operational_date = ?'); vals.push(filters.operational_date); }
-  if (filters?.status) { where.push('status = ?'); vals.push(filters.status); }
-  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  return getDb().prepare(`SELECT * FROM handover_batches ${clause} ORDER BY produced_at DESC, id DESC`).all(...vals) as HandoverBatch[];
-}
-export function updateBatch(id: number, companyId: number, d: Partial<{ note: string | null; status: string; shift_label: string | null }>): void {
-  const sets: string[] = []; const vals: unknown[] = [];
-  const put = (c: string, v: unknown) => { sets.push(`${c} = ?`); vals.push(v); };
-  if (d.note !== undefined) put('note', d.note);
-  if (d.status !== undefined) put('status', d.status);
-  if (d.shift_label !== undefined) put('shift_label', d.shift_label);
-  if (!sets.length) return;
-  sets.push('version = version + 1'); put('updated_at', nowISO());
-  vals.push(id, companyId);
-  getDb().prepare(`UPDATE handover_batches SET ${sets.join(', ')} WHERE id = ? AND company_id = ?`).run(...vals);
-}
-
-// ── Containers ───────────────────────────────────────────────────────────────
-export function createContainer(d: {
-  company_id: number; batch_id: number; product_id: number; container_code: string;
-  container_type_id?: number | null; fill_level?: number | null; quantity_method?: string | null;
-  exact_quantity?: number | null; unit?: string | null; preparation_state?: string | null;
-  availability_state?: string | null; storage_location_id?: number | null; use_first?: boolean;
-  next_action?: string | null; note?: string | null; status?: string;
-  created_by_user_id?: number | null; created_by_name?: string | null;
-}): number {
-  const ts = nowISO();
-  const r = getDb().prepare(
-    `INSERT INTO handover_containers (company_id, batch_id, product_id, container_code, container_type_id, fill_level, quantity_method, exact_quantity, unit, preparation_state, availability_state, storage_location_id, use_first, next_action, note, status, version, created_by_user_id, created_by_name, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)`,
-  ).run(d.company_id, d.batch_id, d.product_id, d.container_code, d.container_type_id ?? null,
-    d.fill_level ?? null, d.quantity_method ?? null, d.exact_quantity ?? null, d.unit ?? null,
-    d.preparation_state ?? null, d.availability_state ?? null, d.storage_location_id ?? null,
-    b(d.use_first), d.next_action ?? null, d.note ?? null, d.status || 'active',
-    d.created_by_user_id ?? null, d.created_by_name ?? null, ts, ts);
-  return r.lastInsertRowid as number;
-}
-export function getContainer(id: number): HandoverContainer | null {
-  return (getDb().prepare('SELECT * FROM handover_containers WHERE id = ?').get(id) as HandoverContainer) ?? null;
-}
-export function listContainersByBatch(batchId: number): HandoverContainer[] {
-  return getDb().prepare('SELECT * FROM handover_containers WHERE batch_id = ? ORDER BY container_code, id').all(batchId) as HandoverContainer[];
-}
-export function listContainers(companyIds: number[] | undefined, filters?: {
-  operational_date?: string; status?: string; storage_location_id?: number; use_first?: boolean;
-  availability_state?: string; preparation_state?: string; product_id?: number;
-}): HandoverContainer[] {
-  // Join batches for operational_date filtering.
-  const where: string[] = []; const vals: unknown[] = [];
-  if (companyIds !== undefined) {
-    if (companyIds.length === 0) return [];
-    where.push(`c.company_id IN (${inClause(companyIds)})`); vals.push(...companyIds);
-  }
-  if (filters?.status) { where.push('c.status = ?'); vals.push(filters.status); }
-  if (filters?.storage_location_id) { where.push('c.storage_location_id = ?'); vals.push(filters.storage_location_id); }
-  if (filters?.use_first !== undefined) { where.push('c.use_first = ?'); vals.push(b(filters.use_first)); }
-  if (filters?.availability_state) { where.push('c.availability_state = ?'); vals.push(filters.availability_state); }
-  if (filters?.preparation_state) { where.push('c.preparation_state = ?'); vals.push(filters.preparation_state); }
-  if (filters?.product_id) { where.push('c.product_id = ?'); vals.push(filters.product_id); }
-  if (filters?.operational_date) { where.push('b.operational_date = ?'); vals.push(filters.operational_date); }
-  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  return getDb().prepare(
-    `SELECT c.* FROM handover_containers c JOIN handover_batches b ON b.id = c.batch_id ${clause} ORDER BY c.updated_at DESC, c.id DESC`,
-  ).all(...vals) as HandoverContainer[];
-}
-export function updateContainer(id: number, companyId: number, d: Partial<{
-  container_code: string; container_type_id: number | null; fill_level: number | null;
-  quantity_method: string | null; exact_quantity: number | null; unit: string | null;
-  preparation_state: string | null; availability_state: string | null; storage_location_id: number | null;
-  use_first: boolean; next_action: string | null; note: string | null; status: string;
-}>): void {
-  const sets: string[] = []; const vals: unknown[] = [];
-  const put = (c: string, v: unknown) => { sets.push(`${c} = ?`); vals.push(v); };
-  for (const k of ['container_code', 'container_type_id', 'fill_level', 'quantity_method', 'exact_quantity', 'unit', 'preparation_state', 'availability_state', 'storage_location_id', 'next_action', 'note', 'status'] as const) {
-    if (d[k] !== undefined) put(k, d[k] as unknown);
-  }
-  if (d.use_first !== undefined) put('use_first', b(d.use_first));
-  if (!sets.length) return;
-  sets.push('version = version + 1'); put('updated_at', nowISO());
-  vals.push(id, companyId);
-  getDb().prepare(`UPDATE handover_containers SET ${sets.join(', ')} WHERE id = ? AND company_id = ?`).run(...vals);
-}
-
-// ── Photos ───────────────────────────────────────────────────────────────────
-export function addPhoto(d: {
-  company_id: number; entity_type: string; entity_id: number; event?: string | null;
-  photo: string; caption?: string | null; uploaded_by_user_id?: number | null;
-  uploaded_by_name?: string | null; replaced_photo_id?: number | null;
-}): number {
-  const r = getDb().prepare(
-    `INSERT INTO handover_photos (company_id, entity_type, entity_id, event, photo, caption, uploaded_by_user_id, uploaded_by_name, uploaded_at, active, replaced_photo_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-  ).run(d.company_id, d.entity_type, d.entity_id, d.event ?? null, d.photo, d.caption ?? null,
-    d.uploaded_by_user_id ?? null, d.uploaded_by_name ?? null, nowISO(), d.replaced_photo_id ?? null);
-  return r.lastInsertRowid as number;
-}
-export function listPhotos(entityType: string, entityId: number, opts?: { includeInactive?: boolean }): HandoverPhoto[] {
-  const where = opts?.includeInactive ? '' : 'AND active = 1';
-  return getDb().prepare(
-    `SELECT * FROM handover_photos WHERE entity_type = ? AND entity_id = ? ${where} ORDER BY uploaded_at DESC, id DESC`,
-  ).all(entityType, entityId) as HandoverPhoto[];
-}
-export function countActivePhotos(entityType: string, entityId: number): number {
-  const r = getDb().prepare(
-    'SELECT COUNT(*) AS n FROM handover_photos WHERE entity_type = ? AND entity_id = ? AND active = 1',
-  ).get(entityType, entityId) as { n: number };
+/** How many active types can pin storage — used to stop deleting the last one. */
+export function countActiveStorageTypes(companyId: number): number {
+  const r = getDb().prepare('SELECT COUNT(*) AS n FROM handover_log_types WHERE company_id = ? AND active = 1 AND is_storage = 1').get(companyId) as { n: number };
   return r.n;
 }
-/** Soft-delete: never destroy history. */
-export function deactivatePhoto(id: number, companyId: number): void {
-  getDb().prepare('UPDATE handover_photos SET active = 0 WHERE id = ? AND company_id = ?').run(id, companyId);
-}
-export function getPhoto(id: number): HandoverPhoto | null {
-  return (getDb().prepare('SELECT * FROM handover_photos WHERE id = ?').get(id) as HandoverPhoto) ?? null;
-}
 
-// ── Actions ──────────────────────────────────────────────────────────────────
-export function createAction(d: {
-  company_id: number; operational_date: string; batch_id?: number | null; container_id?: number | null;
-  handover_id?: number | null; instruction: string; priority?: string; assigned_role?: string | null;
-  due_at?: string | null; created_by_user_id?: number | null; created_by_name?: string | null;
+// ── Log entries ──────────────────────────────────────────────────────────────
+export function createLogEntry(d: {
+  company_id: number; operational_date: string; type_id: number | null; type_name: string;
+  type_emoji: string; is_alert?: boolean; note?: string | null; storage_item_id?: number | null;
+  author_user_id?: number | null; author_name?: string | null;
 }): number {
   const ts = nowISO();
   const r = getDb().prepare(
-    `INSERT INTO handover_actions (company_id, operational_date, batch_id, container_id, handover_id, instruction, priority, assigned_role, due_at, status, version, created_by_user_id, created_by_name, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?)`,
-  ).run(d.company_id, d.operational_date, d.batch_id ?? null, d.container_id ?? null, d.handover_id ?? null,
-    d.instruction, d.priority || 'normal', d.assigned_role ?? null, d.due_at ?? null,
-    d.created_by_user_id ?? null, d.created_by_name ?? null, ts, ts);
+    `INSERT INTO handover_log_entries (company_id, operational_date, type_id, type_name, type_emoji, is_alert, note, storage_item_id, author_user_id, author_name, active, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+  ).run(d.company_id, d.operational_date, d.type_id, d.type_name, d.type_emoji || '📝', b(d.is_alert),
+    d.note ?? null, d.storage_item_id ?? null, d.author_user_id ?? null, d.author_name ?? null, ts, ts);
   return r.lastInsertRowid as number;
 }
-export function getAction(id: number): HandoverAction | null {
-  return (getDb().prepare('SELECT * FROM handover_actions WHERE id = ?').get(id) as HandoverAction) ?? null;
+export function getLogEntry(id: number): LogEntry | null {
+  return (getDb().prepare('SELECT * FROM handover_log_entries WHERE id = ?').get(id) as LogEntry) ?? null;
 }
-export function listActions(companyIds: number[] | undefined, filters?: {
-  operational_date?: string; status?: string; statuses?: string[]; container_id?: number; batch_id?: number;
-}): HandoverAction[] {
-  const where: string[] = []; const vals: unknown[] = [];
-  if (companyIds !== undefined) {
-    if (companyIds.length === 0) return [];
-    where.push(`company_id IN (${inClause(companyIds)})`); vals.push(...companyIds);
-  }
-  if (filters?.operational_date) { where.push('operational_date = ?'); vals.push(filters.operational_date); }
-  if (filters?.status) { where.push('status = ?'); vals.push(filters.status); }
-  if (filters?.statuses && filters.statuses.length) { where.push(`status IN (${inClause(filters.statuses.map(() => 0))})`); vals.push(...filters.statuses); }
-  if (filters?.container_id) { where.push('container_id = ?'); vals.push(filters.container_id); }
-  if (filters?.batch_id) { where.push('batch_id = ?'); vals.push(filters.batch_id); }
-  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  // Order: food-safety-critical first, then urgent/important, then by due time.
+export function listLogEntries(companyId: number, operationalDate: string): LogEntry[] {
   return getDb().prepare(
-    `SELECT * FROM handover_actions ${clause}
-     ORDER BY CASE priority WHEN 'food_safety_critical' THEN 0 WHEN 'urgent' THEN 1 WHEN 'important' THEN 2 ELSE 3 END,
-              COALESCE(due_at, '9999'), id`,
-  ).all(...vals) as HandoverAction[];
+    `SELECT * FROM handover_log_entries WHERE company_id = ? AND operational_date = ? AND active = 1 ORDER BY created_at DESC, id DESC`,
+  ).all(companyId, operationalDate) as LogEntry[];
 }
-export function updateAction(id: number, companyId: number, d: Partial<{
-  instruction: string; priority: string; assigned_role: string | null; due_at: string | null;
-  status: string; completed_by_user_id: number | null; completed_by_name: string | null;
-  completed_at: string | null; completion_note: string | null; completion_photo_id: number | null;
-}>): void {
-  const sets: string[] = []; const vals: unknown[] = [];
-  const put = (c: string, v: unknown) => { sets.push(`${c} = ?`); vals.push(v); };
-  for (const k of ['instruction', 'priority', 'assigned_role', 'due_at', 'status', 'completed_by_user_id', 'completed_by_name', 'completed_at', 'completion_note', 'completion_photo_id'] as const) {
-    if (d[k] !== undefined) put(k, d[k] as unknown);
-  }
-  if (!sets.length) return;
-  sets.push('version = version + 1'); put('updated_at', nowISO());
-  vals.push(id, companyId);
-  getDb().prepare(`UPDATE handover_actions SET ${sets.join(', ')} WHERE id = ? AND company_id = ?`).run(...vals);
+export function recentEntryDates(companyId: number, limit = 30): string[] {
+  const rows = getDb().prepare(
+    `SELECT DISTINCT operational_date FROM handover_log_entries WHERE company_id = ? AND active = 1 ORDER BY operational_date DESC LIMIT ?`,
+  ).all(companyId, Math.min(Math.max(limit, 1), 120)) as { operational_date: string }[];
+  return rows.map((r) => r.operational_date);
 }
-
-// ── Handovers ────────────────────────────────────────────────────────────────
-export function createHandover(d: {
-  company_id: number; operational_date: string; outgoing_shift_label?: string | null;
-  incoming_shift_label?: string | null; summary_note?: string | null; created_by_user_id?: number | null;
-}): number {
+export function updateLogEntryNote(id: number, companyId: number, note: string | null): void {
+  const ts = nowISO();
+  getDb().prepare('UPDATE handover_log_entries SET note = ?, edited_at = ?, updated_at = ? WHERE id = ? AND company_id = ?')
+    .run(note, ts, ts, id, companyId);
+}
+export function softDeleteLogEntry(id: number, companyId: number): void {
+  getDb().prepare('UPDATE handover_log_entries SET active = 0, updated_at = ? WHERE id = ? AND company_id = ?')
+    .run(nowISO(), id, companyId);
+}
+export function setEntryStorageItem(id: number, companyId: number, storageItemId: number): void {
+  getDb().prepare('UPDATE handover_log_entries SET storage_item_id = ? WHERE id = ? AND company_id = ?').run(storageItemId, id, companyId);
+}
+/** Mark an entry as edited without changing its note (e.g. a photos-only edit). */
+export function touchEntryEdited(id: number, companyId: number): void {
+  const ts = nowISO();
+  getDb().prepare('UPDATE handover_log_entries SET edited_at = ?, updated_at = ? WHERE id = ? AND company_id = ?').run(ts, ts, id, companyId);
+}
+/** Clear a stale acknowledgement (the alert's content changed after it was read). */
+export function clearEntryAck(id: number, companyId: number): void {
+  getDb().prepare('UPDATE handover_log_entries SET acknowledged_by_user_id = NULL, acknowledged_by_name = NULL, acknowledged_at = NULL, updated_at = ? WHERE id = ? AND company_id = ?')
+    .run(nowISO(), id, companyId);
+}
+/** Acknowledge an alert entry once. Returns false if it was already acknowledged. */
+export function acknowledgeEntry(id: number, companyId: number, actor: { userId: number; name: string }): boolean {
   const ts = nowISO();
   const r = getDb().prepare(
-    `INSERT INTO handover_handovers (company_id, operational_date, outgoing_shift_label, incoming_shift_label, status, summary_note, version, created_by_user_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'draft', ?, 1, ?, ?, ?)`,
-  ).run(d.company_id, d.operational_date, d.outgoing_shift_label ?? null, d.incoming_shift_label ?? null,
-    d.summary_note ?? null, d.created_by_user_id ?? null, ts, ts);
-  return r.lastInsertRowid as number;
-}
-export function getHandover(id: number): HandoverRecord | null {
-  return (getDb().prepare('SELECT * FROM handover_handovers WHERE id = ?').get(id) as HandoverRecord) ?? null;
-}
-export function findActiveHandover(companyId: number, operationalDate: string, outgoingLabel: string | null): HandoverRecord | null {
-  const db = getDb();
-  const row = outgoingLabel == null
-    ? db.prepare(`SELECT * FROM handover_handovers WHERE company_id = ? AND operational_date = ? AND outgoing_shift_label IS NULL AND status IN ('draft','submitted') ORDER BY id DESC LIMIT 1`).get(companyId, operationalDate)
-    : db.prepare(`SELECT * FROM handover_handovers WHERE company_id = ? AND operational_date = ? AND outgoing_shift_label = ? AND status IN ('draft','submitted') ORDER BY id DESC LIMIT 1`).get(companyId, operationalDate, outgoingLabel);
-  return (row as HandoverRecord) ?? null;
-}
-export function listHandovers(companyIds: number[] | undefined, filters?: { status?: string; from?: string; to?: string; limit?: number }): HandoverRecord[] {
-  const where: string[] = []; const vals: unknown[] = [];
-  if (companyIds !== undefined) {
-    if (companyIds.length === 0) return [];
-    where.push(`company_id IN (${inClause(companyIds)})`); vals.push(...companyIds);
-  }
-  if (filters?.status) { where.push('status = ?'); vals.push(filters.status); }
-  if (filters?.from) { where.push('operational_date >= ?'); vals.push(filters.from); }
-  if (filters?.to) { where.push('operational_date <= ?'); vals.push(filters.to); }
-  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const limit = Math.min(Math.max(filters?.limit ?? 100, 1), 500);
-  return getDb().prepare(`SELECT * FROM handover_handovers ${clause} ORDER BY operational_date DESC, id DESC LIMIT ?`).all(...vals, limit) as HandoverRecord[];
-}
-/** Raw handover-row update (status transitions, ack fields). Snapshot rows are separately immutable. */
-export function updateHandoverRow(id: number, companyId: number, d: Record<string, unknown>, expectedVersion?: number): boolean {
-  const sets: string[] = []; const vals: unknown[] = [];
-  for (const [c, v] of Object.entries(d)) { sets.push(`${c} = ?`); vals.push(v); }
-  if (!sets.length) return false;
-  sets.push('version = version + 1'); sets.push('updated_at = ?'); vals.push(nowISO());
-  vals.push(id, companyId);
-  let sql = `UPDATE handover_handovers SET ${sets.join(', ')} WHERE id = ? AND company_id = ?`;
-  if (expectedVersion !== undefined) { sql += ' AND version = ?'; vals.push(expectedVersion); }
-  const r = getDb().prepare(sql).run(...vals);
+    `UPDATE handover_log_entries SET acknowledged_by_user_id = ?, acknowledged_by_name = ?, acknowledged_at = ?, updated_at = ?
+     WHERE id = ? AND company_id = ? AND is_alert = 1 AND acknowledged_at IS NULL`,
+  ).run(actor.userId, actor.name, ts, ts, id, companyId);
   return r.changes > 0;
 }
 
-// ── Snapshots (write-only via commands; reads here) ─────────────────────────────
-export function insertSnapshotContainer(row: Record<string, unknown>): number {
-  const cols = Object.keys(row);
+// ── Storage items ────────────────────────────────────────────────────────────
+export interface StorageItemView extends StorageItem { photo: string | null }
+
+export function createStorageItem(d: {
+  company_id: number; name: string; location_text?: string | null; use_first?: boolean;
+  entry_id?: number | null; added_by_user_id?: number | null; added_by_name?: string | null;
+}): number {
+  const ts = nowISO();
   const r = getDb().prepare(
-    `INSERT INTO handover_snapshot_containers (${cols.join(', ')}, created_at) VALUES (${cols.map(() => '?').join(', ')}, ?)`,
-  ).run(...cols.map((c) => row[c]), nowISO());
+    `INSERT INTO handover_storage_items (company_id, name, location_text, use_first, status, entry_id, added_by_user_id, added_by_name, added_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'here', ?, ?, ?, ?, ?, ?)`,
+  ).run(d.company_id, d.name, d.location_text ?? null, b(d.use_first), d.entry_id ?? null,
+    d.added_by_user_id ?? null, d.added_by_name ?? null, ts, ts, ts);
   return r.lastInsertRowid as number;
 }
-export function insertSnapshotAction(row: Record<string, unknown>): number {
-  const cols = Object.keys(row);
+export function getStorageItem(id: number): StorageItem | null {
+  return (getDb().prepare('SELECT * FROM handover_storage_items WHERE id = ?').get(id) as StorageItem) ?? null;
+}
+/** Everything currently in storage (persists across days), with a thumbnail from its entry. */
+export function listStorageHere(companyId: number): StorageItemView[] {
+  return getDb().prepare(
+    `SELECT s.*, (
+        SELECT p.photo FROM handover_photos p
+        WHERE p.entity_type = 'log_entry' AND p.entity_id = s.entry_id AND p.active = 1
+        ORDER BY p.id DESC LIMIT 1
+     ) AS photo
+     FROM handover_storage_items s
+     WHERE s.company_id = ? AND s.status = 'here'
+     ORDER BY s.use_first DESC, s.added_at DESC, s.id DESC`,
+  ).all(companyId) as StorageItemView[];
+}
+/** Mark used once. Returns false if it was already used. */
+export function markStorageUsed(id: number, companyId: number, actor: { userId: number; name: string }): boolean {
+  const ts = nowISO();
   const r = getDb().prepare(
-    `INSERT INTO handover_snapshot_actions (${cols.join(', ')}, created_at) VALUES (${cols.map(() => '?').join(', ')}, ?)`,
-  ).run(...cols.map((c) => row[c]), nowISO());
-  return r.lastInsertRowid as number;
-}
-export function listSnapshotContainers(handoverId: number): Record<string, unknown>[] {
-  return getDb().prepare('SELECT * FROM handover_snapshot_containers WHERE handover_id = ? ORDER BY id').all(handoverId) as Record<string, unknown>[];
-}
-/** True if a snapshot-container id really belongs to this handover + company. */
-export function snapshotContainerBelongs(id: number, handoverId: number, companyId: number): boolean {
-  return !!getDb().prepare(
-    'SELECT 1 FROM handover_snapshot_containers WHERE id = ? AND handover_id = ? AND company_id = ?',
-  ).get(id, handoverId, companyId);
-}
-export function listSnapshotActions(handoverId: number): Record<string, unknown>[] {
-  return getDb().prepare('SELECT * FROM handover_snapshot_actions WHERE handover_id = ? ORDER BY id').all(handoverId) as Record<string, unknown>[];
+    `UPDATE handover_storage_items SET status = 'used', used_by_user_id = ?, used_by_name = ?, used_at = ?, updated_at = ?
+     WHERE id = ? AND company_id = ? AND status = 'here'`,
+  ).run(actor.userId, actor.name, ts, ts, id, companyId);
+  return r.changes > 0;
 }
 
-// ── Discrepancies ────────────────────────────────────────────────────────────
-export function createDiscrepancy(d: {
-  company_id: number; handover_id: number; snapshot_container_id?: number | null; discrepancy_type: string;
-  expected_value?: string | null; reported_value?: string | null; note?: string | null; photo_id?: number | null;
-  reported_by_user_id?: number | null; reported_by_name?: string | null;
+// ── Photos ───────────────────────────────────────────────────────────────────
+export const MAX_PHOTOS = 5;
+// ~2.6 MB decoded. PhotoCaptureStrip resizes to 1280px @ 0.7 JPEG (typically well
+// under 500 KB), so a legitimate capture never approaches this ceiling.
+const MAX_PHOTO_CHARS = 3_500_000;
+
+/**
+ * Keep only inline raster data URLs within the size + count caps. Silently drops
+ * anything else — remote `http(s)` URLs (which would make clients fetch attacker
+ * content) and oversized blobs (which would bloat the DB) never get stored.
+ */
+export function filterValidPhotos(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const out: string[] = [];
+  for (const p of input) {
+    if (typeof p !== 'string' || !p.startsWith('data:image/') || p.length > MAX_PHOTO_CHARS) continue;
+    out.push(p);
+    if (out.length >= MAX_PHOTOS) break;
+  }
+  return out;
+}
+
+export function addPhoto(d: {
+  company_id: number; entity_type: string; entity_id: number; event?: string | null;
+  photo: string; uploaded_by_user_id?: number | null; uploaded_by_name?: string | null;
 }): number {
   const r = getDb().prepare(
-    `INSERT INTO handover_discrepancies (company_id, handover_id, snapshot_container_id, discrepancy_type, expected_value, reported_value, note, photo_id, reported_by_user_id, reported_by_name, reported_at, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open')`,
-  ).run(d.company_id, d.handover_id, d.snapshot_container_id ?? null, d.discrepancy_type, d.expected_value ?? null,
-    d.reported_value ?? null, d.note ?? null, d.photo_id ?? null, d.reported_by_user_id ?? null, d.reported_by_name ?? null, nowISO());
+    `INSERT INTO handover_photos (company_id, entity_type, entity_id, event, photo, caption, uploaded_by_user_id, uploaded_by_name, uploaded_at, active, replaced_photo_id)
+     VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, 1, NULL)`,
+  ).run(d.company_id, d.entity_type, d.entity_id, d.event ?? null, d.photo,
+    d.uploaded_by_user_id ?? null, d.uploaded_by_name ?? null, nowISO());
   return r.lastInsertRowid as number;
 }
-export function listDiscrepancies(handoverId: number): HandoverDiscrepancy[] {
-  return getDb().prepare('SELECT * FROM handover_discrepancies WHERE handover_id = ? ORDER BY id').all(handoverId) as HandoverDiscrepancy[];
+export function listPhotos(entityType: string, entityId: number): HandoverPhoto[] {
+  return getDb().prepare(
+    `SELECT * FROM handover_photos WHERE entity_type = ? AND entity_id = ? AND active = 1 ORDER BY id`,
+  ).all(entityType, entityId) as HandoverPhoto[];
 }
-export function getDiscrepancy(id: number): HandoverDiscrepancy | null {
-  return (getDb().prepare('SELECT * FROM handover_discrepancies WHERE id = ?').get(id) as HandoverDiscrepancy) ?? null;
+/** All active photos for a set of entities, for batch feed rendering. */
+export function listPhotosForEntities(entityType: string, ids: number[]): HandoverPhoto[] {
+  if (!ids.length) return [];
+  const ph = ids.map(() => '?').join(',');
+  return getDb().prepare(
+    `SELECT * FROM handover_photos WHERE entity_type = ? AND entity_id IN (${ph}) AND active = 1 ORDER BY entity_id, id`,
+  ).all(entityType, ...ids) as HandoverPhoto[];
 }
-export function resolveDiscrepancy(id: number, companyId: number, d: { resolved_by_user_id: number; resolved_by_name: string; resolution_note?: string | null }): void {
-  getDb().prepare(
-    `UPDATE handover_discrepancies SET status = 'resolved', resolved_by_user_id = ?, resolved_by_name = ?, resolved_at = ?, resolution_note = ? WHERE id = ? AND company_id = ?`,
-  ).run(d.resolved_by_user_id, d.resolved_by_name, nowISO(), d.resolution_note ?? null, id, companyId);
-}
-
-// ── Events (canonical audit) ─────────────────────────────────────────────────
-export function logHandoverEvent(d: {
-  company_id: number; actor_user_id?: number | null; actor_name?: string | null;
-  entity_type: string; entity_id?: number | null; action: string;
-  before?: unknown; after?: unknown; reason?: string | null; operational_date?: string | null;
-}): void {
-  getDb().prepare(
-    `INSERT INTO handover_events (company_id, actor_user_id, actor_name, entity_type, entity_id, action, before_json, after_json, reason, operational_date, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(d.company_id, d.actor_user_id ?? null, d.actor_name ?? null, d.entity_type, d.entity_id ?? null, d.action,
-    d.before !== undefined ? JSON.stringify(d.before) : null,
-    d.after !== undefined ? JSON.stringify(d.after) : null,
-    d.reason ?? null, d.operational_date ?? null, nowISO());
-}
-export function listHandoverEvents(companyIds: number[] | undefined, filters?: { entity_type?: string; entity_id?: number; operational_date?: string; limit?: number }): HandoverEvent[] {
-  const where: string[] = []; const vals: unknown[] = [];
-  if (companyIds !== undefined) {
-    if (companyIds.length === 0) return [];
-    where.push(`company_id IN (${inClause(companyIds)})`); vals.push(...companyIds);
-  }
-  if (filters?.entity_type) { where.push('entity_type = ?'); vals.push(filters.entity_type); }
-  if (filters?.entity_id) { where.push('entity_id = ?'); vals.push(filters.entity_id); }
-  if (filters?.operational_date) { where.push('operational_date = ?'); vals.push(filters.operational_date); }
-  const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const limit = Math.min(Math.max(filters?.limit ?? 200, 1), 1000);
-  return getDb().prepare(`SELECT * FROM handover_events ${clause} ORDER BY id DESC LIMIT ?`).all(...vals, limit) as HandoverEvent[];
+export function deactivatePhotosFor(entityType: string, entityId: number, companyId: number): void {
+  getDb().prepare('UPDATE handover_photos SET active = 0 WHERE entity_type = ? AND entity_id = ? AND company_id = ?')
+    .run(entityType, entityId, companyId);
 }
 
 // ── Idempotency ──────────────────────────────────────────────────────────────
@@ -775,11 +360,19 @@ export function getIdempotentResult(key: string, companyId: number, scope: strin
   ).get(key, companyId, scope) as { result_id: number } | undefined;
   return row ? row.result_id : null;
 }
-export function putIdempotentResult(key: string, companyId: number, scope: string, resultId: number): void {
-  try {
-    getDb().prepare('INSERT INTO handover_idempotency (key, company_id, scope, result_id, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(key, companyId, scope, resultId, nowISO());
-  } catch { /* duplicate key = another writer won the race; ignore */ }
+/**
+ * Claim an idempotency key. THROWS a UNIQUE-constraint error if the key is already
+ * taken — call this INSIDE the create transaction so a concurrent retry rolls the
+ * whole entry back instead of writing a duplicate. Fill in the id with
+ * setIdempotencyResult once the row is created.
+ */
+export function claimIdempotency(key: string, companyId: number, scope: string): void {
+  getDb().prepare('INSERT INTO handover_idempotency (key, company_id, scope, result_id, created_at) VALUES (?, ?, ?, NULL, ?)')
+    .run(key, companyId, scope, nowISO());
+}
+export function setIdempotencyResult(key: string, companyId: number, scope: string, resultId: number): void {
+  getDb().prepare('UPDATE handover_idempotency SET result_id = ? WHERE key = ? AND company_id = ? AND scope = ?')
+    .run(resultId, key, companyId, scope);
 }
 
 export { getDb };
