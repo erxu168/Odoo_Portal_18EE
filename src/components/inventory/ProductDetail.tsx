@@ -59,6 +59,13 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [uoms, setUoms] = useState<{ id: number; name: string }[]>([]);
   const [catId, setCatId] = useState<number>(product.categ_id?.[0] || 0);
   const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
+  const [newCat, setNewCat] = useState(false);          // inline "create category" open?
+  const [newCatName, setNewCatName] = useState('');
+  const [catBusy, setCatBusy] = useState(false);
+  const loadCategories = () => fetch('/api/inventory/categories')
+    .then((r) => (r.ok ? r.json() : { categories: [] }))
+    .then((cd) => setCategories(cd.categories || []))
+    .catch(() => {});
   const [barcode, setBarcode] = useState<string>(product.barcode || '');
   const [img, setImg] = useState(hasImage);
   const [imgVer, setImgVer] = useState(0);
@@ -102,7 +109,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           setLooseLabel(f.loose_label || '');
         }
         setUoms(uomRes.uoms || []);
-        fetch('/api/inventory/categories').then((r) => r.ok ? r.json() : { categories: [] }).then((cd) => setCategories(cd.categories || [])).catch(() => {});
+        loadCategories();
         const locs: any[] = (locRes as any).locations || [];
         const companySpots = new Set(locs.map((l) => l.id));
         setHomeSpots(((spotRes.location_ids || []) as number[]).filter((id) => companySpots.has(id)));
@@ -140,6 +147,31 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
       return true;
     } catch { flash('err', 'Network error — not saved'); return false; }
     finally { setBusy(null); }
+  }
+
+  // Quick-create a category in Odoo without leaving the form, then select +
+  // assign it (in-place create rule — no dead-end picker).
+  async function createCategory() {
+    const nm = newCatName.trim();
+    if (!nm) return;
+    setCatBusy(true);
+    try {
+      const res = await fetch('/api/inventory/categories', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nm }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.category?.id) { flash('err', d.error || 'Could not create category'); return; }
+      await loadCategories();
+      const prev = catId;
+      setCatId(d.category.id);
+      if (await saveMaster({ categ_id: d.category.id })) {
+        setNewCat(false); setNewCatName('');
+      } else {
+        setCatId(prev);
+      }
+    } catch { flash('err', 'Network error — category not created'); }
+    finally { setCatBusy(false); }
   }
 
   async function savePack(nextSize: string, nextLabel: string, nextLoose: string) {
@@ -328,14 +360,32 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             )}
           </button>
 
-          {/* Category — editable (Odoo product.category) */}
+          {/* Category — editable (Odoo product.category), with in-place create */}
           <label className={label} htmlFor="pd-cat">Category</label>
-          <select id="pd-cat" value={catId} disabled={readOnly || busy === 'master'}
-            onChange={async (e) => { const next = Number(e.target.value); const prev = catId; setCatId(next); if (!(await saveMaster({ categ_id: next }))) setCatId(prev); }}
-            className={`${box} mb-4`}>
+          <select id="pd-cat" value={newCat ? -1 : catId} disabled={readOnly || busy === 'master' || catBusy}
+            onChange={async (e) => {
+              const next = Number(e.target.value);
+              if (next === -1) { setNewCat(true); setNewCatName(''); return; }
+              setNewCat(false);
+              const prev = catId; setCatId(next);
+              if (!(await saveMaster({ categ_id: next }))) setCatId(prev);
+            }}
+            className={`${box} ${newCat ? 'mb-2' : 'mb-4'}`}>
             {catId !== 0 && !categories.some((c) => c.id === catId) && <option value={catId}>{product.categ_id?.[1] || 'Current category'}</option>}
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {!readOnly && <option value={-1}>+ New category…</option>}
           </select>
+          {newCat && (
+            <div className="flex gap-2 mb-4">
+              <input autoFocus value={newCatName} onChange={(e) => setNewCatName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') createCategory(); if (e.key === 'Escape') { setNewCat(false); setNewCatName(''); } }}
+                placeholder="New category name" className={box} disabled={catBusy} />
+              <button onClick={createCategory} disabled={catBusy || !newCatName.trim()}
+                className="px-4 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40 whitespace-nowrap">{catBusy ? 'Adding…' : 'Add'}</button>
+              <button onClick={() => { setNewCat(false); setNewCatName(''); }} disabled={catBusy}
+                className="px-4 rounded-xl bg-gray-100 font-bold">Cancel</button>
+            </div>
+          )}
 
           {/* Barcode — editable */}
           <label className={label} htmlFor="pd-barcode">Barcode</label>
