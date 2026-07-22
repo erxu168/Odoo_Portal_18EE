@@ -4,16 +4,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
+import { canAccessTermination } from '@/lib/hr-access';
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    requireRole('manager');
+    const user = requireRole('manager');
     const { id } = await params;
     const recordId = Number(id);
     if (!recordId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+    if (!(await canAccessTermination(user, recordId))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const odoo = getOdoo();
     const records = await odoo.read('kw.termination', [recordId], ['sent_to_accountant']);

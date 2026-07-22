@@ -26,3 +26,19 @@ export async function canAccessEmployee(
   const companyId = Array.isArray(cid) ? (cid[0] as number) : typeof cid === 'number' ? cid : null;
   return companyId !== null && allowed.includes(companyId);
 }
+
+/**
+ * May `user` read/write the termination record `terminationId`? Resolves the
+ * record's employee and defers to canAccessEmployee — so a manager can only
+ * touch a termination for a staff member of their own restaurant.
+ */
+export async function canAccessTermination(
+  user: NonNullable<ReturnType<typeof getCurrentUser>>,
+  terminationId: number,
+): Promise<boolean> {
+  const recs = await getOdoo().read('kw.termination', [terminationId], ['employee_id']);
+  const emp = recs?.[0]?.employee_id;
+  const employeeId = Array.isArray(emp) ? (emp[0] as number) : typeof emp === 'number' ? emp : null;
+  if (employeeId == null) return false;
+  return canAccessEmployee(user, employeeId);
+}

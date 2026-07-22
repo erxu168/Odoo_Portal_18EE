@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
+import { canAccessTermination, canAccessEmployee } from '@/lib/hr-access';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
 export async function GET(
@@ -12,7 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    requireRole('manager');
+    const user = requireRole('manager');
     const { id } = await params;
     const recordId = Number(id);
     if (!recordId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
@@ -21,6 +22,12 @@ export async function GET(
     const records = await odoo.read('kw.termination', [recordId], [...TERMINATION_DETAIL_FIELDS]);
 
     if (!records || records.length === 0) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    // Company-scoped: only staff of the caller's restaurant(s).
+    const emp = (records[0] as { employee_id?: unknown }).employee_id;
+    const employeeId = Array.isArray(emp) ? (emp[0] as number) : typeof emp === 'number' ? emp : null;
+    if (employeeId == null || !(await canAccessEmployee(user, employeeId))) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
@@ -37,10 +44,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    requireRole('manager');
+    const user = requireRole('manager');
     const { id } = await params;
     const recordId = Number(id);
     if (!recordId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+    if (!(await canAccessTermination(user, recordId))) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     const body = await req.json();
     const vals: Record<string, unknown> = {};

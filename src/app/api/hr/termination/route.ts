@@ -5,11 +5,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
+import { canAccessEmployee } from '@/lib/hr-access';
+import { companyScope } from '@/lib/inventory-access';
 import { TERMINATION_LIST_FIELDS } from '@/types/termination';
 
 export async function GET(req: NextRequest) {
   try {
-    requireRole('manager');
+    const user = requireRole('manager');
     const url = new URL(req.url);
     const companyId = Number(url.searchParams.get('company_id') || 0);
     const state = url.searchParams.get('state');
@@ -18,7 +20,15 @@ export async function GET(req: NextRequest) {
     const search = url.searchParams.get('search') || '';
 
     const domain: unknown[][] = [];
-    if (companyId) domain.push(['company_id', '=', companyId]);
+    // ALWAYS scope to the caller's restaurant(s) — never list every company's
+    // terminations. companyScope returns undefined only for an unrestricted admin.
+    const scope = companyScope(user);
+    if (scope) {
+      if (companyId && scope.includes(companyId)) domain.push(['company_id', '=', companyId]);
+      else domain.push(['company_id', 'in', scope]);
+    } else if (companyId) {
+      domain.push(['company_id', '=', companyId]);   // unrestricted admin may narrow
+    }
     if (state) domain.push(['state', '=', state]);
     if (search) domain.push(['employee_name', 'ilike', search]);
 
@@ -42,19 +52,31 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    requireRole('manager');
+    const user = requireRole('manager');
     const body = await req.json();
 
-    const requiredFields = ['employee_id', 'company_id', 'termination_type', 'letter_date', 'calc_method'];
+    const requiredFields = ['employee_id', 'termination_type', 'letter_date', 'calc_method'];
     for (const f of requiredFields) {
       if (!body[f]) {
         return NextResponse.json({ error: `Missing required field: ${f}` }, { status: 400 });
       }
     }
+    // Authorize by the target employee (their restaurant), and DERIVE company_id
+    // from the employee — never trust a client-supplied company_id.
+    const employeeId = Number(body.employee_id);
+    if (!(await canAccessEmployee(user, employeeId))) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const empRow = await getOdoo().read('hr.employee', [employeeId], ['company_id']);
+    const cid = empRow?.[0]?.company_id;
+    const derivedCompanyId = Array.isArray(cid) ? cid[0] : typeof cid === 'number' ? cid : null;
+    if (derivedCompanyId == null) {
+      return NextResponse.json({ error: 'Employee has no company' }, { status: 400 });
+    }
 
     const vals: Record<string, unknown> = {
-      employee_id: body.employee_id,
-      company_id: body.company_id,
+      employee_id: employeeId,
+      company_id: derivedCompanyId,
       termination_type: body.termination_type,
       letter_date: body.letter_date,
       calc_method: body.calc_method,
