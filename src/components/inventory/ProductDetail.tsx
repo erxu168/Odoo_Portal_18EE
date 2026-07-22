@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Spinner, ProductThumb } from './ui';
 import SpotSheet from './SpotSheet';
+import ManagePackLabels from './ManagePackLabels';
 import { suggestCrateSizeFromName, baseIsMeasure } from '@/lib/crate-units';
 import { useCompany } from '@/lib/company-context';
 
@@ -65,6 +66,14 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [homeSpots, setHomeSpots] = useState<number[]>([]);
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});
   const [spotSheet, setSpotSheet] = useState(false);
+  // Editable "Count by" units (seeded from the defaults) + the manage sheet.
+  const [packUnits, setPackUnits] = useState<string[]>(PACK_LABELS);
+  const [manageUnits, setManageUnits] = useState(false);
+  const loadUnits = () => fetch('/api/inventory/pack-labels')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d?.labels) setPackUnits(d.labels.map((x: any) => x.label)); })
+    .catch(() => {});
+  useEffect(() => { loadUnits(); }, []);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);      // which section is saving
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
@@ -264,8 +273,12 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               <select value={packLabel || (measure ? 'piece' : 'crate')} disabled={readOnly}
                 onChange={(e) => { setPackLabel(e.target.value); savePack(packSize, e.target.value, looseLabel); }}
                 className="h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] font-semibold bg-white disabled:opacity-60">
-                {PACK_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                {/* Keep the product's current unit selectable even if it was removed from the list */}
+                {Array.from(new Set([...(packLabel ? [packLabel] : []), ...packUnits])).map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
+              {!readOnly && (
+                <button onClick={() => setManageUnits(true)} className="text-[11px] font-bold text-blue-700 active:opacity-70" aria-label="Edit the count-by units">Edit units</button>
+              )}
               <span className="text-[var(--fs-xs)] text-gray-500">1 {packLabel || (measure ? 'piece' : 'crate')} {measure ? '≈' : '='}</span>
               <input value={packSize} disabled={readOnly}
                 onChange={(e) => setPackSize(e.target.value.replace(/[^0-9.]/g, ''))}
@@ -328,6 +341,10 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           onSaved={(ids) => { setHomeSpots(ids); onChanged({ spots: ids }); }}
           onClose={() => setSpotSheet(false)}
         />
+      )}
+
+      {manageUnits && (
+        <ManagePackLabels baseZ={baseZ + 10} onChanged={loadUnits} onClose={() => setManageUnits(false)} />
       )}
     </div>
   );

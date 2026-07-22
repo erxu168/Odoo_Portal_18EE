@@ -170,6 +170,18 @@ export function initInventoryTables() {
       created_at TEXT,
       UNIQUE(company_id, kind)
     );
+
+    -- "Count by" unit vocabulary (piece/bunch/crate…). GLOBAL, not per-company:
+    -- product_flags.pack_label is one value per (shared) product, so the unit
+    -- list is naturally shared across restaurants. Editable by product managers.
+    CREATE TABLE IF NOT EXISTS pack_labels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER,
+      created_at TEXT,
+      UNIQUE(label)
+    );
   `);
   } catch (e) {
     console.error('[krawings_inventory] table/index init error (continuing to migrate):', e instanceof Error ? e.message : e);
@@ -2038,5 +2050,49 @@ export function deleteLocationKind(id: number, companyId: number): { ok: boolean
     .filter((l) => (l.kind || '').toLowerCase() === target).length;
   if (used > 0) return { ok: false, in_use: used };
   db.prepare('DELETE FROM location_kinds WHERE id = ? AND company_id = ?').run(id, companyId);
+  return { ok: true, in_use: 0 };
+}
+
+// ── "Count by" unit vocabulary (pack_labels) — GLOBAL, manager-editable ──
+const DEFAULT_PACK_LABELS = ['piece', 'bunch', 'head', 'crate', 'case', 'box', 'tray', 'bag', 'pack'];
+
+export interface PackLabelRow { id: number; label: string; sort_order: number }
+
+/** List the count-by units, seeding the defaults on first use. */
+export function listPackLabels(): PackLabelRow[] {
+  const db = getDb();
+  const n = (db.prepare('SELECT COUNT(*) AS n FROM pack_labels').get() as { n: number }).n;
+  if (n === 0) {
+    const ins = db.prepare('INSERT OR IGNORE INTO pack_labels (label, sort_order, created_at) VALUES (?, ?, ?)');
+    DEFAULT_PACK_LABELS.forEach((l, i) => ins.run(l, (i + 1) * 10, now()));
+  }
+  return db.prepare('SELECT id, label, sort_order FROM pack_labels ORDER BY sort_order, id').all() as PackLabelRow[];
+}
+
+/** Add a unit; returns null on a duplicate (case-insensitive) or empty label. */
+export function addPackLabel(label: string, userId: number): PackLabelRow | null {
+  const db = getDb();
+  const clean = label.trim().replace(/\s+/g, ' ');
+  if (!clean || clean.length > 24) return null;
+  const dupe = db.prepare('SELECT id FROM pack_labels WHERE lower(label) = lower(?)').get(clean);
+  if (dupe) return null;
+  const maxSort = (db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM pack_labels').get() as { m: number }).m;
+  try {
+    const r = db.prepare('INSERT INTO pack_labels (label, sort_order, created_by, created_at) VALUES (?, ?, ?, ?)')
+      .run(clean, maxSort + 10, userId, now());
+    return { id: r.lastInsertRowid as number, label: clean, sort_order: maxSort + 10 };
+  } catch { return null; }
+}
+
+/** Delete a unit — refused while any product is still counted in it. */
+export function deletePackLabel(id: number): { ok: boolean; in_use: number } {
+  const db = getDb();
+  const row = db.prepare('SELECT label FROM pack_labels WHERE id = ?').get(id) as { label: string } | undefined;
+  if (!row) return { ok: false, in_use: 0 };
+  const target = row.label.toLowerCase();
+  const used = (db.prepare('SELECT pack_label FROM product_flags WHERE pack_label IS NOT NULL').all() as { pack_label: string }[])
+    .filter((f) => (f.pack_label || '').toLowerCase() === target).length;
+  if (used > 0) return { ok: false, in_use: used };
+  db.prepare('DELETE FROM pack_labels WHERE id = ?').run(id);
   return { ok: true, in_use: 0 };
 }
