@@ -11,6 +11,10 @@ interface Props {
   onBack: () => void;
   onHome: () => void;
   onSaved: () => void;
+  /** Embedded (overlay) use: preselect + optionally lock the restaurant so the
+   *  caller's active company is used without the user re-picking it. */
+  initialCompanyId?: number;
+  lockCompany?: boolean;
 }
 
 interface CompanyOption { id: number; name: string; }
@@ -18,7 +22,7 @@ interface DeptOption { id: number; name: string; company_id: number | null; acti
 
 const NOUN = { department: 'department', role: 'role' } as const;
 
-export default function DeptRoleForm({ kind, recordId, onBack, onSaved }: Props) {
+export default function DeptRoleForm({ kind, recordId, onBack, onSaved, initialCompanyId, lockCompany }: Props) {
   const isNew = recordId === null;
   const noun = NOUN[kind];
 
@@ -29,7 +33,7 @@ export default function DeptRoleForm({ kind, recordId, onBack, onSaved }: Props)
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState('');
-  const [companyId, setCompanyId] = useState<number | null>(null);
+  const [companyId, setCompanyId] = useState<number | null>(initialCompanyId ?? null);
   const [departmentId, setDepartmentId] = useState<number | null>(null); // roles only
   const [active, setActive] = useState(true);
   const [memberCount, setMemberCount] = useState(0);
@@ -158,7 +162,7 @@ export default function DeptRoleForm({ kind, recordId, onBack, onSaved }: Props)
 
           <Field label="Restaurant">
             <select value={companyId ?? ''} onChange={e => handleCompanyChange(e.target.value ? parseInt(e.target.value) : null)}
-              className="form-inp appearance-none">
+              disabled={lockCompany} className="form-inp appearance-none disabled:opacity-60 disabled:bg-gray-100">
               <option value="">Choose a restaurant…</option>
               {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>

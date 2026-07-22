@@ -37,11 +37,16 @@ export async function GET(request: Request) {
       { order: 'name' }
     );
 
-    // Filter to departments with at least 1 member
-    const withMembers = departments.filter((d: any) => d.member_ids && d.member_ids.length > 0)
-      .map((d: any) => ({ id: d.id, name: d.name, member_count: d.member_ids.length }));
+    // Return ALL departments (incl. zero-member ones) so a department created
+    // inline from the list builder is immediately selectable — filtering by
+    // member count would hide a brand-new department and break quick-create.
+    const withCount = departments.map((d: any) => ({
+      id: d.id,
+      name: d.name,
+      member_count: Array.isArray(d.member_ids) ? d.member_ids.length : 0,
+    }));
 
-    return NextResponse.json({ departments: withMembers });
+    return NextResponse.json({ departments: withCount });
   } catch (err: any) {
     console.error('Departments error:', err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
