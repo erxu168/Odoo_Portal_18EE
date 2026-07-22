@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation';
 import CompanySelector from './CompanySelector';
 import AppDrawer from './AppDrawer';
 import { useTopBar } from './TopBarContext';
-import { hasNavRail } from './appChrome';
 
 const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/shift-handover', '/kiosk', '/confirm-shift'];
 // Wide routes render an edge-to-edge bar (content centered) instead of the
@@ -28,8 +27,6 @@ export default function AppTopBar() {
     return null;
   }
   const isWide = WIDE_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
-  // Offset the bar past the desktop rail ONLY when this route renders the rail.
-  const railPad = hasNavRail(pathname) ? 'lg:pl-[var(--rail-w)]' : '';
 
   const dateStr = now
     ? `${now.toLocaleDateString('en-US', { weekday: 'short' })}, ${now.getDate()}. ${now.toLocaleDateString('en-US', { month: 'short' })}. ${now.getFullYear()}`
@@ -60,15 +57,14 @@ export default function AppTopBar() {
   return (
     <>
       {isWide ? (
-        // Edge-to-edge blue bar, content centred to the module's width (and offset
-        // past the rail when this route shows one, e.g. /shifts).
-        <div className={`fixed top-0 left-0 right-0 z-50 bg-[#2563EB] border-b border-white/10 ${railPad}`}>
+        // Edge-to-edge blue bar, content centred to the module's width.
+        <div className="fixed top-0 left-0 right-0 z-50 bg-[#2563EB] border-b border-white/10">
           <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-1.5">{barContent}</div>
         </div>
       ) : (
-        // Below lg: today's centred phone-width box. At lg: edge-to-edge blue bar
-        // offset past the left rail, content re-centred to the desktop container.
-        <div className={`fixed top-0 left-0 right-0 z-50 max-w-lg mx-auto lg:max-w-none lg:mx-0 ${railPad} bg-[#2563EB] lg:border-b lg:border-white/10`}>
+        // Below lg: centred phone-width box. At lg: edge-to-edge blue bar with the
+        // content re-centred to the desktop container width.
+        <div className="fixed top-0 left-0 right-0 z-50 max-w-lg mx-auto lg:max-w-none lg:mx-0 bg-[#2563EB] lg:border-b lg:border-white/10">
           <div className="max-w-lg lg:max-w-5xl xl:max-w-6xl mx-auto bg-[#2563EB] flex items-center justify-between px-4 py-1.5 border-b border-white/10 lg:border-b-0">{barContent}</div>
         </div>
       )}
