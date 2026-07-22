@@ -153,9 +153,12 @@ export async function POST(request: Request) {
     duplicate_warning: isDuplicate,
     odoo_sync_failed: orderStatus === 'approved' && !poCreated,
     odoo_error: odooError,
-    // For the client to offer a "Send on WhatsApp" hand-off.
+    // For the client to offer a "Send on WhatsApp" hand-off — use the supplier's
+    // dedicated WhatsApp number when set (falls back to the phone).
     send_method: supplier.send_method,
-    supplier_phone: supplier.phone || '',
+    supplier_phone: (supplier.send_method === 'whatsapp' && supplier.whatsapp_number)
+      ? supplier.whatsapp_number
+      : (supplier.phone || ''),
     order_text: orderText,
     emailed,
     email_skipped_reason: emailSkippedReason,
