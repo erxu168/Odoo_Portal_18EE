@@ -1,12 +1,57 @@
 'use client';
 import React, { useEffect, useState, useCallback } from 'react';
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import AppHeader from '@/components/ui/AppHeader';
 import RecordLink from '@/components/ui/RecordLink';
 import LocationForm, { type KindRow, fallbackLabel } from './LocationForm';
 import ManageKinds from './ManageKinds';
 import { useCompany } from '@/lib/company-context';
-import { buildLocationTree, reorder } from '@/lib/location-tree';
+import { buildLocationTree } from '@/lib/location-tree';
 import type { CountLocation } from '@/types/inventory';
+
+/** Drag-handle grip (design rule: reorder by drag, not up/down arrows). */
+function GripIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+      <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+      <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
+    </svg>
+  );
+}
+
+/** A drag-reorderable row. Only the returned handle initiates the drag, so the
+ *  row's own buttons (Edit / Products / open) stay clickable. */
+function DragRow({ id, className, children }: {
+  id: number;
+  className?: string;
+  children: (handle: React.ReactNode) => React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 20 : undefined,
+    opacity: isDragging ? 0.85 : undefined,
+  };
+  const handle = (
+    <button
+      {...attributes}
+      {...listeners}
+      aria-label="Drag to reorder"
+      className="w-8 h-8 flex-shrink-0 rounded-lg bg-gray-100 active:bg-gray-200 flex items-center justify-center text-gray-400 cursor-grab touch-none"
+    >
+      <GripIcon />
+    </button>
+  );
+  return (
+    <div ref={setNodeRef} style={style} className={className}>
+      {children(handle)}
+    </div>
+  );
+}
 
 // Location types are per-company, manager-editable (location_kinds table).
 export default function LocationManager({ onBack }: { onBack: () => void }) {
@@ -76,18 +121,43 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
     if (!ok) return;
     setEditing(null); await load();
   }
-  async function move(node: CountLocation, dir: -1 | 1) {
-    const siblings = locations.filter((l) => l.parent_id === node.parent_id).sort((a, b) => a.sort_order - b.sort_order);
-    const orderedIds = reorder(siblings.map((s) => s.id), node.id, dir);
-    if (orderedIds.join() === siblings.map((s) => s.id).join()) return; // edge no-op
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  );
+
+  // Persist a new sibling order: optimistic local update, then write each sort_order.
+  async function persistOrder(orderedIds: number[]) {
+    setLocations((prev) => prev.map((l) => {
+      const i = orderedIds.indexOf(l.id);
+      return i === -1 ? l : { ...l, sort_order: (i + 1) * 10 };
+    }));
     for (let i = 0; i < orderedIds.length; i++) {
       const ok = await mutate('/api/inventory/count-locations', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: orderedIds[i], sort_order: (i + 1) * 10 }),
       });
-      if (!ok) break;
+      if (!ok) { await load(); return; } // revert to server truth on failure
     }
-    await load();
+  }
+
+  // Drag-to-reorder within a sibling group (areas among areas; shelves within their area).
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const activeId = Number(active.id);
+    const overId = Number(over.id);
+    const activeNode = locations.find((l) => l.id === activeId);
+    const overNode = locations.find((l) => l.id === overId);
+    if (!activeNode || !overNode || activeNode.parent_id !== overNode.parent_id) return;
+    const siblingIds = locations
+      .filter((l) => l.parent_id === activeNode.parent_id)
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((s) => s.id);
+    const from = siblingIds.indexOf(activeId);
+    const to = siblingIds.indexOf(overId);
+    if (from === -1 || to === -1) return;
+    persistOrder(arrayMove(siblingIds, from, to));
   }
 
   if (loading) {
@@ -114,41 +184,55 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
             No locations yet. Add your first area (for example {'“'}Walk-in Fridge{'”'}).
           </div>
         )}
-        {tree.map((area) => (
-          <div key={area.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-            <div className="flex items-center gap-3 p-3">
-              <div className="w-11 h-11 rounded-xl bg-cover bg-center bg-gray-100 flex-shrink-0"
-                   style={area.photo ? { backgroundImage: `url(${area.photo})` } : undefined} />
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-gray-900 truncate">{area.name}</div>
-                <div className="text-xs text-gray-500">{kindLabel(area.kind)}</div>
-              </div>
-              <button onClick={() => move(area, -1)} aria-label="Move up" className="w-8 h-8 rounded-lg bg-gray-100 active:bg-gray-200">↑</button>
-              <button onClick={() => move(area, 1)} aria-label="Move down" className="w-8 h-8 rounded-lg bg-gray-100 active:bg-gray-200">↓</button>
-              <button onClick={() => setEditing(area)} className="text-sm font-semibold text-blue-600 px-2">Edit</button>
-              <RecordLink type="location" id={area.id} label={area.name} />
-            </div>
-            <div className="border-t border-gray-100">
-              {area.children.map((shelf) => (
-                <div key={shelf.id} className="flex items-center gap-2 px-3 py-2.5 pl-6 border-b border-gray-50">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-800 text-sm truncate">{shelf.name}</div>
-                    <div className="text-[11px] text-gray-400">{kindLabel(shelf.kind)}</div>
-                  </div>
-                  <button onClick={() => move(shelf, -1)} aria-label="Move up" className="w-7 h-7 rounded-lg bg-gray-100 text-sm">↑</button>
-                  <button onClick={() => move(shelf, 1)} aria-label="Move down" className="w-7 h-7 rounded-lg bg-gray-100 text-sm">↓</button>
-                  <button onClick={() => setAssignFor(shelf)} className="text-xs font-semibold text-green-700 px-1">Products</button>
-                  <button onClick={() => setEditing(shelf)} className="text-xs font-semibold text-blue-600 px-1">Edit</button>
-                  <RecordLink type="location" id={shelf.id} label={shelf.name} />
-                </div>
-              ))}
-              <button onClick={() => setEditing({ parent_id: area.id, kind: kinds.find((k) => k.kind === 'zone')?.kind || kinds[0]?.kind || 'zone' })}
-                      className="w-full text-left px-6 py-2.5 text-sm font-semibold text-green-700 active:bg-gray-50">
-                + Add a shelf / spot
-              </button>
-            </div>
-          </div>
-        ))}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={tree.map((a) => a.id)} strategy={verticalListSortingStrategy}>
+            {tree.map((area) => (
+              <DragRow key={area.id} id={area.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                {(handle) => (
+                  <>
+                    <div className="flex items-center gap-3 p-3">
+                      <div className="w-11 h-11 rounded-xl bg-cover bg-center bg-gray-100 flex-shrink-0"
+                           style={area.photo ? { backgroundImage: `url(${area.photo})` } : undefined} />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-gray-900 truncate">{area.name}</div>
+                        <div className="text-xs text-gray-500">{kindLabel(area.kind)}</div>
+                      </div>
+                      {handle}
+                      <button onClick={() => setEditing(area)} className="text-sm font-semibold text-blue-600 px-2">Edit</button>
+                      <RecordLink type="location" id={area.id} label={area.name} />
+                    </div>
+                    <div className="border-t border-gray-100">
+                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                      <SortableContext items={area.children.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+                        {area.children.map((shelf) => (
+                          <DragRow key={shelf.id} id={shelf.id} className="flex items-center gap-2 px-3 py-2.5 pl-6 border-b border-gray-50 bg-white">
+                            {(shelfHandle) => (
+                              <>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-semibold text-gray-800 text-sm truncate">{shelf.name}</div>
+                                  <div className="text-[11px] text-gray-400">{kindLabel(shelf.kind)}</div>
+                                </div>
+                                {shelfHandle}
+                                <button onClick={() => setAssignFor(shelf)} className="text-xs font-semibold text-green-700 px-1">Products</button>
+                                <button onClick={() => setEditing(shelf)} className="text-xs font-semibold text-blue-600 px-1">Edit</button>
+                                <RecordLink type="location" id={shelf.id} label={shelf.name} />
+                              </>
+                            )}
+                          </DragRow>
+                        ))}
+                      </SortableContext>
+                      </DndContext>
+                      <button onClick={() => setEditing({ parent_id: area.id, kind: kinds.find((k) => k.kind === 'zone')?.kind || kinds[0]?.kind || 'zone' })}
+                              className="w-full text-left px-6 py-2.5 text-sm font-semibold text-green-700 active:bg-gray-50">
+                        + Add a shelf / spot
+                      </button>
+                    </div>
+                  </>
+                )}
+              </DragRow>
+            ))}
+          </SortableContext>
+        </DndContext>
         <button onClick={() => setEditing({ parent_id: null, kind: kinds.find((k) => k.kind === 'area')?.kind || kinds[0]?.kind || 'area' })}
                 className="w-full py-4 rounded-2xl bg-green-600 text-white font-bold shadow-lg shadow-green-600/30 active:bg-green-700">
           + Add an area
