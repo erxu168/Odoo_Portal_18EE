@@ -273,8 +273,9 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               <select value={packLabel || (measure ? 'piece' : 'crate')} disabled={readOnly}
                 onChange={(e) => { setPackLabel(e.target.value); savePack(packSize, e.target.value, looseLabel); }}
                 className="h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] font-semibold bg-white disabled:opacity-60">
-                {/* Keep the product's current unit selectable even if it was removed from the list */}
-                {Array.from(new Set([...(packLabel ? [packLabel] : []), ...packUnits])).map((l) => <option key={l} value={l}>{l}</option>)}
+                {/* Keep the EFFECTIVE current unit selectable even if it was removed from the
+                    list — covers the implicit default (piece/crate) when pack_label is null. */}
+                {Array.from(new Set([packLabel || (measure ? 'piece' : 'crate'), ...packUnits])).map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
               {!readOnly && (
                 <button onClick={() => setManageUnits(true)} className="text-[11px] font-bold text-blue-700 active:opacity-70" aria-label="Edit the count-by units">Edit units</button>

@@ -15,9 +15,11 @@ import { RECORD_EDIT_CAP } from '@/lib/record-links';
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function daysLabel(raw: unknown): string {
-  let arr: number[] = [];
-  try { arr = Array.isArray(raw) ? raw as number[] : JSON.parse((raw as string) || '[]'); } catch { arr = []; }
-  return arr.length ? arr.map((d) => WD[d] ?? d).join(', ') : '—';
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') { try { parsed = JSON.parse(raw || '[]'); } catch { parsed = []; } }
+  // Guard: JSON.parse('"mon"') yields a STRING (has .length, but .map throws).
+  const days = Array.isArray(parsed) ? (parsed as number[]) : [];
+  return days.length ? days.map((d) => WD[d] ?? d).join(', ') : '—';
 }
 
 export default function SupplierRecordPage({ params }: { params: { id: string } }) {
@@ -67,18 +69,25 @@ export default function SupplierRecordPage({ params }: { params: { id: string } 
 
   async function save() {
     if (!sup || saving) return;
+    // Validate BEFORE the PATCH so we never show "Saved" for a value the backend
+    // silently drops (lead-time coercer caps at 365; a malformed decimal → null).
+    const leadVal = lead.trim() === '' ? 1 : Number(lead);
+    const minVal = minOrder.trim() === '' ? 0 : Number(minOrder);
+    if (!Number.isInteger(leadVal) || leadVal < 0 || leadVal > 365) {
+      setMsg({ kind: 'err', text: 'Lead time must be a whole number of days (0–365)' }); return;
+    }
+    if (!Number.isFinite(minVal) || minVal < 0) {
+      setMsg({ kind: 'err', text: 'Min order must be a valid amount' }); return;
+    }
     setSaving(true); setMsg(null);
     try {
       const res = await fetch('/api/purchase/suppliers', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: sup.id, email: email.trim(), phone: phone.trim(),
-          lead_time_days: lead.trim() === '' ? 1 : Number(lead),
-          min_order_value: minOrder.trim() === '' ? 0 : Number(minOrder),
-        }),
+        body: JSON.stringify({ id: sup.id, email: email.trim(), phone: phone.trim(), lead_time_days: leadVal, min_order_value: minVal }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); setMsg({ kind: 'err', text: d.error || 'Could not save' }); return; }
-      setSup({ ...sup, email: email.trim(), phone: phone.trim(), lead_time_days: Number(lead) || 1, min_order_value: Number(minOrder) || 0 });
+      // Reflect exactly the values sent (leadVal 0 stays 0, not coerced to 1).
+      setSup({ ...sup, email: email.trim(), phone: phone.trim(), lead_time_days: leadVal, min_order_value: minVal });
       setEditing(false); setMsg({ kind: 'ok', text: 'Saved' });
       setTimeout(() => setMsg(null), 1800);
     } catch { setMsg({ kind: 'err', text: 'Network error — not saved' }); }

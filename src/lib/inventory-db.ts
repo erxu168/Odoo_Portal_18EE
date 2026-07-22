@@ -2061,27 +2061,33 @@ export interface PackLabelRow { id: number; label: string; sort_order: number }
 /** List the count-by units, seeding the defaults on first use. */
 export function listPackLabels(): PackLabelRow[] {
   const db = getDb();
-  const n = (db.prepare('SELECT COUNT(*) AS n FROM pack_labels').get() as { n: number }).n;
-  if (n === 0) {
-    const ins = db.prepare('INSERT OR IGNORE INTO pack_labels (label, sort_order, created_at) VALUES (?, ?, ?)');
-    DEFAULT_PACK_LABELS.forEach((l, i) => ins.run(l, (i + 1) * 10, now()));
-  }
+  // Seed inside ONE transaction so a concurrent worker can't observe a partial
+  // vocabulary mid-seed; INSERT OR IGNORE keeps a double-seed idempotent.
+  db.transaction(() => {
+    const n = (db.prepare('SELECT COUNT(*) AS n FROM pack_labels').get() as { n: number }).n;
+    if (n === 0) {
+      const ins = db.prepare('INSERT OR IGNORE INTO pack_labels (label, sort_order, created_at) VALUES (?, ?, ?)');
+      DEFAULT_PACK_LABELS.forEach((l, i) => ins.run(l, (i + 1) * 10, now()));
+    }
+  })();
   return db.prepare('SELECT id, label, sort_order FROM pack_labels ORDER BY sort_order, id').all() as PackLabelRow[];
 }
 
-/** Add a unit; returns null on a duplicate (case-insensitive) or empty label. */
+/** Add a unit; returns null on a duplicate (Unicode case-insensitive) or bad label. */
 export function addPackLabel(label: string, userId: number): PackLabelRow | null {
   const db = getDb();
   const clean = label.trim().replace(/\s+/g, ' ');
   if (!clean || clean.length > 24) return null;
-  const dupe = db.prepare('SELECT id FROM pack_labels WHERE lower(label) = lower(?)').get(clean);
-  if (dupe) return null;
-  const maxSort = (db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM pack_labels').get() as { m: number }).m;
-  try {
+  // Dedup check + insert in ONE transaction, compared in JS (SQLite lower() only
+  // folds ASCII — "Kühl"/"KÜHL" would otherwise both slip in).
+  return db.transaction(() => {
+    const existing = db.prepare('SELECT label FROM pack_labels').all() as { label: string }[];
+    if (existing.some((e) => e.label.toLowerCase() === clean.toLowerCase())) return null;
+    const maxSort = (db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM pack_labels').get() as { m: number }).m;
     const r = db.prepare('INSERT INTO pack_labels (label, sort_order, created_by, created_at) VALUES (?, ?, ?, ?)')
       .run(clean, maxSort + 10, userId, now());
     return { id: r.lastInsertRowid as number, label: clean, sort_order: maxSort + 10 };
-  } catch { return null; }
+  })();
 }
 
 /** Delete a unit — refused while any product is still counted in it. */

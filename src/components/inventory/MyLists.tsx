@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import { berlinToday } from '@/lib/berlin-date';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
@@ -40,7 +40,13 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
   // reset the (now-stale) location filter + cached list when it changes.
   useEffect(() => { setLocations([]); setLocationFilter('all'); }, [companyId]);
 
+  // Request-generation guard: a company/filter change can leave an in-flight
+  // request whose late response would otherwise clobber the new company's data.
+  // Only the newest request may commit its results.
+  const reqRef = useRef(0);
+
   const fetchData = useCallback(async () => {
+    const myReq = ++reqRef.current;
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -55,6 +61,7 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
         fetch(`/api/inventory/sessions?${params}`),
         locations.length === 0 && companyId ? fetch(`/api/inventory/locations?company_id=${companyId}`) : null,
       ]);
+      if (myReq !== reqRef.current) return;   // a newer request superseded this one
 
       if (!sessRes.ok) {
         // Never fall through to the "All done for today!" empty state on an error —
@@ -64,18 +71,21 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
       } else {
         setLoadError(false);
         const sessData = await sessRes.json();
+        if (myReq !== reqRef.current) return;
         setSessions(sessData.sessions || []);
       }
 
       if (locRes) {
         const locData = await locRes.json();
+        if (myReq !== reqRef.current) return;
         setLocations(locData.locations || []);
       }
     } catch (err) {
+      if (myReq !== reqRef.current) return;
       console.error('Failed to fetch sessions:', err);
       setLoadError(true);
     } finally {
-      setLoading(false);
+      if (myReq === reqRef.current) setLoading(false);
     }
   }, [statusFilter, locationFilter, companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
