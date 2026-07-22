@@ -16,6 +16,7 @@ import OrderHistoryScreen from '@/components/purchase/OrderHistoryScreen';
 import SearchInput from '@/components/purchase/SearchInput';
 import OrderGuideScreen from '@/components/purchase/OrderGuideScreen';
 import ManageGuideScreen from '@/components/purchase/ManageGuideScreen';
+import { type SupplierFormValues } from '@/components/purchase/SupplierForm';
 import ReceiveListScreen from '@/components/purchase/ReceiveListScreen';
 import ReceiveCheckScreen from '@/components/purchase/ReceiveCheckScreen';
 import ReceiveIssueScreen from '@/components/purchase/ReceiveIssueScreen';
@@ -107,19 +108,10 @@ export default function PurchasePage() {
   const [mgLoadingMore, setMgLoadingMore] = useState(false);
   const mgDebounce = useRef<NodeJS.Timeout | null>(null);
 
-  // Supplier config editing state (Manage screen)
-  const [mgOrderDays, setMgOrderDays] = useState<string[]>([]);
-  const [mgDeliveryDays, setMgDeliveryDays] = useState<string[]>([]);
-  const [mgLeadTime, setMgLeadTime] = useState(1);
+  // Supplier config on the Manage screen — edited by the ONE shared SupplierForm.
   const [mgConfigSaving, setMgConfigSaving] = useState(false);
   const [mgConfigOpen, setMgConfigOpen] = useState(false);
-  const [mgConfigSaved, setMgConfigSaved] = useState(false);
-  const [mgName, setMgName] = useState('');
-  const [mgEmail, setMgEmail] = useState('');
-  const [mgPhone, setMgPhone] = useState('');
-  const [mgSendMethod, setMgSendMethod] = useState('email');
-  const mgCfgRef = useRef({ order: [] as string[], delivery: [] as string[], lead: 1, name: '', email: '', phone: '', send: 'email' });
-  const mgSaveTimer = useRef<NodeJS.Timeout | null>(null);
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
 
   const [deliveryDate, setDeliveryDate] = useState('');
   const [orderNote, setOrderNote] = useState('');
@@ -288,19 +280,34 @@ export default function PurchasePage() {
 
   async function openManageGuide(supplier: Supplier) {
     setGuideSupplierId(supplier.id); setGuideSupplierName(supplier.name); setMgSearch(''); setMgCategory('All'); setMgResults([]); setScreen('manage-guide'); setMgConfigOpen(false);
-    // Populate supplier config
-    let od: string[] = []; try { od = JSON.parse(supplier.order_days || '[]'); } catch { od = []; }
-    let dd: string[] = []; try { dd = JSON.parse(supplier.delivery_days || '[]'); } catch { dd = []; }
-    const lt = supplier.lead_time_days || 1;
-    const sName = supplier.name || ''; const sEmail = supplier.email || '';
-    const sPhone = (supplier as { phone?: string }).phone || ''; const sSend = supplier.send_method || 'email';
-    setMgOrderDays(od); setMgDeliveryDays(dd); setMgLeadTime(lt);
-    setMgName(sName); setMgEmail(sEmail); setMgPhone(sPhone); setMgSendMethod(sSend);
-    mgCfgRef.current = { order: od, delivery: dd, lead: lt, name: sName, email: sEmail, phone: sPhone, send: sSend };
-    setMgConfigSaved(false);
+    setSelectedSupplier(supplier);
     try { const r = await fetch(`/api/purchase/guides?supplier_id=${supplier.id}&location_id=${locationId}`); const d = await r.json(); setGuideItems(d.guide?.items || []); } catch (e) { void e; setGuideItems([]); }
     try { const r = await fetch('/api/purchase/products?q=&limit=1'); const d = await r.json(); setMgCategories((d.categories || []).map((c: any) => c.name)); setMgCatOptions((d.categories || []).map((c: any) => ({ id: c.id, name: c.name }))); setMgUnits(d.units || []); } catch (e) { void e; }
     setMgOffset(0); setMgHasMore(false); fetchProducts('', 'All', 0, false);
+  }
+
+  // The ONE supplier form (shared with the canonical page) saves the full field set.
+  async function saveSupplier(v: SupplierFormValues) {
+    if (!guideSupplierId) return;
+    setMgConfigSaving(true);
+    try {
+      await fetch('/api/purchase/suppliers', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: guideSupplierId, email: v.email, phone: v.phone, send_method: v.send_method,
+          whatsapp_number: v.whatsapp_number, order_days: JSON.stringify(v.order_days),
+          delivery_days: JSON.stringify(v.delivery_days), lead_time_days: v.lead_time_days,
+          min_order_value: v.min_order_value, approval_required: v.approval_required,
+          ...(v.name.trim() ? { name: v.name.trim() } : {}),
+        }),
+      });
+      if (v.name.trim()) setGuideSupplierName(v.name.trim());
+      setSelectedSupplier((prev) => prev ? ({ ...prev, ...v, name: v.name.trim() || prev.name,
+        order_days: JSON.stringify(v.order_days), delivery_days: JSON.stringify(v.delivery_days) }) : prev);
+      setMgConfigOpen(false);
+      fetchSuppliers();
+    } catch (e) { void e; }
+    finally { setMgConfigSaving(false); }
   }
 
   // Paged product fetch for the guide screen. append=false replaces the list
@@ -618,38 +625,6 @@ export default function PurchasePage() {
     finally { setAddSaving(false); }
   }
 
-  // Save-as-you-go: persist delivery settings on every change (debounced), so
-  // there is no separate "Save" button. mgCfgRef holds the latest values to
-  // avoid stale-closure reads inside the debounced timer.
-  function persistSupplierConfig(next: Partial<{ order: string[]; delivery: string[]; lead: number; name: string; email: string; phone: string; send: string }>) {
-    mgCfgRef.current = { ...mgCfgRef.current, ...next };
-    if (mgSaveTimer.current) clearTimeout(mgSaveTimer.current);
-    setMgConfigSaving(true); setMgConfigSaved(false);
-    mgSaveTimer.current = setTimeout(async () => {
-      const cfg = mgCfgRef.current;
-      try {
-        await fetch('/api/purchase/suppliers', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: guideSupplierId,
-            order_days: JSON.stringify(cfg.order),
-            delivery_days: JSON.stringify(cfg.delivery),
-            lead_time_days: cfg.lead,
-            email: cfg.email,
-            phone: cfg.phone,
-            send_method: cfg.send,
-            // Only persist name when non-empty so a mid-edit blank never wipes it.
-            ...(cfg.name.trim() ? { name: cfg.name.trim() } : {}),
-          }),
-        });
-        fetchSuppliers();
-        setMgConfigSaved(true);
-      } catch (e) { void e; }
-      finally { setMgConfigSaving(false); }
-    }, 600);
-  }
-
   async function runSeed() { setSeedMsg('Seeding...'); try { const r = await fetch('/api/purchase/seed', { method: 'POST' }); const d = await r.json(); setSeedMsg(d.message || 'Done'); fetchSuppliers(); } catch (e: any) { setSeedMsg(`Error: ${e.message}`); } }
 
   async function runAutoImport() {
@@ -786,23 +761,10 @@ export default function PurchasePage() {
         <ManageGuideScreen
           items={guideItems}
           configOpen={mgConfigOpen}
-          orderDays={mgOrderDays}
-          deliveryDays={mgDeliveryDays}
-          leadTime={mgLeadTime}
           configSaving={mgConfigSaving}
-          configSaved={mgConfigSaved}
+          supplier={selectedSupplier}
           onToggleConfig={() => setMgConfigOpen(!mgConfigOpen)}
-          onOrderDaysChange={(days) => { setMgOrderDays(days); persistSupplierConfig({ order: days }); }}
-          onDeliveryDaysChange={(days) => { setMgDeliveryDays(days); persistSupplierConfig({ delivery: days }); }}
-          onLeadTimeChange={(n) => { setMgLeadTime(n); persistSupplierConfig({ lead: n }); }}
-          name={mgName}
-          email={mgEmail}
-          phone={mgPhone}
-          sendMethod={mgSendMethod}
-          onNameChange={(v) => { setMgName(v); if (v.trim()) setGuideSupplierName(v); persistSupplierConfig({ name: v }); }}
-          onEmailChange={(v) => { setMgEmail(v); persistSupplierConfig({ email: v }); }}
-          onPhoneChange={(v) => { setMgPhone(v); persistSupplierConfig({ phone: v }); }}
-          onSendMethodChange={(v) => { setMgSendMethod(v); persistSupplierConfig({ send: v }); }}
+          onSaveSupplier={saveSupplier}
           search={mgSearch}
           category={mgCategory}
           searching={mgSearching}

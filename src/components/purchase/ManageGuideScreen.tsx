@@ -3,6 +3,8 @@
 import React from 'react';
 import SortableGuideItems from './SortableGuideItems';
 
+import SupplierForm, { type SupplierFormValues } from './SupplierForm';
+
 interface GuideItem {
   id: number;
   product_id: number;
@@ -25,27 +27,12 @@ interface OdooProduct {
 interface ManageGuideScreenProps {
   items: GuideItem[];
 
-  // Delivery Settings (collapsible)
+  // Delivery settings (collapsible) — edited by the ONE shared SupplierForm.
   configOpen: boolean;
-  orderDays: string[];
-  deliveryDays: string[];
-  leadTime: number;
   configSaving: boolean;
-  configSaved: boolean;
+  supplier: { name: string; email: string; phone?: string; send_method: string; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number } | null;
   onToggleConfig: () => void;
-  onOrderDaysChange: (days: string[]) => void;
-  onDeliveryDaysChange: (days: string[]) => void;
-  onLeadTimeChange: (n: number) => void;
-
-  // Supplier details (edit + save-as-you-go)
-  name: string;
-  email: string;
-  phone: string;
-  sendMethod: string;
-  onNameChange: (v: string) => void;
-  onEmailChange: (v: string) => void;
-  onPhoneChange: (v: string) => void;
-  onSendMethodChange: (v: string) => void;
+  onSaveSupplier: (v: SupplierFormValues) => void;
 
   // Product search (Odoo)
   search: string;
@@ -72,28 +59,14 @@ interface ManageGuideScreenProps {
   onLoadMore: () => void;
 }
 
-const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
 export default function ManageGuideScreen({
   items,
   configOpen,
-  orderDays,
-  deliveryDays,
-  leadTime,
   configSaving,
-  configSaved,
+  supplier,
   onToggleConfig,
-  onOrderDaysChange,
-  onDeliveryDaysChange,
-  onLeadTimeChange,
-  name,
-  email,
-  phone,
-  sendMethod,
-  onNameChange,
-  onEmailChange,
-  onPhoneChange,
-  onSendMethodChange,
+  onSaveSupplier,
   search,
   category,
   searching,
@@ -111,6 +84,10 @@ export default function ManageGuideScreen({
   loadingMore,
   onLoadMore,
 }: ManageGuideScreenProps) {
+  const parseDays = (raw?: string) => { try { const a = JSON.parse(raw || '[]'); return Array.isArray(a) ? a as string[] : []; } catch { return []; } };
+  const orderDays = parseDays(supplier?.order_days);
+  const deliveryDays = parseDays(supplier?.delivery_days);
+  const leadTime = supplier?.lead_time_days ?? 1;
   const guideProductIds = new Set(items.map((i) => i.product_id));
   const searchResults = results.filter((p) => !guideProductIds.has(p.id));
   const allFilterCats = ['All', ...categories.slice(0, 10)];
@@ -153,108 +130,16 @@ export default function ManageGuideScreen({
         </svg>
       </button>
 
-      {configOpen && (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] px-3.5 py-3 mb-3 -mt-1">
-          {/* Supplier details */}
-          <div className="mb-3">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Supplier name</label>
-            <input
-              value={name}
-              onChange={(e) => onNameChange(e.target.value)}
-              placeholder="Supplier name"
-              className="w-full bg-white border border-gray-200 rounded-lg px-3 h-10 text-[var(--fs-sm)] text-gray-900 outline-none focus:border-[#F5800A] mb-2.5"
-            />
-            <div className="flex gap-2">
-              <div className="flex-1 min-w-0">
-                <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => onEmailChange(e.target.value)}
-                  placeholder="orders@supplier.com"
-                  className="w-full bg-white border border-gray-200 rounded-lg px-3 h-10 text-[var(--fs-sm)] text-gray-900 outline-none focus:border-[#F5800A]"
-                />
-              </div>
-              <div className="flex-1 min-w-0">
-                <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Phone</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => onPhoneChange(e.target.value)}
-                  placeholder="+49 ..."
-                  className="w-full bg-white border border-gray-200 rounded-lg px-3 h-10 text-[var(--fs-sm)] text-gray-900 outline-none focus:border-[#F5800A]"
-                />
-              </div>
-            </div>
-          </div>
-          <div className="mb-3">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">
-              Order method <span className="normal-case font-normal">(how orders reach this supplier)</span>
-            </label>
-            <div className="flex gap-1.5">
-              {([['email', 'Email'], ['whatsapp', 'WhatsApp'], ['manual', 'Manual']] as const).map(([val, label]) => (
-                <button
-                  key={val}
-                  onClick={() => onSendMethodChange(val)}
-                  className={`flex-1 px-3 py-2 rounded-lg text-[var(--fs-xs)] font-semibold ${sendMethod === val ? 'bg-[#F5800A] text-white' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="mb-3">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">
-              Order days <span className="normal-case font-normal">(when staff must place orders)</span>
-            </label>
-            <div className="flex gap-1.5 flex-wrap">
-              {WEEKDAYS.map((d) => {
-                const active = orderDays.includes(d);
-                return (
-                  <button
-                    key={d}
-                    onClick={() => onOrderDaysChange(active ? orderDays.filter((x) => x !== d) : [...orderDays, d])}
-                    className={`px-3.5 py-2 rounded-lg text-[var(--fs-xs)] font-semibold ${active ? 'bg-[#F5800A] text-white' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
-                  >
-                    {d.charAt(0).toUpperCase() + d.slice(1)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="mb-3">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">
-              Delivery days <span className="normal-case font-normal">(when this supplier delivers)</span>
-            </label>
-            <div className="flex gap-1.5 flex-wrap">
-              {WEEKDAYS.map((d) => {
-                const active = deliveryDays.includes(d);
-                return (
-                  <button
-                    key={d}
-                    onClick={() => onDeliveryDaysChange(active ? deliveryDays.filter((x) => x !== d) : [...deliveryDays, d])}
-                    className={`px-3.5 py-2 rounded-lg text-[var(--fs-xs)] font-semibold ${active ? 'bg-[#F5800A] text-white' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
-                  >
-                    {d.charAt(0).toUpperCase() + d.slice(1)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="mb-3">
-            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">
-              Lead time <span className="normal-case font-normal">(min. days advance notice)</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <button onClick={() => onLeadTimeChange(Math.max(0, leadTime - 1))} className="w-10 h-10 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[18px] text-gray-600 active:bg-gray-100">-</button>
-              <span className="w-12 text-center text-[var(--fs-lg)] font-bold font-mono text-gray-900">{leadTime}</span>
-              <button onClick={() => onLeadTimeChange(leadTime + 1)} className="w-10 h-10 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-[18px] text-gray-600 active:bg-gray-100">+</button>
-              <span className="text-[var(--fs-xs)] text-gray-400 ml-1">{leadTime === 1 ? 'day' : 'days'}</span>
-            </div>
-          </div>
-          <div className={`text-[var(--fs-xs)] pt-1 ${configSaved && !configSaving ? 'text-green-600' : 'text-gray-400'}`}>
-            {configSaving ? 'Saving…' : configSaved ? '✓ Saved' : 'Changes save automatically'}
-          </div>
+      {configOpen && supplier && (
+        <div className="mb-3">
+          <SupplierForm
+            variant="inline"
+            mode="edit"
+            initial={supplier}
+            saving={configSaving}
+            onSave={onSaveSupplier}
+            onCancel={onToggleConfig}
+          />
         </div>
       )}
 
