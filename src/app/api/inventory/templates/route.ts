@@ -344,7 +344,10 @@ export async function DELETE(request: Request) {
   // A null-company legacy list is quarantined to an unrestricted admin (mirrors
   // how legacy sessions are scoped) — a manager can't claim or purge it.
   if (tmpl.company_id == null) {
-    if (!adminUnrestricted) return NextResponse.json({ error: 'List not found' }, { status: 404 });
+    // Orphan legacy list (no restaurant) — any ADMIN may clean it up / re-tag it
+    // (admins are cross-company by design); a company-scoped admin is still an
+    // admin. A plain manager cannot.
+    if (!isAdmin) return NextResponse.json({ error: 'List not found' }, { status: 404 });
   } else if (!adminUnrestricted && !allowed.includes(tmpl.company_id)) {
     return NextResponse.json({ error: 'That list belongs to another restaurant' }, { status: 403 });
   }
