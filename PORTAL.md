@@ -140,7 +140,7 @@ Single-page screen router; mobile-first; role-gated.
 | MO Ingredients | `MoIngredients.tsx` | ✅ Live — ingredients required by confirmed MOs |
 | Manage Lists (mgr/admin) | `ManageTemplates.tsx` + `TemplateForm.tsx` | ✅ Live — frequency/schedule/location/products/assignee |
 | Review (mgr/admin) | `ReviewSubmissions.tsx` | ✅ Live — approve/reject sessions + quick counts, photo viewer |
-| Product Settings (mgr/admin) | `ProductSettings.tsx` | ✅ Live — per-product `requires_photo` flag |
+| Products module (mgr/admin) | `/products`, `/products/[id]`, `ProductSettings.tsx`, `ProductDetail.tsx` | ✅ Live — own top-level module; catalog + canonical product page (drill-down target); name/unit/photo/packs/home-spots |
 | Helpers | `NumpadModal.tsx`, `PhotoCaptureStrip.tsx`, `PhotoLightbox.tsx`, `UnknownBarcodeSheet.tsx`, `OfflineBanner.tsx`, `ui.tsx` | ✅ Live |
 
 **Lifecycle:** Templates define what to count + frequency (daily / weekly with weekday list / monthly / ad-hoc). Sessions auto-generate for today from active templates on first load. Status flow: `pending → in_progress → submitted → approved | rejected`. Approval writes `stock.quant.inventory_quantity` back to Odoo and calls `action_apply_inventory` — session is NOT marked approved if Odoo sync fails.

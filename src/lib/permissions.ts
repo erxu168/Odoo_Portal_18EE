@@ -83,7 +83,7 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'inventory.draft.review',          module: 'inventory', label: 'Review draft products (approve / link / reject)', defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.template.manage',       module: 'inventory', label: 'Create & assign count lists',                     defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.consumption.view',      module: 'inventory', label: 'View consumption report',                        defaultRoles: ['manager', 'admin'] },
-  { key: 'inventory.productsettings.manage', module: 'inventory', label: 'Edit product settings (packs, photo rule)',      defaultRoles: ['manager', 'admin'] },
+  { key: 'inventory.productsettings.manage', module: 'products', label: 'Edit product settings (name, unit, packs, photo)', defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.location.manage',       module: 'inventory', label: 'Set up count locations (map, shelves, photos)',     defaultRoles: ['manager', 'admin'] },
   { key: 'inventory.product.create',        module: 'inventory', label: 'Create a product via scan',                      defaultRoles: ['staff', 'manager', 'admin'] },
   // Behavior-preserving keys for tiles that were hard-coded before (staff saw MO

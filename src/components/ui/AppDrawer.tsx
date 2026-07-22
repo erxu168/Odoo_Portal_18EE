@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { defaultModuleIds } from '@/lib/modules';
 
 interface AppDrawerProps {
   open: boolean;
@@ -56,9 +57,12 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
   const isManager = user?.role === 'manager' || user?.role === 'admin';
   const isAdmin = user?.role === 'admin';
   const isCandidate = user?.is_candidate === true;
-  // Per-user module access (admin-configurable). Before it loads, show nothing extra.
-  const modules = user?.modules;
-  const canSee = (id: string) => !modules || modules.includes(id);
+  // Per-user module access (admin-configurable). While it loads (or if the
+  // fetch fails) fall back to the ROLE DEFAULT — never "show everything", or a
+  // manager-only module (e.g. Products) would flash for staff. Matches the
+  // Home dashboard's tile-gating rule.
+  const effModules = user?.modules ?? (user?.role ? defaultModuleIds(user.role) : []);
+  const canSee = (id: string) => effModules.includes(id);
 
   return (
     <>

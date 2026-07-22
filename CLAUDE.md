@@ -212,7 +212,8 @@ Company: 5 / What a Jerk
 
 - **Manufacturing**: Live (MO list, MO detail, WO detail, BOM list, BOM detail, Create MO)
 - **Purchase**: 5 tabs, 11 screens, order guides, Odoo PO creation (receive flow pending rebuild)
-- **Inventory**: Live — 7 screens (dashboard, my-lists, quick-count, mo-ingredients, manage, review, product-settings), 13 API routes, SQLite for templates/sessions/counts/photos/drafts/flags, approve writes back to Odoo `stock.quant.inventory_quantity` + `action_apply_inventory`. Includes barcode scanning, scan-to-create draft products, per-line photo proof. Module exists end-to-end but is NOT yet in active production use (see feedback: manufacturing must not gate on stock).
+- **Inventory**: Live — screens (dashboard, my-lists, quick-count, mo-ingredients, manage, review, locations, goods-received, drinks), 13+ API routes, SQLite for templates/sessions/counts/photos/drafts/flags/placements, approve writes back to Odoo `stock.quant.inventory_quantity` + `action_apply_inventory`. Includes barcode scanning, scan-to-create draft products, per-line photo proof. Module exists end-to-end but is NOT yet in active production use (see feedback: manufacturing must not gate on stock).
+- **Products**: Live — its OWN top-level module (`/products`, manager-gated), split out of Inventory 2026-07-22. Product catalog list + canonical product page `/products/[id]` (the Universal Record Drill-Down target for products). Edit still gated by `inventory.productsettings.manage` (module id `products`). Old `/inventory/product/[id]` server-redirects here.
 - **HR/Onboarding**: 7-step DATEV wizard, DocumentCapture, FilePicker, profile photos
 - **Chef Guide**: Concurrent cook sessions, Kitchen Board, global timer alerts
 - **Issues & Requests**: Mock complete (17 screens), not yet coded
