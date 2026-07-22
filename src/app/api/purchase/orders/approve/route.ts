@@ -8,6 +8,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOrder, updateOrderStatus, getSupplier, countPendingApprovals } from '@/lib/purchase-db';
+import { canAccessPurchaseLocation } from '@/lib/purchase-access';
 import { getOdoo } from '@/lib/odoo';
 import { LOCATIONS } from '@/types/purchase';
 
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
 
   const order = getOrder(order_id);
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  if (!canAccessPurchaseLocation(user, (order as { location_id: number }).location_id)) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   if (order.status !== 'pending_approval') {
     return NextResponse.json({ error: 'Order is not pending approval' }, { status: 400 });
   }

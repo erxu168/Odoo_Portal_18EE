@@ -10,6 +10,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice, reorderGuideItems } from '@/lib/purchase-db';
+import { canAccessPurchaseLocation } from '@/lib/purchase-access';
 import { getDb } from '@/lib/db';
 
 export async function GET(request: Request) {
@@ -23,6 +24,7 @@ export async function GET(request: Request) {
   if (!supplierId || !locationId) {
     return NextResponse.json({ error: 'supplier_id and location_id required' }, { status: 400 });
   }
+  if (!canAccessPurchaseLocation(user, locationId)) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
 
   const guide = getGuideWithItems(supplierId, locationId);
   return NextResponse.json({ guide });

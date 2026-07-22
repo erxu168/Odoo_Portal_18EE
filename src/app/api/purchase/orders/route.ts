@@ -8,6 +8,7 @@ import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { createOrder, listOrders, getOrder, updateOrderStatus, clearCart, getCartWithItems, getSupplier, countPendingApprovals, checkDuplicateOrder } from '@/lib/purchase-db';
+import { canAccessPurchaseLocation } from '@/lib/purchase-access';
 import { getOdoo } from '@/lib/odoo';
 import { isEmailConfigured, sendOrderEmail } from '@/lib/email';
 import { buildOrderText, buildOrderHtml } from '@/lib/purchase-order-message';
@@ -27,10 +28,12 @@ export async function GET(request: Request) {
   if (orderId) {
     const order = getOrder(parseInt(orderId));
     if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    if (!canAccessPurchaseLocation(user, (order as { location_id: number }).location_id)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ order });
   }
 
   if (!locationId) return NextResponse.json({ error: 'location_id required' }, { status: 400 });
+  if (!canAccessPurchaseLocation(user, locationId)) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
 
   const orders = listOrders(locationId, { status, limit });
   const pendingCount = countPendingApprovals(locationId);
@@ -52,6 +55,7 @@ export async function POST(request: Request) {
   if (!cart || !cart.items || cart.items.length === 0) {
     return NextResponse.json({ error: 'Cart is empty' }, { status: 400 });
   }
+  if (!canAccessPurchaseLocation(user, cart.location_id)) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
 
   const supplier = getSupplier(cart.supplier_id) as any;
   if (!supplier) return NextResponse.json({ error: 'Supplier not found' }, { status: 404 });

@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getOrder, cancelOrder } from '@/lib/purchase-db';
+import { canAccessPurchaseLocation } from '@/lib/purchase-access';
 
 export async function POST(request: Request) {
   const user = requireAuth();
@@ -16,6 +17,10 @@ export async function POST(request: Request) {
 
   const order = getOrder(order_id);
   if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  // Company-scoped: can't cancel another restaurant's order (404, don't leak it).
+  if (!canAccessPurchaseLocation(user, (order as { location_id: number }).location_id)) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
 
   // Can only cancel draft, pending_approval, or approved (not yet sent)
   if (!['draft', 'pending_approval', 'approved'].includes(order.status)) {
