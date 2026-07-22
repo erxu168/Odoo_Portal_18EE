@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Spinner, ProductThumb } from './ui';
 import { buildLocationTree } from '@/lib/location-tree';
+import LocationForm, { type KindRow } from './LocationForm';
 
 /**
  * "Where does it live?" — edit ONE product's home spots (multi-select).
@@ -47,6 +48,8 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);   // "+ New location" form open
+  const [kinds, setKinds] = useState<KindRow[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -62,6 +65,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         const d = await locRes.json();
         const locs: SpotRow[] = d.locations || [];
         setSpots(locs);
+        fetch(`/api/inventory/location-kinds?company_id=${companyId}`).then((r) => r.ok ? r.json() : { kinds: [] }).then((k) => setKinds(k.kinds || [])).catch(() => {});
         const cur = await curRes.json();
         const companySpots = new Set(locs.map((l) => l.id));
         setChosen(new Set<number>((cur.location_ids || []).filter((id: number) => companySpots.has(id))));
@@ -112,6 +116,25 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
     } finally {
       setSaving(false);
     }
+  }
+
+  // Quick-create a location without leaving the picker (no navigation dead-end):
+  // the SAME shared LocationForm the Locations manager uses. New locations are
+  // top-level areas (reorganise later in the manager); auto-ticked on create.
+  async function createLocation(loc: { name?: string; kind?: string; description?: string | null; photo?: string | null }) {
+    try {
+      const res = await fetch('/api/inventory/count-locations', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_id: companyId, parent_id: null, name: loc.name, kind: loc.kind, description: loc.description ?? null, photo: loc.photo ?? null }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || 'Could not create the location'); return; }
+      const { id: newId } = await res.json();
+      // Refresh the spot list and tick the new one.
+      const r = await fetch(`/api/inventory/count-locations?company_id=${companyId}`);
+      if (r.ok) setSpots((await r.json()).locations || []);
+      if (newId) setChosen((prev) => new Set(prev).add(newId));
+      setCreating(false);
+    } catch { setError('Network error — location not created'); }
   }
 
   function SpotToggle({ s, indent }: { s: SpotRow; indent: boolean }) {
@@ -169,6 +192,12 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
               </div>
             </div>
           ))}
+          {!loading && (
+            <button onClick={() => setCreating(true)}
+              className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50">
+              + New location
+            </button>
+          )}
         </div>
 
         <div className="px-4 pb-6 pt-2 border-t border-gray-100">
@@ -182,6 +211,16 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
           </button>
         </div>
       </div>
+
+      {creating && (
+        <LocationForm
+          initial={{}}
+          kinds={kinds}
+          baseZ={baseZ + 10}
+          onCancel={() => setCreating(false)}
+          onSave={createLocation}
+        />
+      )}
     </div>
   );
 }

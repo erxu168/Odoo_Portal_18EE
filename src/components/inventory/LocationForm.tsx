@@ -33,7 +33,7 @@ export function downscale(file: File): Promise<string> {
   });
 }
 
-export default function LocationForm({ initial, kinds, onManageKinds, onCancel, onSave, onDelete, saving, error }: {
+export default function LocationForm({ initial, kinds, onManageKinds, onCancel, onSave, onDelete, saving, error, baseZ = 100 }: {
   initial: Partial<CountLocation>;
   kinds: KindRow[];
   /** Optional "Edit types" shortcut (only where kind management is reachable). */
@@ -43,6 +43,7 @@ export default function LocationForm({ initial, kinds, onManageKinds, onCancel, 
   onDelete?: () => void;
   saving?: boolean;
   error?: string | null;
+  baseZ?: number;
 }) {
   const [name, setName] = useState(initial.name || '');
   const [kind, setKind] = useState(initial.kind || kinds[0]?.kind || 'area');
@@ -54,7 +55,7 @@ export default function LocationForm({ initial, kinds, onManageKinds, onCancel, 
   const [description, setDescription] = useState(initial.description || '');
   const [photo, setPhoto] = useState<string | null>(initial.photo || null);
   return (
-    <div className="fixed inset-0 z-[100] bg-black/50 flex items-end">
+    <div className="fixed inset-0 bg-black/50 flex items-end" style={{ zIndex: baseZ }}>
       <div className="bg-white w-full max-w-lg mx-auto rounded-t-2xl p-5 pb-8 max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-bold mb-3">{initial.id ? 'Edit location' : 'New location'}</h3>
         <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Name</label>
