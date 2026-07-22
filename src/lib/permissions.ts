@@ -138,6 +138,11 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'handover.discrepancy.resolve',    module: 'shift-handover', label: 'Resolve handover discrepancies',                    defaultRoles: ['manager', 'admin'] },
   { key: 'handover.history.view',           module: 'shift-handover', label: 'View handover history & audit trail',               defaultRoles: ['staff', 'manager', 'admin'] },
   { key: 'handover.configure',              module: 'shift-handover', label: 'Configure products, container types & photo rules', defaultRoles: ['admin'] },
+
+  // ── KDS Cooking Timer — station tablet timers (queue/start/advance are the staff
+  // tablet, unauthenticated device endpoints). Only the SETUP screen (stations +
+  // per-product cook profiles & step chains) is manager work. ──
+  { key: 'cooktimer.config.manage',         module: 'cooktimer', label: 'Set up cooking-timer stations & profiles',             defaultRoles: ['manager', 'admin'] },
 ];
 
 export function actionByKey(key: string): PermissionAction | undefined {

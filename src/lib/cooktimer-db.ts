@@ -13,7 +13,8 @@
 import { getDb } from './db';
 import { berlinStamp, stampToEpoch } from './cooktimer-time';
 import type {
-  CookStation, CookProfile, CookStep, CoveredLine, CookTimerDTO, DoneEntry,
+  CookStation, CookStationAdmin, CookProfile, CookProfileInput, CookStepType,
+  CookStep, CoveredLine, CookTimerDTO, DoneEntry,
 } from '@/types/cooktimer';
 
 let _ctInit = false;
@@ -79,6 +80,14 @@ function ensureCookTables() {
     );
     CREATE INDEX IF NOT EXISTS idx_kds_line_ready_order
       ON kds_line_ready(pos_order_id);
+
+    -- Durable init marker so seeding runs exactly ONCE. Without it, a manager who
+    -- clears the seeded stations/profiles would see them silently reappear when the
+    -- next cold worker interprets the empty table as "uninitialized".
+    CREATE TABLE IF NOT EXISTS cook_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
   // Prune finished/cancelled timers + old line-ready rows so the tables stay
   // small (the current service day is all the KDS/queue ever cares about).
@@ -87,13 +96,25 @@ function ensureCookTables() {
     .run(berlinStamp(cutoff));
   db.prepare('DELETE FROM kds_line_ready WHERE ready_at < ?').run(cutoff);
 
+  ensureSeed(db);
+  _ctInit = true;
+}
+
+/**
+ * Seed defaults exactly once (guarded by a durable marker), so a manager's
+ * intentional deletion of every station/profile survives restarts + deploys.
+ * On an already-populated legacy DB the seeders no-op (row-count guard) and we
+ * just record the marker, leaving existing data untouched.
+ */
+function ensureSeed(db: ReturnType<typeof getDb>) {
+  if (db.prepare("SELECT 1 FROM cook_meta WHERE key = 'seeded'").get()) return;
   seedStations(db);
   // The placeholder profiles carry STAGING What a Jerk product IDs. Only seed
   // them on staging, so production never auto-maps a same-numbered but DIFFERENT
   // product to the wrong cook profile. On production, profiles stay empty until
   // a manager sets real mappings via the (step 5) Profiles screen.
   if ((process.env.ODOO_URL || '').includes('89.167.124.0')) seedProfiles(db);
-  _ctInit = true;
+  db.prepare("INSERT OR REPLACE INTO cook_meta (key, value) VALUES ('seeded', '1')").run();
 }
 
 function seedStations(db: ReturnType<typeof getDb>) {
@@ -196,8 +217,13 @@ export function getActiveProfilesByProduct(): Map<number, CookProfile & { statio
   ensureCookTables();
   const db = getDb();
   const stations = new Map(listStations(false).map(s => [s.id, s.name]));
+  // Only ACTIVE profiles on ACTIVE stations feed the queue — turning a station
+  // off must hide its products everywhere (setup-screen semantics), not just its
+  // tablet visibility.
   const rows = db.prepare(
-    'SELECT id, odoo_product_id, name, station_id, max_batch, active FROM cook_profiles WHERE active = 1 AND odoo_product_id IS NOT NULL'
+    `SELECT id, odoo_product_id, name, station_id, max_batch, active FROM cook_profiles
+     WHERE active = 1 AND odoo_product_id IS NOT NULL
+       AND station_id IN (SELECT id FROM cook_stations WHERE active = 1)`
   ).all() as ProfileRow[];
   const map = new Map<number, CookProfile & { stationName: string }>();
   for (const r of rows) {
@@ -407,5 +433,324 @@ export function finishTimer(id: number, expectedStep?: number): CookTimerDTO | n
     if (row.current_step < stepCount - 1) return rowToDTO(db, row);
     if (typeof expectedStep === 'number' && row.current_step !== expectedStep) return rowToDTO(db, row);
     return finishTimerInner(db, row);
+  })();
+}
+
+// -- Manager setup (stations + profiles CRUD) ---------------------------------
+// Manager-only, reached from /cooktimer/setup. Every write is transactional and
+// returns the canonical row so the client replaces its local state. Structural
+// edits are blocked while a timer is running (timers read their steps/station
+// live). Validation throws CookSetupError with an HTTP status the routes map.
+
+/** A validation / guard failure carrying the HTTP status the API should return. */
+export class CookSetupError extends Error {
+  status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = 'CookSetupError';
+    this.status = status;
+  }
+}
+
+const MAX_STEP_SECONDS = 24 * 3600;
+
+/** Station ids that currently have a running timer (blocks deactivate/delete). */
+function runningStationIds(db: ReturnType<typeof getDb>): Set<number> {
+  const s = new Set<number>();
+  for (const r of db.prepare("SELECT DISTINCT station_id FROM cook_timers WHERE state = 'running'").all() as { station_id: number }[]) {
+    s.add(r.station_id);
+  }
+  return s;
+}
+
+function hasRunningTimerForProfile(db: ReturnType<typeof getDb>, profileId: number): boolean {
+  return !!db.prepare("SELECT 1 FROM cook_timers WHERE profile_id = ? AND state = 'running' LIMIT 1").get(profileId);
+}
+
+function getProfileById(db: ReturnType<typeof getDb>, id: number): CookProfile | null {
+  const r = db.prepare(
+    'SELECT id, odoo_product_id, name, station_id, max_batch, active FROM cook_profiles WHERE id = ?'
+  ).get(id) as ProfileRow | undefined;
+  return r ? toProfile(db, r, '') : null;
+}
+
+/** True if the submitted steps differ from what is stored (label/type/duration/count). */
+function stepsDiffer(db: ReturnType<typeof getDb>, profileId: number, steps: { label: string; stepType: CookStepType; durationSeconds: number }[]): boolean {
+  const cur = loadSteps(db, profileId);
+  if (cur.length !== steps.length) return true;
+  for (let i = 0; i < cur.length; i++) {
+    if (cur[i].label !== steps[i].label || cur[i].stepType !== steps[i].stepType || cur[i].durationSeconds !== steps[i].durationSeconds) return true;
+  }
+  return false;
+}
+
+/** Validate + normalize a profile payload. Throws CookSetupError (400) on any problem. */
+function validateProfileInput(input: CookProfileInput): {
+  name: string; stationId: number; odooProductId: number | null; maxBatch: number | null; active: boolean;
+  steps: { label: string; stepType: CookStepType; durationSeconds: number }[];
+} {
+  const name = (typeof input?.name === 'string' ? input.name : '').trim();
+  if (!name) throw new CookSetupError('Give the profile a name.');
+  if (name.length > 120) throw new CookSetupError('That name is too long.');
+
+  const stationId = Number(input?.stationId);
+  if (!Number.isInteger(stationId) || stationId <= 0) throw new CookSetupError('Pick a station.');
+
+  const odooProductId = (input?.odooProductId == null || (input.odooProductId as unknown) === '') ? null : Number(input.odooProductId);
+  if (odooProductId != null && (!Number.isInteger(odooProductId) || odooProductId <= 0)) {
+    throw new CookSetupError('That product is invalid.');
+  }
+
+  if (typeof input?.active !== 'boolean') throw new CookSetupError('active must be true or false.');
+  const active = input.active;
+  if (active && odooProductId == null) throw new CookSetupError('Pick a product before turning this profile on.');
+
+  let maxBatch: number | null = null;
+  if (input?.maxBatch != null && String(input.maxBatch) !== '') {
+    maxBatch = Number(input.maxBatch);
+    if (!Number.isInteger(maxBatch) || maxBatch < 1 || maxBatch > 999) {
+      throw new CookSetupError('Max batch must be a whole number between 1 and 999.');
+    }
+  }
+
+  const rawSteps = Array.isArray(input?.steps) ? input.steps : [];
+  if (rawSteps.length === 0) throw new CookSetupError('Add at least one step.');
+  if (rawSteps.length > 20) throw new CookSetupError('Too many steps (max 20).');
+  const steps = rawSteps.map((s, i) => {
+    const label = (typeof s?.label === 'string' ? s.label : '').trim();
+    if (!label) throw new CookSetupError(`Step ${i + 1} needs a name.`);
+    if (label.length > 80) throw new CookSetupError(`Step ${i + 1} name is too long.`);
+    const stepType = s?.stepType;
+    if (stepType !== 'cook' && stepType !== 'rest' && stepType !== 'action') {
+      throw new CookSetupError(`Step ${i + 1} has an invalid type.`);
+    }
+    let durationSeconds = Number(s?.durationSeconds);
+    if (stepType === 'action') {
+      durationSeconds = 0; // instant prompt — always zero
+    } else if (!Number.isInteger(durationSeconds) || durationSeconds < 1 || durationSeconds > MAX_STEP_SECONDS) {
+      throw new CookSetupError(`Step ${i + 1} needs a time between 1 second and 24 hours.`);
+    }
+    return { label, stepType, durationSeconds };
+  });
+
+  return { name, stationId, odooProductId, maxBatch, active, steps };
+}
+
+// -- Stations --
+
+/** All stations (incl. inactive) with profile counts + running-timer flags. */
+export function listStationsAdmin(): CookStationAdmin[] {
+  ensureCookTables();
+  const db = getDb();
+  const rows = db.prepare('SELECT id, name, sort, active FROM cook_stations ORDER BY sort, id')
+    .all() as { id: number; name: string; sort: number; active: number }[];
+  const counts = new Map<number, number>();
+  for (const r of db.prepare('SELECT station_id, COUNT(*) AS c FROM cook_profiles GROUP BY station_id').all() as { station_id: number; c: number }[]) {
+    counts.set(r.station_id, r.c);
+  }
+  const running = runningStationIds(db);
+  return rows.map(r => ({
+    id: r.id, name: r.name, sort: r.sort, active: !!r.active,
+    profileCount: counts.get(r.id) ?? 0, hasRunningTimer: running.has(r.id),
+  }));
+}
+
+export function createStation(name: string): CookStation {
+  ensureCookTables();
+  const db = getDb();
+  const clean = (name ?? '').trim();
+  if (!clean) throw new CookSetupError('Give the station a name.');
+  if (clean.length > 60) throw new CookSetupError('That station name is too long.');
+  return db.transaction((): CookStation => {
+    const dup = db.prepare('SELECT id FROM cook_stations WHERE name = ? COLLATE NOCASE').get(clean) as { id: number } | undefined;
+    if (dup) throw new CookSetupError('A station with that name already exists.', 409);
+    const maxSort = (db.prepare('SELECT COALESCE(MAX(sort), -1) AS m FROM cook_stations').get() as { m: number }).m;
+    const sort = maxSort + 1;
+    const id = db.prepare('INSERT INTO cook_stations (name, sort, active) VALUES (?, ?, 1)').run(clean, sort).lastInsertRowid as number;
+    return { id, name: clean, sort, active: true };
+  })();
+}
+
+export function renameStation(id: number, name: string): CookStation {
+  ensureCookTables();
+  const db = getDb();
+  const clean = (name ?? '').trim();
+  if (!clean) throw new CookSetupError('Give the station a name.');
+  if (clean.length > 60) throw new CookSetupError('That station name is too long.');
+  return db.transaction((): CookStation => {
+    const cur = db.prepare('SELECT id, name, sort, active FROM cook_stations WHERE id = ?').get(id) as { id: number; name: string; sort: number; active: number } | undefined;
+    if (!cur) throw new CookSetupError('Station not found.', 404);
+    const dup = db.prepare('SELECT id FROM cook_stations WHERE name = ? COLLATE NOCASE AND id != ?').get(clean, id) as { id: number } | undefined;
+    if (dup) throw new CookSetupError('A station with that name already exists.', 409);
+    db.prepare('UPDATE cook_stations SET name = ? WHERE id = ?').run(clean, id);
+    return { id, name: clean, sort: cur.sort, active: !!cur.active };
+  })();
+}
+
+export function setStationActive(id: number, active: boolean): CookStation {
+  return updateStation(id, { active });
+}
+
+/** Rename and/or toggle a station in ONE transaction, so a combined PATCH can
+ *  never persist the rename while rejecting the toggle (or vice-versa). */
+export function updateStation(id: number, patch: { name?: string; active?: boolean }): CookStation {
+  ensureCookTables();
+  const db = getDb();
+  return db.transaction((): CookStation => {
+    const cur = db.prepare('SELECT id, name, sort, active FROM cook_stations WHERE id = ?').get(id) as { id: number; name: string; sort: number; active: number } | undefined;
+    if (!cur) throw new CookSetupError('Station not found.', 404);
+    let name = cur.name;
+    let active = !!cur.active;
+    if (patch.name !== undefined) {
+      const clean = (patch.name ?? '').trim();
+      if (!clean) throw new CookSetupError('Give the station a name.');
+      if (clean.length > 60) throw new CookSetupError('That station name is too long.');
+      const dup = db.prepare('SELECT id FROM cook_stations WHERE name = ? COLLATE NOCASE AND id != ?').get(clean, id) as { id: number } | undefined;
+      if (dup) throw new CookSetupError('A station with that name already exists.', 409);
+      name = clean;
+    }
+    if (patch.active !== undefined) {
+      if (!patch.active && runningStationIds(db).has(id)) {
+        throw new CookSetupError('A timer is running at this station right now — turn it off once the station is clear.', 409);
+      }
+      active = patch.active;
+    }
+    db.prepare('UPDATE cook_stations SET name = ?, active = ? WHERE id = ?').run(name, active ? 1 : 0, id);
+    return { id, name, sort: cur.sort, active };
+  })();
+}
+
+/** Persist a full new station order (ids must be exactly the current set). */
+export function reorderStations(orderedIds: number[]): CookStationAdmin[] {
+  ensureCookTables();
+  const db = getDb();
+  db.transaction(() => {
+    const allIds = new Set((db.prepare('SELECT id FROM cook_stations').all() as { id: number }[]).map(r => r.id));
+    const seen = new Set<number>();
+    for (const id of orderedIds) {
+      if (!allIds.has(id) || seen.has(id)) throw new CookSetupError('Station order is out of date — reload and try again.', 409);
+      seen.add(id);
+    }
+    if (seen.size !== allIds.size) throw new CookSetupError('Station order is out of date — reload and try again.', 409);
+    const upd = db.prepare('UPDATE cook_stations SET sort = ? WHERE id = ?');
+    orderedIds.forEach((id, i) => upd.run(i, id));
+  })();
+  return listStationsAdmin();
+}
+
+export function deleteStation(id: number): void {
+  ensureCookTables();
+  const db = getDb();
+  db.transaction(() => {
+    const cur = db.prepare('SELECT id FROM cook_stations WHERE id = ?').get(id);
+    if (!cur) throw new CookSetupError('Station not found.', 404);
+    const pc = (db.prepare('SELECT COUNT(*) AS c FROM cook_profiles WHERE station_id = ?').get(id) as { c: number }).c;
+    if (pc > 0) throw new CookSetupError(`This station still has ${pc} profile${pc === 1 ? '' : 's'}. Move or delete them first.`, 409);
+    if (runningStationIds(db).has(id)) throw new CookSetupError('A timer is running at this station right now.', 409);
+    db.prepare('DELETE FROM cook_stations WHERE id = ?').run(id);
+  })();
+}
+
+// -- Profiles --
+
+/** All profiles (incl. inactive) with steps, grouped by station order then name. */
+export function listProfilesAdmin(): CookProfile[] {
+  ensureCookTables();
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT p.id, p.odoo_product_id, p.name, p.station_id, p.max_batch, p.active
+     FROM cook_profiles p JOIN cook_stations s ON s.id = p.station_id
+     ORDER BY s.sort, s.id, p.name COLLATE NOCASE, p.id`
+  ).all() as ProfileRow[];
+  return rows.map(r => toProfile(db, r, ''));
+}
+
+export function createProfile(input: CookProfileInput): CookProfile {
+  ensureCookTables();
+  const db = getDb();
+  const v = validateProfileInput(input);
+  return db.transaction((): CookProfile => {
+    if (!db.prepare('SELECT id FROM cook_stations WHERE id = ?').get(v.stationId)) {
+      throw new CookSetupError('That station does not exist.');
+    }
+    if (v.odooProductId != null) {
+      const dup = db.prepare('SELECT id, name FROM cook_profiles WHERE odoo_product_id = ?').get(v.odooProductId) as { id: number; name: string } | undefined;
+      if (dup) throw new CookSetupError(`"${dup.name}" already uses this product. Edit that profile instead.`, 409);
+    }
+    const pid = db.prepare(
+      'INSERT INTO cook_profiles (odoo_product_id, name, station_id, max_batch, active) VALUES (?, ?, ?, ?, ?)'
+    ).run(v.odooProductId, v.name, v.stationId, v.maxBatch, v.active ? 1 : 0).lastInsertRowid as number;
+    const insStep = db.prepare(
+      'INSERT INTO cook_profile_steps (profile_id, seq, label, duration_seconds, step_type) VALUES (?, ?, ?, ?, ?)'
+    );
+    v.steps.forEach((s, i) => insStep.run(pid, i, s.label, s.durationSeconds, s.stepType));
+    return getProfileById(db, pid)!;
+  })();
+}
+
+export function updateProfile(id: number, input: CookProfileInput): CookProfile {
+  ensureCookTables();
+  const db = getDb();
+  const v = validateProfileInput(input);
+  return db.transaction((): CookProfile => {
+    const cur = db.prepare('SELECT id, station_id FROM cook_profiles WHERE id = ?').get(id) as { id: number; station_id: number } | undefined;
+    if (!cur) throw new CookSetupError('Profile not found.', 404);
+    if (!db.prepare('SELECT id FROM cook_stations WHERE id = ?').get(v.stationId)) {
+      throw new CookSetupError('That station does not exist.');
+    }
+    if (v.odooProductId != null) {
+      const dup = db.prepare('SELECT id, name FROM cook_profiles WHERE odoo_product_id = ? AND id != ?').get(v.odooProductId, id) as { id: number; name: string } | undefined;
+      if (dup) throw new CookSetupError(`"${dup.name}" already uses this product. Edit that profile instead.`, 409);
+    }
+    // A running timer reads its steps + station live — block structural edits mid-cook
+    // (the active toggle, name and max-batch are still allowed).
+    if (hasRunningTimerForProfile(db, id)) {
+      if (v.stationId !== cur.station_id) {
+        throw new CookSetupError('A timer is running for this product — you cannot move it to another station right now.', 409);
+      }
+      if (stepsDiffer(db, id, v.steps)) {
+        throw new CookSetupError('A timer is running for this product — you cannot change its steps right now.', 409);
+      }
+    }
+    db.prepare(
+      'UPDATE cook_profiles SET odoo_product_id = ?, name = ?, station_id = ?, max_batch = ?, active = ? WHERE id = ?'
+    ).run(v.odooProductId, v.name, v.stationId, v.maxBatch, v.active ? 1 : 0, id);
+    // Replace the step chain wholesale (contiguous seq from 0).
+    db.prepare('DELETE FROM cook_profile_steps WHERE profile_id = ?').run(id);
+    const insStep = db.prepare(
+      'INSERT INTO cook_profile_steps (profile_id, seq, label, duration_seconds, step_type) VALUES (?, ?, ?, ?, ?)'
+    );
+    v.steps.forEach((s, i) => insStep.run(id, i, s.label, s.durationSeconds, s.stepType));
+    return getProfileById(db, id)!;
+  })();
+}
+
+/** Toggle a profile on/off. Allowed during a running timer (only stops NEW queue
+ *  entries; the running timer is unaffected). Turning on requires a product. */
+export function setProfileActive(id: number, active: boolean): CookProfile {
+  ensureCookTables();
+  const db = getDb();
+  return db.transaction((): CookProfile => {
+    const cur = db.prepare('SELECT id, odoo_product_id FROM cook_profiles WHERE id = ?').get(id) as { id: number; odoo_product_id: number | null } | undefined;
+    if (!cur) throw new CookSetupError('Profile not found.', 404);
+    if (active && cur.odoo_product_id == null) throw new CookSetupError('Pick a product before turning this profile on.');
+    db.prepare('UPDATE cook_profiles SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
+    return getProfileById(db, id)!;
+  })();
+}
+
+export function deleteProfile(id: number): void {
+  ensureCookTables();
+  const db = getDb();
+  db.transaction(() => {
+    if (!db.prepare('SELECT id FROM cook_profiles WHERE id = ?').get(id)) throw new CookSetupError('Profile not found.', 404);
+    if (hasRunningTimerForProfile(db, id)) throw new CookSetupError('A timer is running for this product — stop it before deleting.', 409);
+    // Clear this profile's finished/cancelled timer history (there is no running one)
+    // so the cook_timers FK does not block deletion. cook_timers is short-lived
+    // scratch state (pruned by age), so dropping a deleted profile's rows is safe —
+    // unlike the earlier COUNT(*) guard, which blocked forever until a server restart
+    // re-ran the age prune.
+    db.prepare('DELETE FROM cook_timers WHERE profile_id = ?').run(id);
+    db.prepare('DELETE FROM cook_profiles WHERE id = ?').run(id); // steps cascade
   })();
 }

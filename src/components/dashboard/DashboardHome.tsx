@@ -38,6 +38,7 @@ const TILES: Tile[] = [
   { id: 'tablets', label: 'Shared Tablets', subtitle: 'Kitchen tablet access', href: '/admin/tablets', minRole: 'manager', emoji: '📱' },
   { id: 'rentals', label: 'Rentals', subtitle: 'Properties & tenancies', href: '/rentals', minRole: 'admin', emoji: '🏠' },
   { id: 'prep-planner', label: 'Prep Planner', subtitle: 'Demand forecasts & prep targets', href: '/prep-planner', minRole: 'manager', emoji: '📊' },
+  { id: 'cooktimer', label: 'Cooking Timer', subtitle: 'Stations & cook profiles', href: '/cooktimer-setup', minRole: 'manager', emoji: '🍳' },
   { id: 'sales', label: 'Sales', subtitle: 'What a Jerk revenue & top sellers', href: '/sales', minRole: 'manager', emoji: '📈' },
   { id: 'shifts', label: 'Planning', subtitle: 'Shifts, claims & covers', href: '/shifts', minRole: 'staff', emoji: '📅' },
   { id: 'tasks', label: 'My Tasks', subtitle: 'Daily department checklist', href: '/tasks', minRole: 'staff', emoji: '✅' },

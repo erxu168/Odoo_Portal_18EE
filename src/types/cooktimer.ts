@@ -28,6 +28,31 @@ export interface CookStation {
   active: boolean;
 }
 
+/** A station as shown on the manager Setup screen — carries how many profiles
+ *  use it and whether a timer is running there right now (both gate deletion /
+ *  deactivation). */
+export interface CookStationAdmin extends CookStation {
+  profileCount: number;
+  hasRunningTimer: boolean;
+}
+
+/** One step as submitted by the Setup editor (no id — steps are replaced wholesale). */
+export interface CookStepInput {
+  label: string;
+  stepType: CookStepType;
+  durationSeconds: number;
+}
+
+/** A profile create/update payload from the Setup editor. */
+export interface CookProfileInput {
+  odooProductId: number | null;
+  name: string;
+  stationId: number;
+  maxBatch: number | null;
+  active: boolean;
+  steps: CookStepInput[];
+}
+
 export interface CookProfile {
   id: number;
   odooProductId: number | null;
