@@ -587,6 +587,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           error={createErr}
           context="inventory"
           baseZ={140}
+          canCreateCategory={canEditProduct}
           onClose={() => { setCreateOpen(false); setCreateErr(''); }}
           onCreate={(payload) => createProductAndAdd({ name: payload.name, uom_id: payload.uom_id, categ_id: payload.categ_id, default_code: payload.default_code })}
         />

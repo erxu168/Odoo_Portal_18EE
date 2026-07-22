@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 interface UnitOption { id: number; name: string }
 interface CategoryOption { id: number; name: string }
@@ -12,6 +12,10 @@ interface CategoryOption { id: number; name: string }
  * own), and `context` only tunes the copy, accent, and which extra fields show.
  *  - 'purchase'  → price + supplier code + par level, "Create & add to guide"
  *  - 'inventory' → name/unit/category only,          "Create & add to list"
+ *
+ * When `canCreateCategory` is set, the Category select also offers an in-place
+ * "+ New category" (no dead-end picker) — gated by the caller because creating a
+ * product.category requires the inventory.productsettings.manage capability.
  */
 interface CreateProductSheetProps {
   open: boolean;
@@ -25,11 +29,13 @@ interface CreateProductSheetProps {
   context?: 'purchase' | 'inventory';
   /** Stacking base so it always sits above the picker that opened it. */
   baseZ?: number;
+  /** Show the in-place "+ New category" affordance (permission-gated by caller). */
+  canCreateCategory?: boolean;
 }
 
 export default function CreateProductSheet({
   open, initialName, units, categories, saving, error, onClose, onCreate,
-  context = 'purchase', baseZ = 110,
+  context = 'purchase', baseZ = 110, canCreateCategory = false,
 }: CreateProductSheetProps) {
   const [name, setName] = useState('');
   const [uomId, setUomId] = useState<number>(0);
@@ -37,10 +43,15 @@ export default function CreateProductSheet({
   const [categId, setCategId] = useState<number>(0);
   const [productCode, setProductCode] = useState('');
   const [parLevelStr, setParLevelStr] = useState('');
+  // In-place category create (categories created here persist across prop
+  // refreshes via createdCats, so a fresh `categories` prop can't drop them).
+  const [createdCats, setCreatedCats] = useState<CategoryOption[]>([]);
+  const [newCatOpen, setNewCatOpen] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
+  const [catBusy, setCatBusy] = useState(false);
+  const [catErr, setCatErr] = useState('');
 
   const isPurchase = context === 'purchase';
-  // Per-context accent via Tailwind classes (NOT inline styles — an inline
-  // backgroundColor would defeat the active: pressed state).
   const inputCls = `w-full bg-white border border-gray-200 rounded-lg px-3 h-11 text-[var(--fs-base)] text-gray-900 outline-none ${isPurchase ? 'focus:border-[#F5800A]' : 'focus:border-green-500'}`;
   const btnCls = isPurchase ? 'bg-[#F5800A] active:bg-[#E86000]' : 'bg-green-600 active:bg-green-700';
   const submitLabel = isPurchase ? 'Create & add to guide' : 'Create & add to list';
@@ -48,21 +59,68 @@ export default function CreateProductSheet({
     ? 'Creates the product in Odoo (marked orderable) and adds it here.'
     : 'Creates the product in Odoo and adds it to this list.';
 
-  // Reset the form each time the sheet opens (prefill the name from the search box).
+  const allCats = useMemo(() => {
+    const seen = new Set(categories.map((c) => c.id));
+    return [...categories, ...createdCats.filter((c) => !seen.has(c.id))];
+  }, [categories, createdCats]);
+
+  // Reset the form ONLY when the sheet transitions to open — a later
+  // units/categories refetch must NOT wipe a just-created category or the
+  // fields the user is editing. `sessionRef` bumps each open so an in-flight
+  // category POST from a previous session can't mutate this one.
+  const sessionRef = useRef(0);
   useEffect(() => {
-    if (open) {
-      setName(initialName);
-      setUomId(units[0]?.id || 0);
-      setCategId(categories[0]?.id || 0);
-      setPriceStr('');
-      setProductCode('');
-      setParLevelStr('');
-    }
-  }, [open, initialName, units, categories]);
+    if (!open) return;
+    sessionRef.current += 1;
+    setName(initialName);
+    setUomId(units[0]?.id || 0);
+    setCategId(categories[0]?.id || 0);
+    setPriceStr('');
+    setProductCode('');
+    setParLevelStr('');
+    setCreatedCats([]);
+    setNewCatOpen(false);
+    setNewCatName('');
+    setCatErr('');
+    setCatBusy(false);   // a prior session's in-flight POST won't clear this (session-guarded), so reset it here
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // If unit/category options arrive AFTER opening, fill the still-empty defaults
+  // without clobbering a user's choice or a just-created category.
+  useEffect(() => { if (open && uomId === 0 && units[0]) setUomId(units[0].id); }, [open, units, uomId]);
+  useEffect(() => {
+    if (open && categId === 0 && !newCatOpen && createdCats.length === 0 && categories[0]) setCategId(categories[0].id);
+  }, [open, categories, categId, newCatOpen, createdCats.length]);
+
+  async function createCategory() {
+    const nm = newCatName.trim();
+    if (!nm) return;
+    const mySession = sessionRef.current;
+    setCatBusy(true);
+    setCatErr('');
+    try {
+      const res = await fetch('/api/inventory/categories', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: nm }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (sessionRef.current !== mySession) return;   // sheet was closed/reopened — drop this result
+      if (!res.ok || !d.category?.id) { setCatErr(d.error || 'Could not create category'); return; }
+      const cat = { id: d.category.id, name: d.category.complete_name || d.category.name || nm };
+      setCreatedCats((prev) => [cat, ...prev]);
+      setCategId(cat.id);
+      setNewCatOpen(false);
+      setNewCatName('');
+    } catch { if (sessionRef.current === mySession) setCatErr('Network error — category not created'); }
+    finally { if (sessionRef.current === mySession) setCatBusy(false); }
+  }
 
   if (!open) return null;
 
-  const canSubmit = name.trim().length > 0 && uomId > 0 && !saving;
+  // Block the main submit while a category is being created/typed, else the
+  // product would save under the PREVIOUS category.
+  const canSubmit = name.trim().length > 0 && uomId > 0 && !saving && !catBusy && !newCatOpen;
 
   return (
     <div className="fixed inset-0 flex items-end justify-center bg-black/40" style={{ zIndex: baseZ }} onClick={onClose}>
@@ -104,9 +162,34 @@ export default function CreateProductSheet({
         </div>
 
         <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">Category</label>
-        <select value={categId} onChange={(e) => setCategId(Number(e.target.value))} className={`${inputCls} mb-4`}>
-          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        <select
+          value={newCatOpen ? -1 : categId}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (v === -1) { setNewCatOpen(true); setNewCatName(''); setCatErr(''); return; }
+            setNewCatOpen(false);
+            setCategId(v);
+          }}
+          className={`${inputCls} ${newCatOpen ? 'mb-2' : 'mb-4'}`}
+        >
+          {categId !== 0 && !allCats.some((c) => c.id === categId) && <option value={categId}>Current category</option>}
+          {allCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {canCreateCategory && <option value={-1}>+ New category…</option>}
         </select>
+        {newCatOpen && (
+          <div className="mb-4">
+            <div className="flex gap-2">
+              <input autoFocus value={newCatName} onChange={(e) => setNewCatName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') createCategory(); if (e.key === 'Escape') { setNewCatOpen(false); setNewCatName(''); } }}
+                placeholder="New category name" disabled={catBusy} className={inputCls} />
+              <button onClick={createCategory} disabled={catBusy || !newCatName.trim()}
+                className="px-4 rounded-lg bg-green-600 text-white font-bold text-[var(--fs-sm)] disabled:opacity-40 whitespace-nowrap">{catBusy ? 'Adding…' : 'Add'}</button>
+              <button onClick={() => { setNewCatOpen(false); setNewCatName(''); setCatErr(''); }} disabled={catBusy}
+                className="px-4 rounded-lg bg-gray-100 font-bold text-[var(--fs-sm)]">Cancel</button>
+            </div>
+            {catErr && <p className="text-[11px] text-red-600 mt-1">{catErr}</p>}
+          </div>
+        )}
 
         {isPurchase && (
           <div className="flex gap-2 mb-4">

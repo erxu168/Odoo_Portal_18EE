@@ -794,6 +794,7 @@ export default function PurchasePage() {
           categories={mgCatOptions}
           saving={mgCreateSaving}
           error={mgCreateErr}
+          canCreateCategory={(user?.capabilities || []).includes('inventory.productsettings.manage')}
           onClose={() => { setMgCreateOpen(false); setMgCreateErr(''); }}
           onCreate={createProductAndAddToGuide}
         /></>

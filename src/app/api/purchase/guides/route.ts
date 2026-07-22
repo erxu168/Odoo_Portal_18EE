@@ -174,12 +174,25 @@ export async function PATCH(request: Request) {
       }
       ids.push(n);
     }
+    // A reorder is a permutation of ONE guide's items — duplicate ids are
+    // malformed input.
+    if (new Set(ids).size !== ids.length) return NextResponse.json({ error: 'Duplicate item id' }, { status: 400 });
     if (ids.length) {
       const placeholders = ids.map(() => '?').join(',');
-      const rows = db.prepare(`SELECT i.id AS id, g.location_id AS loc FROM purchase_guide_items i JOIN purchase_order_guides g ON g.id = i.guide_id WHERE i.id IN (${placeholders})`).all(...ids) as { id: number; loc: number }[];
+      const rows = db.prepare(`SELECT i.id AS id, i.guide_id AS gid, g.location_id AS loc FROM purchase_guide_items i JOIN purchase_order_guides g ON g.id = i.guide_id WHERE i.id IN (${placeholders})`).all(...ids) as { id: number; gid: number; loc: number }[];
       const found = new Set(rows.map((r) => r.id));
       if (found.size !== new Set(ids).size) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      // Authorize BEFORE reporting any structural detail (don't leak how ids relate).
       if (rows.some((r) => !canAccessPurchaseLocation(user, r.loc))) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      // All items must belong to the SAME guide — reordering across guides is
+      // meaningless and would let one request touch several lists at once.
+      const gid = rows[0].gid;
+      if (new Set(rows.map((r) => r.gid)).size > 1) return NextResponse.json({ error: 'Items span multiple lists' }, { status: 400 });
+      // A reorder is a full permutation: the supplied ids must be EXACTLY the
+      // guide's items, else reorderGuideItems leaves omitted rows with stale
+      // sort_order (duplicate positions).
+      const total = (db.prepare('SELECT COUNT(*) AS n FROM purchase_guide_items WHERE guide_id = ?').get(gid) as { n: number }).n;
+      if (total !== ids.length) return NextResponse.json({ error: 'Reorder must include every item on the list' }, { status: 400 });
     }
     reorderGuideItems(ids);
     return NextResponse.json({ message: 'Reordered' });
