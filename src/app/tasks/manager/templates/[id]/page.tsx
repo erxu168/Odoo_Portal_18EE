@@ -181,13 +181,19 @@ export default function TemplateEditPage({ params }: PageProps) {
   const { toast, showToast, dismissToast } = useToast();
   const { companyId: activeCompanyId } = useCompany();
 
-  // Two ordering tokens keep overlapping loads correct:
+  // Two ordering tokens keep overlapping loads correct for the common case:
   //  - dataGen orders ANY write to tpl (a foreground reload OR a background
   //    lines-only refresh), so a slow/stale response can never overwrite a
   //    fresher one — only the latest-STARTED writer applies its tpl.
   //  - fgGen orders FOREGROUND-only state (departments, error). A background
   //    lines refresh has no departments/error to contribute, so it must NOT
   //    invalidate a foreground load's authority over them.
+  // KNOWN RESIDUAL (generic, out of scope): dataGen is a single per-tpl token, so
+  // a background lines-refresh that STARTS after a foreground reload can suppress
+  // that reload's full write and leave header fields (name/department/line_count)
+  // briefly stale — those rarely change server-side and line_count isn't rendered
+  // here; the next foreground load reconciles. A fully race-free version would
+  // need per-FIELD version tracking, which isn't warranted for this page.
   const dataGen = useRef(0);
   const fgGen = useRef(0);
   // silent: a BACKGROUND refresh that never shows the loading skeleton (so it
@@ -776,6 +782,10 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
           }));
         }
         if (uploadError) {
+          // Modal dismissed mid-save: the LINE already committed, so refresh the
+          // list in the background rather than writing a retry error into an
+          // unmounted modal (the manager can't retry a dismissed modal anyway).
+          if (closedRef.current) { onBackgroundRefresh(); return; }
           setError(`${uploadError} — press Save to retry.`);
           setSubmitting(false);
           return;
