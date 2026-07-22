@@ -1,64 +1,23 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { SearchBar, Spinner, EmptyState } from './ui';
-import SpotSheet from './SpotSheet';
 import ProductDetail from './ProductDetail';
-import { suggestCrateSizeFromName, baseIsMeasure } from '@/lib/crate-units';
 import { useCompany } from '@/lib/company-context';
-
-// Read a picked image (camera or file), downscale on-device to keep it small,
-// return a JPEG data URL. Falls back to the raw data URL if canvas is unavailable.
-async function fileToDownscaledDataUrl(file: File, maxDim = 1024, quality = 0.7): Promise<string> {
-  const dataUrl = await new Promise<string>((res, rej) => {
-    const fr = new FileReader();
-    fr.onload = () => res(fr.result as string);
-    fr.onerror = () => rej(new Error('read failed'));
-    fr.readAsDataURL(file);
-  });
-  try {
-    const img = await new Promise<HTMLImageElement>((res, rej) => {
-      const i = new window.Image();
-      i.onload = () => res(i);
-      i.onerror = () => rej(new Error('decode failed'));
-      i.src = dataUrl;
-    });
-    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-    const w = Math.round(img.width * scale);
-    const h = Math.round(img.height * scale);
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return dataUrl;
-    ctx.drawImage(img, 0, 0, w, h);
-    return canvas.toDataURL('image/jpeg', quality);
-  } catch {
-    return dataUrl;
-  }
-}
 
 interface ProductSettingsProps {
   onBack: () => void;
 }
 
-// Words staff can count a product in. Piece-style first (weight products),
-// then pack-style (countable products).
-const PACK_LABELS = ['piece', 'bunch', 'head', 'crate', 'case', 'box', 'tray', 'bag', 'pack'];
-
 export default function ProductSettings({ onBack }: ProductSettingsProps) {
   const { companyId } = useCompany();
   const [products, setProducts] = useState<any[]>([]);
   const [flags, setFlags] = useState<Record<number, boolean>>({});
-  const [crateSizes, setCrateSizes] = useState<Record<number, string>>({});   // per-product input strings ('' = none)
-  const [packLabels, setPackLabels] = useState<Record<number, string>>({});    // per-product count-by (pack) word
-  const [looseLabels, setLooseLabels] = useState<Record<number, string>>({});   // per-product single-unit word (pack+loose mode)
   const [imageIds, setImageIds] = useState<Set<number>>(new Set());             // product ids that have a picture
-  const [photoTarget, setPhotoTarget] = useState<number | null>(null);          // which product a pick applies to
   // HOME SPOTS — the global product↔spot record (same one the list builder and
-  // the Locations screen edit). Chips per product; SpotSheet edits them.
+  // the Locations screen edit). Shown as read-only chips; edited on the form.
   const [homeSpots, setHomeSpots] = useState<Record<number, number[]>>({});
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});
-  const [spotSheetFor, setSpotSheetFor] = useState<any | null>(null);
   const [detailFor, setDetailFor] = useState<any | null>(null);        // product page
 
   useEffect(() => {
@@ -91,11 +50,8 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     return () => { stale = true; };
   }, [companyId]);
   const [imgVer, setImgVer] = useState(0);                                      // cache-bust <img> after an update
-  const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<number | null>(null);
-  const [savedId, setSavedId] = useState<number | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -110,19 +66,8 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
         const prods = (prodRes.products || []).filter((p: any) => p.active !== false);
         setProducts(prods);
         const photoMap: Record<number, boolean> = {};
-        const crateMap: Record<number, string> = {};
-        const labelMap: Record<number, string> = {};
-        const looseMap: Record<number, string> = {};
-        (flagRes.flags || []).forEach((f: any) => {
-          photoMap[f.odoo_product_id] = !!f.requires_photo;
-          if (f.units_per_crate != null) crateMap[f.odoo_product_id] = String(f.units_per_crate);
-          if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
-          if (f.loose_label) looseMap[f.odoo_product_id] = f.loose_label;
-        });
+        (flagRes.flags || []).forEach((f: any) => { photoMap[f.odoo_product_id] = !!f.requires_photo; });
         setFlags(photoMap);
-        setCrateSizes(crateMap);
-        setPackLabels(labelMap);
-        setLooseLabels(looseMap);
       } catch (err) {
         console.error('Failed to load product settings:', err);
       } finally {
@@ -138,83 +83,10 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     return products.filter((p: any) => p.name.toLowerCase().includes(q));
   }, [products, search]);
 
-  async function togglePhoto(productId: number) {
-    const next = !flags[productId];
-    setFlags(prev => ({ ...prev, [productId]: next }));
-    try {
-      const res = await fetch(`/api/inventory/product-flags/${productId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requires_photo: next }),
-      });
-      if (!res.ok) setFlags(prev => ({ ...prev, [productId]: !next }));
-    } catch {
-      setFlags(prev => ({ ...prev, [productId]: !next }));
-    }
-  }
-
-  // Product picture: one hidden file input (accept image + capture) covers BOTH
-  // camera and upload. pickPhoto targets a product, onPhotoFile downscales + saves.
-  function pickPhoto(productId: number) {
-    setPhotoTarget(productId);
-    fileRef.current?.click();
-  }
-
-  async function onPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file || photoTarget == null) return;
-    const targetId = photoTarget;
-    try {
-      const dataUrl = await fileToDownscaledDataUrl(file);
-      const res = await fetch(`/api/inventory/product-images/${targetId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: dataUrl }),
-      });
-      if (res.ok) {
-        setImageIds(prev => { const n = new Set(prev); n.add(targetId); return n; });
-        setImgVer(v => v + 1);
-      }
-    } catch (err) {
-      console.error('Failed to save product photo:', err);
-    }
-  }
-
-  // Save size + count-by label + loose word together. Empty/0 size clears it
-  // (simple mode, count in base units); a size makes it pack+loose.
-  async function commitPack(productId: number, rawSize: string, label: string, loose: string) {
-    const trimmed = (rawSize || '').trim();
-    const size = trimmed === '' ? null : Number(trimmed);
-    if (size !== null && (!Number.isFinite(size) || size < 0)) {
-      setCrateSizes(prev => ({ ...prev, [productId]: '' }));
-      return;
-    }
-    const mode = size ? 'pack_loose' : 'simple';
-    const looseWord = size ? (loose || '').trim() : '';
-    setSaving(productId);
-    try {
-      const res = await fetch(`/api/inventory/product-flags/${productId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ units_per_crate: size, pack_label: label, count_mode: mode, loose_label: looseWord || null }),
-      });
-      if (res.ok) {
-        setSavedId(productId);
-        setTimeout(() => setSavedId(prev => (prev === productId ? null : prev)), 1400);
-      }
-    } catch (err) {
-      console.error('Failed to save pack setting:', err);
-    } finally {
-      setSaving(null);
-    }
-  }
-
   if (loading) return <Spinner />;
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhotoFile} className="hidden" />
       <div className="px-4 pt-3 pb-2 flex items-center gap-3">
         <button onClick={onBack} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
@@ -278,9 +150,6 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
             if (patch.flags) {
               const f = patch.flags;
               if (f.requires_photo !== undefined) setFlags((prev) => ({ ...prev, [detailFor.id]: !!f.requires_photo }));
-              if (f.units_per_crate !== undefined) setCrateSizes((prev) => ({ ...prev, [detailFor.id]: f.units_per_crate == null ? '' : String(f.units_per_crate) }));
-              if (f.pack_label !== undefined) setPackLabels((prev) => ({ ...prev, [detailFor.id]: f.pack_label || '' }));
-              if (f.loose_label !== undefined) setLooseLabels((prev) => ({ ...prev, [detailFor.id]: f.loose_label || '' }));
             }
             if (patch.spots) setHomeSpots((prev) => ({ ...prev, [detailFor.id]: patch.spots as number[] }));
             if (patch.name !== undefined || patch.uom !== undefined) {
@@ -293,16 +162,6 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
               setImgVer((v) => v + 1);
             }
           }}
-        />
-      )}
-      {spotSheetFor && companyId && (
-        <SpotSheet
-          product={spotSheetFor}
-          hasImage={imageIds.has(spotSheetFor.id)}
-          companyId={companyId}
-          initialSpotIds={homeSpots[spotSheetFor.id] || []}
-          onSaved={(ids) => setHomeSpots((m) => ({ ...m, [spotSheetFor.id]: ids }))}
-          onClose={() => setSpotSheetFor(null)}
         />
       )}
     </div>
