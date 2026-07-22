@@ -131,6 +131,9 @@ export default function SetupGuideEditor({
   const photoNo = (seq: number) => photos.findIndex(p => p.seq === seq) + 1;
 
   return (
+    // pointer-events-none blocks mouse/touch; the interactive controls below also
+    // get `disabled={disabled}` so a KEYBOARD-focused file input or button can't
+    // fire and mutate photos while a save is in flight.
     <div className={`rounded-xl border border-orange-200 bg-orange-50/40 p-3 space-y-3 ${disabled ? 'pointer-events-none opacity-60' : ''}`}>
       <p className="text-[11px] text-gray-600 leading-snug">
         📍 Add one or more photos of the finished station, then tap a photo to drop a numbered
@@ -162,7 +165,7 @@ export default function SetupGuideEditor({
           <label className="flex-shrink-0 h-14 w-20 rounded-lg border-2 border-dashed border-orange-400 bg-white flex items-center justify-center text-orange-600 text-xl font-bold cursor-pointer hover:bg-orange-50">
             +
             <input
-              type="file" className="hidden" accept="image/*"
+              type="file" className="hidden" accept="image/*" disabled={disabled}
               onChange={e => { const f = e.target.files?.[0]; if (f) onAddPhoto(f); e.target.value = ''; }}
             />
           </label>
@@ -218,7 +221,7 @@ export default function SetupGuideEditor({
               <label className="text-[11px] font-semibold text-orange-600 cursor-pointer hover:text-orange-700">
                 Replace photo
                 <input
-                  type="file" className="hidden" accept="image/*"
+                  type="file" className="hidden" accept="image/*" disabled={disabled}
                   onChange={e => {
                     const f = e.target.files?.[0];
                     if (f) { setImgError(prev => { const n = new Set(prev); n.delete(activePhoto.seq); return n; }); onReplacePhoto(activePhoto.seq, f); }
@@ -228,8 +231,9 @@ export default function SetupGuideEditor({
               </label>
               <button
                 type="button"
+                disabled={disabled}
                 onClick={() => { if (confirm('Remove this photo and its pins?')) onRemovePhoto(activePhoto.seq); }}
-                className="text-[11px] font-semibold text-red-500 hover:text-red-600"
+                className="text-[11px] font-semibold text-red-500 hover:text-red-600 disabled:opacity-50"
               >
                 Remove
               </button>
@@ -254,7 +258,7 @@ export default function SetupGuideEditor({
               {photos.length > 1 && (
                 <span className="text-[10px] font-semibold text-gray-400 flex-shrink-0">📷 {photoNo(p.pin_photo_seq)}</span>
               )}
-              <button type="button" onClick={(e) => { e.stopPropagation(); removePinGlobal(gi); }} className="text-[11px] text-red-500 hover:text-red-600 flex-shrink-0">Remove</button>
+              <button type="button" disabled={disabled} onClick={(e) => { e.stopPropagation(); removePinGlobal(gi); }} className="text-[11px] text-red-500 hover:text-red-600 flex-shrink-0 disabled:opacity-50">Remove</button>
             </li>
           ))}
         </ul>

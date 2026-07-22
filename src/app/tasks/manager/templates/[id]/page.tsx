@@ -697,35 +697,33 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
             uploadError = 'A photo upload failed';
           }
         }
-        // Server reassigned some new-photo seqs → repoint pins + re-save the line.
-        if (!uploadError && seqRemap.size) {
+        // Persist pins for the SUCCEEDED photos even on a partial batch failure,
+        // and mirror the server seqs into client state, so a retry carries the
+        // correct pin seqs and its line save re-persists them if this PATCH fails.
+        if (seqRemap.size) {
           const rmRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(lineBody(seqRemap)),
           });
           const rmBody = await rmRes.json().catch(() => ({}));
-          if (!rmRes.ok || !rmBody.ok) uploadError = rmBody.error || 'Failed to link pins to photos';
-        }
-        // Bail BEFORE finalizing so a partial failure stays fully re-runnable:
-        // photos keep pending + provisional seqs and pins keep provisional seqs,
-        // so a retry re-uploads + re-remaps to a consistent state. Finalizing
-        // here would strand pins at provisional seqs the retry can't recover.
-        if (uploadError) {
-          setError(`${uploadError} — press Save to retry.`);
-          setSubmitting(false);
-          return;
-        }
-        // Full success: adopt the server seqs on both pins and photos.
-        if (seqRemap.size) {
+          if (!rmRes.ok || !rmBody.ok) uploadError = uploadError || (rmBody.error || 'Failed to link pins to photos');
           setSubtasks(prev => prev.map(s => seqRemap.has(s.pin_photo_seq)
             ? { ...s, pin_photo_seq: seqRemap.get(s.pin_photo_seq)! } : s));
         }
+        // Finalize EVERY succeeded upload — adopt its server seq and drop
+        // pending + isNew — so a retry REPLACES (not re-appends) it and its first
+        // server copy can't be orphaned.
         if (uploaded.length) {
           setPhotos(prev => prev.map(p => {
             const u = uploaded.find(x => x.seq === p.seq && x.base64 === p.pendingBase64);
             return u ? { seq: u.realSeq, url: p.url, isNew: false } : p;
           }));
+        }
+        if (uploadError) {
+          setError(`${uploadError} — press Save to retry.`);
+          setSubmitting(false);
+          return;
         }
       }
 
