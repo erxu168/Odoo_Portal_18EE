@@ -523,9 +523,12 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
   // New lines: remember the id created by the first successful save, so a retry
   // after a failed photo upload PATCHes instead of POSTing a duplicate task.
   const [createdLineId, setCreatedLineId] = useState<number | null>(null);
-  // Monotonic seq allocator, bumped SYNCHRONOUSLY (before the async image
-  // compression) so two overlapping "add photo" picks can't collide.
-  const seqRef = useRef<number>(Math.max(-1, ...(line?.setup_photo_seqs ?? [])) + 1);
+  // Provisional seqs for not-yet-uploaded photos live in a HIGH, disjoint
+  // namespace so they can never equal a real server sequence (0,1,2…). That
+  // makes the pin→photo link unambiguous even when the server reassigns a new
+  // photo's real seq — a provisional-vs-real collision is impossible. Bumped
+  // synchronously (before async compression) so overlapping adds don't collide.
+  const seqRef = useRef<number>(1_000_000);
 
   async function addSetupPhoto(file: File) {
     // Provisional local seq only — the SERVER assigns the real one on append
@@ -701,13 +704,19 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
         // and mirror the server seqs into client state, so a retry carries the
         // correct pin seqs and its line save re-persists them if this PATCH fails.
         if (seqRemap.size) {
-          const rmRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(lineBody(seqRemap)),
-          });
-          const rmBody = await rmRes.json().catch(() => ({}));
-          if (!rmRes.ok || !rmBody.ok) uploadError = uploadError || (rmBody.error || 'Failed to link pins to photos');
+          try {
+            const rmRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(lineBody(seqRemap)),
+            });
+            const rmBody = await rmRes.json().catch(() => ({}));
+            if (!rmRes.ok || !rmBody.ok) uploadError = uploadError || (rmBody.error || 'Failed to link pins to photos');
+          } catch {
+            // A thrown PATCH must NOT skip finalization below — else succeeded
+            // appends stay pending and re-append on retry.
+            uploadError = uploadError || 'Failed to link pins to photos';
+          }
           setSubtasks(prev => prev.map(s => seqRemap.has(s.pin_photo_seq)
             ? { ...s, pin_photo_seq: seqRemap.get(s.pin_photo_seq)! } : s));
         }

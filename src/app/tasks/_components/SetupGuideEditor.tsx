@@ -265,7 +265,7 @@ export default function SetupGuideEditor({
       )}
 
       {/* Item picker sheet — appears after tapping the photo */}
-      {pending && (
+      {pending && !disabled && (
         <div className="rounded-lg border border-orange-300 bg-white p-2.5 space-y-2">
           <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">Label this pin</p>
           <input
