@@ -15,11 +15,15 @@ export interface GuidePin {
 
 /** One reference photo as the editor sees it — a server photo or a pending upload. */
 export interface EditorPhoto {
+  /** Local seq: for existing photos this is the server sequence; for a NEW photo
+   * it is a provisional value the server may reassign on append (then remapped). */
   seq: number;
   /** Display source: server route URL, or a local data URL while pending. */
   url: string;
   /** Set while the photo hasn't been uploaded yet (uploaded on save). */
   pendingBase64?: string;
+  /** True for a photo added this session (server allocates its real seq on append). */
+  isNew?: boolean;
 }
 
 interface StationItem { id: number; name: string; }
@@ -32,6 +36,9 @@ interface Props {
   onAddPhoto: (file: File) => void;
   onReplacePhoto: (seq: number, file: File) => void;
   onRemovePhoto: (seq: number) => void;
+  /** Freeze photo add/replace/remove while a save is in flight (the submit loop
+   * iterates a photos snapshot; mutating mid-save would orphan an upload). */
+  disabled?: boolean;
 }
 
 /**
@@ -42,7 +49,7 @@ interface Props {
  * photos (the order of the pins array).
  */
 export default function SetupGuideEditor({
-  departmentId, pins, onPinsChange, photos, onAddPhoto, onReplacePhoto, onRemovePhoto,
+  departmentId, pins, onPinsChange, photos, onAddPhoto, onReplacePhoto, onRemovePhoto, disabled = false,
 }: Props) {
   const [items, setItems] = useState<StationItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -124,7 +131,7 @@ export default function SetupGuideEditor({
   const photoNo = (seq: number) => photos.findIndex(p => p.seq === seq) + 1;
 
   return (
-    <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-3 space-y-3">
+    <div className={`rounded-xl border border-orange-200 bg-orange-50/40 p-3 space-y-3 ${disabled ? 'pointer-events-none opacity-60' : ''}`}>
       <p className="text-[11px] text-gray-600 leading-snug">
         📍 Add one or more photos of the finished station, then tap a photo to drop a numbered
         pin for each item — drag a pin to move it. Staff check off each pin as they set it up.

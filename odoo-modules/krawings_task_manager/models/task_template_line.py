@@ -162,9 +162,14 @@ class KrawingsTaskTemplateLine(models.Model):
     # ── Setup-guide reference photos (multi-photo) ───────────────────────
 
     def add_setup_photo(self, data_base64, filename, seq=None):
-        """Append (or replace, when `seq` names an existing slot) a reference
-        photo. Replacing drops that photo's pins — their coordinates are
-        meaningless on a new image. Returns the photo's sequence number."""
+        """Add a reference photo. Pass `seq` ONLY to replace an existing slot's
+        bytes; omit it to APPEND (the server allocates the next sequence). Always
+        returns the photo's actual sequence — the client must use the returned
+        value (it may differ from a guessed one under concurrent edits) and remap
+        its pins accordingly.
+
+        Append allocation is serialized on the parent-line row so two editors of
+        the same guide can't grab the same next sequence and overwrite one another."""
         self.ensure_one()
         Photo = self.env['krawings.task.setup.photo'].sudo()
         if seq is not None:
@@ -178,9 +183,19 @@ class KrawingsTaskTemplateLine(models.Model):
                 # server-side unlink would destroy just-saved pins.
                 existing.write({'image': data_base64, 'filename': filename or False})
                 return seq
+            # seq given but the slot is free → fall through and create it there.
         else:
-            seqs = self.setup_photo_ids.mapped('sequence')
-            seq = (max(seqs) + 1) if seqs else 0
+            # Flush so a prior create in THIS transaction is visible to MAX, then
+            # lock the line row so concurrent appends serialize.
+            self.env.flush_all()
+            self.env.cr.execute(
+                'SELECT id FROM krawings_task_template_line WHERE id = %s FOR UPDATE',
+                (self.id,))
+            self.env.cr.execute(
+                'SELECT COALESCE(MAX(sequence), -1) + 1 '
+                'FROM krawings_task_setup_photo WHERE template_line_id = %s',
+                (self.id,))
+            seq = self.env.cr.fetchone()[0]
         Photo.create({
             'template_line_id': self.id,
             'sequence': seq,

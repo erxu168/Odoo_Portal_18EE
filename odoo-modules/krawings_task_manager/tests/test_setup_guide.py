@@ -15,10 +15,23 @@ Run (fresh scratch DB, never the live one):
            --test-tags /krawings_task_manager --stop-after-init
 """
 import base64
+import importlib.util
+import os
 
 from odoo.exceptions import UserError, ValidationError
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
+
+
+def _load_migration_6000():
+    """Import the 18.0.6.0.0 post-migration module by path (migration dirs are
+    not importable packages)."""
+    path = os.path.join(
+        os.path.dirname(__file__), '..', 'migrations', '18.0.6.0.0', 'post-migration.py')
+    spec = importlib.util.spec_from_file_location('kw_tm_mig_6000', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 # Smallest valid JPEG (SOI + headers + EOI) — enough for a Binary field.
 TINY_JPEG = base64.b64encode(bytes.fromhex(
@@ -269,3 +282,96 @@ class TestSetupGuide(TransactionCase):
         self.Item.add_for_department(self.dept.id, 'Tongs')
         with self.assertRaises(UserError):
             item.rename('tongs')
+
+    # ── Fast-follow (audit) coverage ─────────────────────────────────────
+
+    def test_migration_6000_moves_legacy_photo_and_is_idempotent(self):
+        """18.0.6.0.0 moves the legacy setup_photo Binary into a seq-0 photo row,
+        clears the legacy field, keeps seq-0 pins attached, and is safe to re-run."""
+        legacy = self.env['krawings.task.template.line'].create({
+            'template_id': self.tpl.id, 'name': 'Legacy line', 'day_part': 'opening',
+            'is_setup_guide': True, 'setup_photo': TINY_JPEG, 'setup_photo_filename': 'old.jpg',
+        })
+        self.env['krawings.task.template.subtask'].create({
+            'line_id': legacy.id, 'name': 'legacy pin', 'pin_photo_seq': 0, 'pin_x': 0.5, 'pin_y': 0.5,
+        })
+        self.assertFalse(legacy.setup_photo_ids)
+        mig = _load_migration_6000()
+        mig.migrate(self.env.cr, '18.0.6.0.0')
+        legacy.invalidate_recordset()
+        self.assertEqual(legacy.setup_photo_ids.mapped('sequence'), [0])
+        self.assertEqual(legacy.setup_photo_ids.filename, 'old.jpg')
+        self.assertFalse(legacy.setup_photo, 'legacy binary must be cleared after migration')
+        self.assertEqual(legacy.subtask_ids.pin_photo_seq, 0, 'seq-0 pin stays attached')
+        # Idempotent: a second run must not add a duplicate seq-0 row.
+        mig.migrate(self.env.cr, '18.0.6.0.0')
+        legacy.invalidate_recordset()
+        self.assertEqual(len(legacy.setup_photo_ids), 1)
+
+    def test_add_setup_photo_append_allocates_above_current_max(self):
+        """Append (no seq) reads the CURRENT max sequence and allocates above it,
+        so a photo another editor already committed is seen and never overwritten.
+        (True lock contention needs concurrent transactions — integration-only;
+        here we assert the allocation contract the FOR UPDATE + MAX path enforces.)"""
+        s0 = self.tline.add_setup_photo(TINY_JPEG, 'a.jpg')          # existing station.jpg at 0 → 1
+        s1 = self.tline.add_setup_photo(TINY_JPEG, 'b.jpg')
+        self.assertEqual([s0, s1], [1, 2])
+        # Simulate a concurrent editor having committed a photo at a higher seq.
+        self.env['krawings.task.setup.photo'].sudo().create({
+            'template_line_id': self.tline.id, 'sequence': 9, 'image': TINY_JPEG, 'filename': 'other.jpg'})
+        before = len(self.tline.setup_photo_ids)
+        s2 = self.tline.add_setup_photo(TINY_JPEG, 'mine.jpg')
+        self.assertEqual(s2, 10, 'append must allocate ABOVE the highest existing seq')
+        self.assertEqual(len(self.tline.setup_photo_ids), before + 1, 'nothing overwritten')
+        self.assertEqual(
+            self.tline.setup_photo_ids.filtered(lambda p: p.sequence == 9).filename, 'other.jpg',
+            'the concurrently-added photo is untouched')
+
+    def test_remove_non_last_photo_keeps_other_photos_and_pins(self):
+        """Removing a NON-last photo drops only its pins; other photos + pins stay."""
+        self.tline.add_setup_photo(TINY_JPEG, 'second.jpg')          # seq 1
+        self.env['krawings.task.template.subtask'].create({
+            'line_id': self.tline.id, 'name': 'On photo 1', 'pin_photo_seq': 1, 'pin_x': 0.4, 'pin_y': 0.4,
+        })
+        self.tline.remove_setup_photo(0)                             # remove the FIRST photo
+        self.assertEqual(self.tline.setup_photo_ids.mapped('sequence'), [1])
+        names = self.tline.subtask_ids.mapped('name')
+        self.assertIn('On photo 1', names, 'pins on the surviving photo stay')
+        self.assertNotIn('Cutting board', names, 'the removed photo’s pins are dropped')
+
+    def test_photo_required_guide_reopens_when_proof_removed(self):
+        """A completed photo_required guide reopens when its proof photo is deleted."""
+        line = self._guide_line(self._spawn_today())
+        line.write({'photo_required': True})
+        for pin in line.subtask_ids:
+            self.ListLine.portal_toggle_subtask(line.id, pin.id, True, self.employee.id)
+        att = line.add_attachment('proof.jpg', TINY_JPEG, 'image/jpeg')
+        line.resync_setup_guide(self.employee.id)
+        self.assertTrue(line.completed_at)
+        # Delete the proof, resync → the photo gate fails and the guide reopens.
+        self.env['ir.attachment'].sudo().browse(att).unlink()
+        line.resync_setup_guide(self.employee.id)
+        self.assertFalse(line.completed_at, 'removing the only proof photo must reopen the guide')
+
+    def test_setup_photo_record_rule_isolates_companies(self):
+        """The setup.photo multi-company ir.rule hides another company's photo rows
+        from a non-sudo user (record rules DON'T propagate through the M2O)."""
+        # A guide photo owned by other_company.
+        other_dept = self.env['hr.department'].create({
+            'name': 'Other Kitchen', 'company_id': self.other_company.id})
+        other_tpl = self.Template.create({'name': 'Other tpl', 'department_id': other_dept.id})
+        other_line = self.env['krawings.task.template.line'].create({
+            'template_id': other_tpl.id, 'name': 'Other guide', 'day_part': 'opening',
+            'is_setup_guide': True})
+        other_line.add_setup_photo(TINY_JPEG, 'other.jpg')
+        photo = other_line.setup_photo_ids
+        self.assertTrue(photo)
+        # A plain user scoped to self.company must not see other_company's photo.
+        user = self.env['res.users'].create({
+            'name': 'SG Scoped', 'login': 'sg_scoped_user',
+            'company_id': self.company.id, 'company_ids': [(6, 0, [self.company.id])],
+            'groups_id': [(6, 0, [self.env.ref('base.group_user').id])],
+        })
+        visible = self.env['krawings.task.setup.photo'].with_user(user).search(
+            [('id', '=', photo.id)])
+        self.assertFalse(visible, 'record rule must hide another company’s setup photo')

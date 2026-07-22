@@ -162,6 +162,28 @@ test.describe.serial('station setup guide', () => {
     }
     expect(await pinRows.count()).toBeGreaterThanOrEqual(2);
 
+    // Drag pin 1 to a new spot (pointer-events drag) and confirm it moved. The
+    // pin button carries its % position inline; pick a target that DIFFERS from
+    // the current position so the idempotent re-run still observes movement.
+    const pin1 = page.getByRole('button', { name: /^Pin 1(:|$)/ }).first();
+    await expect(pin1).toBeVisible();
+    const leftBefore = await pin1.evaluate((el) => (el as HTMLElement).style.left);
+    const nearLeft = parseFloat(leftBefore) < 40; // "15%" -> 15
+    const b = await img.boundingBox();
+    const p1 = await pin1.boundingBox();
+    if (b && p1) {
+      // If it's on the left, drag right; else drag left — always a real move.
+      const targetX = b.x + b.width * (nearLeft ? 0.75 : 0.2);
+      const targetY = b.y + b.height * (nearLeft ? 0.25 : 0.75);
+      await page.mouse.move(p1.x + p1.width / 2, p1.y + p1.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(targetX, targetY, { steps: 8 });
+      await page.mouse.up();
+      await expect
+        .poll(async () => pin1.evaluate((el) => (el as HTMLElement).style.left))
+        .not.toBe(leftBefore);
+    }
+
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText(/Task (saved|added)/)).toBeVisible({ timeout: 30_000 });
   });

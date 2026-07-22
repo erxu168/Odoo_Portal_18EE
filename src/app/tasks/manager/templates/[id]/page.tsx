@@ -517,6 +517,9 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
     })),
   );
   const [removedSeqs, setRemovedSeqs] = useState<number[]>([]);
+  // Count of photos still compressing — Save is blocked until they land, so a
+  // pick started before Save can't finish after submit() snapshots `photos`.
+  const [photoBusy, setPhotoBusy] = useState(0);
   // New lines: remember the id created by the first successful save, so a retry
   // after a failed photo upload PATCHes instead of POSTing a duplicate task.
   const [createdLineId, setCreatedLineId] = useState<number | null>(null);
@@ -525,29 +528,39 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
   const seqRef = useRef<number>(Math.max(-1, ...(line?.setup_photo_seqs ?? [])) + 1);
 
   async function addSetupPhoto(file: File) {
+    // Provisional local seq only — the SERVER assigns the real one on append
+    // (append-without-seq), and submit() remaps pins if it differs.
     const seq = seqRef.current++;
+    setPhotoBusy(n => n + 1);
     try {
       const { base64 } = await compressImage(file, 1280, 0.85);
       // Insert in seq order: overlapping compressions finish out of order, and
       // the server sorts by seq — keep the on-screen order identical.
-      setPhotos(prev => [...prev, { seq, url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64 }]
+      setPhotos(prev => [...prev, { seq, url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64, isNew: true }]
         .sort((a, b) => a.seq - b.seq));
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Could not read image');
+    } finally {
+      setPhotoBusy(n => n - 1);
     }
   }
 
   async function replaceSetupPhoto(seq: number, file: File) {
     const hasPins = subtasks.some(s => s.pin_photo_seq === seq);
     if (hasPins && !confirm('Replacing this photo clears the pins placed on it. Continue?')) return;
+    setPhotoBusy(n => n + 1);
     try {
       const { base64 } = await compressImage(file, 1280, 0.85);
       if (hasPins) setSubtasks(prev => prev.filter(s => s.pin_photo_seq !== seq));
       setPhotos(prev => prev.map(p => p.seq === seq
-        ? { seq, url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64 }
+        // Preserve isNew: replacing a not-yet-uploaded photo must still APPEND
+        // (no seq) on save, or it could overwrite another editor's slot.
+        ? { ...p, url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64 }
         : p));
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Could not read image');
+    } finally {
+      setPhotoBusy(n => n - 1);
     }
   }
 
@@ -602,6 +615,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
 
   async function submit() {
     if (!name.trim()) { setError('Name required'); return; }
+    if (photoBusy > 0) { setError('A photo is still processing — try again in a moment'); return; }
     const cleanSubtasks = subtasks.filter(s => s.name.trim());
     // A setup guide needs at least one photo and at least one pin.
     if (isSetupGuide) {
@@ -610,6 +624,31 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
     }
     setSubmitting(true); setError(null);
     try {
+      // Reusable builders so the initial save and a post-upload pin-remap re-save
+      // send the FULL line body (a subtasks-only PATCH would coerce omitted
+      // fields like deadline_time/photo_required to defaults and corrupt the line).
+      const subtasksPayload = (seqMap?: Map<number, number>) => cleanSubtasks.map((s, i) => ({
+        id: s.id,
+        name: s.name.trim(),
+        sequence: (i + 1) * 10,
+        ...(isSetupGuide ? {
+          pin_x: s.pin_x, pin_y: s.pin_y,
+          pin_photo_seq: seqMap ? (seqMap.get(s.pin_photo_seq) ?? s.pin_photo_seq) : s.pin_photo_seq,
+          item_id: s.item_id ?? null,
+        } : {}),
+      }));
+      const lineBody = (seqMap?: Map<number, number>) => ({
+        name: name.trim(),
+        day_part: dayPart,
+        deadline_time: hhmmToFloat(deadline),
+        photo_required: photoRequired,
+        photo_instructions: photoRequired && photoInstructions.trim() ? photoInstructions.trim() : null,
+        module_link_type: moduleLink,
+        is_setup_guide: isSetupGuide,
+        subtasks: subtasksPayload(seqMap),
+        recurrence,
+      });
+
       // A retry after a failed photo upload must PATCH the already-created line.
       const existingId = line?.id ?? createdLineId;
       const url = existingId
@@ -619,23 +658,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          day_part: dayPart,
-          deadline_time: hhmmToFloat(deadline),
-          photo_required: photoRequired,
-          photo_instructions: photoRequired && photoInstructions.trim() ? photoInstructions.trim() : null,
-          module_link_type: moduleLink,
-          is_setup_guide: isSetupGuide,
-          subtasks: cleanSubtasks.map((s, i) => ({
-            id: s.id,
-            name: s.name.trim(),
-            sequence: (i + 1) * 10,
-            // Carry pin coordinates + photo link + catalog link only for guides.
-            ...(isSetupGuide ? { pin_x: s.pin_x, pin_y: s.pin_y, pin_photo_seq: s.pin_photo_seq, item_id: s.item_id ?? null } : {}),
-          })),
-          recurrence,
-        }),
+        body: JSON.stringify(lineBody()),
       });
       const body = await res.json();
       if (!body.ok) throw new Error(body.error || 'Failed');
@@ -646,11 +669,14 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
       const lineId: number | undefined = existingId ?? body.line_id;
       if (!existingId && body.line_id) setCreatedLineId(body.line_id);
 
-      // Upload every pending photo with its client-assigned seq (pins reference
-      // it). Failures keep the modal open with only the FAILED photos still
-      // pending — pressing Save again retries just those against the same line.
+      // Upload pending photos. NEW photos APPEND (no seq → the server allocates
+      // the sequence atomically, so two managers editing the same guide can't
+      // overwrite each other); EXISTING photos REPLACE their seq. If the server
+      // hands back a different seq than the provisional one (concurrent edit),
+      // remap the pins and re-save the line. Failures keep the modal open for retry.
       if (isSetupGuide && lineId) {
-        const uploaded: { seq: number; base64: string }[] = [];
+        const uploaded: { seq: number; base64: string; realSeq: number }[] = [];
+        const seqRemap = new Map<number, number>();
         let uploadError: string | null = null;
         for (const p of photos) {
           if (!p.pendingBase64) continue;
@@ -658,27 +684,48 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
             const upRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}/setup-photo`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ data_base64: p.pendingBase64, seq: p.seq }),
+              body: JSON.stringify({ data_base64: p.pendingBase64, ...(p.isNew ? {} : { seq: p.seq }) }),
             });
             const upBody = await upRes.json().catch(() => ({}));
-            if (!upRes.ok || !upBody.ok) uploadError = upBody.error || 'A photo upload failed';
-            else uploaded.push({ seq: p.seq, base64: p.pendingBase64 });
+            if (!upRes.ok || !upBody.ok) { uploadError = upBody.error || 'A photo upload failed'; }
+            else {
+              const realSeq = typeof upBody.seq === 'number' ? upBody.seq : p.seq;
+              if (p.isNew && realSeq !== p.seq) seqRemap.set(p.seq, realSeq);
+              uploaded.push({ seq: p.seq, base64: p.pendingBase64, realSeq });
+            }
           } catch {
             uploadError = 'A photo upload failed';
           }
         }
-        if (uploaded.length) {
-          // Clear pending ONLY when the payload still matches what we uploaded —
-          // a replacement made while the upload was in flight stays pending.
-          setPhotos(prev => prev.map(p =>
-            uploaded.some(u => u.seq === p.seq && u.base64 === p.pendingBase64)
-              ? { seq: p.seq, url: p.url }   // no longer pending; dataURL keeps displaying
-              : p));
+        // Server reassigned some new-photo seqs → repoint pins + re-save the line.
+        if (!uploadError && seqRemap.size) {
+          const rmRes = await fetch(`/api/tasks/templates/${tplId}/lines/${lineId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(lineBody(seqRemap)),
+          });
+          const rmBody = await rmRes.json().catch(() => ({}));
+          if (!rmRes.ok || !rmBody.ok) uploadError = rmBody.error || 'Failed to link pins to photos';
         }
+        // Bail BEFORE finalizing so a partial failure stays fully re-runnable:
+        // photos keep pending + provisional seqs and pins keep provisional seqs,
+        // so a retry re-uploads + re-remaps to a consistent state. Finalizing
+        // here would strand pins at provisional seqs the retry can't recover.
         if (uploadError) {
-          setError(`${uploadError} — press Save to retry the remaining photo(s).`);
+          setError(`${uploadError} — press Save to retry.`);
           setSubmitting(false);
           return;
+        }
+        // Full success: adopt the server seqs on both pins and photos.
+        if (seqRemap.size) {
+          setSubtasks(prev => prev.map(s => seqRemap.has(s.pin_photo_seq)
+            ? { ...s, pin_photo_seq: seqRemap.get(s.pin_photo_seq)! } : s));
+        }
+        if (uploaded.length) {
+          setPhotos(prev => prev.map(p => {
+            const u = uploaded.find(x => x.seq === p.seq && x.base64 === p.pendingBase64);
+            return u ? { seq: u.realSeq, url: p.url, isNew: false } : p;
+          }));
         }
       }
 
@@ -815,6 +862,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
               onAddPhoto={addSetupPhoto}
               onReplacePhoto={replaceSetupPhoto}
               onRemovePhoto={removeSetupPhoto}
+              disabled={submitting}
             />
           ) : (
             <div>
@@ -879,8 +927,8 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
         </div>
         <div className="flex gap-2 px-5 py-4 border-t border-gray-200 flex-shrink-0 bg-white">
           <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={submit} disabled={submitting} className="flex-1 py-2.5 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
-            {submitting ? 'Saving…' : 'Save'}
+          <button onClick={submit} disabled={submitting || photoBusy > 0} className="flex-1 py-2.5 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
+            {submitting ? 'Saving…' : photoBusy > 0 ? 'Processing photo…' : 'Save'}
           </button>
         </div>
       </div>
