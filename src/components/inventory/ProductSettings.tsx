@@ -237,113 +237,32 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
             {filtered.map((p: any) => {
               const on = !!flags[p.id];
               const uom = p.uom_id?.[1] || 'Units';
-              const measure = baseIsMeasure(uom);
-              const crateStr = crateSizes[p.id] ?? '';
-              const label = packLabels[p.id] ?? (measure ? 'piece' : 'crate');
-              const suggestion = suggestCrateSizeFromName(p.name);
+              const spots = homeSpots[p.id] || [];
+              // The list is navigation ONLY — every product setting lives on the
+              // single product form (tap to open). Read-only summary here.
               return (
-                <div key={p.id} className="py-3.5 border-b border-gray-100 [content-visibility:auto] [contain-intrinsic-size:auto_92px]">
-                  <div className="flex items-start justify-between gap-3">
-                    <button
-                      onClick={() => pickPhoto(p.id)}
-                      aria-label={`Photo for ${p.name}`}
-                      className="w-11 h-11 rounded-lg bg-gray-100 border border-gray-200 flex-shrink-0 flex items-center justify-center overflow-hidden active:opacity-80"
-                    >
-                      {imageIds.has(p.id)
-                        ? <img src={`/api/inventory/product-images/${p.id}?v=${imgVer}`} alt="" className="w-full h-full object-cover" />
-                        : <span className="text-[18px]">📷</span>}
-                    </button>
-                    <button onClick={() => setDetailFor(p)} aria-label={`Open ${p.name}`}
-                      className="flex-1 min-w-0 text-left active:opacity-70">
-                      <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate flex items-center gap-1">
-                        {p.name}
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
-                      </div>
-                      <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">{p.categ_id?.[1] || ''} · base {uom}</div>
-                    </button>
-                    <button
-                      onClick={() => togglePhoto(p.id)}
-                      aria-label="Photo required"
-                      className="flex items-center gap-2 flex-shrink-0 active:opacity-80"
-                    >
-                      <span className="text-[10px] font-bold uppercase text-gray-400">Photo</span>
-                      <div className={`relative w-11 h-[26px] rounded-full transition-colors ${on ? 'bg-[#F5800A]' : 'bg-gray-300'}`}>
-                        <div className={`absolute top-[3px] w-5 h-5 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[22px]' : 'translate-x-[3px]'}`} />
-                      </div>
-                    </button>
+                <button key={p.id} onClick={() => setDetailFor(p)}
+                  aria-label={`Open ${p.name}`}
+                  className="w-full py-3 border-b border-gray-100 flex items-center gap-3 text-left active:bg-gray-50 [content-visibility:auto] [contain-intrinsic-size:auto_76px]">
+                  <div className="w-11 h-11 rounded-lg bg-gray-100 border border-gray-200 flex-shrink-0 flex items-center justify-center overflow-hidden">
+                    {imageIds.has(p.id)
+                      ? <img src={`/api/inventory/product-images/${p.id}?v=${imgVer}`} alt="" className="w-full h-full object-cover" />
+                      : <span className="text-[18px]">📷</span>}
                   </div>
-
-                  <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-                    <span className="text-[var(--fs-xs)] font-semibold text-gray-500 mr-1">Count by</span>
-                    <select
-                      value={label}
-                      onChange={(e) => { const v = e.target.value; setPackLabels(prev => ({ ...prev, [p.id]: v })); commitPack(p.id, crateSizes[p.id] ?? '', v, looseLabels[p.id] ?? ''); }}
-                      aria-label={`Count-by unit for ${p.name}`}
-                      className="h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] font-semibold text-gray-900 bg-white outline-none focus:border-green-500"
-                    >
-                      {PACK_LABELS.map(l => <option key={l} value={l}>{l}</option>)}
-                    </select>
-                    <span className="text-[var(--fs-xs)] text-gray-500">1 {label} {measure ? '≈' : '='}</span>
-                    <input
-                      value={crateStr}
-                      onChange={(e) => setCrateSizes(prev => ({ ...prev, [p.id]: e.target.value.replace(/[^0-9.]/g, '') }))}
-                      onBlur={(e) => commitPack(p.id, e.target.value, label, looseLabels[p.id] ?? '')}
-                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                      inputMode="decimal"
-                      placeholder="—"
-                      aria-label={`Base units per ${label} for ${p.name}`}
-                      className="w-14 h-9 border border-gray-300 rounded-lg text-center font-mono text-[var(--fs-base)] font-semibold text-gray-900 outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/15"
-                    />
-                    <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
-                    {crateStr !== '' && (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="text-[var(--fs-xs)] text-gray-500">· also count loose</span>
-                        <input
-                          value={looseLabels[p.id] ?? ''}
-                          onChange={(e) => setLooseLabels(prev => ({ ...prev, [p.id]: e.target.value.slice(0, 20) }))}
-                          onBlur={(e) => commitPack(p.id, crateSizes[p.id] ?? '', label, e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                          placeholder="bottles"
-                          aria-label={`Single-unit word for ${p.name}`}
-                          className="w-20 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] text-gray-900 outline-none focus:border-green-500"
-                        />
-                      </span>
-                    )}
-                    {suggestion !== null && crateStr === '' && (
-                      <button
-                        onClick={() => { setCrateSizes(prev => ({ ...prev, [p.id]: String(suggestion) })); commitPack(p.id, String(suggestion), label, looseLabels[p.id] ?? ''); }}
-                        className="text-[11px] font-bold text-blue-800 bg-blue-50 rounded-md px-2 py-1 active:bg-blue-100"
-                      >
-                        Suggest: {suggestion}
-                      </button>
-                    )}
-                    {saving === p.id && <span className="text-[11px] text-gray-400">Saving…</span>}
-                    {savedId === p.id && saving !== p.id && (
-                      <span className="text-[11px] text-green-600 font-semibold inline-flex items-center gap-1">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>Saved
-                      </span>
-                    )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5 truncate">{p.categ_id?.[1] || ''} · base {uom}</div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {on && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">📷 Photo required</span>}
+                      {spots.length > 0 ? spots.map((sid) => (
+                        <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">📍 {spotLabels[sid] || `Spot ${sid}`}</span>
+                      )) : (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-dashed border-amber-300">📍 No spot yet</span>
+                      )}
+                    </div>
                   </div>
-
-                  {/* HOME SPOTS — where this product lives / is counted (global record) */}
-                  <button
-                    onClick={() => setSpotSheetFor(p)}
-                    aria-label={`Change where ${p.name} is counted`}
-                    className="mt-2 flex flex-wrap gap-1 text-left active:opacity-80"
-                  >
-                    {(homeSpots[p.id] || []).length > 0 ? (
-                      (homeSpots[p.id] || []).map((sid) => (
-                        <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
-                          📍 {spotLabels[sid] || `Spot ${sid}`}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-dashed border-amber-300">
-                        📍 No spot yet — tap to set
-                      </span>
-                    )}
-                  </button>
-                </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
+                </button>
               );
             })}
           </div>
