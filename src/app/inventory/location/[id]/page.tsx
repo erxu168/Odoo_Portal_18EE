@@ -6,13 +6,15 @@
  * a location lands here. It cross-links to related records — the parent area
  * (drill up), the spots inside it (drill down), and every product that lives
  * here (drill across to the Products module) — so the record is never a dead
- * end. Permission-aware: name/notes are editable only with location.manage.
+ * end. Editing uses the single shared LocationForm (all fields + delete),
+ * gated by inventory.location.manage.
  */
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import { Spinner, ProductThumb } from '@/components/inventory/ui';
 import RecordLink from '@/components/ui/RecordLink';
+import LocationForm, { type KindRow } from '@/components/inventory/LocationForm';
 import { RECORD_EDIT_CAP } from '@/lib/record-links';
 import { allowedActionKeysForRole, type Role } from '@/lib/permissions';
 
@@ -31,14 +33,12 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Inline edit (managers): the descriptive fields. Structural moves (reparent,
-  // reorder, delete, type) stay in the Locations manager.
+  // Editing uses the ONE shared LocationForm (single-canonical-form rule).
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState('');
-  const [desc, setDesc] = useState('');
+  const [kinds, setKinds] = useState<KindRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
-  const [editErr, setEditErr] = useState<string | null>(null);       // save failure (shown in the edit card)
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [productsError, setProductsError] = useState(false);          // placements fetch failed (≠ genuinely empty)
 
   const back = () => (window.history.length > 1 ? router.back() : router.push('/inventory'));
@@ -57,7 +57,10 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
         const one = await fetch(`/api/inventory/count-locations?id=${locationId}`);
         if (!one.ok) throw new Error(one.status === 404 ? 'Location not found' : 'Could not load the location');
         const l: Loc = (await one.json()).location;
-        setLoc(l); setName(l.name); setDesc(l.description || '');
+        setLoc(l);
+        // The location type dropdown needs this company's kinds.
+        fetch(`/api/inventory/location-kinds?company_id=${l.company_id}`)
+          .then((r) => (r.ok ? r.json() : { kinds: [] })).then((d) => setKinds(d.kinds || [])).catch(() => {});
 
         // Siblings/children come from the company's full list; products-here + names in parallel.
         const [allRes, placeRes] = await Promise.all([
@@ -87,19 +90,31 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
     })();
   }, [locationId]);
 
-  async function saveEdits() {
+  async function saveLocation(patch: { name?: string; kind?: string; description?: string | null; photo?: string | null }) {
     if (!loc || saving) return;
-    setSaving(true); setEditErr(null);
+    setSaving(true); setSaveErr(null);
     try {
       const res = await fetch('/api/inventory/count-locations', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: loc.id, name: name.trim(), description: desc.trim() || null }),
+        body: JSON.stringify({ id: loc.id, name: patch.name, kind: patch.kind, description: patch.description ?? null, photo: patch.photo ?? null }),
       });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); setEditErr(d.error || 'Could not save — try again'); return; }
-      setLoc({ ...loc, name: name.trim(), description: desc.trim() || null });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setSaveErr(d.error || 'Could not save — try again'); return; }
+      setLoc({ ...loc, name: patch.name || loc.name, kind: patch.kind || loc.kind, description: patch.description ?? null, photo: patch.photo ?? null });
       setEditing(false); setSavedMsg('Saved');
       setTimeout(() => setSavedMsg(null), 1800);
-    } catch { setEditErr('Network error — not saved'); }
+    } catch { setSaveErr('Network error — not saved'); }
+    finally { setSaving(false); }
+  }
+
+  async function deleteLocation() {
+    if (!loc || saving) return;
+    if (!window.confirm(`Delete “${loc.name}”? This removes the location. This can’t be undone.`)) return;
+    setSaving(true); setSaveErr(null);
+    try {
+      const res = await fetch(`/api/inventory/count-locations?id=${loc.id}`, { method: 'DELETE' });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setSaveErr(d.error || 'Could not delete'); return; }
+      back();
+    } catch { setSaveErr('Network error — not deleted'); }
     finally { setSaving(false); }
   }
 
@@ -119,7 +134,7 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <AppHeader title="Location" subtitle={loc.name} showBack onBack={back}
-        action={canEdit && !editing ? (
+        action={canEdit ? (
           <button onClick={() => setEditing(true)} className="text-white/90 text-[13px] font-bold active:opacity-70">Edit</button>
         ) : undefined} />
 
@@ -129,33 +144,15 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
           <img src={loc.photo} alt="" className="w-full max-h-56 object-cover rounded-2xl border border-gray-200 mb-4" />
         )}
 
-        {/* Identity — view or inline edit */}
-        {editing ? (
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-4">
-            <label className={sectionLabel}>Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120}
-              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 mb-3 outline-none focus:border-green-500" />
-            <label className={sectionLabel}>Notes (where to stand / what{'\''}s here)</label>
-            <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} maxLength={500}
-              className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-green-500 resize-none" />
-            {editErr && <p className="text-[12px] font-semibold text-red-600 mt-2">{editErr}</p>}
-            <div className="flex gap-2 mt-3">
-              <button onClick={saveEdits} disabled={saving || name.trim().length < 1}
-                className="flex-1 py-2.5 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
-              <button onClick={() => { setEditing(false); setName(loc.name); setDesc(loc.description || ''); setEditErr(null); }}
-                className="px-4 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold">Cancel</button>
-            </div>
+        {/* Identity (view) — editing uses the shared LocationForm modal */}
+        <div className="mb-4">
+          <div className="flex items-center gap-2">
+            <h1 className="text-[22px] font-bold text-gray-900">{loc.name}</h1>
+            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 rounded-md px-1.5 py-0.5">{loc.kind}</span>
           </div>
-        ) : (
-          <div className="mb-4">
-            <div className="flex items-center gap-2">
-              <h1 className="text-[22px] font-bold text-gray-900">{loc.name}</h1>
-              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 rounded-md px-1.5 py-0.5">{loc.kind}</span>
-            </div>
-            {loc.description && <p className="text-[var(--fs-sm)] text-gray-500 mt-1">{loc.description}</p>}
-            {savedMsg && <span className="text-[12px] font-bold text-green-600">{savedMsg}</span>}
-          </div>
-        )}
+          {loc.description && <p className="text-[var(--fs-sm)] text-gray-500 mt-1">{loc.description}</p>}
+          {savedMsg && <span className="text-[12px] font-bold text-green-600">{savedMsg}</span>}
+        </div>
 
         {/* Parent — drill up */}
         {parent && (
@@ -211,10 +208,23 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
         {canEdit && (
           <button onClick={() => router.push('/inventory')}
             className="w-full py-3 rounded-xl bg-white border border-gray-200 text-gray-600 text-[var(--fs-sm)] font-semibold active:bg-gray-50 mb-8">
-            Open the Locations manager (add spots, reorder, delete) →
+            Open the Locations manager (add spots, reorder) →
           </button>
         )}
       </div>
+
+      {/* The ONE location form (same component the Locations manager uses). */}
+      {editing && (
+        <LocationForm
+          initial={loc}
+          kinds={kinds}
+          onCancel={() => { setEditing(false); setSaveErr(null); }}
+          onSave={saveLocation}
+          onDelete={deleteLocation}
+          saving={saving}
+          error={saveErr}
+        />
+      )}
     </div>
   );
 }
