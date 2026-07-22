@@ -181,8 +181,24 @@ export default function TemplateEditPage({ params }: PageProps) {
   const { toast, showToast, dismissToast } = useToast();
   const { companyId: activeCompanyId } = useCompany();
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
+  // Two ordering tokens keep overlapping loads correct:
+  //  - dataGen orders ANY write to tpl (a foreground reload OR a background
+  //    lines-only refresh), so a slow/stale response can never overwrite a
+  //    fresher one — only the latest-STARTED writer applies its tpl.
+  //  - fgGen orders FOREGROUND-only state (departments, error). A background
+  //    lines refresh has no departments/error to contribute, so it must NOT
+  //    invalidate a foreground load's authority over them.
+  const dataGen = useRef(0);
+  const fgGen = useRef(0);
+  // silent: a BACKGROUND refresh that never shows the loading skeleton (so it
+  // can't unmount an open modal) and merges ONLY tpl.lines (so it can't clobber
+  // the manager's unsaved header edits or change an open modal's departmentId).
+  // Used after a save whose own modal was dismissed mid-flight: the write
+  // committed, so the list must reflect it — safe to run even with a modal open.
+  const load = useCallback(async (silent = false) => {
+    const myData = ++dataGen.current;
+    const myFg = silent ? fgGen.current : ++fgGen.current;
+    if (!silent) { setLoading(true); setError(null); }
     try {
       const [tplRes, deptRes] = await Promise.all([
         fetch(`/api/tasks/templates/${tplId}`),
@@ -191,22 +207,18 @@ export default function TemplateEditPage({ params }: PageProps) {
       const body = await tplRes.json();
       const deptBody = await deptRes.json();
       if (!tplRes.ok) throw new Error(body.error || 'Failed');
-      setTpl(body.template);
-      if (deptRes.ok) setDepartments(deptBody.departments || []);
+      if (!silent && myFg === fgGen.current && deptRes.ok) setDepartments(deptBody.departments || []);
+      if (myData === dataGen.current) {
+        // Foreground replaces the whole template; a silent refresh merges only
+        // lines onto the current header (never touches name/department).
+        setTpl(prev => (silent && prev) ? { ...prev, lines: body.template.lines } : body.template);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      if (!silent && myFg === fgGen.current) setError(e instanceof Error ? e.message : 'Failed');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [tplId]);
-
-  // A foreground load() shows the full-page loading skeleton, which unmounts any
-  // open modal. So the background refresh after a dismissed-but-committed save
-  // (below) only runs when NO modal is open — nothing to unmount, no silent-vs-
-  // foreground load arbitration. Kept in a ref so the dismissed save's late
-  // completion reads the CURRENT open state, not a stale render closure.
-  const modalOpenRef = useRef(false);
-  useEffect(() => { modalOpenRef.current = showAddLine || editingLine !== null; }, [showAddLine, editingLine]);
 
   useEffect(() => { load(); }, [load, activeCompanyId]);
 
@@ -470,7 +482,7 @@ export default function TemplateEditPage({ params }: PageProps) {
             await load();
             if (msg) showToast(msg);
           }}
-          onBackgroundRefresh={() => { if (!modalOpenRef.current) void load(); }}
+          onBackgroundRefresh={() => { void load(true); }}
         />
       )}
       {toast && <Toast message={toast.msg} type={toast.type} visible={true} onDismiss={dismissToast} />}
@@ -485,9 +497,8 @@ interface LineModalProps {
   onClose: () => void;
   onSaved: (toastMessage?: string) => Promise<void>;
   /** Refresh the parent list after a save whose own modal was dismissed
-   * mid-flight — but only when no other modal is open (a foreground reload would
-   * unmount it). If one is open the refresh is skipped and self-corrects on the
-   * next close/reload. */
+   * mid-flight. A background (non-blanking, lines-only) refresh — safe to run
+   * even with another modal open. */
   onBackgroundRefresh: () => void;
 }
 
