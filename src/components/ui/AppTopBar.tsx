@@ -9,7 +9,8 @@ import { useTopBar } from './TopBarContext';
 const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/shift-handover', '/kiosk', '/confirm-shift'];
 // Wide routes render an edge-to-edge bar (content centered) instead of the
 // phone-width column, so the bar doesn't float as a narrow box over wide content.
-const WIDE_ROUTES = ['/shifts'];
+// These routes have no desktop nav rail, so the bar is NOT offset for one.
+const WIDE_ROUTES = ['/shifts', '/hr'];
 
 export default function AppTopBar() {
   const pathname = usePathname();

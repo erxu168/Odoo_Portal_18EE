@@ -126,6 +126,7 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto w-full max-w-lg md:max-w-3xl lg:max-w-5xl xl:max-w-6xl">
       <AppHeader title="HR & Onboarding" subtitle="Team, onboarding & leave" />
 
       {loading ? (
@@ -189,6 +190,7 @@ export default function HrDashboard({ onNavigate, onHome }: Props) {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

@@ -8,12 +8,13 @@ import { usePathname } from 'next/navigation';
  * KDS uses position:fixed and needs zero constraints from the parent.
  */
 
-const FULL_SCREEN_ROUTES = ['/recipes', '/hr', '/shift-handover'];
+const FULL_SCREEN_ROUTES = ['/recipes', '/shift-handover'];
 const FULL_VIEWPORT_ROUTES = ['/kds', '/kiosk', '/confirm-shift'];
-// Wide routes: no phone-width cap — the module's own screens choose their width
-// (grid screens go wide on desktop, list/form screens self-center). Phones are
-// unaffected because they're already narrower than any of these caps.
-const WIDE_ROUTES = ['/shifts'];
+// Wide routes: no phone-width cap and top-bar clearance (pt-9), but NO desktop
+// rail offset — used by modules that hide the app nav rail because their own
+// screens carry a fixed bottom action bar (/shifts, /hr). Each screen chooses its
+// own content width (grids go wide, dashboards self-center). Phones are unaffected.
+const WIDE_ROUTES = ['/shifts', '/hr'];
 
 export default function MainWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
