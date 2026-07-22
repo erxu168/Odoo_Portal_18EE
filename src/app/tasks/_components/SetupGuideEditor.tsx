@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import PinnableImage from '@/components/ui/PinnableImage';
 
 export interface GuidePin {
@@ -61,6 +61,11 @@ export default function SetupGuideEditor({
   const [activeGlobal, setActiveGlobal] = useState<number | null>(null);
   const [activeSeq, setActiveSeq] = useState<number | null>(photos[0]?.seq ?? null);
   const [imgError, setImgError] = useState<Set<number>>(new Set());
+  // Mirrors `disabled` so ASYNC callbacks read the CURRENT value at resolve time,
+  // not the (stale, still-enabled) value captured when they were kicked off —
+  // e.g. an addNewItem() POST that resolves after Save froze the editor.
+  const disabledRef = useRef(disabled);
+  useEffect(() => { disabledRef.current = disabled; }, [disabled]);
 
   // Keep the active photo valid as photos come and go.
   useEffect(() => {
@@ -88,6 +93,10 @@ export default function SetupGuideEditor({
 
   function placePinFromItem(item: StationItem) {
     if (!pending) return;
+    // A save may have started (editor frozen) while an addNewItem() POST was in
+    // flight — dropping a pin now would mutate pins AFTER submit snapshotted them
+    // (silently lost on success, or clobbering remapped seqs on failure).
+    if (disabledRef.current) { setPending(null); setNewName(''); return; }
     // The target photo may have been removed while the label sheet was open.
     if (!photos.some(p => p.seq === pending.seq)) { setPending(null); setNewName(''); return; }
     onPinsChange([...pins, {

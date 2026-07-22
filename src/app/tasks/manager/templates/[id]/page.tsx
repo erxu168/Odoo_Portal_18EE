@@ -523,12 +523,15 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
   // New lines: remember the id created by the first successful save, so a retry
   // after a failed photo upload PATCHes instead of POSTing a duplicate task.
   const [createdLineId, setCreatedLineId] = useState<number | null>(null);
-  // Provisional seqs for not-yet-uploaded photos live in a HIGH, disjoint
-  // namespace so they can never equal a real server sequence (0,1,2…). That
-  // makes the pin→photo link unambiguous even when the server reassigns a new
-  // photo's real seq — a provisional-vs-real collision is impossible. Bumped
-  // synchronously (before async compression) so overlapping adds don't collide.
-  const seqRef = useRef<number>(1_000_000);
+  // Provisional seqs for not-yet-uploaded photos are seeded 1,000,000 ABOVE the
+  // highest existing real seq, so they (a) sort after every real photo — keeping
+  // add-order on screen, (b) can never equal a real seq that already exists on
+  // the line, and (c) stay a million ahead of a concurrent editor's real append
+  // (server allocates MAX+1). So a provisional-vs-real collision is impossible
+  // and the pin→photo link stays unambiguous even when the server reassigns a
+  // new photo's real seq. Bumped synchronously (before async compression) so
+  // overlapping adds on this editor don't collide either.
+  const seqRef = useRef<number>(Math.max(-1, ...(line?.setup_photo_seqs ?? [])) + 1_000_001);
 
   async function addSetupPhoto(file: File) {
     // Provisional local seq only — the SERVER assigns the real one on append
