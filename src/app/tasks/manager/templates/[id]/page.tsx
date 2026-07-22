@@ -523,15 +523,21 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
   // New lines: remember the id created by the first successful save, so a retry
   // after a failed photo upload PATCHes instead of POSTing a duplicate task.
   const [createdLineId, setCreatedLineId] = useState<number | null>(null);
-  // Provisional seqs for not-yet-uploaded photos are seeded 1,000,000 ABOVE the
-  // highest existing real seq, so they (a) sort after every real photo — keeping
-  // add-order on screen, (b) can never equal a real seq that already exists on
-  // the line, and (c) stay a million ahead of a concurrent editor's real append
-  // (server allocates MAX+1). So a provisional-vs-real collision is impossible
-  // and the pin→photo link stays unambiguous even when the server reassigns a
-  // new photo's real seq. Bumped synchronously (before async compression) so
-  // overlapping adds on this editor don't collide either.
-  const seqRef = useRef<number>(Math.max(-1, ...(line?.setup_photo_seqs ?? [])) + 1_000_001);
+  // Provisional seqs for not-yet-uploaded photos live at 1,000,000+ so they (a)
+  // sort AFTER every real photo — keeping add-order on screen — and (b) sit far
+  // above any real seq that can exist: the server allocates seqs from 0 (MAX+1)
+  // and a line holds at most a handful of reference photos, so real seqs stay in
+  // the low tens and can never reach the provisional band. 1,000,000 + a small
+  // per-editor counter also can't overflow Odoo's int4 (max ~2.1e9). So against
+  // our own client — which only APPENDS new photos (server picks the real seq)
+  // or REPLACES an existing small seq, and never posts a photo in the 1M band —
+  // a provisional-vs-real collision cannot occur, and pins are remapped to real
+  // seqs on save. RESIDUAL (documented-deferred): a *different* authorized client
+  // deliberately creating a photo at a >=1,000,000 seq could still collide. Fully
+  // closing that adversarial case means taking the pin<->photo link off the
+  // shared integer namespace (opaque photo keys) or a server-side transactional
+  // save-guide aggregate — out of scope for this client fast-follow.
+  const seqRef = useRef<number>(1_000_000);
 
   async function addSetupPhoto(file: File) {
     // Provisional local seq only — the SERVER assigns the real one on append

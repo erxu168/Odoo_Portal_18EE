@@ -66,6 +66,13 @@ export default function SetupGuideEditor({
   // e.g. an addNewItem() POST that resolves after Save froze the editor.
   const disabledRef = useRef(disabled);
   useEffect(() => { disabledRef.current = disabled; }, [disabled]);
+  // Bumped every time the editor freezes (a save/photo op begins). An async
+  // addNewItem() captures the value at POST time and aborts if it changed by the
+  // time it resolves — so even if the editor RE-ENABLES (e.g. a partial-failure
+  // save reopens the modal) before the POST returns, a stale placePinFromItem
+  // can't add a pin the save already snapshotted past.
+  const saveGenRef = useRef(0);
+  useEffect(() => { if (disabled) saveGenRef.current += 1; }, [disabled]);
 
   // Keep the active photo valid as photos come and go.
   useEffect(() => {
@@ -91,6 +98,11 @@ export default function SetupGuideEditor({
     [pins, activeSeq],
   );
 
+  // Single choke point for EVERY pin mutation: refuse to write while the editor
+  // is frozen, so a late pointerup or async callback can't mutate pins after a
+  // save already snapshotted them.
+  const commitPins = (next: GuidePin[]) => { if (disabledRef.current) return; onPinsChange(next); };
+
   function placePinFromItem(item: StationItem) {
     if (!pending) return;
     // A save may have started (editor frozen) while an addNewItem() POST was in
@@ -99,7 +111,7 @@ export default function SetupGuideEditor({
     if (disabledRef.current) { setPending(null); setNewName(''); return; }
     // The target photo may have been removed while the label sheet was open.
     if (!photos.some(p => p.seq === pending.seq)) { setPending(null); setNewName(''); return; }
-    onPinsChange([...pins, {
+    commitPins([...pins, {
       name: item.name, pin_x: pending.x, pin_y: pending.y,
       pin_photo_seq: pending.seq, item_id: item.id,
     }]);
@@ -110,6 +122,10 @@ export default function SetupGuideEditor({
   async function addNewItem() {
     const name = newName.trim();
     if (!name || !pending) return;
+    // Remember which "frozen generation" we started in. If a save begins before
+    // the POST resolves, the generation changes and we must NOT place the pin —
+    // even if the editor has re-enabled by the time we get here.
+    const gen = saveGenRef.current;
     setAdding(true);
     try {
       const res = await fetch(`/api/tasks/departments/${departmentId}/station-items`, {
@@ -120,6 +136,13 @@ export default function SetupGuideEditor({
       const body = await res.json();
       if (!body.ok) throw new Error(body.error || 'Failed to add item');
       setItems(prev => prev.some(i => i.id === body.item.id) ? prev : [...prev, body.item].sort((a, b) => a.name.localeCompare(b.name)));
+      if (saveGenRef.current !== gen) {
+        // A save intervened while creating this item — the item is saved to the
+        // catalog, but placing its pin now would land past the save snapshot.
+        setPending(null); setNewName('');
+        alert('Saved the new item, but a save was in progress — tap the photo again to place its pin.');
+        return;
+      }
       placePinFromItem(body.item);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Failed to add item');
@@ -129,7 +152,7 @@ export default function SetupGuideEditor({
   }
 
   function removePinGlobal(gi: number) {
-    onPinsChange(pins.filter((_, i) => i !== gi));
+    commitPins(pins.filter((_, i) => i !== gi));
     setActiveGlobal(null);
   }
 
@@ -208,10 +231,11 @@ export default function SetupGuideEditor({
                   setPending({ x, y, seq: activeSeq });
                   setNewName('');
                 }}
+                disabled={disabled}
                 onPinMove={(i, x, y) => {
                   const gi = activePins[i]?.gi;
                   if (gi === undefined) return;
-                  onPinsChange(pins.map((p, idx) => idx === gi ? { ...p, pin_x: x, pin_y: y } : p));
+                  commitPins(pins.map((p, idx) => idx === gi ? { ...p, pin_x: x, pin_y: y } : p));
                 }}
                 onPinClick={(i) => {
                   const gi = activePins[i]?.gi;

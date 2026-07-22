@@ -27,6 +27,11 @@ interface Props {
   /** edit: user dragged pin #index to a new spot — fired once on drop, clamped fractions. */
   onPinMove?: (index: number, x: number, y: number) => void;
   onImageError?: () => void;
+  /** edit: freeze placement/drag while a save is in flight. A pointer captured
+   * BEFORE the freeze still delivers move/up events to the captured element
+   * (pointer capture bypasses `pointer-events:none`), so we must drop that
+   * gesture here instead of committing a move after the parent snapshotted pins. */
+  disabled?: boolean;
   className?: string;
 }
 
@@ -46,7 +51,7 @@ const DRAG_THRESHOLD = 5;
  * the pins ONLY, so page scrolling elsewhere keeps working (iOS pitfall #4).
  */
 export default function PinnableImage({
-  src, pins, mode, activeIndex = null, onPinClick, onPlace, onPinMove, onImageError, className = '',
+  src, pins, mode, activeIndex = null, onPinClick, onPlace, onPinMove, onImageError, disabled = false, className = '',
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   // Live position of the pin being dragged (render-only; committed on drop).
@@ -65,7 +70,7 @@ export default function PinnableImage({
   }
 
   function handleWrapClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (mode !== 'edit' || !onPlace) return;
+    if (mode !== 'edit' || !onPlace || disabled) return;
     if (justDragged.current) { justDragged.current = false; return; }
     const f = fractions(e);
     if (f) onPlace(f.x, f.y);
@@ -73,7 +78,7 @@ export default function PinnableImage({
 
   function onPinPointerDown(index: number) {
     return (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (mode !== 'edit' || !onPinMove) return;
+      if (mode !== 'edit' || !onPinMove || disabled) return;
       // Clear any stale suppression flag: on touch a drag's pointerup fires no
       // synthetic click, so the flag set on the previous drop could otherwise
       // swallow this fresh tap.
@@ -101,6 +106,9 @@ export default function PinnableImage({
     if (!g || e.pointerId !== g.pointerId) return;
     gesture.current = null;
     if (g.moved) {
+      // A save started mid-drag: drop the move rather than commit it after the
+      // parent snapshotted pins. Keep justDragged so the trailing click is eaten.
+      if (disabled) { justDragged.current = true; setDrag(null); return; }
       const f = fractions(e);
       if (f && onPinMove) onPinMove(g.index, f.x, f.y);
       justDragged.current = true;
