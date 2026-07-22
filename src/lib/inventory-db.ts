@@ -960,7 +960,14 @@ export function deleteTemplate(templateId: number): void {
   const tx = db.transaction(() => {
     const sessions = (db.prepare('SELECT id FROM counting_sessions WHERE template_id = ?')
       .all(templateId) as { id: number }[]).map((r) => r.id);
+    const delPhoto = db.prepare("DELETE FROM count_photos WHERE source_table = 'count_entries' AND source_id = ?");
     for (const sid of sessions) {
+      // Count photos hang off entries by a GENERIC (source_table, source_id)
+      // association with no FK cascade — delete them BEFORE their entries or
+      // they orphan as dead base64 rows.
+      const entryIds = (db.prepare('SELECT id FROM count_entries WHERE session_id = ?')
+        .all(sid) as { id: number }[]).map((r) => r.id);
+      for (const eid of entryIds) delPhoto.run(eid);
       db.prepare('DELETE FROM count_entries WHERE session_id = ?').run(sid);
       db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(sid);
       db.prepare('DELETE FROM session_count_locations WHERE session_id = ?').run(sid);
@@ -971,6 +978,23 @@ export function deleteTemplate(templateId: number): void {
     db.prepare('DELETE FROM counting_templates WHERE id = ?').run(templateId);
   });
   tx();
+}
+
+/**
+ * True when a list has counts worth preserving — any session that isn't an
+ * untouched pending one (i.e. submitted/approved/rejected, or a pending session
+ * that already has entries). Used to guard hard-delete: a manager may only purge
+ * a list with real history if they're an unrestricted admin.
+ */
+export function templateHasRealSessions(templateId: number): boolean {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT 1 FROM counting_sessions s
+    WHERE s.template_id = ?
+      AND (s.status != 'pending' OR EXISTS (SELECT 1 FROM count_entries e WHERE e.session_id = s.id))
+    LIMIT 1
+  `).get(templateId);
+  return !!row;
 }
 
 export function deleteStalePendingSessions(templateId: number, keepDate: string | null): number {

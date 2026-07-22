@@ -20,11 +20,13 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   const tmpl = getTemplate(id);
   if (!tmpl) return NextResponse.json({ error: 'List not found' }, { status: 404 });
 
-  // Scope by the list's company (a legacy list with no company stays visible so
-  // a manager can still open + re-tag it). A full admin (no restriction) sees all.
+  // Scope by the list's company. A null-company legacy list is quarantined to an
+  // unrestricted admin (mirrors legacy-session auth) — not exposed to everyone.
   const allowed = parseCompanyIds(user.allowed_company_ids);
   const adminUnrestricted = user.role === 'admin' && allowed.length === 0;
-  if (tmpl.company_id != null && !adminUnrestricted && !allowed.includes(tmpl.company_id)) {
+  if (tmpl.company_id == null) {
+    if (!adminUnrestricted) return NextResponse.json({ error: 'List not found' }, { status: 404 });
+  } else if (!adminUnrestricted && !allowed.includes(tmpl.company_id)) {
     return NextResponse.json({ error: 'List not found' }, { status: 404 });
   }
 

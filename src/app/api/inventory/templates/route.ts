@@ -11,7 +11,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate, todayStr, deleteStalePendingSessions, deleteTemplate } from '@/lib/inventory-db';
+import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate, todayStr, deleteStalePendingSessions, deleteTemplate, templateHasRealSessions } from '@/lib/inventory-db';
 import { listShiftTemplates } from '@/lib/shifts-db';
 
 /** A real calendar date in YYYY-MM-DD form (rejects e.g. 2026-02-30). */
@@ -337,11 +337,25 @@ export async function DELETE(request: Request) {
   const tmpl = getTemplate(id);
   if (!tmpl) return NextResponse.json({ error: 'List not found' }, { status: 404 });
 
-  // A manager may only delete their own restaurant's list (full admin = any).
   const allowed = parseCompanyIds(user.allowed_company_ids);
   const adminUnrestricted = user.role === 'admin' && allowed.length === 0;
-  if (tmpl.company_id != null && !adminUnrestricted && !allowed.includes(tmpl.company_id)) {
+
+  // A null-company legacy list is quarantined to an unrestricted admin (mirrors
+  // how legacy sessions are scoped) — a manager can't claim or purge it.
+  if (tmpl.company_id == null) {
+    if (!adminUnrestricted) return NextResponse.json({ error: 'List not found' }, { status: 404 });
+  } else if (!adminUnrestricted && !allowed.includes(tmpl.company_id)) {
     return NextResponse.json({ error: 'That list belongs to another restaurant' }, { status: 403 });
+  }
+
+  // HARD delete destroys count history (submitted/approved sessions are audit
+  // evidence + feed the consumption report). A manager may only purge a list
+  // with NO real counts; a list that has history can be deactivated (active:false)
+  // instead, and only an unrestricted admin may permanently erase it.
+  if (templateHasRealSessions(id) && !adminUnrestricted) {
+    return NextResponse.json({
+      error: 'This list has counts recorded. Deactivate it instead, or ask an admin to permanently delete it.',
+    }, { status: 409 });
   }
 
   deleteTemplate(id);

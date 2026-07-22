@@ -12,8 +12,6 @@ import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import { Spinner, ProductThumb, StatusBadge } from '@/components/inventory/ui';
 import RecordLink from '@/components/ui/RecordLink';
-import { RECORD_EDIT_CAP } from '@/lib/record-links';
-import { allowedActionKeysForRole, type Role } from '@/lib/permissions';
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -26,7 +24,6 @@ export default function ListRecordPage({ params }: { params: { id: string } }) {
   const [productsError, setProductsError] = useState(false);
   const [imageIds, setImageIds] = useState<Set<number>>(new Set());
   const [locName, setLocName] = useState<string | null>(null);
-  const [canEdit, setCanEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,13 +32,6 @@ export default function ListRecordPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     if (!Number.isInteger(listId) || listId <= 0) { setError('Invalid list'); setLoading(false); return; }
     (async () => {
-      fetch('/api/auth/me').then((r) => (r.ok ? r.json() : null)).then((d) => {
-        const me = d?.user;
-        const caps: string[] = Array.isArray(me?.capabilities) ? me.capabilities
-          : me?.role ? allowedActionKeysForRole(me.role as Role, {}) : [];
-        setCanEdit(caps.includes(RECORD_EDIT_CAP.list));
-      }).catch(() => {});
-
       try {
         const res = await fetch(`/api/inventory/templates/${listId}`);
         if (!res.ok) throw new Error(res.status === 404 ? 'List not found' : 'Could not load the list');
@@ -90,7 +80,6 @@ export default function ListRecordPage({ params }: { params: { id: string } }) {
   const assignee = tmpl.assign_type
     ? `${tmpl.assign_type}: ${tmpl.assign_label || tmpl.assign_id || '—'}`
     : 'Anyone on shift';
-  const catCount = (tmpl.category_ids || []).length;
   const sectionLabel = 'text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1.5';
 
   return (
@@ -110,7 +99,6 @@ export default function ListRecordPage({ params }: { params: { id: string } }) {
           <Row k="Schedule" v={schedule} />
           <Row k="Counts against" v={locName || '—'} />
           <Row k="Assigned to" v={assignee} />
-          {catCount > 0 && <Row k="Whole categories" v={`${catCount}`} />}
         </div>
 
         {/* Product roster — the drill-down hub */}
@@ -122,7 +110,7 @@ export default function ListRecordPage({ params }: { params: { id: string } }) {
             </p>
           ) : products.length === 0 ? (
             <p className="text-[var(--fs-sm)] text-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-3">
-              {catCount > 0 ? 'This list counts whole categories (no fixed products).' : 'No products on this list yet.'}
+              No products on this list yet.
             </p>
           ) : (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -137,12 +125,6 @@ export default function ListRecordPage({ params }: { params: { id: string } }) {
           )}
         </div>
 
-        {canEdit && (
-          <button onClick={() => router.push('/inventory')}
-            className="w-full py-3 rounded-xl bg-white border border-gray-200 text-gray-600 text-[var(--fs-sm)] font-semibold active:bg-gray-50 mb-8">
-            Edit this list in Manage Lists →
-          </button>
-        )}
       </div>
     </div>
   );

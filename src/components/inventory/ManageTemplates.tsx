@@ -55,6 +55,11 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Switching restaurants must clear a stale location filter — the old location
+  // id won't exist here, and the filter UI hides at ≤1 location, which would
+  // otherwise strand the user on a false "No templates" result.
+  useEffect(() => { setLocFilter('all'); }, [companyId]);
+
   async function handleDelete() {
     if (!confirmDelete || deleting) return;
     setDeleting(true);
