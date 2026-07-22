@@ -8,7 +8,7 @@ import { requireAuth } from '@/lib/auth';
 import { canAccessPurchaseLocation } from '@/lib/purchase-access';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { listOrders, createReceipt, getReceipt, getReceiptByOrder, updateReceiptLine, confirmReceipt, updateReceiptNote, getOrder, submitReceipt, getLatestReceiptStatus, getReceiptPdf } from '@/lib/purchase-db';
+import { listOrders, createReceipt, getReceipt, getReceiptByOrder, updateReceiptLine, confirmReceipt, updateReceiptNote, getOrder, submitReceipt, getLatestReceiptStatus, getReceiptPdf, getReceiptIdForLine, getReceiptOrderId } from '@/lib/purchase-db';
 import { getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { imagesToPdf } from '@/lib/purchase-note-pdf';
@@ -37,7 +37,15 @@ export async function GET(request: Request) {
   // Serve the stored delivery-note PDF for a receipt (manager approval view).
   const notePdfId = searchParams.get('note_pdf');
   if (notePdfId) {
-    const pdf = getReceiptPdf(parseInt(notePdfId));
+    // Company-scoped: never serve another restaurant's delivery-note PDF by id.
+    // Authorize via a NARROW order-id lookup before hydrating the heavy receipt.
+    const rid = parseInt(notePdfId);
+    const npOrderId = getReceiptOrderId(rid);
+    const npOrder = npOrderId ? getOrder(npOrderId) : null;
+    if (!npOrder || !canAccessPurchaseLocation(user, (npOrder as { location_id: number }).location_id)) {
+      return NextResponse.json({ error: 'No delivery note on file' }, { status: 404 });
+    }
+    const pdf = getReceiptPdf(rid);
     if (!pdf) return NextResponse.json({ error: 'No delivery note on file' }, { status: 404 });
     return NextResponse.json({ pdf });
   }
@@ -125,6 +133,13 @@ export async function POST(request: Request) {
   if (action === 'update_line') {
     const { line_id, received_qty, has_issue, issue_type, issue_photo, issue_notes } = body;
     if (!line_id) return NextResponse.json({ error: 'line_id required' }, { status: 400 });
+    // Company-scoped: resolve line → receipt → order location before mutating.
+    const ulRid = getReceiptIdForLine(Number(line_id));
+    const ulRcpt = ulRid ? getReceipt(ulRid) : null;
+    const ulOrder = ulRcpt ? getOrder((ulRcpt as { order_id: number }).order_id) : null;
+    if (!ulOrder || !canAccessPurchaseLocation(user, (ulOrder as { location_id: number }).location_id)) {
+      return NextResponse.json({ error: 'Line not found' }, { status: 404 });
+    }
     updateReceiptLine(line_id, { received_qty, has_issue, issue_type, issue_photo, issue_notes });
     return NextResponse.json({ message: 'Line updated' });
   }
@@ -156,6 +171,11 @@ export async function POST(request: Request) {
 
     const existing = getReceipt(receiptId);
     if (!existing) return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
+    // Company-scoped: authorize via the order's location before submitting.
+    const submitOrder = getOrder(existing.order_id);
+    if (!submitOrder || !canAccessPurchaseLocation(user, (submitOrder as { location_id: number }).location_id)) {
+      return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
+    }
     if (existing.status === 'confirmed') {
       return NextResponse.json({ error: 'This delivery was already approved' }, { status: 409 });
     }
@@ -390,6 +410,12 @@ export async function POST(request: Request) {
   if (action === 'delivery_note') {
     const { receipt_id, photo } = body;
     if (!receipt_id || !photo) return NextResponse.json({ error: 'receipt_id and photo required' }, { status: 400 });
+    // Company-scoped: authorize via the order's location before attaching a note.
+    const dnRcpt = getReceipt(Number(receipt_id));
+    const dnOrder = dnRcpt ? getOrder((dnRcpt as { order_id: number }).order_id) : null;
+    if (!dnOrder || !canAccessPurchaseLocation(user, (dnOrder as { location_id: number }).location_id)) {
+      return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
+    }
     updateReceiptNote(receipt_id, photo);
     return NextResponse.json({ message: 'Delivery note saved' });
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
+import { canAccessCompany } from '@/lib/inventory-access';
 
 /**
  * GET /api/purchase/guides/:id
@@ -24,6 +25,15 @@ export async function GET(
     ]);
 
     if (!list) {
+      return NextResponse.json({ error: 'Guide not found' }, { status: 404 });
+    }
+
+    // Company-scoped: a purchase.list belongs to one company — don't reveal
+    // another restaurant's list (its products/prices/supplier) by guessing an id.
+    // Fail CLOSED: an unresolved/false company_id (Odoo many2one can be false) is
+    // denied, never allowed through unauthorized.
+    const listCompanyId = Array.isArray(list.company_id) ? list.company_id[0] : list.company_id;
+    if (!Number.isInteger(listCompanyId) || listCompanyId <= 0 || !canAccessCompany(user, listCompanyId)) {
       return NextResponse.json({ error: 'Guide not found' }, { status: 404 });
     }
 

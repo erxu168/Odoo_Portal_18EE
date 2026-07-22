@@ -6,7 +6,8 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getOrCreateCart, upsertCartItem, getAllCartsForLocation, clearCart, getCartWithItems, removeCartItem } from '@/lib/purchase-db';
+import { getOrCreateCart, upsertCartItem, getAllCartsForLocation, clearCart, getCartWithItems, removeCartItem, getCartLocation } from '@/lib/purchase-db';
+import { canAccessPurchaseLocation } from '@/lib/purchase-access';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -17,6 +18,10 @@ export async function GET(request: Request) {
   const cartId = searchParams.get('cart_id');
 
   if (cartId) {
+    // Company-scoped: a cart belongs to one restaurant's location — never read
+    // another restaurant's cart by guessing its id.
+    const loc = getCartLocation(parseInt(cartId));
+    if (loc == null || !canAccessPurchaseLocation(user, loc)) return NextResponse.json({ error: 'Cart not found' }, { status: 404 });
     const cart = getCartWithItems(parseInt(cartId));
     return NextResponse.json({ cart });
   }
@@ -24,6 +29,7 @@ export async function GET(request: Request) {
   if (!locationId) {
     return NextResponse.json({ error: 'location_id required' }, { status: 400 });
   }
+  if (!canAccessPurchaseLocation(user, locationId)) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
 
   const carts = getAllCartsForLocation(locationId);
   const totalItems = carts.reduce((s: number, c: any) => s + c.item_count, 0);
@@ -42,6 +48,7 @@ export async function POST(request: Request) {
   if (!location_id || !supplier_id || !product_id || quantity === undefined) {
     return NextResponse.json({ error: 'location_id, supplier_id, product_id, quantity required' }, { status: 400 });
   }
+  if (!canAccessPurchaseLocation(user, Number(location_id))) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
 
   const cart = getOrCreateCart(location_id, supplier_id, user.id);
   upsertCartItem(cart.id, product_id, quantity, user.id, { product_name, product_uom, price });
@@ -54,15 +61,24 @@ export async function DELETE(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  // Company-scoped: only touch a cart that belongs to a restaurant the caller
+  // may act on — never clear/edit another restaurant's cart by guessing its id.
+  const guard = (cartId: number) => {
+    const loc = getCartLocation(cartId);
+    return loc != null && canAccessPurchaseLocation(user, loc);
+  };
+
   // Support both body JSON (single item delete) and query param (clear cart)
   try {
     const body = await request.json();
     if (body.cart_id && body.product_id) {
+      if (!guard(Number(body.cart_id))) return NextResponse.json({ error: 'Cart not found' }, { status: 404 });
       // Remove single item from cart
       removeCartItem(body.cart_id, body.product_id);
       return NextResponse.json({ message: 'Item removed' });
     }
     if (body.cart_id) {
+      if (!guard(Number(body.cart_id))) return NextResponse.json({ error: 'Cart not found' }, { status: 404 });
       clearCart(body.cart_id);
       return NextResponse.json({ message: 'Cart cleared' });
     }
@@ -73,6 +89,7 @@ export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const cartId = parseInt(searchParams.get('cart_id') || '0');
   if (!cartId) return NextResponse.json({ error: 'cart_id required' }, { status: 400 });
+  if (!guard(cartId)) return NextResponse.json({ error: 'Cart not found' }, { status: 404 });
 
   clearCart(cartId);
   return NextResponse.json({ message: 'Cart cleared' });

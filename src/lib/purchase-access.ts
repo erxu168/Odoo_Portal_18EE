@@ -1,16 +1,23 @@
 import { LOCATIONS } from '@/types/purchase';
 import { canAccessCompany } from '@/lib/inventory-access';
+import { getCompanyForPurchaseLocation } from '@/lib/purchase-db';
 import type { getCurrentUser } from '@/lib/auth';
 
 /**
  * Purchase authorization by stock-location. The purchase module keys everything
- * off a stock.location id (Ssam=32→company 3, GBM38=22→company 2, see
- * types/purchase LOCATIONS). Because portal roles are GLOBAL, a mutating/reading
- * route that trusts a client-supplied location_id/order_id/cart_id must resolve
- * it to a company and confirm the caller is allowed that restaurant — otherwise
- * a manager of one restaurant can act on another's orders/guides/inventory.
+ * off a stock.location id. The AUTHORITATIVE location→company map is the
+ * persisted purchase_locations registry (supports arbitrary restaurants added by
+ * auto-discover), with the seeded pair (Ssam=32→company 3, GBM38=22→company 2)
+ * as a legacy fallback. Because portal roles are GLOBAL, a mutating/reading route
+ * that trusts a client-supplied location_id/order_id/cart_id must resolve it to a
+ * company and confirm the caller is allowed that restaurant — otherwise a manager
+ * of one restaurant can act on another's orders/guides/inventory.
  */
 export function companyForPurchaseLocation(locationId: number): number | null {
+  // Authoritative registry first — so a legitimately-added location (beyond the
+  // seeded two) resolves to its company instead of being denied.
+  const fromDb = getCompanyForPurchaseLocation(locationId);
+  if (fromDb != null) return fromDb;
   const loc = Object.values(LOCATIONS).find((l) => l.id === locationId);
   return loc ? loc.company_id : null;
 }

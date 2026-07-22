@@ -218,6 +218,21 @@ export function getLocationByCompany(companyId: number): PurchaseLocation | unde
   ).get(companyId) as PurchaseLocation | undefined;
 }
 
+/** The company that owns an Odoo stock-location, from the persisted registry
+ *  (supports arbitrary/auto-discovered locations, not just the seeded two).
+ *  Returns null (never throws) if the registry isn't ready, so the caller can
+ *  fall back to the seeded map instead of failing a security check open/500. */
+export function getCompanyForPurchaseLocation(locationId: number): number | null {
+  try {
+    const row = db().prepare(
+      'SELECT odoo_company_id FROM purchase_locations WHERE id = ?'
+    ).get(locationId) as { odoo_company_id: number } | undefined;
+    return row ? row.odoo_company_id : null;
+  } catch {
+    return null;
+  }
+}
+
 export function upsertLocation(loc: {
   id: number; name: string; odoo_company_id: number;
   odoo_warehouse_id?: number | null; odoo_picking_type_id?: number | null;
@@ -394,6 +409,12 @@ export function getOrCreateCart(locationId: number, supplierId: number, userId: 
     cart = db().prepare('SELECT * FROM purchase_carts WHERE id = ?').get(result.lastInsertRowid);
   }
   return cart;
+}
+
+/** A cart's stock-location (for authorizing cart reads/mutations by cart_id). */
+export function getCartLocation(cartId: number): number | null {
+  const row = db().prepare('SELECT location_id FROM purchase_carts WHERE id = ?').get(cartId) as { location_id: number } | undefined;
+  return row ? row.location_id : null;
 }
 
 export function getCartWithItems(cartId: number) {
@@ -583,6 +604,19 @@ export function getReceiptByOrder(orderId: number) {
   if (!receipt) return null;
   receipt.lines = db().prepare('SELECT * FROM purchase_receipt_lines WHERE receipt_id = ?').all(receipt.id);
   return receipt;
+}
+
+/** The receipt a line belongs to (for authorizing a per-line mutation). */
+export function getReceiptIdForLine(lineId: number): number | null {
+  const row = db().prepare('SELECT receipt_id FROM purchase_receipt_lines WHERE id = ?').get(lineId) as { receipt_id: number } | undefined;
+  return row ? row.receipt_id : null;
+}
+
+/** A receipt's order id, WITHOUT hydrating its lines/blobs — for authorizing a
+ *  receipt read (e.g. the delivery-note PDF) before loading the heavy record. */
+export function getReceiptOrderId(receiptId: number): number | null {
+  const row = db().prepare('SELECT order_id FROM purchase_receipts WHERE id = ?').get(receiptId) as { order_id: number } | undefined;
+  return row ? row.order_id : null;
 }
 
 export function updateReceiptLine(lineId: number, data: {
