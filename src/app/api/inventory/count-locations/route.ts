@@ -27,6 +27,17 @@ export async function GET(request: Request) {
   initInventoryTables();
 
   const { searchParams } = new URL(request.url);
+
+  // By-id: the canonical location page fetches one record (it only knows the
+  // id from the URL). Scoped by the row's own company so cross-company reads 404.
+  const idParam = parseInt(searchParams.get('id') || '0', 10);
+  if (idParam) {
+    const loc = getCountLocation(idParam);
+    if (!loc || !canAccessCompany(user, loc.company_id))
+      return NextResponse.json({ error: 'Location not found' }, { status: 404 });
+    return NextResponse.json({ location: loc });
+  }
+
   const requested = parseInt(searchParams.get('company_id') || '0', 10) || null;
   if (requested && !canAccessCompany(user, requested))
     return NextResponse.json({ error: 'Location not found' }, { status: 404 });

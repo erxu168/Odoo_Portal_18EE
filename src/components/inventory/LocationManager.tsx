@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import FilePicker from '@/components/ui/FilePicker';
+import RecordLink from '@/components/ui/RecordLink';
 import { useCompany } from '@/lib/company-context';
 import { buildLocationTree, reorder } from '@/lib/location-tree';
 import type { CountLocation } from '@/types/inventory';
@@ -146,6 +147,7 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
               <button onClick={() => move(area, -1)} aria-label="Move up" className="w-8 h-8 rounded-lg bg-gray-100 active:bg-gray-200">↑</button>
               <button onClick={() => move(area, 1)} aria-label="Move down" className="w-8 h-8 rounded-lg bg-gray-100 active:bg-gray-200">↓</button>
               <button onClick={() => setEditing(area)} className="text-sm font-semibold text-blue-600 px-2">Edit</button>
+              <RecordLink type="location" id={area.id} label={area.name} />
             </div>
             <div className="border-t border-gray-100">
               {area.children.map((shelf) => (
@@ -158,6 +160,7 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
                   <button onClick={() => move(shelf, 1)} aria-label="Move down" className="w-7 h-7 rounded-lg bg-gray-100 text-sm">↓</button>
                   <button onClick={() => setAssignFor(shelf)} className="text-xs font-semibold text-green-700 px-1">Products</button>
                   <button onClick={() => setEditing(shelf)} className="text-xs font-semibold text-blue-600 px-1">Edit</button>
+                  <RecordLink type="location" id={shelf.id} label={shelf.name} />
                 </div>
               ))}
               <button onClick={() => setEditing({ parent_id: area.id, kind: kinds.find((k) => k.kind === 'zone')?.kind || kinds[0]?.kind || 'zone' })}
