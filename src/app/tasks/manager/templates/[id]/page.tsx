@@ -803,6 +803,11 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
       <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[90dvh]" onClick={e => e.stopPropagation()}>
         <h2 className="font-bold text-gray-800 text-lg px-5 pt-5 pb-3 flex-shrink-0">{line ? 'Edit task' : 'Add task'}</h2>
         <div className="flex-1 overflow-y-auto px-5 space-y-3 min-h-0">
+          {/* Freeze EVERY control while a save is in flight: fieldset[disabled]
+              natively disables all descendant inputs/selects/buttons, so no
+              mid-save edit — e.g. unchecking Setup guide to reach the plain
+              subtask list — can mutate state the submit already snapshotted. */}
+          <fieldset disabled={submitting} className="space-y-3 min-w-0 border-0 p-0 m-0">
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Name</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Inspect restrooms"
@@ -938,6 +943,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
               />
             </label>
           </div>
+          </fieldset>
           {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
           <div className="h-2" />
         </div>

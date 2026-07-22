@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export interface ImagePin {
   /** Fraction across the image, 0–1. */
@@ -59,6 +59,14 @@ export default function PinnableImage({
   const gesture = useRef<{ pointerId: number; index: number; startX: number; startY: number; moved: boolean } | null>(null);
   // Suppress the synthetic click that follows a drag's pointerup.
   const justDragged = useRef(false);
+
+  // If a save freezes the editor mid-gesture, VOID the captured drag immediately.
+  // Otherwise a pointer released later — even after a failed save re-enables the
+  // editor (disabled back to false) — would commit a move made before the save
+  // snapshot. Clearing gesture.current now makes the eventual pointerup a no-op.
+  useEffect(() => {
+    if (disabled && gesture.current) { gesture.current = null; setDrag(null); }
+  }, [disabled]);
 
   function fractions(e: { clientX: number; clientY: number }): { x: number; y: number } | null {
     const rect = wrapRef.current?.getBoundingClientRect();
