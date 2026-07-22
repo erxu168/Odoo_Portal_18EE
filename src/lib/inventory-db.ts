@@ -948,6 +948,31 @@ export function generateSessionForTemplate(templateId: number): number | null {
  * with ZERO count entries are removed; anything staff started stays.
  * keepDate null = no date survives (e.g. the list stopped being ad-hoc).
  */
+/**
+ * Hard-delete a counting list (template) and EVERYTHING under it — its sessions
+ * and every session's count rows, plus the list's legacy per-list placements.
+ * One transaction: all or nothing. Global product↔spot home spots
+ * (product_locations) are NOT touched — they belong to products, not this list.
+ * Irreversible; the caller confirms + authorizes company access first.
+ */
+export function deleteTemplate(templateId: number): void {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    const sessions = (db.prepare('SELECT id FROM counting_sessions WHERE template_id = ?')
+      .all(templateId) as { id: number }[]).map((r) => r.id);
+    for (const sid of sessions) {
+      db.prepare('DELETE FROM count_entries WHERE session_id = ?').run(sid);
+      db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(sid);
+      db.prepare('DELETE FROM session_count_locations WHERE session_id = ?').run(sid);
+      db.prepare('DELETE FROM session_location_status WHERE session_id = ?').run(sid);
+    }
+    db.prepare('DELETE FROM counting_sessions WHERE template_id = ?').run(templateId);
+    db.prepare('DELETE FROM template_product_locations WHERE template_id = ?').run(templateId);
+    db.prepare('DELETE FROM counting_templates WHERE id = ?').run(templateId);
+  });
+  tx();
+}
+
 export function deleteStalePendingSessions(templateId: number, keepDate: string | null): number {
   const db = getDb();
   const rows = db.prepare(`

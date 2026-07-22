@@ -2,14 +2,17 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState, SectionTitle } from './ui';
+import RecordLink from '@/components/ui/RecordLink';
 import TemplateForm from './TemplateForm';
 import TemplatePlacementEditor from './TemplatePlacementEditor';
+import { useCompany } from '@/lib/company-context';
 
 interface ManageTemplatesProps {
   onBack: () => void;
 }
 
 export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
+  const { companyId } = useCompany();
   const [templates, setTemplates] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
@@ -19,13 +22,18 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
   const [editing, setEditing] = useState<any | null>(null);
   const [creating, setCreating] = useState(false);
   const [arranging, setArranging] = useState<any | null>(null);   // list whose spot layout is open
+  const [confirmDelete, setConfirmDelete] = useState<any | null>(null);  // list pending delete confirmation
+  const [deleting, setDeleting] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
+      // Scope BOTH lists and the location pills to the active restaurant — the
+      // company selector already picks it, so cross-company pills are noise.
+      const cq = companyId ? `?company_id=${companyId}` : '';
       const [tplRes, locRes] = await Promise.all([
-        fetch('/api/inventory/templates').then((r) => r.json()),
-        fetch('/api/inventory/locations').then((r) => r.json()),
+        fetch(`/api/inventory/templates${cq}`).then((r) => r.json()),
+        fetch(`/api/inventory/locations${cq}`).then((r) => r.json()),
       ]);
       setTemplates(tplRes.templates || []);
       setLocations(locRes.locations || []);
@@ -43,9 +51,28 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [companyId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  async function handleDelete() {
+    if (!confirmDelete || deleting) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/inventory/templates?id=${confirmDelete.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        alert(body.error || 'Could not delete the list.');
+        return;
+      }
+      setConfirmDelete(null);
+      fetchData();
+    } catch {
+      alert('Network error — the list was not deleted.');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   // Filter templates
   const filtered = React.useMemo(() => {
@@ -128,17 +155,20 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
         </button>
       </div>
 
-      {/* Location filter */}
-      <div className="pt-2">
-        <FilterBar>
-          <FilterPill active={locFilter === 'all'} label="All locations" onClick={() => setLocFilter('all')} />
-          {locations.map((loc: any) => (
-            <FilterPill key={loc.id} active={locFilter === String(loc.id)}
-              label={loc.complete_name?.split('/')[0] || loc.name}
-              onClick={() => setLocFilter(String(loc.id))} />
-          ))}
-        </FilterBar>
-      </div>
+      {/* Location filter — only when this restaurant actually has >1 location
+          (the company is already chosen in the top-bar selector). */}
+      {locations.length > 1 && (
+        <div className="pt-2">
+          <FilterBar>
+            <FilterPill active={locFilter === 'all'} label="All locations" onClick={() => setLocFilter('all')} />
+            {locations.map((loc: any) => (
+              <FilterPill key={loc.id} active={locFilter === String(loc.id)}
+                label={loc.complete_name?.split('/')[0] || loc.name}
+                onClick={() => setLocFilter(String(loc.id))} />
+            ))}
+          </FilterBar>
+        </div>
+      )}
 
       {/* Assignment filter */}
       <FilterBar>
@@ -158,37 +188,68 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
               return (
                 <div key={tpl.id}
                   className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-                <button onClick={() => setEditing(tpl)}
-                  className="w-full p-4 text-left active:bg-gray-50 transition-all">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[var(--fs-lg)] font-bold text-gray-900">{tpl.name}</span>
+                {/* Header row: edit-tap area + drill-down ↗ as SIBLINGS (no nested button) */}
+                <div className="flex items-start">
+                  <button onClick={() => setEditing(tpl)}
+                    className="flex-1 min-w-0 p-4 text-left active:bg-gray-50 transition-all">
+                    <div className="text-[var(--fs-lg)] font-bold text-gray-900 mb-1.5 truncate">{tpl.name}</div>
+                    <div className="text-[var(--fs-sm)] text-gray-500 mb-2">{locName(tpl.location_id)}</div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <StatusBadge status={tpl.frequency} />
+                      {tpl.assign_type && (
+                        <StatusBadge status={tpl.assign_type} label={`${tpl.assign_type}: ${assignLabel(tpl)}`} />
+                      )}
+                      {catCount > 0 && (
+                        <span className="text-[var(--fs-xs)] px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 font-semibold">
+                          {catCount} categories
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                  <div className="flex flex-col items-end gap-1 p-3 flex-shrink-0">
                     <span className={`text-[var(--fs-xs)] px-2 py-0.5 rounded-md font-semibold ${tpl.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {tpl.active ? 'Active' : 'Inactive'}
                     </span>
+                    {/* Drill-down: the list's canonical page (roster → products → locations) */}
+                    <RecordLink type="list" id={tpl.id} label={tpl.name} />
                   </div>
-                  <div className="text-[var(--fs-sm)] text-gray-500 mb-2">{locName(tpl.location_id)}</div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <StatusBadge status={tpl.frequency} />
-                    {tpl.assign_type && (
-                      <StatusBadge status={tpl.assign_type} label={`${tpl.assign_type}: ${assignLabel(tpl)}`} />
-                    )}
-                    {catCount > 0 && (
-                      <span className="text-[var(--fs-xs)] px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 font-semibold">
-                        {catCount} categories
-                      </span>
-                    )}
-                  </div>
-                </button>
-                <button onClick={() => setArranging(tpl)}
-                  className="w-full px-4 py-2.5 border-t border-gray-100 text-left text-[var(--fs-sm)] font-bold text-green-700 active:bg-green-50">
-                  {'\uD83D\uDCCD'} Arrange spots
-                </button>
+                </div>
+                <div className="flex border-t border-gray-100">
+                  <button onClick={() => setArranging(tpl)}
+                    className="flex-1 px-4 py-2.5 text-left text-[var(--fs-sm)] font-bold text-green-700 active:bg-green-50">
+                    {'\uD83D\uDCCD'} Arrange spots
+                  </button>
+                  <button onClick={() => setConfirmDelete(tpl)}
+                    className="px-4 py-2.5 text-[var(--fs-sm)] font-bold text-red-600 active:bg-red-50 border-l border-gray-100">
+                    Delete
+                  </button>
+                </div>
                 </div>
               );
             })}
           </div>
         )}
       </div>
+
+      {/* Delete confirmation — destructive + irreversible, so an explicit step. */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-6" role="dialog" aria-modal="true">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5">
+            <h3 className="text-[var(--fs-lg)] font-bold text-gray-900 mb-1">Delete this list?</h3>
+            <p className="text-[var(--fs-sm)] text-gray-500 mb-4">
+              <span className="font-semibold text-gray-700">{confirmDelete.name}</span> and all of its counts will be permanently removed. This can{'\''}t be undone.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmDelete(null)} disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold active:bg-gray-200">Cancel</button>
+              <button onClick={handleDelete} disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-bold active:bg-red-700 disabled:opacity-50">
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

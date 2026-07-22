@@ -11,7 +11,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate, todayStr, deleteStalePendingSessions } from '@/lib/inventory-db';
+import { initInventoryTables, createTemplate, listTemplates, updateTemplate, generateSessionForTemplate, getTemplate, todayStr, deleteStalePendingSessions, deleteTemplate } from '@/lib/inventory-db';
 import { listShiftTemplates } from '@/lib/shifts-db';
 
 /** A real calendar date in YYYY-MM-DD form (rejects e.g. 2026-02-30). */
@@ -314,4 +314,36 @@ export async function PUT(request: Request) {
   }
 
   return NextResponse.json({ message: 'Template updated' });
+}
+
+/**
+ * DELETE /api/inventory/templates?id= — permanently remove a counting list and
+ * ALL its counts (sessions + entries). Manager-only, scoped to the list's
+ * restaurant. Irreversible — the UI confirms first.
+ */
+export async function DELETE(request: Request) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'inventory.template.manage', getPermissionOverrides())) {
+    return NextResponse.json({ error: 'Forbidden — manager role required' }, { status: 403 });
+  }
+  initInventoryTables();
+
+  const { searchParams } = new URL(request.url);
+  const idRaw = searchParams.get('id');
+  if (!idRaw || !/^\d+$/.test(idRaw)) return NextResponse.json({ error: 'A valid list id is required' }, { status: 400 });
+  const id = parseInt(idRaw, 10);
+
+  const tmpl = getTemplate(id);
+  if (!tmpl) return NextResponse.json({ error: 'List not found' }, { status: 404 });
+
+  // A manager may only delete their own restaurant's list (full admin = any).
+  const allowed = parseCompanyIds(user.allowed_company_ids);
+  const adminUnrestricted = user.role === 'admin' && allowed.length === 0;
+  if (tmpl.company_id != null && !adminUnrestricted && !allowed.includes(tmpl.company_id)) {
+    return NextResponse.json({ error: 'That list belongs to another restaurant' }, { status: 403 });
+  }
+
+  deleteTemplate(id);
+  return NextResponse.json({ message: 'List deleted' });
 }

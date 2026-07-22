@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import { berlinToday } from '@/lib/berlin-date';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
+import RecordLink from '@/components/ui/RecordLink';
 
 interface MyListsProps {
   userRole: string;
@@ -143,11 +144,11 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
             {sessions.map((sess: any) => {
               const freqLabel = FREQ_LABELS[sess.template_frequency] || '';
               return (
-                <button key={sess.id} onClick={() => onOpenSession(sess.id)}
-                  className="bg-white border border-gray-200 rounded-2xl p-4 text-left active:scale-[0.98] transition-all">
-                  <div className="flex items-center justify-between mb-1.5">
+                <div key={sess.id} className="bg-white border border-gray-200 rounded-2xl flex items-start">
+                  <button onClick={() => onOpenSession(sess.id)}
+                    className="flex-1 min-w-0 p-4 text-left active:scale-[0.98] transition-all">
                     {freqLabel && (
-                      <span className={`text-[var(--fs-xs)] font-semibold px-2 py-0.5 rounded-md ${
+                      <span className={`inline-block text-[var(--fs-xs)] font-semibold px-2 py-0.5 rounded-md mb-1.5 ${
                         sess.template_frequency === 'daily'
                           ? 'bg-blue-50 text-blue-600'
                           : sess.template_frequency === 'weekly'
@@ -157,19 +158,23 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
                         {freqLabel}
                       </span>
                     )}
-                    <StatusBadge status={sess.status} />
-                  </div>
-                  <div className="text-[var(--fs-lg)] font-bold text-gray-900 leading-tight">
-                    {sess.template_name || `Session #${sess.id}`}
-                  </div>
-                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <div className="text-[var(--fs-lg)] font-bold text-gray-900 leading-tight truncate">
+                      {sess.template_name || `Session #${sess.id}`}
+                    </div>
                     {sess.location_name && (
-                      <span className="text-[var(--fs-xs)] px-2 py-0.5 rounded-md bg-green-50 text-green-700 font-semibold">
-                        {sess.location_name}
-                      </span>
+                      <div className="mt-2">
+                        <span className="text-[var(--fs-xs)] px-2 py-0.5 rounded-md bg-green-50 text-green-700 font-semibold">
+                          {sess.location_name}
+                        </span>
+                      </div>
                     )}
+                  </button>
+                  {/* Status + drill-down to the list — SIBLINGS of the open-session button */}
+                  <div className="flex flex-col items-end gap-1.5 p-3 flex-shrink-0">
+                    <StatusBadge status={sess.status} />
+                    {sess.template_id && <RecordLink type="list" id={sess.template_id} label={sess.template_name} />}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
