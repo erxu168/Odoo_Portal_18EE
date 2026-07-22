@@ -176,7 +176,7 @@ export default function SalesDashboard() {
       </div>
 
       <style jsx global>{`
-        .wajs { --brand:#F5800A; --brand-dark:#E86000; --brand-tint:#FFF4E6;
+        .wajs { --brand:#16A34A; --brand-dark:#15803D; --brand-tint:#DCFCE7;
           --ink:#1F2933; --ink-2:#374151; --muted:#6B7280; --faint:#9CA3AF;
           --surface:#FFFFFF; --surface-2:#F1F3F5; --track:#EDEFF2; --border:#E5E7EB; --bg:#F6F7F9;
           --good:#16A34A; --good-bg:#DCFCE7; --warn:#F59E0B; --bad:#DC2626; --radius:16px;
@@ -189,7 +189,7 @@ export default function SalesDashboard() {
         .wajs .rangebar { display:flex;gap:5px;padding:12px 14px 6px; }
         .wajs .rangebar button { flex:1;border:1px solid var(--border);background:var(--surface);color:var(--muted);
           font:inherit;font-size:14px;font-weight:700;padding:9px 6px;border-radius:11px;cursor:pointer;transition:.15s; }
-        .wajs .rangebar button[aria-pressed="true"] { background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 2px 8px rgba(245,128,10,.32); }
+        .wajs .rangebar button[aria-pressed="true"] { background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 2px 8px rgba(22,163,74,.28); }
         .wajs .subbar { display:flex;align-items:center;gap:10px;padding:8px 14px 0; }
         .wajs .stepper { display:flex;align-items:center;gap:8px; }
         .wajs .stepper button { width:32px;height:32px;border:1px solid var(--border);background:var(--surface);border-radius:9px;font-size:18px;color:var(--ink-2);cursor:pointer;line-height:1;display:grid;place-items:center; }
@@ -216,7 +216,7 @@ export default function SalesDashboard() {
         .wajs .kpi-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
         .wajs .kpi { background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:13px 14px;display:flex;flex-direction:column;gap:3px; }
         .wajs .kpi.wide { grid-column:1/-1; }
-        .wajs .kpi.hero { background:linear-gradient(180deg,var(--brand-tint),var(--surface));border-color:#F6C48A; }
+        .wajs .kpi.hero { background:linear-gradient(180deg,var(--brand-tint),var(--surface));border-color:#86EFAC; }
         .wajs .kpi-label { font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted); }
         .wajs .kpi-val { font-size:30px;font-weight:800;letter-spacing:-.02em;color:var(--ink);font-variant-numeric:tabular-nums;line-height:1.05; }
         .wajs .kpi.small .kpi-val { font-size:21px; }

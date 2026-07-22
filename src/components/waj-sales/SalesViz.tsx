@@ -179,7 +179,7 @@ export function Heatmap({ data }: { data: { hours: number[]; rows: [string, numb
         <div className="hm-row" key={day}>
           <span className="hm-day">{day}</span>
           {counts.map((c, i) => (
-            <span key={i} className="hm-cell" style={{ background: c ? `rgba(245,128,10,${(0.15 + (c / max) * 0.85).toFixed(2)})` : 'var(--track)' }}
+            <span key={i} className="hm-cell" style={{ background: c ? `rgba(22,163,74,${(0.15 + (c / max) * 0.85).toFixed(2)})` : 'var(--track)' }}
               onMouseMove={e => tip.show(`${day} ${data.hours[i]}:00 · avg ${c} order${c === 1 ? '' : 's'}`, e)} onMouseLeave={tip.hide} />
           ))}
         </div>

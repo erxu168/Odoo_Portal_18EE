@@ -1,5 +1,5 @@
-import ReportsApp from '@/components/reports/ReportsApp';
+import ReportsHome from '@/components/reports/ReportsHome';
 
 export default function ReportsPage() {
-  return <ReportsApp />;
+  return <ReportsHome />;
 }
