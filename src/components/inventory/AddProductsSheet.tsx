@@ -34,7 +34,12 @@ export default function AddProductsSheet({
 
   // Autofocus the search — this sheet is search-first by design.
   useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 150);
+    // Only claim focus if nothing else holds it — a ProductDetail overlay opened
+    // within the 150ms window must keep focus, not have it yanked back here.
+    const t = setTimeout(() => {
+      const ae = document.activeElement;
+      if (!ae || ae === document.body) inputRef.current?.focus();
+    }, 150);
     return () => clearTimeout(t);
   }, []);
 
@@ -65,7 +70,7 @@ export default function AddProductsSheet({
   const activeCatName = catFilter !== 'all' ? leafCategory(categories.find((c) => String(c.id) === catFilter)?.name || '') : null;
 
   return (
-    <div className="fixed inset-0 z-[110] bg-black/50 flex items-end" role="dialog" aria-label="Add products">
+    <div className="fixed inset-0 z-[110] bg-black/50 flex items-end" role="dialog" aria-modal="true" aria-label="Add products">
       <div className="bg-white w-full h-[92vh] rounded-t-2xl flex flex-col">
         <div className="px-5 pt-4 pb-2 flex items-center justify-between">
           <h3 className="text-lg font-bold text-gray-900">Add products</h3>

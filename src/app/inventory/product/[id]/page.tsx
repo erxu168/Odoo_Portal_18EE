@@ -7,21 +7,18 @@
  * the back stack) and permission-aware — a user without edit capability sees
  * the same page read-only rather than an access wall.
  */
-import React, { useEffect, useState, use } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Spinner } from '@/components/inventory/ui';
 import ProductDetail from '@/components/inventory/ProductDetail';
 import { allowedActionKeysForRole, type Role } from '@/lib/permissions';
 import { RECORD_EDIT_CAP } from '@/lib/record-links';
 
-interface PageProps { params: Promise<{ id: string }> | { id: string }; }
-
-export default function ProductRecordPage({ params }: PageProps) {
+// Next 14 passes route params as a plain object to client pages.
+export default function ProductRecordPage({ params }: { params: { id: string } }) {
   const router = useRouter();
-  const resolved = (typeof (params as Promise<{ id: string }>).then === 'function')
-    ? use(params as Promise<{ id: string }>)
-    : (params as { id: string });
-  const productId = parseInt(resolved.id, 10);
+  // Validate the WHOLE segment — "12junk" must not resolve to product 12.
+  const productId = /^\d+$/.test(params.id) ? parseInt(params.id, 10) : NaN;
 
   const [product, setProduct] = useState<any | null>(null);
   const [hasImage, setHasImage] = useState(false);
@@ -32,26 +29,30 @@ export default function ProductRecordPage({ params }: PageProps) {
   const back = () => (window.history.length > 1 ? router.back() : router.push('/inventory'));
 
   useEffect(() => {
-    if (!Number.isFinite(productId) || productId <= 0) { setError('Invalid product'); setLoading(false); return; }
+    if (!Number.isInteger(productId) || productId <= 0) { setError('Invalid product'); setLoading(false); return; }
     (async () => {
+      // Edit capability is resolved INDEPENDENTLY: an auth transport/parse
+      // failure must degrade to read-only, never blank the whole product page.
+      fetch('/api/auth/me')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const me = d?.user;
+          const caps: string[] = Array.isArray(me?.capabilities)
+            ? me.capabilities
+            : me?.role ? allowedActionKeysForRole(me.role as Role, {}) : [];
+          setCanEdit(caps.includes(RECORD_EDIT_CAP.product));
+        })
+        .catch(() => { /* stays read-only */ });
+
       try {
-        const [pRes, meRes, imgRes] = await Promise.all([
+        const [pRes, imgRes] = await Promise.all([
           fetch(`/api/inventory/products?ids=${productId}&limit=1`),
-          fetch('/api/auth/me'),
           fetch('/api/inventory/product-images').catch(() => null),
         ]);
         if (!pRes.ok) throw new Error('Could not load the product');
         const p = (await pRes.json()).products?.[0];
         if (!p) throw new Error('Product not found');
         setProduct(p);
-
-        // Edit capability decides read-only vs editable (viewing is always allowed).
-        const me = meRes.ok ? (await meRes.json()).user : null;
-        const caps: string[] = Array.isArray(me?.capabilities)
-          ? me.capabilities
-          : me?.role ? allowedActionKeysForRole(me.role as Role, {}) : [];
-        setCanEdit(caps.includes(RECORD_EDIT_CAP.product));
-
         try {
           const withImages: number[] = imgRes && imgRes.ok ? (await imgRes.json()).with_images || [] : [];
           setHasImage(withImages.includes(productId));

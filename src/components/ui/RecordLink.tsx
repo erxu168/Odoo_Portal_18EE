@@ -41,6 +41,13 @@ export default function RecordLink({
 }) {
   const router = useRouter();
   const go = (e: React.MouseEvent) => {
+    // Preserve native new-tab/window behavior on real links: only hijack a
+    // plain, unmodified primary click. Modified clicks fall through to the
+    // anchor's href (inline variant); the icon variant is a <button> anyway.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+      if (onOpen) e.preventDefault();   // overlay mode has no href to open
+      return;
+    }
     e.stopPropagation();
     e.preventDefault();
     if (!canOpen) return;

@@ -130,7 +130,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-end" style={{ zIndex: baseZ }} role="dialog" aria-label={`Home spots for ${product.name}`}>
+    <div className="fixed inset-0 bg-black/50 flex items-end" style={{ zIndex: baseZ }} role="dialog" aria-modal="true" aria-label={`Home spots for ${product.name}`}>
       <div className="bg-white w-full max-w-lg mx-auto rounded-t-2xl flex flex-col max-h-[92vh]">
         <div className="px-5 pt-4 pb-3 border-b border-gray-100">
           <div className="flex items-center justify-between">

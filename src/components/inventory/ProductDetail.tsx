@@ -188,7 +188,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const box = 'w-full border-2 border-gray-200 rounded-xl px-3 py-3 bg-gray-50 text-[var(--fs-base)] text-gray-900 outline-none focus:border-green-500';
 
   return (
-    <div className="fixed inset-0 bg-gray-50 flex flex-col" style={{ zIndex: baseZ }} role="dialog" aria-label={`Product: ${product.name}`}>
+    <div className="fixed inset-0 bg-gray-50 flex flex-col" style={{ zIndex: baseZ }} role="dialog" aria-modal="true" aria-label={`Product: ${product.name}`}>
       <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200 flex items-center justify-between">
         <button onClick={onClose} className="flex items-center gap-1 text-gray-500 text-[var(--fs-base)] font-semibold active:opacity-70">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
@@ -275,7 +275,8 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               <span className="text-[var(--fs-xs)] text-gray-400">{uomName}</span>
               {suggestion !== null && packSize === '' && (
                 <button onClick={() => { setPackSize(String(suggestion)); savePack(String(suggestion), packLabel || 'crate', looseLabel); }}
-                  className="text-[11px] font-bold text-blue-800 bg-blue-50 rounded-md px-2 py-1">Suggest: {suggestion}</button>
+                  disabled={readOnly}
+                  className="text-[11px] font-bold text-blue-800 bg-blue-50 rounded-md px-2 py-1 disabled:opacity-40">Suggest: {suggestion}</button>
               )}
             </div>
             {packSize !== '' && (
