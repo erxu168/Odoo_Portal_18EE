@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import RecordLink from '@/components/ui/RecordLink';
 import { Badge, Spinner, StatChip } from '@/components/shifts/ui';
 import type { BadgeVariant } from '@/components/shifts/ui';
 import { berlinParts, fmtTimeRange } from '@/lib/shifts-time';
@@ -154,10 +155,11 @@ export default function PresenceBoard({ companyId, onBack }: PresenceProps) {
                           {u.sinceBeforeToday ? ` · ${dayLabel(u.checkIn)}` : ''}
                         </div>
                       </div>
-                      <div className="flex-shrink-0">
+                      <div className="flex-shrink-0 flex items-center gap-1">
                         <Badge variant={u.sinceBeforeToday ? 'amber' : 'green'}>
                           {u.sinceBeforeToday ? 'Still in?' : 'Present'}
                         </Badge>
+                        <RecordLink type="employee" id={u.employeeId} label={u.employeeName} />
                       </div>
                     </div>
                   ))}
@@ -190,8 +192,9 @@ export default function PresenceBoard({ companyId, onBack }: PresenceProps) {
                           {r.state === 'late' ? ` · ${r.minsLate} min late` : ''}
                         </div>
                       </div>
-                      <div className="flex-shrink-0">
+                      <div className="flex-shrink-0 flex items-center gap-1">
                         <Badge variant={meta.variant}>{meta.label}</Badge>
+                        <RecordLink type="employee" id={r.employeeId ?? 0} label={r.employeeName} canOpen={r.employeeId != null} />
                       </div>
                     </div>
                   );
