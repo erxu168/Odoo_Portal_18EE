@@ -3,6 +3,7 @@
 import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTopBar } from './TopBarContext';
+import { NAV_HIDDEN_ROUTES, isRouteMatch } from './appChrome';
 
 const TABS = [
   {
@@ -55,7 +56,8 @@ const TABS = [
  * Bottom tab bar. Hidden on auth pages and full-screen module pages (recipes, etc.)
  */
 
-const HIDDEN_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/hr', '/shift-handover', '/kiosk', '/confirm-shift'];
+// Routes with no nav chrome — shared with MainWrapper/AppTopBar so the rail
+// offset always matches whether the rail is drawn (see appChrome).
 // Wide routes get an edge-to-edge bar (tabs stay centered) instead of a
 // phone-width box floating over wide content.
 const WIDE_ROUTES = ['/shifts'];
@@ -65,7 +67,7 @@ export default function AppTabBar() {
   const pathname = usePathname();
   const { hidden } = useTopBar();
 
-  if (hidden || HIDDEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'))) {
+  if (hidden || isRouteMatch(pathname, NAV_HIDDEN_ROUTES)) {
     return null;
   }
   const isWide = WIDE_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));

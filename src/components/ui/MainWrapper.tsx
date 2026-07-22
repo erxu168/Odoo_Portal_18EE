@@ -1,19 +1,19 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
+import { hasNavRail } from './appChrome';
 
 /**
- * Client wrapper for <main> that strips layout padding on full-screen module pages.
+ * Client wrapper for <main> that adapts layout per route.
  * Recipes, etc. have their own headers/footers and need the full viewport.
  * KDS uses position:fixed and needs zero constraints from the parent.
  */
 
 const FULL_SCREEN_ROUTES = ['/recipes', '/shift-handover'];
 const FULL_VIEWPORT_ROUTES = ['/kds', '/kiosk', '/confirm-shift'];
-// Wide routes: no phone-width cap and top-bar clearance (pt-9), but NO desktop
-// rail offset — used by modules that hide the app nav rail because their own
-// screens carry a fixed bottom action bar (/shifts, /hr). Each screen chooses its
-// own content width (grids go wide, dashboards self-center). Phones are unaffected.
+// Wide routes: no phone-width cap and top-bar clearance (pt-9). Each screen
+// chooses its own content width (grids go wide, dashboards self-centre). Used by
+// modules whose own screens carry a fixed bottom action bar (/shifts, /hr).
 const WIDE_ROUTES = ['/shifts', '/hr'];
 
 export default function MainWrapper({ children }: { children: React.ReactNode }) {
@@ -21,13 +21,17 @@ export default function MainWrapper({ children }: { children: React.ReactNode })
   const isFullViewport = FULL_VIEWPORT_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
   const isFullScreen = FULL_SCREEN_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
   const isWide = WIDE_ROUTES.some(r => pathname === r || pathname.startsWith(r + '/'));
+  // Reserve the desktop rail's width ONLY when this route actually renders the
+  // rail (see appChrome.hasNavRail). Applied on both the wide and default
+  // branches so content never slides under — or floats away from — the rail.
+  const railPad = hasNavRail(pathname) ? ' lg:pl-[var(--rail-w)]' : '';
 
   if (isFullViewport) {
     return <main>{children}</main>;
   }
 
   if (isWide) {
-    return <main className="pt-9 pb-20">{children}</main>;
+    return <main className={`pt-9 pb-20${railPad}`}>{children}</main>;
   }
 
   if (isFullScreen) {
@@ -35,10 +39,10 @@ export default function MainWrapper({ children }: { children: React.ReactNode })
   }
 
   // Default: phone-width column on touch devices, growing to a centred desktop
-  // container that reserves the left nav-rail (lg+). Phones/tablets are unchanged
-  // — the cap only steps up at md/lg/xl; the rail offset only applies at lg.
+  // container. Phones/tablets are unchanged — the cap only steps up at md/lg/xl;
+  // the rail offset only applies at lg (and only when a rail is shown).
   return (
-    <main className="pt-9 pb-20 lg:pb-10 lg:pl-[var(--rail-w)]">
+    <main className={`pt-9 pb-20 lg:pb-10${railPad}`}>
       <div className="mx-auto w-full max-w-lg md:max-w-3xl lg:max-w-5xl xl:max-w-6xl">
         {children}
       </div>
