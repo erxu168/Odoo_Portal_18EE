@@ -338,7 +338,8 @@ export async function DELETE(request: Request) {
   if (!tmpl) return NextResponse.json({ error: 'List not found' }, { status: 404 });
 
   const allowed = parseCompanyIds(user.allowed_company_ids);
-  const adminUnrestricted = user.role === 'admin' && allowed.length === 0;
+  const isAdmin = user.role === 'admin';
+  const adminUnrestricted = isAdmin && allowed.length === 0;
 
   // A null-company legacy list is quarantined to an unrestricted admin (mirrors
   // how legacy sessions are scoped) — a manager can't claim or purge it.
@@ -349,10 +350,12 @@ export async function DELETE(request: Request) {
   }
 
   // HARD delete destroys count history (submitted/approved sessions are audit
-  // evidence + feed the consumption report). A manager may only purge a list
-  // with NO real counts; a list that has history can be deactivated (active:false)
-  // instead, and only an unrestricted admin may permanently erase it.
-  if (templateHasRealSessions(id) && !adminUnrestricted) {
+  // evidence + feed the consumption report). A non-admin manager may only purge a
+  // list with NO real counts; a list that has history should be deactivated
+  // (active:false) instead. ANY admin may permanently erase it — company scope
+  // (not the "unrestricted" flag) already governs WHICH lists they can reach, so
+  // an admin restricted to their own restaurant can still purge that list.
+  if (templateHasRealSessions(id) && !isAdmin) {
     return NextResponse.json({
       error: 'This list has counts recorded. Deactivate it instead, or ask an admin to permanently delete it.',
     }, { status: 409 });
