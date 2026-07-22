@@ -539,6 +539,15 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
   // save-guide aggregate — out of scope for this client fast-follow.
   const seqRef = useRef<number>(1_000_000);
 
+  // Set when the manager dismisses the modal. A save already in flight then skips
+  // its onSaved (which refreshes the list and closes the CURRENTLY open modal), so
+  // a dismissed task's late-completing save can't close a DIFFERENT task the
+  // manager has since opened. Dismissal stays available during a save (no lockout
+  // if a request hangs); the write still commits server-side, we just don't
+  // reach across to a modal that has moved on.
+  const closedRef = useRef(false);
+  const handleClose = () => { closedRef.current = true; onClose(); };
+
   async function addSetupPhoto(file: File) {
     // Provisional local seq only — the SERVER assigns the real one on append
     // (append-without-seq), and submit() remaps pins if it differs.
@@ -790,6 +799,10 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
         setPendingAtts([]);
       }
 
+      // The manager dismissed this modal mid-save: the write has committed, but
+      // do NOT call onSaved — it would refresh the list and close whatever modal
+      // is open now (possibly a different task).
+      if (closedRef.current) return;
       const baseMsg = line ? 'Task saved' : 'Task added';
       const fileNote = uploadedCount > 0 ? ` · ${uploadedCount} file${uploadedCount === 1 ? '' : 's'} uploaded` : '';
       const failNote = uploadFailures > 0 ? ` · ${uploadFailures} file upload${uploadFailures === 1 ? '' : 's'} failed` : '';
@@ -802,7 +815,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-[60] flex items-end sm:items-center justify-center" onClick={() => { if (!submitting) onClose(); }}>
+    <div className="fixed inset-0 bg-black/40 z-[60] flex items-end sm:items-center justify-center" onClick={handleClose}>
       <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[90dvh]" onClick={e => e.stopPropagation()}>
         <h2 className="font-bold text-gray-800 text-lg px-5 pt-5 pb-3 flex-shrink-0">{line ? 'Edit task' : 'Add task'}</h2>
         <div className="flex-1 overflow-y-auto px-5 space-y-3 min-h-0">
@@ -938,6 +951,10 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
                 type="file"
                 className="hidden"
                 accept=".pdf,application/pdf,image/*"
+                // Block a second pick while a read is running: uploadingFile is a
+                // boolean, so overlapping reads would let the first finish, enable
+                // Save, and drop the still-reading second file on submit.
+                disabled={uploadingFile}
                 onChange={e => {
                   const f = e.target.files?.[0];
                   if (f) uploadAttachment(f);
@@ -951,7 +968,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
           <div className="h-2" />
         </div>
         <div className="flex gap-2 px-5 py-4 border-t border-gray-200 flex-shrink-0 bg-white">
-          <button onClick={onClose} disabled={submitting} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">Cancel</button>
+          <button onClick={handleClose} className="flex-1 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
           <button onClick={submit} disabled={submitting || photoBusy > 0 || uploadingFile} className="flex-1 py-2.5 bg-orange-500 text-white rounded-lg text-sm font-semibold hover:bg-orange-600 disabled:opacity-50">
             {submitting ? 'Saving…' : photoBusy > 0 ? 'Processing photo…' : uploadingFile ? 'Reading file…' : 'Save'}
           </button>
