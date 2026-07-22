@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireAuth } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 
 /**
@@ -12,6 +13,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const user = requireAuth();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const odoo = getOdoo();
     const guideId = parseInt(params.id);
 

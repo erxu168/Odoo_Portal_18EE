@@ -5,6 +5,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { canAccessPurchaseLocation } from '@/lib/purchase-access';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { listOrders, createReceipt, getReceipt, getReceiptByOrder, updateReceiptLine, confirmReceipt, updateReceiptNote, getOrder, submitReceipt, getLatestReceiptStatus, getReceiptPdf } from '@/lib/purchase-db';
@@ -45,6 +46,7 @@ export async function GET(request: Request) {
   if (orderId) {
     const order = getOrder(parseInt(orderId));
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    if (!canAccessPurchaseLocation(user, (order as { location_id: number }).location_id)) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
 
     let receipt = getReceiptByOrder(parseInt(orderId));
     if (!receipt) {
@@ -90,6 +92,7 @@ export async function GET(request: Request) {
   }
 
   if (!locationId) return NextResponse.json({ error: 'location_id required' }, { status: 400 });
+  if (!canAccessPurchaseLocation(user, locationId)) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
 
   const sentOrders = listOrders(locationId, { status: 'sent' });
   const partialOrders = listOrders(locationId, { status: 'partial' });
@@ -111,6 +114,8 @@ export async function POST(request: Request) {
   if (action === 'start') {
     const { order_id } = body;
     if (!order_id) return NextResponse.json({ error: 'order_id required' }, { status: 400 });
+    const startOrder = getOrder(order_id);
+    if (!startOrder || !canAccessPurchaseLocation(user, (startOrder as { location_id: number }).location_id)) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     const receiptId = createReceipt(order_id, user.id);
     if (!receiptId) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     const receipt = getReceipt(receiptId);
@@ -205,7 +210,12 @@ export async function POST(request: Request) {
 
     // Idempotency guard: prevent double-confirmation
     const existingReceipt = getReceipt(receipt_id);
-    if (existingReceipt && existingReceipt.status === 'confirmed') {
+    if (!existingReceipt) return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
+    // Company-scoped: never write another restaurant's real Odoo inventory.
+    if (!canAccessPurchaseLocation(user, (existingReceipt as { location_id: number }).location_id)) {
+      return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
+    }
+    if (existingReceipt.status === 'confirmed') {
       return NextResponse.json({ message: 'Receipt already confirmed' });
     }
 

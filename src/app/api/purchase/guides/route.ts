@@ -41,6 +41,7 @@ export async function POST(request: Request) {
   if (!supplier_id || !location_id || !product_id) {
     return NextResponse.json({ error: 'supplier_id, location_id, product_id required' }, { status: 400 });
   }
+  if (!canAccessPurchaseLocation(user, Number(location_id))) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
 
   let guide = getGuide(supplier_id, location_id);
   if (!guide) {
@@ -87,6 +88,13 @@ export async function DELETE(request: Request) {
     });
   }
 
+  // Company-scope: a location-scoped delete requires access to that restaurant;
+  // the supplier-wide (no-location) branch is destructive across ALL companies →
+  // admin only.
+  if (supplierId) {
+    if (locationId) { if (!canAccessPurchaseLocation(user, locationId)) return NextResponse.json({ error: 'Access denied' }, { status: 403 }); }
+    else if (user.role !== 'admin') return NextResponse.json({ error: 'Only an admin can remove a supplier guide across all restaurants' }, { status: 403 });
+  }
   // Delete by supplier_id (with or without location)
   if (supplierId) {
     // Step 1: Find ALL guide IDs for this supplier (any location)
