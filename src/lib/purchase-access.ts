@@ -1,6 +1,5 @@
 import { LOCATIONS } from '@/types/purchase';
 import { canAccessCompany } from '@/lib/inventory-access';
-import { parseCompanyIds } from '@/lib/db';
 import type { getCurrentUser } from '@/lib/auth';
 
 /**
@@ -26,9 +25,8 @@ export function canAccessPurchaseLocation(
   return canAccessCompany(user, companyId);
 }
 
-/** True only for a full admin with NO company restriction (cross-company by
- *  design). Global destructive ops on SHARED data require this, not a
- *  company-scoped admin. */
-export function isUnrestrictedAdmin(user: NonNullable<ReturnType<typeof getCurrentUser>>): boolean {
-  return user.role === 'admin' && parseCompanyIds(user.allowed_company_ids).length === 0;
-}
+// Global destructive ops on SHARED purchase data require a full admin with NO
+// company restriction. Reuse the canonical fail-closed check — a present-but-
+// malformed allowed_company_ids is treated as a restriction, never read as
+// "all companies".
+export { isUnrestrictedAdmin } from '@/lib/inventory-access';

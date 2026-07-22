@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
 import { getOdoo } from '@/lib/odoo';
 
 /**
@@ -12,7 +12,7 @@ export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
-  const user = requireAuth();
+  const user = getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const odoo = getOdoo();

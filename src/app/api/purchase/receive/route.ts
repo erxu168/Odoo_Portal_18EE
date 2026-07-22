@@ -217,6 +217,9 @@ export async function POST(request: Request) {
     if (!confirmOrder || !canAccessPurchaseLocation(user, (confirmOrder as { location_id: number }).location_id)) {
       return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
     }
+    // The stock write MUST target the same authoritative location we authorized
+    // against — never the receipt's denormalized (possibly-legacy) location.
+    const targetLocationId = (confirmOrder as { location_id: number }).location_id;
     if (existingReceipt.status === 'confirmed') {
       return NextResponse.json({ message: 'Receipt already confirmed' });
     }
@@ -241,7 +244,7 @@ export async function POST(request: Request) {
           if (line.received_qty !== null && line.received_qty > 0) {
             try {
               const quants = await odoo.searchRead('stock.quant',
-                [['product_id', '=', line.product_id], ['location_id', '=', receipt.location_id]],
+                [['product_id', '=', line.product_id], ['location_id', '=', targetLocationId]],
                 ['id', 'quantity'], { limit: 1 });
 
               if (quants && quants.length > 0) {
