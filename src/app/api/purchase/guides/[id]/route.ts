@@ -12,9 +12,9 @@ export async function GET(
   _request: Request,
   { params }: { params: { id: string } }
 ) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
-    const user = requireAuth();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     const odoo = getOdoo();
     const guideId = parseInt(params.id);
 

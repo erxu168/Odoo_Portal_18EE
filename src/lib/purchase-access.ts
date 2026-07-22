@@ -1,5 +1,6 @@
 import { LOCATIONS } from '@/types/purchase';
 import { canAccessCompany } from '@/lib/inventory-access';
+import { parseCompanyIds } from '@/lib/db';
 import type { getCurrentUser } from '@/lib/auth';
 
 /**
@@ -23,4 +24,11 @@ export function canAccessPurchaseLocation(
   const companyId = companyForPurchaseLocation(locationId);
   if (companyId == null) return false;   // unknown location → deny
   return canAccessCompany(user, companyId);
+}
+
+/** True only for a full admin with NO company restriction (cross-company by
+ *  design). Global destructive ops on SHARED data require this, not a
+ *  company-scoped admin. */
+export function isUnrestrictedAdmin(user: NonNullable<ReturnType<typeof getCurrentUser>>): boolean {
+  return user.role === 'admin' && parseCompanyIds(user.allowed_company_ids).length === 0;
 }

@@ -211,8 +211,10 @@ export async function POST(request: Request) {
     // Idempotency guard: prevent double-confirmation
     const existingReceipt = getReceipt(receipt_id);
     if (!existingReceipt) return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
-    // Company-scoped: never write another restaurant's real Odoo inventory.
-    if (!canAccessPurchaseLocation(user, (existingReceipt as { location_id: number }).location_id)) {
+    // Authorize via the ORDER's authoritative location (legacy receipts carry a
+    // denormalized location that can't be trusted).
+    const confirmOrder = getOrder((existingReceipt as { order_id: number }).order_id);
+    if (!confirmOrder || !canAccessPurchaseLocation(user, (confirmOrder as { location_id: number }).location_id)) {
       return NextResponse.json({ error: 'Receipt not found' }, { status: 404 });
     }
     if (existingReceipt.status === 'confirmed') {

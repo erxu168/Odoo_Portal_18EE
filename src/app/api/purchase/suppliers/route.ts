@@ -15,6 +15,7 @@ import { getPermissionOverrides } from '@/lib/db';
 import { listSuppliers, createSupplier, updateSupplier, getSupplier } from '@/lib/purchase-db';
 import { getDb } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+import { isUnrestrictedAdmin } from '@/lib/purchase-access';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -133,7 +134,7 @@ export async function DELETE(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   // Suppliers are SHARED (location_id=0) and delete hard-removes their guides
   // across EVERY restaurant — destructive cross-tenant, so admin-only.
-  if (user.role !== 'admin') return NextResponse.json({ error: 'Only an admin can delete a supplier' }, { status: 403 });
+  if (!isUnrestrictedAdmin(user)) return NextResponse.json({ error: 'Only an unrestricted admin can delete a shared supplier' }, { status: 403 });
 
   const { searchParams } = new URL(request.url);
   const id = parseInt(searchParams.get('id') || '0');

@@ -10,7 +10,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice, reorderGuideItems } from '@/lib/purchase-db';
-import { canAccessPurchaseLocation } from '@/lib/purchase-access';
+import { canAccessPurchaseLocation, isUnrestrictedAdmin } from '@/lib/purchase-access';
 import { getDb } from '@/lib/db';
 
 export async function GET(request: Request) {
@@ -72,14 +72,21 @@ export async function DELETE(request: Request) {
 
   const db = getDb();
 
+  const locOfItem = (id: number) => (db.prepare('SELECT g.location_id AS loc FROM purchase_guide_items i JOIN purchase_order_guides g ON g.id = i.guide_id WHERE i.id = ?').get(id) as { loc: number } | undefined);
+  const locOfGuide = (id: number) => (db.prepare('SELECT location_id AS loc FROM purchase_order_guides WHERE id = ?').get(id) as { loc: number } | undefined);
+
   // Delete single item
   if (itemId) {
+    const r = locOfItem(itemId);
+    if (!r || !canAccessPurchaseLocation(user, r.loc)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     removeGuideItem(itemId);
     return NextResponse.json({ message: 'Item removed' });
   }
 
   // Delete by guide_id
   if (guideId) {
+    const r = locOfGuide(guideId);
+    if (!r || !canAccessPurchaseLocation(user, r.loc)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const itemsDel = db.prepare('DELETE FROM purchase_guide_items WHERE guide_id = ?').run(guideId);
     const guideDel = db.prepare('DELETE FROM purchase_order_guides WHERE id = ?').run(guideId);
     return NextResponse.json({
@@ -93,7 +100,7 @@ export async function DELETE(request: Request) {
   // admin only.
   if (supplierId) {
     if (locationId) { if (!canAccessPurchaseLocation(user, locationId)) return NextResponse.json({ error: 'Access denied' }, { status: 403 }); }
-    else if (user.role !== 'admin') return NextResponse.json({ error: 'Only an admin can remove a supplier guide across all restaurants' }, { status: 403 });
+    else if (!isUnrestrictedAdmin(user)) return NextResponse.json({ error: 'Only an unrestricted admin can remove a supplier guide across all restaurants' }, { status: 403 });
   }
   // Delete by supplier_id (with or without location)
   if (supplierId) {
@@ -148,16 +155,25 @@ export async function PATCH(request: Request) {
   if (!roleCan(user.role, 'purchase.guide.manage', getPermissionOverrides())) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const body = await request.json();
+  const db = getDb();
+  const itemLoc = (id: number) => (db.prepare('SELECT g.location_id AS loc FROM purchase_guide_items i JOIN purchase_order_guides g ON g.id = i.guide_id WHERE i.id = ?').get(id) as { loc: number } | undefined);
 
   // Reorder guide items into a custom walk-in order.
   if (Array.isArray(body.item_ids)) {
     const ids = body.item_ids.map((n: unknown) => parseInt(String(n))).filter((n: number) => Number.isInteger(n) && n > 0);
+    if (ids.length) {
+      const placeholders = ids.map(() => '?').join(',');
+      const rows = db.prepare(`SELECT DISTINCT g.location_id AS loc FROM purchase_guide_items i JOIN purchase_order_guides g ON g.id = i.guide_id WHERE i.id IN (${placeholders})`).all(...ids) as { loc: number }[];
+      if (rows.some((r) => !canAccessPurchaseLocation(user, r.loc))) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
     reorderGuideItems(ids);
     return NextResponse.json({ message: 'Reordered' });
   }
 
   const { item_id, price, price_source } = body;
   if (!item_id) return NextResponse.json({ error: 'item_id required' }, { status: 400 });
+  const r = itemLoc(item_id);
+  if (!r || !canAccessPurchaseLocation(user, r.loc)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   updateGuideItemPrice(item_id, price, price_source || 'manual');
   return NextResponse.json({ message: 'Price updated' });
