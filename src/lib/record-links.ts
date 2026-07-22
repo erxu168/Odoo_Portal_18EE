@@ -7,7 +7,7 @@
  * Viewing a record is a right of any authenticated user; editing is gated by
  * the capability below (the canonical page renders read-only otherwise).
  */
-export type RecordType = 'product' | 'location' | 'list';
+export type RecordType = 'product' | 'location' | 'list' | 'supplier';
 
 /** The canonical Form-View URL for a record — its permanent address. */
 export function recordHref(type: RecordType, id: number | string): string {
@@ -15,6 +15,7 @@ export function recordHref(type: RecordType, id: number | string): string {
     case 'product': return `/products/${id}`;
     case 'location': return `/inventory/location/${id}`;
     case 'list': return `/inventory/list/${id}`;
+    case 'supplier': return `/purchase/supplier/${id}`;
     default: return '/';
   }
 }
@@ -24,6 +25,7 @@ export const RECORD_EDIT_CAP: Record<RecordType, string> = {
   product: 'inventory.productsettings.manage',
   location: 'inventory.location.manage',
   list: 'inventory.template.manage',
+  supplier: 'purchase.supplier.manage',
 };
 
 /** Human label for the record type — used in aria/tooltips. */
@@ -31,4 +33,5 @@ export const RECORD_NOUN: Record<RecordType, string> = {
   product: 'product',
   location: 'location',
   list: 'counting list',
+  supplier: 'supplier',
 };

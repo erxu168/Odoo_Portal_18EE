@@ -2,6 +2,7 @@
 
 import React from 'react';
 import StatusBadge from './StatusBadge';
+import RecordLink from '@/components/ui/RecordLink';
 
 // Full Order shape — callbacks pass the whole thing through to reorderPastOrder
 // (which reads .lines) and cancelSelectedOrder.
@@ -96,7 +97,10 @@ export default function OrderDetailScreen({ order, reordering, onReorder, onCanc
       <div className="bg-white border border-gray-200 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.04)] p-4 mb-3">
         <div className="flex justify-between items-start mb-3">
           <div>
-            <div className="text-[16px] font-bold text-gray-900">{order.supplier_name}</div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[16px] font-bold text-gray-900">{order.supplier_name}</span>
+              <RecordLink type="supplier" id={order.supplier_id} label={order.supplier_name} className="w-6 h-6" />
+            </div>
             <div className="text-[12px] text-gray-500 font-mono mt-1">{order.odoo_po_name || `#${order.id}`}</div>
           </div>
           <StatusBadge status={order.status} />

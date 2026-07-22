@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import RecordLink from '@/components/ui/RecordLink';
 
 interface AnalyticsPayload {
   month: string;
@@ -92,7 +93,10 @@ export default function InsightsScreen({ month, data, loading, onShiftMonth, for
                 return data.top_suppliers.map((s) => (
                   <div key={s.supplier_id} className="mb-2.5 last:mb-0">
                     <div className="flex items-center justify-between mb-1">
-                      <div className="text-[13px] font-semibold text-gray-900 truncate flex-1 mr-2">{s.supplier_name}</div>
+                      <div className="flex items-center gap-1 truncate flex-1 mr-2">
+                        <span className="text-[13px] font-semibold text-gray-900 truncate">{s.supplier_name}</span>
+                        <RecordLink type="supplier" id={s.supplier_id} label={s.supplier_name} className="w-5 h-5" />
+                      </div>
                       <div className="text-[12px] font-mono font-bold text-gray-900">&euro;{s.total.toFixed(2)}</div>
                     </div>
                     <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">

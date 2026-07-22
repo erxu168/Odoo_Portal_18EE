@@ -21,6 +21,17 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
+
+  // By-id: the canonical supplier page fetches one record (it only knows the id
+  // from the URL). Viewing a supplier is a right of any authenticated user.
+  const idRaw = searchParams.get('id');
+  if (idRaw != null) {
+    if (!/^\d+$/.test(idRaw)) return NextResponse.json({ error: 'Invalid supplier id' }, { status: 400 });
+    const supplier = getSupplier(parseInt(idRaw, 10));
+    if (!supplier) return NextResponse.json({ error: 'Supplier not found' }, { status: 404 });
+    return NextResponse.json({ supplier });
+  }
+
   const locationId = searchParams.get('location_id');
   const suppliers = listSuppliers(locationId ? parseInt(locationId) : undefined);
 
