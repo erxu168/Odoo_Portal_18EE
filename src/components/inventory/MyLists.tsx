@@ -5,6 +5,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import { berlinToday } from '@/lib/berlin-date';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState } from './ui';
 import RecordLink from '@/components/ui/RecordLink';
+import { useCompany } from '@/lib/company-context';
 
 interface MyListsProps {
   userRole: string;
@@ -26,12 +27,18 @@ const FREQ_LABELS: Record<string, string> = {
 };
 
 export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProps) {
+  const { companyId } = useCompany();
   const [sessions, setSessions] = useState<any[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('pending');
   const [locationFilter, setLocationFilter] = useState('all');
   const [locations, setLocations] = useState<any[]>([]);
+
+  // The top-bar company selector is the source of truth — scope the location
+  // list to the ACTIVE restaurant so cross-company warehouse pills never show;
+  // reset the (now-stale) location filter + cached list when it changes.
+  useEffect(() => { setLocations([]); setLocationFilter('all'); }, [companyId]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -46,7 +53,7 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
 
       const [sessRes, locRes] = await Promise.all([
         fetch(`/api/inventory/sessions?${params}`),
-        locations.length === 0 ? fetch('/api/inventory/locations') : null,
+        locations.length === 0 && companyId ? fetch(`/api/inventory/locations?company_id=${companyId}`) : null,
       ]);
 
       if (!sessRes.ok) {
@@ -70,7 +77,7 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, locationFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [statusFilter, locationFilter, companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
