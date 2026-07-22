@@ -172,7 +172,7 @@ class KrawingsTaskListLine(models.Model):
             return False
         if allowed_company_ids:
             company_id = rec.list_id.company_id.id
-            if company_id and company_id not in [int(c) for c in allowed_company_ids]:
+            if not company_id or company_id not in [int(c) for c in allowed_company_ids]:
                 return False
         raw = rec.setup_photo
         return {
@@ -311,7 +311,7 @@ class KrawingsTaskListLine(models.Model):
             raise UserError('Task not found.')
         if allowed_company_ids:
             company_id = line.list_id.company_id.id
-            if company_id and company_id not in [int(c) for c in allowed_company_ids]:
+            if not company_id or company_id not in [int(c) for c in allowed_company_ids]:
                 raise UserError('Not allowed for this company.')
         if line.list_id.date and line.list_id.date < fields.Date.context_today(self):
             raise UserError('Past task lists are read-only.')

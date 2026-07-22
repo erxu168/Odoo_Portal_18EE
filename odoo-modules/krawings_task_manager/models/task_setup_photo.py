@@ -48,7 +48,8 @@ class KrawingsTaskSetupPhoto(models.Model):
         if allowed_company_ids:
             company = (rec.template_line_id.template_id.company_id
                        if kind == 'template' else rec.list_line_id.list_id.company_id)
-            if company.id and company.id not in [int(c) for c in allowed_company_ids]:
+            # Fail CLOSED: a company-less parent must not leak to a scoped user.
+            if not company.id or company.id not in [int(c) for c in allowed_company_ids]:
                 return False
         raw = rec.image
         return {

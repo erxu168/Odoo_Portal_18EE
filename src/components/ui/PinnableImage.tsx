@@ -74,6 +74,10 @@ export default function PinnableImage({
   function onPinPointerDown(index: number) {
     return (e: React.PointerEvent<HTMLButtonElement>) => {
       if (mode !== 'edit' || !onPinMove) return;
+      // Clear any stale suppression flag: on touch a drag's pointerup fires no
+      // synthetic click, so the flag set on the previous drop could otherwise
+      // swallow this fresh tap.
+      justDragged.current = false;
       // One gesture at a time: a second finger on another pin is ignored.
       if (gesture.current) return;
       e.currentTarget.setPointerCapture(e.pointerId);

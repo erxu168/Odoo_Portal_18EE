@@ -148,6 +148,14 @@ class KrawingsTaskTemplate(models.Model):
                 if tline.deadline_time:
                     hours = int(tline.deadline_time)
                     minutes = int(round((tline.deadline_time - hours) * 60))
+                    # A Float like 7.9999 rounds minutes to 60 → time(h, 60) raises
+                    # ValueError and (being outside the savepoint) would abort the
+                    # whole department's spawn pass. Carry/clamp into a valid time.
+                    if minutes >= 60:
+                        hours += 1
+                        minutes = 0
+                    if hours >= 24:
+                        hours, minutes = 23, 59
                     local_dt = tz.localize(datetime.combine(target_date, time(hours, minutes)))
                     deadline_dt = local_dt.astimezone(pytz.UTC).replace(tzinfo=None)
                 line_vals.append((0, 0, {

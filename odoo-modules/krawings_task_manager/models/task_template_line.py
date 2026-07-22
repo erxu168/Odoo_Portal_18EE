@@ -225,7 +225,7 @@ class KrawingsTaskTemplateLine(models.Model):
             return False
         if allowed_company_ids:
             company_id = rec.template_id.company_id.id
-            if company_id and company_id not in [int(c) for c in allowed_company_ids]:
+            if not company_id or company_id not in [int(c) for c in allowed_company_ids]:
                 return False
         raw = rec.setup_photo
         return {

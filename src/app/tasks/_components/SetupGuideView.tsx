@@ -126,11 +126,14 @@ export default function SetupGuideView({
                   type="button"
                   disabled={readOnly || busy.has(s.id)}
                   onClick={() => toggle(s.id, !s.done)}
-                  className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border-2 text-xs font-bold transition-colors disabled:opacity-60 ${
+                  // 28px visible circle inside a 44px touch target — this is the
+                  // guide's primary repeated action on a mobile/gloved-hands view.
+                  className={`relative w-7 h-7 my-1.5 rounded-full flex items-center justify-center flex-shrink-0 border-2 text-xs font-bold transition-colors disabled:opacity-60 ${
                     s.done ? 'bg-green-500 border-green-500 text-white' : 'bg-white border-gray-300 text-gray-400'
                   }`}
                   aria-label={s.done ? `Uncheck ${s.name}` : `Check ${s.name}`}
                 >
+                  <span className="absolute -inset-2" aria-hidden="true" />
                   {s.done ? '✓' : i + 1}
                 </button>
                 <span className={`flex-1 text-sm ${s.done ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{s.name}</span>

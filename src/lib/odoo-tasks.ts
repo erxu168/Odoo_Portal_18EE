@@ -937,6 +937,18 @@ export async function templateLineBelongsToTemplate(templateId: number, lineId: 
   return m2oId(rows[0].template_id) === templateId;
 }
 
+/** Persisted guide flag + current pin count of a template line — lets a PATCH
+ * that omits is_setup_guide and/or subtasks compute the EFFECTIVE post-write
+ * state (so it can't enable an empty guide or silently empty an existing one). */
+export async function getTemplateLineGuideMeta(lineId: number): Promise<{ isGuide: boolean; pinCount: number }> {
+  if (!lineId) return { isGuide: false, pinCount: 0 };
+  const rows = await getOdoo().searchRead(
+    'krawings.task.template.line', [['id', '=', lineId]], ['is_setup_guide', 'subtask_ids'], { limit: 1 },
+  );
+  if (!rows.length) return { isGuide: false, pinCount: 0 };
+  return { isGuide: !!rows[0].is_setup_guide, pinCount: (rows[0].subtask_ids || []).length };
+}
+
 /** The company + date of the daily list a line belongs to — used to company-scope
  * and past-list-guard line-level routes (e.g. proof-photo upload). */
 export async function getListLineScope(lineId: number): Promise<{ companyId: number | null; date: string | null } | null> {
