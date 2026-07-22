@@ -70,7 +70,7 @@ function SortableItem<T>({
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} className="h-full [&>*]:h-full" {...attributes} {...listeners}>
       {renderItem(item, isDragging)}
     </div>
   );
