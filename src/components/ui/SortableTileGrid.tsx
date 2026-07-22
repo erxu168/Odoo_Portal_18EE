@@ -82,7 +82,7 @@ export default function SortableTileGrid<T>({
   storageKey,
   savedOrder,
   renderItem,
-  className = 'grid grid-cols-2 gap-3',
+  className = 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 lg:gap-4',
 }: SortableTileGridProps<T>) {
   const [tileOrder, setTileOrder] = useState<string[] | null>(savedOrder || null);
   const [activeDragId, setActiveDragId] = useState<string | null>(null);

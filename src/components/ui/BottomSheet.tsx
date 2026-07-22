@@ -66,11 +66,11 @@ export function BottomSheet({
 
   return (
     <div
-      className="fixed inset-0 z-[100] bg-black/50 flex items-end"
+      className="fixed inset-0 z-[100] bg-black/50 flex items-end justify-center lg:items-center"
       onClick={dismissOnBackdrop ? onClose : undefined}
     >
       <div
-        className="bg-white w-full max-w-lg mx-auto rounded-t-2xl max-h-[92vh] flex flex-col"
+        className="bg-white w-full max-w-lg lg:max-w-md mx-auto rounded-t-2xl lg:rounded-2xl max-h-[92vh] lg:max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={typeof title === 'string' ? title : undefined}

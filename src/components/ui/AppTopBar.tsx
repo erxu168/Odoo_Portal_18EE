@@ -62,8 +62,10 @@ export default function AppTopBar() {
           <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-1.5">{barContent}</div>
         </div>
       ) : (
-        <div className="fixed top-0 left-0 right-0 z-50 max-w-lg mx-auto">
-          <div className="bg-[#2563EB] flex items-center justify-between px-4 py-1.5 border-b border-white/10">{barContent}</div>
+        // Below lg: today's centred phone-width box. At lg: edge-to-edge blue bar
+        // offset past the left rail, content re-centred to the desktop container.
+        <div className="fixed top-0 left-0 right-0 z-50 max-w-lg mx-auto lg:max-w-none lg:mx-0 lg:pl-[var(--rail-w)] bg-[#2563EB] lg:border-b lg:border-white/10">
+          <div className="max-w-lg lg:max-w-5xl xl:max-w-6xl mx-auto bg-[#2563EB] flex items-center justify-between px-4 py-1.5 border-b border-white/10 lg:border-b-0">{barContent}</div>
         </div>
       )}
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />

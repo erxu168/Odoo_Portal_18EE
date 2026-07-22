@@ -76,29 +76,57 @@ export default function AppTabBar() {
   }
 
   return (
-    <div className={`fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 ${isWide ? '' : 'max-w-lg mx-auto'}`}>
-      <div className={isWide ? 'max-w-lg mx-auto' : ''}>
-      <div className="flex h-16">
+    <>
+      {/* Desktop (lg+) left rail — the bottom bar's tabs, laid out vertically.
+          Held strictly at lg so large floor tablets keep the thumb-reachable bar. */}
+      <nav
+        className="hidden lg:flex fixed top-0 left-0 bottom-0 w-[var(--rail-w)] z-40 flex-col gap-1 border-r border-gray-200 bg-white pt-16 px-3"
+        aria-label="Primary"
+      >
         {TABS.map(tab => {
           const active = isActive(tab);
           return (
             <button
               key={tab.id}
               onClick={() => router.push(tab.href)}
-              className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
-                active ? 'text-green-700' : 'text-gray-400'
+              className={`flex items-center gap-3 h-12 px-3 rounded-xl transition-colors ${
+                active ? 'bg-green-50 text-green-700' : 'text-gray-500 hover:bg-gray-50'
               }`}
             >
               {tab.icon(active)}
-              <span className={`text-[12px] font-bold ${active ? 'text-green-700' : 'text-gray-400'}`}>
+              <span className={`text-[13px] font-bold ${active ? 'text-green-700' : 'text-gray-600'}`}>
                 {tab.label}
               </span>
             </button>
           );
         })}
+      </nav>
+
+      {/* Touch-tier bottom tab bar — hidden at lg, where the rail takes over. */}
+      <div className={`lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 ${isWide ? '' : 'max-w-lg mx-auto'}`}>
+        <div className={isWide ? 'max-w-lg mx-auto' : ''}>
+        <div className="flex h-16">
+          {TABS.map(tab => {
+            const active = isActive(tab);
+            return (
+              <button
+                key={tab.id}
+                onClick={() => router.push(tab.href)}
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                  active ? 'text-green-700' : 'text-gray-400'
+                }`}
+              >
+                {tab.icon(active)}
+                <span className={`text-[12px] font-bold ${active ? 'text-green-700' : 'text-gray-400'}`}>
+                  {tab.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="h-[env(safe-area-inset-bottom)]" />
+        </div>
       </div>
-      <div className="h-[env(safe-area-inset-bottom)]" />
-      </div>
-    </div>
+    </>
   );
 }

@@ -73,7 +73,7 @@ export interface ActionGridProps<T> {
   className?: string;
 }
 
-export function ActionGrid<T>({ items, getItemId, renderItem, sortable, className = 'grid grid-cols-2 gap-3' }: ActionGridProps<T>) {
+export function ActionGrid<T>({ items, getItemId, renderItem, sortable, className = 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 lg:gap-4' }: ActionGridProps<T>) {
   if (sortable) {
     return (
       <SortableTileGrid

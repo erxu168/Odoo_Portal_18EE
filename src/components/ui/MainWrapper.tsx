@@ -29,9 +29,18 @@ export default function MainWrapper({ children }: { children: React.ReactNode })
     return <main className="pt-9 pb-20">{children}</main>;
   }
 
+  if (isFullScreen) {
+    return <main className="max-w-lg mx-auto">{children}</main>;
+  }
+
+  // Default: phone-width column on touch devices, growing to a centred desktop
+  // container that reserves the left nav-rail (lg+). Phones/tablets are unchanged
+  // — the cap only steps up at md/lg/xl; the rail offset only applies at lg.
   return (
-    <main className={isFullScreen ? 'max-w-lg mx-auto' : 'max-w-lg mx-auto pt-9 pb-20'}>
-      {children}
+    <main className="pt-9 pb-20 lg:pb-10 lg:pl-[var(--rail-w)]">
+      <div className="mx-auto w-full max-w-lg md:max-w-3xl lg:max-w-5xl xl:max-w-6xl">
+        {children}
+      </div>
     </main>
   );
 }

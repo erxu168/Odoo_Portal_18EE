@@ -9,6 +9,7 @@
    pref = viewport-proportional target
    max  = cap on wider screens                         */
 :root {
+  --rail-w: 15rem;                       /* desktop (lg+) left nav-rail width; also reserves content offset */
   --fs-xxl:  clamp(18px, 4.8vw, 22px);   /* qty numbers        */
   --fs-xl:   clamp(16px, 4.4vw, 20px);   /* ingredient names   */
   --fs-lg:   clamp(15px, 3.9vw, 18px);   /* recipe/BOM names   */
