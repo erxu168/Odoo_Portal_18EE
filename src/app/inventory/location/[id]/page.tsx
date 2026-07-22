@@ -38,6 +38,8 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
   const [desc, setDesc] = useState('');
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const [editErr, setEditErr] = useState<string | null>(null);       // save failure (shown in the edit card)
+  const [productsError, setProductsError] = useState(false);          // placements fetch failed (≠ genuinely empty)
 
   const back = () => (window.history.length > 1 ? router.back() : router.push('/inventory'));
 
@@ -59,9 +61,10 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
 
         // Siblings/children come from the company's full list; products-here + names in parallel.
         const [allRes, placeRes] = await Promise.all([
-          fetch(`/api/inventory/count-locations?company_id=${l.company_id}`).then((r) => r.ok ? r.json() : { locations: [] }),
-          fetch(`/api/inventory/product-locations?count_location_id=${locationId}`).then((r) => r.ok ? r.json() : { placements: [] }),
+          fetch(`/api/inventory/count-locations?company_id=${l.company_id}`).then((r) => r.ok ? r.json() : { locations: [] }).catch(() => ({ locations: [] })),
+          fetch(`/api/inventory/product-locations?count_location_id=${locationId}`).then((r) => r.ok ? r.json() : { _fail: true }).catch(() => ({ _fail: true })),
         ]);
+        if ((placeRes as any)._fail) setProductsError(true);
         const all: Loc[] = allRes.locations || [];
         setParent(l.parent_id != null ? all.find((x) => x.id === l.parent_id) || null : null);
         setChildren(all.filter((x) => x.parent_id === l.id));
@@ -86,17 +89,17 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
 
   async function saveEdits() {
     if (!loc || saving) return;
-    setSaving(true);
+    setSaving(true); setEditErr(null);
     try {
       const res = await fetch('/api/inventory/count-locations', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: loc.id, name: name.trim(), description: desc.trim() || null }),
       });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); setSavedMsg(d.error || 'Could not save'); return; }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setEditErr(d.error || 'Could not save — try again'); return; }
       setLoc({ ...loc, name: name.trim(), description: desc.trim() || null });
       setEditing(false); setSavedMsg('Saved');
       setTimeout(() => setSavedMsg(null), 1800);
-    } catch { setSavedMsg('Network error — not saved'); }
+    } catch { setEditErr('Network error — not saved'); }
     finally { setSaving(false); }
   }
 
@@ -135,10 +138,11 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
             <label className={sectionLabel}>Notes (where to stand / what{'\''}s here)</label>
             <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3} maxLength={500}
               className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-green-500 resize-none" />
+            {editErr && <p className="text-[12px] font-semibold text-red-600 mt-2">{editErr}</p>}
             <div className="flex gap-2 mt-3">
               <button onClick={saveEdits} disabled={saving || name.trim().length < 1}
                 className="flex-1 py-2.5 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">{saving ? 'Saving…' : 'Save'}</button>
-              <button onClick={() => { setEditing(false); setName(loc.name); setDesc(loc.description || ''); }}
+              <button onClick={() => { setEditing(false); setName(loc.name); setDesc(loc.description || ''); setEditErr(null); }}
                 className="px-4 py-2.5 rounded-xl bg-gray-100 text-gray-600 font-bold">Cancel</button>
             </div>
           </div>
@@ -183,7 +187,11 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
         {/* Products stored here — drill across to the Products module */}
         <div className="mb-8">
           <div className={sectionLabel}>Products stored here ({products.length})</div>
-          {products.length === 0 ? (
+          {productsError ? (
+            <p className="text-[var(--fs-sm)] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              Couldn{'\''}t load the products here — reload to try again.
+            </p>
+          ) : products.length === 0 ? (
             <p className="text-[var(--fs-sm)] text-gray-400 bg-white border border-gray-200 rounded-xl px-4 py-3">
               No products list this as a home spot yet.
             </p>

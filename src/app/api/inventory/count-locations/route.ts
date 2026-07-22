@@ -30,8 +30,11 @@ export async function GET(request: Request) {
 
   // By-id: the canonical location page fetches one record (it only knows the
   // id from the URL). Scoped by the row's own company so cross-company reads 404.
-  const idParam = parseInt(searchParams.get('id') || '0', 10);
-  if (idParam) {
+  const idRaw = searchParams.get('id');
+  if (idRaw != null) {
+    if (!/^\d+$/.test(idRaw)) return NextResponse.json({ error: 'Invalid location id' }, { status: 400 });
+    const idParam = parseInt(idRaw, 10);
+    if (idParam <= 0) return NextResponse.json({ error: 'Invalid location id' }, { status: 400 });
     const loc = getCountLocation(idParam);
     if (!loc || !canAccessCompany(user, loc.company_id))
       return NextResponse.json({ error: 'Location not found' }, { status: 404 });

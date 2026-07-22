@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState, ProductThumb } from './ui';
 import StandardFilter from '@/components/ui/StandardFilter';
+import RecordLink from '@/components/ui/RecordLink';
 import PhotoLightbox from './PhotoLightbox';
 import NumpadModal from './NumpadModal';
 import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
@@ -536,6 +537,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-[var(--fs-base)] text-gray-900 truncate">{p.name}</span>
+                              {/* Drill-down: open the product (verify unit/name behind a count) */}
+                              <RecordLink type="product" id={p.id} label={p.name} className="w-6 h-6" />
                               {isDraft && !decision && (
                                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0">Pending</span>
                               )}

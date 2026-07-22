@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { SearchBar, Spinner, EmptyState } from './ui';
+import RecordLink from '@/components/ui/RecordLink';
 
 interface ConsumptionReportProps {
   onBack: () => void;
@@ -130,7 +131,11 @@ export default function ConsumptionReport({ onBack }: ConsumptionReportProps) {
           {filtered.map((r: any) => (
             <div key={r.product_id} className="py-3 border-b border-gray-100">
               <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 flex-1 text-[var(--fs-base)] font-semibold text-gray-900 truncate">{names[r.product_id] || `#${r.product_id}`}</div>
+                {/* Drill-down: "where did this number come from?" — open the product */}
+                <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                  <span className="min-w-0 text-[var(--fs-base)] font-semibold text-gray-900 truncate">{names[r.product_id] || `#${r.product_id}`}</span>
+                  <RecordLink type="product" id={r.product_id} label={names[r.product_id]} className="w-6 h-6" />
+                </div>
                 <div className="text-right flex-shrink-0">
                   {r.complete ? (
                     <>
