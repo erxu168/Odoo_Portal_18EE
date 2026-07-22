@@ -16,6 +16,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { name, uom_id } = body;
+    const categId = Number(body.categ_id);
+    const defaultCode = typeof body.default_code === 'string' ? body.default_code.trim() : '';
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Product name is required' }, { status: 400 });
@@ -39,19 +41,28 @@ export async function POST(request: Request) {
       name: name.trim(),
       type: 'consu',
     };
-    if (uom_id) vals.uom_id = uom_id;
+    if (uom_id) { vals.uom_id = uom_id; vals.uom_po_id = uom_id; }
+    if (Number.isInteger(categId) && categId > 0) vals.categ_id = categId;
+    if (defaultCode) vals.default_code = defaultCode;
 
     const productId = await odoo.create('product.product', vals);
 
-    // Read back the created product to return full data
-    const created = await odoo.read('product.product', [productId], ['id', 'name', 'uom_id']);
+    // Read back the created product to return full data (shape matches the
+    // inventory products GET so callers can drop it straight into a list).
+    const created = await odoo.read('product.product', [productId], ['id', 'name', 'uom_id', 'categ_id', 'default_code', 'barcode']);
+    const c = created[0];
 
     return NextResponse.json({
       product: {
-        id: created[0].id,
-        name: created[0].name,
-        uom_id: Array.isArray(created[0].uom_id) ? created[0].uom_id[0] : null,
-        uom_name: Array.isArray(created[0].uom_id) ? created[0].uom_id[1] : '',
+        id: c.id,
+        name: c.name,
+        // Back-compat: uom_id stays a scalar id (+ uom_name), as the original
+        // contract. New fields below are additive.
+        uom_id: Array.isArray(c.uom_id) ? c.uom_id[0] : null,
+        uom_name: Array.isArray(c.uom_id) ? c.uom_id[1] : '',
+        categ_id: c.categ_id || null,                               // [id, name] tuple
+        default_code: c.default_code || null,
+        barcode: c.barcode || null,
       },
     });
   } catch (err: unknown) {

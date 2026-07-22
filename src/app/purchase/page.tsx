@@ -26,7 +26,7 @@ import SupplierListScreen from '@/components/purchase/SupplierListScreen';
 import OrderDetailScreen from '@/components/purchase/OrderDetailScreen';
 import ManagePurchasesScreen from '@/components/purchase/ManagePurchasesScreen';
 import AddSupplierScreen from '@/components/purchase/AddSupplierScreen';
-import CreateProductSheet from '@/components/purchase/CreateProductSheet';
+import CreateProductSheet from '@/components/products/CreateProductSheet';
 import CatalogScreen from '@/components/purchase/CatalogScreen';
 import InsightsScreen from '@/components/purchase/InsightsScreen';
 

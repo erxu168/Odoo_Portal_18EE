@@ -14,7 +14,7 @@ import RecordLink from '@/components/ui/RecordLink';
  * lives on the screen behind this sheet.
  */
 export default function AddProductsSheet({
-  products, selectedIds, onToggle, onAddMany, productImageIds, homeSpots, spotLabels, unitHint, onEditProduct, onClose,
+  products, selectedIds, onToggle, onAddMany, productImageIds, homeSpots, spotLabels, unitHint, onEditProduct, onNewProduct, onClose,
 }: {
   products: any[];
   selectedIds: Set<number>;
@@ -26,6 +26,9 @@ export default function AddProductsSheet({
   unitHint: (p: any) => string;
   /** Drill-down: open the product's editor overlay (fix a typo / wrong unit). */
   onEditProduct: (product: any) => void;
+  /** No-dead-end: create a product that doesn't exist yet (prefilled with the
+   *  current search), then it's added to the list. Omit to hide the affordance. */
+  onNewProduct?: (initialName: string) => void;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState('');
@@ -116,7 +119,15 @@ export default function AddProductsSheet({
 
         <div className="flex-1 overflow-y-auto px-4 pb-6">
           {visible.length === 0 ? (
-            <p className="text-center text-gray-400 py-12 text-[var(--fs-base)]">Nothing matches — try another search.</p>
+            <div className="text-center py-12">
+              <p className="text-gray-400 text-[var(--fs-base)] mb-4">Nothing matches — try another search.</p>
+              {onNewProduct && (
+                <button onClick={() => onNewProduct(search)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-green-600 text-white font-bold text-[var(--fs-sm)] active:bg-green-700">
+                  + Create {search.trim() ? `“${search.trim()}”` : 'a new product'}
+                </button>
+              )}
+            </div>
           ) : visible.slice(0, 200).map((p) => {
             const added = selectedIds.has(p.id);
             const spots = homeSpots[p.id] || [];
@@ -154,6 +165,14 @@ export default function AddProductsSheet({
           )}
         </div>
 
+        {onNewProduct && (
+          <div className="px-4 pt-2">
+            <button onClick={() => onNewProduct(search)}
+              className="w-full py-2.5 rounded-lg border-2 border-dashed border-green-300 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50">
+              + New product
+            </button>
+          </div>
+        )}
         <div className="px-4 py-3 border-t border-gray-100 text-center text-[var(--fs-sm)] text-gray-500">
           <span className="font-bold text-gray-900">{selectedIds.size}</span> on this list — close to review it
         </div>

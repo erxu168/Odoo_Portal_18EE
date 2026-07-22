@@ -5,6 +5,8 @@ import { BackHeader, SearchBar, ProductThumb, leafCategory } from './ui';
 import SpotSheet from './SpotSheet';
 import AddProductsSheet from './AddProductsSheet';
 import ProductDetail from './ProductDetail';
+import CreateProductSheet from '@/components/products/CreateProductSheet';
+import DeptRoleForm from '@/components/hr/DeptRoleForm';
 import RecordLink from '@/components/ui/RecordLink';
 import { recordHref } from '@/lib/record-links';
 import { useCompany } from '@/lib/company-context';
@@ -51,6 +53,24 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const [locationId, setLocationId] = useState<number | null>(template?.location_id || null);
   const [assignType, setAssignType] = useState<string | null>(template?.assign_type || null);
   const [assignId, setAssignId] = useState<number | null>(template?.assign_id || null);
+  // Local, refreshable copy of the departments prop so a department created
+  // inline (no dead-end picker) appears + auto-selects without leaving the form.
+  const [deptList, setDeptList] = useState<any[]>(departments);
+  const [newDeptOpen, setNewDeptOpen] = useState(false);
+  useEffect(() => { setDeptList(departments); }, [departments]);
+  async function refreshDepartments(prevIds: Set<number>) {
+    try {
+      const url = companyId ? `/api/inventory/departments?company_id=${companyId}` : '/api/inventory/departments';
+      const res = await fetch(url);
+      if (!res.ok) return;                        // transient failure — keep the existing list, don't wipe it
+      const d = await res.json();
+      const list: any[] = d.departments || [];
+      if (list.length === 0) return;              // nothing came back — a created dept should be here; don't blank the picker
+      setDeptList(list);
+      const created = list.find((x) => !prevIds.has(x.id));   // the one that wasn't there before
+      if (created) { setAssignType('department'); setAssignId(created.id); }
+    } catch { /* keep the existing list on failure */ }
+  }
   const [active, setActive] = useState(template?.active !== false);
   const [saving, setSaving] = useState(false);
 
@@ -67,11 +87,20 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const [spotSheetFor, setSpotSheetFor] = useState<any | null>(null);           // product whose spots are being edited
   const [productEditFor, setProductEditFor] = useState<any | null>(null);       // drill-down: product editor overlay
   const [canEditProduct, setCanEditProduct] = useState(false);                  // capability for product master edits
+  const [isManager, setIsManager] = useState(false);                            // dept/product quick-create is manager+ (matches the endpoints)
   const [shiftTemplates, setShiftTemplates] = useState<any[]>([]);  // Planning shift templates (Opening/Mid/Closing) for "assign to a shift"
   const [shiftLoadFailed, setShiftLoadFailed] = useState(false);    // fetch failed/forbidden ≠ "no shifts exist" — don't lie in the hint
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [search, setSearch] = useState('');           // filter within THIS LIST
   const [addOpen, setAddOpen] = useState(false);       // Add-products sheet
+  // Product quick-create (no dead-end): create a missing product + drop it on
+  // the list without leaving the builder. Units/categories feed the shared sheet.
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createErr, setCreateErr] = useState('');
+  const [uoms, setUoms] = useState<{ id: number; name: string }[]>([]);
+  const [catOptions, setCatOptions] = useState<{ id: number; name: string }[]>([]);
 
   const [step, setStep] = useState<'config' | 'products'>('config');
   const [portalUsers, setPortalUsers] = useState<any[]>([]);
@@ -84,7 +113,18 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     fetch('/api/auth/me').then((r) => r.ok ? r.json() : null).then((d) => {
       const caps: string[] = d?.user?.capabilities || [];
       setCanEditProduct(caps.includes('inventory.productsettings.manage'));
+      const role = d?.user?.role;
+      setIsManager(role === 'manager' || role === 'admin');   // quick-create endpoints are manager-gated
     }).catch(() => {});
+  }, []);
+
+  // Units + categories for the product quick-create sheet (both global lists).
+  useEffect(() => {
+    fetch('/api/inventory/uoms').then((r) => (r.ok ? r.json() : { uoms: [] }))
+      .then((d) => setUoms(d.uoms || [])).catch(() => {});
+    fetch('/api/inventory/categories').then((r) => (r.ok ? r.json() : { categories: [] }))
+      .then((d) => setCatOptions((d.categories || []).map((c: any) => ({ id: c.id, name: c.complete_name || c.name }))))
+      .catch(() => {});
   }, []);
 
   // Home-spot map + spot labels for the chips (one request each). Failure is
@@ -284,6 +324,72 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     });
   }
 
+  // Open the product quick-create sheet, prefilled with the search text. Never
+  // stack it over the product-detail drill-down.
+  function openCreateProduct(initialName: string) {
+    setProductEditFor(null);
+    setCreateName(initialName || '');
+    setCreateErr('');
+    setCreateOpen(true);
+  }
+
+  // Put a product on the list (dedupe) and tick it selected.
+  function appendAndSelect(mapped: any) {
+    setAllProducts((prev) => [mapped, ...prev.filter((x) => x.id !== mapped.id)]);
+    setSelectedProductIds((prev) => new Set([...Array.from(prev), mapped.id]));
+  }
+
+  // Resolve a product by id in the inventory shape (uom_id/categ_id tuples) and
+  // add it — used when a "new" product turns out to already exist.
+  async function addExistingProductById(id: number): Promise<boolean> {
+    try {
+      const r = await fetch(`/api/inventory/products?ids=${id}`);
+      if (!r.ok) return false;
+      const dd = await r.json();
+      const prod = (dd.products || [])[0];
+      if (!prod) return false;
+      appendAndSelect(prod);
+      return true;
+    } catch { return false; }
+  }
+
+  // Create the product in Odoo (canonical POST /api/products), then drop it on
+  // the list + select it — no leaving the builder, no refetch race. If it already
+  // exists (even outside this list's relevant subset), resolve + add it instead
+  // of dead-ending on the duplicate error.
+  async function createProductAndAdd(payload: { name: string; uom_id: number; categ_id: number; default_code: string }) {
+    setCreateSaving(true);
+    setCreateErr('');
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: payload.name, uom_id: payload.uom_id, categ_id: payload.categ_id, default_code: payload.default_code }),
+      });
+      const d = await res.json().catch(() => ({}));
+
+      if (res.status === 409 && d.existing_id) {
+        if (await addExistingProductById(d.existing_id)) { setCreateOpen(false); setCreateName(''); }
+        else setCreateErr(d.error || 'That product already exists but could not be added');
+        return;
+      }
+      if (!res.ok || !d.product?.id) { setCreateErr(d.error || 'Could not create the product'); return; }
+
+      const p = d.product;
+      appendAndSelect({
+        id: p.id,
+        name: p.name,
+        uom_id: p.uom_id ? [p.uom_id, p.uom_name || ''] : undefined,
+        categ_id: p.categ_id || undefined,
+        default_code: p.default_code || null,
+        barcode: p.barcode || null,
+        active: true,
+      });
+      setCreateOpen(false);
+      setCreateName('');
+    } catch { setCreateErr('Network error — the product was not created'); }
+    finally { setCreateSaving(false); }
+  }
+
   function removeProduct(productId: number) {
     setSelectedProductIds((prev) => {
       const next = new Set(prev);
@@ -431,6 +537,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             spotLabels={spotLabels}
             unitHint={unitHint}
             onEditProduct={(p) => setProductEditFor(p)}
+            onNewProduct={isManager ? openCreateProduct : undefined}
             onClose={() => setAddOpen(false)}
           />
         )}
@@ -468,6 +575,21 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             }}
           />
         )}
+
+        {/* No-dead-end product create — the shared canonical sheet, stacked above
+            the add sheet (z-140) so it never ties with it. */}
+        <CreateProductSheet
+          open={createOpen}
+          initialName={createName}
+          units={uoms}
+          categories={catOptions}
+          saving={createSaving}
+          error={createErr}
+          context="inventory"
+          baseZ={140}
+          onClose={() => { setCreateOpen(false); setCreateErr(''); }}
+          onCreate={(payload) => createProductAndAdd({ name: payload.name, uom_id: payload.uom_id, categ_id: payload.categ_id, default_code: payload.default_code })}
+        />
       </div>
     );
   }
@@ -591,10 +713,16 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
                 <select value={assignId || ''} onChange={(e) => setAssignId(e.target.value ? Number(e.target.value) : null)}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[var(--fs-base)] text-gray-900 outline-none">
                   <option value="">Choose department...</option>
-                  {departments.map((d: any) => (
+                  {deptList.map((d: any) => (
                     <option key={d.id} value={d.id}>{d.name} ({d.member_count} members)</option>
                   ))}
                 </select>
+                {isManager && (
+                  <button type="button" onClick={() => setNewDeptOpen(true)}
+                    className="mt-2 text-[var(--fs-sm)] font-bold text-green-700 active:opacity-70">
+                    + New department
+                  </button>
+                )}
               </div>
             )}
 
@@ -726,6 +854,22 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           }
         </button>
       </div>
+
+      {/* No-dead-end: create a department inline (reuses the canonical HR
+          DeptRoleForm as a full-screen overlay), then refresh + auto-select it. */}
+      {newDeptOpen && (
+        <div className="fixed inset-0 z-[130] bg-gray-50 overflow-y-auto">
+          <DeptRoleForm
+            kind="department"
+            recordId={null}
+            initialCompanyId={companyId ?? undefined}
+            lockCompany={!!companyId}
+            onBack={() => setNewDeptOpen(false)}
+            onHome={() => setNewDeptOpen(false)}
+            onSaved={() => { const prev = new Set(deptList.map((x: any) => x.id)); setNewDeptOpen(false); refreshDepartments(prev); }}
+          />
+        </div>
+      )}
     </div>
   );
 }
