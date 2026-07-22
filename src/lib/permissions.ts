@@ -125,6 +125,9 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   // editing is admin-only in v1; running & ticking checklists is manager+admin.
   { key: 'staffing.templates.manage', module: 'hr', label: 'Set up lifecycle checklists (master lists)', defaultRoles: ['admin'] },
   { key: 'staffing.instances.manage', module: 'hr', label: 'Start & manage lifecycle checklists',        defaultRoles: ['manager', 'admin'] },
+  // Drives the drill-down into a staff member's canonical record page (PII/DATEV).
+  // The API separately enforces company scope + the admin-only login-email rule.
+  { key: 'hr.employee.manage',        module: 'hr', label: 'View & edit staff records (personal / DATEV data)', defaultRoles: ['manager', 'admin'] },
 
   // ── Shift Handover — the shift LOG (portal-only). The outgoing shift posts notes,
   // photos and storage; the next shift reads them. Everyone reads + posts; editing

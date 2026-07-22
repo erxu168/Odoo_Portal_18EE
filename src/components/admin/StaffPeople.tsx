@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { PORTAL_MODULES, defaultModuleIds, parseModuleAccess } from '@/lib/modules';
+import RecordLink from '@/components/ui/RecordLink';
 
 /**
  * Unified People view for the Staff module.
@@ -429,7 +430,11 @@ export default function StaffPeople() {
                         <div className="text-[11px] text-amber-600 font-semibold mt-0.5 truncate">No restaurant set in Odoo</div>
                       )}
                     </div>
-                    <span className={`text-[11px] px-2.5 py-0.5 rounded-md font-semibold whitespace-nowrap ${meta.cls}`}>{meta.label}</span>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <span className={`text-[11px] px-2.5 py-0.5 rounded-md font-semibold whitespace-nowrap ${meta.cls}`}>{meta.label}</span>
+                      {/* Drill-down: the person's canonical record (PII-gated) */}
+                      <RecordLink type="employee" id={emp.employee_id} label={emp.name} />
+                    </div>
                   </div>
 
                   {/* No account yet -> invite */}

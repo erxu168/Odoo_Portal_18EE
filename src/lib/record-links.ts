@@ -7,7 +7,7 @@
  * Viewing a record is a right of any authenticated user; editing is gated by
  * the capability below (the canonical page renders read-only otherwise).
  */
-export type RecordType = 'product' | 'location' | 'list' | 'supplier';
+export type RecordType = 'product' | 'location' | 'list' | 'supplier' | 'employee';
 
 /** The canonical Form-View URL for a record — its permanent address. */
 export function recordHref(type: RecordType, id: number | string): string {
@@ -16,16 +16,23 @@ export function recordHref(type: RecordType, id: number | string): string {
     case 'location': return `/inventory/location/${id}`;
     case 'list': return `/inventory/list/${id}`;
     case 'supplier': return `/purchase/supplier/${id}`;
+    case 'employee': return `/hr/employee/${id}`;
     default: return '/';
   }
 }
 
-/** Capability that grants EDIT on this record type (view needs none). */
+/**
+ * Capability that grants EDIT on this record type. NOTE: 'employee' is special —
+ * unlike the others (view = any authed), an employee record is PII/DATEV, so its
+ * VIEW is also manager+company-gated and the id is an hr.employee id. The
+ * canonical page enforces role+company+self; this key drives only the edit UI.
+ */
 export const RECORD_EDIT_CAP: Record<RecordType, string> = {
   product: 'inventory.productsettings.manage',
   location: 'inventory.location.manage',
   list: 'inventory.template.manage',
   supplier: 'purchase.supplier.manage',
+  employee: 'hr.employee.manage',
 };
 
 /** Human label for the record type — used in aria/tooltips. */
@@ -34,4 +41,5 @@ export const RECORD_NOUN: Record<RecordType, string> = {
   location: 'location',
   list: 'counting list',
   supplier: 'supplier',
+  employee: 'team member',
 };
