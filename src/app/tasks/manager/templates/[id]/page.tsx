@@ -181,19 +181,8 @@ export default function TemplateEditPage({ params }: PageProps) {
   const { toast, showToast, dismissToast } = useToast();
   const { companyId: activeCompanyId } = useCompany();
 
-  // Monotonic token: overlapping loads (e.g. a background refresh racing a normal
-  // one) can resolve out of order, so only the LATEST-started load applies its
-  // data — a stale response can't overwrite a fresher one.
-  const loadGen = useRef(0);
-  // silent: refetch in the background WITHOUT the page spinner (which would blank
-  // the page and unmount any open modal) and WITHOUT clobbering the manager's
-  // in-progress header edits (name/department) — only the task list (lines) is
-  // merged in. Used to refresh after a save whose modal was dismissed mid-flight:
-  // the write committed, so the list must update, but we must not disturb whatever
-  // the manager opened or edited next (an open modal reads departmentId from tpl).
-  const load = useCallback(async (silent = false) => {
-    const myGen = ++loadGen.current;
-    if (!silent) { setLoading(true); setError(null); }
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
     try {
       const [tplRes, deptRes] = await Promise.all([
         fetch(`/api/tasks/templates/${tplId}`),
@@ -202,21 +191,22 @@ export default function TemplateEditPage({ params }: PageProps) {
       const body = await tplRes.json();
       const deptBody = await deptRes.json();
       if (!tplRes.ok) throw new Error(body.error || 'Failed');
-      if (myGen === loadGen.current) {
-        if (silent) {
-          // Lines-only merge: never overwrite department/name/header.
-          setTpl(prev => prev ? { ...prev, lines: body.template.lines } : body.template);
-        } else {
-          setTpl(body.template);
-          if (deptRes.ok) setDepartments(deptBody.departments || []);
-        }
-      }
+      setTpl(body.template);
+      if (deptRes.ok) setDepartments(deptBody.departments || []);
     } catch (e: unknown) {
-      if (!silent && myGen === loadGen.current) setError(e instanceof Error ? e.message : 'Failed');
+      setError(e instanceof Error ? e.message : 'Failed');
     } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
     }
   }, [tplId]);
+
+  // A foreground load() shows the full-page loading skeleton, which unmounts any
+  // open modal. So the background refresh after a dismissed-but-committed save
+  // (below) only runs when NO modal is open — nothing to unmount, no silent-vs-
+  // foreground load arbitration. Kept in a ref so the dismissed save's late
+  // completion reads the CURRENT open state, not a stale render closure.
+  const modalOpenRef = useRef(false);
+  useEffect(() => { modalOpenRef.current = showAddLine || editingLine !== null; }, [showAddLine, editingLine]);
 
   useEffect(() => { load(); }, [load, activeCompanyId]);
 
@@ -480,7 +470,7 @@ export default function TemplateEditPage({ params }: PageProps) {
             await load();
             if (msg) showToast(msg);
           }}
-          onBackgroundRefresh={() => { void load(true); }}
+          onBackgroundRefresh={() => { if (!modalOpenRef.current) void load(); }}
         />
       )}
       {toast && <Toast message={toast.msg} type={toast.type} visible={true} onDismiss={dismissToast} />}
@@ -494,8 +484,10 @@ interface LineModalProps {
   line: TaskTemplateLine | null;
   onClose: () => void;
   onSaved: (toastMessage?: string) => Promise<void>;
-  /** Refresh the parent list WITHOUT closing/replacing the open modal — used
-   * when a save committed but its own modal was dismissed mid-flight. */
+  /** Refresh the parent list after a save whose own modal was dismissed
+   * mid-flight — but only when no other modal is open (a foreground reload would
+   * unmount it). If one is open the refresh is skipped and self-corrects on the
+   * next close/reload. */
   onBackgroundRefresh: () => void;
 }
 
