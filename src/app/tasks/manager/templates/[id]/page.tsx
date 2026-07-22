@@ -181,8 +181,12 @@ export default function TemplateEditPage({ params }: PageProps) {
   const { toast, showToast, dismissToast } = useToast();
   const { companyId: activeCompanyId } = useCompany();
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null);
+  // silent: refetch in the background WITHOUT the page loading spinner (which
+  // would blank the page and unmount any open modal). Used to refresh the list
+  // after a save whose modal was dismissed mid-flight — the write committed, so
+  // the list must update, but we must not disturb whatever the manager opened next.
+  const load = useCallback(async (silent = false) => {
+    if (!silent) { setLoading(true); setError(null); }
     try {
       const [tplRes, deptRes] = await Promise.all([
         fetch(`/api/tasks/templates/${tplId}`),
@@ -194,9 +198,9 @@ export default function TemplateEditPage({ params }: PageProps) {
       setTpl(body.template);
       if (deptRes.ok) setDepartments(deptBody.departments || []);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      if (!silent) setError(e instanceof Error ? e.message : 'Failed');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [tplId]);
 
@@ -462,6 +466,7 @@ export default function TemplateEditPage({ params }: PageProps) {
             await load();
             if (msg) showToast(msg);
           }}
+          onBackgroundRefresh={() => { void load(true); }}
         />
       )}
       {toast && <Toast message={toast.msg} type={toast.type} visible={true} onDismiss={dismissToast} />}
@@ -475,6 +480,9 @@ interface LineModalProps {
   line: TaskTemplateLine | null;
   onClose: () => void;
   onSaved: (toastMessage?: string) => Promise<void>;
+  /** Refresh the parent list WITHOUT closing/replacing the open modal — used
+   * when a save committed but its own modal was dismissed mid-flight. */
+  onBackgroundRefresh: () => void;
 }
 
 interface PendingAttachment {
@@ -487,7 +495,7 @@ interface PendingAttachment {
   size: number;
 }
 
-function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalProps) {
+function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRefresh }: LineModalProps) {
   const [name, setName]               = useState(line?.name ?? '');
   const [dayPart, setDayPart]         = useState<DayPart>(line?.day_part ?? 'opening');
   const [deadline, setDeadline]       = useState(floatToHHMM(line?.deadline_time));
@@ -799,10 +807,11 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved }: LineModalPro
         setPendingAtts([]);
       }
 
-      // The manager dismissed this modal mid-save: the write has committed, but
-      // do NOT call onSaved — it would refresh the list and close whatever modal
-      // is open now (possibly a different task).
-      if (closedRef.current) return;
+      // The manager dismissed this modal mid-save: the write has committed, so
+      // refresh the list in the BACKGROUND (keep it current, avoid a duplicate
+      // add or a stale-reopen overwrite), but do NOT call onSaved — that would
+      // close whatever modal is open now (possibly a different task).
+      if (closedRef.current) { onBackgroundRefresh(); return; }
       const baseMsg = line ? 'Task saved' : 'Task added';
       const fileNote = uploadedCount > 0 ? ` · ${uploadedCount} file${uploadedCount === 1 ? '' : 's'} uploaded` : '';
       const failNote = uploadFailures > 0 ? ` · ${uploadFailures} file upload${uploadFailures === 1 ? '' : 's'} failed` : '';
