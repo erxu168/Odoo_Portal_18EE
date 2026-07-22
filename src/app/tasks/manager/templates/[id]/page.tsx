@@ -181,11 +181,18 @@ export default function TemplateEditPage({ params }: PageProps) {
   const { toast, showToast, dismissToast } = useToast();
   const { companyId: activeCompanyId } = useCompany();
 
-  // silent: refetch in the background WITHOUT the page loading spinner (which
-  // would blank the page and unmount any open modal). Used to refresh the list
-  // after a save whose modal was dismissed mid-flight — the write committed, so
-  // the list must update, but we must not disturb whatever the manager opened next.
+  // Monotonic token: overlapping loads (e.g. a background refresh racing a normal
+  // one) can resolve out of order, so only the LATEST-started load applies its
+  // data — a stale response can't overwrite a fresher one.
+  const loadGen = useRef(0);
+  // silent: refetch in the background WITHOUT the page spinner (which would blank
+  // the page and unmount any open modal) and WITHOUT clobbering the manager's
+  // in-progress header edits (name/department) — only the task list (lines) is
+  // merged in. Used to refresh after a save whose modal was dismissed mid-flight:
+  // the write committed, so the list must update, but we must not disturb whatever
+  // the manager opened or edited next (an open modal reads departmentId from tpl).
   const load = useCallback(async (silent = false) => {
+    const myGen = ++loadGen.current;
     if (!silent) { setLoading(true); setError(null); }
     try {
       const [tplRes, deptRes] = await Promise.all([
@@ -195,10 +202,17 @@ export default function TemplateEditPage({ params }: PageProps) {
       const body = await tplRes.json();
       const deptBody = await deptRes.json();
       if (!tplRes.ok) throw new Error(body.error || 'Failed');
-      setTpl(body.template);
-      if (deptRes.ok) setDepartments(deptBody.departments || []);
+      if (myGen === loadGen.current) {
+        if (silent) {
+          // Lines-only merge: never overwrite department/name/header.
+          setTpl(prev => prev ? { ...prev, lines: body.template.lines } : body.template);
+        } else {
+          setTpl(body.template);
+          if (deptRes.ok) setDepartments(deptBody.departments || []);
+        }
+      }
     } catch (e: unknown) {
-      if (!silent) setError(e instanceof Error ? e.message : 'Failed');
+      if (!silent && myGen === loadGen.current) setError(e instanceof Error ? e.message : 'Failed');
     } finally {
       if (!silent) setLoading(false);
     }
