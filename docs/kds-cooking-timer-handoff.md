@@ -47,7 +47,9 @@ Notes:
 - `cook_timers.muted` is cleared on every step advance (see decision 8).
 - Timekeeping is server-side from `step_started_at` (Berlin time via the `sv-SE` locale pattern — NEVER `toISOString()`), so a tablet reload/reconnect recovers exact remaining time.
 - Zero Odoo writes. Same read-only stance as the KDS (see 2026-06-10 STATUS entry for why).
-- Long-term: `cook_profiles` is conceptually adjacent to `prep_items`/`kds_product_config` — do NOT merge now, but keep naming compatible for a future migration.
+- Long-term: `cook_profiles` is conceptually adjacent to `prep_items`/`kds_product_config` — do NOT merge now, but keep naming compatible for a future migration. **This is only about keeping column names compatible — it is NOT a wire between the two systems.**
+
+**SCOPE DECISION (2026-07-22, Ethan): the KDS Cooking Timer is POS-order-only.** A "prep lane / two-lane" integration — mirroring prep-batch timers from the Cooking Guide onto this board, with recipe instructions attached — was explored (interactive mock) and **rejected as too confusing**. POS dishes need timing with no instructions; prep products (smoke a batch of chicken, batch rice & peas) stay entirely the **Cooking Guide's** separate job. Do NOT re-propose connecting this timer to the Cooking Guide / recipes / prep-planner without an explicit new decision from Ethan.
 
 ## API routes (`src/app/api/cooktimer/`)
 
