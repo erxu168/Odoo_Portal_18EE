@@ -158,14 +158,21 @@ export async function PATCH(request: Request) {
   const db = getDb();
   const itemLoc = (id: number) => (db.prepare('SELECT g.location_id AS loc FROM purchase_guide_items i JOIN purchase_order_guides g ON g.id = i.guide_id WHERE i.id = ?').get(id) as { loc: number } | undefined);
 
-  // Reorder guide items into a custom walk-in order. EVERY supplied id must
-  // resolve to an existing item in a restaurant the caller may touch — reject
-  // the whole request otherwise. Never silently reorder a valid subset while a
-  // foreign/invalid id rides along.
+  // Reorder guide items into a custom walk-in order. EVERY supplied id must be a
+  // clean positive integer AND resolve to an existing item in a restaurant the
+  // caller may touch — reject the whole request otherwise. Validate the RAW
+  // value (no lossy parseInt: "7.5"/"7junk" must NOT coerce to 7), and never
+  // silently reorder a valid subset while a foreign/invalid id rides along.
   if (Array.isArray(body.item_ids)) {
-    const ids = body.item_ids.map((n: unknown) => parseInt(String(n))) as number[];
-    if (ids.some((n) => !Number.isInteger(n) || n <= 0)) {
-      return NextResponse.json({ error: 'Invalid item id' }, { status: 400 });
+    const ids: number[] = [];
+    for (const raw of body.item_ids) {
+      const n = typeof raw === 'number'
+        ? raw
+        : (typeof raw === 'string' && /^\d+$/.test(raw.trim()) ? parseInt(raw, 10) : NaN);
+      if (!Number.isInteger(n) || n <= 0) {
+        return NextResponse.json({ error: 'Invalid item id' }, { status: 400 });
+      }
+      ids.push(n);
     }
     if (ids.length) {
       const placeholders = ids.map(() => '?').join(',');
