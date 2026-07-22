@@ -30,6 +30,7 @@ interface ManageGuideScreenProps {
   // Delivery settings (collapsible) — edited by the ONE shared SupplierForm.
   configOpen: boolean;
   configSaving: boolean;
+  configError?: string | null;
   supplier: { name: string; email: string; phone?: string; send_method: string; order_days: string; delivery_days?: string; lead_time_days: number; min_order_value: number; approval_required: number } | null;
   onToggleConfig: () => void;
   onSaveSupplier: (v: SupplierFormValues) => void;
@@ -64,6 +65,7 @@ export default function ManageGuideScreen({
   items,
   configOpen,
   configSaving,
+  configError,
   supplier,
   onToggleConfig,
   onSaveSupplier,
@@ -137,6 +139,7 @@ export default function ManageGuideScreen({
             mode="edit"
             initial={supplier}
             saving={configSaving}
+            error={configError}
             onSave={onSaveSupplier}
             onCancel={onToggleConfig}
           />

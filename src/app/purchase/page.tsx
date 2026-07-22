@@ -110,6 +110,7 @@ export default function PurchasePage() {
 
   // Supplier config on the Manage screen — edited by the ONE shared SupplierForm.
   const [mgConfigSaving, setMgConfigSaving] = useState(false);
+  const [mgSaveErr, setMgSaveErr] = useState<string | null>(null);
   const [mgConfigOpen, setMgConfigOpen] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
 
@@ -289,9 +290,9 @@ export default function PurchasePage() {
   // The ONE supplier form (shared with the canonical page) saves the full field set.
   async function saveSupplier(v: SupplierFormValues) {
     if (!guideSupplierId) return;
-    setMgConfigSaving(true);
+    setMgConfigSaving(true); setMgSaveErr(null);
     try {
-      await fetch('/api/purchase/suppliers', {
+      const res = await fetch('/api/purchase/suppliers', {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: guideSupplierId, email: v.email, phone: v.phone, send_method: v.send_method,
@@ -301,12 +302,15 @@ export default function PurchasePage() {
           ...(v.name.trim() ? { name: v.name.trim() } : {}),
         }),
       });
+      // Only commit local state on a REAL success — never show "saved" (close +
+      // update the summary) for a 403/500 the server rejected.
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setMgSaveErr(d.error || 'Could not save'); return; }
       if (v.name.trim()) setGuideSupplierName(v.name.trim());
       setSelectedSupplier((prev) => prev ? ({ ...prev, ...v, name: v.name.trim() || prev.name,
         order_days: JSON.stringify(v.order_days), delivery_days: JSON.stringify(v.delivery_days) }) : prev);
       setMgConfigOpen(false);
       fetchSuppliers();
-    } catch (e) { void e; }
+    } catch { setMgSaveErr('Network error — not saved'); }
     finally { setMgConfigSaving(false); }
   }
 
@@ -762,6 +766,7 @@ export default function PurchasePage() {
           items={guideItems}
           configOpen={mgConfigOpen}
           configSaving={mgConfigSaving}
+          configError={mgSaveErr}
           supplier={selectedSupplier}
           onToggleConfig={() => setMgConfigOpen(!mgConfigOpen)}
           onSaveSupplier={saveSupplier}
