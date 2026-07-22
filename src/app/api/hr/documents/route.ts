@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentUser, hasRole } from '@/lib/auth';
+import { getCurrentUser } from '@/lib/auth';
+import { canAccessEmployee } from '@/lib/hr-access';
 import { getOdoo } from '@/lib/odoo';
 import { DOCUMENT_TYPES, HR_FOLDER_ID } from '@/types/hr';
 
 export async function GET(req: NextRequest) {
   try {
     const user = getCurrentUser();
-    if (!user || !user.employee_id) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
     const employeeId = parseInt(searchParams.get('employee_id') || '0');
-
-    const targetId = employeeId || user.employee_id;
-    if (targetId !== user.employee_id && !hasRole(user, 'manager')) {
+    const targetId = employeeId || user.employee_id || 0;
+    if (!targetId) return NextResponse.json({ error: 'employee_id required' }, { status: 400 });
+    // Company-scoped: a manager can't reach another restaurant's staff docs.
+    if (!(await canAccessEmployee(user, targetId))) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
@@ -71,9 +71,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = getCurrentUser();
-    if (!user || !user.employee_id) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
     const body = await req.json();
     const { employee_id, doc_type_key } = body;
@@ -105,8 +103,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const targetId = employee_id || user.employee_id;
-    if (targetId !== user.employee_id && !hasRole(user, 'manager')) {
+    const targetId = employee_id || user.employee_id || 0;
+    if (!targetId) return NextResponse.json({ error: 'employee_id required' }, { status: 400 });
+    if (!(await canAccessEmployee(user, targetId))) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 

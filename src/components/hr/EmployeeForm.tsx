@@ -64,22 +64,23 @@ export default function EmployeeForm({ employeeId, onBack, onSaved }: Props) {
     if (isNew && companyId === null && activeCompanyId) setCompanyId(activeCompanyId);
   }, [isNew, activeCompanyId, companyId]);
 
-  // Prefill when editing.
+  // Prefill when editing — fetch THIS employee's exact company-scoped record
+  // (not a search through the 200-cap list, which could miss the target and open
+  // the form blank → an accidental overwrite).
   useEffect(() => {
     if (isNew) return;
-    fetch('/api/hr/employees')
-      .then(r => r.json())
+    fetch(`/api/hr/employee/${employeeId}`)
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('load'))))
       .then(d => {
-        const emp = (d.employees || []).find((e: { id: number }) => e.id === employeeId);
-        if (emp) {
-          setName(emp.name || '');
-          setCompanyId(Array.isArray(emp.company_id) ? emp.company_id[0] : null);
-          setDepartmentId(Array.isArray(emp.department_id) ? emp.department_id[0] : null);
-          setJobTitle(emp.job_title || '');
-          setWorkEmail(emp.work_email || '');
-          setMobilePhone(emp.mobile_phone || '');
-          setWorkPhone(emp.work_phone || '');
-        }
+        const emp = d.employee;
+        if (!emp) { setError('Could not load this employee.'); return; }
+        setName(emp.name || '');
+        setCompanyId(Array.isArray(emp.company_id) ? emp.company_id[0] : null);
+        setDepartmentId(Array.isArray(emp.department_id) ? emp.department_id[0] : null);
+        setJobTitle(emp.job_title || '');
+        setWorkEmail(emp.work_email || '');
+        setMobilePhone(emp.mobile_phone || '');
+        setWorkPhone(emp.work_phone || '');
       })
       .catch(() => setError('Could not load this employee.'))
       .finally(() => setLoading(false));
