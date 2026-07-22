@@ -12,7 +12,6 @@ import QuickCount from '@/components/inventory/QuickCount';
 import ManageTemplates from '@/components/inventory/ManageTemplates';
 import ReviewSubmissions from '@/components/inventory/ReviewSubmissions';
 import MoIngredients from '@/components/inventory/MoIngredients';
-import ProductSettings from '@/components/inventory/ProductSettings';
 import DrinksScanner from '@/components/inventory/DrinksScanner';
 import DrinksEditor from '@/components/inventory/DrinksEditor';
 import ConsumptionReport from '@/components/inventory/ConsumptionReport';
@@ -25,7 +24,6 @@ type Screen =
   | { type: 'manage' }
   | { type: 'review' }
   | { type: 'mo-ingredients' }
-  | { type: 'product-settings' }
   | { type: 'drinks-scanner' }
   | { type: 'drinks-editor' }
   | { type: 'locations' }
@@ -128,14 +126,6 @@ export default function InventoryPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
         <ConsumptionReport onBack={goDashboard} />
-      </div>
-    );
-  }
-
-  if (screen.type === 'product-settings' && can('inventory.productsettings.manage')) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col">
-        <ProductSettings onBack={goDashboard} />
       </div>
     );
   }

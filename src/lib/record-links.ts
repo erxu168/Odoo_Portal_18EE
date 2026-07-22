@@ -12,7 +12,7 @@ export type RecordType = 'product' | 'location';
 /** The canonical Form-View URL for a record — its permanent address. */
 export function recordHref(type: RecordType, id: number | string): string {
   switch (type) {
-    case 'product': return `/inventory/product/${id}`;
+    case 'product': return `/products/${id}`;
     case 'location': return `/inventory/location/${id}`;
     default: return '/';
   }

@@ -78,7 +78,6 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
     ...(can('inventory.review.approve') ? [{ id: 'review', label: 'Review', emoji: '✅', sublabel: reviewCount > 0 ? `${reviewCount} to review` : 'Approve counts', badge: reviewCount }] : []),
     ...(can('inventory.drinks.manage') ? [{ id: 'drinks-scanner', label: 'Drinks Scanner', emoji: '🥤', sublabel: 'Barcode WAJ drinks', badge: 0 }] : []),
     ...(can('inventory.drinks.manage') ? [{ id: 'drinks-editor', label: 'Edit Drinks', emoji: '✏️', sublabel: 'Name, price, tax, unit', badge: 0 }] : []),
-    ...(can('inventory.productsettings.manage') ? [{ id: 'product-settings', label: 'Product settings', emoji: '⚙️', sublabel: 'Photo rules, per product', badge: 0 }] : []),
     ...(can('inventory.location.manage') ? [{ id: 'locations', label: 'Locations', emoji: '📍', sublabel: 'Map, shelves, photos', badge: 0 }] : []),
     // Portal-only Shift Handover submodule (its own /shift-handover route).
     ...(can('handover.view') ? [{ id: 'shift-handover', href: '/shift-handover', label: 'Shift Handover', emoji: '🔄', sublabel: 'Per-container handover', badge: 0 }] : []),
