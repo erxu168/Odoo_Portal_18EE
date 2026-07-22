@@ -108,12 +108,15 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
 
   async function deleteLocation() {
     if (!loc || saving) return;
-    if (!window.confirm(`Delete “${loc.name}”? This removes the location. This can’t be undone.`)) return;
+    // Delete cascades: everything inside this location + its product placements.
+    if (!window.confirm(`Delete “${loc.name}”? This also removes everything inside it and its product placements. This can’t be undone.`)) return;
     setSaving(true); setSaveErr(null);
     try {
       const res = await fetch(`/api/inventory/count-locations?id=${loc.id}`, { method: 'DELETE' });
       if (!res.ok) { const d = await res.json().catch(() => ({})); setSaveErr(d.error || 'Could not delete'); return; }
-      back();
+      // Never back() — a parent delete also removes the child we may have come
+      // from, so return to the Locations manager, not a now-deleted record.
+      router.replace('/inventory');
     } catch { setSaveErr('Network error — not deleted'); }
     finally { setSaving(false); }
   }
