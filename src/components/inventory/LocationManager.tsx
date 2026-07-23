@@ -1,57 +1,15 @@
 'use client';
 import React, { useEffect, useState, useCallback } from 'react';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import AppHeader from '@/components/ui/AppHeader';
+import { DragRow } from '@/components/ui/DragRow';
 import RecordLink from '@/components/ui/RecordLink';
 import LocationForm, { type KindRow, fallbackLabel } from './LocationForm';
 import ManageKinds from './ManageKinds';
 import { useCompany } from '@/lib/company-context';
 import { buildLocationTree } from '@/lib/location-tree';
 import type { CountLocation } from '@/types/inventory';
-
-/** Drag-handle grip (design rule: reorder by drag, not up/down arrows). */
-function GripIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
-      <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
-      <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
-    </svg>
-  );
-}
-
-/** A drag-reorderable row. Only the returned handle initiates the drag, so the
- *  row's own buttons (Edit / Products / open) stay clickable. */
-function DragRow({ id, className, children }: {
-  id: number;
-  className?: string;
-  children: (handle: React.ReactNode) => React.ReactNode;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 20 : undefined,
-    opacity: isDragging ? 0.85 : undefined,
-  };
-  const handle = (
-    <button
-      {...attributes}
-      {...listeners}
-      aria-label="Drag to reorder"
-      className="w-8 h-8 flex-shrink-0 rounded-lg bg-gray-100 active:bg-gray-200 flex items-center justify-center text-gray-400 cursor-grab touch-none"
-    >
-      <GripIcon />
-    </button>
-  );
-  return (
-    <div ref={setNodeRef} style={style} className={className}>
-      {children(handle)}
-    </div>
-  );
-}
 
 // Location types are per-company, manager-editable (location_kinds table).
 export default function LocationManager({ onBack }: { onBack: () => void }) {

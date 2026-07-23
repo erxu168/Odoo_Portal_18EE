@@ -1,7 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import AppHeader from '@/components/ui/AppHeader';
+import { DragRow } from '@/components/ui/DragRow';
 import RichTextEditor from '@/components/ui/RichTextEditor';
 import ShelfLifeCard from '@/components/manufacturing/ShelfLifeCard';
 import type { ComponentAvailability } from '@/types/manufacturing';
@@ -314,13 +317,22 @@ export default function BomDetail({ bomId, onBack, onCreateMo, onOpenHistory }: 
     }
   }
 
-  function moveOp(index: number, direction: 'up' | 'down') {
+  const opSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  );
+
+  // Drag-to-reorder the routing steps (client-side; persisted with the rest on save).
+  function handleOpDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const activeId = Number(active.id);
+    const overId = Number(over.id);
     setEditOps(prev => {
-      const next = [...prev];
-      const swapIdx = direction === 'up' ? index - 1 : index + 1;
-      if (swapIdx < 0 || swapIdx >= next.length) return prev;
-      [next[index], next[swapIdx]] = [next[swapIdx], next[index]];
-      return next;
+      const from = prev.findIndex(op => op.id === activeId);
+      const to = prev.findIndex(op => op.id === overId);
+      if (from === -1 || to === -1) return prev;
+      return arrayMove(prev, from, to);
     });
   }
 
@@ -806,35 +818,24 @@ export default function BomDetail({ bomId, onBack, onCreateMo, onOpenHistory }: 
           <div className="text-[var(--fs-xs)] font-bold tracking-widest uppercase text-gray-400 mb-2 mt-4">
             Work order steps ({editOps.length})
           </div>
+          <DndContext sensors={opSensors} collisionDetection={closestCenter} onDragEnd={handleOpDragEnd}>
+          <SortableContext items={editOps.map(o => o.id)} strategy={verticalListSortingStrategy}>
           <div className="flex flex-col gap-1 mb-4">
             {editOps.map((op, i) => {
               const isExpanded = editingOpId === op.id;
               return (
-                <div key={op.id} className={`bg-white border rounded-xl overflow-hidden ${isExpanded ? 'border-amber-300' : 'border-gray-200'}`}>
+                <DragRow key={op.id} id={op.id} className={`bg-white border rounded-xl overflow-hidden ${isExpanded ? 'border-amber-300' : 'border-gray-200'}`}>
+                  {(handle) => (
+                  <>
                   {/* Collapsed header — tap to expand */}
                   <div
                     className="px-4 py-2 flex items-center gap-3 cursor-pointer active:bg-gray-50"
                     onClick={() => setEditingOpId(isExpanded ? null : op.id)}
                   >
-                    {/* Reorder arrows + step number */}
-                    <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); moveOp(i, 'up'); }}
-                        disabled={i === 0}
-                        className="w-7 h-5 flex items-center justify-center rounded text-gray-400 active:bg-gray-100 disabled:opacity-20"
-                        aria-label="Move up"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="18 15 12 9 6 15" /></svg>
-                      </button>
+                    {/* Drag handle + step number */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {handle}
                       <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-[var(--fs-xs)] font-bold text-amber-700">{i + 1}</div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); moveOp(i, 'down'); }}
-                        disabled={i === editOps.length - 1}
-                        className="w-7 h-5 flex items-center justify-center rounded text-gray-400 active:bg-gray-100 disabled:opacity-20"
-                        aria-label="Move down"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9" /></svg>
-                      </button>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{op.name || '(untitled)'}</div>
@@ -867,10 +868,14 @@ export default function BomDetail({ bomId, onBack, onCreateMo, onOpenHistory }: 
                       )}
                     </div>
                   )}
-                </div>
+                  </>
+                  )}
+                </DragRow>
               );
             })}
           </div>
+          </SortableContext>
+          </DndContext>
 
           {/* Add new operation */}
           {showAddOp ? (
