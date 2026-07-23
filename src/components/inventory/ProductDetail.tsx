@@ -75,6 +75,12 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [listPrice, setListPrice] = useState('');
   const [standardPrice, setStandardPrice] = useState('');
   const [master0, setMaster0] = useState<{ default_code: string; list_price: string; standard_price: string } | null>(null);
+  // Suppliers (Odoo product.supplierinfo) + the vendor picker list.
+  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [vendors, setVendors] = useState<{ id: number; name: string }[]>([]);
+  const [addVendor, setAddVendor] = useState<number>(0);
+  const [addPrice, setAddPrice] = useState('');
+  const [supBusy, setSupBusy] = useState(false);
   const [img, setImg] = useState(hasImage);
   const [imgVer, setImgVer] = useState(0);
   const [requiresPhoto, setRequiresPhoto] = useState(false);
@@ -134,6 +140,11 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           const sp = m.standard_price != null ? String(m.standard_price) : '';
           setDefaultCode(dc); setListPrice(lp); setStandardPrice(sp);
           setMaster0({ default_code: dc, list_price: lp, standard_price: sp });
+          // Suppliers + vendor picker (manager-only, same gate as the master GET).
+          Promise.all([
+            fetch(`/api/inventory/products/${product.id}/suppliers`).then((r) => r.ok ? r.json() : { suppliers: [] }).catch(() => ({ suppliers: [] })),
+            fetch('/api/inventory/vendors').then((r) => r.ok ? r.json() : { vendors: [] }).catch(() => ({ vendors: [] })),
+          ]).then(([supRes, vendRes]) => { setSuppliers(supRes.suppliers || []); setVendors(vendRes.vendors || []); }).catch(() => {});
         }
         const f = (flagRes.flags || [])[0];
         if (f) {
@@ -193,6 +204,38 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     if (standardPrice !== master0.standard_price) patch.standard_price = Number(standardPrice || 0);
     if (Object.keys(patch).length === 0) return;
     if (await saveMaster(patch)) setMaster0({ default_code: defaultCode, list_price: listPrice, standard_price: standardPrice });
+  }
+
+  async function reloadSuppliers() {
+    const r = await fetch(`/api/inventory/products/${product.id}/suppliers`).then((x) => x.ok ? x.json() : { suppliers: [] }).catch(() => ({ suppliers: [] }));
+    setSuppliers(r.suppliers || []);
+  }
+  async function addSupplier() {
+    if (!addVendor || supBusy || readOnly) return;
+    setSupBusy(true);
+    try {
+      const res = await fetch(`/api/inventory/products/${product.id}/suppliers`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendor_id: addVendor, price: addPrice === '' ? 0 : Number(addPrice) }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { flash('err', d.error || 'Could not add the supplier'); return; }
+      await reloadSuppliers();
+      setAddVendor(0); setAddPrice('');
+      flash('ok', 'Supplier added');
+    } catch { flash('err', 'Network error — not added'); }
+    finally { setSupBusy(false); }
+  }
+  async function removeSupplier(supId: number) {
+    if (supBusy || readOnly) return;
+    setSupBusy(true);
+    try {
+      const res = await fetch(`/api/inventory/products/${product.id}/suppliers?supplierinfo_id=${supId}`, { method: 'DELETE' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { flash('err', d.error || 'Could not remove the supplier'); return; }
+      await reloadSuppliers();
+    } catch { flash('err', 'Network error — not removed'); }
+    finally { setSupBusy(false); }
   }
 
   // Quick-create a category in Odoo without leaving the form, then select +
@@ -357,6 +400,42 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                   {busy === 'master' ? 'Saving…' : 'Save selling & cost'}
                 </button>
                 <p className="text-[var(--fs-xs)] text-gray-400">Writes to Odoo — affects sales & margins.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Suppliers (Odoo product.supplierinfo) — manager only. */}
+          {master0 && !readOnly && (
+            <div className="mb-4">
+              <label className={label}>Suppliers</label>
+              <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-2">
+                {suppliers.length === 0 ? (
+                  <p className="text-[var(--fs-xs)] text-gray-400">No supplier yet — add one below.</p>
+                ) : suppliers.map((s) => (
+                  <div key={s.id} className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[var(--fs-sm)] font-semibold text-gray-900 truncate">{Array.isArray(s.partner_id) ? s.partner_id[1] : 'Vendor'}</div>
+                      <div className="text-[var(--fs-xs)] text-gray-400">Price {s.price ?? 0}{s.min_qty ? ` · min ${s.min_qty}` : ''}</div>
+                    </div>
+                    <button onClick={() => removeSupplier(s.id)} disabled={supBusy} aria-label="Remove supplier"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-500 flex-shrink-0">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                  </div>
+                ))}
+                <div className="flex gap-2 pt-2 border-t border-gray-100">
+                  <select value={addVendor} onChange={(e) => setAddVendor(Number(e.target.value))}
+                    className="flex-1 min-w-0 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] bg-white">
+                    <option value={0}>Choose a supplier…</option>
+                    {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                  <input value={addPrice} onChange={(e) => setAddPrice(e.target.value.replace(/[^0-9.]/g, ''))}
+                    inputMode="decimal" placeholder="Price"
+                    className="w-20 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] text-center" />
+                  <button onClick={addSupplier} disabled={!addVendor || supBusy}
+                    className="px-3 h-9 rounded-lg bg-green-600 text-white font-bold text-[var(--fs-sm)] disabled:opacity-40">Add</button>
+                </div>
+                {vendors.length === 0 && <p className="text-[var(--fs-xs)] text-gray-400">No vendors in Odoo yet — add them in Purchase.</p>}
               </div>
             </div>
           )}
