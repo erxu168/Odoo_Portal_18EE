@@ -1832,17 +1832,6 @@ export function getCountLocationsByIds(ids: number[]): CountLocation[] {
   return rows.map((r) => ({ ...(r as unknown as CountLocation), active: !!r.active }));
 }
 
-/** Replace the full placement set for a location (products + their shelf order). */
-export function setProductPlacements(countLocationId: number, items: { odoo_product_id: number; shelf_sort: number }[]): void {
-  const db = getDb();
-  const tx = db.transaction(() => {
-    db.prepare('DELETE FROM product_locations WHERE count_location_id = ?').run(countLocationId);
-    const ins = db.prepare('INSERT INTO product_locations (odoo_product_id, count_location_id, shelf_sort) VALUES (?, ?, ?)');
-    items.forEach((it) => ins.run(it.odoo_product_id, countLocationId, it.shelf_sort));
-  });
-  tx();
-}
-
 export function getPlacements(countLocationId: number): ProductPlacement[] {
   const db = getDb();
   return db.prepare(

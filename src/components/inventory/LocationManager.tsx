@@ -19,7 +19,6 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState<Partial<CountLocation> | null>(null); // null = closed
-  const [assignFor, setAssignFor] = useState<CountLocation | null>(null);
   const [managingKinds, setManagingKinds] = useState(false);
 
   const load = useCallback(async () => {
@@ -171,7 +170,6 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
                                   <div className="text-[11px] text-gray-400">{kindLabel(shelf.kind)}</div>
                                 </div>
                                 {shelfHandle}
-                                <button onClick={() => setAssignFor(shelf)} className="text-xs font-semibold text-green-700 px-1">Products</button>
                                 <button onClick={() => setEditing(shelf)} className="text-xs font-semibold text-blue-600 px-1">Edit</button>
                                 <RecordLink type="location" id={shelf.id} label={shelf.name} />
                               </>
@@ -207,7 +205,6 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
           onDelete={editing.id ? () => remove(editing.id as number) : undefined}
         />
       )}
-      {assignFor && <AssignProducts location={assignFor} onClose={() => setAssignFor(null)} />}
       {managingKinds && (
         <ManageKinds
           companyId={companyId}
@@ -222,84 +219,6 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
           onClose={() => setManagingKinds(false)}
         />
       )}
-    </div>
-  );
-}
-
-
-function AssignProducts({ location, onClose }: { location: CountLocation; onClose: () => void }) {
-  const [products, setProducts] = useState<{ id: number; name: string }[]>([]);
-  const [chosen, setChosen] = useState<number[]>([]); // ordered
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    (async () => {
-      try {
-        const [prodR, placeR] = await Promise.all([
-          fetch('/api/inventory/products?include_pos=1'),
-          fetch(`/api/inventory/product-locations?count_location_id=${location.id}`),
-        ]);
-        if (!prodR.ok || !placeR.ok) throw new Error('load failed');
-        const prodRes = await prodR.json();
-        const placeRes = await placeR.json();
-        setProducts(prodRes.products || []);
-        setChosen(((placeRes.placements || []) as { odoo_product_id: number; shelf_sort: number }[])
-          .sort((a, b) => a.shelf_sort - b.shelf_sort).map((p) => p.odoo_product_id));
-      } catch {
-        alert('Could not load products — please try again.');
-        onClose();
-      } finally {
-        setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.id]);
-  function toggle(id: number) { setChosen((c) => c.includes(id) ? c.filter((x) => x !== id) : [...c, id]); }
-  const [saving, setSaving] = useState(false);
-  async function save() {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/inventory/product-locations', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count_location_id: location.id, items: chosen.map((id, i) => ({ odoo_product_id: id, shelf_sort: (i + 1) * 10 })) }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        alert(d.error || 'Could not save — please try again.');
-        return;
-      }
-      onClose();
-    } catch {
-      alert('Network error — please try again.');
-    } finally {
-      setSaving(false);
-    }
-  }
-  const list = products.filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()));
-  return (
-    <div className="fixed inset-0 z-[100] bg-white flex flex-col">
-      <AppHeader title={location.name} subtitle="Pick products, in shelf order" showBack onBack={onClose} />
-      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products…"
-             className="mx-4 my-3 border-2 border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50" />
-      <div className="flex-1 overflow-y-auto px-4 pb-28">
-        {loading ? <div className="text-center text-gray-400 py-8">Loading…</div> : list.map((p) => {
-          const idx = chosen.indexOf(p.id);
-          return (
-            <button key={p.id} onClick={() => toggle(p.id)}
-                    className={`w-full flex items-center gap-3 py-3 border-b border-gray-100 text-left ${idx > -1 ? 'opacity-100' : 'opacity-70'}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${idx > -1 ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                {idx > -1 ? idx + 1 : '+'}
-              </div>
-              <span className="flex-1 truncate">{p.name}</span>
-            </button>
-          );
-        })}
-      </div>
-      <div className="p-4 border-t border-gray-100">
-        <button onClick={save} disabled={saving} className="w-full py-4 rounded-xl bg-green-600 text-white font-bold disabled:opacity-50">
-          {saving ? 'Saving…' : `Save ${chosen.length} product${chosen.length !== 1 ? 's' : ''}`}
-        </button>
-      </div>
     </div>
   );
 }
