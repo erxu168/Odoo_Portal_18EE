@@ -7,6 +7,7 @@ import { DragRow } from '@/components/ui/DragRow';
 import RecordLink from '@/components/ui/RecordLink';
 import LocationForm, { type KindRow, fallbackLabel } from './LocationForm';
 import ManageKinds from './ManageKinds';
+import LocationLabels from './LocationLabels';
 import { useCompany } from '@/lib/company-context';
 import { buildLocationTree } from '@/lib/location-tree';
 import type { CountLocation } from '@/types/inventory';
@@ -20,6 +21,7 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
   const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState<Partial<CountLocation> | null>(null); // null = closed
   const [managingKinds, setManagingKinds] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError(false);
@@ -194,6 +196,12 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
                 className="w-full py-4 rounded-2xl bg-green-600 text-white font-bold shadow-lg shadow-green-600/30 active:bg-green-700">
           + Add an area
         </button>
+        {tree.length > 0 && (
+          <button onClick={() => setPrinting(true)}
+                  className="w-full py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold active:bg-gray-50">
+            🖨 Print location labels
+          </button>
+        )}
       </div>
 
       {editing && (
@@ -220,6 +228,7 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
           onClose={() => setManagingKinds(false)}
         />
       )}
+      {printing && companyId && <LocationLabels companyId={companyId} onClose={() => setPrinting(false)} />}
     </div>
   );
 }
