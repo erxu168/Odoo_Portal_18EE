@@ -3,8 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Spinner, ProductThumb } from './ui';
 import { buildLocationTree } from '@/lib/location-tree';
-import LocationForm, { type KindRow } from './LocationForm';
-import ManageKinds from './ManageKinds';
+import LocationForm from './LocationForm';
 
 /**
  * "Where does it live?" — edit ONE product's home spots (multi-select).
@@ -59,8 +58,6 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   const [editing, setEditing] = useState<SpotRow | null>(null);   // location whose details are being edited
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [managingKinds, setManagingKinds] = useState(false);      // "Edit types" sheet open
-  const [kinds, setKinds] = useState<KindRow[]>([]);
   // Creating/editing a location + managing types all require this capability —
   // gate the affordances on it so a template-only user never hits a 403 dead-end.
   const [canManageLocations, setCanManageLocations] = useState(false);
@@ -84,7 +81,6 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         const d = await locRes.json();
         const locs: SpotRow[] = d.locations || [];
         setSpots(locs);
-        fetch(`/api/inventory/location-kinds?company_id=${companyId}`).then((r) => r.ok ? r.json() : { kinds: [] }).then((k) => setKinds(k.kinds || [])).catch(() => {});
         const cur = await curRes.json();
         const companySpots = new Set(locs.map((l) => l.id));
         setChosen(new Set<number>((cur.location_ids || []).filter((id: number) => companySpots.has(id))));
@@ -192,17 +188,27 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
     finally { setFormSaving(false); }
   }
 
-  function SpotToggle({ s, indent }: { s: SpotRow; indent: boolean }) {
+  // One tickable location row. `isArea` (a top-level unit) shows its photo + a
+  // bolder name; a child spot is a plain row. The row IS the unit — there is no
+  // separate header, so a unit never appears twice.
+  function SpotToggle({ s, isArea = false }: { s: SpotRow; isArea?: boolean }) {
     const on = chosen.has(s.id);
     return (
-      <div className={`w-full flex items-center rounded-xl border transition-colors ${indent ? 'ml-0' : ''} ${
+      <div className={`w-full flex items-center rounded-xl border transition-colors ${
         on ? 'bg-green-50 border-green-500' : 'bg-white border-gray-200'
       }`}>
         <button onClick={() => toggle(s.id)} className="flex-1 min-w-0 flex items-center gap-2.5 px-3 py-2.5 text-left active:opacity-80">
           <span className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center ${on ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'}`}>
             {on && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
           </span>
-          <span className={`flex-1 min-w-0 truncate text-[var(--fs-base)] font-semibold ${on ? 'text-green-900' : 'text-gray-800'}`}>{s.name}</span>
+          {isArea && s.photo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={s.photo} alt="" className="w-8 h-8 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
+          )}
+          <span className="flex-1 min-w-0">
+            <span className={`block truncate text-[var(--fs-base)] ${isArea ? 'font-bold' : 'font-semibold'} ${on ? 'text-green-900' : 'text-gray-800'}`}>{s.name}</span>
+            {s.description && <span className="block truncate text-[var(--fs-xs)] font-normal text-gray-500">{s.description}</span>}
+          </span>
         </button>
         {/* Drill-down: edit this location's details in place — no dead-end.
             Only for users who can actually manage locations (else it 403s). */}
@@ -239,21 +245,16 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
               No locations set up yet — create them under Inventory {'→'} Locations first.
             </p>
           ) : tree.map((area: any) => (
-            <div key={area.id} className="mb-3 bg-gray-50 border border-gray-200 rounded-2xl p-2.5">
-              <div className="flex items-center gap-2.5 px-1 pb-2">
-                {area.photo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={area.photo} alt="" className="w-10 h-10 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
-                ) : null}
-                <div className="min-w-0">
-                  <div className="text-[var(--fs-sm)] font-bold text-gray-900 truncate">{area.name}</div>
-                  {area.description && <div className="text-[var(--fs-xs)] text-gray-500 truncate">{area.description}</div>}
+            <div key={area.id} className="mb-3">
+              {/* The unit itself is ONE tickable row (photo + name + note + edit) —
+                  no separate header, so it can't appear twice. Its spots (if any)
+                  sit indented inside it. */}
+              <SpotToggle s={area} isArea />
+              {(area.children || []).length > 0 && (
+                <div className="flex flex-col gap-1.5 mt-1.5 ml-3 pl-3 border-l-2 border-gray-200">
+                  {area.children.map((c: any) => <SpotToggle key={c.id} s={c} />)}
                 </div>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <SpotToggle s={area} indent={false} />
-                {(area.children || []).map((c: any) => <SpotToggle key={c.id} s={c} indent />)}
-              </div>
+              )}
             </div>
           ))}
           {!loading && canManageLocations && (
@@ -285,30 +286,12 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
 
       {(creating || editing) && (
         <LocationForm
-          initial={editing ? { id: editing.id, parent_id: editing.parent_id, name: editing.name, kind: editing.kind, description: editing.description, photo: editing.photo } : {}}
-          kinds={kinds}
+          initial={editing ? { id: editing.id, parent_id: editing.parent_id, name: editing.name, description: editing.description, photo: editing.photo } : {}}
           baseZ={baseZ + 10}
           saving={formSaving}
           error={formError}
-          onManageKinds={canManageLocations ? () => setManagingKinds(true) : undefined}
           onCancel={() => { setCreating(false); setEditing(null); setFormError(null); }}
           onSave={editing ? updateLocation : createLocation}
-        />
-      )}
-
-      {managingKinds && (
-        <ManageKinds
-          companyId={companyId}
-          kinds={kinds}
-          locations={spots}
-          baseZ={baseZ + 20}
-          onChanged={async () => {
-            try {
-              const r = await fetch(`/api/inventory/location-kinds?company_id=${companyId}`);
-              if (r.ok) setKinds((await r.json()).kinds || []);
-            } catch { /* keep the current list */ }
-          }}
-          onClose={() => setManagingKinds(false)}
         />
       )}
     </div>

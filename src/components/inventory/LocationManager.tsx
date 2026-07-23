@@ -5,8 +5,7 @@ import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-ki
 import AppHeader from '@/components/ui/AppHeader';
 import { DragRow } from '@/components/ui/DragRow';
 import RecordLink from '@/components/ui/RecordLink';
-import LocationForm, { type KindRow, fallbackLabel } from './LocationForm';
-import ManageKinds from './ManageKinds';
+import LocationForm from './LocationForm';
 import LocationLabels from './LocationLabels';
 import { useCompany } from '@/lib/company-context';
 import { buildLocationTree } from '@/lib/location-tree';
@@ -16,36 +15,24 @@ import type { CountLocation } from '@/types/inventory';
 export default function LocationManager({ onBack }: { onBack: () => void }) {
   const { companyId } = useCompany();
   const [locations, setLocations] = useState<CountLocation[]>([]);
-  const [kinds, setKinds] = useState<KindRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState<Partial<CountLocation> | null>(null); // null = closed
-  const [managingKinds, setManagingKinds] = useState(false);
   const [printing, setPrinting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError(false);
     try {
       const q = companyId ? `?company_id=${companyId}` : '';
-      const [locRes, kindRes] = await Promise.all([
-        fetch('/api/inventory/count-locations' + q),
-        fetch('/api/inventory/location-kinds' + q),
-      ]);
+      const locRes = await fetch('/api/inventory/count-locations' + q);
       if (!locRes.ok) { setLoadError(true); setLocations([]); return; }
       const d = await locRes.json();
       setLocations(d.locations || []);
-      if (kindRes.ok) {
-        const k = await kindRes.json();
-        setKinds(k.kinds || []);
-      }
     } catch {
       setLoadError(true);
     } finally { setLoading(false); }
   }, [companyId]);
   useEffect(() => { load(); }, [load]);
-
-  const kindLabel = (v: string) =>
-    kinds.find((k) => k.kind.toLowerCase() === (v || '').toLowerCase())?.label || fallbackLabel(v);
 
   const tree = buildLocationTree(locations);
 
@@ -154,7 +141,7 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
                            style={area.photo ? { backgroundImage: `url(${area.photo})` } : undefined} />
                       <div className="flex-1 min-w-0">
                         <div className="font-bold text-gray-900 truncate">{area.name}</div>
-                        <div className="text-xs text-gray-500">{kindLabel(area.kind)}</div>
+                        {area.description && <div className="text-xs text-gray-500 truncate">{area.description}</div>}
                       </div>
                       {handle}
                       <button onClick={() => setEditing(area)} className="text-sm font-semibold text-blue-600 px-2">Edit</button>
@@ -192,7 +179,7 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
             ))}
           </SortableContext>
         </DndContext>
-        <button onClick={() => setEditing({ parent_id: null, kind: kinds.find((k) => k.kind === 'area')?.kind || kinds[0]?.kind || 'area' })}
+        <button onClick={() => setEditing({ parent_id: null })}
                 className="w-full py-4 rounded-2xl bg-green-600 text-white font-bold shadow-lg shadow-green-600/30 active:bg-green-700">
           + Add an area
         </button>
@@ -207,25 +194,9 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
       {editing && (
         <LocationForm
           initial={editing}
-          kinds={kinds}
-          onManageKinds={() => setManagingKinds(true)}
           onCancel={() => setEditing(null)}
           onSave={save}
           onDelete={editing.id ? () => remove(editing.id as number) : undefined}
-        />
-      )}
-      {managingKinds && (
-        <ManageKinds
-          companyId={companyId}
-          kinds={kinds}
-          locations={locations}
-          onChanged={async () => {
-            try {
-              const res = await fetch('/api/inventory/location-kinds' + (companyId ? `?company_id=${companyId}` : ''));
-              if (res.ok) { const k = await res.json(); setKinds(k.kinds || []); }
-            } catch { /* keep the current list */ }
-          }}
-          onClose={() => setManagingKinds(false)}
         />
       )}
       {printing && companyId && <LocationLabels companyId={companyId} onClose={() => setPrinting(false)} />}

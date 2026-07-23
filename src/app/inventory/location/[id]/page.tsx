@@ -14,7 +14,7 @@ import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import { Spinner, ProductThumb } from '@/components/inventory/ui';
 import RecordLink from '@/components/ui/RecordLink';
-import LocationForm, { type KindRow } from '@/components/inventory/LocationForm';
+import LocationForm from '@/components/inventory/LocationForm';
 import { RECORD_EDIT_CAP } from '@/lib/record-links';
 import { allowedActionKeysForRole, type Role } from '@/lib/permissions';
 
@@ -35,7 +35,6 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
 
   // Editing uses the ONE shared LocationForm (single-canonical-form rule).
   const [editing, setEditing] = useState(false);
-  const [kinds, setKinds] = useState<KindRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -58,10 +57,6 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
         if (!one.ok) throw new Error(one.status === 404 ? 'Location not found' : 'Could not load the location');
         const l: Loc = (await one.json()).location;
         setLoc(l);
-        // The location type dropdown needs this company's kinds.
-        fetch(`/api/inventory/location-kinds?company_id=${l.company_id}`)
-          .then((r) => (r.ok ? r.json() : { kinds: [] })).then((d) => setKinds(d.kinds || [])).catch(() => {});
-
         // Siblings/children come from the company's full list; products-here + names in parallel.
         const [allRes, placeRes] = await Promise.all([
           fetch(`/api/inventory/count-locations?company_id=${l.company_id}`).then((r) => r.ok ? r.json() : { locations: [] }).catch(() => ({ locations: [] })),
@@ -90,16 +85,16 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
     })();
   }, [locationId]);
 
-  async function saveLocation(patch: { name?: string; kind?: string; description?: string | null; photo?: string | null }) {
+  async function saveLocation(patch: { name?: string; description?: string | null; photo?: string | null }) {
     if (!loc || saving) return;
     setSaving(true); setSaveErr(null);
     try {
       const res = await fetch('/api/inventory/count-locations', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: loc.id, name: patch.name, kind: patch.kind, description: patch.description ?? null, photo: patch.photo ?? null }),
+        body: JSON.stringify({ id: loc.id, name: patch.name, description: patch.description ?? null, photo: patch.photo ?? null }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); setSaveErr(d.error || 'Could not save — try again'); return; }
-      setLoc({ ...loc, name: patch.name || loc.name, kind: patch.kind || loc.kind, description: patch.description ?? null, photo: patch.photo ?? null });
+      setLoc({ ...loc, name: patch.name || loc.name, description: patch.description ?? null, photo: patch.photo ?? null });
       setEditing(false); setSavedMsg('Saved');
       setTimeout(() => setSavedMsg(null), 1800);
     } catch { setSaveErr('Network error — not saved'); }
@@ -151,7 +146,6 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
         <div className="mb-4">
           <div className="flex items-center gap-2">
             <h1 className="text-[22px] font-bold text-gray-900">{loc.name}</h1>
-            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 bg-gray-100 rounded-md px-1.5 py-0.5">{loc.kind}</span>
           </div>
           {loc.description && <p className="text-[var(--fs-sm)] text-gray-500 mt-1">{loc.description}</p>}
           {savedMsg && <span className="text-[12px] font-bold text-green-600">{savedMsg}</span>}
@@ -176,7 +170,6 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
               {children.map((c) => (
                 <div key={c.id} className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 last:border-b-0">
                   <span className="text-[var(--fs-base)] font-semibold text-gray-800 flex-1 truncate">{c.name}</span>
-                  <span className="text-[10px] font-bold uppercase text-gray-400">{c.kind}</span>
                   <RecordLink type="location" id={c.id} label={c.name} />
                 </div>
               ))}
@@ -220,7 +213,6 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
       {editing && (
         <LocationForm
           initial={loc}
-          kinds={kinds}
           onCancel={() => { setEditing(false); setSaveErr(null); }}
           onSave={saveLocation}
           onDelete={deleteLocation}
