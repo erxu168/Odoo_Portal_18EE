@@ -1513,11 +1513,11 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
         className={`relative ${block ? 'w-full' : ''} rounded-md px-2 py-1.5 min-h-[44px] flex flex-col ${
           block ? 'items-start justify-center gap-0.5 text-left' : 'items-center justify-center text-center'
         } text-[var(--fs-xs)] font-bold leading-tight ${cls} ${
-          selectMode ? (selectable ? (isSelected ? 'ring-2 ring-orange-600 ring-offset-1' : '') : 'opacity-40') : ''
+          selectMode ? (selectable ? (isSelected ? 'ring-2 ring-green-600 ring-offset-1' : '') : 'opacity-40') : ''
         }`}
       >
         {selectMode && isSelected && (
-          <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-orange-600 text-white text-[10px] leading-none flex items-center justify-center border border-white">✓</span>
+          <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-green-600 text-white text-[10px] leading-none flex items-center justify-center border border-white">✓</span>
         )}
         {block ? (
           mode === 'person' ? (
@@ -1956,7 +1956,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
 
         <div className="px-4 pb-3 flex flex-wrap items-center gap-2">
           {selectMode ? (
-            <div className="text-[var(--fs-sm)] font-semibold text-orange-700">
+            <div className="text-[var(--fs-sm)] font-semibold text-gray-600">
               Selecting shifts to unassign — tap the ones to clear.
             </div>
           ) : (
@@ -2248,7 +2248,7 @@ export default function ManageShifts({ companyId, isManager, onBack, focusDate, 
               <button
                 onClick={() => void doUnassignSelected()}
                 disabled={selectedIds.size === 0}
-                className="flex-1 bg-orange-600 text-white font-semibold rounded-xl py-3 text-[var(--fs-sm)] active:bg-orange-700 shadow-lg shadow-orange-600/30 disabled:opacity-50"
+                className="flex-1 bg-red-600 text-white font-semibold rounded-xl py-3 text-[var(--fs-sm)] active:bg-red-700 shadow-lg shadow-red-600/30 disabled:opacity-50"
               >
                 Unassign ({selectedIds.size})
               </button>
