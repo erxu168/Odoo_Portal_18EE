@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import { buildLocationTree, locationPath } from '@/lib/location-tree';
+import { typeIcon } from '@/lib/location-types';
 import { locationCode } from '@/lib/location-code';
 
 /**
@@ -12,8 +13,8 @@ import { locationCode } from '@/lib/location-code';
  * Rendered into a body-level portal so print CSS can hide the whole app and show
  * only the labels (no blank/repeated pages).
  */
-interface LocRow { id: number; parent_id: number | null; name: string; sort_order: number }
-interface Label { id: number; name: string; area: string | null; code: string; qr: string }
+interface LocRow { id: number; parent_id: number | null; name: string; sort_order: number; kind: string }
+interface Label { id: number; name: string; area: string | null; code: string; qr: string; icon: string }
 
 export default function LocationLabels({ companyId, onClose, onlyId }: { companyId: number; onClose: () => void; onlyId?: number }) {
   const [labels, setLabels] = useState<Label[]>([]);
@@ -51,7 +52,7 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
           const code = locationCode(row.id);
           const qr = await QRCode.toDataURL(code, { width: 240, margin: 1 });
           const ancestors = locationPath(row.id, locs).slice(0, -1).join(' › ');
-          return { id: row.id, name: row.name, area: ancestors || null, code, qr };
+          return { id: row.id, name: row.name, area: ancestors || null, code, qr, icon: typeIcon(row.kind) };
         }));
         if (!stale) { setLabels(built); setLoading(false); }
       } catch {
@@ -103,7 +104,7 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
                 <img src={l.qr} alt="" width={88} height={88} className="flex-shrink-0" />
                 <div className="min-w-0">
                   {l.area && <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 truncate">{l.area}</div>}
-                  <div className="text-[17px] font-extrabold text-gray-900 leading-tight break-words">{l.name}</div>
+                  <div className="text-[17px] font-extrabold text-gray-900 leading-tight break-words">{l.icon} {l.name}</div>
                   <div className="text-[10px] text-gray-400 font-mono mt-0.5">{l.code}</div>
                 </div>
               </div>

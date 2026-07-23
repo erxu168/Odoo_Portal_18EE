@@ -120,6 +120,7 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
   const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState<Partial<CountLocation> | null>(null); // null = closed
   const [printing, setPrinting] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setLoadError(false);
@@ -155,12 +156,41 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
 
   async function save(loc: Partial<CountLocation>) {
     const method = loc.id ? 'PUT' : 'POST';
+    // Guardrail: warn on a duplicate name in the SAME parent ("which Shelf?").
+    if (!loc.id) {
+      const nm = (loc.name || '').trim();
+      const dup = locations.some((l) => (l.parent_id ?? null) === (loc.parent_id ?? null) && l.name.trim().toLowerCase() === nm.toLowerCase());
+      if (dup && !confirm(`You already have a “${nm}” here. Add another anyway?`)) return;
+    }
     const payload = { ...loc, company_id: companyId };
     const ok = await mutate('/api/inventory/count-locations', {
       method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
     });
     if (!ok) return;
     setEditing(null); await load();
+  }
+  // Quick start — a few common typed areas so the manager isn't a blank page
+  // (rename/delete/extend freely). Solves the blank-canvas problem the location
+  // research flagged as the real reason free-naming felt hard.
+  async function quickStart() {
+    if (seeding) return;
+    setSeeding(true);
+    const starters = [
+      { name: 'Kitchen', kind: 'area' },
+      { name: 'Dry store', kind: 'dryshelf' },
+      { name: 'Walk-in cooler', kind: 'walkin' },
+      { name: 'Freezer', kind: 'freezer' },
+      { name: 'Bar', kind: 'area' },
+    ];
+    for (const s of starters) {
+      const ok = await mutate('/api/inventory/count-locations', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...s, parent_id: null, company_id: companyId }),
+      });
+      if (!ok) break;
+    }
+    setSeeding(false);
+    await load();
   }
   async function remove(id: number) {
     if (!confirm('Remove this location and everything under it?')) return;
@@ -228,7 +258,11 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
         )}
         {!loadError && tree.length === 0 && (
           <div className="bg-white border border-gray-200 rounded-2xl p-6 text-center text-gray-500">
-            No locations yet. Add your first area (for example {'“'}Walk-in Fridge{'”'}).
+            <p className="mb-3">No locations yet. Start from a few common areas, then rename or add your own.</p>
+            <button onClick={quickStart} disabled={seeding}
+              className="px-5 py-2.5 rounded-xl bg-green-600 text-white font-bold active:bg-green-700 disabled:opacity-50">
+              {seeding ? 'Setting up…' : 'Quick start (Kitchen, Bar, Walk-in…)'}
+            </button>
           </div>
         )}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
