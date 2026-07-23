@@ -69,6 +69,12 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     .then((cd) => setCategories(cd.categories || []))
     .catch(() => {});
   const [barcode, setBarcode] = useState<string>(product.barcode || '');
+  // Odoo master fields loaded on open (manager-only GET): internal reference,
+  // sales price, cost. master0 = the loaded originals, for the dirty-check.
+  const [defaultCode, setDefaultCode] = useState('');
+  const [listPrice, setListPrice] = useState('');
+  const [standardPrice, setStandardPrice] = useState('');
+  const [master0, setMaster0] = useState<{ default_code: string; list_price: string; standard_price: string } | null>(null);
   const [img, setImg] = useState(hasImage);
   const [imgVer, setImgVer] = useState(0);
   const [requiresPhoto, setRequiresPhoto] = useState(false);
@@ -112,12 +118,23 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   useEffect(() => {
     (async () => {
       try {
-        const [flagRes, uomRes, spotRes, locRes] = await Promise.all([
+        const [flagRes, uomRes, spotRes, locRes, masterRes] = await Promise.all([
           fetch(`/api/inventory/product-flags?ids=${product.id}`).then((r) => r.ok ? r.json() : { flags: [] }),
           fetch('/api/inventory/uoms').then((r) => r.ok ? r.json() : { uoms: [] }),
           fetch(`/api/inventory/product-locations?product_id=${product.id}`).then((r) => r.ok ? r.json() : { location_ids: [] }),
           companyId ? fetch(`/api/inventory/count-locations?company_id=${companyId}`).then((r) => r.ok ? r.json() : { locations: [] }) : { locations: [] },
+          // Odoo master (manager-only) — internal ref, sales price, cost. 403 for
+          // non-managers is fine; the section is hidden for them anyway.
+          fetch(`/api/inventory/products/${product.id}`).then((r) => r.ok ? r.json() : { product: null }).catch(() => ({ product: null })),
         ]);
+        const m = (masterRes as any).product;
+        if (m) {
+          const dc = m.default_code || '';
+          const lp = m.list_price != null ? String(m.list_price) : '';
+          const sp = m.standard_price != null ? String(m.standard_price) : '';
+          setDefaultCode(dc); setListPrice(lp); setStandardPrice(sp);
+          setMaster0({ default_code: dc, list_price: lp, standard_price: sp });
+        }
         const f = (flagRes.flags || [])[0];
         if (f) {
           setRequiresPhoto(!!f.requires_photo);
@@ -147,7 +164,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     setTimeout(() => setMsg(null), kind === 'ok' ? 1800 : 4000);
   }
 
-  async function saveMaster(patch: { name?: string; uom_id?: number; categ_id?: number; barcode?: string }) {
+  async function saveMaster(patch: { name?: string; uom_id?: number; categ_id?: number; barcode?: string; default_code?: string; list_price?: number; standard_price?: number }) {
     if (readOnly) return false;
     setBusy('master');
     try {
@@ -164,6 +181,18 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
       return true;
     } catch { flash('err', 'Network error — not saved'); return false; }
     finally { setBusy(null); }
+  }
+
+  // Selling & cost (internal ref, sales price, cost) — one PUT for whatever changed.
+  const sellingCostDirty = !!master0 && (defaultCode !== master0.default_code || listPrice !== master0.list_price || standardPrice !== master0.standard_price);
+  async function saveSellingCost() {
+    if (!master0 || readOnly) return;
+    const patch: { default_code?: string; list_price?: number; standard_price?: number } = {};
+    if (defaultCode !== master0.default_code) patch.default_code = defaultCode.trim();
+    if (listPrice !== master0.list_price) patch.list_price = Number(listPrice || 0);
+    if (standardPrice !== master0.standard_price) patch.standard_price = Number(standardPrice || 0);
+    if (Object.keys(patch).length === 0) return;
+    if (await saveMaster(patch)) setMaster0({ default_code: defaultCode, list_price: listPrice, standard_price: standardPrice });
   }
 
   // Quick-create a category in Odoo without leaving the form, then select +
@@ -300,6 +329,37 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               disabled={readOnly || busy === 'master' || name.trim() === product.name || name.trim().length < 2}
               className="px-4 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">Save</button>
           </div>
+
+          {/* Selling & cost (Odoo master) — loaded + shown for managers only. */}
+          {master0 && !readOnly && (
+            <div className="mb-4">
+              <label className={label}>Selling & cost</label>
+              <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-3">
+                <div>
+                  <div className="text-[var(--fs-xs)] font-semibold text-gray-500 mb-1">Internal reference</div>
+                  <input value={defaultCode} onChange={(e) => setDefaultCode(e.target.value)} maxLength={64}
+                    placeholder="e.g. BBQ-HOT-40" className={box} />
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[var(--fs-xs)] font-semibold text-gray-500 mb-1">Sales price</div>
+                    <input value={listPrice} onChange={(e) => setListPrice(e.target.value.replace(/[^0-9.]/g, ''))}
+                      inputMode="decimal" placeholder="0.00" className={box} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[var(--fs-xs)] font-semibold text-gray-500 mb-1">Cost</div>
+                    <input value={standardPrice} onChange={(e) => setStandardPrice(e.target.value.replace(/[^0-9.]/g, ''))}
+                      inputMode="decimal" placeholder="0.00" className={box} />
+                  </div>
+                </div>
+                <button onClick={saveSellingCost} disabled={busy === 'master' || !sellingCostDirty}
+                  className="w-full py-2.5 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">
+                  {busy === 'master' ? 'Saving…' : 'Save selling & cost'}
+                </button>
+                <p className="text-[var(--fs-xs)] text-gray-400">Writes to Odoo — affects sales & margins.</p>
+              </div>
+            </div>
+          )}
 
           {/* UoM */}
           <label className={label} htmlFor="pd-uom">Base unit (Odoo)</label>

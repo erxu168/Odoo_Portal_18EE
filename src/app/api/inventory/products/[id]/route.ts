@@ -1,17 +1,42 @@
 export const dynamic = 'force-dynamic';
 /**
- * PUT /api/inventory/products/[id] — edit a product's master data (portal →
- * Odoo write): name and/or unit of measure. Manager+ (product settings).
+ * Product master data (portal ↔ Odoo). Manager+ (product settings).
  *
- * Body: { name?: string, uom_id?: number }
- * Odoo can refuse a UoM change (different category with existing documents) —
- * that error is surfaced verbatim as a 400, never swallowed.
+ * GET  /api/inventory/products/[id] — read the editable master fields (name,
+ *      internal reference, barcode, category, unit, sales price, cost, taxes).
+ * PUT  /api/inventory/products/[id] — write any subset of them back to Odoo.
+ *      Odoo can refuse a change (e.g. a UoM category change on a used product);
+ *      that error is surfaced verbatim as a 400, never swallowed.
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+
+export async function GET(_request: Request, { params }: { params: { id: string } }) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {
+    return NextResponse.json({ error: 'Manager access required' }, { status: 403 });
+  }
+  const productId = parseInt(params.id, 10);
+  if (!Number.isFinite(productId) || productId <= 0) {
+    return NextResponse.json({ error: 'Invalid product id' }, { status: 400 });
+  }
+  try {
+    const odoo = getOdoo();
+    const rows = await odoo.searchRead('product.product', [['id', '=', productId]],
+      ['id', 'name', 'default_code', 'barcode', 'categ_id', 'uom_id', 'list_price', 'standard_price', 'taxes_id'],
+      { limit: 1, context: { active_test: false } });
+    if (rows.length === 0) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    return NextResponse.json({ product: rows[0] });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[products GET]', msg);
+    return NextResponse.json({ error: msg }, { status: 400 });
+  }
+}
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   const user = requireAuth();
@@ -54,6 +79,21 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const bc = String(body.barcode).trim();
     if (bc.length > 64) return NextResponse.json({ error: 'Barcode too long' }, { status: 400 });
     vals.barcode = bc === '' ? false : bc;   // Odoo: false clears the barcode
+  }
+  if (body.default_code !== undefined) {
+    const code = String(body.default_code).trim();
+    if (code.length > 64) return NextResponse.json({ error: 'Internal reference too long' }, { status: 400 });
+    vals.default_code = code === '' ? false : code;   // Odoo: false clears it
+  }
+  if (body.list_price !== undefined) {
+    const price = Number(body.list_price);
+    if (!Number.isFinite(price) || price < 0) return NextResponse.json({ error: 'Sales price must be a number of 0 or more' }, { status: 400 });
+    vals.list_price = price;
+  }
+  if (body.standard_price !== undefined) {
+    const cost = Number(body.standard_price);
+    if (!Number.isFinite(cost) || cost < 0) return NextResponse.json({ error: 'Cost must be a number of 0 or more' }, { status: 400 });
+    vals.standard_price = cost;
   }
   if (Object.keys(vals).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
