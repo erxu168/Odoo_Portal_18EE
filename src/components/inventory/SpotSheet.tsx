@@ -48,6 +48,12 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   // placements made elsewhere. Fail closed, never open.
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Opt-in, default OFF: also rebuild today's not-yet-started counts for this
+  // product's lists. Default off because this sheet is a SHARED door (list
+  // builder, Product Settings, Locations) — a stray edit must never silently
+  // re-order a count someone is about to start. (The server guard makes even an
+  // accidental opt-in harmless to counts already begun.)
+  const [applyToday, setApplyToday] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);   // "+ New location" form open
   const [editing, setEditing] = useState<SpotRow | null>(null);   // location whose details are being edited
@@ -115,6 +121,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
           odoo_product_id: product.id,
           company_id: companyId,
           count_location_ids: Array.from(chosen),
+          apply_today: applyToday,
         }),
       });
       if (!res.ok) {
@@ -259,6 +266,13 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
 
         <div className="px-4 pb-6 pt-2 border-t border-gray-100">
           {error && <p className="text-[12px] text-red-600 mb-2 font-semibold">{error}</p>}
+          <label className="flex items-start gap-2.5 mb-3 px-1 cursor-pointer active:opacity-80">
+            <input type="checkbox" checked={applyToday} onChange={(e) => setApplyToday(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-green-600 flex-shrink-0" />
+            <span className="text-[var(--fs-xs)] text-gray-600 leading-snug">
+              Also update today’s counts that haven’t been started yet
+            </span>
+          </label>
           <div className="text-[var(--fs-xs)] text-gray-400 mb-2 text-center">
             {chosen.size === 0 ? 'No spot ticked — it will count under “Everything else”' : `${chosen.size} spot${chosen.size !== 1 ? 's' : ''} — counted at each, totals add up`}
           </div>

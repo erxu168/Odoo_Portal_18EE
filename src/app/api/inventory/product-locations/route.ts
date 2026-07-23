@@ -15,7 +15,8 @@ import { getPermissionOverrides } from '@/lib/db';
 import {
   initInventoryTables, getPlacements,
   getLocationsForProduct, getCountLocation, listPlacementsForCompany, setProductSpots,
-  listCountLocations,
+  listCountLocations, templatesForProduct, untouchedTodaySessionId, regenerateTodaySession,
+  getSession, todayStr,
 } from '@/lib/inventory-db';
 import { canAccessCompany } from '@/lib/inventory-access';
 
@@ -92,7 +93,26 @@ export async function PUT(request: Request) {
       // In-transaction revalidation failed (spot deleted mid-flight) — nothing applied.
       return NextResponse.json({ error: 'A spot was just removed — reload and try again' }, { status: 409 });
     }
-    return NextResponse.json({ message: 'Home spots saved' });
+
+    // "Apply to today's count" (opt-in, default off in the UI): rebuild TODAY's
+    // not-yet-started session for every list of THIS restaurant that contains the
+    // product, so the new spot shows up in today's guided walk. regenerateTodaySession
+    // is doubly-guarded (list still due today + session pending with zero entries)
+    // so a started/submitted count is NEVER touched; each list is isolated so one
+    // rebuild failing can't fail the home-spot save that already succeeded.
+    let appliedTodayCount = 0;
+    if (body.apply_today === true) {
+      for (const t of templatesForProduct(productId, companyId)) {
+        if (untouchedTodaySessionId(t.id) == null) continue;
+        try {
+          const sid = regenerateTodaySession(t.id);
+          if (sid != null && getSession(sid)?.scheduled_date === todayStr()) appliedTodayCount++;
+        } catch {
+          // A single list failing to rebuild must not fail the save.
+        }
+      }
+    }
+    return NextResponse.json({ message: 'Home spots saved', applied_today_count: appliedTodayCount });
   }
 
   // The old spot-first PUT (replace a whole shelf's product list) is retired —

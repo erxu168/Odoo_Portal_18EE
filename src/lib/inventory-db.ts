@@ -680,6 +680,17 @@ export function listTemplates(filters?: { location_id?: number; active?: boolean
   return rows.map(parseTemplate);
 }
 
+/**
+ * Every ACTIVE list of ONE restaurant that contains a product — the set whose
+ * today-session could change when that product's home spots change. STRICT
+ * company match (excludes NULL-company legacy lists: a spot edit can't affect
+ * their own-company snapshot, and counting them would inflate "applied today").
+ */
+export function templatesForProduct(productId: number, companyId: number): CountingTemplate[] {
+  return listTemplates({ company_ids: [companyId], active: true })
+    .filter((t) => t.company_id === companyId && t.product_ids.includes(productId));
+}
+
 function parseTemplate(row: Record<string, unknown>): CountingTemplate {
   return {
     ...(row as unknown as CountingTemplate),
@@ -1034,36 +1045,68 @@ export function deleteStalePendingSessions(templateId: number, keepDate: string 
  * the current placements). Returns the new session id, or null when today's
  * count was already started/submitted (never destroy staff work) or none is due.
  */
-/** Today's session id when it is still safe to replace (pending, zero entries). */
+/**
+ * Any real staff progress on a session: a product quantity entered, OR a
+ * guided-walk stop already marked counted/skipped. The latter lives ONLY in
+ * session_location_status — a location can be finished or skipped (with a skip
+ * reason) WITHOUT entering any quantity — so checking count_entries alone would
+ * wrongly treat that as untouched and wipe it on regenerate.
+ */
+function sessionHasProgress(sessionId: number): boolean {
+  const db = getDb();
+  if (db.prepare('SELECT 1 FROM count_entries WHERE session_id = ? LIMIT 1').get(sessionId)) return true;
+  return !!db.prepare(
+    "SELECT 1 FROM session_location_status WHERE session_id = ? AND status != 'pending' LIMIT 1"
+  ).get(sessionId);
+}
+
+/** Today's session id when it is still safe to replace: pending, with NO staff
+ *  progress (no entered quantities AND no counted/skipped stops). */
 export function untouchedTodaySessionId(templateId: number): number | null {
   const db = getDb();
   const row = db.prepare(
     'SELECT id, status FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
   ).get(templateId, todayStr()) as { id: number; status: string } | undefined;
   if (!row || row.status !== 'pending') return null;
-  const touched = db.prepare('SELECT 1 FROM count_entries WHERE session_id = ? LIMIT 1').get(row.id);
-  return touched ? null : row.id;
+  return sessionHasProgress(row.id) ? null : row.id;
 }
 
 export function regenerateTodaySession(templateId: number): number | null {
   const db = getDb();
   const today = todayStr();
+
+  // SAFETY GATE — never delete today's session unless we can rebuild it. If the
+  // list is gone, inactive, or (schedule drift) no longer due today,
+  // generateSessionForTemplate would refuse to recreate it, so deleting first
+  // would leave today with NO count at all. Bail out without touching anything.
+  const tmpl = getTemplate(templateId);
+  if (!tmpl || !tmpl.active || !shouldGenerateToday(tmpl)) return null;
+
   const existing = db.prepare(
     'SELECT id, status FROM counting_sessions WHERE template_id = ? AND scheduled_date = ?'
   ).get(templateId, today) as { id: number; status: string } | undefined;
   if (existing) {
+    // Never destroy work staff already started or submitted — a product quantity
+    // entered OR a guided stop already counted/skipped (status-only progress).
     if (existing.status !== 'pending') return null;
-    const touched = db.prepare('SELECT 1 FROM count_entries WHERE session_id = ? LIMIT 1').get(existing.id);
-    if (touched) return null;
-    const wipe = db.transaction(() => {
+    if (sessionHasProgress(existing.id)) return null;
+  }
+
+  // Delete + recreate in ONE transaction: if the fresh snapshot/create throws
+  // (e.g. a spot deleted mid-flight), the whole thing rolls back and today's
+  // untouched session is preserved — it can never be lost to a partial failure.
+  const swap = db.transaction((): number => {
+    if (existing) {
       db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(existing.id);
       db.prepare('DELETE FROM session_count_locations WHERE session_id = ?').run(existing.id);
       db.prepare('DELETE FROM session_location_status WHERE session_id = ?').run(existing.id);
       db.prepare('DELETE FROM counting_sessions WHERE id = ?').run(existing.id);
-    });
-    wipe();
-  }
-  return generateSessionForTemplate(templateId);
+    }
+    const sid = generateSessionForTemplate(templateId);
+    if (sid == null) throw new Error(`regenerateTodaySession: could not rebuild session for template ${templateId}`);
+    return sid;
+  });
+  return swap();
 }
 
 // ===
