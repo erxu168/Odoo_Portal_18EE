@@ -2088,6 +2088,16 @@ export function listPackLabels(): PackLabelRow[] {
   return rows.map((r) => ({ ...r, in_use: counts.get(r.label.toLowerCase()) || 0 }));
 }
 
+/** Odoo product ids counted in a given unit (case-insensitive), so the manager
+ *  can see exactly which products a merge/delete would touch. */
+export function productIdsUsingPackLabel(label: string): number[] {
+  const db = getDb();
+  const target = label.trim().toLowerCase();
+  if (!target) return [];
+  const rows = db.prepare('SELECT odoo_product_id, pack_label FROM product_flags WHERE pack_label IS NOT NULL').all() as { odoo_product_id: number; pack_label: string }[];
+  return rows.filter((r) => (r.pack_label || '').toLowerCase() === target).map((r) => r.odoo_product_id);
+}
+
 /** Add a unit; returns null on a duplicate (Unicode case-insensitive) or bad label. */
 export function addPackLabel(label: string, userId: number): PackLabelRow | null {
   const db = getDb();

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 /**
  * Manage the "Count by" units (piece/bunch/crate…) — the options in every
@@ -25,11 +25,54 @@ export default function ManagePackLabels({ onClose, onChanged, baseZ = 130 }: {
   const [editVal, setEditVal] = useState('');
   const [mergeFrom, setMergeFrom] = useState<number | null>(null);   // unit being merged away
   const [mergeInto, setMergeInto] = useState<number>(0);             // target unit id
+  const [expanded, setExpanded] = useState<number | null>(null);     // unit whose product list is shown
+  const [prodCache, setProdCache] = useState<Record<string, { id: number; name: string }[] | 'loading' | 'error'>>({});
+  // Bumped whenever the unit list mutates; an in-flight product fetch from an
+  // earlier generation is dropped so it can't repopulate the cache with
+  // pre-mutation (stale) data after load() clears it.
+  const genRef = useRef(0);
+
+  async function loadProducts(label: string, force = false) {
+    if (!force && prodCache[label] && prodCache[label] !== 'error') return;   // cached / loading
+    const gen = genRef.current;
+    setProdCache((c) => ({ ...c, [label]: 'loading' }));
+    try {
+      const res = await fetch(`/api/inventory/pack-labels/products?label=${encodeURIComponent(label)}`);
+      if (genRef.current !== gen) return;   // list changed while loading — drop this result
+      if (!res.ok) { setProdCache((c) => ({ ...c, [label]: 'error' })); return; }
+      const d = await res.json();
+      if (genRef.current !== gen) return;
+      setProdCache((c) => ({ ...c, [label]: d.products || [] }));
+    } catch {
+      if (genRef.current === gen) setProdCache((c) => ({ ...c, [label]: 'error' }));   // NOT the same as "no products"
+    }
+  }
+  function ProductChips({ label }: { label: string }) {
+    const p = prodCache[label];
+    if (p === undefined || p === 'loading') return <div className="text-[11px] text-gray-400 px-1 py-0.5">Loading…</div>;
+    if (p === 'error') return (
+      <div className="text-[11px] text-red-600 px-1 py-0.5">Couldn{'’'}t load the products. <button onClick={() => loadProducts(label, true)} className="font-bold underline">Retry</button></div>
+    );
+    if (p.length === 0) return <div className="text-[11px] text-gray-400 px-1 py-0.5">No products.</div>;
+    return (
+      <div className="flex flex-wrap gap-1 px-1 py-0.5">
+        {p.map((x) => <span key={x.id} className="text-[11px] bg-white border border-gray-200 rounded-md px-1.5 py-0.5 text-gray-600">{x.name}</span>)}
+      </div>
+    );
+  }
 
   async function load() {
     try {
       const d = await fetch('/api/inventory/pack-labels').then((r) => r.json());
       setLabels(d.labels || []);
+      // A mutation (add/rename/merge/delete) changes which products map to which
+      // unit, so invalidate in-flight fetches (genRef), drop the product-list
+      // cache + collapse — re-expanding refetches fresh (a renamed unit's new
+      // label would otherwise stick on "Loading…", and a late in-flight response
+      // could otherwise repopulate stale data).
+      genRef.current += 1;
+      setProdCache({});
+      setExpanded(null);
     } catch { setErr('Could not load the units.'); }
     finally { setLoading(false); }
   }
@@ -138,39 +181,49 @@ export default function ManagePackLabels({ onClose, onChanged, baseZ = 130 }: {
                     ) : isMerging ? (
                       <div className="flex flex-col gap-1.5">
                         <div className="text-[13px] text-gray-700">Move the {inUse} product{inUse === 1 ? '' : 's'} counted in <b>{l.label}</b> to:</div>
+                        <ProductChips label={l.label} />
                         <div className="flex items-center gap-2">
                           <select value={mergeInto || ''} onChange={(e) => setMergeInto(Number(e.target.value))} disabled={busy}
                             className="flex-1 min-w-0 border-2 border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-green-500">
                             <option value="">Pick a unit…</option>
                             {labels.filter((x) => x.id !== l.id).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
                           </select>
-                          <button onClick={() => doMerge(l.id)} disabled={busy || !mergeInto}
+                          <button onClick={() => doMerge(l.id)} disabled={busy || !mergeInto || !Array.isArray(prodCache[l.label])}
+                            title={!Array.isArray(prodCache[l.label]) ? 'Wait for the affected products to load first' : undefined}
                             className="text-[13px] font-bold px-3 py-1.5 rounded-lg bg-green-600 text-white disabled:opacity-40 whitespace-nowrap">Move &amp; remove</button>
                           <button onClick={() => { setMergeFrom(null); setMergeInto(0); }} disabled={busy}
                             className="text-[13px] font-semibold px-2 py-1.5 rounded-lg text-gray-500">Cancel</button>
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="truncate text-[var(--fs-base)] font-semibold text-gray-800">{l.label}</div>
-                          {inUse > 0 && <div className="text-[11px] text-gray-400">used by {inUse} product{inUse === 1 ? '' : 's'}</div>}
-                        </div>
-                        {isAdmin && (
-                          <>
-                            <button onClick={() => { setEditId(l.id); setEditVal(l.label); setErr(null); }} disabled={busy}
-                              aria-label={`Rename ${l.label}`} className="text-[13px] font-semibold text-blue-600 active:opacity-70 disabled:opacity-40 px-2">Rename</button>
-                            {inUse > 0 ? (
-                              <button onClick={() => { setMergeFrom(l.id); setMergeInto(0); setErr(null); }} disabled={busy}
-                                aria-label={`Merge ${l.label} into another unit`}
-                                className="text-[13px] font-semibold text-blue-600 active:opacity-70 disabled:opacity-40 px-2 whitespace-nowrap">Merge…</button>
-                            ) : (
-                              <button onClick={() => del(l.id)} disabled={busy} aria-label={`Delete ${l.label}`}
-                                className="text-[13px] font-bold text-red-600 active:opacity-70 disabled:opacity-40 px-2">Delete</button>
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="truncate text-[var(--fs-base)] font-semibold text-gray-800">{l.label}</div>
+                            {inUse > 0 && (
+                              <button onClick={() => { const next = expanded === l.id ? null : l.id; setExpanded(next); if (next !== null) loadProducts(l.label); }}
+                                className="text-[11px] text-blue-600 active:opacity-70">
+                                used by {inUse} product{inUse === 1 ? '' : 's'} {expanded === l.id ? '▾' : '▸'}
+                              </button>
                             )}
-                          </>
-                        )}
-                      </div>
+                          </div>
+                          {isAdmin && (
+                            <>
+                              <button onClick={() => { setEditId(l.id); setEditVal(l.label); setErr(null); }} disabled={busy}
+                                aria-label={`Rename ${l.label}`} className="text-[13px] font-semibold text-blue-600 active:opacity-70 disabled:opacity-40 px-2">Rename</button>
+                              {inUse > 0 ? (
+                                <button onClick={() => { setMergeFrom(l.id); setMergeInto(0); setErr(null); loadProducts(l.label); }} disabled={busy}
+                                  aria-label={`Merge ${l.label} into another unit`}
+                                  className="text-[13px] font-semibold text-blue-600 active:opacity-70 disabled:opacity-40 px-2 whitespace-nowrap">Merge…</button>
+                              ) : (
+                                <button onClick={() => del(l.id)} disabled={busy} aria-label={`Delete ${l.label}`}
+                                  className="text-[13px] font-bold text-red-600 active:opacity-70 disabled:opacity-40 px-2">Delete</button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        {expanded === l.id && inUse > 0 && <ProductChips label={l.label} />}
+                      </>
                     )}
                   </div>
                 );
