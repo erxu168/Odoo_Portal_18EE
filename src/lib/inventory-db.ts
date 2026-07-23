@@ -2143,3 +2143,27 @@ export function renamePackLabel(id: number, label: string): { ok: boolean; dupe?
     return { ok: true };
   })();
 }
+
+/**
+ * Merge one count-by unit INTO another: reassign every product counted in `from`
+ * to `into`, then delete `from`. Lets a manager collapse a duplicate/wrong unit
+ * (e.g. "head" → "piece") in one step instead of editing each product. Pure
+ * relabel — a product's pack SIZE lives on the product, not the unit, so counts
+ * keep their meaning. All-or-nothing.
+ */
+export function mergePackLabels(fromId: number, intoId: number): { ok: boolean; moved?: number; error?: 'same' | 'notfound' } {
+  if (fromId === intoId) return { ok: false, error: 'same' };
+  const db = getDb();
+  return db.transaction(() => {
+    const from = db.prepare('SELECT id, label FROM pack_labels WHERE id = ?').get(fromId) as { id: number; label: string } | undefined;
+    const into = db.prepare('SELECT id, label FROM pack_labels WHERE id = ?').get(intoId) as { id: number; label: string } | undefined;
+    if (!from || !into) return { ok: false, error: 'notfound' as const };
+    const fromLower = from.label.toLowerCase();
+    const distinct = db.prepare('SELECT DISTINCT pack_label FROM product_flags WHERE pack_label IS NOT NULL').all() as { pack_label: string }[];
+    const upd = db.prepare('UPDATE product_flags SET pack_label = ? WHERE pack_label = ?');
+    let moved = 0;
+    distinct.filter((f) => (f.pack_label || '').toLowerCase() === fromLower).forEach((f) => { moved += upd.run(into.label, f.pack_label).changes; });
+    db.prepare('DELETE FROM pack_labels WHERE id = ?').run(fromId);
+    return { ok: true, moved };
+  })();
+}

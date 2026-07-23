@@ -23,6 +23,8 @@ export default function ManagePackLabels({ onClose, onChanged, baseZ = 130 }: {
   const [isAdmin, setIsAdmin] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [editVal, setEditVal] = useState('');
+  const [mergeFrom, setMergeFrom] = useState<number | null>(null);   // unit being merged away
+  const [mergeInto, setMergeInto] = useState<number>(0);             // target unit id
 
   async function load() {
     try {
@@ -68,6 +70,20 @@ export default function ManagePackLabels({ onClose, onChanged, baseZ = 130 }: {
     finally { setBusy(false); }
   }
 
+  async function doMerge(fromId: number) {
+    if (!mergeInto || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch('/api/inventory/pack-labels/merge', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from_id: fromId, into_id: mergeInto }),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setErr(d.error || 'Could not move'); return; }
+      setMergeFrom(null); setMergeInto(0);
+      await load(); onChanged();
+    } catch { setErr('Network error'); }
+    finally { setBusy(false); }
+  }
+
   async function del(id: number) {
     if (busy) return;
     setBusy(true); setErr(null);
@@ -104,10 +120,12 @@ export default function ManagePackLabels({ onClose, onChanged, baseZ = 130 }: {
             <div className="flex flex-col gap-1.5">
               {labels.map((l) => {
                 const isEditing = editId === l.id;
+                const isMerging = mergeFrom === l.id;
+                const inUse = l.in_use ?? 0;
                 return (
-                  <div key={l.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                  <div key={l.id} className="flex flex-col gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
                     {isEditing ? (
-                      <>
+                      <div className="flex items-center gap-2">
                         <input autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value.slice(0, 24))}
                           onKeyDown={(e) => { if (e.key === 'Enter') rename(l.id); if (e.key === 'Escape') setEditId(null); }}
                           disabled={busy}
@@ -116,23 +134,43 @@ export default function ManagePackLabels({ onClose, onChanged, baseZ = 130 }: {
                           className="text-[13px] font-bold px-3 py-1.5 rounded-lg bg-green-600 text-white disabled:opacity-40">Save</button>
                         <button onClick={() => setEditId(null)} disabled={busy}
                           className="text-[13px] font-semibold px-2 py-1.5 rounded-lg text-gray-500">Cancel</button>
-                      </>
+                      </div>
+                    ) : isMerging ? (
+                      <div className="flex flex-col gap-1.5">
+                        <div className="text-[13px] text-gray-700">Move the {inUse} product{inUse === 1 ? '' : 's'} counted in <b>{l.label}</b> to:</div>
+                        <div className="flex items-center gap-2">
+                          <select value={mergeInto || ''} onChange={(e) => setMergeInto(Number(e.target.value))} disabled={busy}
+                            className="flex-1 min-w-0 border-2 border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-green-500">
+                            <option value="">Pick a unit…</option>
+                            {labels.filter((x) => x.id !== l.id).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                          </select>
+                          <button onClick={() => doMerge(l.id)} disabled={busy || !mergeInto}
+                            className="text-[13px] font-bold px-3 py-1.5 rounded-lg bg-green-600 text-white disabled:opacity-40 whitespace-nowrap">Move &amp; remove</button>
+                          <button onClick={() => { setMergeFrom(null); setMergeInto(0); }} disabled={busy}
+                            className="text-[13px] font-semibold px-2 py-1.5 rounded-lg text-gray-500">Cancel</button>
+                        </div>
+                      </div>
                     ) : (
-                      <>
+                      <div className="flex items-center gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="truncate text-[var(--fs-base)] font-semibold text-gray-800">{l.label}</div>
-                          {(l.in_use ?? 0) > 0 && <div className="text-[11px] text-gray-400">used by {l.in_use} product{l.in_use === 1 ? '' : 's'}</div>}
+                          {inUse > 0 && <div className="text-[11px] text-gray-400">used by {inUse} product{inUse === 1 ? '' : 's'}</div>}
                         </div>
                         {isAdmin && (
                           <>
                             <button onClick={() => { setEditId(l.id); setEditVal(l.label); setErr(null); }} disabled={busy}
                               aria-label={`Rename ${l.label}`} className="text-[13px] font-semibold text-blue-600 active:opacity-70 disabled:opacity-40 px-2">Rename</button>
-                            <button onClick={() => del(l.id)} disabled={busy || (l.in_use ?? 0) > 0} aria-label={`Delete ${l.label}`}
-                              title={(l.in_use ?? 0) > 0 ? 'In use — change those products first' : undefined}
-                              className={`text-[13px] font-bold px-2 active:opacity-70 disabled:opacity-40 ${(l.in_use ?? 0) > 0 ? 'text-gray-300' : 'text-red-600'}`}>Delete</button>
+                            {inUse > 0 ? (
+                              <button onClick={() => { setMergeFrom(l.id); setMergeInto(0); setErr(null); }} disabled={busy}
+                                aria-label={`Merge ${l.label} into another unit`}
+                                className="text-[13px] font-semibold text-blue-600 active:opacity-70 disabled:opacity-40 px-2 whitespace-nowrap">Merge…</button>
+                            ) : (
+                              <button onClick={() => del(l.id)} disabled={busy} aria-label={`Delete ${l.label}`}
+                                className="text-[13px] font-bold text-red-600 active:opacity-70 disabled:opacity-40 px-2">Delete</button>
+                            )}
                           </>
                         )}
-                      </>
+                      </div>
                     )}
                   </div>
                 );
