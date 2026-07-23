@@ -106,6 +106,11 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const [portalUsers, setPortalUsers] = useState<any[]>([]);
 
   const isEdit = !!template?.id;
+  // The restaurant this list actually belongs to — the template's own company
+  // when editing, else the active switcher. SpotSheet must use THIS (not the
+  // live switcher) so editing a list never shows another restaurant's spots /
+  // a false "no locations" state if the blue-ribbon company was changed.
+  const formCompanyId = (isEdit ? (template?.company_id ?? companyId) : companyId) as number | null;
 
   // Product master edits need their own capability (a template manager may lack
   // it) — the drill-down still opens, just read-only, per the drill-down standard.
@@ -542,11 +547,11 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           />
         )}
 
-        {spotSheetFor && companyId && (
+        {spotSheetFor && formCompanyId && (
           <SpotSheet
             product={spotSheetFor}
             hasImage={productImageIds.has(spotSheetFor.id)}
-            companyId={companyId}
+            companyId={formCompanyId}
             initialSpotIds={homeSpots[spotSheetFor.id] || []}
             onSaved={(ids) => setHomeSpots((m) => ({ ...m, [spotSheetFor.id]: ids }))}
             onClose={() => setSpotSheetFor(null)}

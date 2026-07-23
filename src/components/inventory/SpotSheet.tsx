@@ -221,7 +221,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
             <ProductThumb productId={product.id} has={hasImage} size={36} />
             <div className="min-w-0">
               <div className="text-[var(--fs-base)] font-bold text-gray-900 truncate">{product.name}</div>
-              <div className="text-[var(--fs-xs)] text-gray-500">Tick every spot it{'’'}s stored at — it{'’'}s counted at each</div>
+              <div className="text-[var(--fs-xs)] text-gray-500">Its home spots, shared by every counting list — tick each spot it{'’'}s stored at (counted at each)</div>
             </div>
           </div>
         </div>

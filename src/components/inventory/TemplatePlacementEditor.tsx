@@ -148,6 +148,9 @@ export default function TemplatePlacementEditor({ templateId, templateName, onBa
         subtitle={`${templateName} · ${productIds.length} products · ${placements.length + unplaced.length} count lines${unplaced.length ? ` · ${unplaced.length} not placed` : ''}`} />
 
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-32">
+        <div className="mb-3 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-[var(--fs-sm)] leading-snug">
+          <b>These are each product{'’'}s home spots</b> — the same ones on the product form, shared by every counting list (a change here shows on all lists). The spots come from Inventory {'→'} Locations.
+        </div>
         {error && <div className="mb-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[var(--fs-sm)] font-semibold">{error}</div>}
         {savedMsg && <div className="mb-3 px-4 py-2.5 bg-green-50 border border-green-200 rounded-xl text-green-800 text-[var(--fs-sm)] font-semibold">{savedMsg}</div>}
 
