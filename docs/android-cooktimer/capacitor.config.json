@@ -1,0 +1,13 @@
+{
+  "appId": "de.krawings.cooktimer",
+  "appName": "Cooking Timer",
+  "webDir": "www",
+  "server": {
+    "url": "https://portal.krawings.de/cooktimer",
+    "cleartext": true,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
