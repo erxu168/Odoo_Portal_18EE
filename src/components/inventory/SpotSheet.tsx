@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Spinner, ProductThumb } from './ui';
 import { buildLocationTree } from '@/lib/location-tree';
+import { typeIcon } from '@/lib/location-types';
 import LocationForm from './LocationForm';
 
 /**
@@ -206,7 +207,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
             <img src={s.photo} alt="" className="w-8 h-8 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
           )}
           <span className="flex-1 min-w-0">
-            <span className={`block truncate text-[var(--fs-base)] ${isArea ? 'font-bold' : 'font-semibold'} ${on ? 'text-green-900' : 'text-gray-800'}`}>{s.name}</span>
+            <span className={`block truncate text-[var(--fs-base)] ${isArea ? 'font-bold' : 'font-semibold'} ${on ? 'text-green-900' : 'text-gray-800'}`}>{typeIcon(s.kind)} {s.name}</span>
             {s.description && <span className="block truncate text-[var(--fs-xs)] font-normal text-gray-500">{s.description}</span>}
           </span>
         </button>

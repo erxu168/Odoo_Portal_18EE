@@ -2,16 +2,17 @@
 
 import React, { useState } from 'react';
 import FilePicker from '@/components/ui/FilePicker';
+import { LOCATION_TYPES } from '@/lib/location-types';
 import type { CountLocation } from '@/types/inventory';
 
 /**
- * LocationForm — the ONE form for a count location's fields (name, "where to
- * stand" note, photo). Used everywhere a location is created or edited: the
+ * LocationForm — the ONE form for a count location's fields (name, type, "where
+ * to stand" note, photo). Used everywhere a location is created or edited: the
  * Locations manager (create + edit) AND the canonical /inventory/location/[id]
  * page. Per the single-canonical-form rule, there is no second location form.
  *
- * A location is just a NAME (+ optional note/photo). There is no "type" — a
- * restaurant's storage is Unit -> optional spot, found by name + photo + label.
+ * A location has a NAME, a built-in TYPE (kind — drives icon + smart add
+ * buttons; see src/lib/location-types.ts), and an optional note/photo.
  */
 
 /** Read a picked image and downscale it on-device to a small JPEG data URL. */
@@ -43,9 +44,18 @@ export default function LocationForm({ initial, onCancel, onSave, onDelete, savi
   baseZ?: number;
 }) {
   const [name, setName] = useState(initial.name || '');
+  // A location's TYPE (kind) drives its icon + the smart add buttons. It is
+  // pre-set when created from a typed "+ Add" button, but the owner can change
+  // it here; defaults to 'area'.
+  const [kind, setKind] = useState(initial.kind || 'area');
+  // Existing rows may carry a legacy kind (e.g. 'spot', 'dry') that isn't in the
+  // built-in set — keep it selectable so opening the editor never silently
+  // changes the type.
+  const kindOptions = LOCATION_TYPES.some((t) => t.key === kind)
+    ? LOCATION_TYPES
+    : [...LOCATION_TYPES, { key: kind, label: kind.charAt(0).toUpperCase() + kind.slice(1), icon: '📍', suggests: [] as string[] }];
   // A spot is a slot INSIDE a unit (a drawer, rack, shelf) — it has a parent.
-  // A top-level location is a unit/zone. Neither has a "type": a location is
-  // just a name (+ optional note/photo).
+  // A top-level location is a unit/zone.
   const isSpot = initial.parent_id != null;
   const [description, setDescription] = useState(initial.description || '');
   const [photo, setPhoto] = useState<string | null>(initial.photo || null);
@@ -56,6 +66,13 @@ export default function LocationForm({ initial, onCancel, onSave, onDelete, savi
         <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={isSpot ? 'e.g. Left Drawer, Rack 1' : 'e.g. Walk-in Fridge'}
                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50" />
+        <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Type</label>
+        <select value={kind} onChange={(e) => setKind(e.target.value)}
+                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50">
+          {kindOptions.map((t) => (
+            <option key={t.key} value={t.key}>{t.icon} {t.label}</option>
+          ))}
+        </select>
         <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Notes (optional)</label>
         <input value={description || ''} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Back-left wall, top two shelves"
                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50" />
@@ -74,7 +91,7 @@ export default function LocationForm({ initial, onCancel, onSave, onDelete, savi
         {error && <p className="text-[12px] font-semibold text-red-600 mb-2">{error}</p>}
         <div className="flex gap-3 mt-2">
           <button onClick={onCancel} className="flex-1 py-3 rounded-xl bg-gray-100 font-bold">Cancel</button>
-          <button onClick={() => name.trim() && onSave({ ...initial, name: name.trim(), description, photo })}
+          <button onClick={() => name.trim() && onSave({ ...initial, name: name.trim(), kind, description, photo })}
                   disabled={!name.trim() || !!saving}
                   className="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
         </div>

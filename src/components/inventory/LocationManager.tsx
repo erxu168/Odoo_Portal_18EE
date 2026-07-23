@@ -9,6 +9,7 @@ import LocationForm from './LocationForm';
 import LocationLabels from './LocationLabels';
 import { useCompany } from '@/lib/company-context';
 import { buildLocationTree, type LocationNode as LocationTreeNode } from '@/lib/location-tree';
+import { typeIcon, typeLabel, suggestedChildTypes, TOP_LEVEL_TYPE_KEYS } from '@/lib/location-types';
 import type { CountLocation } from '@/types/inventory';
 
 /**
@@ -45,9 +46,16 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit }: {
                   : 'w-9 h-9 rounded-lg bg-cover bg-center bg-gray-100 flex-shrink-0'}
                 style={{ backgroundImage: `url(${node.photo})` }}
               />
-            ) : isRoot ? (
-              <div className="w-11 h-11 rounded-xl bg-cover bg-center bg-gray-100 flex-shrink-0" />
-            ) : null}
+            ) : (
+              <div
+                className={isRoot
+                  ? 'w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0 text-xl'
+                  : 'w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 text-base'}
+                aria-hidden="true"
+              >
+                {typeIcon(node.kind)}
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <div className={isRoot ? 'font-bold text-gray-900 truncate' : 'font-semibold text-gray-800 text-sm truncate'}>
                 {node.name}
@@ -77,14 +85,26 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit }: {
                 ))}
               </SortableContext>
             </DndContext>
-            <button
-              onClick={() => onEdit({ parent_id: node.id })}
-              className="flex w-full items-center gap-1 text-left py-2.5 pr-3 text-sm font-semibold text-green-700 active:bg-gray-50"
+            <div
+              className="flex flex-wrap items-center gap-1.5 py-2.5 pr-3"
               style={{ paddingLeft: childPad }}
             >
-              <span className="flex-shrink-0">+ Add inside</span>
-              <span className="truncate">{node.name}</span>
-            </button>
+              {suggestedChildTypes(node.kind).map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => onEdit({ parent_id: node.id, kind: t.key })}
+                  className="rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 active:bg-green-100"
+                >
+                  + {t.label}
+                </button>
+              ))}
+              <button
+                onClick={() => onEdit({ parent_id: node.id })}
+                className="rounded-full px-3 py-1.5 text-xs font-semibold text-gray-400 active:text-gray-600"
+              >
+                + Something else{'…'}
+              </button>
+            </div>
           </div>
         </>
       )}
@@ -92,7 +112,7 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit }: {
   );
 }
 
-// Location types are per-company, manager-editable (location_kinds table).
+// Location types (kinds) are BUILT-IN, not user-editable — see src/lib/location-types.ts.
 export default function LocationManager({ onBack }: { onBack: () => void }) {
   const { companyId } = useCompany();
   const [locations, setLocations] = useState<CountLocation[]>([]);
@@ -225,10 +245,20 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
             ))}
           </SortableContext>
         </DndContext>
-        <button onClick={() => setEditing({ parent_id: null })}
-                className="w-full py-4 rounded-2xl bg-green-600 text-white font-bold shadow-lg shadow-green-600/30 active:bg-green-700">
-          + Add an area
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {TOP_LEVEL_TYPE_KEYS.map((key, i) => (
+            <button key={key} onClick={() => setEditing({ parent_id: null, kind: key })}
+                    className={i === 0
+                      ? 'py-3 px-5 rounded-2xl bg-green-600 text-white font-bold shadow-lg shadow-green-600/30 active:bg-green-700'
+                      : 'py-3 px-4 rounded-2xl border-2 border-gray-200 text-gray-700 font-bold active:bg-gray-50'}>
+              + {typeLabel(key)}
+            </button>
+          ))}
+          <button onClick={() => setEditing({ parent_id: null })}
+                  className="py-3 px-4 rounded-2xl text-gray-400 font-bold active:text-gray-600">
+            + Something else{'…'}
+          </button>
+        </div>
         {tree.length > 0 && (
           <button onClick={() => setPrinting(true)}
                   className="w-full py-3 rounded-2xl border-2 border-gray-200 text-gray-600 font-bold active:bg-gray-50">
