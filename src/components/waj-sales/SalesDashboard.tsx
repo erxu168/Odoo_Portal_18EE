@@ -9,6 +9,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
+import { ActionGrid, ActionCard } from '@/components/ui/ActionCard';
+import { KpiRow, KpiChip } from '@/components/ui/KpiChip';
 import {
   TipCtx, OverviewTab, ProductsTab, BusyTab, OrdersTab, TeamTab, KitchenTab,
 } from './SalesViz';
@@ -37,10 +39,20 @@ const TABS = [
 ] as const;
 type TabId = typeof TABS[number]['id'];
 
+// Tile-home metadata for each section (emoji + one-line hint).
+const TILE_META: Record<TabId, { emoji: string; sub: string }> = {
+  overview: { emoji: '\u{1F4C8}', sub: 'Sales, orders & trend' },
+  products: { emoji: '\u{1F354}', sub: 'Best-sellers & category mix' },
+  busy: { emoji: '\u{1F550}', sub: 'Busy hours & rush heatmap' },
+  orders: { emoji: '\u{1F9FE}', sub: 'Payments, refunds, till' },
+  team: { emoji: '\u{1F465}', sub: 'Tips & sales per staff' },
+  kitchen: { emoji: '\u{1F468}\u{200D}\u{1F373}', sub: 'Prep speed' },
+};
+
 export default function SalesDashboard() {
   const [range, setRange] = useState<Range>('today');
   const [anchor, setAnchor] = useState<string>(() => berlinToday());
-  const [tab, setTab] = useState<TabId>('overview');
+  const [tab, setTab] = useState<TabId | null>(null); // null = tile home
   const [sort, setSort] = useState<'revenue' | 'qty'>('revenue');
   const [data, setData] = useState<SalesPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,7 +133,7 @@ export default function SalesDashboard() {
   return (
     <TipCtx.Provider value={{ show, hide }}>
       <div className="wajs">
-        <AppHeader supertitle="WHAT A JERK" title="Sales" subtitle={data?.sub || 'Loading…'} action={refreshAction} />
+        <AppHeader supertitle="WHAT A JERK" title={tab ? (TABS.find(t => t.id === tab)?.label ?? 'Sales') : 'Sales'} subtitle={data?.sub || 'Loading…'} action={refreshAction} showBack={tab !== null} onBack={() => setTab(null)} />
 
         <div className="rangebar" role="group" aria-label="Date range">
           {RANGES.map(r => (
@@ -149,6 +161,26 @@ export default function SalesDashboard() {
             )}
         </div>
 
+        {tab === null && (
+          <div className="px-4 py-4 flex flex-col gap-4">
+            {data && (
+              <KpiRow columns={3}>
+                <KpiChip value={`€${data.salesTotal.toLocaleString('de-DE')}`} label="Sales" />
+                <KpiChip value={data.ordersTotal.toLocaleString('de-DE')} label="Orders" />
+                <KpiChip value={`€${data.ordersTotal ? Math.round(data.salesTotal / data.ordersTotal) : 0}`} label="Avg / order" />
+              </KpiRow>
+            )}
+            <ActionGrid
+              items={[...TABS]}
+              getItemId={(t) => t.id}
+              renderItem={(t) => (
+                <ActionCard emoji={TILE_META[t.id].emoji} label={t.label} subtitle={TILE_META[t.id].sub} onClick={() => setTab(t.id)} />
+              )}
+            />
+          </div>
+        )}
+        {tab !== null && (
+        <>
         <nav className="tabbar" role="tablist" aria-label="Sections">
           {TABS.map(t => (
             <button key={t.id} className="tab" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}>{t.label}</button>
@@ -167,6 +199,8 @@ export default function SalesDashboard() {
           {data && tab === 'team' && <TeamTab d={data} />}
           {data && tab === 'kitchen' && <KitchenTab d={data} />}
         </main>
+        </>
+        )}
 
         <div className="footer-note">Live POS &amp; KDS data for What a Jerk · managers only</div>
 
