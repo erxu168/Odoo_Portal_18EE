@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 /**
  * Guided, location-by-location counting shell.
@@ -28,7 +28,8 @@ interface Props {
   onReview: () => void;
 }
 
-const REASONS = ['Location was locked', 'Ran out of time', 'Nothing stored here today', 'Already counted earlier'];
+// Fallback until the managed list loads (same defaults seeded server-side).
+const DEFAULT_REASONS = ['Location was locked', 'Ran out of time', 'Nothing stored here today', 'Already counted earlier'];
 
 export default function GuidedCountingFlow({ stops, productsById, statuses, renderRow, onFinishStop, onSkipStop, onReview }: Props) {
   const [openId, setOpenId] = useState<number | null>(null);
@@ -128,12 +129,22 @@ function StatusPill({ st }: { st: string }) {
 }
 
 function SkipSheet({ name, onPick, onClose }: { name: string; onPick: (r: string) => void; onClose: () => void }) {
+  // Skip-count reasons are a managed list (an admin curates them in Settings).
+  const [reasons, setReasons] = useState<string[]>(DEFAULT_REASONS);
+  useEffect(() => {
+    fetch('/api/managed-lists/skip-reasons').then((r) => (r.ok ? r.json() : null)).then((d) => {
+      // Reflect the actual managed list, incl. an intentionally-emptied one —
+      // don't resurrect the hardcoded defaults. Defaults only stand in on a
+      // failed request (the .catch below leaves them untouched).
+      if (Array.isArray(d?.items)) setReasons(d.items.map((i: { label: string }) => i.label));
+    }).catch(() => { /* request failed — keep the fallback defaults */ });
+  }, []);
   return (
     <div className="fixed inset-0 z-[100] bg-black/50 flex items-end" onClick={onClose}>
       <div className="bg-white w-full max-w-lg mx-auto rounded-t-2xl p-5 pb-8" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-[var(--fs-lg)] font-bold mb-1">Skip {name}?</h3>
         <p className="text-[var(--fs-sm)] text-gray-500 mb-3">Pick a reason — your manager will see it.</p>
-        {REASONS.map((r) => (
+        {reasons.map((r) => (
           <button key={r} onClick={() => onPick(r)} className="w-full text-left px-4 py-3.5 rounded-xl border border-gray-200 font-semibold mb-2 active:bg-gray-50 flex items-center gap-3">
             <span className="w-2 h-2 rounded-full bg-orange-500 flex-shrink-0" />{r}
           </button>

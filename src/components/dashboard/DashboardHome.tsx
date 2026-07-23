@@ -32,6 +32,7 @@ const TILES: Tile[] = [
   { id: 'production-guide', label: 'Production Guide', subtitle: 'Sauces, prep & batches', href: '/recipes', minRole: 'manager', scope: 'production', emoji: '🥫' },
   { id: 'inventory', label: 'Inventory', subtitle: 'Stock counting & tracking', href: '/inventory', minRole: 'staff', emoji: '📦' },
   { id: 'products', label: 'Products', subtitle: 'Catalog, units & photos', href: '/products', minRole: 'manager', emoji: '🏷️' },
+  { id: 'lists', label: 'Lists & Options', subtitle: 'Editable dropdown lists', href: '/settings/lists', minRole: 'manager', emoji: '🗂️' },
   { id: 'purchase', label: 'Purchase', subtitle: 'Orders & suppliers', href: '/purchase', minRole: 'staff', emoji: '🛒' },
   { id: 'hr', label: 'HR', subtitle: 'Profile & onboarding', href: '/hr', minRole: 'staff', emoji: '👤' },
   { id: 'credentials', label: 'Supplier Logins', subtitle: 'Vendor credentials', href: '/admin/credentials', minRole: 'manager', emoji: '🔑' },
@@ -149,8 +150,9 @@ export default function DashboardHome() {
   const visibleTiles = isCandidate
     ? TILES.filter(t => t.id === 'hr')
     : TILES.filter(t => {
-        // Placeholder tiles (not governed by access control) always show.
-        if (!GOVERNED_MODULE_IDS.has(t.id)) return true;
+        // Ungoverned tiles (placeholders + Lists & Options) aren't in the
+        // per-user access grant, so gate them by role directly.
+        if (!GOVERNED_MODULE_IDS.has(t.id)) return myLevel >= (ROLE_LEVEL[t.minRole] || 1);
         // Until access loads, fall back to role default; then use the admin-set list.
         if (allowedModules == null) return myLevel >= (ROLE_LEVEL[t.minRole] || 1);
         return allowedModules.includes(t.id);

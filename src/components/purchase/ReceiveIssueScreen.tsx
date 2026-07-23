@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import FilePicker from '@/components/ui/FilePicker';
+import ManagedListSheet from '@/components/ui/ManagedListSheet';
 
 interface IssueLine {
   product_name: string;
@@ -16,8 +17,8 @@ interface ReceiveIssueScreenProps {
   onSubmit: (issueType: string, notes: string, photo: string) => void;
 }
 
-// Choco-aligned issue categories.
-const ISSUE_TYPES = ['Missing', 'Wrong quantity', 'Damaged', 'Expired', 'Wrong item', 'Other'];
+// Fallback shown until the managed list loads (seeds the same defaults server-side).
+const DEFAULT_ISSUE_TYPES = ['Missing', 'Wrong quantity', 'Damaged', 'Expired', 'Wrong item', 'Other'];
 // What the restaurant wants the supplier to do about it (Choco: credit / replacement / custom).
 const RESOLUTIONS = ['Credit note', 'Replacement', 'Just record it'];
 
@@ -26,12 +27,35 @@ export default function ReceiveIssueScreen({ line, onSubmit }: ReceiveIssueScree
   const [resolution, setResolution] = useState('Just record it');
   const [notes, setNotes] = useState(line?.issue_notes || '');
   const [photo, setPhoto] = useState('');
+  // Delivery-issue types are now a managed list (add/rename/delete by an admin).
+  const [issueTypes, setIssueTypes] = useState<string[]>(DEFAULT_ISSUE_TYPES);
+  const [canManageTypes, setCanManageTypes] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const loadTypes = useCallback(async () => {
+    try {
+      const d = await fetch('/api/managed-lists/issue-types').then((r) => (r.ok ? r.json() : null));
+      if (d?.meta) setCanManageTypes(!!d.meta.canWrite);
+      if (Array.isArray(d?.items)) {
+        const labels: string[] = d.items.map((i: { label: string }) => i.label);
+        setIssueTypes(labels);
+        // Reconcile the selection: keep it if it's still an option OR it's this
+        // line's saved (possibly legacy/renamed) value; else drop to the first
+        // available — or nothing if the list was emptied (never keep a deleted
+        // default like "Missing" selected).
+        setIssueType((prev) => (labels.includes(prev) || prev === (line?.issue_type || '') ? prev : (labels[0] ?? '')));
+      }
+    } catch { /* keep defaults */ }
+  }, [line?.issue_type]);
+  useEffect(() => { loadTypes(); }, [loadTypes]);
+  // A saved value no longer in the list (removed/renamed) still shows selected.
+  const displayTypes = issueType && !issueTypes.includes(issueType) ? [...issueTypes, issueType] : issueTypes;
 
   function handleFile(_file: File, dataUrl: string) {
     setPhoto(dataUrl);
   }
 
   function handleSubmit() {
+    if (!issueType.trim()) return;   // never submit an empty / deleted type
     // Fold the requested resolution into the note so it travels with the issue
     // (shown to the manager on approval and posted to the Odoo purchase order).
     const parts: string[] = [];
@@ -45,9 +69,14 @@ export default function ReceiveIssueScreen({ line, onSubmit }: ReceiveIssueScree
       <div className="text-[16px] font-bold text-gray-900 mb-1">{line?.product_name}</div>
       <div className="text-[13px] text-gray-500 mb-4">Ordered: {line?.ordered_qty} {line?.product_uom}</div>
 
-      <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">What&rsquo;s wrong?</label>
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400">What&rsquo;s wrong?</label>
+        {canManageTypes && (
+          <button onClick={() => setManageOpen(true)} className="text-[11px] font-bold text-[#F5800A] active:opacity-70">Edit types</button>
+        )}
+      </div>
       <div className="flex gap-1.5 flex-wrap mb-4">
-        {ISSUE_TYPES.map((t) => (
+        {displayTypes.map((t) => (
           <button
             key={t}
             onClick={() => setIssueType(t)}
@@ -56,6 +85,9 @@ export default function ReceiveIssueScreen({ line, onSubmit }: ReceiveIssueScree
             {t}
           </button>
         ))}
+        {displayTypes.length === 0 && (
+          <p className="text-[12px] text-gray-400">No issue types set up{canManageTypes ? ' — add one with “Edit types”.' : ' — ask an admin to add some.'}</p>
+        )}
       </div>
 
       <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400 block mb-2">What should happen?</label>
@@ -113,10 +145,15 @@ export default function ReceiveIssueScreen({ line, onSubmit }: ReceiveIssueScree
 
       <button
         onClick={handleSubmit}
-        className="w-full py-3.5 rounded-xl bg-[#F5800A] text-white text-[14px] font-bold shadow-lg shadow-[#F5800A]/30 active:bg-[#E86000]"
+        disabled={!issueType.trim()}
+        className="w-full py-3.5 rounded-xl bg-[#F5800A] text-white text-[14px] font-bold shadow-lg shadow-[#F5800A]/30 active:bg-[#E86000] disabled:opacity-40"
       >
         Save issue
       </button>
+
+      {manageOpen && (
+        <ManagedListSheet listKey="issue-types" onChanged={loadTypes} onClose={() => setManageOpen(false)} />
+      )}
     </div>
   );
 }
