@@ -212,6 +212,47 @@ record page** — the authoritative page for a single record. Full spec: vault
   for the same record (same model / validation / permissions / business logic).
 - In-repo example: `/products/[id]` is the canonical product page; `/inventory/product/[id]` redirects to it.
 
+## Design Principles (binding — learned the hard way)
+
+These encode real bugs this codebase shipped or nearly shipped. They are cheap to
+follow and expensive to relearn.
+
+1. **ONE canonical editor per piece of data.** Before building a new screen/editor,
+   check whether that data already has one — reuse or link to it. A second editor
+   for the same record/sub-record is a bug, not a feature. (The home-spots saga:
+   one record was editable from four screens → "which one is real?". This extends
+   the Canonical Record Page Rule to sub-records like placements.)
+
+2. **A preview/summary/derived view must REUSE the real logic, never re-implement
+   it.** If the system computes something elsewhere (an order, a route, a total),
+   call that same function. Parallel implementations drift silently. (A hand-rolled
+   "By location" walk-order preview would have disagreed with the actual guided
+   count; the fix was to reuse `buildGuidedRoute`.)
+
+3. **Destructive ops on live business data (counts, money, Odoo writes) must be
+   GUARDED, ATOMIC, and FAIL-CLOSED.** Never delete before you can recreate; wrap
+   delete+recreate in one transaction; guards must protect work already started
+   and default to "don't touch" when unsure. (`regenerateTodaySession` could delete
+   a schedule-drifted count with no replacement, and `untouchedTodaySessionId`
+   ignored status-only progress → wiped skip-reasons.)
+
+4. **Async screens need a disciplined load lifecycle — don't hand-roll it per
+   screen.** Loading/error state, a staleness/request token so only the latest
+   response writes state, and loading for the RIGHT scope (not a global switcher).
+   A preview presented as authoritative must not render from half-loaded/failed
+   data. (Five stale/race/wrong-company preview bugs, all the same shape — a shared
+   data-loading hook is the standing fix.)
+
+5. **Anything touching counts, money, or Odoo writes gets an ADVERSARIAL review
+   (Codex / a second reasoner told to attack it) before shipping — and ship in
+   small, independently-deployable, reversible increments.** Type-checking and a
+   green build pass on data-loss bugs; only an attacker's-eye review catches them.
+
+6. **Show data's scope/provenance in the UI, and make every block ACTIONABLE**
+   (explain *why* + the next step). (Global-vs-per-list home spots confused users
+   until labelled; the correct "can't delete the *head* unit" guard read as a bug
+   because it gave no reason or path forward.)
+
 ## Test Users
 
 | Name | Role | employee_id | Password |
