@@ -116,7 +116,6 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const [uoms, setUoms] = useState<{ id: number; name: string }[]>([]);
   const [catOptions, setCatOptions] = useState<{ id: number; name: string }[]>([]);
 
-  const [step, setStep] = useState<'config' | 'products'>('config');
   const [portalUsers, setPortalUsers] = useState<any[]>([]);
 
   const isEdit = !!template?.id;
@@ -531,217 +530,36 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     setSaving(false);
   }
 
-  // ========== PRODUCT PICKER STEP ==========
-  if (step === 'products') {
-    // THE LIST is the screen: only what's been added, grouped by category, with
-    // spot chips + remove. Adding happens in the search-first AddProductsSheet —
-    // no 200-row checkbox wall to lose your place in.
-    const listFiltered = search
-      ? selectedProducts.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
-      : selectedProducts;
-    // By-location preview = the REAL guided walk over the same data the count
-    // freezes: products grouped under each home spot, in shelf order + walk
-    // order, multi-spot duplicated, unplaced last under "Everything else".
-    // buildGuidedRoute is the exact function the session route uses, so the
-    // preview can never disagree with what staff actually walk.
-    const productById = new Map<number, any>(allProducts.map((p) => [p.id, p]));
-    // Feed the walk builder the products in the SAME order the session freezes
-    // them — Array.from(selectedProductIds), i.e. what handleSubmit saves as
-    // product_ids — so the preview's "General/unplaced" bucket matches the real
-    // count's order, not the category/name order of `listFiltered`. Filtered by
-    // the live search and to products we can actually render.
-    const q = search.trim().toLowerCase();
-    const previewIds = Array.from(selectedProductIds).filter((id) => {
-      const p = productById.get(id);
-      return !!p && (!q || p.name.toLowerCase().includes(q));
-    });
-    const { stops: locationStops } = buildGuidedRoute({
-      productIds: previewIds,
-      placements: placementRows,
-      locations: countLocations,
-      statuses: [],
-    });
-    return (
-      <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col">
-        <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200 flex items-center justify-between">
-          <button onClick={() => setStep('config')} className="flex items-center gap-1 text-gray-500 text-[var(--fs-base)] font-semibold active:opacity-70">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
-            Back
-          </button>
-          <div className="text-center">
-            <div className="text-[var(--fs-lg)] font-bold text-gray-900">This list</div>
-            <div className="text-[var(--fs-xs)] text-gray-500">{selectedCount} product{selectedCount !== 1 ? 's' : ''}</div>
-          </div>
-          <button onClick={() => setStep('config')}
-            className="bg-green-600 text-white text-[var(--fs-base)] font-bold px-4 py-2 rounded-xl active:bg-green-700 shadow-sm">
-            Done
-          </button>
-        </div>
-
-        {selectedCount === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
-            <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mb-3">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-            </div>
-            <p className="text-[var(--fs-lg)] font-bold text-gray-900 mb-1">Nothing on this list yet</p>
-            <p className="text-[var(--fs-sm)] text-gray-500 mb-5 max-w-[240px]">Add the products staff should count — search or browse by category.</p>
-          </div>
-        ) : (
-          <>
-            {selectedCount > 12 && (
-              <SearchBar value={search} onChange={setSearch} placeholder="Find on this list..." />
-            )}
-            {/* By category (browse/edit) vs By location (a preview of the guided
-                walk — products grouped under each home spot, in counting order). */}
-            <div className="px-4 pt-2 flex items-center gap-2">
-              <div className="inline-flex rounded-xl bg-gray-200/70 p-0.5 text-[var(--fs-sm)] font-semibold">
-                <button onClick={() => setProductView('category')}
-                  className={`px-3 py-1.5 rounded-lg transition-colors ${productView === 'category' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
-                  By category
-                </button>
-                <button onClick={() => setProductView('location')}
-                  className={`px-3 py-1.5 rounded-lg transition-colors ${productView === 'location' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
-                  By location
-                </button>
-              </div>
-              {/* See the whole thing exactly as staff will walk it (read-only). */}
-              <button onClick={() => setPreviewing(true)} disabled={!placementsReady || loadingProducts}
-                className="ml-auto flex items-center gap-1 text-[var(--fs-sm)] font-bold text-purple-700 active:opacity-70 disabled:opacity-40">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-                Preview as staff
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 pb-4 pt-2">
-              <div className="flex flex-col gap-4">
-                {productView === 'category' ? (
-                  groupByCategory(listFiltered).map((group) => (
-                    <div key={group.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                      <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-green-700 bg-green-50 px-4 py-2 border-b border-gray-100">
-                        {group.name} <span className="text-gray-400 font-semibold">({group.items.length})</span>
-                      </div>
-                      {group.items.map((p) => productRow(p))}
-                    </div>
-                  ))
-                ) : !placementsReady ? (
-                  <p className="text-center text-gray-400 text-[var(--fs-sm)] py-10">
-                    {placementsError ? 'Couldn’t load locations — reopen this list to try again.' : 'Loading locations…'}
-                  </p>
-                ) : locationStops.length === 0 ? (
-                  <p className="text-center text-gray-400 text-[var(--fs-sm)] py-10">Nothing to show here yet.</p>
-                ) : (
-                  locationStops.map((stop) => (
-                    <div key={stop.bucket_id} className={`bg-white border rounded-xl overflow-hidden ${stop.location === null ? 'border-amber-200' : 'border-gray-200'}`}>
-                      <div className={`text-[var(--fs-xs)] font-bold tracking-wide uppercase px-4 py-2 border-b border-gray-100 flex items-center gap-1.5 ${stop.location === null ? 'text-amber-700 bg-amber-50' : 'text-blue-700 bg-blue-50'}`}>
-                        <span className="truncate">{stop.location === null ? 'Unplaced' : `📍 ${spotLabels[stop.bucket_id] || stop.location.name}`}</span>
-                        <span className="text-gray-400 font-semibold">({stop.product_ids.length})</span>
-                        {stop.location === null && (
-                          <span className="ml-auto normal-case tracking-normal font-semibold text-amber-600">counted under {'“'}General{'”'}</span>
-                        )}
-                      </div>
-                      {stop.product_ids.map((pid) => productById.get(pid)).filter(Boolean).map((p) => productRow(p))}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </>
-        )}
-
-        <div className="px-4 pb-4 pt-2 bg-gray-50">
-          <button onClick={() => setAddOpen(true)}
-            className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-xl)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 active:scale-[0.975] transition-all">
-            + Add products
-          </button>
-        </div>
-
-        {addOpen && (
-          <AddProductsSheet
-            products={allProducts}
-            selectedIds={selectedProductIds}
-            onToggle={toggleProduct}
-            onAddMany={(ids) => setSelectedProductIds((prev) => new Set([...Array.from(prev), ...ids]))}
-            productImageIds={productImageIds}
-            homeSpots={homeSpots}
-            spotLabels={spotLabels}
-            unitHint={unitHint}
-            onEditProduct={(p) => setProductEditFor(p)}
-            onNewProduct={isManager ? openCreateProduct : undefined}
-            onClose={() => setAddOpen(false)}
-          />
-        )}
-
-        {spotSheetFor && formCompanyId && (
-          <SpotSheet
-            product={spotSheetFor}
-            hasImage={productImageIds.has(spotSheetFor.id)}
-            companyId={formCompanyId}
-            initialSpotIds={homeSpots[spotSheetFor.id] || []}
-            onSaved={(ids) => {
-              // Instant chip feedback, then refresh in place so the By-location
-              // preview (placementRows + any newly-created location) reflects the
-              // save. The shared loader owns the ready/error flags and a token
-              // guard, so a failed or out-of-order refresh can't strand the view.
-              setHomeSpots((m) => ({ ...m, [spotSheetFor.id]: ids }));
-              if (formCompanyId) loadSpotData(formCompanyId, false);
-            }}
-            onClose={() => setSpotSheetFor(null)}
-          />
-        )}
-
-        {previewing && (
-          <CountPreview
-            listName={name}
-            productIds={Array.from(selectedProductIds)}
-            placements={placementRows}
-            locations={countLocations}
-            productsById={Object.fromEntries(allProducts.map((p) => [p.id, p]))}
-            productImageIds={productImageIds}
-            unitHint={unitHint}
-            onClose={() => setPreviewing(false)}
-          />
-        )}
-
-        {/* Drill-down overlay: the product's own editor, stacked ABOVE the add
-            sheet (baseZ 120) so the half-built list underneath is untouched.
-            "Full page ↗" lets the manager leave the flow deliberately. */}
-        {productEditFor && (
-          <ProductDetail
-            product={productEditFor}
-            hasImage={productImageIds.has(productEditFor.id)}
-            readOnly={!canEditProduct}
-            baseZ={120}
-            fullPageHref={recordHref('product', productEditFor.id)}
-            onClose={() => setProductEditFor(null)}
-            onChanged={(patch) => {
-              if (patch.name === undefined && patch.uom === undefined) return;
-              setAllProducts((prev) => prev.map((x) => x.id === productEditFor.id
-                ? { ...x, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
-                : x));
-              setProductEditFor((cur: any) => cur && cur.id === productEditFor.id
-                ? { ...cur, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
-                : cur);
-            }}
-          />
-        )}
-
-        {/* No-dead-end product create — the shared canonical sheet, stacked above
-            the add sheet (z-140) so it never ties with it. */}
-        <CreateProductSheet
-          open={createOpen}
-          initialName={createName}
-          units={uoms}
-          categories={catOptions}
-          saving={createSaving}
-          error={createErr}
-          context="inventory"
-          baseZ={140}
-          canCreateCategory={canEditProduct}
-          onClose={() => { setCreateOpen(false); setCreateErr(''); }}
-          onCreate={(payload) => createProductAndAdd({ name: payload.name, uom_id: payload.uom_id, categ_id: payload.categ_id, default_code: payload.default_code })}
-        />
-      </div>
-    );
-  }
+  // Derived data for the inline product editor below — hoisted to the component
+  // body so the ONE screen renders THIS LIST directly (no separate step).
+  // THE LIST is the screen: only what's been added, grouped by category, with
+  // spot chips + remove. Adding happens in the search-first AddProductsSheet —
+  // no 200-row checkbox wall to lose your place in.
+  const listFiltered = search
+    ? selectedProducts.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
+    : selectedProducts;
+  // By-location preview = the REAL guided walk over the same data the count
+  // freezes: products grouped under each home spot, in shelf order + walk
+  // order, multi-spot duplicated, unplaced last under "Everything else".
+  // buildGuidedRoute is the exact function the session route uses, so the
+  // preview can never disagree with what staff actually walk.
+  const productById = new Map<number, any>(allProducts.map((p) => [p.id, p]));
+  // Feed the walk builder the products in the SAME order the session freezes
+  // them — Array.from(selectedProductIds), i.e. what handleSubmit saves as
+  // product_ids — so the preview's "General/unplaced" bucket matches the real
+  // count's order, not the category/name order of `listFiltered`. Filtered by
+  // the live search and to products we can actually render.
+  const q = search.trim().toLowerCase();
+  const previewIds = Array.from(selectedProductIds).filter((id) => {
+    const p = productById.get(id);
+    return !!p && (!q || p.name.toLowerCase().includes(q));
+  });
+  const { stops: locationStops } = buildGuidedRoute({
+    productIds: previewIds,
+    placements: placementRows,
+    locations: countLocations,
+    statuses: [],
+  });
 
 
   // ========== CONFIG STEP ==========
@@ -925,54 +743,89 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           )}
         </div>
 
-        {/* Products section */}
+        {/* Products section — the full editable list lives right here, inline;
+            no separate step. Settings above, the list below. */}
         <div className="px-5 pb-4">
           <div className="flex items-center justify-between mb-2">
             <label className="text-[var(--fs-xs)] font-semibold tracking-wide uppercase text-gray-500">
               Products ({selectedCount})
             </label>
-            <button onClick={() => setStep('products')}
-              className="text-green-700 text-[var(--fs-sm)] font-semibold active:opacity-70">
-              {selectedCount === 0 ? '+ Add products' : 'Edit selection'}
-            </button>
           </div>
 
           {selectedCount === 0 ? (
-            <button onClick={() => setStep('products')}
-              className="w-full bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center active:bg-gray-50 transition-colors">
+            <div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
               <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2" strokeLinecap="round">
                   <path d="M12 5v14M5 12h14"/>
                 </svg>
               </div>
-              <div className="text-[var(--fs-base)] font-semibold text-gray-900">Add products to this list</div>
-              <div className="text-[var(--fs-sm)] text-gray-500 mt-1">Browse, search, and select products</div>
-            </button>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {groupByCategory(selectedProducts).map((group) => (
-                <div key={group.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                  <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-green-700 bg-green-50 px-4 py-2 border-b border-gray-100">
-                    {group.name} <span className="text-gray-400 font-semibold">({group.items.length})</span>
-                  </div>
-                  {group.items.map((p, idx) => (
-                    <div key={p.id}
-                      className={`flex items-center gap-3 px-4 py-2.5 ${idx < group.items.length - 1 ? 'border-b border-gray-100' : ''}`}>
-                      <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={36} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
-                        <div className="text-[var(--fs-xs)] text-gray-400 truncate">{unitHint(p)}</div>
-                      </div>
-                      <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name}`}
-                        className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-500 flex-shrink-0">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ))}
+              <div className="text-[var(--fs-base)] font-semibold text-gray-900">Nothing on this list yet</div>
+              <div className="text-[var(--fs-sm)] text-gray-500 mt-1">Add the products staff should count — search or browse by category.</div>
             </div>
+          ) : (
+            <>
+              {selectedCount > 12 && (
+                <SearchBar value={search} onChange={setSearch} placeholder="Find on this list..." />
+              )}
+              {/* By category (browse/edit) vs By location (a preview of the guided
+                  walk — products grouped under each home spot, in counting order). */}
+              <div className="pt-2 flex items-center gap-2">
+                <div className="inline-flex rounded-xl bg-gray-200/70 p-0.5 text-[var(--fs-sm)] font-semibold">
+                  <button onClick={() => setProductView('category')}
+                    className={`px-3 py-1.5 rounded-lg transition-colors ${productView === 'category' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+                    By category
+                  </button>
+                  <button onClick={() => setProductView('location')}
+                    className={`px-3 py-1.5 rounded-lg transition-colors ${productView === 'location' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+                    By location
+                  </button>
+                </div>
+                {/* See the whole thing exactly as staff will walk it (read-only). */}
+                <button onClick={() => setPreviewing(true)} disabled={!placementsReady || loadingProducts}
+                  className="ml-auto flex items-center gap-1 text-[var(--fs-sm)] font-bold text-purple-700 active:opacity-70 disabled:opacity-40">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                  Preview as staff
+                </button>
+              </div>
+              <div className="flex flex-col gap-4 pt-2">
+                {productView === 'category' ? (
+                  groupByCategory(listFiltered).map((group) => (
+                    <div key={group.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-green-700 bg-green-50 px-4 py-2 border-b border-gray-100">
+                        {group.name} <span className="text-gray-400 font-semibold">({group.items.length})</span>
+                      </div>
+                      {group.items.map((p) => productRow(p))}
+                    </div>
+                  ))
+                ) : !placementsReady ? (
+                  <p className="text-center text-gray-400 text-[var(--fs-sm)] py-10">
+                    {placementsError ? 'Couldn’t load locations — reopen this list to try again.' : 'Loading locations…'}
+                  </p>
+                ) : locationStops.length === 0 ? (
+                  <p className="text-center text-gray-400 text-[var(--fs-sm)] py-10">Nothing to show here yet.</p>
+                ) : (
+                  locationStops.map((stop) => (
+                    <div key={stop.bucket_id} className={`bg-white border rounded-xl overflow-hidden ${stop.location === null ? 'border-amber-200' : 'border-gray-200'}`}>
+                      <div className={`text-[var(--fs-xs)] font-bold tracking-wide uppercase px-4 py-2 border-b border-gray-100 flex items-center gap-1.5 ${stop.location === null ? 'text-amber-700 bg-amber-50' : 'text-blue-700 bg-blue-50'}`}>
+                        <span className="truncate">{stop.location === null ? 'Unplaced' : `📍 ${spotLabels[stop.bucket_id] || stop.location.name}`}</span>
+                        <span className="text-gray-400 font-semibold">({stop.product_ids.length})</span>
+                        {stop.location === null && (
+                          <span className="ml-auto normal-case tracking-normal font-semibold text-amber-600">counted under {'“'}General{'”'}</span>
+                        )}
+                      </div>
+                      {stop.product_ids.map((pid) => productById.get(pid)).filter(Boolean).map((p) => productRow(p))}
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
           )}
+
+          {/* Add products — opens the search-first sheet (no leaving the form). */}
+          <button onClick={() => setAddOpen(true)}
+            className="mt-3 w-full py-3 rounded-xl border-2 border-dashed border-green-300 bg-green-50 text-green-700 text-[var(--fs-base)] font-bold active:bg-green-100 transition-colors">
+            + Add products
+          </button>
         </div>
 
         {/* Spacer for save button */}
@@ -1003,6 +856,92 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           }
         </button>
       </div>
+
+      {addOpen && (
+        <AddProductsSheet
+          products={allProducts}
+          selectedIds={selectedProductIds}
+          onToggle={toggleProduct}
+          onAddMany={(ids) => setSelectedProductIds((prev) => new Set([...Array.from(prev), ...ids]))}
+          productImageIds={productImageIds}
+          homeSpots={homeSpots}
+          spotLabels={spotLabels}
+          unitHint={unitHint}
+          onEditProduct={(p) => setProductEditFor(p)}
+          onNewProduct={isManager ? openCreateProduct : undefined}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
+
+      {spotSheetFor && formCompanyId && (
+        <SpotSheet
+          product={spotSheetFor}
+          hasImage={productImageIds.has(spotSheetFor.id)}
+          companyId={formCompanyId}
+          initialSpotIds={homeSpots[spotSheetFor.id] || []}
+          onSaved={(ids) => {
+            // Instant chip feedback, then refresh in place so the By-location
+            // preview (placementRows + any newly-created location) reflects the
+            // save. The shared loader owns the ready/error flags and a token
+            // guard, so a failed or out-of-order refresh can't strand the view.
+            setHomeSpots((m) => ({ ...m, [spotSheetFor.id]: ids }));
+            if (formCompanyId) loadSpotData(formCompanyId, false);
+          }}
+          onClose={() => setSpotSheetFor(null)}
+        />
+      )}
+
+      {previewing && (
+        <CountPreview
+          listName={name}
+          productIds={Array.from(selectedProductIds)}
+          placements={placementRows}
+          locations={countLocations}
+          productsById={Object.fromEntries(allProducts.map((p) => [p.id, p]))}
+          productImageIds={productImageIds}
+          unitHint={unitHint}
+          onClose={() => setPreviewing(false)}
+        />
+      )}
+
+      {/* Drill-down overlay: the product's own editor, stacked ABOVE the add
+          sheet (baseZ 120) so the half-built list underneath is untouched.
+          "Full page ↗" lets the manager leave the flow deliberately. */}
+      {productEditFor && (
+        <ProductDetail
+          product={productEditFor}
+          hasImage={productImageIds.has(productEditFor.id)}
+          readOnly={!canEditProduct}
+          baseZ={120}
+          fullPageHref={recordHref('product', productEditFor.id)}
+          onClose={() => setProductEditFor(null)}
+          onChanged={(patch) => {
+            if (patch.name === undefined && patch.uom === undefined) return;
+            setAllProducts((prev) => prev.map((x) => x.id === productEditFor.id
+              ? { ...x, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
+              : x));
+            setProductEditFor((cur: any) => cur && cur.id === productEditFor.id
+              ? { ...cur, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
+              : cur);
+          }}
+        />
+      )}
+
+      {/* No-dead-end product create — the shared canonical sheet, stacked above
+          the add sheet (z-140) so it never ties with it. */}
+      <CreateProductSheet
+        open={createOpen}
+        initialName={createName}
+        units={uoms}
+        categories={catOptions}
+        saving={createSaving}
+        error={createErr}
+        context="inventory"
+        baseZ={140}
+        canCreateCategory={canEditProduct}
+        onClose={() => { setCreateOpen(false); setCreateErr(''); }}
+        onCreate={(payload) => createProductAndAdd({ name: payload.name, uom_id: payload.uom_id, categ_id: payload.categ_id, default_code: payload.default_code })}
+      />
 
       {/* No-dead-end: create a department inline (reuses the canonical HR
           DeptRoleForm as a full-screen overlay), then refresh + auto-select it. */}
