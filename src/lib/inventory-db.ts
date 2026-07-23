@@ -2032,8 +2032,10 @@ export function deleteLocationKind(id: number, companyId: number): { ok: boolean
   // Compare in JS: SQLite lower() only folds ASCII, and German type names
   // (Kühlraum…) are realistic here. JS toLowerCase() is Unicode-correct.
   const target = row.kind.toLowerCase();
+  // Types apply to AREAS (roots) only — a child spot's legacy kind must not
+  // count as "in use", or a type used solely by old spots could never be deleted.
   const used = (db.prepare(
-    'SELECT kind FROM count_locations WHERE company_id = ? AND active = 1'
+    'SELECT kind FROM count_locations WHERE company_id = ? AND active = 1 AND parent_id IS NULL'
   ).all(companyId) as { kind: string }[])
     .filter((l) => (l.kind || '').toLowerCase() === target).length;
   if (used > 0) return { ok: false, in_use: used };

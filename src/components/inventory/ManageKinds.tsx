@@ -15,7 +15,7 @@ export default function ManageKinds({ companyId, kinds, locations, onChanged, on
   companyId: number;
   kinds: KindRow[];
   /** For the "used by N" count + delete guard — any rows with a `kind` field. */
-  locations: { kind?: string | null }[];
+  locations: { kind?: string | null; parent_id?: number | null }[];
   onChanged: () => Promise<void>;
   onClose: () => void;
   baseZ?: number;
@@ -24,8 +24,10 @@ export default function ManageKinds({ companyId, kinds, locations, onChanged, on
   const [busy, setBusy] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [editLabel, setEditLabel] = useState('');
+  // Types apply to AREAS (roots) only, so a child spot's legacy kind must not
+  // count as "in use" (it would wrongly block deleting the type).
   const usage = (k: KindRow) =>
-    locations.filter((l) => (l.kind || '').toLowerCase() === k.kind.toLowerCase()).length;
+    locations.filter((l) => l.parent_id == null && (l.kind || '').toLowerCase() === k.kind.toLowerCase()).length;
 
   async function add() {
     const label = newLabel.trim();

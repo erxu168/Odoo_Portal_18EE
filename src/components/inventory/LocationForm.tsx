@@ -46,7 +46,11 @@ export default function LocationForm({ initial, kinds, onManageKinds, onCancel, 
   baseZ?: number;
 }) {
   const [name, setName] = useState(initial.name || '');
-  const [kind, setKind] = useState(initial.kind || kinds[0]?.kind || 'area');
+  // A spot (a slot INSIDE an area — a drawer, rack, shelf, the floor) has a
+  // parent. Types describe the storage AREA, not the slots inside it, so a spot
+  // has no editable type — it's just a named slot (kept as a neutral 'spot').
+  const isSpot = initial.parent_id != null;
+  const [kind, setKind] = useState(initial.kind || (isSpot ? 'spot' : (kinds[0]?.kind || 'area')));
   // An existing location may carry a type that was since removed — keep it
   // selectable so opening the editor never silently changes the value.
   const options = kinds.some((k) => k.kind.toLowerCase() === String(kind).toLowerCase())
@@ -57,17 +61,22 @@ export default function LocationForm({ initial, kinds, onManageKinds, onCancel, 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end" style={{ zIndex: baseZ }}>
       <div className="bg-white w-full max-w-lg mx-auto rounded-t-2xl p-5 pb-8 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-bold mb-3">{initial.id ? 'Edit location' : 'New location'}</h3>
+        <h3 className="text-lg font-bold mb-3">{initial.id ? 'Edit' : 'New'} {isSpot ? 'spot' : 'location'}</h3>
         <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Name</label>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Walk-in Fridge"
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={isSpot ? 'e.g. Left Drawer, Rack 1' : 'e.g. Walk-in Fridge'}
                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50" />
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Type</label>
-          {onManageKinds && <button onClick={onManageKinds} className="text-[11px] font-bold text-blue-600 active:opacity-70">Edit types</button>}
-        </div>
-        <select value={kind} onChange={(e) => setKind(e.target.value)} className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50">
-          {options.map((k) => <option key={k.id} value={k.kind}>{k.label}</option>)}
-        </select>
+        {/* Type is for the storage AREA only — a spot inside it is just a named slot. */}
+        {!isSpot && (
+          <>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Type</label>
+              {onManageKinds && <button onClick={onManageKinds} className="text-[11px] font-bold text-blue-600 active:opacity-70">Edit types</button>}
+            </div>
+            <select value={kind} onChange={(e) => setKind(e.target.value)} className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50">
+              {options.map((k) => <option key={k.id} value={k.kind}>{k.label}</option>)}
+            </select>
+          </>
+        )}
         <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Notes (optional)</label>
         <input value={description || ''} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Back-left wall, top two shelves"
                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50" />

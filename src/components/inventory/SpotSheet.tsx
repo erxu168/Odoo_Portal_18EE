@@ -271,7 +271,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
 
       {(creating || editing) && (
         <LocationForm
-          initial={editing ? { id: editing.id, name: editing.name, kind: editing.kind, description: editing.description, photo: editing.photo } : {}}
+          initial={editing ? { id: editing.id, parent_id: editing.parent_id, name: editing.name, kind: editing.kind, description: editing.description, photo: editing.photo } : {}}
           kinds={kinds}
           baseZ={baseZ + 10}
           saving={formSaving}

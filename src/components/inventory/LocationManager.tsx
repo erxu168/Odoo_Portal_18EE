@@ -167,7 +167,8 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
                               <>
                                 <div className="flex-1 min-w-0">
                                   <div className="font-semibold text-gray-800 text-sm truncate">{shelf.name}</div>
-                                  <div className="text-[11px] text-gray-400">{kindLabel(shelf.kind)}</div>
+                                  {/* Spots are just named slots — show their note (if any), not a type. */}
+                                  {shelf.description && <div className="text-[11px] text-gray-400 truncate">{shelf.description}</div>}
                                 </div>
                                 {shelfHandle}
                                 <button onClick={() => setEditing(shelf)} className="text-xs font-semibold text-blue-600 px-1">Edit</button>
@@ -178,7 +179,7 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
                         ))}
                       </SortableContext>
                       </DndContext>
-                      <button onClick={() => setEditing({ parent_id: area.id, kind: kinds.find((k) => k.kind === 'zone')?.kind || kinds[0]?.kind || 'zone' })}
+                      <button onClick={() => setEditing({ parent_id: area.id })}
                               className="w-full text-left px-6 py-2.5 text-sm font-semibold text-green-700 active:bg-gray-50">
                         + Add a shelf / spot
                       </button>
