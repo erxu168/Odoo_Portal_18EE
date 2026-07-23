@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, StatusBadge, Spinner, EmptyState, SectionTitle } from './ui';
 import RecordLink from '@/components/ui/RecordLink';
 import TemplateForm from './TemplateForm';
-import TemplatePlacementEditor from './TemplatePlacementEditor';
 import { useCompany } from '@/lib/company-context';
 
 interface ManageTemplatesProps {
@@ -21,7 +20,6 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
   const [assignFilter, setAssignFilter] = useState('all');
   const [editing, setEditing] = useState<any | null>(null);
   const [creating, setCreating] = useState(false);
-  const [arranging, setArranging] = useState<any | null>(null);   // list whose spot layout is open
   const [confirmDelete, setConfirmDelete] = useState<any | null>(null);  // list pending delete confirmation
   const [deleting, setDeleting] = useState(false);
 
@@ -128,16 +126,6 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
   }
 
   // Show form
-  if (arranging) {
-    return (
-      <TemplatePlacementEditor
-        templateId={arranging.id}
-        templateName={arranging.name}
-        onBack={() => setArranging(null)}
-      />
-    );
-  }
-
   if (creating || editing) {
     return (
       <TemplateForm
@@ -219,13 +207,12 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
                     <RecordLink type="list" id={tpl.id} label={tpl.name} />
                   </div>
                 </div>
-                <div className="flex border-t border-gray-100">
-                  <button onClick={() => setArranging(tpl)}
-                    className="flex-1 px-4 py-2.5 text-left text-[var(--fs-sm)] font-bold text-green-700 active:bg-green-50">
-                    {'\uD83D\uDCCD'} Arrange spots
-                  </button>
+                {/* Spots are now set inside the list (open it \u2192 "By location" \u2192
+                    tap a product) or on the product's own page, so there's no
+                    separate "Arrange spots" step \u2014 just the destructive action. */}
+                <div className="flex justify-end border-t border-gray-100">
                   <button onClick={() => setConfirmDelete(tpl)}
-                    className="px-4 py-2.5 text-[var(--fs-sm)] font-bold text-red-600 active:bg-red-50 border-l border-gray-100">
+                    className="px-4 py-2.5 text-[var(--fs-sm)] font-bold text-red-600 active:bg-red-50">
                     Delete
                   </button>
                 </div>
