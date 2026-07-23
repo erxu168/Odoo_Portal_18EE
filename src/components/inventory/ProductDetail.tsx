@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Spinner, ProductThumb } from './ui';
 import SpotSheet from './SpotSheet';
 import ManagePackLabels from './ManagePackLabels';
+import ManageCategories from './ManageCategories';
 import { suggestCrateSizeFromName, baseIsMeasure } from '@/lib/crate-units';
 import { useCompany } from '@/lib/company-context';
 
@@ -62,6 +63,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [newCat, setNewCat] = useState(false);          // inline "create category" open?
   const [newCatName, setNewCatName] = useState('');
   const [catBusy, setCatBusy] = useState(false);
+  const [manageCats, setManageCats] = useState(false);  // "Edit categories" sheet
   const loadCategories = () => fetch('/api/inventory/categories')
     .then((r) => (r.ok ? r.json() : { categories: [] }))
     .then((cd) => setCategories(cd.categories || []))
@@ -375,8 +377,11 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             )}
           </button>
 
-          {/* Category — editable (Odoo product.category), with in-place create */}
-          <label className={label} htmlFor="pd-cat">Category</label>
+          {/* Category — editable (Odoo product.category), with in-place create + manage */}
+          <div className="flex items-center justify-between mb-1">
+            <label className={`${label} mb-0`} htmlFor="pd-cat">Category</label>
+            {!readOnly && <button type="button" onClick={() => setManageCats(true)} className="text-[11px] font-bold text-blue-700 active:opacity-70">Edit categories</button>}
+          </div>
           <select id="pd-cat" value={newCat ? -1 : catId} disabled={readOnly || busy === 'master' || catBusy}
             onChange={async (e) => {
               const next = Number(e.target.value);
@@ -428,6 +433,9 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
 
       {manageUnits && (
         <ManagePackLabels baseZ={baseZ + 10} onChanged={() => { loadUnits(); loadFlags(); }} onClose={() => setManageUnits(false)} />
+      )}
+      {manageCats && (
+        <ManageCategories baseZ={baseZ + 10} onChanged={loadCategories} onClose={() => setManageCats(false)} />
       )}
     </div>
   );
