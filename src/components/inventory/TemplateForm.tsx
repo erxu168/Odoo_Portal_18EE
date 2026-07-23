@@ -5,6 +5,7 @@ import { BackHeader, SearchBar, ProductThumb, leafCategory } from './ui';
 import SpotSheet from './SpotSheet';
 import AddProductsSheet from './AddProductsSheet';
 import ProductDetail from './ProductDetail';
+import CountPreview from './CountPreview';
 import CreateProductSheet from '@/components/products/CreateProductSheet';
 import DeptRoleForm from '@/components/hr/DeptRoleForm';
 import RecordLink from '@/components/ui/RecordLink';
@@ -97,6 +98,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const [placementsError, setPlacementsError] = useState(false);
   const [spotSheetFor, setSpotSheetFor] = useState<any | null>(null);           // product whose spots are being edited
   const [productView, setProductView] = useState<'category' | 'location'>('category'); // "This list" preview: group by category, or by home-spot in walk order
+  const [previewing, setPreviewing] = useState(false);                          // "Preview as staff" — the real guided count, read-only
   const [productEditFor, setProductEditFor] = useState<any | null>(null);       // drill-down: product editor overlay
   const [canEditProduct, setCanEditProduct] = useState(false);                  // capability for product master edits
   const [isManager, setIsManager] = useState(false);                            // dept/product quick-create is manager+ (matches the endpoints)
@@ -602,9 +604,12 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
                   By location
                 </button>
               </div>
-              {productView === 'location' && (
-                <span className="text-[var(--fs-xs)] text-gray-400">The order staff will count</span>
-              )}
+              {/* See the whole thing exactly as staff will walk it (read-only). */}
+              <button onClick={() => setPreviewing(true)} disabled={!placementsReady || loadingProducts}
+                className="ml-auto flex items-center gap-1 text-[var(--fs-sm)] font-bold text-purple-700 active:opacity-70 disabled:opacity-40">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                Preview as staff
+              </button>
             </div>
             <div className="flex-1 overflow-y-auto px-4 pb-4 pt-2">
               <div className="flex flex-col gap-4">
@@ -680,6 +685,19 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
               if (formCompanyId) loadSpotData(formCompanyId, false);
             }}
             onClose={() => setSpotSheetFor(null)}
+          />
+        )}
+
+        {previewing && (
+          <CountPreview
+            listName={name}
+            productIds={Array.from(selectedProductIds)}
+            placements={placementRows}
+            locations={countLocations}
+            productsById={Object.fromEntries(allProducts.map((p) => [p.id, p]))}
+            productImageIds={productImageIds}
+            unitHint={unitHint}
+            onClose={() => setPreviewing(false)}
           />
         )}
 
