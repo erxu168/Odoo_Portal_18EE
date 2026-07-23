@@ -83,6 +83,21 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => { if (d?.labels) setPackUnits(d.labels.map((x: any) => x.label)); })
     .catch(() => {});
+  // Re-pull THIS product's flags — after a unit rename/delete cascades in the DB,
+  // the in-memory pack_label would otherwise be stale and a later pack-size save
+  // could write the old (now-gone) label back, orphaning the product.
+  const loadFlags = () => fetch(`/api/inventory/product-flags?ids=${product.id}`)
+    .then((r) => (r.ok ? r.json() : { flags: [] }))
+    .then((d) => {
+      const f = (d.flags || [])[0];
+      if (f) {
+        setRequiresPhoto(!!f.requires_photo);
+        setPackLabel(f.pack_label || '');
+        setPackSize(f.units_per_crate != null ? String(f.units_per_crate) : '');
+        setLooseLabel(f.loose_label || '');
+      }
+    })
+    .catch(() => {});
   useEffect(() => { loadUnits(); }, []);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);      // which section is saving
@@ -412,7 +427,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
       )}
 
       {manageUnits && (
-        <ManagePackLabels baseZ={baseZ + 10} onChanged={loadUnits} onClose={() => setManageUnits(false)} />
+        <ManagePackLabels baseZ={baseZ + 10} onChanged={() => { loadUnits(); loadFlags(); }} onClose={() => setManageUnits(false)} />
       )}
     </div>
   );

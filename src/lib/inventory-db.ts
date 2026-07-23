@@ -2122,3 +2122,29 @@ export function deletePackLabel(id: number): { ok: boolean; in_use: number } {
   db.prepare('DELETE FROM pack_labels WHERE id = ?').run(id);
   return { ok: true, in_use: 0 };
 }
+
+/**
+ * Rename a count-by unit. Because product_flags stores the label STRING (not an
+ * id), the rename CASCADES to every product counted in the old label so none is
+ * orphaned. Dup-guarded (Unicode-safe). Whole thing is one transaction.
+ */
+export function renamePackLabel(id: number, label: string): { ok: boolean; dupe?: boolean } {
+  const db = getDb();
+  const clean = label.trim().replace(/\s+/g, ' ');
+  if (!clean || clean.length > 24) return { ok: false };
+  return db.transaction(() => {
+    const rows = db.prepare('SELECT id, label FROM pack_labels').all() as { id: number; label: string }[];
+    const self = rows.find((r) => r.id === id);
+    if (!self) return { ok: false };
+    const lower = clean.toLowerCase();
+    if (rows.some((r) => r.id !== id && r.label.toLowerCase() === lower)) return { ok: false, dupe: true };
+    if (self.label === clean) return { ok: true };   // no-op (identical)
+    // Cascade the rename to every product counted in the old unit.
+    const oldLower = self.label.toLowerCase();
+    const distinct = db.prepare('SELECT DISTINCT pack_label FROM product_flags WHERE pack_label IS NOT NULL').all() as { pack_label: string }[];
+    const upd = db.prepare('UPDATE product_flags SET pack_label = ? WHERE pack_label = ?');
+    distinct.filter((f) => (f.pack_label || '').toLowerCase() === oldLower).forEach((f) => upd.run(clean, f.pack_label));
+    db.prepare('UPDATE pack_labels SET label = ? WHERE id = ?').run(clean, id);
+    return { ok: true };
+  })();
+}
