@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { BackHeader, SearchBar, ProductThumb, leafCategory } from './ui';
 import SpotSheet from './SpotSheet';
 import AddProductsSheet from './AddProductsSheet';
@@ -11,6 +11,7 @@ import RecordLink from '@/components/ui/RecordLink';
 import { recordHref } from '@/lib/record-links';
 import { useCompany } from '@/lib/company-context';
 import { pluralizePack } from '@/lib/crate-units';
+import { buildGuidedRoute } from '@/lib/guided-route';
 
 const FREQUENCIES = [
   { id: 'daily', label: 'Daily' },
@@ -84,7 +85,18 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   // each row's spot chips; the SpotSheet edits them (saved immediately).
   const [homeSpots, setHomeSpots] = useState<Record<number, number[]>>({});     // productId -> spot ids
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});     // spot id -> "Area · Spot"
+  // The RAW placement rows + location metas — fed to buildGuidedRoute so the "By
+  // location" preview is byte-for-byte the real guided walk (shelf order, DFS
+  // walk order, multi-spot duplication, the "Everything else" bucket).
+  const [placementRows, setPlacementRows] = useState<{ odoo_product_id: number; count_location_id: number; shelf_sort: number }[]>([]);
+  const [countLocations, setCountLocations] = useState<any[]>([]);
+  // The By-location preview is presented as the REAL walk, so it must never
+  // render a route from half-loaded/failed data (that would falsely show every
+  // product "Unplaced"). Gate it on these.
+  const [placementsReady, setPlacementsReady] = useState(false);
+  const [placementsError, setPlacementsError] = useState(false);
   const [spotSheetFor, setSpotSheetFor] = useState<any | null>(null);           // product whose spots are being edited
+  const [productView, setProductView] = useState<'category' | 'location'>('category'); // "This list" preview: group by category, or by home-spot in walk order
   const [productEditFor, setProductEditFor] = useState<any | null>(null);       // drill-down: product editor overlay
   const [canEditProduct, setCanEditProduct] = useState(false);                  // capability for product master edits
   const [isManager, setIsManager] = useState(false);                            // dept/product quick-create is manager+ (matches the endpoints)
@@ -132,39 +144,78 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
       .catch(() => {});
   }, []);
 
-  // Home-spot map + spot labels for the chips (one request each). Failure is
-  // non-fatal — chips just show "No spot yet" until the sheet is opened.
+  // Load ONE restaurant's placement rows + location metas + chip labels. Pure
+  // fetch (no state writes) so callers control WHEN to apply: the mount effect
+  // guards against a stale company switch; the post-save refresh applies directly.
+  const fetchSpotData = useCallback(async (cid: number) => {
+    const [plRes, locRes] = await Promise.all([
+      fetch(`/api/inventory/product-locations?company_id=${cid}`).then((r) => r.ok ? r.json() : Promise.reject(new Error('placements'))),
+      fetch(`/api/inventory/count-locations?company_id=${cid}`).then((r) => r.ok ? r.json() : Promise.reject(new Error('locations'))),
+    ]);
+    const map: Record<number, number[]> = {};
+    (plRes.placements || []).forEach((p: any) => { (map[p.odoo_product_id] ||= []).push(p.count_location_id); });
+    const locs: any[] = locRes.locations || [];
+    const byId = new Map<number, any>(locs.map((l) => [l.id, l]));
+    const labels: Record<number, string> = {};
+    locs.forEach((l) => {
+      const parent = l.parent_id != null ? byId.get(l.parent_id) : null;
+      labels[l.id] = parent ? `${parent.name} · ${l.name}` : l.name;
+    });
+    return {
+      homeSpots: map,
+      placementRows: (plRes.placements || []) as { odoo_product_id: number; count_location_id: number; shelf_sort: number }[],
+      countLocations: locs,
+      spotLabels: labels,
+    };
+  }, []);
+
+  const applySpotData = useCallback((d: Awaited<ReturnType<typeof fetchSpotData>>) => {
+    setHomeSpots(d.homeSpots);
+    setPlacementRows(d.placementRows);
+    setCountLocations(d.countLocations);
+    setSpotLabels(d.spotLabels);
+  }, []);
+
+  // One loader for BOTH the initial load and the post-save refresh, owning the
+  // full ready/error lifecycle. A monotonic token means only the LATEST load
+  // ever writes state, so a company switch, an unmount, or two quick spot saves
+  // can never let an older response clobber a newer one. `fresh` clears the view
+  // to a loading state first (mount / company switch); a post-save refresh keeps
+  // the current route on screen (no flash) and swaps it in when the data lands.
+  const spotReqRef = useRef(0);
+  const loadSpotData = useCallback(async (cid: number, fresh: boolean) => {
+    const token = ++spotReqRef.current;
+    if (fresh) {
+      setPlacementsReady(false);
+      setPlacementsError(false);
+      setHomeSpots({});
+      setSpotLabels({});
+      setPlacementRows([]);
+      setCountLocations([]);
+    }
+    try {
+      const d = await fetchSpotData(cid);
+      if (token !== spotReqRef.current) return;   // superseded by a newer load
+      applySpotData(d);
+      setPlacementsReady(true);
+      setPlacementsError(false);
+    } catch {
+      if (token !== spotReqRef.current) return;
+      setPlacementsError(true);
+      setPlacementsReady(false);
+    }
+  }, [fetchSpotData, applySpotData]);
+
+  // Home spots + locations for THIS list's restaurant — formCompanyId, NOT the
+  // live switcher: editing a list must show its OWN restaurant's route, and must
+  // match SpotSheet (which also uses formCompanyId). Drives the chips AND the
+  // "By location" preview; the preview stays hidden until placementsReady so it
+  // never presents a mid-load "everything Unplaced" as the real walk.
   useEffect(() => {
-    if (!companyId) return;
-    let stale = false;
-    // Reset first — a failed load must show "no data", never the PREVIOUS
-    // restaurant's chips.
-    setHomeSpots({});
-    setSpotLabels({});
-    (async () => {
-      try {
-        const [plRes, locRes] = await Promise.all([
-          fetch(`/api/inventory/product-locations?company_id=${companyId}`).then((r) => r.ok ? r.json() : Promise.reject(new Error('placements'))),
-          fetch(`/api/inventory/count-locations?company_id=${companyId}`).then((r) => r.ok ? r.json() : Promise.reject(new Error('locations'))),
-        ]);
-        if (stale) return;
-        const map: Record<number, number[]> = {};
-        (plRes.placements || []).forEach((p: any) => {
-          (map[p.odoo_product_id] ||= []).push(p.count_location_id);
-        });
-        setHomeSpots(map);
-        const locs: any[] = locRes.locations || [];
-        const byId = new Map<number, any>(locs.map((l) => [l.id, l]));
-        const labels: Record<number, string> = {};
-        locs.forEach((l) => {
-          const parent = l.parent_id != null ? byId.get(l.parent_id) : null;
-          labels[l.id] = parent ? `${parent.name} · ${l.name}` : l.name;
-        });
-        setSpotLabels(labels);
-      } catch { /* chips degrade gracefully */ }
-    })();
-    return () => { stale = true; };
-  }, [companyId]);
+    if (!formCompanyId) return;
+    loadSpotData(formCompanyId, true);
+    return () => { spotReqRef.current++; };   // invalidate any in-flight load on switch/unmount
+  }, [formCompanyId, loadSpotData]);
 
   useEffect(() => {
     // Cancellation guard: after a company switch (or unmount) this run's late
@@ -320,6 +371,43 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     return Array.from(groups.values());
   }
 
+  // One product row for the "This list" preview — shared by the by-category and
+  // by-location views so they never drift. Thumb, name, unit hint, drill-down,
+  // remove, and the tap-to-set-location spot chips (amber when unplaced).
+  function productRow(p: any) {
+    return (
+      <div key={p.id} className="border-b border-gray-100 last:border-b-0 px-4 py-2.5">
+        <div className="flex items-center gap-3">
+          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
+          <div className="flex-1 min-w-0">
+            <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
+            <div className="text-[var(--fs-xs)] text-gray-400 truncate">{unitHint(p)}</div>
+          </div>
+          {/* Drill-down: open the product itself (fix name / unit / photo) */}
+          <RecordLink type="product" id={p.id} label={p.name} onOpen={() => setProductEditFor(p)} />
+          <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name} from the list`}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-500 flex-shrink-0">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <button onClick={() => setSpotSheetFor(p)} aria-label={`Change where ${p.name} is counted`}
+          className="mt-1 flex flex-wrap gap-1 pl-[52px] text-left active:opacity-80">
+          {(homeSpots[p.id] || []).length > 0 ? (
+            (homeSpots[p.id] || []).map((sid) => (
+              <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
+                📍 {spotLabels[sid] || `Spot ${sid}`}
+              </span>
+            ))
+          ) : (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-dashed border-amber-300">
+              📍 No spot yet — tap to set
+            </span>
+          )}
+        </button>
+      </div>
+    );
+  }
+
   function toggleProduct(productId: number) {
     setSelectedProductIds((prev) => {
       const next = new Set(prev);
@@ -449,6 +537,28 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     const listFiltered = search
       ? selectedProducts.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
       : selectedProducts;
+    // By-location preview = the REAL guided walk over the same data the count
+    // freezes: products grouped under each home spot, in shelf order + walk
+    // order, multi-spot duplicated, unplaced last under "Everything else".
+    // buildGuidedRoute is the exact function the session route uses, so the
+    // preview can never disagree with what staff actually walk.
+    const productById = new Map<number, any>(allProducts.map((p) => [p.id, p]));
+    // Feed the walk builder the products in the SAME order the session freezes
+    // them — Array.from(selectedProductIds), i.e. what handleSubmit saves as
+    // product_ids — so the preview's "General/unplaced" bucket matches the real
+    // count's order, not the category/name order of `listFiltered`. Filtered by
+    // the live search and to products we can actually render.
+    const q = search.trim().toLowerCase();
+    const previewIds = Array.from(selectedProductIds).filter((id) => {
+      const p = productById.get(id);
+      return !!p && (!q || p.name.toLowerCase().includes(q));
+    });
+    const { stops: locationStops } = buildGuidedRoute({
+      productIds: previewIds,
+      placements: placementRows,
+      locations: countLocations,
+      statuses: [],
+    });
     return (
       <div className="fixed inset-0 z-[60] bg-gray-50 flex flex-col">
         <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200 flex items-center justify-between">
@@ -479,46 +589,54 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             {selectedCount > 12 && (
               <SearchBar value={search} onChange={setSearch} placeholder="Find on this list..." />
             )}
+            {/* By category (browse/edit) vs By location (a preview of the guided
+                walk — products grouped under each home spot, in counting order). */}
+            <div className="px-4 pt-2 flex items-center gap-2">
+              <div className="inline-flex rounded-xl bg-gray-200/70 p-0.5 text-[var(--fs-sm)] font-semibold">
+                <button onClick={() => setProductView('category')}
+                  className={`px-3 py-1.5 rounded-lg transition-colors ${productView === 'category' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+                  By category
+                </button>
+                <button onClick={() => setProductView('location')}
+                  className={`px-3 py-1.5 rounded-lg transition-colors ${productView === 'location' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>
+                  By location
+                </button>
+              </div>
+              {productView === 'location' && (
+                <span className="text-[var(--fs-xs)] text-gray-400">The order staff will count</span>
+              )}
+            </div>
             <div className="flex-1 overflow-y-auto px-4 pb-4 pt-2">
               <div className="flex flex-col gap-4">
-                {groupByCategory(listFiltered).map((group) => (
-                  <div key={group.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                    <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-green-700 bg-green-50 px-4 py-2 border-b border-gray-100">
-                      {group.name} <span className="text-gray-400 font-semibold">({group.items.length})</span>
-                    </div>
-                    {group.items.map((p) => (
-                      <div key={p.id} className="border-b border-gray-100 last:border-b-0 px-4 py-2.5">
-                        <div className="flex items-center gap-3">
-                          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
-                            <div className="text-[var(--fs-xs)] text-gray-400 truncate">{unitHint(p)}</div>
-                          </div>
-                          {/* Drill-down: open the product itself (fix name / unit / photo) */}
-                          <RecordLink type="product" id={p.id} label={p.name} onOpen={() => setProductEditFor(p)} />
-                          <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name} from the list`}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-500 flex-shrink-0">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                          </button>
-                        </div>
-                        <button onClick={() => setSpotSheetFor(p)} aria-label={`Change where ${p.name} is counted`}
-                          className="mt-1 flex flex-wrap gap-1 pl-[52px] text-left active:opacity-80">
-                          {(homeSpots[p.id] || []).length > 0 ? (
-                            (homeSpots[p.id] || []).map((sid) => (
-                              <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
-                                📍 {spotLabels[sid] || `Spot ${sid}`}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-dashed border-amber-300">
-                              📍 No spot yet — tap to set
-                            </span>
-                          )}
-                        </button>
+                {productView === 'category' ? (
+                  groupByCategory(listFiltered).map((group) => (
+                    <div key={group.id} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="text-[var(--fs-xs)] font-bold tracking-wide uppercase text-green-700 bg-green-50 px-4 py-2 border-b border-gray-100">
+                        {group.name} <span className="text-gray-400 font-semibold">({group.items.length})</span>
                       </div>
-                    ))}
-                  </div>
-                ))}
+                      {group.items.map((p) => productRow(p))}
+                    </div>
+                  ))
+                ) : !placementsReady ? (
+                  <p className="text-center text-gray-400 text-[var(--fs-sm)] py-10">
+                    {placementsError ? 'Couldn’t load locations — reopen this list to try again.' : 'Loading locations…'}
+                  </p>
+                ) : locationStops.length === 0 ? (
+                  <p className="text-center text-gray-400 text-[var(--fs-sm)] py-10">Nothing to show here yet.</p>
+                ) : (
+                  locationStops.map((stop) => (
+                    <div key={stop.bucket_id} className={`bg-white border rounded-xl overflow-hidden ${stop.location === null ? 'border-amber-200' : 'border-gray-200'}`}>
+                      <div className={`text-[var(--fs-xs)] font-bold tracking-wide uppercase px-4 py-2 border-b border-gray-100 flex items-center gap-1.5 ${stop.location === null ? 'text-amber-700 bg-amber-50' : 'text-blue-700 bg-blue-50'}`}>
+                        <span className="truncate">{stop.location === null ? 'Unplaced' : `📍 ${spotLabels[stop.bucket_id] || stop.location.name}`}</span>
+                        <span className="text-gray-400 font-semibold">({stop.product_ids.length})</span>
+                        {stop.location === null && (
+                          <span className="ml-auto normal-case tracking-normal font-semibold text-amber-600">counted under {'“'}General{'”'}</span>
+                        )}
+                      </div>
+                      {stop.product_ids.map((pid) => productById.get(pid)).filter(Boolean).map((p) => productRow(p))}
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </>
@@ -553,7 +671,14 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             hasImage={productImageIds.has(spotSheetFor.id)}
             companyId={formCompanyId}
             initialSpotIds={homeSpots[spotSheetFor.id] || []}
-            onSaved={(ids) => setHomeSpots((m) => ({ ...m, [spotSheetFor.id]: ids }))}
+            onSaved={(ids) => {
+              // Instant chip feedback, then refresh in place so the By-location
+              // preview (placementRows + any newly-created location) reflects the
+              // save. The shared loader owns the ready/error flags and a token
+              // guard, so a failed or out-of-order refresh can't strand the view.
+              setHomeSpots((m) => ({ ...m, [spotSheetFor.id]: ids }));
+              if (formCompanyId) loadSpotData(formCompanyId, false);
+            }}
             onClose={() => setSpotSheetFor(null)}
           />
         )}
