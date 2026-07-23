@@ -15,7 +15,7 @@ export default function ManagePackLabels({ onClose, onChanged, baseZ = 130 }: {
   onChanged: () => void;
   baseZ?: number;
 }) {
-  const [labels, setLabels] = useState<{ id: number; label: string }[]>([]);
+  const [labels, setLabels] = useState<{ id: number; label: string; in_use?: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState('');
   const [busy, setBusy] = useState(false);
@@ -119,13 +119,17 @@ export default function ManagePackLabels({ onClose, onChanged, baseZ = 130 }: {
                       </>
                     ) : (
                       <>
-                        <span className="flex-1 min-w-0 truncate text-[var(--fs-base)] font-semibold text-gray-800">{l.label}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate text-[var(--fs-base)] font-semibold text-gray-800">{l.label}</div>
+                          {(l.in_use ?? 0) > 0 && <div className="text-[11px] text-gray-400">used by {l.in_use} product{l.in_use === 1 ? '' : 's'}</div>}
+                        </div>
                         {isAdmin && (
                           <>
                             <button onClick={() => { setEditId(l.id); setEditVal(l.label); setErr(null); }} disabled={busy}
                               aria-label={`Rename ${l.label}`} className="text-[13px] font-semibold text-blue-600 active:opacity-70 disabled:opacity-40 px-2">Rename</button>
-                            <button onClick={() => del(l.id)} disabled={busy} aria-label={`Delete ${l.label}`}
-                              className="text-[13px] font-bold text-red-600 active:opacity-70 disabled:opacity-40 px-2">Delete</button>
+                            <button onClick={() => del(l.id)} disabled={busy || (l.in_use ?? 0) > 0} aria-label={`Delete ${l.label}`}
+                              title={(l.in_use ?? 0) > 0 ? 'In use — change those products first' : undefined}
+                              className={`text-[13px] font-bold px-2 active:opacity-70 disabled:opacity-40 ${(l.in_use ?? 0) > 0 ? 'text-gray-300' : 'text-red-600'}`}>Delete</button>
                           </>
                         )}
                       </>

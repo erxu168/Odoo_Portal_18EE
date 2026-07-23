@@ -2065,7 +2065,7 @@ export function renameLocationKind(id: number, companyId: number, label: string)
 // ── "Count by" unit vocabulary (pack_labels) — GLOBAL, manager-editable ──
 const DEFAULT_PACK_LABELS = ['piece', 'bunch', 'head', 'crate', 'case', 'box', 'tray', 'bag', 'pack'];
 
-export interface PackLabelRow { id: number; label: string; sort_order: number }
+export interface PackLabelRow { id: number; label: string; sort_order: number; in_use?: number }
 
 /** List the count-by units, seeding the defaults on first use. */
 export function listPackLabels(): PackLabelRow[] {
@@ -2079,7 +2079,13 @@ export function listPackLabels(): PackLabelRow[] {
       DEFAULT_PACK_LABELS.forEach((l, i) => ins.run(l, (i + 1) * 10, now()));
     }
   })();
-  return db.prepare('SELECT id, label, sort_order FROM pack_labels ORDER BY sort_order, id').all() as PackLabelRow[];
+  const rows = db.prepare('SELECT id, label, sort_order FROM pack_labels ORDER BY sort_order, id').all() as PackLabelRow[];
+  // Attach how many products are counted in each unit (case-insensitive JS,
+  // matching the delete guard) so the UI can show it + block delete-while-in-use.
+  const flags = db.prepare('SELECT pack_label FROM product_flags WHERE pack_label IS NOT NULL').all() as { pack_label: string }[];
+  const counts = new Map<string, number>();
+  for (const f of flags) { const k = (f.pack_label || '').toLowerCase(); if (k) counts.set(k, (counts.get(k) || 0) + 1); }
+  return rows.map((r) => ({ ...r, in_use: counts.get(r.label.toLowerCase()) || 0 }));
 }
 
 /** Add a unit; returns null on a duplicate (Unicode case-insensitive) or bad label. */
