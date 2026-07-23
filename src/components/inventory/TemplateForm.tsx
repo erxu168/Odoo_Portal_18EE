@@ -13,6 +13,7 @@ import { recordHref } from '@/lib/record-links';
 import { useCompany } from '@/lib/company-context';
 import { pluralizePack } from '@/lib/crate-units';
 import { buildGuidedRoute } from '@/lib/guided-route';
+import { locationPathLabel } from '@/lib/location-tree';
 
 const FREQUENCIES = [
   { id: 'daily', label: 'Daily' },
@@ -156,12 +157,10 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     const map: Record<number, number[]> = {};
     (plRes.placements || []).forEach((p: any) => { (map[p.odoo_product_id] ||= []).push(p.count_location_id); });
     const locs: any[] = locRes.locations || [];
-    const byId = new Map<number, any>(locs.map((l) => [l.id, l]));
+    // Full path so a deep spot chip reads "Basement › Freezer › Shelf 3", never
+    // a truncated 2 levels.
     const labels: Record<number, string> = {};
-    locs.forEach((l) => {
-      const parent = l.parent_id != null ? byId.get(l.parent_id) : null;
-      labels[l.id] = parent ? `${parent.name} · ${l.name}` : l.name;
-    });
+    locs.forEach((l) => { labels[l.id] = locationPathLabel(l.id, locs); });
     return {
       homeSpots: map,
       placementRows: (plRes.placements || []) as { odoo_product_id: number; count_location_id: number; shelf_sort: number }[],

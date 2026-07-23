@@ -7,6 +7,7 @@ import ManagePackLabels from './ManagePackLabels';
 import ManageCategories from './ManageCategories';
 import { suggestCrateSizeFromName, baseIsMeasure } from '@/lib/crate-units';
 import { useCompany } from '@/lib/company-context';
+import { locationPathLabel } from '@/lib/location-tree';
 
 /**
  * Product page — everything about ONE product in one place:
@@ -158,12 +159,9 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
         const locs: any[] = (locRes as any).locations || [];
         const companySpots = new Set(locs.map((l) => l.id));
         setHomeSpots(((spotRes.location_ids || []) as number[]).filter((id) => companySpots.has(id)));
-        const byId = new Map<number, any>(locs.map((l) => [l.id, l]));
+        // Full path so a deep spot chip reads "Basement › Freezer › Shelf 3".
         const labels: Record<number, string> = {};
-        locs.forEach((l) => {
-          const parent = l.parent_id != null ? byId.get(l.parent_id) : null;
-          labels[l.id] = parent ? `${parent.name} · ${l.name}` : l.name;
-        });
+        locs.forEach((l) => { labels[l.id] = locationPathLabel(l.id, locs); });
         setSpotLabels(labels);
       } catch { /* sections degrade to their defaults */ }
       finally { setLoading(false); }

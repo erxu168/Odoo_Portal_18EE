@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
-import { buildLocationTree } from '@/lib/location-tree';
+import { buildLocationTree, locationPath } from '@/lib/location-tree';
 import { locationCode } from '@/lib/location-code';
 
 /**
@@ -15,7 +15,7 @@ import { locationCode } from '@/lib/location-code';
 interface LocRow { id: number; parent_id: number | null; name: string; sort_order: number }
 interface Label { id: number; name: string; area: string | null; code: string; qr: string }
 
-export default function LocationLabels({ companyId, onClose }: { companyId: number; onClose: () => void }) {
+export default function LocationLabels({ companyId, onClose, onlyId }: { companyId: number; onClose: () => void; onlyId?: number }) {
   const [labels, setLabels] = useState<Label[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,18 +37,21 @@ export default function LocationLabels({ companyId, onClose }: { companyId: numb
       try {
         const d = await fetch(`/api/inventory/count-locations?company_id=${companyId}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error('load'))));
         const locs: LocRow[] = d.locations || [];
-        // Walking order = the manager's arrangement: areas by sort_order, each
-        // area's spots after it. buildLocationTree already applies sort_order.
-        const tree = buildLocationTree(locs) as (LocRow & { children?: LocRow[] })[];
-        const ordered: { row: LocRow; area: string | null }[] = [];
-        for (const area of tree) {
-          ordered.push({ row: area, area: null });
-          for (const spot of (area.children || [])) ordered.push({ row: spot, area: area.name });
-        }
-        const built = await Promise.all(ordered.map(async ({ row, area }) => {
+        // Walk order = the manager's arrangement, DFS to ANY depth (sort_order
+        // applied by buildLocationTree). Each label shows the full ancestor path
+        // (e.g. "Ground floor › Kitchen") above the location's own name.
+        const orderedRows: LocRow[] = [];
+        const walk = (nodes: (LocRow & { children?: LocRow[] })[]) => {
+          for (const n of nodes) { orderedRows.push(n); walk(n.children || []); }
+        };
+        walk(buildLocationTree(locs) as (LocRow & { children?: LocRow[] })[]);
+        // Single-location print (onlyId) vs the whole batch.
+        const rows = onlyId != null ? orderedRows.filter((r) => r.id === onlyId) : orderedRows;
+        const built = await Promise.all(rows.map(async (row) => {
           const code = locationCode(row.id);
           const qr = await QRCode.toDataURL(code, { width: 240, margin: 1 });
-          return { id: row.id, name: row.name, area, code, qr };
+          const ancestors = locationPath(row.id, locs).slice(0, -1).join(' › ');
+          return { id: row.id, name: row.name, area: ancestors || null, code, qr };
         }));
         if (!stale) { setLabels(built); setLoading(false); }
       } catch {
@@ -56,7 +59,7 @@ export default function LocationLabels({ companyId, onClose }: { companyId: numb
       }
     })();
     return () => { stale = true; };
-  }, [companyId]);
+  }, [companyId, onlyId]);
 
   if (!mounted) return null;
 

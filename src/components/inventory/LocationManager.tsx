@@ -8,8 +8,89 @@ import RecordLink from '@/components/ui/RecordLink';
 import LocationForm from './LocationForm';
 import LocationLabels from './LocationLabels';
 import { useCompany } from '@/lib/company-context';
-import { buildLocationTree } from '@/lib/location-tree';
+import { buildLocationTree, type LocationNode as LocationTreeNode } from '@/lib/location-tree';
 import type { CountLocation } from '@/types/inventory';
+
+/**
+ * One node of the location hierarchy, rendered RECURSIVELY to any depth:
+ * the node's own row, then its children (each its own drag-reorderable group),
+ * then a "+ Add inside" button. Depth 0 is a card; deeper levels are lighter,
+ * indented rows. Drag-reorder stays within each sibling group at every level.
+ */
+function LocationNode({ node, depth, sensors, onDragEnd, onEdit }: {
+  node: LocationTreeNode<CountLocation>;
+  depth: number;
+  sensors: ReturnType<typeof useSensors>;
+  onDragEnd: (e: DragEndEvent) => void;
+  onEdit: (loc: Partial<CountLocation>) => void;
+}) {
+  const isRoot = depth === 0;
+  const rowPad = 12 + depth * 16;          // indent the row itself with depth
+  const childPad = 12 + (depth + 1) * 16;  // "+ Add inside" aligns with children
+  return (
+    <DragRow
+      id={node.id}
+      className={isRoot ? 'bg-white border border-gray-200 rounded-2xl overflow-hidden' : 'bg-white'}
+    >
+      {(handle) => (
+        <>
+          <div
+            className={isRoot ? 'flex items-center gap-3 p-3' : 'flex items-center gap-2 px-3 py-2.5 border-b border-gray-50'}
+            style={{ paddingLeft: rowPad }}
+          >
+            {node.photo ? (
+              <div
+                className={isRoot
+                  ? 'w-11 h-11 rounded-xl bg-cover bg-center bg-gray-100 flex-shrink-0'
+                  : 'w-9 h-9 rounded-lg bg-cover bg-center bg-gray-100 flex-shrink-0'}
+                style={{ backgroundImage: `url(${node.photo})` }}
+              />
+            ) : isRoot ? (
+              <div className="w-11 h-11 rounded-xl bg-cover bg-center bg-gray-100 flex-shrink-0" />
+            ) : null}
+            <div className="flex-1 min-w-0">
+              <div className={isRoot ? 'font-bold text-gray-900 truncate' : 'font-semibold text-gray-800 text-sm truncate'}>
+                {node.name}
+              </div>
+              {/* Named slots just show their note (if any), not a type. */}
+              {node.description && (
+                <div className={isRoot ? 'text-xs text-gray-500 truncate' : 'text-[11px] text-gray-400 truncate'}>
+                  {node.description}
+                </div>
+              )}
+            </div>
+            {handle}
+            <button
+              onClick={() => onEdit(node)}
+              className={isRoot ? 'text-sm font-semibold text-blue-600 px-2' : 'text-xs font-semibold text-blue-600 px-1'}
+            >
+              Edit
+            </button>
+            <RecordLink type="location" id={node.id} label={node.name} />
+          </div>
+          <div className={isRoot ? 'border-t border-gray-100' : undefined}>
+            {/* Drag-reorder within this node's own children (same pattern at every depth). */}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={node.children.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+                {node.children.map((child) => (
+                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} />
+                ))}
+              </SortableContext>
+            </DndContext>
+            <button
+              onClick={() => onEdit({ parent_id: node.id })}
+              className="flex w-full items-center gap-1 text-left py-2.5 pr-3 text-sm font-semibold text-green-700 active:bg-gray-50"
+              style={{ paddingLeft: childPad }}
+            >
+              <span className="flex-shrink-0">+ Add inside</span>
+              <span className="truncate">{node.name}</span>
+            </button>
+          </div>
+        </>
+      )}
+    </DragRow>
+  );
+}
 
 // Location types are per-company, manager-editable (location_kinds table).
 export default function LocationManager({ onBack }: { onBack: () => void }) {
@@ -133,49 +214,14 @@ export default function LocationManager({ onBack }: { onBack: () => void }) {
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={tree.map((a) => a.id)} strategy={verticalListSortingStrategy}>
             {tree.map((area) => (
-              <DragRow key={area.id} id={area.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-                {(handle) => (
-                  <>
-                    <div className="flex items-center gap-3 p-3">
-                      <div className="w-11 h-11 rounded-xl bg-cover bg-center bg-gray-100 flex-shrink-0"
-                           style={area.photo ? { backgroundImage: `url(${area.photo})` } : undefined} />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-bold text-gray-900 truncate">{area.name}</div>
-                        {area.description && <div className="text-xs text-gray-500 truncate">{area.description}</div>}
-                      </div>
-                      {handle}
-                      <button onClick={() => setEditing(area)} className="text-sm font-semibold text-blue-600 px-2">Edit</button>
-                      <RecordLink type="location" id={area.id} label={area.name} />
-                    </div>
-                    <div className="border-t border-gray-100">
-                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                      <SortableContext items={area.children.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-                        {area.children.map((shelf) => (
-                          <DragRow key={shelf.id} id={shelf.id} className="flex items-center gap-2 px-3 py-2.5 pl-6 border-b border-gray-50 bg-white">
-                            {(shelfHandle) => (
-                              <>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold text-gray-800 text-sm truncate">{shelf.name}</div>
-                                  {/* Spots are just named slots — show their note (if any), not a type. */}
-                                  {shelf.description && <div className="text-[11px] text-gray-400 truncate">{shelf.description}</div>}
-                                </div>
-                                {shelfHandle}
-                                <button onClick={() => setEditing(shelf)} className="text-xs font-semibold text-blue-600 px-1">Edit</button>
-                                <RecordLink type="location" id={shelf.id} label={shelf.name} />
-                              </>
-                            )}
-                          </DragRow>
-                        ))}
-                      </SortableContext>
-                      </DndContext>
-                      <button onClick={() => setEditing({ parent_id: area.id })}
-                              className="w-full text-left px-6 py-2.5 text-sm font-semibold text-green-700 active:bg-gray-50">
-                        + Add a shelf / spot
-                      </button>
-                    </div>
-                  </>
-                )}
-              </DragRow>
+              <LocationNode
+                key={area.id}
+                node={area}
+                depth={0}
+                sensors={sensors}
+                onDragEnd={handleDragEnd}
+                onEdit={setEditing}
+              />
             ))}
           </SortableContext>
         </DndContext>

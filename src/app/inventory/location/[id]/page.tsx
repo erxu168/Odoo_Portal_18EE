@@ -15,6 +15,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import { Spinner, ProductThumb } from '@/components/inventory/ui';
 import RecordLink from '@/components/ui/RecordLink';
 import LocationForm from '@/components/inventory/LocationForm';
+import LocationLabels from '@/components/inventory/LocationLabels';
 import { RECORD_EDIT_CAP } from '@/lib/record-links';
 import { allowedActionKeysForRole, type Role } from '@/lib/permissions';
 
@@ -35,6 +36,7 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
 
   // Editing uses the ONE shared LocationForm (single-canonical-form rule).
   const [editing, setEditing] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [saveErr, setSaveErr] = useState<string | null>(null);
@@ -149,6 +151,12 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
           </div>
           {loc.description && <p className="text-[var(--fs-sm)] text-gray-500 mt-1">{loc.description}</p>}
           {savedMsg && <span className="text-[12px] font-bold text-green-600">{savedMsg}</span>}
+          {canEdit && (
+            <button onClick={() => setPrinting(true)}
+              className="mt-2 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border-2 border-gray-200 text-gray-600 text-[var(--fs-sm)] font-bold active:bg-gray-50">
+              🖨 Print this label
+            </button>
+          )}
         </div>
 
         {/* Parent — drill up */}
@@ -220,6 +228,7 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
           error={saveErr}
         />
       )}
+      {printing && <LocationLabels companyId={loc.company_id} onlyId={loc.id} onClose={() => setPrinting(false)} />}
     </div>
   );
 }

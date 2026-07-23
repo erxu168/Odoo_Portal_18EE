@@ -222,6 +222,27 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
     );
   }
 
+  // Render one location node and, indented beneath it, its children — RECURSIVELY
+  // to any depth. Top-level nodes render as areas (photo + bold name); every
+  // deeper node is a plain tickable row. Each node at every level is tickable
+  // (its SpotToggle checkbox) and editable (the pencil), and its own children
+  // nest inside the same left-rail indent, one level deeper each time.
+  function renderNode(node: any, isTop: boolean) {
+    return (
+      <div key={node.id} className={isTop ? 'mb-3' : undefined}>
+        {/* The unit itself is ONE tickable row (photo + name + note + edit) —
+            no separate header, so it can't appear twice. Its spots (if any)
+            sit indented inside it, and so do THEIRS, to any depth. */}
+        <SpotToggle s={node} isArea={isTop} />
+        {(node.children || []).length > 0 && (
+          <div className="flex flex-col gap-1.5 mt-1.5 ml-3 pl-3 border-l-2 border-gray-200">
+            {node.children.map((c: any) => renderNode(c, false))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end" style={{ zIndex: baseZ }} role="dialog" aria-modal="true" aria-label={`Home spots for ${product.name}`}>
       <div className="bg-white w-full max-w-lg mx-auto rounded-t-2xl flex flex-col max-h-[92vh]">
@@ -244,19 +265,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
             <p className="text-center text-gray-400 py-8 text-[var(--fs-sm)]">
               No locations set up yet — create them under Inventory {'→'} Locations first.
             </p>
-          ) : tree.map((area: any) => (
-            <div key={area.id} className="mb-3">
-              {/* The unit itself is ONE tickable row (photo + name + note + edit) —
-                  no separate header, so it can't appear twice. Its spots (if any)
-                  sit indented inside it. */}
-              <SpotToggle s={area} isArea />
-              {(area.children || []).length > 0 && (
-                <div className="flex flex-col gap-1.5 mt-1.5 ml-3 pl-3 border-l-2 border-gray-200">
-                  {area.children.map((c: any) => <SpotToggle key={c.id} s={c} />)}
-                </div>
-              )}
-            </div>
-          ))}
+          ) : tree.map((area: any) => renderNode(area, true))}
           {!loading && canManageLocations && (
             <button onClick={() => setCreating(true)}
               className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50">

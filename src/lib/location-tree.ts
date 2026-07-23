@@ -28,6 +28,29 @@ export function buildLocationTree<T extends TreeRow>(rows: T[]): LocationNode<T>
 }
 
 /**
+ * Full path of a location, root → leaf, as an array of names — e.g.
+ * ["Basement", "Freezer"] or ["Ground floor", "Kitchen", "Walk-in 1", "Shelf 3"].
+ * Walks parent_id up; a cycle guard keeps it safe on malformed data.
+ */
+export function locationPath<T extends TreeRow & { name: string }>(id: number, rows: T[]): string[] {
+  const byId = new Map<number, T>(rows.map((r) => [r.id, r]));
+  const path: string[] = [];
+  const seen = new Set<number>();
+  let cur: T | undefined = byId.get(id);
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    path.unshift(cur.name);
+    cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined;
+  }
+  return path;
+}
+
+/** The full path joined for display, e.g. "Ground floor › Kitchen › Freezer". */
+export function locationPathLabel<T extends TreeRow & { name: string }>(id: number, rows: T[], sep = ' › '): string {
+  return locationPath(id, rows).join(sep);
+}
+
+/**
  * Next walking-order value for a sibling set: max + 10, or 10 when empty.
  * Gaps of 10 leave room to insert between two spots later.
  */
