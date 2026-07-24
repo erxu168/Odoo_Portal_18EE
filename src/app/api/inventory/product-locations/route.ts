@@ -87,9 +87,17 @@ export async function PUT(request: Request) {
     const spotIds: number[] = Array.from(new Set<number>(body.count_location_ids.map(Number)));
     if (spotIds.some((id: number) => !Number.isInteger(id) || id <= 0 || !valid.has(id)))
       return NextResponse.json({ error: 'One of those spots does not belong to this restaurant' }, { status: 400 });
+    // The OVERLAP invariant (never home a product at both a place and something
+    // inside it — it would be counted twice) is enforced inside
+    // setProductsSpotsBulk's transaction, so EVERY writer is covered by one rule.
     try {
       setProductSpots(productId, spotIds, companyId);
-    } catch {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.startsWith('OVERLAPPING_PLACEMENT')) {
+        return NextResponse.json({
+          error: 'Two of those places overlap (one is inside the other) — that would count the product twice.',
+        }, { status: 400 });
+      }
       // In-transaction revalidation failed (spot deleted mid-flight) — nothing applied.
       return NextResponse.json({ error: 'A spot was just removed — reload and try again' }, { status: 409 });
     }

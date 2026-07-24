@@ -132,7 +132,13 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   try {
     setProductsSpotsBulk(tmpl!.company_id as number,
       scope.map((pid) => ({ product_id: pid, spot_ids: bySpotOrder.get(pid) || [] })));
-  } catch {
+  } catch (err: unknown) {
+    // The overlap invariant is enforced inside setProductsSpotsBulk's transaction.
+    if (err instanceof Error && err.message.startsWith('OVERLAPPING_PLACEMENT')) {
+      return NextResponse.json({
+        error: 'A product was placed at both a location and a spot inside it — that would count it twice.',
+      }, { status: 400 });
+    }
     return NextResponse.json({ error: 'A spot was just removed — reload and try again' }, { status: 409 });
   }
 

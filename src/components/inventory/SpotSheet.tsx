@@ -61,6 +61,9 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   // (parent_id + a default kind when adding INSIDE another level).
   const [creating, setCreating] = useState<{ parent_id?: number | null; kind?: string } | null>(null);
   const [editMode, setEditMode] = useState(false);   // "Edit levels" — reveal add/rename/type/delete controls
+  // Drill-down picker: null = closed; else the ids drilled into so far
+  // ([] = choosing the area, [12] = choosing what's inside location 12, …).
+  const [picking, setPicking] = useState<number[] | null>(null);
   const [editing, setEditing] = useState<SpotRow | null>(null);   // location whose details are being edited
   const [managing, setManaging] = useState(false);   // full Locations manager open as an overlay
   // Resolve type icons incl. this company's CUSTOM types (built-ins + custom).
@@ -105,17 +108,108 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   // Areas (roots) with their child spots, in walking order.
   const tree = useMemo(() => buildLocationTree(spots as SpotRow[]), [spots]);
 
-  function toggle(id: number) {
-    setChosen((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+  const byId = useMemo(() => new Map<number, SpotRow>(spots.map((s) => [s.id, s] as [number, SpotRow])), [spots]);
+  const childrenOf = useMemo(() => {
+    const m = new Map<number, SpotRow[]>();
+    const live = new Set(spots.map((s) => s.id));
+    spots.forEach((s) => {
+      // Same rule as buildLocationTree: a node whose parent is missing counts as
+      // a ROOT — otherwise an orphaned spot would be unreachable in the drill-down.
+      const k = s.parent_id != null && live.has(s.parent_id) ? s.parent_id : 0;
+      const arr = m.get(k) || [];
+      arr.push(s);
+      m.set(k, arr);
     });
+    m.forEach((arr) => arr.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id));
+    return m;
+  }, [spots]);
+  const kidsOf = (id: number | null) => childrenOf.get(id ?? 0) || [];
+
+  /** Full path top→self (cycle-guarded). */
+  const pathOf = React.useCallback((id: number): SpotRow[] => {
+    const out: SpotRow[] = [];
+    const guard = new Set<number>();
+    let cur: number | null = id;
+    while (cur != null && byId.has(cur) && !guard.has(cur)) {
+      guard.add(cur);
+      const n: SpotRow = byId.get(cur)!;
+      out.unshift(n);
+      cur = n.parent_id ?? null;
+    }
+    return out;
+  }, [byId]);
+
+  /** Is `a` an ancestor of `b`? (a strictly contains b) */
+  const contains = React.useCallback((a: number, b: number) => {
+    if (a === b) return false;
+    return pathOf(b).some((n) => n.id === a);
+  }, [pathOf]);
+
+  // OVERLAPPING picks are the core error this sheet used to allow: a product
+  // counted at BOTH a unit and a place inside it (e.g. "Countertop fridge" AND
+  // "D4") is counted twice, because every picked place is its own count line and
+  // approval SUMS them. Surface any existing overlap with a one-tap fix.
+  const overlaps = useMemo(() => {
+    const ids = Array.from(chosen).filter((id) => byId.has(id));
+    const pairs: { outer: number; inner: number }[] = [];
+    ids.forEach((a) => ids.forEach((b) => { if (contains(a, b)) pairs.push({ outer: a, inner: b }); }));
+    return pairs;
+  }, [chosen, byId, contains]);
+
+  // While a save is in flight the request already carries a snapshot of `chosen`
+  // and the sheet closes on success — so a later edit would be silently lost.
+  // Every mutation below no-ops during a save (the controls are disabled too).
+  function removePlace(id: number) {
+    if (saving) return;
+    setChosen((prev) => { const n = new Set(prev); n.delete(id); return n; });
+  }
+
+  /**
+   * Resolve EVERY overlap at once by keeping only the most precise places: drop
+   * any picked place that contains another picked place. Pairwise removal isn't
+   * enough — with Area + Unit + Drawer all picked, fixing the Area/Drawer pair
+   * would leave Unit + Drawer still overlapping.
+   */
+  function keepMostPrecise() {
+    if (saving) return;
+    setChosen((prev) => {
+      const ids = Array.from(prev).filter((id) => byId.has(id));
+      return new Set(ids.filter((a) => !ids.some((b) => contains(a, b))));
+    });
+    setError(null);
+  }
+
+  /** Pick a place, refusing to keep a pick that overlaps it (ancestor OR descendant). */
+  function choosePlace(id: number) {
+    if (saving) return;
+    const clashes = Array.from(chosen).filter((c) => c !== id && (contains(c, id) || contains(id, c)));
+    if (clashes.length > 0) {
+      const names = clashes.map((c) => byId.get(c)?.name || `#${c}`).join(', ');
+      const me = byId.get(id)?.name || `#${id}`;
+      const ok = confirm(
+        `“${me}” overlaps with ${names}.\n\nA product is counted at EVERY place you pick, so keeping both would count this product twice.\n\nReplace ${names} with “${me}”?`,
+      );
+      if (!ok) return;
+    }
+    setChosen((prev) => {
+      const n = new Set(prev);
+      clashes.forEach((c) => n.delete(c));
+      n.add(id);
+      return n;
+    });
+    setPicking(null);
   }
 
   async function save() {
     if (saving) return;
+    // Fail closed on overlapping places: every picked place is its own count line
+    // and approval SUMS them, so a unit + something inside it silently inflates
+    // stock. REFUSE — the banner's one-tap fix resolves it. (The API enforces the
+    // same rule, so no other door can write a bad pair either.)
+    if (overlaps.length > 0) {
+      setError('Two places overlap (one is inside the other) — that would count this product twice. Use “Keep the most precise places” above.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -176,12 +270,14 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); setFormError(d.error || 'Could not create the location'); return; }
       const { id: newId } = await res.json();
-      // Success — show + tick the new location immediately (optimistic), so a
-      // failed background refresh can't hide a location that WAS created.
+      // Success — show the new location immediately (optimistic), so a failed
+      // background refresh can't hide a location that WAS created. It is NOT
+      // auto-assigned to the product: creating a level is a STRUCTURE edit, and
+      // auto-picking a child of an already-picked unit would build the exact
+      // overlapping pair this sheet exists to prevent. Assign via "+ Add a place".
       if (newId) {
         const newRow: SpotRow = { id: newId, parent_id: parentId, name: (loc.name || '').trim(), kind: loc.kind || 'area', photo: loc.photo ?? null, description: loc.description ?? null, sort_order: 9999 };
         setSpots((prev) => prev.some((s) => s.id === newId) ? prev : [...prev, newRow]);
-        setChosen((prev) => new Set(prev).add(newId));
       }
       setCreating(null);
       refreshSpots().catch(() => {});   // best-effort reconcile (real sort_order/parent)
@@ -236,12 +332,17 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
     const on = chosen.has(s.id);
     return (
       <div className={`w-full flex items-center rounded-xl border transition-colors ${
-        on ? 'bg-green-50 border-green-500' : 'bg-white border-gray-200'
+        on && !editMode ? 'bg-green-50 border-green-500' : 'bg-white border-gray-200'
       }`}>
-        <button onClick={() => toggle(s.id)} className="flex-1 min-w-0 flex items-center gap-2.5 px-3 py-2.5 text-left active:opacity-80">
-          <span className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center ${on ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'}`}>
-            {on && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
-          </span>
+        <button onClick={() => (editMode ? (setFormError(null), setEditing(s)) : choosePlace(s.id))} disabled={saving}
+          className="flex-1 min-w-0 flex items-center gap-2.5 px-3 py-2.5 text-left active:opacity-80">
+          {/* In Edit mode the tree is for SHAPING the map (no ticking) — the
+              product's places are picked in the drill-down instead. */}
+          {!editMode && (
+            <span className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center ${on ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'}`}>
+              {on && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>}
+            </span>
+          )}
           {isArea && s.photo && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={s.photo} alt="" className="w-8 h-8 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
@@ -254,7 +355,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         {/* Drill-down: rename / change type / delete this level in place — only
             in Edit mode, and only for users who can manage locations (else 403). */}
         {canManageLocations && editMode && (
-          <button onClick={() => { setFormError(null); setEditing(s); }} aria-label={`Edit ${s.name}`}
+          <button onClick={() => { setFormError(null); setEditing(s); }} disabled={saving} aria-label={`Edit ${s.name}`}
             className="px-3 py-2.5 text-gray-400 active:text-gray-700 flex-shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           </button>
@@ -282,7 +383,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
           <div className="flex flex-col gap-1.5 mt-1.5 ml-3 pl-3 border-l-2 border-gray-200">
             {kids.map((c: any) => renderNode(c, false))}
             {showAddInside && (
-              <button onClick={() => setCreating({ parent_id: node.id, kind: suggestedChildTypes(node.kind)[0]?.key || 'shelf' })}
+              <button onClick={() => setCreating({ parent_id: node.id, kind: suggestedChildTypes(node.kind)[0]?.key || 'shelf' })} disabled={saving}
                 className="self-start rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-[var(--fs-xs)] font-semibold text-green-700 active:bg-green-100">
                 + Add inside {node.name}
               </button>
@@ -301,11 +402,11 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
             <h3 className="text-lg font-bold text-gray-900">Where does it live?</h3>
             <div className="flex items-center gap-4">
               {canManageLocations && (
-                <button onClick={() => setEditMode((v) => !v)} className={`text-[var(--fs-sm)] font-semibold active:opacity-70 ${editMode ? 'text-green-700' : 'text-blue-700'}`}>
+                <button onClick={() => { if (saving) return; setPicking(null); setEditMode((v) => !v); }} disabled={saving} className={`text-[var(--fs-sm)] font-semibold active:opacity-70 ${editMode ? 'text-green-700' : 'text-blue-700'}`}>
                   {editMode ? 'Done' : 'Edit levels'}
                 </button>
               )}
-              <button onClick={onClose} className="text-gray-500 font-semibold active:opacity-70">Cancel</button>
+              <button onClick={onClose} disabled={saving} className="text-gray-500 font-semibold active:opacity-70 disabled:opacity-40">Cancel</button>
             </div>
           </div>
           <div className="flex items-center gap-2.5 mt-2">
@@ -315,7 +416,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
               <div className="text-[var(--fs-xs)] text-gray-500">
                 {editMode
                   ? 'Building the map — add levels with “+ Add inside”, tap ✎ to rename, set its type or delete'
-                  : 'Its home spots, shared by every counting list — tick each spot it’s stored at (counted at each)'}
+                  : 'Where it’s stored, shared by every counting list — pick the exact place, area by area'}
               </div>
             </div>
           </div>
@@ -328,16 +429,129 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
                 ? 'No locations yet — tap “Edit levels” above to add your first one.'
                 : 'No locations set up yet — ask your manager to add them.'}
             </p>
-          ) : tree.map((area: any) => renderNode(area, true))}
+          ) : editMode ? (
+            tree.map((area: any) => renderNode(area, true))
+          ) : picking !== null ? (
+            /* ---- DRILL-DOWN: one level at a time, always Area → … → exact place ---- */
+            (() => {
+              const hereId = picking.length > 0 ? picking[picking.length - 1] : null;
+              const here = hereId != null ? byId.get(hereId) : undefined;
+              const options = kidsOf(hereId);
+              return (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <button onClick={() => setPicking(picking.length > 0 ? picking.slice(0, -1) : null)} disabled={saving}
+                      className="text-green-700 text-[var(--fs-sm)] font-semibold flex items-center gap-1 active:opacity-70">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7" /></svg>
+                      Back
+                    </button>
+                  </div>
+                  <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1">
+                    {here ? `What’s inside ${here.name}?` : 'Which area?'}
+                  </p>
+                  {picking.length > 0 && (
+                    <p className="text-[var(--fs-xs)] text-gray-500 mb-3">
+                      {picking.map((id, i) => (
+                        <span key={id}>{i > 0 && <span className="text-gray-300"> › </span>}{iconOf(byId.get(id)?.kind)} {byId.get(id)?.name}</span>
+                      ))}
+                    </p>
+                  )}
+                  {/* Stop here: the product sits in this unit itself, not in a sub-level. */}
+                  {here && (
+                    <button onClick={() => choosePlace(here.id)} disabled={saving}
+                      className="w-full mb-3 py-3 rounded-xl bg-green-600 text-white text-[var(--fs-sm)] font-bold active:bg-green-700 disabled:opacity-50">
+                      ✓ It lives right here — in {here.name}
+                    </button>
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    {options.length === 0 ? (
+                      <p className="text-center text-gray-400 py-6 text-[var(--fs-sm)]">
+                        Nothing inside {here?.name} yet{canManageLocations ? ' — use “Edit levels” to add shelves or drawers.' : '.'}
+                      </p>
+                    ) : options.map((o) => {
+                      const grand = kidsOf(o.id).length;
+                      return (
+                        <button key={o.id} onClick={() => (grand > 0 ? setPicking([...picking, o.id]) : choosePlace(o.id))} disabled={saving}
+                          className="w-full flex items-center gap-2.5 px-3 py-3 rounded-xl border border-gray-200 bg-white text-left active:bg-gray-50 disabled:opacity-50">
+                          <span className="text-[var(--fs-lg)] flex-shrink-0">{iconOf(o.kind)}</span>
+                          <span className="flex-1 min-w-0">
+                            <span className="block truncate font-semibold text-gray-800">{o.name}</span>
+                            {(o.description || grand > 0) && (
+                              <span className="block truncate text-[var(--fs-xs)] text-gray-500">
+                                {grand > 0 ? `${grand} inside` : ''}{grand > 0 && o.description ? ' · ' : ''}{o.description || ''}
+                              </span>
+                            )}
+                          </span>
+                          {grand > 0
+                            ? <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M9 5l7 7-7 7" /></svg>
+                            : <span className="text-[var(--fs-xs)] font-bold text-green-700 flex-shrink-0">Pick</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            /* ---- The product's places, each a full path ---- */
+            <div>
+              {overlaps.length > 0 && (
+                <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                  <p className="text-[var(--fs-sm)] font-bold text-amber-900 mb-1">Overlapping places</p>
+                  {overlaps.map((o) => (
+                    <div key={`${o.outer}-${o.inner}`} className="text-[var(--fs-xs)] text-amber-800">
+                      <b>{byId.get(o.inner)?.name}</b> is inside <b>{byId.get(o.outer)?.name}</b> — counting both would count this product twice.
+                    </div>
+                  ))}
+                  <button onClick={keepMostPrecise} disabled={saving}
+                    className="mt-2 w-full py-2 rounded-lg bg-amber-600 text-white text-[var(--fs-xs)] font-bold active:bg-amber-700 disabled:opacity-50">
+                    Keep the most precise places
+                  </button>
+                </div>
+              )}
+              {chosen.size === 0 ? (
+                <p className="text-center text-gray-400 py-6 text-[var(--fs-sm)]">
+                  No place picked yet — it counts under “Everything else”.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-1.5 mb-3">
+                  {Array.from(chosen).filter((id) => byId.has(id)).map((id) => {
+                    const path = pathOf(id);
+                    const leaf = path[path.length - 1];
+                    return (
+                      <div key={id} className="flex items-center gap-2 rounded-xl border border-green-500 bg-green-50 px-3 py-2.5">
+                        <span className="flex-1 min-w-0">
+                          {path.length > 1 && (
+                            <span className="block truncate text-[var(--fs-xs)] text-green-800/70">
+                              {path.slice(0, -1).map((n, i) => (
+                                <span key={n.id}>{i > 0 && <span className="opacity-40"> › </span>}{iconOf(n.kind)} {n.name}</span>
+                              ))}
+                            </span>
+                          )}
+                          <span className="block truncate font-bold text-green-900">{iconOf(leaf.kind)} {leaf.name}</span>
+                        </span>
+                        <button onClick={() => removePlace(id)} disabled={saving} aria-label={`Remove ${leaf.name}`}
+                          className="w-7 h-7 rounded-full bg-white/70 text-green-800 font-bold flex items-center justify-center flex-shrink-0 active:bg-white">×</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <button onClick={() => setPicking([])} disabled={saving}
+                className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50 disabled:opacity-50">
+                + Add a place
+              </button>
+            </div>
+          )}
           {!loading && canManageLocations && editMode && (
             <div className="flex flex-col gap-2 mt-3">
-              <button onClick={() => setCreating({})}
-                className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50">
+              <button onClick={() => setCreating({})} disabled={saving}
+                className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50 disabled:opacity-50">
                 + New top-level location
               </button>
               {/* The inline controls cover add / rename / type / delete. The full
                   manager is only needed for drag-reordering or printing labels. */}
-              <button onClick={() => setManaging(true)}
+              <button onClick={() => setManaging(true)} disabled={saving}
                 className="w-full py-1.5 text-[var(--fs-xs)] font-semibold text-blue-700 active:opacity-70">
                 Reorder or print labels → Manage locations
               </button>
@@ -348,14 +562,14 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         <div className="px-4 pb-6 pt-2 border-t border-gray-100">
           {error && <p className="text-[12px] text-red-600 mb-2 font-semibold">{error}</p>}
           <label className="flex items-start gap-2.5 mb-3 px-1 cursor-pointer active:opacity-80">
-            <input type="checkbox" checked={applyToday} onChange={(e) => setApplyToday(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-green-600 flex-shrink-0" />
+            <input type="checkbox" checked={applyToday} disabled={saving} onChange={(e) => setApplyToday(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-green-600 flex-shrink-0 disabled:opacity-50" />
             <span className="text-[var(--fs-xs)] text-gray-600 leading-snug">
               Also update today’s counts that haven’t been started yet
             </span>
           </label>
           <div className="text-[var(--fs-xs)] text-gray-400 mb-2 text-center">
-            {chosen.size === 0 ? 'No spot ticked — it will count under “Everything else”' : `${chosen.size} spot${chosen.size !== 1 ? 's' : ''} — counted at each, totals add up`}
+            {chosen.size === 0 ? 'No place picked — it will count under “Everything else”' : `${chosen.size} place${chosen.size !== 1 ? 's' : ''} — counted at each, totals add up`}
           </div>
           <button onClick={save} disabled={saving || loading || !ready}
             className="w-full py-3.5 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 disabled:opacity-50 active:bg-green-700">
@@ -364,9 +578,11 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         </div>
       </div>
 
+      {/* `kind` MUST be passed through to LocationForm: it defaults a missing kind
+          to 'area', so omitting it silently reset a fridge/drawer's type on rename. */}
       {(creating != null || editing) && (
         <LocationForm
-          initial={editing ? { id: editing.id, parent_id: editing.parent_id, name: editing.name, description: editing.description, photo: editing.photo } : (creating ?? {})}
+          initial={editing ? { id: editing.id, parent_id: editing.parent_id, name: editing.name, kind: editing.kind, description: editing.description, photo: editing.photo } : (creating ?? {})}
           baseZ={baseZ + 10}
           saving={formSaving}
           error={formError}

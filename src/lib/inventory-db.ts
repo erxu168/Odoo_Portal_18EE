@@ -525,6 +525,67 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
     tx();
   }
 
+  // ONE-TIME: repair OVERLAPPING home spots — a product homed at BOTH a place
+  // and something inside it (e.g. a fridge AND its drawer "D4"). Each placement
+  // is its own count line and approval SUMS them, so such a pair silently
+  // DOUBLE-COUNTS stock. The picker and setProductsSpotsBulk now refuse to
+  // create one, but existing rows (legacy imports, or the old picker that let
+  // you tick a unit and its child) still carry them. Same rule as the UI's
+  // "keep the most precise places": drop every placement that CONTAINS another
+  // placement of the same product. Its own migration key so it also runs on
+  // databases where the legacy import already completed.
+  {
+    const tx = db.transaction(() => {
+      if (migApplied('normalize_overlapping_home_spots')) return;
+      const parentOfAll = new Map<number, number | null>(
+        (db.prepare('SELECT id, parent_id FROM count_locations').all() as { id: number; parent_id: number | null }[])
+          .map((r) => [r.id, r.parent_id ?? null] as [number, number | null]),
+      );
+      // Only ACTIVE placements are candidates. An inactive location never enters
+      // a count (session snapshots take active spots only), so treating one as
+      // "more precise" could delete a product's real ACTIVE home and strand it in
+      // "Everything else". Inactive rows still act as intermediate ancestry links
+      // via parentOfAll above.
+      const placed = db.prepare(`
+        SELECT pl.rowid AS rid, pl.odoo_product_id AS pid, pl.count_location_id AS lid
+        FROM product_locations pl
+        JOIN count_locations cl ON cl.id = pl.count_location_id
+        WHERE cl.active = 1
+      `).all() as { rid: number; pid: number; lid: number }[];
+      const byProduct = new Map<number, { rid: number; lid: number }[]>();
+      placed.forEach((r) => {
+        const arr = byProduct.get(r.pid) || [];
+        arr.push({ rid: r.rid, lid: r.lid });
+        byProduct.set(r.pid, arr);
+      });
+      const dropRow = db.prepare('DELETE FROM product_locations WHERE rowid = ?');
+      byProduct.forEach((rows) => {
+        const picked = new Set(rows.map((r) => r.lid));
+        const contained = new Set<number>();   // ids that CONTAIN another picked place
+        let cyclic = false;
+        rows.forEach((r) => {
+          const guard = new Set<number>([r.lid]);
+          let cur = parentOfAll.get(r.lid) ?? null;
+          while (cur != null) {
+            if (guard.has(cur)) { cyclic = true; break; }   // malformed parent cycle
+            if (picked.has(cur)) contained.add(cur);
+            guard.add(cur);
+            cur = parentOfAll.get(cur) ?? null;
+          }
+        });
+        // In a cycle there is no meaningful "most precise" place and every member
+        // looks like an ancestor of the others — deleting them would strip the
+        // product of ALL its home spots. Leave that product untouched instead.
+        if (cyclic) return;
+        rows.forEach((r) => { if (contained.has(r.lid)) dropRow.run(r.rid); });
+      });
+      markMig.run('normalize_overlapping_home_spots', now());
+    });
+    // IMMEDIATE: take the write lock before the marker check, so two workers
+    // initializing at once can't both read "not applied" from a deferred snapshot.
+    tx.immediate();
+  }
+
   // ONE-TIME: freeze legacy sessions (created before session snapshots existed)
   // as flat spot-0 items. Without this, the guided route would resolve them
   // from LIVE home spots while their count rows sit at spot 0 — editing a home
@@ -1937,6 +1998,22 @@ export function setProductsSpotsBulk(
     const valid = new Set((db.prepare(
       'SELECT id FROM count_locations WHERE company_id = ? AND active = 1'
     ).all(companyId) as { id: number }[]).map((r) => r.id));
+    // OVERLAP INVARIANT (enforced here so EVERY caller is covered — the product
+    // sheet, the bulk "arrange spots" writer, anything future): a product may
+    // never be homed at both a place and something inside it. Each placement is
+    // its own count line and approval SUMS them, so an ancestor+descendant pair
+    // silently DOUBLE-COUNTS stock. Parents are read WITHOUT the active filter:
+    // a deactivated middle node must not hide an overlap that would reappear the
+    // moment it is reactivated.
+    // Parents are read across ALL companies (not just `companyId`): a chain that
+    // passes through a row of another company would otherwise truncate the walk
+    // and hide an overlap. The table is small, and the placement ids themselves
+    // are still company-validated above.
+    const parentOf = new Map<number, number | null>(
+      (db.prepare('SELECT id, parent_id FROM count_locations')
+        .all() as { id: number; parent_id: number | null }[])
+        .map((r) => [r.id, r.parent_id ?? null] as [number, number | null]),
+    );
     const maxSort = db.prepare('SELECT COALESCE(MAX(shelf_sort), 0) AS m FROM product_locations WHERE count_location_id = ?');
     const del = db.prepare('DELETE FROM product_locations WHERE odoo_product_id = ? AND count_location_id = ?');
     const ins = db.prepare('INSERT OR IGNORE INTO product_locations (odoo_product_id, count_location_id, shelf_sort) VALUES (?, ?, ?)');
@@ -1948,6 +2025,20 @@ export function setProductsSpotsBulk(
     for (const e of entries) {
       for (const id of e.spot_ids) {
         if (!valid.has(id)) throw new Error(`Spot ${id} is not an active spot of company ${companyId}`);
+      }
+      {
+        const picked = new Set(e.spot_ids);
+        for (const id of e.spot_ids) {
+          const guard = new Set<number>([id]);
+          let cur = parentOf.get(id) ?? null;
+          while (cur != null && !guard.has(cur)) {
+            if (picked.has(cur)) {
+              throw new Error(`OVERLAPPING_PLACEMENT: product ${e.product_id} would be counted at both ${cur} and ${id} (one is inside the other)`);
+            }
+            guard.add(cur);
+            cur = parentOf.get(cur) ?? null;
+          }
+        }
       }
       const current = (currentOf.all(e.product_id, companyId) as { count_location_id: number }[])
         .map((r) => r.count_location_id);
