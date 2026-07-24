@@ -88,25 +88,31 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
                 ))}
               </SortableContext>
             </DndContext>
-            <div
-              className="flex flex-wrap items-center gap-1.5 py-2.5 pr-3"
-              style={{ paddingLeft: childPad }}
-            >
-              {suggestedChildTypes(node.kind).map((t) => (
+            {/* Each add-row is explicitly labelled with ITS parent, so it's
+                unambiguous whether a "+ Shelf/Drawer/…" adds a layer INSIDE this
+                unit vs inside its parent — the two rows otherwise stack with only
+                a small indent between them and read as one. */}
+            <div className="py-2.5 pr-3" style={{ paddingLeft: childPad }}>
+              <div className="text-[11px] font-semibold text-gray-400 mb-1.5">
+                <span className="text-green-600" aria-hidden="true">{'↳'}</span> Add inside {node.name}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {suggestedChildTypes(node.kind).map((t) => (
+                  <button
+                    key={t.key}
+                    onClick={() => onEdit({ parent_id: node.id, kind: t.key })}
+                    className="rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 active:bg-green-100"
+                  >
+                    + {t.label}
+                  </button>
+                ))}
                 <button
-                  key={t.key}
-                  onClick={() => onEdit({ parent_id: node.id, kind: t.key })}
-                  className="rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 active:bg-green-100"
+                  onClick={() => onEdit({ parent_id: node.id })}
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold text-gray-400 active:text-gray-600"
                 >
-                  + {t.label}
+                  + Something else{'…'}
                 </button>
-              ))}
-              <button
-                onClick={() => onEdit({ parent_id: node.id })}
-                className="rounded-full px-3 py-1.5 text-xs font-semibold text-gray-400 active:text-gray-600"
-              >
-                + Something else{'…'}
-              </button>
+              </div>
             </div>
           </div>
         </>
