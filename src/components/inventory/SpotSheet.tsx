@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Spinner, ProductThumb } from './ui';
 import { buildLocationTree } from '@/lib/location-tree';
-import { typeIcon } from '@/lib/location-types';
+import { useLocationTypes } from '@/lib/use-location-types';
 import LocationForm from './LocationForm';
 import LocationManager from './LocationManager';
 
@@ -59,6 +59,8 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   const [creating, setCreating] = useState(false);   // "+ New location" form open
   const [editing, setEditing] = useState<SpotRow | null>(null);   // location whose details are being edited
   const [managing, setManaging] = useState(false);   // full Locations manager open as an overlay
+  // Resolve type icons incl. this company's CUSTOM types (built-ins + custom).
+  const { iconOf } = useLocationTypes(companyId);
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   // Creating/editing a location + managing types all require this capability —
@@ -240,7 +242,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
             <img src={s.photo} alt="" className="w-8 h-8 rounded-lg object-cover border border-gray-200 flex-shrink-0" />
           )}
           <span className="flex-1 min-w-0">
-            <span className={`block truncate text-[var(--fs-base)] ${isArea ? 'font-bold' : 'font-semibold'} ${on ? 'text-green-900' : 'text-gray-800'}`}>{typeIcon(s.kind)} {s.name}</span>
+            <span className={`block truncate text-[var(--fs-base)] ${isArea ? 'font-bold' : 'font-semibold'} ${on ? 'text-green-900' : 'text-gray-800'}`}>{iconOf(s.kind)} {s.name}</span>
             {s.description && <span className="block truncate text-[var(--fs-xs)] font-normal text-gray-500">{s.description}</span>}
           </span>
         </button>
@@ -346,6 +348,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
           onCancel={() => { setCreating(false); setEditing(null); setFormError(null); }}
           onSave={editing ? updateLocation : createLocation}
           onDelete={editing ? () => deleteLocation(editing) : undefined}
+          companyId={companyId}
         />
       )}
 

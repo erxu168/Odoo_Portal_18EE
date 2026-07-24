@@ -10,6 +10,7 @@ import LocationLabels from './LocationLabels';
 import { useCompany } from '@/lib/company-context';
 import { buildLocationTree, type LocationNode as LocationTreeNode } from '@/lib/location-tree';
 import { typeIcon, typeLabel, suggestedChildTypes, TOP_LEVEL_TYPE_KEYS } from '@/lib/location-types';
+import { useLocationTypes } from '@/lib/use-location-types';
 import type { CountLocation } from '@/types/inventory';
 
 /**
@@ -18,12 +19,14 @@ import type { CountLocation } from '@/types/inventory';
  * then a "+ Add inside" button. Depth 0 is a card; deeper levels are lighter,
  * indented rows. Drag-reorder stays within each sibling group at every level.
  */
-function LocationNode({ node, depth, sensors, onDragEnd, onEdit }: {
+function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIcon }: {
   node: LocationTreeNode<CountLocation>;
   depth: number;
   sensors: ReturnType<typeof useSensors>;
   onDragEnd: (e: DragEndEvent) => void;
   onEdit: (loc: Partial<CountLocation>) => void;
+  /** Resolves a type's emoji incl. custom types; defaults to the built-in icon. */
+  iconOf?: (kind: string | null | undefined) => string;
 }) {
   const isRoot = depth === 0;
   const rowPad = 12 + depth * 16;          // indent the row itself with depth
@@ -53,7 +56,7 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit }: {
                   : 'w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 text-base'}
                 aria-hidden="true"
               >
-                {typeIcon(node.kind)}
+                {iconOf(node.kind)}
               </div>
             )}
             <div className="flex-1 min-w-0">
@@ -81,7 +84,7 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit }: {
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={node.children.map((c) => c.id)} strategy={verticalListSortingStrategy}>
                 {node.children.map((child) => (
-                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} />
+                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} iconOf={iconOf} />
                 ))}
               </SortableContext>
             </DndContext>
@@ -112,13 +115,17 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit }: {
   );
 }
 
-// Location types (kinds) are BUILT-IN, not user-editable — see src/lib/location-types.ts.
+// Location types = built-in base (src/lib/location-types.ts) + a company's CUSTOM
+// types (managed via "Edit types" → ManageTypesSheet). Icons resolve through the
+// useLocationTypes hook so custom emojis show in the tree too.
 export default function LocationManager({ onBack, companyId: companyIdProp }: { onBack: () => void; companyId?: number }) {
   // When opened as an overlay from the home-spots picker (SpotSheet), the caller
   // passes the picker's company so locations land under the SAME company the
   // product/list belongs to — not whatever the global switcher happens to be.
   const { companyId: activeCompanyId } = useCompany();
   const companyId = companyIdProp ?? activeCompanyId;
+  // Type icons incl. this company's CUSTOM types (built-ins + custom).
+  const { iconOf } = useLocationTypes(companyId);
   const [locations, setLocations] = useState<CountLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -279,6 +286,7 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
                 sensors={sensors}
                 onDragEnd={handleDragEnd}
                 onEdit={setEditing}
+                iconOf={iconOf}
               />
             ))}
           </SortableContext>
@@ -308,6 +316,7 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
       {editing && (
         <LocationForm
           initial={editing}
+          companyId={companyId ?? undefined}
           onCancel={() => setEditing(null)}
           onSave={save}
           onDelete={editing.id ? () => remove(editing.id as number) : undefined}

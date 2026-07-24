@@ -361,6 +361,15 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
     db.exec("UPDATE quick_counts SET odoo_qty = counted_qty WHERE odoo_qty IS NULL");
   }
 
+  // location_kinds: a per-type emoji so managers can give each CUSTOM type its own
+  // icon (shown in the tree, spot picker and printed labels). Additive & defaulted
+  // ('📍'), so legacy custom rows keep a sensible pin. Guarded + re-run safe.
+  const lkCols = (db.prepare("PRAGMA table_info('location_kinds')").all() as { name: string }[]).map(c => c.name);
+  if (!lkCols.includes('icon')) {
+    try { db.exec("ALTER TABLE location_kinds ADD COLUMN icon TEXT NOT NULL DEFAULT '📍'"); }
+    catch (e) { if (!(e instanceof Error && /duplicate column/i.test(e.message))) throw e; }
+  }
+
   // Per-list placements: a product sits at one or more spots WITHIN a specific
   // list (template). Global product_locations stays for legacy/default physical
   // placement; the builder writes here so editing one list never touches another.
@@ -1998,51 +2007,36 @@ export interface LocationKindRow {
   company_id: number;
   kind: string;   // stored value on count_locations.kind (lowercase)
   label: string;  // what managers see in the Type dropdown
+  icon: string;   // emoji shown in the tree / spot picker / printed labels
   sort_order: number;
 }
 
-const DEFAULT_LOCATION_KINDS: { kind: string; label: string }[] = [
-  { kind: 'area', label: 'Area' },
-  { kind: 'fridge', label: 'Fridge' },
-  { kind: 'freezer', label: 'Freezer' },
-  { kind: 'dry', label: 'Dry store' },
-  { kind: 'zone', label: 'Zone' },
-  { kind: 'bar', label: 'Bar' },
-];
-
 /**
- * List a company's location kinds, seeding the six defaults the first time a
- * company touches the feature (so existing kinds keep their labels and every
- * company starts from the familiar set).
+ * List a company's CUSTOM location types. The built-in types (see
+ * src/lib/location-types.ts) are the always-available base and live in code, NOT
+ * here — this table holds only the types a manager has added, so custom types can
+ * never duplicate the built-ins. Starts empty; no seeding.
  */
 export function listLocationKinds(companyId: number): LocationKindRow[] {
   const db = getDb();
-  const existing = db.prepare(
-    'SELECT COUNT(*) AS n FROM location_kinds WHERE company_id = ?'
-  ).get(companyId) as { n: number };
-  if (existing.n === 0) {
-    const ins = db.prepare(
-      'INSERT OR IGNORE INTO location_kinds (company_id, kind, label, sort_order, created_at) VALUES (?, ?, ?, ?, ?)'
-    );
-    DEFAULT_LOCATION_KINDS.forEach((k, i) => ins.run(companyId, k.kind, k.label, (i + 1) * 10, now()));
-  }
   return db.prepare(
-    'SELECT id, company_id, kind, label, sort_order FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id'
+    'SELECT id, company_id, kind, label, icon, sort_order FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id'
   ).all(companyId) as LocationKindRow[];
 }
 
 /**
- * Add a kind. The stored `kind` value is the lowercased label (kept simple —
- * count_locations.kind is free text). Returns null when a same-named kind
- * already exists for the company (case-insensitive).
+ * Add a CUSTOM type with its emoji. The stored `kind` value is the lowercased
+ * label (kept simple — count_locations.kind is free text). Returns null when a
+ * same-named type already exists for the company (case-insensitive). The icon
+ * defaults to '📍' when none is supplied.
  */
-export function addLocationKind(companyId: number, label: string, userId: number): LocationKindRow | null {
+export function addLocationKind(companyId: number, label: string, icon: string, userId: number): LocationKindRow | null {
   const db = getDb();
   const clean = label.trim().replace(/\s+/g, ' ');
   if (!clean) return null;
+  const emoji = (icon || '').trim() || '📍';
   const kind = clean.toLowerCase();
-  // Duplicate if either the stored kind or the visible label matches — the
-  // defaults have kind ≠ label ("dry" / "Dry store"), so check both. Compare in
+  // Duplicate if either the stored kind or the visible label matches. Compare in
   // JS (SQLite lower() only folds ASCII; German names like "Kühlraum" are real).
   const existing = db.prepare('SELECT kind, label FROM location_kinds WHERE company_id = ?').all(companyId) as { kind: string; label: string }[];
   if (existing.some((r) => (r.kind || '').toLowerCase() === kind || (r.label || '').toLowerCase() === kind)) return null;
@@ -2051,10 +2045,10 @@ export function addLocationKind(companyId: number, label: string, userId: number
   ).get(companyId) as { m: number }).m;
   try {
     const r = db.prepare(
-      'INSERT INTO location_kinds (company_id, kind, label, sort_order, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(companyId, kind, clean, maxSort + 10, userId, now());
+      'INSERT INTO location_kinds (company_id, kind, label, icon, sort_order, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(companyId, kind, clean, emoji, maxSort + 10, userId, now());
     return {
-      id: r.lastInsertRowid as number, company_id: companyId, kind, label: clean, sort_order: maxSort + 10,
+      id: r.lastInsertRowid as number, company_id: companyId, kind, label: clean, icon: emoji, sort_order: maxSort + 10,
     };
   } catch {
     // Unique-constraint race (two adds of the same name) → treat as duplicate
@@ -2087,15 +2081,17 @@ export function deleteLocationKind(id: number, companyId: number): { ok: boolean
 }
 
 /**
- * Rename a kind's visible LABEL only — the `kind` slug is left untouched so every
- * location already tagged with it stays linked (locations reference the slug, and
- * the label is resolved from here for display). Refused if another type in the
- * company already uses that name.
+ * Rename a type's visible LABEL and update its emoji — the `kind` slug is left
+ * untouched so every location already tagged with it stays linked (locations
+ * reference the slug, and the label/icon are resolved from here for display).
+ * Refused if another type in the company already uses that name. A blank icon
+ * falls back to '📍'.
  */
-export function renameLocationKind(id: number, companyId: number, label: string): { ok: boolean; dupe?: boolean } {
+export function renameLocationKind(id: number, companyId: number, label: string, icon: string): { ok: boolean; dupe?: boolean } {
   const db = getDb();
   const clean = label.trim().replace(/\s+/g, ' ');
   if (!clean) return { ok: false };
+  const emoji = (icon || '').trim() || '📍';
   const rows = db.prepare('SELECT id, kind, label FROM location_kinds WHERE company_id = ?').all(companyId) as { id: number; kind: string; label: string }[];
   if (!rows.some((r) => r.id === id)) return { ok: false };
   // Compare in JS: SQLite lower() only folds ASCII, but German type names
@@ -2103,7 +2099,7 @@ export function renameLocationKind(id: number, companyId: number, label: string)
   const lower = clean.toLowerCase();
   const dupe = rows.some((r) => r.id !== id && ((r.kind || '').toLowerCase() === lower || (r.label || '').toLowerCase() === lower));
   if (dupe) return { ok: false, dupe: true };
-  db.prepare('UPDATE location_kinds SET label = ? WHERE id = ? AND company_id = ?').run(clean, id, companyId);
+  db.prepare('UPDATE location_kinds SET label = ?, icon = ? WHERE id = ? AND company_id = ?').run(clean, emoji, id, companyId);
   return { ok: true };
 }
 

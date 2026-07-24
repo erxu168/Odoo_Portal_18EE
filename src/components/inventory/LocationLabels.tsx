@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import { buildLocationTree, locationPath } from '@/lib/location-tree';
-import { typeIcon } from '@/lib/location-types';
+import { useLocationTypes } from '@/lib/use-location-types';
 import { locationCode } from '@/lib/location-code';
 
 /**
@@ -31,6 +31,11 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
     return () => { document.body.style.overflow = prev; };
   }, []);
 
+  // Type icons incl. this company's CUSTOM types; stable ref (memoized in the
+  // hook) so the label-build effect can depend on it and rebuild once custom
+  // types load, without re-running every render.
+  const { iconOf } = useLocationTypes(companyId);
+
   useEffect(() => {
     let stale = false;
     setLoading(true); setError(null); setLabels([]);
@@ -52,7 +57,7 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
           const code = locationCode(row.id);
           const qr = await QRCode.toDataURL(code, { width: 240, margin: 1 });
           const ancestors = locationPath(row.id, locs).slice(0, -1).join(' › ');
-          return { id: row.id, name: row.name, area: ancestors || null, code, qr, icon: typeIcon(row.kind) };
+          return { id: row.id, name: row.name, area: ancestors || null, code, qr, icon: iconOf(row.kind) };
         }));
         if (!stale) { setLabels(built); setLoading(false); }
       } catch {
@@ -60,7 +65,7 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
       }
     })();
     return () => { stale = true; };
-  }, [companyId, onlyId]);
+  }, [companyId, onlyId, iconOf]);
 
   if (!mounted) return null;
 

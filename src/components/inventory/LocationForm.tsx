@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import FilePicker from '@/components/ui/FilePicker';
-import { LOCATION_TYPES } from '@/lib/location-types';
+import { useLocationTypes } from '@/lib/use-location-types';
+import ManageTypesSheet from './ManageTypesSheet';
 import type { CountLocation } from '@/types/inventory';
 
 /**
@@ -34,7 +35,7 @@ export function downscale(file: File): Promise<string> {
   });
 }
 
-export default function LocationForm({ initial, onCancel, onSave, onDelete, saving, error, baseZ = 100 }: {
+export default function LocationForm({ initial, onCancel, onSave, onDelete, saving, error, baseZ = 100, companyId }: {
   initial: Partial<CountLocation>;
   onCancel: () => void;
   onSave: (loc: Partial<CountLocation>) => void;
@@ -42,18 +43,23 @@ export default function LocationForm({ initial, onCancel, onSave, onDelete, savi
   saving?: boolean;
   error?: string | null;
   baseZ?: number;
+  /** When supplied, the Type dropdown includes this company's CUSTOM types and
+   *  an "Edit types" link opens the manager. */
+  companyId?: number;
 }) {
   const [name, setName] = useState(initial.name || '');
   // A location's TYPE (kind) drives its icon + the smart add buttons. It is
   // pre-set when created from a typed "+ Add" button, but the owner can change
   // it here; defaults to 'area'.
   const [kind, setKind] = useState(initial.kind || 'area');
-  // Existing rows may carry a legacy kind (e.g. 'spot', 'dry') that isn't in the
-  // built-in set — keep it selectable so opening the editor never silently
-  // changes the type.
-  const kindOptions = LOCATION_TYPES.some((t) => t.key === kind)
-    ? LOCATION_TYPES
-    : [...LOCATION_TYPES, { key: kind, label: kind.charAt(0).toUpperCase() + kind.slice(1), icon: '📍', suggests: [] as string[] }];
+  // Built-in types + this company's CUSTOM types (each with its own emoji). A
+  // legacy kind not in either set stays selectable so opening the editor never
+  // silently changes the type. "Edit types" opens the manager; reload on close.
+  const { types, reload: reloadTypes } = useLocationTypes(companyId);
+  const [managingTypes, setManagingTypes] = useState(false);
+  const kindOptions = types.some((t) => t.key === kind)
+    ? types
+    : [...types, { key: kind, label: kind.charAt(0).toUpperCase() + kind.slice(1), icon: '📍', suggests: [] as string[] }];
   // A spot is a slot INSIDE a unit (a drawer, rack, shelf) — it has a parent.
   // A top-level location is a unit/zone.
   const isSpot = initial.parent_id != null;
@@ -66,7 +72,13 @@ export default function LocationForm({ initial, onCancel, onSave, onDelete, savi
         <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Name</label>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={isSpot ? 'e.g. Left Drawer, Rack 1' : 'e.g. Walk-in Fridge'}
                className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50" />
-        <label className="block text-[11px] font-bold uppercase tracking-wide text-gray-400 mb-1">Type</label>
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Type</span>
+          {companyId != null && (
+            <button type="button" onClick={() => setManagingTypes(true)}
+              className="text-[11px] font-bold text-blue-700 active:opacity-70">Edit types</button>
+          )}
+        </div>
         <select value={kind} onChange={(e) => setKind(e.target.value)}
                 className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-3 bg-gray-50">
           {kindOptions.map((t) => (
@@ -97,6 +109,10 @@ export default function LocationForm({ initial, onCancel, onSave, onDelete, savi
         </div>
         {onDelete && <button onClick={onDelete} className="w-full mt-3 py-2.5 text-red-600 font-semibold text-sm">Remove this location</button>}
       </div>
+      {managingTypes && companyId != null && (
+        <ManageTypesSheet companyId={companyId} baseZ={baseZ + 30}
+          onClose={() => { setManagingTypes(false); reloadTypes(); }} />
+      )}
     </div>
   );
 }

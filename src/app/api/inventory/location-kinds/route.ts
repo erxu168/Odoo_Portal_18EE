@@ -1,10 +1,14 @@
 export const dynamic = 'force-dynamic';
 /**
- * /api/inventory/location-kinds
- * GET    — list a company's location types (seeds the six defaults on first use)
- * POST   — add a type (manager/admin)          body: { company_id?, label }
- * PATCH  — rename a type (manager/admin)        body: { id, company_id?, label }
- * DELETE — remove a type (manager/admin)       ?id= — refused while in use
+ * /api/inventory/location-kinds — a company's CUSTOM location types only.
+ * The built-in types (src/lib/location-types.ts) are the always-available base
+ * and live in code; this endpoint manages the extra types a manager adds, each
+ * with its own emoji icon.
+ *
+ * GET    — list a company's custom types (empty until the manager adds one)
+ * POST   — add a type (manager/admin)     body: { company_id?, label, icon? }
+ * PATCH  — rename a type (manager/admin)   body: { id, company_id?, label, icon? }
+ * DELETE — remove a type (manager/admin)  ?id= — refused while in use
  *
  * The type list feeds the "Type" dropdown in the Locations setup screen.
  * count_locations.kind stays free text, so deleting a type never breaks
@@ -52,11 +56,12 @@ export async function POST(request: Request) {
   if (!label) return NextResponse.json({ error: 'label is required' }, { status: 400 });
   if (label.length > 40) return NextResponse.json({ error: 'Keep the type under 40 characters' }, { status: 400 });
 
-  // Ensure the defaults exist before adding, so a brand-new company doesn't
-  // end up with a lone custom type and no familiar ones.
-  listLocationKinds(companyId);
+  // Optional emoji icon (1–8 chars when supplied). Blank → the DB layer defaults
+  // it to '📍'. Built-ins live in code, so we never seed the table here.
+  const icon = body.icon != null ? String(body.icon).trim() : '';
+  if (icon && icon.length > 8) return NextResponse.json({ error: 'Pick a single emoji for the icon' }, { status: 400 });
 
-  const row = addLocationKind(companyId, label, user.id);
+  const row = addLocationKind(companyId, label, icon, user.id);
   if (!row) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
   return NextResponse.json({ kind: row }, { status: 201 });
 }
@@ -79,7 +84,11 @@ export async function PATCH(request: Request) {
   if (!label) return NextResponse.json({ error: 'label is required' }, { status: 400 });
   if (label.length > 40) return NextResponse.json({ error: 'Keep the type under 40 characters' }, { status: 400 });
 
-  const result = renameLocationKind(id, companyId, label);
+  // Optional emoji icon (1–8 chars when supplied); blank falls back to '📍'.
+  const icon = body.icon != null ? String(body.icon).trim() : '';
+  if (icon && icon.length > 8) return NextResponse.json({ error: 'Pick a single emoji for the icon' }, { status: 400 });
+
+  const result = renameLocationKind(id, companyId, label, icon);
   if (!result.ok && result.dupe) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
   if (!result.ok) return NextResponse.json({ error: 'Type not found' }, { status: 404 });
   return NextResponse.json({ message: 'Type renamed' });

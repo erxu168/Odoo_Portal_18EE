@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import ManagedListSheet from '@/components/ui/ManagedListSheet';
+import ManageTypesSheet from '@/components/inventory/ManageTypesSheet';
 import { useCompany } from '@/lib/company-context';
 import { MANAGED_LISTS, type ManagedListDef } from '@/lib/managed-lists/registry';
 
@@ -23,6 +24,7 @@ export default function ModuleListsSettings({ module, title = 'Settings', onBack
 }) {
   const { companyId } = useCompany();
   const [active, setActive] = useState<ManagedListDef | null>(null);
+  const [manageTypes, setManageTypes] = useState(false);   // inventory-only: location types
   const lists = MANAGED_LISTS.filter((d) => d.module === module);
 
   return (
@@ -52,6 +54,24 @@ export default function ModuleListsSettings({ module, title = 'Settings', onBack
           </div>
         )}
 
+        {/* Location types aren't a plain dropdown list (each has an emoji + is
+            used in the location tree), so they get their own manager rather than
+            a ManagedListSheet. Inventory only. */}
+        {module === 'inventory' && (
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+            <button onClick={() => setManageTypes(true)}
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-gray-50">
+              <span className="text-xl flex-shrink-0" aria-hidden="true">📍</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-gray-900">Location types</div>
+                <div className="text-[13px] text-gray-500 truncate">Add, rename or delete the types you tag locations with</div>
+              </div>
+              <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200">Per restaurant</span>
+              <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M9 5l7 7-7 7" /></svg>
+            </button>
+          </div>
+        )}
+
         <p className="text-[12px] text-gray-400 px-1 leading-relaxed">
           These are the lists you can customise. Fixed lists — like weekdays and order statuses — aren&rsquo;t shown, because changing them would affect how the system calculates and files things.
         </p>
@@ -63,6 +83,10 @@ export default function ModuleListsSettings({ module, title = 'Settings', onBack
           companyId={active.scope === 'company' ? (companyId ?? undefined) : undefined}
           onClose={() => setActive(null)}
         />
+      )}
+
+      {manageTypes && companyId != null && (
+        <ManageTypesSheet companyId={companyId} onClose={() => setManageTypes(false)} />
       )}
     </div>
   );
