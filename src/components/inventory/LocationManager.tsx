@@ -113,8 +113,12 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit }: {
 }
 
 // Location types (kinds) are BUILT-IN, not user-editable — see src/lib/location-types.ts.
-export default function LocationManager({ onBack }: { onBack: () => void }) {
-  const { companyId } = useCompany();
+export default function LocationManager({ onBack, companyId: companyIdProp }: { onBack: () => void; companyId?: number }) {
+  // When opened as an overlay from the home-spots picker (SpotSheet), the caller
+  // passes the picker's company so locations land under the SAME company the
+  // product/list belongs to — not whatever the global switcher happens to be.
+  const { companyId: activeCompanyId } = useCompany();
+  const companyId = companyIdProp ?? activeCompanyId;
   const [locations, setLocations] = useState<CountLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);

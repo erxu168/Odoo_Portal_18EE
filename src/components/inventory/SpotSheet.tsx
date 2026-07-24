@@ -5,6 +5,7 @@ import { Spinner, ProductThumb } from './ui';
 import { buildLocationTree } from '@/lib/location-tree';
 import { typeIcon } from '@/lib/location-types';
 import LocationForm from './LocationForm';
+import LocationManager from './LocationManager';
 
 /**
  * "Where does it live?" — edit ONE product's home spots (multi-select).
@@ -57,6 +58,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);   // "+ New location" form open
   const [editing, setEditing] = useState<SpotRow | null>(null);   // location whose details are being edited
+  const [managing, setManaging] = useState(false);   // full Locations manager open as an overlay
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   // Creating/editing a location + managing types all require this capability —
@@ -138,6 +140,21 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   async function refreshSpots() {
     const r = await fetch(`/api/inventory/count-locations?company_id=${companyId}`);
     if (r.ok) setSpots((await r.json()).locations || []);
+  }
+
+  // Returning from the full Locations manager: reload the spots so any new
+  // area/sub-spot is tickable, and PRUNE the current selection to spots that
+  // still exist (the manager may have deleted one) — so save can't write a dead
+  // id. The user's other (surviving) ticks are preserved.
+  async function reloadFromManager() {
+    try {
+      const r = await fetch(`/api/inventory/count-locations?company_id=${companyId}`);
+      if (!r.ok) return;
+      const locs: SpotRow[] = (await r.json()).locations || [];
+      setSpots(locs);
+      const live = new Set(locs.map((l) => l.id));
+      setChosen((prev) => new Set(Array.from(prev).filter((id) => live.has(id))));
+    } catch { /* keep what we have — a failed refresh must not drop selections */ }
   }
 
   // Quick-create a location without leaving the picker (no navigation dead-end):
@@ -268,10 +285,20 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
             </p>
           ) : tree.map((area: any) => renderNode(area, true))}
           {!loading && canManageLocations && (
-            <button onClick={() => setCreating(true)}
-              className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50">
-              + New location
-            </button>
+            <div className="flex flex-col gap-2">
+              <button onClick={() => setCreating(true)}
+                className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50">
+                + New location
+              </button>
+              {/* Quick-create above makes a single top-level spot. For a full
+                  area WITH sub-spots (shelves, compartments) or to reorganise,
+                  open the canonical Locations manager as an overlay and come
+                  right back to this picker with the new spots ready to tick. */}
+              <button onClick={() => setManaging(true)}
+                className="w-full py-1.5 text-[var(--fs-xs)] font-semibold text-blue-700 active:opacity-70">
+                Add sub-spots or reorganise → Manage locations
+              </button>
+            </div>
           )}
         </div>
 
@@ -303,6 +330,17 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
           onCancel={() => { setCreating(false); setEditing(null); setFormError(null); }}
           onSave={editing ? updateLocation : createLocation}
         />
+      )}
+
+      {/* Full Locations manager as an overlay — build an area WITH sub-spots or
+          reorganise, then Back returns here (spots reloaded, selection kept).
+          Reuses the canonical manager (one editor), scoped to THIS company. The
+          fixed wrapper makes a stacking context so the manager's own dialogs sit
+          correctly above this sheet. */}
+      {managing && (
+        <div className="fixed inset-0 bg-gray-50 overflow-y-auto" style={{ zIndex: baseZ + 20 }} role="dialog" aria-modal="true" aria-label="Manage locations">
+          <LocationManager companyId={companyId} onBack={() => { setManaging(false); reloadFromManager(); }} />
+        </div>
       )}
     </div>
   );
