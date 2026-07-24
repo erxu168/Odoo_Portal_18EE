@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Spinner, ProductThumb } from './ui';
 import { buildLocationTree } from '@/lib/location-tree';
 import { useLocationTypes } from '@/lib/use-location-types';
+import { suggestedChildTypes } from '@/lib/location-types';
 import LocationForm from './LocationForm';
 import LocationManager from './LocationManager';
 
@@ -56,7 +57,10 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   // accidental opt-in harmless to counts already begun.)
   const [applyToday, setApplyToday] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);   // "+ New location" form open
+  // new-location form: null = closed, else the initial for the new node
+  // (parent_id + a default kind when adding INSIDE another level).
+  const [creating, setCreating] = useState<{ parent_id?: number | null; kind?: string } | null>(null);
+  const [editMode, setEditMode] = useState(false);   // "Edit levels" — reveal add/rename/type/delete controls
   const [editing, setEditing] = useState<SpotRow | null>(null);   // location whose details are being edited
   const [managing, setManaging] = useState(false);   // full Locations manager open as an overlay
   // Resolve type icons incl. this company's CUSTOM types (built-ins + custom).
@@ -162,23 +166,24 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   // Quick-create a location without leaving the picker (no navigation dead-end):
   // the SAME shared LocationForm the Locations manager uses. New locations are
   // top-level areas (reorganise later in the manager); auto-ticked on create.
-  async function createLocation(loc: { name?: string; kind?: string; description?: string | null; photo?: string | null }) {
+  async function createLocation(loc: { parent_id?: number | null; name?: string; kind?: string; description?: string | null; photo?: string | null }) {
     setFormSaving(true); setFormError(null);
+    const parentId = loc.parent_id ?? null;
     try {
       const res = await fetch('/api/inventory/count-locations', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_id: companyId, parent_id: null, name: loc.name, kind: loc.kind, description: loc.description ?? null, photo: loc.photo ?? null }),
+        body: JSON.stringify({ company_id: companyId, parent_id: parentId, name: loc.name, kind: loc.kind, description: loc.description ?? null, photo: loc.photo ?? null }),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); setFormError(d.error || 'Could not create the location'); return; }
       const { id: newId } = await res.json();
       // Success — show + tick the new location immediately (optimistic), so a
       // failed background refresh can't hide a location that WAS created.
       if (newId) {
-        const newRow: SpotRow = { id: newId, parent_id: null, name: (loc.name || '').trim(), kind: loc.kind || 'area', photo: loc.photo ?? null, description: loc.description ?? null, sort_order: 9999 };
+        const newRow: SpotRow = { id: newId, parent_id: parentId, name: (loc.name || '').trim(), kind: loc.kind || 'area', photo: loc.photo ?? null, description: loc.description ?? null, sort_order: 9999 };
         setSpots((prev) => prev.some((s) => s.id === newId) ? prev : [...prev, newRow]);
         setChosen((prev) => new Set(prev).add(newId));
       }
-      setCreating(false);
+      setCreating(null);
       refreshSpots().catch(() => {});   // best-effort reconcile (real sort_order/parent)
     } catch { setFormError('Network error — location not created'); }
     finally { setFormSaving(false); }
@@ -246,9 +251,9 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
             {s.description && <span className="block truncate text-[var(--fs-xs)] font-normal text-gray-500">{s.description}</span>}
           </span>
         </button>
-        {/* Drill-down: edit this location's details in place — no dead-end.
-            Only for users who can actually manage locations (else it 403s). */}
-        {canManageLocations && (
+        {/* Drill-down: rename / change type / delete this level in place — only
+            in Edit mode, and only for users who can manage locations (else 403). */}
+        {canManageLocations && editMode && (
           <button onClick={() => { setFormError(null); setEditing(s); }} aria-label={`Edit ${s.name}`}
             className="px-3 py-2.5 text-gray-400 active:text-gray-700 flex-shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
@@ -264,15 +269,24 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   // (its SpotToggle checkbox) and editable (the pencil), and its own children
   // nest inside the same left-rail indent, one level deeper each time.
   function renderNode(node: any, isTop: boolean) {
+    const kids = node.children || [];
+    const showAddInside = editMode && canManageLocations;
     return (
       <div key={node.id} className={isTop ? 'mb-3' : undefined}>
         {/* The unit itself is ONE tickable row (photo + name + note + edit) —
             no separate header, so it can't appear twice. Its spots (if any)
-            sit indented inside it, and so do THEIRS, to any depth. */}
+            sit indented inside it, and so do THEIRS, to any depth. In Edit mode
+            a "+ Add inside" button lets you nest a new level (e.g. Shelf #1). */}
         <SpotToggle s={node} isArea={isTop} />
-        {(node.children || []).length > 0 && (
+        {(kids.length > 0 || showAddInside) && (
           <div className="flex flex-col gap-1.5 mt-1.5 ml-3 pl-3 border-l-2 border-gray-200">
-            {node.children.map((c: any) => renderNode(c, false))}
+            {kids.map((c: any) => renderNode(c, false))}
+            {showAddInside && (
+              <button onClick={() => setCreating({ parent_id: node.id, kind: suggestedChildTypes(node.kind)[0]?.key || 'shelf' })}
+                className="self-start rounded-full border border-green-200 bg-green-50 px-3 py-1.5 text-[var(--fs-xs)] font-semibold text-green-700 active:bg-green-100">
+                + Add inside {node.name}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -285,13 +299,24 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         <div className="px-5 pt-4 pb-3 border-b border-gray-100">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold text-gray-900">Where does it live?</h3>
-            <button onClick={onClose} className="text-gray-500 font-semibold active:opacity-70">Cancel</button>
+            <div className="flex items-center gap-4">
+              {canManageLocations && (
+                <button onClick={() => setEditMode((v) => !v)} className={`text-[var(--fs-sm)] font-semibold active:opacity-70 ${editMode ? 'text-green-700' : 'text-blue-700'}`}>
+                  {editMode ? 'Done' : 'Edit levels'}
+                </button>
+              )}
+              <button onClick={onClose} className="text-gray-500 font-semibold active:opacity-70">Cancel</button>
+            </div>
           </div>
           <div className="flex items-center gap-2.5 mt-2">
             <ProductThumb productId={product.id} has={hasImage} size={36} />
             <div className="min-w-0">
               <div className="text-[var(--fs-base)] font-bold text-gray-900 truncate">{product.name}</div>
-              <div className="text-[var(--fs-xs)] text-gray-500">Its home spots, shared by every counting list — tick each spot it{'’'}s stored at (counted at each)</div>
+              <div className="text-[var(--fs-xs)] text-gray-500">
+                {editMode
+                  ? 'Building the map — add levels with “+ Add inside”, tap ✎ to rename, set its type or delete'
+                  : 'Its home spots, shared by every counting list — tick each spot it’s stored at (counted at each)'}
+              </div>
             </div>
           </div>
         </div>
@@ -299,22 +324,22 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         <div className="flex-1 overflow-y-auto px-4 py-3">
           {loading ? <Spinner /> : tree.length === 0 ? (
             <p className="text-center text-gray-400 py-8 text-[var(--fs-sm)]">
-              No locations set up yet — create them under Inventory {'→'} Locations first.
+              {canManageLocations
+                ? 'No locations yet — tap “Edit levels” above to add your first one.'
+                : 'No locations set up yet — ask your manager to add them.'}
             </p>
           ) : tree.map((area: any) => renderNode(area, true))}
-          {!loading && canManageLocations && (
-            <div className="flex flex-col gap-2">
-              <button onClick={() => setCreating(true)}
+          {!loading && canManageLocations && editMode && (
+            <div className="flex flex-col gap-2 mt-3">
+              <button onClick={() => setCreating({})}
                 className="w-full py-3 rounded-xl border-2 border-dashed border-green-300 text-green-700 text-[var(--fs-sm)] font-bold active:bg-green-50">
-                + New location
+                + New top-level location
               </button>
-              {/* Quick-create above makes a single top-level spot. For a full
-                  area WITH sub-spots (shelves, compartments) or to reorganise,
-                  open the canonical Locations manager as an overlay and come
-                  right back to this picker with the new spots ready to tick. */}
+              {/* The inline controls cover add / rename / type / delete. The full
+                  manager is only needed for drag-reordering or printing labels. */}
               <button onClick={() => setManaging(true)}
                 className="w-full py-1.5 text-[var(--fs-xs)] font-semibold text-blue-700 active:opacity-70">
-                Add sub-spots or reorganise → Manage locations
+                Reorder or print labels → Manage locations
               </button>
             </div>
           )}
@@ -339,13 +364,13 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
         </div>
       </div>
 
-      {(creating || editing) && (
+      {(creating != null || editing) && (
         <LocationForm
-          initial={editing ? { id: editing.id, parent_id: editing.parent_id, name: editing.name, description: editing.description, photo: editing.photo } : {}}
+          initial={editing ? { id: editing.id, parent_id: editing.parent_id, name: editing.name, description: editing.description, photo: editing.photo } : (creating ?? {})}
           baseZ={baseZ + 10}
           saving={formSaving}
           error={formError}
-          onCancel={() => { setCreating(false); setEditing(null); setFormError(null); }}
+          onCancel={() => { setCreating(null); setEditing(null); setFormError(null); }}
           onSave={editing ? updateLocation : createLocation}
           onDelete={editing ? () => deleteLocation(editing) : undefined}
           companyId={companyId}
