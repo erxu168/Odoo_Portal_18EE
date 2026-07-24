@@ -7,6 +7,7 @@ import RecordLink from '@/components/ui/RecordLink';
 import PhotoLightbox from './PhotoLightbox';
 import NumpadModal from './NumpadModal';
 import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
+import { typeIcon, typeLabel, LOCATION_TYPES } from '@/lib/location-types';
 
 interface ReviewSubmissionsProps {
   onViewSession: (sessionId: number) => void;
@@ -40,6 +41,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [lightbox, setLightbox] = useState<{ open: boolean; photos: string[]; index: number }>({ open: false, photos: [], index: 0 });
   const [locations, setLocations] = useState<any[]>([]);
   const [dispMode, setDispMode] = useState<'split' | 'base'>('split');  // pack display toggle
+  const [groupMode, setGroupMode] = useState<'product' | 'type'>('product');  // review grouping: by product vs by location type
   const [reviewPackLabels, setReviewPackLabels] = useState<Record<number, string>>({});  // product_id -> count-by label
   const [reviewQCLabel, setReviewQCLabel] = useState<string | null>(null);
 
@@ -429,6 +431,20 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     const isSubmitted = reviewSession.status === 'submitted';
     const hasUnresolvedDrafts = countedProducts.some((p: any) => p.is_draft && !draftDecisions[p.id]);
 
+    // BY LOCATION TYPE: sum every counted line into the TYPE (kind) of the spot
+    // it was counted in — a read-only "total across all fridges / freezers / …".
+    const locKind = (loc: number) => loc === 0 ? '' : (locations.find((l: any) => l.id === loc)?.kind || '');
+    const byType: Record<string, { qty: number; products: Record<number, number> }> = {};
+    reviewEntries.forEach((e: any) => {
+      const key = locKind(e.count_location_id ?? 0) || 'general';
+      const qty = Number(e.counted_qty) || 0;
+      (byType[key] ||= { qty: 0, products: {} });
+      byType[key].qty += qty;
+      byType[key].products[e.product_id] = (byType[key].products[e.product_id] || 0) + qty;
+    });
+    const typeOrder = [...LOCATION_TYPES.map(t => t.key), 'general'];
+    const typeGroups = Object.keys(byType).sort((a, b) => typeOrder.indexOf(a) - typeOrder.indexOf(b));
+
     return (
       <div className="flex flex-col min-h-0 flex-1">
         <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
@@ -500,6 +516,41 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
             )}
 
             <div className="flex-1 overflow-y-auto px-4 pb-36">
+              {/* By product (the full review) vs By location type (read-only totals per type). */}
+              <div className="flex bg-gray-100 rounded-xl p-1 mt-2 mb-1" role="group" aria-label="Group the count by">
+                <button onClick={() => setGroupMode('product')}
+                  className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition-all ${groupMode === 'product' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>By product</button>
+                <button onClick={() => setGroupMode('type')}
+                  className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition-all ${groupMode === 'type' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>By location type</button>
+              </div>
+              {groupMode === 'type' ? (
+                <div className="mt-2">
+                  {typeGroups.length === 0 ? (
+                    <p className="text-center text-gray-400 text-[var(--fs-sm)] py-8">Nothing counted yet.</p>
+                  ) : typeGroups.map((key) => {
+                    const g = byType[key];
+                    const label = key === 'general' ? 'General / unplaced' : typeLabel(key);
+                    const icon = key === 'general' ? '📍' : typeIcon(key);
+                    const prods = Object.entries(g.products)
+                      .map(([pid, qty]) => ({ pid, nm: reviewProducts.find((x: any) => x.id === Number(pid))?.name || `#${pid}`, qty }))
+                      .sort((a, b) => a.nm.localeCompare(b.nm));
+                    return (
+                      <div key={key} className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-3">
+                        <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-100">
+                          <span className="text-[var(--fs-sm)] font-bold tracking-wide uppercase text-gray-800 truncate">{icon} {label}</span>
+                          <span className="font-mono font-bold text-gray-700 flex-shrink-0 ml-2">{g.qty}</span>
+                        </div>
+                        {prods.map((it) => (
+                          <div key={it.pid} className="flex items-center justify-between px-4 py-2 border-b border-gray-50 last:border-b-0">
+                            <span className="text-[var(--fs-base)] text-gray-800 truncate">{it.nm}</span>
+                            <span className="font-mono font-semibold text-gray-900 flex-shrink-0 ml-2">{it.qty}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (<>
               {countedProducts.length > 0 && (<>
                 <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mt-2 mb-2">Counted items</p>
                 {countedProducts.map((p: any) => {
@@ -646,6 +697,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                     <span className="text-[var(--fs-sm)] text-gray-400 flex-shrink-0 ml-3">-- {uom}</span>
                   </div>);
                 })}
+              </>)}
               </>)}
             </div>
 
