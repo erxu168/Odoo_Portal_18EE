@@ -16,6 +16,7 @@ import DrinksScanner from '@/components/inventory/DrinksScanner';
 import DrinksEditor from '@/components/inventory/DrinksEditor';
 import ConsumptionReport from '@/components/inventory/ConsumptionReport';
 import GoodsReceived from '@/components/inventory/GoodsReceived';
+import ModuleListsSettings from '@/components/settings/ModuleListsSettings';
 
 type Screen =
   | { type: 'dashboard' }
@@ -29,6 +30,7 @@ type Screen =
   | { type: 'locations' }
   | { type: 'consumption' }
   | { type: 'goods-received' }
+  | { type: 'settings' }
   | { type: 'session'; sessionId: number };
 
 export default function InventoryPage() {
@@ -63,6 +65,10 @@ export default function InventoryPage() {
         onHome={goHome}
       />
     );
+  }
+
+  if (screen.type === 'settings') {
+    return <ModuleListsSettings module="inventory" title="Inventory settings" onBack={goDashboard} />;
   }
 
   if (screen.type === 'session') {

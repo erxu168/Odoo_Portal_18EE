@@ -8,6 +8,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Numpad from '@/components/ui/Numpad';
 import OrdersDashboard from '@/components/purchase/OrdersDashboard';
+import ModuleListsSettings from '@/components/settings/ModuleListsSettings';
 import PdfViewer from '@/components/ui/PdfViewer';
 import PurchaseAlerts from '@/components/purchase/PurchaseAlerts';
 import StatusBadge from '@/components/purchase/StatusBadge';
@@ -39,7 +40,7 @@ interface ReceiptLine { id: number; product_id: number; product_name: string; pr
 interface OdooProduct { id: number; name: string; uom: string; category_name: string; price: number; }
 
 type Tab = 'order' | 'cart' | 'receive' | 'history';
-type Screen = 'dashboard' | 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide' | 'add-supplier' | 'catalog' | 'insights';
+type Screen = 'dashboard' | 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide' | 'add-supplier' | 'catalog' | 'insights' | 'settings';
 
 interface OdooPartnerResult { odoo_id: number; name: string; email: string; phone: string; already_added: boolean; }
 interface CatalogOption { item_id: number; product_id: number; product_name: string; product_uom: string; price: number; category_name: string; supplier_id: number; supplier_name: string; }
@@ -678,6 +679,14 @@ export default function PurchasePage() {
     <AppHeader title={title} subtitle={subtitle} showBack={showBack} onBack={onBack} action={rightElement} />
   );
 
+  const settingsIconBtn = (
+    <button onClick={() => setScreen('settings')} title="Purchase settings" aria-label="Purchase settings"
+      className="w-9 h-9 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center text-white/80 active:bg-white/20 transition-colors">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="2" y1="14" x2="6" y2="14"/><line x1="10" y1="8" x2="14" y2="8"/><line x1="18" y1="16" x2="22" y2="16"/>
+      </svg>
+    </button>
+  );
   const manageIconBtn = (
     <button
       onClick={() => setScreen('manage')}
@@ -711,6 +720,8 @@ export default function PurchasePage() {
           onOpenNumpad={openNumpad}
           onViewCart={() => changeTab('cart')}
         /></>
+      ) : screen === 'settings' ? (
+        <ModuleListsSettings module="purchase" title="Purchase settings" onBack={() => setScreen('dashboard')} />
       ) : screen === 'manage' ? (<><Header title="Order Templates" subtitle="Your reusable order lists & suppliers" showBack onBack={() => setScreen('dashboard')} />
         <ManagePurchasesScreen
           suppliers={suppliers}
@@ -867,7 +878,7 @@ export default function PurchasePage() {
       ) : screen === 'receive-list' ? (<><Header title="Receive" subtitle={locName} showBack onBack={() => setScreen('dashboard')} />
         <ReceiveListScreen orders={pendingDeliveries} isManager={isManager} onOpen={openReceiveCheck} /></>
       ) : screen === 'history' ? (<><Header title="Order History" subtitle={locName} showBack onBack={() => setScreen('dashboard')} /><OrderHistoryScreen orders={orders} filter={historyFilter} onFilterChange={setHistoryFilter} onOpen={openOrderDetail} /></>
-      ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={isManager ? manageIconBtn : undefined} />
+      ) : (<><Header title="Purchase" subtitle="Order from your suppliers" rightElement={isManager ? (<div className="flex items-center gap-2">{manageIconBtn}{settingsIconBtn}</div>) : undefined} />
         <PurchaseAlerts suppliers={suppliers} />
         <OrdersDashboard cartItemCount={cartTotal.items} pendingDeliveryCount={pendingDeliveries.length} awaitingApprovalCount={pendingDeliveries.filter((o) => o.receipt_status === 'submitted').length} isManager={isManager} onNavigate={changeTab} onManageTemplates={() => setScreen('manage')} locationId={locationId} />
       </>)}

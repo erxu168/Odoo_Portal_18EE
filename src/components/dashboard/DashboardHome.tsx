@@ -32,7 +32,8 @@ const TILES: Tile[] = [
   { id: 'production-guide', label: 'Production Guide', subtitle: 'Sauces, prep & batches', href: '/recipes', minRole: 'manager', scope: 'production', emoji: '🥫' },
   { id: 'inventory', label: 'Inventory', subtitle: 'Stock counting & tracking', href: '/inventory', minRole: 'staff', emoji: '📦' },
   { id: 'products', label: 'Products', subtitle: 'Catalog, units & photos', href: '/products', minRole: 'manager', emoji: '🏷️' },
-  { id: 'lists', label: 'Lists & Options', subtitle: 'Editable dropdown lists', href: '/settings/lists', minRole: 'manager', emoji: '🗂️' },
+  // "Lists & Options" retired — editable lists now live inside each module's own
+  // Settings (Inventory ⚙ / Purchase). /settings/lists redirects home.
   { id: 'purchase', label: 'Purchase', subtitle: 'Orders & suppliers', href: '/purchase', minRole: 'staff', emoji: '🛒' },
   { id: 'hr', label: 'HR', subtitle: 'Profile & onboarding', href: '/hr', minRole: 'staff', emoji: '👤' },
   { id: 'credentials', label: 'Supplier Logins', subtitle: 'Vendor credentials', href: '/admin/credentials', minRole: 'manager', emoji: '🔑' },
