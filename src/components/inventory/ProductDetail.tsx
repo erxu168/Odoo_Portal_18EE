@@ -489,7 +489,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                 <input value={looseLabel} disabled={readOnly}
                   onChange={(e) => setLooseLabel(e.target.value.slice(0, 20))}
                   onBlur={(e) => savePack(packSize, packLabel || (measure ? 'piece' : 'crate'), e.target.value)}
-                  placeholder="bottles"
+                  placeholder="e.g. piece"
                   className="w-24 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)]" />
               </div>
             )}
