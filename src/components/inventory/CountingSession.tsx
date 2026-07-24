@@ -47,6 +47,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [viewMode, setViewMode] = useState<'location' | 'group' | 'product'>('location');  // how staff organise the count
   const [numpad, setNumpad] = useState<{ open: boolean; product: any | null; loc: number }>({ open: false, product: null, loc: 0 });
   const [submitting, setSubmitting] = useState(false);
   const [view, setView] = useState<View>('counting');
@@ -581,10 +582,20 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const canSubmit = session?.status === 'pending' || session?.status === 'in_progress';
   const isReadOnly = session?.status === 'submitted' || session?.status === 'approved' || session?.status === 'rejected';
   const locationName = session?.location_name || '';
-  const showCatGroups = categories.length > 1 && catFilter === 'all' && !search;
 
-  // Guided mode: staff walk location-by-location when the list has a real route.
+  // Guided mode = the list has a real location route (spots). Kept for the
+  // review/submit gating; the staff-facing view is chosen via viewMode.
   const guidedMode = !!route?.guided && canSubmit;
+
+  // Staff choose how the count is organised: walk the LOCATIONS, bunch by
+  // product GROUP (category), or a flat PRODUCT list. Only offer modes that fit
+  // this list — Location needs spots, Group needs >1 category — and if the
+  // chosen mode isn't available, fall back to the first that is.
+  const canGroup = categories.length > 1;
+  const availableModes = ([guidedMode ? 'location' : null, canGroup ? 'group' : null, 'product']
+    .filter(Boolean)) as ('location' | 'group' | 'product')[];
+  const effectiveMode = availableModes.includes(viewMode) ? viewMode : availableModes[0];
+  const showCatGroups = effectiveMode === 'group' && categories.length > 1 && catFilter === 'all' && !search;
 
   // -- Count line row: one product at ONE spot --
   function ProductRow({ p, loc = 0 }: { p: any; loc?: number }) {
@@ -930,7 +941,21 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       <OfflineBanner sync={sync} />
 
-      {guidedMode && route ? (
+      {availableModes.length > 1 && (
+        <div className="px-4 pt-3 pb-1">
+          <div className="flex bg-gray-100 rounded-xl p-1 gap-1" role="tablist" aria-label="How to organise the count">
+            {availableModes.map((m) => (
+              <button key={m} role="tab" aria-selected={effectiveMode === m} onClick={() => setViewMode(m)}
+                className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition ${
+                  effectiveMode === m ? 'bg-white text-green-700 shadow-sm' : 'text-gray-500 active:text-gray-700'}`}>
+                {m === 'location' ? '📍 Location' : m === 'group' ? '🗂️ Group' : '📦 Product'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {effectiveMode === 'location' && route ? (
         <GuidedCountingFlow
           stops={route.stops}
           productsById={productsById}
