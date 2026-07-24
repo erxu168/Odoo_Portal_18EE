@@ -30,6 +30,9 @@ export interface RouteStop {
   product_ids: number[];              // in shelf order
   status: StopStatus;
   skip_reason: string | null;
+  // Full ancestor chain top→parent (excludes the stop itself). Lets the staff
+  // view show WHERE a stop is — Area › Room › Unit — so "D1" is findable.
+  ancestors: { id: number; name: string; kind: string }[];
 }
 
 export const EVERYTHING_ELSE = 0;
@@ -44,6 +47,20 @@ export function buildGuidedRoute(params: {
 
   const locById = new Map<number, RouteLocationMeta>();
   locations.forEach((l) => locById.set(l.id, l));
+
+  // Walk parent_id up to the root → the ancestor chain (top→parent), cycle-guarded.
+  const ancestorsOf = (loc: RouteLocationMeta): { id: number; name: string; kind: string }[] => {
+    const chain: { id: number; name: string; kind: string }[] = [];
+    const guard = new Set<number>([loc.id]);
+    let cur = loc.parent_id;
+    while (cur != null && locById.has(cur) && !guard.has(cur)) {
+      guard.add(cur);
+      const p = locById.get(cur)!;
+      chain.unshift({ id: p.id, name: p.name, kind: p.kind });
+      cur = p.parent_id;
+    }
+    return chain;
+  };
 
   // Walking order = pre-order DFS of the location tree (sort_order is
   // sibling-relative, so a flat sort would interleave shelves across areas).
@@ -103,6 +120,7 @@ export function buildGuidedRoute(params: {
         product_ids: items.map((i) => i.pid),
         status: st?.status ?? 'pending',
         skip_reason: st?.skip_reason ?? null,
+        ancestors: ancestorsOf(loc),
       });
     });
 
@@ -114,6 +132,7 @@ export function buildGuidedRoute(params: {
       product_ids: unplaced,
       status: st?.status ?? 'pending',
       skip_reason: st?.skip_reason ?? null,
+      ancestors: [],
     });
   }
 

@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { typeIcon } from '@/lib/location-types';
 
 /**
  * Guided, location-by-location counting shell.
@@ -16,6 +17,7 @@ interface Stop {
   product_ids: number[];
   status: string;
   skip_reason: string | null;
+  ancestors?: { id: number; name: string; kind: string }[];
 }
 
 interface Props {
@@ -55,7 +57,14 @@ export default function GuidedCountingFlow({ stops, productsById, statuses, rend
             All locations
           </button>
           <div className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-green-700">Location {idx + 1} of {withProducts.length}</div>
-          <h2 className="text-[var(--fs-xl)] font-bold text-gray-900 mt-0.5">{stopName(s)}</h2>
+          {s.ancestors && s.ancestors.length > 0 && (
+            <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-1">
+              {s.ancestors.map((a, i) => (
+                <span key={a.id} className="whitespace-nowrap">{i > 0 && <span className="text-gray-300 mr-1">{'›'}</span>}{typeIcon(a.kind)} {a.name}</span>
+              ))}
+            </div>
+          )}
+          <h2 className="text-[var(--fs-xl)] font-bold text-gray-900 mt-0.5">{s.location ? `${typeIcon(s.location.kind)} ` : ''}{stopName(s)}</h2>
           {s.location?.photo && <img src={s.location.photo} alt="" className="w-full h-32 object-cover rounded-xl mt-2 border border-gray-200" />}
           {s.location?.description && <p className="text-[var(--fs-sm)] text-gray-500 mt-1.5">{s.location.description}</p>}
         </div>
@@ -80,30 +89,62 @@ export default function GuidedCountingFlow({ stops, productsById, statuses, rend
     );
   }
 
-  // ---- The route checklist ----
+  // ---- The route checklist, as a NESTED TREE ----
+  // Staff read it Area › Room › Unit › stop, mirroring how they physically walk.
+  // Shared ancestors print ONCE (collapsed prefix) and the countable stops are the
+  // indented, tappable leaves. Stops already arrive in DFS walk order, so a simple
+  // prefix-diff against the previous stop rebuilds the tree without re-sorting.
+  type TreeRow =
+    | { t: 'anc'; key: string; depth: number; name: string; kind: string }
+    | { t: 'stop'; key: string; depth: number; s: Stop };
+  const treeRows: TreeRow[] = [];
+  let prevAnc: { id: number }[] = [];
+  withProducts.forEach((s) => {
+    const anc = s.ancestors || [];
+    let common = 0;
+    while (common < anc.length && common < prevAnc.length && anc[common].id === prevAnc[common].id) common++;
+    for (let d = common; d < anc.length; d++) {
+      treeRows.push({ t: 'anc', key: `a${anc[d].id}`, depth: d, name: anc[d].name, kind: anc[d].kind });
+    }
+    treeRows.push({ t: 'stop', key: `s${s.bucket_id}`, depth: anc.length, s });
+    prevAnc = anc;
+  });
+
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 pb-36">
-      <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-2">Your route · {withProducts.length} stop{withProducts.length !== 1 ? 's' : ''}</p>
-      {withProducts.map((s, i) => {
-        const st = effStatus(s);
-        const isNext = firstPending && s.bucket_id === firstPending.bucket_id;
-        return (
-          <button key={s.bucket_id} onClick={() => setOpenId(s.bucket_id)}
-            className={`w-full flex items-center gap-3 p-3 rounded-2xl border mb-2 text-left bg-white active:scale-[0.99] transition-transform ${isNext ? 'border-green-500 ring-2 ring-green-100' : 'border-gray-200'}`}>
-            <div className="w-11 h-11 rounded-xl bg-cover bg-center bg-gray-100 flex items-center justify-center text-[var(--fs-sm)] font-bold text-gray-500 flex-shrink-0"
-              style={s.location?.photo ? { backgroundImage: `url(${s.location.photo})` } : undefined}>
-              {!s.location?.photo && (i + 1)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-bold text-gray-900 truncate">{stopName(s)}</div>
-              <div className="text-[var(--fs-xs)] text-gray-500 truncate">
-                {s.product_ids.length} item{s.product_ids.length !== 1 ? 's' : ''}{s.location?.description ? ` · ${s.location.description}` : ''}
+      <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-3">Your route · {withProducts.length} stop{withProducts.length !== 1 ? 's' : ''}</p>
+      <div className="flex flex-col gap-1.5">
+        {treeRows.map((row) => {
+          const pad = { paddingLeft: row.depth * 15 } as React.CSSProperties;
+          if (row.t === 'anc') {
+            return (
+              <div key={row.key} style={pad} className="flex items-center gap-1.5 pt-1.5 text-[var(--fs-xs)] font-semibold text-gray-400">
+                <span className="flex-shrink-0">{typeIcon(row.kind)}</span>
+                <span className="truncate">{row.name}</span>
               </div>
-            </div>
-            <StatusPill st={st} />
-          </button>
-        );
-      })}
+            );
+          }
+          const s = row.s;
+          const st = effStatus(s);
+          const isNext = firstPending && s.bucket_id === firstPending.bucket_id;
+          return (
+            <button key={row.key} style={pad} onClick={() => setOpenId(s.bucket_id)}
+              className={`w-full flex items-center gap-3 p-3 rounded-2xl border text-left bg-white active:scale-[0.99] transition-transform ${isNext ? 'border-green-500 ring-2 ring-green-100' : 'border-gray-200'}`}>
+              <div className="w-10 h-10 rounded-xl bg-cover bg-center bg-gray-100 flex items-center justify-center text-[var(--fs-lg)] flex-shrink-0"
+                style={s.location?.photo ? { backgroundImage: `url(${s.location.photo})` } : undefined}>
+                {!s.location?.photo && <span>{s.location ? typeIcon(s.location.kind) : '📦'}</span>}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-gray-900 truncate">{stopName(s)}</div>
+                <div className="text-[var(--fs-xs)] text-gray-500 truncate">
+                  {s.product_ids.length} item{s.product_ids.length !== 1 ? 's' : ''}{s.location?.description ? ` · ${s.location.description}` : ''}
+                </div>
+              </div>
+              <StatusPill st={st} />
+            </button>
+          );
+        })}
+      </div>
       <div className="mt-5">
         {allDone ? (
           <button onClick={onReview} className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700">

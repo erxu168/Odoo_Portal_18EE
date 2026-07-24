@@ -42,7 +42,30 @@ export function resolveSessionRoute(sessionId: number): { guided: boolean; stops
     }));
     const productIds = Array.from(new Set(items.map((it) => it.odoo_product_id)));
     const statuses = getSessionLocationStatuses(sessionId);
-    return buildGuidedRoute({ productIds, placements, locations, statuses });
+    const route = buildGuidedRoute({ productIds, placements, locations, statuses });
+
+    // The frozen snapshot linearizes the walk (parent_id null above) to lock the
+    // ORDER, which leaves buildGuidedRoute with no ancestry to show. Enrich each
+    // stop with its DISPLAY path (Area › Room › Unit) from the LIVE tree so staff
+    // can actually FIND it. Order stays frozen; only labels are added. If a stop's
+    // location was since deleted/moved, ancOf returns [] and it renders flat.
+    if (session.company_id != null) {
+      const byId = new Map(listCountLocations(session.company_id).map((l) => [l.id, l]));
+      const ancOf = (id: number): { id: number; name: string; kind: string }[] => {
+        const chain: { id: number; name: string; kind: string }[] = [];
+        const guard = new Set<number>([id]);
+        let cur = byId.get(id)?.parent_id ?? null;
+        while (cur != null && byId.has(cur) && !guard.has(cur)) {
+          guard.add(cur);
+          const p = byId.get(cur)!;
+          chain.unshift({ id: p.id, name: p.name, kind: p.kind });
+          cur = p.parent_id ?? null;
+        }
+        return chain;
+      };
+      route.stops = route.stops.map((s) => (s.location ? { ...s, ancestors: ancOf(s.location.id) } : s));
+    }
+    return route;
   }
 
   // LEGACY sessions (no snapshot): live template + global placements, as before.
