@@ -23,13 +23,14 @@ export interface LocationType {
 export const LOCATION_TYPES: LocationType[] = [
   { key: 'area',     label: 'Area',           icon: '🏢', suggests: ['room', 'fridge', 'freezer', 'counterfridge', 'counterfreezer', 'walkin', 'dryshelf', 'shelf'] },
   { key: 'room',     label: 'Room',           icon: '🚪', temp: 'ambient', suggests: ['fridge', 'freezer', 'counterfridge', 'counterfreezer', 'walkin', 'dryshelf', 'shelf'] },
-  { key: 'walkin',   label: 'Walk-in cooler', icon: '❄️', temp: 'cold',   suggests: ['shelf', 'bin'] },
-  { key: 'fridge',   label: 'Fridge',         icon: '🧊', temp: 'cold',   suggests: ['shelf', 'bin'] },
-  { key: 'freezer',  label: 'Freezer',        icon: '🥶', temp: 'frozen', suggests: ['shelf', 'bin'] },
-  { key: 'counterfridge',  label: 'Countertop fridge',  icon: '🧊', temp: 'cold',   suggests: ['shelf', 'bin'] },
-  { key: 'counterfreezer', label: 'Countertop freezer', icon: '🥶', temp: 'frozen', suggests: ['shelf', 'bin'] },
-  { key: 'dryshelf', label: 'Dry shelving',   icon: '📦', temp: 'dry',    suggests: ['shelf', 'bin'] },
-  { key: 'shelf',    label: 'Shelf',          icon: '🗄️', suggests: ['shelf', 'bin'] },
+  { key: 'walkin',   label: 'Walk-in cooler', icon: '❄️', temp: 'cold',   suggests: ['shelf', 'drawer', 'bin'] },
+  { key: 'fridge',   label: 'Fridge',         icon: '🧊', temp: 'cold',   suggests: ['shelf', 'drawer', 'bin'] },
+  { key: 'freezer',  label: 'Freezer',        icon: '🥶', temp: 'frozen', suggests: ['shelf', 'drawer', 'bin'] },
+  { key: 'counterfridge',  label: 'Countertop fridge',  icon: '🧊', temp: 'cold',   suggests: ['shelf', 'drawer', 'bin'] },
+  { key: 'counterfreezer', label: 'Countertop freezer', icon: '🥶', temp: 'frozen', suggests: ['shelf', 'drawer', 'bin'] },
+  { key: 'dryshelf', label: 'Dry shelving',   icon: '📦', temp: 'dry',    suggests: ['shelf', 'drawer', 'bin'] },
+  { key: 'shelf',    label: 'Shelf',          icon: '🗄️', suggests: ['drawer', 'shelf', 'bin'] },
+  { key: 'drawer',   label: 'Drawer',         icon: '🗃️', suggests: ['bin'] },
   { key: 'bin',      label: 'Bin / crate',    icon: '🧺', suggests: ['bin'] },
 ];
 
