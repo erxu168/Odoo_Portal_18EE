@@ -206,6 +206,22 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
     finally { setFormSaving(false); }
   }
 
+  // Delete a location straight from the pencil — the SAME cascade delete the
+  // Locations manager runs (removes the spot, its sub-spots and placements from
+  // EVERY list, not just this product), behind the manager's own confirm. On
+  // success reload + prune the selection so a now-gone spot can't be saved.
+  async function deleteLocation(loc: SpotRow) {
+    if (!confirm('Remove this location and everything under it?')) return;
+    setFormSaving(true); setFormError(null);
+    try {
+      const res = await fetch(`/api/inventory/count-locations?id=${loc.id}`, { method: 'DELETE' });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setFormError(d.error || 'Could not remove this location'); return; }
+      setEditing(null);
+      await reloadFromManager();   // refetch (reflects the cascade) + prune chosen to survivors
+    } catch { setFormError('Network error — not removed'); }
+    finally { setFormSaving(false); }
+  }
+
   // One tickable location row. `isArea` (a top-level unit) shows its photo + a
   // bolder name; a child spot is a plain row. The row IS the unit — there is no
   // separate header, so a unit never appears twice.
@@ -329,6 +345,7 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
           error={formError}
           onCancel={() => { setCreating(false); setEditing(null); setFormError(null); }}
           onSave={editing ? updateLocation : createLocation}
+          onDelete={editing ? () => deleteLocation(editing) : undefined}
         />
       )}
 
