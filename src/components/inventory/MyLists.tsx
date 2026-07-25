@@ -14,7 +14,9 @@ interface MyListsProps {
 }
 
 const STATUS_FILTER_OPTIONS = [
-  { key: 'pending', label: 'To count' },
+  // 'To count' must include a count already STARTED (in_progress) — otherwise it
+  // disappears the moment the first quantity is saved and cannot be resumed.
+  { key: 'pending,in_progress', label: 'To count' },
   { key: 'submitted', label: 'Submitted' },
   { key: 'approved', label: 'Approved' },
 ];
@@ -31,7 +33,7 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
   const [sessions, setSessions] = useState<any[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('pending');
+  const [statusFilter, setStatusFilter] = useState('pending,in_progress');
   const [locationFilter, setLocationFilter] = useState('all');
   const [locations, setLocations] = useState<any[]>([]);
 
@@ -94,7 +96,7 @@ export default function MyLists({ userRole, onOpenSession, onHome }: MyListsProp
   const statusLabel = STATUS_FILTER_OPTIONS.find(o => o.key === statusFilter)?.label || statusFilter;
 
   const emptyMessages: Record<string, { icon: string; title: string; body: string }> = {
-    pending: {
+    'pending,in_progress': {
       icon: '\u2705',
       title: 'All done for today!',
       body: 'No counting lists pending. Check back tomorrow or ask your manager if something is missing.',

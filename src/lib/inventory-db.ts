@@ -821,7 +821,8 @@ export function getSessionByTemplateAndDate(templateId: number, scheduledDate: s
 }
 
 export function listSessions(filters?: {
-  status?: SessionStatus;
+  /** One status, or several — 'To count' means pending OR in_progress. */
+  status?: SessionStatus | SessionStatus[];
   template_id?: number;
   location_id?: number;
   assigned_user_id?: number;
@@ -837,7 +838,15 @@ export function listSessions(filters?: {
   const db = getDb();
   const where: string[] = [];
   const vals: unknown[] = [];
-  if (filters?.status) { where.push('s.status = ?'); vals.push(filters.status); }
+  if (filters?.status) {
+    // A started count is 'in_progress', not 'pending'. Matching a single status
+    // exactly made an in-progress count vanish from every staff filter, so the
+    // person counting could not get back to it. Accept a SET of statuses.
+    const wanted = Array.isArray(filters.status) ? filters.status : [filters.status];
+    if (wanted.length === 0) { where.push('0 = 1'); }
+    else if (wanted.length === 1) { where.push('s.status = ?'); vals.push(wanted[0]); }
+    else { where.push(`s.status IN (${wanted.map(() => '?').join(',')})`); vals.push(...wanted); }
+  }
   if (filters?.template_id) { where.push('s.template_id = ?'); vals.push(filters.template_id); }
   if (filters?.location_id) { where.push('s.location_id = ?'); vals.push(filters.location_id); }
   if (filters?.assigned_user_id) { where.push('s.assigned_user_id = ?'); vals.push(filters.assigned_user_id); }

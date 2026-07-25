@@ -48,7 +48,8 @@ export async function GET(request: Request) {
   const scope = companyScope(user);
 
   const sessions = listSessions({
-    status: (status || undefined) as undefined,
+    // 'pending,in_progress' — a started count must stay visible to its counter.
+    status: (status ? (status.includes(',') ? status.split(',').map((s) => s.trim()).filter(Boolean) : status) : undefined) as undefined,
     template_id: templateId ? parseInt(templateId) : undefined,
     location_id: locationId ? parseInt(locationId) : undefined,
     scheduled_date: date || undefined,
