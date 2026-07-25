@@ -508,7 +508,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           <label className={label}>Where it lives (counted at each)</label>
           <button onClick={() => !readOnly && setSpotSheet(true)} disabled={readOnly} className="w-full flex flex-wrap gap-1.5 bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 text-left active:bg-gray-50 disabled:opacity-70">
             {homeSpots.length > 0 ? homeSpots.map((sid) => (
-              <span key={sid} className="text-[11px] font-bold px-2 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200">📍 {spotLabels[sid] || `Spot ${sid}`}</span>
+              <span key={sid} className="text-[11px] font-bold px-2 py-1 rounded-md bg-blue-50 text-blue-800 border border-blue-200 max-w-full [overflow-wrap:anywhere]">📍 {spotLabels[sid] || `Spot ${sid}`}</span>
             )) : (
               <span className="text-[11px] font-bold px-2 py-1 rounded-md bg-amber-50 text-amber-700 border border-dashed border-amber-300">📍 No spot yet — tap to set</span>
             )}

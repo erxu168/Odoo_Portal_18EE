@@ -117,10 +117,17 @@ export default function GuidedCountingFlow({ stops, productsById, statuses, rend
         {treeRows.map((row) => {
           const pad = { paddingLeft: row.depth * 15 } as React.CSSProperties;
           if (row.t === 'anc') {
+            // A place staff must WALK TO — legible, not a faint caption. The top
+            // tier reads strongest; deeper tiers step down but stay readable.
+            const top = row.depth === 0;
             return (
-              <div key={row.key} style={pad} className="flex items-center gap-1.5 pt-1.5 text-[var(--fs-xs)] font-semibold text-gray-400">
-                <span className="flex-shrink-0">{typeIcon(row.kind)}</span>
-                <span className="truncate">{row.name}</span>
+              <div key={row.key} style={pad}
+                className={`flex items-center gap-2 ${top ? 'pt-3' : 'pt-2'} pb-0.5`}>
+                <span className="flex-shrink-0 text-[var(--fs-base)]">{typeIcon(row.kind)}</span>
+                <span className={`truncate ${top
+                  ? 'text-[var(--fs-base)] font-extrabold text-gray-900'
+                  : 'text-[var(--fs-sm)] font-bold text-gray-700'}`}>{row.name}</span>
+                <span className="flex-1 border-b border-gray-200" />
               </div>
             );
           }

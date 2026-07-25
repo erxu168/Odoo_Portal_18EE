@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { SearchBar, Spinner, EmptyState } from './ui';
 import ProductDetail from './ProductDetail';
 import { useCompany } from '@/lib/company-context';
+import { locationShortLabel, locationPathLabel } from '@/lib/location-tree';
 
 interface ProductSettingsProps {
   onBack: () => void;
@@ -18,7 +19,30 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
   // the Locations screen edit). Shown as read-only chips; edited on the form.
   const [homeSpots, setHomeSpots] = useState<Record<number, number[]>>({});
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});
+  const [spotFull, setSpotFull] = useState<Record<number, string>>({});
   const [detailFor, setDetailFor] = useState<any | null>(null);        // product page
+
+  // Labels are derived from the CURRENT location tree, so any screen that can
+  // create or rename a location must refresh them — otherwise a new spot shows
+  // as "Spot 42" and a renamed one keeps its old text until remount.
+  const applyLocations = React.useCallback((locs: any[]) => {
+    const labels: Record<number, string> = {};
+    const full: Record<number, string> = {};
+    locs.forEach((l) => {
+      labels[l.id] = locationShortLabel(l.id, locs);
+      full[l.id] = locationPathLabel(l.id, locs);
+    });
+    setSpotLabels(labels);
+    setSpotFull(full);
+  }, []);
+
+  const refreshLocationLabels = React.useCallback(async () => {
+    if (!companyId) return;
+    try {
+      const r = await fetch(`/api/inventory/count-locations?company_id=${companyId}`);
+      if (r.ok) applyLocations((await r.json()).locations || []);
+    } catch { /* keep the labels we have */ }
+  }, [companyId, applyLocations]);
 
   useEffect(() => {
     if (!companyId) return;
@@ -27,6 +51,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     // restaurant's chips.
     setHomeSpots({});
     setSpotLabels({});
+    setSpotFull({});
     (async () => {
       try {
         const [plRes, locRes] = await Promise.all([
@@ -37,18 +62,11 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
         const map: Record<number, number[]> = {};
         (plRes.placements || []).forEach((pl: any) => { (map[pl.odoo_product_id] ||= []).push(pl.count_location_id); });
         setHomeSpots(map);
-        const locs: any[] = locRes.locations || [];
-        const byId = new Map<number, any>(locs.map((l) => [l.id, l]));
-        const labels: Record<number, string> = {};
-        locs.forEach((l) => {
-          const parent = l.parent_id != null ? byId.get(l.parent_id) : null;
-          labels[l.id] = parent ? `${parent.name} · ${l.name}` : l.name;
-        });
-        setSpotLabels(labels);
+        applyLocations(locRes.locations || []);
       } catch { /* chips degrade gracefully */ }
     })();
     return () => { stale = true; };
-  }, [companyId]);
+  }, [companyId, applyLocations]);
   const [imgVer, setImgVer] = useState(0);                                      // cache-bust <img> after an update
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -127,7 +145,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                     <div className="flex flex-wrap gap-1 mt-1">
                       {on && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">📷 Photo required</span>}
                       {spots.length > 0 ? spots.map((sid) => (
-                        <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">📍 {spotLabels[sid] || `Spot ${sid}`}</span>
+                        <span key={sid} title={spotFull[sid] || undefined} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap flex-shrink-0 max-w-full overflow-hidden text-ellipsis">📍 {spotLabels[sid] || `Spot ${sid}`}</span>
                       )) : (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-dashed border-amber-300">📍 No spot yet</span>
                       )}
@@ -151,7 +169,10 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
               const f = patch.flags;
               if (f.requires_photo !== undefined) setFlags((prev) => ({ ...prev, [detailFor.id]: !!f.requires_photo }));
             }
-            if (patch.spots) setHomeSpots((prev) => ({ ...prev, [detailFor.id]: patch.spots as number[] }));
+            if (patch.spots) {
+              setHomeSpots((prev) => ({ ...prev, [detailFor.id]: patch.spots as number[] }));
+              refreshLocationLabels();   // the editor can create/rename locations
+            }
             if (patch.name !== undefined || patch.uom !== undefined) {
               setProducts((prev: any[]) => prev.map((x) => x.id === detailFor.id
                 ? { ...x, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }

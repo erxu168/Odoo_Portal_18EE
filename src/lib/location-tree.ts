@@ -51,6 +51,22 @@ export function locationPathLabel<T extends TreeRow & { name: string }>(id: numb
 }
 
 /**
+ * A SHORT label for tight places (a chip in a product row): the last `keep`
+ * segments, prefixed with "…" when the path is deeper — e.g. "Gram Fridge › D4"
+ * for "Ssam Guestroom Area › Storage next to Staircase › Gram Fridge › D4".
+ *
+ * Deep hierarchies made full-path chips so long that several of them squeezed
+ * each other out of a row. The leaf plus its immediate parent is what actually
+ * identifies a place; show the full path where there is room (a tooltip, the
+ * product page, the count route).
+ */
+export function locationShortLabel<T extends TreeRow & { name: string }>(id: number, rows: T[], keep = 2, sep = ' › '): string {
+  const path = locationPath(id, rows);
+  if (path.length <= keep) return path.join(sep);
+  return `…${sep}${path.slice(-keep).join(sep)}`;
+}
+
+/**
  * Next walking-order value for a sibling set: max + 10, or 10 when empty.
  * Gaps of 10 leave room to insert between two spots later.
  */
