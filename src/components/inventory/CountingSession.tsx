@@ -11,7 +11,7 @@ import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { cacheSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
-import { hasCrate, crateTotal, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
+import { hasCrate, crateTotal, splitFromTotal, formatSplit, unitWords, pluralizePack } from '@/lib/crate-units';
 import GuidedCountingFlow from './GuidedCountingFlow';
 import { useTopBar } from '@/components/ui/TopBarContext';
 
@@ -57,13 +57,16 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [rowPhotos, setRowPhotos] = useState<Record<string, string[]>>({});
   // -- Crate (multi-UoM) counting --
   const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});          // product_id -> base units per pack
-  const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});         // product_id -> count-by label
+  const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});         // product_id -> whole-unit word ('crate')
+  const [looseLabels, setLooseLabels] = useState<Record<number, string>>({});         // product_id -> single-unit word ('bottle')
   const [crateSplits, setCrateSplits] = useState<Record<string, { crates: number; loose: number }>>({});
   const [rowNotes, setRowNotes] = useState<Record<string, string>>({});   // per-line note, keyed like every other line map
   const [draftNote, setDraftNote] = useState('');                          // note being typed in the open sheet
   const [staffNote, setStaffNote] = useState('');                          // one note about the WHOLE count
   const [oos, setOos] = useState<Set<string>>(new Set());   // lines marked OUT OF STOCK (deliberate none ≠ not-counted)
   const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null; loc: number }>({ open: false, product: null, loc: 0 });
+  // The per-product "⋯" sheet: none left / note / photo.
+  const [rowMenu, setRowMenu] = useState<{ product: any; loc: number } | null>(null);
   // Scan hit a product counted at several spots → ask which one.
   const [spotChoice, setSpotChoice] = useState<{ product: any; qty: number; uom: string } | null>(null);
   // -- Guided route (Phase 2) --
@@ -201,6 +204,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         if (cached.flags) setFlags(cached.flags);
         if (cached.crateSizes) setCrateSizes(cached.crateSizes);
         if (cached.crateLabels) setCrateLabels(cached.crateLabels);
+        if (cached.looseLabels) setLooseLabels(cached.looseLabels);
       } else {
         console.error('No cached data available for session', sessionId);
       }
@@ -216,18 +220,21 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       const map: Record<number, boolean> = {};
       const crateMap: Record<number, number> = {};
       const labelMap: Record<number, string> = {};
+      const looseMap: Record<number, string> = {};
       (d.flags || []).forEach((f: any) => {
         map[f.odoo_product_id] = !!f.requires_photo;
         if (f.units_per_crate != null && Number(f.units_per_crate) > 0) crateMap[f.odoo_product_id] = Number(f.units_per_crate);
         if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
+        if (f.loose_label) looseMap[f.odoo_product_id] = f.loose_label;
       });
       setFlags(map);
       setCrateSizes(crateMap);
       setCrateLabels(labelMap);
-      // Patch flags + pack sizes/labels into cached session data so an offline reload has them.
+      setLooseLabels(looseMap);
+      // Patch flags + pack sizes/words into cached session data so an offline reload has them.
       const cached = await getCachedSessionData(sessionId);
       if (cached) {
-        void cacheSessionData(sessionId, { ...cached, flags: map, crateSizes: crateMap, crateLabels: labelMap });
+        void cacheSessionData(sessionId, { ...cached, flags: map, crateSizes: crateMap, crateLabels: labelMap, looseLabels: looseMap });
       }
     }).catch(() => {});
   }, [sessionId]);
@@ -523,6 +530,36 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     saveCount(product.id, loc, next, product.uom_id?.[1] || 'Units');
   }
 
+  // Step WHOLE packs (bunches/crates) for a product measured in something else.
+  // Staff hold bunches; the kilograms are the manager's problem, so the pack is
+  // what the stepper moves and the base total is derived, never typed.
+  function stepPacks(product: any, loc: number, delta: number) {
+    const size = crateSizes[product.id] || 0;
+    if (!hasCrate(size)) return;
+    const k = K(product.id, loc);
+    const cur = crateSplits[k]?.crates ?? splitFromTotal(entries[k] ?? 0, size).crates;
+    const next = Math.max(0, cur + delta);
+    if (next === cur) return;
+    void saveCrateCount(product, loc, next, 0);
+  }
+
+  // Save a line's photos. Shared by the row strip and the per-product sheet so
+  // there is one way a photo reaches the server, not two that drift.
+  async function savePhotos(product: any, loc: number, next: string[]) {
+    const k = K(product.id, loc);
+    const val = entries[k] ?? null;
+    const uom = product.uom_id?.[1] || 'Units';
+    setRowPhotos((prev) => ({ ...prev, [k]: next }));
+    void updateCachedEntry(sessionId, product.id, { counted_qty: val ?? undefined, uom, photos: next }, loc);
+    const res = await trackedMutate({
+      url: '/api/inventory/counts',
+      method: 'POST',
+      body: { session_id: sessionId, product_id: product.id, count_location_id: loc, counted_qty: val, uom, photos: next },
+      dedupKey: `save:${sessionId}:${product.id}:${loc}`,
+    });
+    if (res.queued) void sync.refresh();
+  }
+
   function openNumpad(product: any, loc: number) {
     setDraftNote(rowNotes[K(product.id, loc)] || '');
     setNumpad({ open: true, product, loc });
@@ -607,7 +644,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const showCatGroups = effectiveMode === 'group' && categories.length > 1 && catFilter === 'all' && !search;
 
   // -- Count line row: one product at ONE spot --
-  function ProductRow({ p, loc = 0 }: { p: any; loc?: number }) {
+  function ProductRow({ p, loc = 0, underSpot = false }: { p: any; loc?: number; underSpot?: boolean }) {
     const k = K(p.id, loc);
     const val = entries[k] ?? null;
     const uom = p.uom_id?.[1] || 'Units';
@@ -615,8 +652,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     const prodPhotos = rowPhotos[k] || [];
     const size = crateSizes[p.id];
     const isCrate = hasCrate(size);
-    const label = crateLabels[p.id] ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
-    const measure = baseIsMeasure(uom);
+    const words = unitWords(uom, crateLabels[p.id], looseLabels[p.id]);
+    const label = words.pack;
+    const measure = words.measure;
     const split = crateSplits[k] ?? (val != null ? splitFromTotal(val, size) : null);
     // Sibling lines: the SAME product counted at other spots — the double-count guard.
     const siblings = (spotsOfProduct.get(p.id) || []).filter((l) => l !== loc);
@@ -629,10 +667,16 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               {/* Wrap rather than truncate: "Beef, goula…" is useless to someone
                   holding the product. Two lines beat a cut-off name. */}
               <span className="text-[var(--fs-lg)] font-semibold text-gray-900 leading-snug">{p.name}</span>
-              <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">{uom}</span>
-              {isCrate && (
+              {/* The unit staff COUNT in — bunches, not the kilograms it converts
+                  to. The conversion is the manager's business when ordering. */}
+              <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">
+                {isCrate && measure ? pluralizePack(label, 2) : words.loose}
+              </span>
+              {/* A pack of countable things still has to show its size, because
+                  "3" means nothing until you know whether a crate is 12 or 24. */}
+              {isCrate && !measure && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 flex-shrink-0">
-                  1 {label} {measure ? '≈' : '='} {size}
+                  1 {label} = {size} {pluralizePack(words.loose, size)}
                 </span>
               )}
               {flagged && (
@@ -640,41 +684,73 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   Photo required
                 </span>
               )}
-              {hasSpots && (
+              {/* In the walk, the shelf heading directly above already says where
+                  you are — repeating it on every row is noise. The flat list has
+                  no heading, so there it stays. */}
+              {hasSpots && !underSpot && (
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
                   {spotLabel(loc)}
                 </span>
               )}
             </div>
           </div>
-          {isCrate && !isReadOnly ? (
+          {/* Three ways to enter a number, by what the product actually IS.
+              A measured product sold in bunches is just a stepper counting
+              bunches — there is no such thing as half a loose bunch, so the old
+              modal was one stepper wrapped in arithmetic. Countable things in
+              packs genuinely need two numbers (3 crates AND 5 loose bottles),
+              so those still open the sheet — by tapping the number, not a
+              separate button. Everything else is a plain stepper. */}
+          {isReadOnly ? (
+            <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700 text-right">
+              {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{words.loose}</span>
+              {isCrate && split && val !== null && (
+                <div className="text-[10px] text-gray-400 font-normal font-mono">{formatSplit(split.crates, split.loose, words.loose, label)}</div>
+              )}
+            </div>
+          ) : isCrate && measure ? (
+            <Stepper
+              value={split ? split.crates : null}
+              uom={pluralizePack(label, split?.crates ?? 2)}
+              onMinus={() => stepPacks(p, loc, -1)}
+              onPlus={() => stepPacks(p, loc, 1)}
+              onTap={() => openCrateSheet(p, loc)} />
+          ) : isCrate ? (
             <button
               onClick={() => openCrateSheet(p, loc)}
               className={`flex-shrink-0 text-right border rounded-xl px-3 py-2 min-w-[94px] active:bg-gray-50 ${val != null ? 'border-green-500 bg-green-50' : 'border-dashed border-gray-300'}`}
             >
-              {val != null ? (
+              {val != null && split ? (
                 <>
                   <div className="font-mono text-[var(--fs-lg)] font-bold text-gray-900 leading-none">
-                    {val}<span className="text-[10px] font-semibold text-gray-500 ml-0.5">{uom}</span>
+                    {split.crates}<span className="text-[10px] font-semibold text-gray-500 ml-0.5">{pluralizePack(label, split.crates)}</span>
                   </div>
-                  {split && <div className="text-[10px] text-gray-500 mt-1 font-mono">{formatSplit(split.crates, split.loose, uom, label)}</div>}
+                  <div className="text-[10px] text-gray-500 mt-1 font-mono">
+                    + {split.loose} {pluralizePack(words.loose, split.loose)}
+                  </div>
                 </>
               ) : (
-                <div className="text-[var(--fs-sm)] font-bold text-green-700">Count {'→'}</div>
+                <div className="text-[var(--fs-sm)] font-bold text-green-700">
+                  {pluralizePack(label, 2)} + {pluralizePack(words.loose, 2)} {'\u2192'}
+                </div>
               )}
             </button>
-          ) : !isReadOnly ? (
-            <Stepper value={val} uom={uom}
+          ) : (
+            <Stepper value={val} uom={words.loose}
               onMinus={() => stepQty(p, loc, -1)}
               onPlus={() => stepQty(p, loc, 1)}
               onTap={() => openNumpad(p, loc)} />
-          ) : (
-            <div className="text-[var(--fs-lg)] font-mono font-semibold text-gray-700 text-right">
-              {val !== null ? val : '--'} <span className="text-[var(--fs-xs)] text-gray-400">{uom}</span>
-              {isCrate && split && val !== null && (
-                <div className="text-[10px] text-gray-400 font-normal font-mono">{formatSplit(split.crates, split.loose, uom, label)}</div>
-              )}
-            </div>
+          )}
+          {/* Everything a person needs to say about one product that is not a
+              number: none left, a note, a photo. It was only reachable by
+              opening the keypad, which nobody guesses. */}
+          {!isReadOnly && (
+            <button
+              onClick={() => setRowMenu({ product: p, loc })}
+              aria-label={`More for ${p.name}`}
+              className="flex-shrink-0 w-10 h-10 rounded-xl border border-gray-200 text-gray-500 text-[17px] font-bold leading-none active:bg-gray-50">
+              {'\u22EF'}
+            </button>
           )}
         </div>
         {siblings.length > 0 && (
@@ -705,24 +781,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           <div className="mt-2">
             <PhotoCaptureStrip
               photos={prodPhotos}
-              onChange={async (next) => {
-                setRowPhotos(prev => ({ ...prev, [k]: next }));
-                void updateCachedEntry(sessionId, p.id, { counted_qty: val ?? undefined, uom, photos: next }, loc);
-                const res = await trackedMutate({
-                  url: '/api/inventory/counts',
-                  method: 'POST',
-                  body: {
-                    session_id: sessionId,
-                    product_id: p.id,
-                    count_location_id: loc,
-                    counted_qty: val,
-                    uom,
-                    photos: next,
-                  },
-                  dedupKey: `save:${sessionId}:${p.id}:${loc}`,
-                });
-                if (res.queued) void sync.refresh();
-              }}
+              onChange={(next) => savePhotos(p, loc, next)}
             />
           </div>
         )}
@@ -843,7 +902,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 const uom = p.uom_id?.[1] || 'Units';
                 const size = crateSizes[p.id];
                 const isCrate = hasCrate(size);
-                const label = crateLabels[p.id] ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
+                const words = unitWords(uom, crateLabels[p.id], looseLabels[p.id]);
+                const label = words.pack;
                 const split = crateSplits[k] ?? (val != null ? splitFromTotal(val, size) : null);
                 return (
                   <div key={k} className="flex items-center justify-between py-2.5 border-b border-gray-100">
@@ -861,7 +921,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                         {val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span>
                       </span>
                       {isCrate && split && (
-                        <div className="text-[10px] text-gray-400 font-mono">{formatSplit(split.crates, split.loose, uom, label)}</div>
+                        <div className="text-[10px] text-gray-400 font-mono">{formatSplit(split.crates, split.loose, words.loose, label)}</div>
                       )}
                     </div>
                   </div>
@@ -980,7 +1040,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           stops={route.stops}
           productsById={productsById}
           statuses={guidedStatuses}
-          renderRow={(p, bucketId) => <ProductRow p={p} loc={items.length > 0 ? bucketId : 0} />}
+          renderRow={(p, bucketId) => <ProductRow p={p} loc={items.length > 0 ? bucketId : 0} underSpot />}
           stopProgress={(bucketId, ids) => {
             // Legacy sessions store every line at the catch-all spot, so their
             // walk buckets read progress from loc 0.
@@ -1114,6 +1174,55 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         />
       )}
 
+      {/* Per-product actions. A sheet rather than a dropdown: it is reachable
+          with a thumb at the bottom of a phone, and it names what each choice
+          does instead of hiding it behind an icon. */}
+      {!isReadOnly && rowMenu && (() => {
+        const rk = K(rowMenu.product.id, rowMenu.loc);
+        const isNone = oos.has(rk);
+        const close = () => setRowMenu(null);
+        return (
+          <div className="fixed inset-0 z-[100] flex items-end" role="dialog" aria-modal="true">
+            <button aria-label="Close" onClick={close} className="absolute inset-0 bg-black/40" />
+            <div className="relative w-full bg-white rounded-t-3xl pb-[env(safe-area-inset-bottom)] max-h-[90vh] overflow-y-auto">
+              <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+                <div className="text-[var(--fs-lg)] font-bold text-gray-900 leading-snug">{rowMenu.product.name}</div>
+                {hasSpots && <div className="text-[var(--fs-xs)] text-gray-500 font-semibold mt-0.5">{spotLabel(rowMenu.loc)}</div>}
+              </div>
+              <button onClick={() => { openNumpad(rowMenu.product, rowMenu.loc); close(); }}
+                className="w-full flex items-center gap-3 px-5 py-4 border-b border-gray-100 text-left active:bg-gray-50">
+                <span className="text-[18px]" aria-hidden="true">📝</span>
+                <span className="text-[var(--fs-base)] font-semibold text-gray-900">
+                  {rowNotes[rk] ? 'Edit the note' : 'Add a note'}
+                </span>
+              </button>
+              {(entries[rk] ?? 0) > 0 && (
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-[18px]" aria-hidden="true">📷</span>
+                    <span className="text-[var(--fs-base)] font-semibold text-gray-900">Photo</span>
+                  </div>
+                  <PhotoCaptureStrip
+                    photos={rowPhotos[rk] || []}
+                    onChange={async (next) => { await savePhotos(rowMenu.product, rowMenu.loc, next); }}
+                  />
+                </div>
+              )}
+              <button onClick={() => { void saveOutOfStock(rowMenu.product, rowMenu.loc, !isNone); close(); }}
+                className="w-full flex items-center gap-3 px-5 py-4 border-b border-gray-100 text-left active:bg-gray-50">
+                <span className="text-[18px]" aria-hidden="true">{isNone ? '↩️' : '🚫'}</span>
+                <span className={`text-[var(--fs-base)] font-semibold ${isNone ? 'text-gray-900' : 'text-red-600'}`}>
+                  {isNone ? 'There is some here after all' : (hasSpots ? 'None left at this spot' : 'None left here')}
+                </span>
+              </button>
+              <button onClick={close} className="w-full px-5 py-4 text-[var(--fs-base)] font-bold text-gray-500 active:bg-gray-50">
+                Close
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
       {!isReadOnly && crateSheet.open && crateSheet.product && (
         <CrateCountSheet
           note={draftNote}
@@ -1128,7 +1237,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           product={crateSheet.product}
           unitsPerCrate={crateSizes[crateSheet.product.id] || 0}
           uom={crateSheet.product.uom_id?.[1] || 'Units'}
-          packLabel={crateLabels[crateSheet.product.id] ?? (baseIsMeasure(crateSheet.product.uom_id?.[1] || 'Units') ? 'piece' : 'crate')}
+          packLabel={unitWords(crateSheet.product.uom_id?.[1], crateLabels[crateSheet.product.id], looseLabels[crateSheet.product.id]).pack}
+          looseLabel={looseLabels[crateSheet.product.id] || null}
           initialCrates={crateSplits[K(crateSheet.product.id, crateSheet.loc)]?.crates ?? splitFromTotal(entries[K(crateSheet.product.id, crateSheet.loc)] ?? 0, crateSizes[crateSheet.product.id]).crates}
           initialLoose={crateSplits[K(crateSheet.product.id, crateSheet.loc)]?.loose ?? splitFromTotal(entries[K(crateSheet.product.id, crateSheet.loc)] ?? 0, crateSizes[crateSheet.product.id]).loose}
           showSystemQty={userRole !== 'staff'}

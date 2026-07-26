@@ -13,7 +13,7 @@ import { useCompany } from '@/lib/company-context';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { SearchBar, Spinner, EmptyState, ProductThumb, Stepper } from './ui';
 import NumpadModal from './NumpadModal';
-import { crateTotal, hasCrate, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
+import { crateTotal, hasCrate, splitFromTotal, formatSplit, unitWords, pluralizePack } from '@/lib/crate-units';
 
 // Read a picked image (camera or file) and downscale it on-device to keep the
 // stored data URL small — same approach as Product Settings / Locations.
@@ -49,6 +49,7 @@ export default function GoodsReceived() {
   const [products, setProducts] = useState<any[]>([]);
   const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});
   const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});
+  const [looseLabels, setLooseLabels] = useState<Record<number, string>>({});
   const [productImageIds, setProductImageIds] = useState<Set<number>>(new Set());
   const [receipts, setReceipts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,10 +82,13 @@ export default function GoodsReceived() {
       setProducts((prodRes.products || []).filter((p: any) => p.active !== false));
       const sizes: Record<number, number> = {};
       const labels: Record<number, string> = {};
+      const looseWords: Record<number, string> = {};
       (flagRes.flags || []).forEach((f: any) => {
         if (f.units_per_crate != null && Number(f.units_per_crate) > 0) sizes[f.odoo_product_id] = Number(f.units_per_crate);
         if (f.pack_label) labels[f.odoo_product_id] = f.pack_label;
+        if (f.loose_label) looseWords[f.odoo_product_id] = f.loose_label;
       });
+      setLooseLabels(looseWords);
       setCrateSizes(sizes);
       setCrateLabels(labels);
       setProductImageIds(new Set<number>(imgRes.with_images || []));
@@ -148,7 +152,8 @@ export default function GoodsReceived() {
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
               {receipts.slice(0, 30).map((r, idx) => {
                 const uom = r.uom || 'Units';
-                const packLabel = crateLabels[r.odoo_product_id] ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
+                const rWords = unitWords(uom, crateLabels[r.odoo_product_id], looseLabels[r.odoo_product_id]);
+                const packLabel = rWords.pack;
                 const qtyText = r.units_per_crate
                   ? formatSplit(Number(r.crate_qty) || 0, Number(r.loose_qty) || 0, uom, packLabel)
                   : `${r.qty_base} ${uom}`;
@@ -190,7 +195,7 @@ export default function GoodsReceived() {
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
                     <div className="text-[var(--fs-xs)] text-gray-400 truncate">
-                      {uom}{crateSizes[p.id] ? ` · 1 ${crateLabels[p.id] || 'pack'} = ${crateSizes[p.id]}` : ''}{p.default_code ? ` · #${p.default_code}` : ''}
+                      {uom}{crateSizes[p.id] ? ` \u00B7 1 ${unitWords(uom, crateLabels[p.id], looseLabels[p.id]).pack} = ${crateSizes[p.id]}` : ''}{p.default_code ? ` \u00B7 #${p.default_code}` : ''}
                     </div>
                   </div>
                   <span className="text-green-700 text-[var(--fs-sm)] font-bold flex-shrink-0">Receive {'→'}</span>
@@ -207,7 +212,8 @@ export default function GoodsReceived() {
           hasImage={productImageIds.has(entry.id)}
           companyId={companyId}
           unitsPerCrate={crateSizes[entry.id] || 0}
-          packLabel={crateLabels[entry.id] ?? (baseIsMeasure(entry.uom_id?.[1] || 'Units') ? 'piece' : 'crate')}
+          packLabel={unitWords(entry.uom_id?.[1], crateLabels[entry.id], looseLabels[entry.id]).pack}
+          looseLabel={looseLabels[entry.id] || null}
           onClose={() => setEntry(null)}
           onSaved={async () => { setEntry(null); showToast('Delivery logged'); await loadReceipts(); }}
         />
@@ -223,18 +229,22 @@ export default function GoodsReceived() {
 }
 
 /** Bottom sheet: enter a delivered quantity (+ note/photo) and log the receipt. */
-function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabel, onClose, onSaved }: {
+function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabel, looseLabel, onClose, onSaved }: {
   product: any;
   hasImage: boolean;
   companyId: number;
   unitsPerCrate: number;
   packLabel: string;
+  /** What ONE of them is called — "bottle". Falls back to the Odoo unit. */
+  looseLabel?: string | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: () => void | Promise<void>;
 }) {
   const uom = product.uom_id?.[1] || 'Units';
   const isPack = hasCrate(unitsPerCrate);
-  const measure = baseIsMeasure(uom);
+  const words = unitWords(uom, packLabel, looseLabel);
+  const one = words.loose;
+  const measure = words.measure;
   const [crates, setCrates] = useState(0);
   const [loose, setLoose] = useState(0);
   const [qty, setQty] = useState(0);
@@ -292,30 +302,30 @@ function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabe
           <ProductThumb productId={product.id} has={hasImage} size={48} />
           <div className="min-w-0">
             <div className="text-[var(--fs-lg)] font-bold text-gray-900 truncate">{product.name}</div>
-            <div className="text-[var(--fs-xs)] text-gray-400">base {uom}{isPack ? ` · 1 ${packLabel} ${measure ? '≈' : '='} ${unitsPerCrate}` : ''}</div>
+            <div className="text-[var(--fs-xs)] text-gray-400">base {uom}{isPack ? ` \u00B7 1 ${packLabel} ${measure ? '\u2248' : '='} ${unitsPerCrate} ${pluralizePack(one, unitsPerCrate)}` : ''}</div>
           </div>
         </div>
 
         {isPack ? (
           <div className="flex gap-3 mb-2">
             <div className="flex-1">
-              <label className="block text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1">{packLabel}s</label>
-              <Stepper value={crates} uom={packLabel} onMinus={() => setCrates((n) => Math.max(0, n - 1))} onPlus={() => setCrates((n) => n + 1)} onTap={() => setPad('crates')} />
+              <label className="block text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1">{pluralizePack(packLabel, 2)}</label>
+              <Stepper value={crates} uom={pluralizePack(packLabel, crates)} onMinus={() => setCrates((n) => Math.max(0, n - 1))} onPlus={() => setCrates((n) => n + 1)} onTap={() => setPad('crates')} />
             </div>
             {!measure && (
               <div className="flex-1">
-                <label className="block text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1">Loose {uom}</label>
-                <Stepper value={loose} uom={uom} onMinus={() => setLoose((n) => Math.max(0, n - 1))} onPlus={() => setLoose((n) => n + 1)} onTap={() => setPad('loose')} />
+                <label className="block text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1">Loose {pluralizePack(one, 2)}</label>
+                <Stepper value={loose} uom={pluralizePack(one, loose)} onMinus={() => setLoose((n) => Math.max(0, n - 1))} onPlus={() => setLoose((n) => n + 1)} onTap={() => setPad('loose')} />
               </div>
             )}
           </div>
         ) : (
           <div className="mb-2">
             <label className="block text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1">Quantity</label>
-            <Stepper value={qty} uom={uom} onMinus={() => setQty((n) => Math.max(0, n - 1))} onPlus={() => setQty((n) => n + 1)} onTap={() => setPad('qty')} />
+            <Stepper value={qty} uom={pluralizePack(one, qty)} onMinus={() => setQty((n) => Math.max(0, n - 1))} onPlus={() => setQty((n) => n + 1)} onTap={() => setPad('qty')} />
           </div>
         )}
-        <div className="text-[var(--fs-sm)] text-gray-500 mb-4 font-mono">= {base} {uom} received</div>
+        <div className="text-[var(--fs-sm)] text-gray-500 mb-4 font-mono">= {base} {pluralizePack(one, base)} received</div>
 
         <label className="block text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1">Note (optional)</label>
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. supplier, invoice no." maxLength={500}
@@ -345,7 +355,7 @@ function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabe
         open={pad !== null}
         productName={product.name}
         category={pad === 'crates' ? `${packLabel}s` : pad === 'loose' ? `Loose ${uom}` : 'Quantity'}
-        uom={pad === 'crates' ? packLabel : uom}
+        uom={pad === 'crates' ? pluralizePack(packLabel, 2) : pluralizePack(one, 2)}
         initialValue={pad === 'crates' ? crates : pad === 'loose' ? loose : qty}
         showSystemQty={false}
         systemQty={null}

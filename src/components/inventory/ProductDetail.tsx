@@ -5,7 +5,7 @@ import { Spinner, ProductThumb } from './ui';
 import SpotSheet from './SpotSheet';
 import ManagePackLabels from './ManagePackLabels';
 import ManageCategories from './ManageCategories';
-import { suggestCrateSizeFromName, baseIsMeasure } from '@/lib/crate-units';
+import { suggestCrateSizeFromName, baseIsMeasure, pluralizePack, unitWords } from '@/lib/crate-units';
 import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
 
@@ -126,6 +126,10 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
 
   const uomName = uoms.find((u) => u.id === uomId)?.name || product.uom_id?.[1] || 'Units';
   const measure = baseIsMeasure(uomName);
+  // The word actually in force — the saved one, or the implicit default. The
+  // Suggest button used to hard-code 'crate' here and would quietly overwrite a
+  // kg product's 'piece' with 'crate' the moment someone accepted a suggestion.
+  const effPack = unitWords(uomName, packLabel, looseLabel).pack;
 
   useEffect(() => {
     (async () => {
@@ -470,42 +474,50 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           {/* Count-by config */}
           <label className={label}>How staff count it</label>
           <div className="bg-white border border-gray-200 rounded-xl p-3 mb-4">
+            {/* Written as the sentence a person would say — "1 crate = 24
+                bottles" — because these two words are what staff read on every
+                count screen. The old version asked for a "single-unit word
+                (loose)" in a box of its own, and nobody knew what that meant. */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[var(--fs-xs)] font-semibold text-gray-500">Count by</span>
-              <select value={packLabel || (measure ? 'piece' : 'crate')} disabled={readOnly}
+              <span className="text-[var(--fs-sm)] font-semibold text-gray-500">1</span>
+              <select value={effPack} disabled={readOnly}
                 onChange={(e) => { setPackLabel(e.target.value); savePack(packSize, e.target.value, looseLabel); }}
                 className="h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] font-semibold bg-white disabled:opacity-60">
                 {/* Keep the EFFECTIVE current unit selectable even if it was removed from the
                     list — covers the implicit default (piece/crate) when pack_label is null. */}
-                {Array.from(new Set([packLabel || (measure ? 'piece' : 'crate'), ...packUnits])).map((l) => <option key={l} value={l}>{l}</option>)}
+                {Array.from(new Set([effPack, ...packUnits])).map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
+              <span className="text-[var(--fs-sm)] font-semibold text-gray-500">{measure ? '\u2248' : '='}</span>
+              <input value={packSize} disabled={readOnly}
+                onChange={(e) => setPackSize(e.target.value.replace(/[^0-9.]/g, ''))}
+                onBlur={(e) => savePack(e.target.value, effPack, looseLabel)}
+                inputMode="decimal" placeholder="\u2014"
+                aria-label={`How many ${uomName} in one ${effPack}`}
+                className="w-16 h-9 border border-gray-300 rounded-lg text-center font-mono font-semibold" />
+              {packSize !== '' && !measure ? (
+                <input value={looseLabel} disabled={readOnly}
+                  onChange={(e) => setLooseLabel(e.target.value.slice(0, 20))}
+                  onBlur={(e) => savePack(packSize, effPack, e.target.value)}
+                  placeholder={uomName}
+                  aria-label="What one of them is called"
+                  className="w-28 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] font-semibold" />
+              ) : (
+                <span className="text-[var(--fs-sm)] text-gray-400">{uomName}</span>
+              )}
               {!readOnly && (
                 <button onClick={() => setManageUnits(true)} className="text-[11px] font-bold text-blue-700 active:opacity-70" aria-label="Edit the count-by units">Edit units</button>
               )}
-              <span className="text-[var(--fs-xs)] text-gray-500">1 {packLabel || (measure ? 'piece' : 'crate')} {measure ? '≈' : '='}</span>
-              <input value={packSize} disabled={readOnly}
-                onChange={(e) => setPackSize(e.target.value.replace(/[^0-9.]/g, ''))}
-                onBlur={(e) => savePack(e.target.value, packLabel || (measure ? 'piece' : 'crate'), looseLabel)}
-                inputMode="decimal" placeholder="—"
-                className="w-16 h-9 border border-gray-300 rounded-lg text-center font-mono font-semibold" />
-              <span className="text-[var(--fs-xs)] text-gray-400">{uomName}</span>
               {suggestion !== null && packSize === '' && (
-                <button onClick={() => { setPackSize(String(suggestion)); savePack(String(suggestion), packLabel || 'crate', looseLabel); }}
+                <button onClick={() => { setPackSize(String(suggestion)); savePack(String(suggestion), effPack, looseLabel); }}
                   disabled={readOnly}
                   className="text-[11px] font-bold text-blue-800 bg-blue-50 rounded-md px-2 py-1 disabled:opacity-40">Suggest: {suggestion}</button>
               )}
             </div>
-            {packSize !== '' && (
-              <div className="flex items-center gap-1.5 mt-2">
-                <span className="text-[var(--fs-xs)] text-gray-500">Single-unit word (loose)</span>
-                <input value={looseLabel} disabled={readOnly}
-                  onChange={(e) => setLooseLabel(e.target.value.slice(0, 20))}
-                  onBlur={(e) => savePack(packSize, packLabel || (measure ? 'piece' : 'crate'), e.target.value)}
-                  placeholder="e.g. piece"
-                  className="w-24 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)]" />
-              </div>
-            )}
-            <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">Leave the size blank to count in {uomName} only.</p>
+            <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">
+              {packSize !== '' && !measure
+                ? `Staff count whole ${pluralizePack(effPack, 2)} and loose ${pluralizePack(looseLabel || uomName, 2)}. Odoo still gets ${uomName}.`
+                : `Leave the size blank to count in ${uomName} only.`}
+            </p>
           </div>
 
           {/* Photo rule */}

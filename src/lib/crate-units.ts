@@ -84,6 +84,39 @@ export function baseIsMeasure(uom: string): boolean {
   return MEASURE_UOMS.has((uom || '').trim().toLowerCase());
 }
 
+/**
+ * The two words a person actually says about this product: what a whole one is
+ * called ("crate", "bunch") and what a single one is called ("bottle").
+ *
+ * This exists because the same fallback was written out by hand in eight places
+ * and two of them disagreed — a product read "1 pack = 24" on the receiving
+ * screen and "1 crate = 24" in the count sheet. One product, two names.
+ *
+ * The loose word falls back to the Odoo unit, which is why a bottle of Ting
+ * still reads "Units" until a manager types the real word.
+ */
+export interface UnitWords {
+  /** A whole one: "crate", "bunch", "box". */
+  pack: string;
+  /** A single one: "bottle", "piece" — or the raw Odoo unit if nobody said. */
+  loose: string;
+  /** Weight/volume base: there is no such thing as a loose gram on a shelf. */
+  measure: boolean;
+}
+export function unitWords(
+  uom: string | null | undefined,
+  packLabel?: string | null,
+  looseLabel?: string | null,
+): UnitWords {
+  const unit = (uom || '').trim() || 'Units';
+  const measure = baseIsMeasure(unit);
+  return {
+    pack: (packLabel || '').trim() || (measure ? 'piece' : 'crate'),
+    loose: (looseLabel || '').trim() || unit,
+    measure,
+  };
+}
+
 /** "79 Units" — the base-unit-only display. */
 export function formatBase(total: number, unit: string): string {
   return `${round2(total)} ${unit || 'Units'}`;

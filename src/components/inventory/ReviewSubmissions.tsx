@@ -6,7 +6,7 @@ import StandardFilter from '@/components/ui/StandardFilter';
 import RecordLink from '@/components/ui/RecordLink';
 import PhotoLightbox from './PhotoLightbox';
 import NumpadModal from './NumpadModal';
-import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
+import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure, unitWords } from '@/lib/crate-units';
 import { typeIcon, typeLabel, LOCATION_TYPES } from '@/lib/location-types';
 
 interface ReviewSubmissionsProps {
@@ -44,7 +44,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [groupMode, setGroupMode] = useState<'product' | 'category' | 'type'>('product');  // review grouping: by product / product group / place
   // product_id -> what it came out at the last few APPROVED counts. Context only.
   const [reviewHistory, setReviewHistory] = useState<Record<number, { qty: number; date: string }[]>>({});
-  const [reviewPackLabels, setReviewPackLabels] = useState<Record<number, string>>({});  // product_id -> count-by label
+  const [reviewPackLabels, setReviewPackLabels] = useState<Record<number, string>>({});  // product_id -> whole-unit word
+  const [reviewLooseLabels, setReviewLooseLabels] = useState<Record<number, string>>({}); // product_id -> single-unit word
   const [reviewQCLabel, setReviewQCLabel] = useState<string | null>(null);
 
   useEffect(() => {
@@ -165,12 +166,17 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       try {
         const ids = productList.map((p: any) => p.id).filter(Boolean);
         const labelMap: Record<number, string> = {};
+        const looseMap: Record<number, string> = {};
         if (ids.length > 0) {
           const flagRes = await fetch(`/api/inventory/product-flags?ids=${ids.join(',')}`).then(r => r.json());
-          (flagRes.flags || []).forEach((f: any) => { if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label; });
+          (flagRes.flags || []).forEach((f: any) => {
+            if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
+            if (f.loose_label) looseMap[f.odoo_product_id] = f.loose_label;
+          });
         }
         setReviewPackLabels(labelMap);
-      } catch { setReviewPackLabels({}); }
+        setReviewLooseLabels(looseMap);
+      } catch { setReviewPackLabels({}); setReviewLooseLabels({}); }
     } catch (err) {
       console.error('Failed to load review data:', err);
     } finally {
@@ -728,7 +734,8 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   const decision = draftDecisions[p.id];
                   const entry = entryByProduct[p.id];
                   const isCrate = hasCrate(entry?.units_per_crate);
-                  const packLabel = reviewPackLabels[p.id] ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
+                  const pWords = unitWords(uom, reviewPackLabels[p.id], reviewLooseLabels[p.id]);
+                  const packLabel = pWords.pack;
                   const split = isCrate
                     ? ((entry?.crate_qty != null || entry?.loose_qty != null)
                         ? { crates: Number(entry.crate_qty) || 0, loose: Number(entry.loose_qty) || 0 }
@@ -867,7 +874,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                           {isOut ? (
                             <span className="text-red-600 font-sans font-semibold">None here</span>
                           ) : isCrate && dispMode === 'split' && split ? (
-                            <span className="text-gray-900">{formatSplit(split.crates, split.loose, uom, packLabel)}</span>
+                            <span className="text-gray-900">{formatSplit(split.crates, split.loose, pWords.loose, packLabel)}</span>
                           ) : (
                             <span className="text-gray-900">{val} <span className="text-[var(--fs-xs)] text-gray-400 font-normal">{uom}</span></span>
                           )}

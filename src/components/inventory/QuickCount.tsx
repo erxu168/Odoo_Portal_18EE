@@ -12,7 +12,7 @@ import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { useCompany } from '@/lib/company-context';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
-import { hasCrate, crateTotal, splitFromTotal, formatSplit, baseIsMeasure } from '@/lib/crate-units';
+import { hasCrate, crateTotal, splitFromTotal, formatSplit, baseIsMeasure, unitWords } from '@/lib/crate-units';
 
 interface QuickCountProps {
   userRole: string;
@@ -36,6 +36,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   // -- Crate (multi-UoM) counting --
   const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});
   const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});
+  const [looseLabels, setLooseLabels] = useState<Record<number, string>>({});
   const [crateSplits, setCrateSplits] = useState<Record<number, { crates: number; loose: number }>>({});
   const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
 
@@ -132,14 +133,17 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       const flagMap: Record<number, boolean> = {};
       const crateMap: Record<number, number> = {};
       const labelMap: Record<number, string> = {};
+      const looseMap: Record<number, string> = {};
       (flagRes.flags || []).forEach((f: any) => {
         flagMap[f.odoo_product_id] = !!f.requires_photo;
+        if (f.loose_label) looseMap[f.odoo_product_id] = f.loose_label;
         if (f.units_per_crate != null && Number(f.units_per_crate) > 0) crateMap[f.odoo_product_id] = Number(f.units_per_crate);
         if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
       });
       setFlags(flagMap);
       setCrateSizes(crateMap);
       setCrateLabels(labelMap);
+      setLooseLabels(looseMap);
     } catch (err) {
       console.error('Failed to load products:', err);
     } finally {
@@ -346,7 +350,8 @@ export default function QuickCount({ userRole }: QuickCountProps) {
               const prodPhotos = photos[p.id] || [];
               const size = crateSizes[p.id];
               const isCrate = hasCrate(size);
-              const label = crateLabels[p.id] ?? (baseIsMeasure(uom) ? 'piece' : 'crate');
+              const words = unitWords(uom, crateLabels[p.id], looseLabels[p.id]);
+              const label = words.pack;
               const measure = baseIsMeasure(uom);
               const split = crateSplits[p.id] ?? (val != null ? splitFromTotal(val, size) : null);
               return (
@@ -378,7 +383,7 @@ export default function QuickCount({ userRole }: QuickCountProps) {
                             <div className="font-mono text-[var(--fs-lg)] font-bold text-gray-900 leading-none">
                               {val}<span className="text-[10px] font-semibold text-gray-500 ml-0.5">{uom}</span>
                             </div>
-                            {split && <div className="text-[10px] text-gray-500 mt-1 font-mono">{formatSplit(split.crates, split.loose, uom, label)}</div>}
+                            {split && <div className="text-[10px] text-gray-500 mt-1 font-mono">{formatSplit(split.crates, split.loose, words.loose, label)}</div>}
                           </>
                         ) : (
                           <div className="text-[var(--fs-sm)] font-bold text-green-700">Count {'→'}</div>
@@ -498,7 +503,8 @@ export default function QuickCount({ userRole }: QuickCountProps) {
           product={crateSheet.product}
           unitsPerCrate={crateSizes[crateSheet.product.id] || 0}
           uom={crateSheet.product.uom_id?.[1] || 'Units'}
-          packLabel={crateLabels[crateSheet.product.id] ?? (baseIsMeasure(crateSheet.product.uom_id?.[1] || 'Units') ? 'piece' : 'crate')}
+          packLabel={unitWords(crateSheet.product.uom_id?.[1], crateLabels[crateSheet.product.id], looseLabels[crateSheet.product.id]).pack}
+          looseLabel={looseLabels[crateSheet.product.id] || null}
           initialCrates={crateSplits[crateSheet.product.id]?.crates ?? splitFromTotal(counts[crateSheet.product.id] ?? 0, crateSizes[crateSheet.product.id]).crates}
           initialLoose={crateSplits[crateSheet.product.id]?.loose ?? splitFromTotal(counts[crateSheet.product.id] ?? 0, crateSizes[crateSheet.product.id]).loose}
           showSystemQty={false}
