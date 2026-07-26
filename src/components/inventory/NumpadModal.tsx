@@ -19,13 +19,18 @@ interface NumpadModalProps {
   outOfStock?: boolean;
   nothingHereLabel?: string;
   onNothingHere?: (on: boolean) => void;
+  // Optional per-line note ("two trays were freezer-burnt"). Rendered only when
+  // a parent wires it; saved together with the count.
+  note?: string;
+  onNoteChange?: (note: string) => void;
 }
 
 export default function NumpadModal({
-  open, productName, category, uom, initialValue, outOfStock, nothingHereLabel, onNothingHere,
+  open, productName, category, uom, initialValue, outOfStock, nothingHereLabel, onNothingHere, note, onNoteChange,
   showSystemQty, systemQty, locationName, onSave, onClose,
 }: NumpadModalProps) {
   const [buf, setBuf] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -110,6 +115,26 @@ export default function NumpadModal({
             </button>
           ))}
         </div>
+
+        {onNoteChange && (
+          <div className="mb-2">
+            {noteOpen || note ? (
+              <textarea
+                value={note || ''}
+                onChange={(e) => onNoteChange(e.target.value)}
+                autoFocus={noteOpen && !note}
+                rows={2}
+                placeholder="What should the manager know?"
+                className="w-full rounded-xl border border-blue-200 bg-blue-50/40 px-3 py-2 text-[var(--fs-sm)] text-gray-900 outline-none focus:border-blue-400 resize-none"
+              />
+            ) : (
+              <button onClick={() => setNoteOpen(true)}
+                className="w-full h-12 rounded-xl border border-gray-200 bg-white text-gray-500 text-[var(--fs-base)] font-bold active:bg-gray-50">
+                📝 Add a note
+              </button>
+            )}
+          </div>
+        )}
 
         {onNothingHere && (
           <button onClick={() => onNothingHere(!outOfStock)}

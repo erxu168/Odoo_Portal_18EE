@@ -1,14 +1,18 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { typeIcon } from '@/lib/location-types';
+import { typeIcon, typeLabel } from '@/lib/location-types';
 
 /**
- * Guided, location-by-location counting shell.
+ * The count, as ONE walk you scroll — not doors you open.
+ *
+ * Every product is on screen under the place it lives, in walking order, and is
+ * counted in place. A route rail down the left draws the walk itself: a green
+ * tick behind you, a solid dot where you are, hollow dots ahead.
  *
  * Additive: CountingSession stays the data/mutation controller and passes
- * `renderRow` (its existing ProductRow) so all count/offline logic is reused
- * unchanged. This component only adds the walking-route navigation + the
- * per-location counted/skipped state.
+ * `renderRow` (its ProductRow) so all count/offline logic is reused unchanged.
+ * This component only lays out the route and owns the per-stop counted/skipped
+ * state.
  */
 
 interface Stop {
@@ -25,6 +29,8 @@ interface Props {
   productsById: Record<number, { id: number; name: string }>;
   statuses: Record<number, { status: string; skip_reason: string | null }>;
   renderRow: (product: { id: number; name: string }, bucketId: number) => React.ReactNode;
+  /** How many of a stop's lines are counted — drives the per-stop progress + auto-collapse. */
+  stopProgress: (bucketId: number, productIds: number[]) => { counted: number; total: number };
   onFinishStop: (bucketId: number) => void;
   onSkipStop: (bucketId: number, reason: string) => void;
   onReview: () => void;
@@ -33,153 +39,177 @@ interface Props {
 // Fallback until the managed list loads (same defaults seeded server-side).
 const DEFAULT_REASONS = ['Location was locked', 'Ran out of time', 'Nothing stored here today', 'Already counted earlier'];
 
-export default function GuidedCountingFlow({ stops, productsById, statuses, renderRow, onFinishStop, onSkipStop, onReview }: Props) {
-  const [openId, setOpenId] = useState<number | null>(null);
+/** A stop's walking address: the room it's in, then the shelf, with types spelled out. */
+function addressOf(s: Stop): { room: string; roomKind: string; shelf: string; rest: string[] } {
+  const anc = s.ancestors || [];
+  const room = anc[0]?.name || '';
+  const roomKind = anc[0]?.kind || 'area';
+  const rest = anc.slice(1).map((a) => a.name);
+  const shelf = s.location ? s.location.name : 'Everything else';
+  return { room, roomKind, shelf, rest };
+}
+
+export default function GuidedCountingFlow({
+  stops, productsById, statuses, renderRow, stopProgress, onFinishStop, onSkipStop, onReview,
+}: Props) {
   const [skipFor, setSkipFor] = useState<number | null>(null);
+  // Stops the user re-opened by hand after they auto-collapsed.
+  const [reopened, setReopened] = useState<Set<number>>(new Set());
 
   const effStatus = (s: Stop) => statuses[s.bucket_id]?.status ?? s.status ?? 'pending';
-  const stopName = (s: Stop) => (s.location ? s.location.name : 'Everything else');
   const withProducts = stops.filter((s) => s.product_ids.length > 0);
   const allDone = withProducts.every((s) => ['counted', 'skipped'].includes(effStatus(s)));
-  const firstPending = withProducts.find((s) => effStatus(s) === 'pending');
 
-  // ---- A single location open: count its products ----
-  if (openId != null) {
-    const s = stops.find((x) => x.bucket_id === openId);
-    if (!s) { setOpenId(null); return null; }
-    const products = s.product_ids.map((id) => productsById[id]).filter(Boolean);
-    const idx = withProducts.findIndex((x) => x.bucket_id === s.bucket_id);
-    return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="px-4 pt-3 pb-3 bg-white border-b border-gray-100">
-          <button onClick={() => setOpenId(null)} className="text-green-700 text-[var(--fs-sm)] font-semibold flex items-center gap-1 mb-2 active:opacity-70">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7" /></svg>
-            All locations
-          </button>
-          <div className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-green-700">Location {idx + 1} of {withProducts.length}</div>
-          {s.ancestors && s.ancestors.length > 0 && (
-            <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-1">
-              {s.ancestors.map((a, i) => (
-                <span key={a.id} className="whitespace-nowrap">{i > 0 && <span className="text-gray-300 mr-1">{'›'}</span>}{typeIcon(a.kind)} {a.name}</span>
-              ))}
-            </div>
-          )}
-          <h2 className="text-[var(--fs-xl)] font-bold text-gray-900 mt-0.5">{s.location ? `${typeIcon(s.location.kind)} ` : ''}{stopName(s)}</h2>
-          {s.location?.photo && <img src={s.location.photo} alt="" className="w-full h-32 object-cover rounded-xl mt-2 border border-gray-200" />}
-          {s.location?.description && <p className="text-[var(--fs-sm)] text-gray-500 mt-1.5">{s.location.description}</p>}
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 pb-44">
-          {products.length === 0
-            ? <p className="text-center text-gray-400 py-8 text-[var(--fs-sm)]">No products here.</p>
-            : products.map((p) => <div key={p.id}>{renderRow(p, s.bucket_id)}</div>)}
-        </div>
-        <div className="px-4 py-3 flex gap-3 border-t border-gray-100 bg-white">
-          <button onClick={() => setSkipFor(s.bucket_id)} className="flex-1 py-3.5 rounded-xl border border-orange-200 text-orange-700 font-bold active:bg-orange-50">Skip location</button>
-          <button onClick={() => { onFinishStop(s.bucket_id); setOpenId(null); }} className="flex-1 py-3.5 rounded-xl bg-green-600 text-white font-bold shadow-lg shadow-green-600/30 active:bg-green-700 flex items-center justify-center gap-1.5">
-            Finish
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path d="M20 6L9 17l-5-5" /></svg>
-          </button>
-        </div>
-        {skipFor != null && (
-          <SkipSheet name={stopName(s)}
-            onPick={(r) => { onSkipStop(skipFor, r); setSkipFor(null); setOpenId(null); }}
-            onClose={() => setSkipFor(null)} />
-        )}
-      </div>
-    );
-  }
-
-  // ---- The route checklist, as a NESTED TREE ----
-  // Staff read it Area › Room › Unit › stop, mirroring how they physically walk.
-  // Shared ancestors print ONCE (collapsed prefix) and the countable stops are the
-  // indented, tappable leaves. Stops already arrive in DFS walk order, so a simple
-  // prefix-diff against the previous stop rebuilds the tree without re-sorting.
-  type TreeRow =
-    | { t: 'anc'; key: string; depth: number; name: string; kind: string }
-    | { t: 'stop'; key: string; depth: number; s: Stop };
-  const treeRows: TreeRow[] = [];
-  let prevAnc: { id: number }[] = [];
+  // Group consecutive stops by the ROOM you walk to, so one trip = one rail step
+  // (drawers D1–D8 in one fridge are one walk, not eight).
+  const steps: { key: string; room: string; roomKind: string; stops: Stop[] }[] = [];
   withProducts.forEach((s) => {
-    const anc = s.ancestors || [];
-    let common = 0;
-    while (common < anc.length && common < prevAnc.length && anc[common].id === prevAnc[common].id) common++;
-    for (let d = common; d < anc.length; d++) {
-      treeRows.push({ t: 'anc', key: `a${anc[d].id}`, depth: d, name: anc[d].name, kind: anc[d].kind });
-    }
-    treeRows.push({ t: 'stop', key: `s${s.bucket_id}`, depth: anc.length, s });
-    prevAnc = anc;
+    const { room, roomKind } = addressOf(s);
+    // No room above it? Then this shelf is its own stop — grouping roomless
+    // shelves would force one of their names onto the whole group.
+    const key = room ? `${room}|${roomKind}` : `solo-${s.bucket_id}`;
+    const last = steps[steps.length - 1];
+    if (room && last && last.key === key) last.stops.push(s);
+    else steps.push({ key, room, roomKind, stops: [s] });
   });
 
+  const stepDone = (st: typeof steps[0]) =>
+    st.stops.every((s) => {
+      const { counted, total } = stopProgress(s.bucket_id, s.product_ids);
+      return effStatus(s) === 'skipped' || (total > 0 && counted >= total);
+    });
+  const currentIdx = steps.findIndex((st) => !stepDone(st));
+
+  // Auto-collapse relies on the browser's native scroll anchoring (overflow-anchor,
+  // on by default): when a finished shelf folds away above you, the viewport keeps
+  // its place on its own. A hand-rolled scrollBy here FOUGHT that and threw the
+  // page to the top — measured 400 -> 0. Don't reintroduce one.
   return (
-    <div className="flex-1 overflow-y-auto px-4 py-4 pb-36">
-      <p className="text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-3">Your route · {withProducts.length} stop{withProducts.length !== 1 ? 's' : ''}</p>
-      <div className="flex flex-col gap-1.5">
-        {treeRows.map((row) => {
-          const pad = { paddingLeft: row.depth * 15 } as React.CSSProperties;
-          if (row.t === 'anc') {
-            // A place staff must WALK TO — legible, not a faint caption. The top
-            // tier reads strongest; deeper tiers step down but stay readable.
-            const top = row.depth === 0;
-            return (
-              <div key={row.key} style={pad}
-                className={`flex items-center gap-2 ${top ? 'pt-3' : 'pt-2'} pb-0.5`}>
-                <span className="flex-shrink-0 text-[var(--fs-base)]">{typeIcon(row.kind)}</span>
-                <span className={`truncate ${top
-                  ? 'text-[var(--fs-base)] font-extrabold text-gray-900'
-                  : 'text-[var(--fs-sm)] font-bold text-gray-700'}`}>{row.name}</span>
-                <span className="flex-1 border-b border-gray-200" />
-              </div>
-            );
-          }
-          const s = row.s;
-          const st = effStatus(s);
-          const isNext = firstPending && s.bucket_id === firstPending.bucket_id;
-          return (
-            <button key={row.key} style={pad} onClick={() => setOpenId(s.bucket_id)}
-              className={`w-full flex items-center gap-3 p-3 rounded-2xl border text-left bg-white active:scale-[0.99] transition-transform ${isNext ? 'border-green-500 ring-2 ring-green-100' : 'border-gray-200'}`}>
-              <div className="w-10 h-10 rounded-xl bg-cover bg-center bg-gray-100 flex items-center justify-center text-[var(--fs-lg)] flex-shrink-0"
-                style={s.location?.photo ? { backgroundImage: `url(${s.location.photo})` } : undefined}>
-                {!s.location?.photo && <span>{s.location ? typeIcon(s.location.kind) : '📦'}</span>}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-gray-900 truncate">{stopName(s)}</div>
-                <div className="text-[var(--fs-xs)] text-gray-500 truncate">
-                  {s.product_ids.length} item{s.product_ids.length !== 1 ? 's' : ''}{s.location?.description ? ` · ${s.location.description}` : ''}
-                </div>
-              </div>
-              <StatusPill st={st} />
-            </button>
-          );
-        })}
+    <div className="flex-1 overflow-y-auto px-4 pt-3 pb-40">
+      {steps.map((st, i) => {
+        const done = stepDone(st);
+        const isNow = i === currentIdx;
+        const last = i === steps.length - 1;
+        return (
+          <div key={st.key} className="relative">
+            {/* The rail runs behind the step's headings only — the count rows keep
+                the full screen width (indenting them squeezed the numbers). */}
+            {!last && <span className="absolute left-[10px] top-2 bottom-0 w-0.5 bg-gray-200" aria-hidden="true" />}
+            <span
+              className={`absolute left-0 top-0 w-[22px] h-[22px] rounded-full border-2 flex items-center justify-center text-[11px] font-bold z-10 ${
+                done ? 'bg-green-600 border-green-600 text-white'
+                  : isNow ? 'bg-blue-600 border-blue-600 text-white ring-4 ring-blue-100'
+                  : 'bg-white border-blue-600 text-blue-700'
+              }`}
+              aria-hidden="true"
+            >
+              {done ? '✓' : i + 1}
+            </span>
+
+            <div className="pl-8 text-[var(--fs-base)] font-extrabold leading-tight">
+              {st.room || (st.stops[0].location
+                ? `${typeLabel(st.stops[0].location.kind)} ${st.stops[0].location.name}`
+                : 'Not in a place yet')}
+              <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 mt-0.5">
+                {(() => {
+                  const n = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).total, 0);
+                  const c = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).counted, 0);
+                  return done ? `${n} thing${n !== 1 ? 's' : ''} · all counted` : `${c} of ${n} counted here`;
+                })()}
+              </span>
+            </div>
+
+            <div className="pb-4 pt-1">
+              {st.stops.map((s) => {
+                const { shelf, rest } = addressOf(s);
+                const { counted, total } = stopProgress(s.bucket_id, s.product_ids);
+                const skipped = effStatus(s) === 'skipped';
+                const full = total > 0 && counted >= total;
+                // A finished shelf folds away on its own; tapping the heading brings it back.
+                const collapsed = (full || skipped) && !reopened.has(s.bucket_id);
+                const label = s.location ? typeLabel(s.location.kind) : '';
+                return (
+                  <div key={s.bucket_id} className="mt-2 first:mt-1">
+                    {!(st.stops.length === 1 && !st.room) && <button
+                      onClick={() => setReopened((p) => {
+                        const n = new Set(p);
+                        if (n.has(s.bucket_id)) n.delete(s.bucket_id); else n.add(s.bucket_id);
+                        return n;
+                      })}
+                      className="w-full flex items-center gap-1.5 text-left mb-1.5 pl-8 active:opacity-70"
+                    >
+                      <span className="text-[var(--fs-sm)] flex-shrink-0" aria-hidden="true">
+                        {s.location ? typeIcon(s.location.kind) : '📦'}
+                      </span>
+                      <span className="text-[var(--fs-sm)] font-semibold text-gray-600 truncate">
+                        {rest.length > 0 && <span className="text-gray-400">{rest.join(' › ')} › </span>}
+                        {label && <span className="text-gray-500">{label} </span>}
+                        <span className="font-extrabold text-gray-900">{shelf}</span>
+                      </span>
+                      <span className={`ml-auto flex-shrink-0 text-[var(--fs-xs)] font-bold ${
+                        skipped ? 'text-orange-600' : full ? 'text-green-700' : 'text-gray-400'
+                      }`}>
+                        {skipped ? 'skipped' : `${counted}/${total}`}{(full || skipped) ? (collapsed ? ' ▸' : ' ▾') : ''}
+                      </span>
+                    </button>}
+
+                    {!collapsed && (
+                      <>
+                        <div className="bg-white border border-gray-200 rounded-2xl px-3">
+                          {s.product_ids.map((id) => productsById[id] && (
+                            <div key={id}>{renderRow(productsById[id], s.bucket_id)}</div>
+                          ))}
+                        </div>
+                        {!skipped && !full && (
+                          <button onClick={() => setSkipFor(s.bucket_id)}
+                            className="w-full text-right text-[var(--fs-xs)] font-bold text-gray-400 pt-1.5 pr-1 active:text-gray-600">
+                            Nothing here {'→'}
+                          </button>
+                        )}
+                        {skipped && statuses[s.bucket_id]?.skip_reason && (
+                          <p className="text-[var(--fs-xs)] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5 mt-1.5">
+                            Skipped {'—'} {statuses[s.bucket_id]?.skip_reason}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="mt-2">
+        <button onClick={onReview}
+          className={`w-full py-4 rounded-xl text-[var(--fs-lg)] font-bold transition-all ${
+            allDone
+              ? 'bg-green-600 text-white shadow-lg shadow-green-600/30 active:bg-green-700'
+              : 'bg-white border border-gray-200 text-gray-700 active:bg-gray-50'
+          }`}>
+          Review {'&'} submit
+        </button>
+        <p className="text-center text-[var(--fs-xs)] text-gray-500 mt-2">
+          You can submit with things uncounted {'—'} the manager sees what was missed.
+        </p>
       </div>
-      <div className="mt-5">
-        {allDone ? (
-          <button onClick={onReview} className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700">
-            Review &amp; submit
-          </button>
-        ) : (
-          <>
-            <button onClick={() => firstPending && setOpenId(firstPending.bucket_id)} className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-lg)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700">
-              Start counting
-            </button>
-            <p className="text-center text-[var(--fs-xs)] text-gray-500 mt-2">Count or skip every location to finish</p>
-          </>
-        )}
-      </div>
+
+      {skipFor !== null && (
+        <SkipSheet
+          name={(() => { const s = stops.find((x) => x.bucket_id === skipFor); return s ? addressOf(s).shelf : 'this spot'; })()}
+          onPick={(r) => { onSkipStop(skipFor, r); setSkipFor(null); }}
+          onClose={() => setSkipFor(null)}
+        />
+      )}
     </div>
   );
 }
 
-function StatusPill({ st }: { st: string }) {
-  if (st === 'counted') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-green-50 text-green-700 flex-shrink-0">Done</span>;
-  if (st === 'skipped') return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 flex-shrink-0">Skipped</span>;
-  return <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 flex-shrink-0">To do</span>;
-}
-
 function SkipSheet({ name, onPick, onClose }: { name: string; onPick: (r: string) => void; onClose: () => void }) {
-  // Skip-count reasons are a managed list (an admin curates them in Settings).
   const [reasons, setReasons] = useState<string[]>(DEFAULT_REASONS);
   useEffect(() => {
+    // Skip-count reasons are a managed list (an admin curates them in Settings).
     fetch('/api/managed-lists/skip-reasons').then((r) => (r.ok ? r.json() : null)).then((d) => {
       // Reflect the actual managed list, incl. an intentionally-emptied one —
       // don't resurrect the hardcoded defaults. Defaults only stand in on a
@@ -190,10 +220,11 @@ function SkipSheet({ name, onPick, onClose }: { name: string; onPick: (r: string
   return (
     <div className="fixed inset-0 z-[100] bg-black/50 flex items-end" onClick={onClose}>
       <div className="bg-white w-full max-w-lg mx-auto rounded-t-2xl p-5 pb-8" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-[var(--fs-lg)] font-bold mb-1">Skip {name}?</h3>
-        <p className="text-[var(--fs-sm)] text-gray-500 mb-3">Pick a reason — your manager will see it.</p>
+        <h3 className="text-[var(--fs-lg)] font-bold mb-1">Nothing counted at {name}?</h3>
+        <p className="text-[var(--fs-sm)] text-gray-500 mb-3">Pick a reason {'—'} your manager will see it.</p>
         {reasons.map((r) => (
-          <button key={r} onClick={() => onPick(r)} className="w-full text-left px-4 py-3.5 rounded-xl border border-gray-200 font-semibold mb-2 active:bg-gray-50 flex items-center gap-3">
+          <button key={r} onClick={() => onPick(r)}
+            className="w-full text-left px-4 py-3.5 rounded-xl border border-gray-200 font-semibold mb-2 active:bg-gray-50 flex items-center gap-3">
             <span className="w-2 h-2 rounded-full bg-orange-500 flex-shrink-0" />{r}
           </button>
         ))}

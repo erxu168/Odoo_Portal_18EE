@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
-import { initInventoryTables, createSession, listSessions, getSession, getSessionByTemplateAndDate, isUniqueViolation, updateSessionStatus, generateTodaySessions, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems } from '@/lib/inventory-db';
+import { initInventoryTables, createSession, listSessions, getSession, getSessionByTemplateAndDate, isUniqueViolation, updateSessionStatus, generateTodaySessions, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems , saveSessionStaffNote } from '@/lib/inventory-db';
 import { canAccessSession, companyScope } from '@/lib/inventory-access';
 import { isCanonicalDay } from '@/lib/berlin-date';
 import { resolveSessionRoute } from '@/lib/session-route';
@@ -158,7 +158,7 @@ export async function PUT(request: Request) {
 
   initInventoryTables();
   const body = await request.json();
-  const { id, status, review_note } = body;
+  const { id, status, review_note, staff_note } = body;
   if (!id || !status) return NextResponse.json({ error: 'id and status required' }, { status: 400 });
 
   // Only these transitions exist here. Approval goes through /api/inventory/approve
@@ -284,6 +284,12 @@ export async function PUT(request: Request) {
 
   const fromStatus = status === 'submitted' ? ['pending', 'in_progress']
     : status === 'rejected' ? ['submitted'] : undefined;
+  // What staff want the manager to know about the whole count ("basement was
+  // locked"). Saved before the status flips so it can't be lost on submit.
+  if (typeof staff_note === 'string') {
+    saveSessionStaffNote(id, staff_note.trim().slice(0, 1000) || null);
+  }
+
   if (updateSessionStatus(id, status, { reviewed_by: user.id, review_note, fromStatus }) === 0) {
     return NextResponse.json({ error: 'This count was just changed by someone else — reload and try again.' }, { status: 409 });
   }

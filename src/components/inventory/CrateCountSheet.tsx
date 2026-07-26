@@ -33,16 +33,19 @@ interface CrateCountSheetProps {
   outOfStock?: boolean;
   nothingHereLabel?: string;
   onNothingHere?: (on: boolean) => void;
+  note?: string;
+  onNoteChange?: (note: string) => void;
 }
 
 export default function CrateCountSheet({
   open, product, unitsPerCrate, uom, packLabel, initialCrates, initialLoose,
   showSystemQty, systemQty, locationName, onSave, onClose,
-  outOfStock, nothingHereLabel, onNothingHere,
+  outOfStock, nothingHereLabel, onNothingHere, note, onNoteChange,
 }: CrateCountSheetProps) {
   const [crates, setCrates] = useState(0);
   const [loose, setLoose] = useState(0);
   const [pad, setPad] = useState<null | 'crates' | 'loose'>(null);
+  const [noteOpen, setNoteOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -137,6 +140,21 @@ export default function CrateCountSheet({
             : `Count full ${pluralizePack(label, 2)} first, then any loose ${unit} from opened ones.`}
         </span>
       </div>
+
+      {onNoteChange && (
+        <div className="mx-[18px] mt-3">
+          {noteOpen || note ? (
+            <textarea value={note || ''} onChange={(e) => onNoteChange(e.target.value)}
+              autoFocus={noteOpen && !note} rows={2} placeholder="What should the manager know?"
+              className="w-full rounded-xl border border-blue-200 bg-blue-50/40 px-3 py-2 text-[var(--fs-sm)] text-gray-900 outline-none focus:border-blue-400 resize-none" />
+          ) : (
+            <button onClick={() => setNoteOpen(true)}
+              className="w-full h-12 rounded-xl border border-gray-200 bg-white text-gray-500 text-[var(--fs-base)] font-bold active:bg-gray-50">
+              📝 Add a note
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Nothing here — the deliberate "none at this spot", not a counted 0 */}
       {onNothingHere && (

@@ -235,7 +235,14 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   const sessCols = db.prepare("PRAGMA table_info('counting_sessions')").all() as { name: string }[];
   const sessColNames = sessCols.map(c => c.name);
   if (!sessColNames.includes('proof_photo')) {
+    // Kept for history: the whole-count "shelf photo" requirement was retired,
+    // but photos already taken stay readable.
     db.exec("ALTER TABLE counting_sessions ADD COLUMN proof_photo TEXT");
+  }
+  // What staff want the manager to know about the WHOLE count ("basement was
+  // locked") — distinct from review_note, which is the manager's own reply.
+  if (!sessColNames.includes('staff_note')) {
+    db.exec("ALTER TABLE counting_sessions ADD COLUMN staff_note TEXT");
   }
 
   // Template migrations
@@ -286,6 +293,12 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
 
   // Crate/multi-UoM migrations — portal-side crate size + count-line split.
   // All additive & nullable: existing rows keep working (missing = no crate).
+  // A manager's line correction must NOT overwrite what staff wrote in `notes`.
+  const ceCols2 = db.prepare("PRAGMA table_info('count_entries')").all() as { name: string }[];
+  if (!ceCols2.some((c) => c.name === 'manager_note')) {
+    db.exec("ALTER TABLE count_entries ADD COLUMN manager_note TEXT");
+  }
+
   const pfCols = db.prepare("PRAGMA table_info('product_flags')").all() as { name: string }[];
   if (!pfCols.some(c => c.name === 'units_per_crate')) {
     db.exec("ALTER TABLE product_flags ADD COLUMN units_per_crate REAL");
@@ -1184,6 +1197,11 @@ export function regenerateTodaySession(templateId: number): number | null {
   return swap();
 }
 
+/** Staff's note about the WHOLE count (distinct from the manager's review note). */
+export function saveSessionStaffNote(id: number, note: string | null): void {
+  getDb().prepare('UPDATE counting_sessions SET staff_note = ? WHERE id = ?').run(note, id);
+}
+
 // ===
 // COUNT ENTRIES
 // ===
@@ -1196,7 +1214,8 @@ export function upsertCountEntry(data: {
   out_of_stock?: boolean;            // deliberate "none here" (≠ a counted 0, ≠ not-counted)
   system_qty?: number | null;
   uom: string;
-  notes?: string;
+  notes?: string;                    // staff's own note; undefined = leave as it was
+  manager_note?: string | null;      // a reviewer's correction note — kept apart so it never eats the staff note
   counted_by: number;
   crate_qty?: number | null;         // audit trail: crates as entered
   loose_qty?: number | null;         // audit trail: loose base units as entered
@@ -1250,19 +1269,27 @@ export function upsertCountEntry(data: {
   const odooQty = oos ? 0 : (data.odoo_qty !== undefined ? data.odoo_qty : countedQty);
 
   if (existing) {
+    // notes / manager_note are only touched when the caller actually supplies
+    // one — otherwise nudging a quantity would wipe a note somebody just wrote.
+    const setNotes = data.notes !== undefined ? 'notes = ?,' : '';
+    const setMgr = data.manager_note !== undefined ? 'manager_note = ?,' : '';
     db.prepare(`
-      UPDATE count_entries SET counted_qty = ?, out_of_stock = ?, system_qty = ?, diff = ?, uom = ?, notes = ?,
+      UPDATE count_entries SET counted_qty = ?, out_of_stock = ?, system_qty = ?, diff = ?, uom = ?, ${setNotes} ${setMgr}
         crate_qty = ?, loose_qty = ?, units_per_crate = ?, count_mode = ?, pack_label = ?, loose_label = ?, odoo_qty = ?,
         counted_by = ?, counted_at = ?
       WHERE id = ?
-    `).run(countedQty, oos, data.system_qty ?? null, diff, data.uom, data.notes || null,
-      crateQty, looseQty, upc, cmode, plabel, llabel, odooQty, data.counted_by, now(), existing.id);
+    `).run(
+      countedQty, oos, data.system_qty ?? null, diff, data.uom,
+      ...(data.notes !== undefined ? [data.notes || null] : []),
+      ...(data.manager_note !== undefined ? [data.manager_note || null] : []),
+      crateQty, looseQty, upc, cmode, plabel, llabel, odooQty, data.counted_by, now(), existing.id,
+    );
   } else {
     db.prepare(`
-      INSERT INTO count_entries (session_id, product_id, count_location_id, counted_qty, out_of_stock, system_qty, diff, uom, notes,
+      INSERT INTO count_entries (session_id, product_id, count_location_id, counted_qty, out_of_stock, system_qty, diff, uom, notes, manager_note,
         crate_qty, loose_qty, units_per_crate, count_mode, pack_label, loose_label, odoo_qty, counted_by, counted_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(data.session_id, data.product_id, locId, countedQty, oos, data.system_qty ?? null, diff, data.uom, data.notes || null,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(data.session_id, data.product_id, locId, countedQty, oos, data.system_qty ?? null, diff, data.uom, data.notes || null, data.manager_note || null,
       crateQty, looseQty, upc, cmode, plabel, llabel, odooQty, data.counted_by, now());
   }
 }

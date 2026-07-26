@@ -59,6 +59,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [crateSizes, setCrateSizes] = useState<Record<number, number>>({});          // product_id -> base units per pack
   const [crateLabels, setCrateLabels] = useState<Record<number, string>>({});         // product_id -> count-by label
   const [crateSplits, setCrateSplits] = useState<Record<string, { crates: number; loose: number }>>({});
+  const [rowNotes, setRowNotes] = useState<Record<string, string>>({});   // per-line note, keyed like every other line map
+  const [draftNote, setDraftNote] = useState('');                          // note being typed in the open sheet
+  const [staffNote, setStaffNote] = useState('');                          // one note about the WHOLE count
   const [oos, setOos] = useState<Set<string>>(new Set());   // lines marked OUT OF STOCK (deliberate none ≠ not-counted)
   const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null; loc: number }>({ open: false, product: null, loc: 0 });
   // Scan hit a product counted at several spots → ask which one.
@@ -100,10 +103,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     // Helper: apply a payload (from network or cache) to state.
     function apply(sess: any, products: any[], entriesArr: any[], sysQtys: Record<number, number>) {
       setSession(sess);
+      setStaffNote(sess?.staff_note || '');
       const entryMap: Record<string, number> = {};
       const photoMap: Record<string, string[]> = {};
       const splitMap: Record<string, { crates: number; loose: number }> = {};
       const oosSet = new Set<string>();
+      const noteMap: Record<string, string> = {};
       for (const e of entriesArr || []) {
         const k = `${e.product_id}:${e.count_location_id ?? 0}`;
         entryMap[k] = e.counted_qty;
@@ -114,11 +119,13 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         if (e.crate_qty != null || e.loose_qty != null) {
           splitMap[k] = { crates: Number(e.crate_qty) || 0, loose: Number(e.loose_qty) || 0 };
         }
+        if (e.notes) noteMap[k] = e.notes;
       }
       setEntries(entryMap);
       setOos(oosSet);
       setRowPhotos(photoMap);
       setCrateSplits(splitMap);
+      setRowNotes(noteMap);
       setSystemQtys(sysQtys || {});
       setProducts(products);
     }
@@ -333,6 +340,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     return m;
   }, [lines, entries]);
 
+  // The first line still uncounted, in walk order — drives the "Next:" hint.
+  const nextLine = lines.find((l) => entries[K(l.pid, l.loc)] === undefined) || null;
   const countedCount = lines.filter((l) => entries[K(l.pid, l.loc)] !== undefined).length;
   const totalCount = lines.length;
   const uncountedLines = lines.filter((l) => entries[K(l.pid, l.loc)] === undefined);
@@ -378,7 +387,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     }
   }
 
-  async function saveCount(productId: number, loc: number, qty: number | null, uom: string) {
+  async function saveCount(productId: number, loc: number, qty: number | null, uom: string, note?: string) {
     const k = K(productId, loc);
     // A real count (or a clear) overrides an out-of-stock mark for this line.
     setOos((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
@@ -393,11 +402,13 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       if (res.queued) void sync.refresh();
     } else {
       setEntries((prev) => ({ ...prev, [k]: qty }));
+      if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
       void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom }, loc);
       const res = await trackedMutate({
         url: '/api/inventory/counts',
         method: 'POST',
-        body: { session_id: sessionId, product_id: productId, count_location_id: loc, counted_qty: qty, uom },
+        body: { session_id: sessionId, product_id: productId, count_location_id: loc, counted_qty: qty, uom,
+          ...(note !== undefined ? { notes: note } : {}) },
         dedupKey: `save:${sessionId}:${productId}:${loc}`,
       });
       if (res.queued) void sync.refresh();
@@ -445,12 +456,13 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   }
 
   function openCrateSheet(product: any, loc: number) {
+    setDraftNote(rowNotes[K(product.id, loc)] || '');
     setCrateSheet({ open: true, product, loc });
   }
 
   // Save a crate + loose count. Stores the base-unit total (what Odoo gets)
   // plus the crate/loose split for audit + review replay. total 0 clears it.
-  async function saveCrateCount(product: any, loc: number, crates: number, loose: number) {
+  async function saveCrateCount(product: any, loc: number, crates: number, loose: number, note?: string) {
     const k = K(product.id, loc);
     setOos((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
     const size = crateSizes[product.id] || 0;
@@ -473,13 +485,15 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
     setEntries((prev) => ({ ...prev, [k]: total }));
     setCrateSplits((prev) => ({ ...prev, [k]: { crates, loose } }));
+    if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
     void updateCachedEntry(sessionId, product.id, {
       counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size,
     }, loc);
     const res = await trackedMutate({
       url: '/api/inventory/counts',
       method: 'POST',
-      body: { session_id: sessionId, product_id: product.id, count_location_id: loc, counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size },
+      body: { session_id: sessionId, product_id: product.id, count_location_id: loc, counted_qty: total, uom, crate_qty: crates, loose_qty: loose, units_per_crate: size,
+        ...(note !== undefined ? { notes: note } : {}) },
       dedupKey: `save:${sessionId}:${product.id}:${loc}`,
     });
     if (res.queued) void sync.refresh();
@@ -494,14 +508,18 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   }
 
   function openNumpad(product: any, loc: number) {
+    setDraftNote(rowNotes[K(product.id, loc)] || '');
     setNumpad({ open: true, product, loc });
   }
 
   function handleNumpadSave(value: number | null) {
     if (numpad.product) {
-      saveCount(numpad.product.id, numpad.loc, value, numpad.product.uom_id?.[1] || 'Units');
+      const had = rowNotes[K(numpad.product.id, numpad.loc)] || '';
+      saveCount(numpad.product.id, numpad.loc, value, numpad.product.uom_id?.[1] || 'Units',
+        draftNote !== had ? draftNote : undefined);
     }
     setNumpad({ open: false, product: null, loc: 0 });
+    setDraftNote('');
   }
 
   async function handleSubmit() {
@@ -534,7 +552,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       const res = await fetch('/api/inventory/sessions', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: sessionId, status: 'submitted' }),
+        body: JSON.stringify({ id: sessionId, status: 'submitted', staff_note: staffNote }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -592,7 +610,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={48} />
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-1.5 flex-wrap">
-              <span className="text-[var(--fs-xxl)] font-semibold text-gray-900 truncate">{p.name}</span>
+              {/* Wrap rather than truncate: "Beef, goula…" is useless to someone
+                  holding the product. Two lines beat a cut-off name. */}
+              <span className="text-[var(--fs-lg)] font-semibold text-gray-900 leading-snug">{p.name}</span>
               <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">{uom}</span>
               {isCrate && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 flex-shrink-0">
@@ -610,15 +630,6 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 </span>
               )}
             </div>
-            {siblings.length > 0 && (
-              <div className="text-[11px] text-blue-700 mt-0.5 font-medium">
-                Count only what{'\u2019'}s here{' \u00B7 '}
-                {siblings.map((sl) => {
-                  const sv = entries[K(p.id, sl)];
-                  return `${spotLabel(sl)}: ${sv !== undefined ? `${sv} \u2713` : 'not yet counted'}`;
-                }).join(' \u00B7 ')}
-              </div>
-            )}
           </div>
           {isCrate && !isReadOnly ? (
             <button
@@ -650,6 +661,20 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             </div>
           )}
         </div>
+        {siblings.length > 0 && (
+          <p className="mt-2 text-[11px] text-blue-800 bg-blue-50/70 border border-blue-100 rounded-lg px-2.5 py-1.5 leading-snug">
+            Count only what{'\u2019'}s here {'\u00B7'}{' '}
+            {siblings.map((sl) => {
+              const sv = entries[K(p.id, sl)];
+              return `${spotLabel(sl)}: ${sv !== undefined ? `${sv} \u2713` : 'not counted yet'}`;
+            }).join(' \u00B7 ')}
+          </p>
+        )}
+        {rowNotes[k] && (
+          <p className="mt-2 text-[var(--fs-xs)] text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5 leading-snug">
+            📝 {rowNotes[k]}
+          </p>
+        )}
         {oos.has(k) && (
           <div className="mt-2">
             {/* Marking "nothing here" now happens INSIDE the count sheet; the row
@@ -768,6 +793,18 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {canSubmit && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
+              <label htmlFor="staff-note" className="block text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mb-2">
+                📝 Anything the manager should know?
+              </label>
+              <textarea id="staff-note" value={staffNote} onChange={(e) => setStaffNote(e.target.value)}
+                rows={3} placeholder="e.g. basement fridge room was locked — nothing counted in there"
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[var(--fs-base)] text-gray-900 outline-none focus:border-green-500 resize-none" />
+              <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">Optional — shown at the top of their review.</p>
             </div>
           )}
 
@@ -906,12 +943,34 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         </div>
       )}
 
+      {/* Sticky progress: how much is left and where you are, without scrolling. */}
+      <div className="sticky top-0 z-20 bg-white border-b border-gray-100 px-4 pt-2 pb-2.5">
+        <div className="flex items-center justify-between text-[var(--fs-xs)] font-bold text-gray-500 mb-1.5">
+          <span>{countedCount} of {totalCount} counted</span>
+          {nextLine && (
+            <span className="text-green-700 truncate ml-2">
+              Next: {hasSpots ? spotLabel(nextLine.loc) : (productsById[nextLine.pid]?.name || '')}
+            </span>
+          )}
+        </div>
+        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-full bg-green-600 rounded-full transition-all"
+            style={{ width: `${totalCount > 0 ? (countedCount / totalCount) * 100 : 0}%` }} />
+        </div>
+      </div>
+
       {effectiveMode === 'location' && route ? (
         <GuidedCountingFlow
           stops={route.stops}
           productsById={productsById}
           statuses={guidedStatuses}
           renderRow={(p, bucketId) => <ProductRow p={p} loc={items.length > 0 ? bucketId : 0} />}
+          stopProgress={(bucketId, ids) => {
+            // Legacy sessions store every line at the catch-all spot, so their
+            // walk buckets read progress from loc 0.
+            const loc = items.length > 0 ? bucketId : 0;
+            return { counted: ids.filter((id) => entries[K(id, loc)] !== undefined).length, total: ids.length };
+          }}
           onFinishStop={(b) => postStopStatus(b, 'counted', null)}
           onSkipStop={(b, r) => postStopStatus(b, 'skipped', r)}
           onReview={() => setView('review')}
@@ -1018,6 +1077,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       {!isReadOnly && (
         <NumpadModal
+          note={draftNote}
+          onNoteChange={setDraftNote}
           outOfStock={numpad.product ? oos.has(K(numpad.product.id, numpad.loc)) : false}
           nothingHereLabel={hasSpots ? 'Nothing at this spot' : 'Nothing here'}
           onNothingHere={(on) => {
@@ -1039,6 +1100,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       {!isReadOnly && crateSheet.open && crateSheet.product && (
         <CrateCountSheet
+          note={draftNote}
+          onNoteChange={setDraftNote}
           outOfStock={oos.has(K(crateSheet.product.id, crateSheet.loc))}
           nothingHereLabel={hasSpots ? 'Nothing at this spot' : 'Nothing here'}
           onNothingHere={(on) => {
@@ -1055,7 +1118,11 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           showSystemQty={userRole !== 'staff'}
           systemQty={systemQtys[crateSheet.product.id] ?? null}
           locationName={locationName}
-          onSave={(crates, loose) => saveCrateCount(crateSheet.product, crateSheet.loc, crates, loose)}
+          onSave={(crates, loose) => {
+            const had = rowNotes[K(crateSheet.product.id, crateSheet.loc)] || '';
+            saveCrateCount(crateSheet.product, crateSheet.loc, crates, loose, draftNote !== had ? draftNote : undefined);
+            setDraftNote('');
+          }}
           onClose={() => setCrateSheet({ open: false, product: null, loc: 0 })}
         />
       )}

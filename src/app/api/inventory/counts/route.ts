@@ -158,7 +158,10 @@ export async function POST(request: Request) {
     out_of_stock: isOut,
     system_qty: system_qty ?? null,
     uom: uom || 'Units',
-    notes: isReviewerCorrection ? `Manager correction${notes ? `: ${notes}` : ''}` : notes,
+    // Staff notes and manager corrections live in different columns, so a
+    // reviewer fixing a number can never erase what the counter wrote.
+    notes: isReviewerCorrection ? undefined : notes,
+    manager_note: isReviewerCorrection ? (notes ? `Manager correction: ${notes}` : 'Manager correction') : undefined,
     counted_by: resolveAttribution(user).userId,
     // undefined (not null) when no split → upsertCountEntry preserves any
     // existing crate split (e.g. a later photo-only save of a crate product).
