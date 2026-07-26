@@ -31,8 +31,9 @@ interface Props {
   renderRow: (product: { id: number; name: string }, bucketId: number) => React.ReactNode;
   /** How many of a stop's lines are counted — drives the per-stop progress + auto-collapse. */
   stopProgress: (bucketId: number, productIds: number[]) => { counted: number; total: number };
-  onFinishStop: (bucketId: number) => void;
   onSkipStop: (bucketId: number, reason: string) => void;
+  /** Take back a skip — the place gets counted after all. */
+  onUnskipStop: (bucketId: number) => void;
   onReview: () => void;
 }
 
@@ -40,17 +41,18 @@ interface Props {
 const DEFAULT_REASONS = ['Location was locked', 'Ran out of time', 'Nothing stored here today', 'Already counted earlier'];
 
 /** A stop's walking address: the room it's in, then the shelf, with types spelled out. */
-function addressOf(s: Stop): { room: string; roomKind: string; shelf: string; rest: string[] } {
+function addressOf(s: Stop): { room: string; roomId: number | null; roomKind: string; shelf: string; rest: string[] } {
   const anc = s.ancestors || [];
   const room = anc[0]?.name || '';
+  const roomId = anc[0]?.id ?? null;
   const roomKind = anc[0]?.kind || 'area';
   const rest = anc.slice(1).map((a) => a.name);
   const shelf = s.location ? s.location.name : 'Everything else';
-  return { room, roomKind, shelf, rest };
+  return { room, roomId, roomKind, shelf, rest };
 }
 
 export default function GuidedCountingFlow({
-  stops, productsById, statuses, renderRow, stopProgress, onFinishStop, onSkipStop, onReview,
+  stops, productsById, statuses, renderRow, stopProgress, onSkipStop, onUnskipStop, onReview,
 }: Props) {
   const [skipFor, setSkipFor] = useState<number | null>(null);
   // Stops the user re-opened by hand after they auto-collapsed.
@@ -58,16 +60,17 @@ export default function GuidedCountingFlow({
 
   const effStatus = (s: Stop) => statuses[s.bucket_id]?.status ?? s.status ?? 'pending';
   const withProducts = stops.filter((s) => s.product_ids.length > 0);
-  const allDone = withProducts.every((s) => ['counted', 'skipped'].includes(effStatus(s)));
 
   // Group consecutive stops by the ROOM you walk to, so one trip = one rail step
   // (drawers D1–D8 in one fridge are one walk, not eight).
   const steps: { key: string; room: string; roomKind: string; stops: Stop[] }[] = [];
   withProducts.forEach((s) => {
-    const { room, roomKind } = addressOf(s);
-    // No room above it? Then this shelf is its own stop — grouping roomless
-    // shelves would force one of their names onto the whole group.
-    const key = room ? `${room}|${roomKind}` : `solo-${s.bucket_id}`;
+    const { room, roomId, roomKind } = addressOf(s);
+    // Group on the room's ID: two different rooms can share a name, and merging
+    // them would send staff to the wrong place. No room above it? Then this
+    // shelf is its own step — grouping roomless shelves would force one of
+    // their names onto the whole group.
+    const key = roomId != null ? `room-${roomId}` : `solo-${s.bucket_id}`;
     const last = steps[steps.length - 1];
     if (room && last && last.key === key) last.stops.push(s);
     else steps.push({ key, room, roomKind, stops: [s] });
@@ -79,6 +82,9 @@ export default function GuidedCountingFlow({
       return effStatus(s) === 'skipped' || (total > 0 && counted >= total);
     });
   const currentIdx = steps.findIndex((st) => !stepDone(st));
+  // "Done" is derived from the numbers on the page, never from a button nobody
+  // presses any more — the same rule the server now uses to allow submitting.
+  const allDone = steps.every(stepDone);
 
   // Auto-collapse relies on the browser's native scroll anchoring (overflow-anchor,
   // on by default): when a finished shelf folds away above you, the viewport keeps
@@ -86,12 +92,44 @@ export default function GuidedCountingFlow({
   // page to the top — measured 400 -> 0. Don't reintroduce one.
   return (
     <div className="flex-1 overflow-y-auto px-4 pt-3 pb-40">
+      {/* Jump strip: a 40-line count is a very long page — this is how you get
+          back to a place without scrolling past everything. */}
+      {steps.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 pb-3">
+          {steps.map((st, i) => {
+            const d = stepDone(st);
+            const now = i === currentIdx;
+            return (
+              <button key={`${st.key}#${i}`}
+                onClick={() => document.getElementById(`walk-step-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[var(--fs-xs)] font-bold border transition-colors ${
+                  d ? 'bg-green-50 border-green-200 text-green-700'
+                    : now ? 'bg-blue-600 border-blue-600 text-white'
+                    : 'bg-white border-gray-200 text-gray-600'
+                }`}>
+                {d ? '✓ ' : ''}{st.room || (st.stops[0].location ? st.stops[0].location.name : 'No place')}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {steps.map((st, i) => {
         const done = stepDone(st);
         const isNow = i === currentIdx;
         const last = i === steps.length - 1;
+        // A step that IS a single shelf prints its name once, in the heading —
+        // so the heading has to be the thing you tap to fold it back open.
+        // ("Not in a place yet" is one of these; it must stay reachable.)
+        const solo = st.stops.length === 1 && !st.room;
+        const soloOpen = solo && reopened.has(st.stops[0].bucket_id);
+        const toggleSolo = () => setReopened((p) => {
+          const n = new Set(p); const b = st.stops[0].bucket_id;
+          if (n.has(b)) n.delete(b); else n.add(b);
+          return n;
+        });
         return (
-          <div key={st.key} className="relative">
+          <div key={`${st.key}#${i}`} id={`walk-step-${i}`} className="relative scroll-mt-24">
             {/* The rail runs behind the step's headings only — the count rows keep
                 the full screen width (indenting them squeezed the numbers). */}
             {!last && <span className="absolute left-[10px] top-2 bottom-0 w-0.5 bg-gray-200" aria-hidden="true" />}
@@ -106,10 +144,14 @@ export default function GuidedCountingFlow({
               {done ? '✓' : i + 1}
             </span>
 
-            <div className="pl-8 text-[var(--fs-base)] font-extrabold leading-tight">
+            <div
+              onClick={solo && done ? toggleSolo : undefined}
+              className={`pl-8 text-[var(--fs-base)] font-extrabold leading-tight ${solo && done ? 'cursor-pointer active:opacity-70' : ''}`}
+            >
               {st.room || (st.stops[0].location
                 ? `${typeLabel(st.stops[0].location.kind)} ${st.stops[0].location.name}`
                 : 'Not in a place yet')}
+              {solo && done && <span className="text-gray-400 font-bold"> {soloOpen ? '▾' : '▸'}</span>}
               <span className="block text-[var(--fs-xs)] font-semibold text-gray-400 mt-0.5">
                 {(() => {
                   const n = st.stops.reduce((a, s) => a + stopProgress(s.bucket_id, s.product_ids).total, 0);
@@ -130,7 +172,7 @@ export default function GuidedCountingFlow({
                 const label = s.location ? typeLabel(s.location.kind) : '';
                 return (
                   <div key={s.bucket_id} className="mt-2 first:mt-1">
-                    {!(st.stops.length === 1 && !st.room) && <button
+                    {!solo && <button
                       onClick={() => setReopened((p) => {
                         const n = new Set(p);
                         if (n.has(s.bucket_id)) n.delete(s.bucket_id); else n.add(s.bucket_id);
@@ -166,10 +208,16 @@ export default function GuidedCountingFlow({
                             Nothing here {'→'}
                           </button>
                         )}
-                        {skipped && statuses[s.bucket_id]?.skip_reason && (
-                          <p className="text-[var(--fs-xs)] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5 mt-1.5">
-                            Skipped {'—'} {statuses[s.bucket_id]?.skip_reason}
-                          </p>
+                        {skipped && (
+                          <div className="flex items-center gap-2 text-[var(--fs-xs)] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1.5 mt-1.5">
+                            <span className="min-w-0">
+                              Skipped{statuses[s.bucket_id]?.skip_reason ? ` — ${statuses[s.bucket_id]?.skip_reason}` : ''}
+                            </span>
+                            <button onClick={() => onUnskipStop(s.bucket_id)}
+                              className="ml-auto flex-shrink-0 font-bold underline active:opacity-60">
+                              Count it after all
+                            </button>
+                          </div>
                         )}
                       </>
                     )}

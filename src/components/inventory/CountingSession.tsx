@@ -340,8 +340,23 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     return m;
   }, [lines, entries]);
 
-  // The first line still uncounted, in walk order — drives the "Next:" hint.
-  const nextLine = lines.find((l) => entries[K(l.pid, l.loc)] === undefined) || null;
+  // The next thing to count, in the order you actually WALK. `lines` comes off
+  // the frozen snapshot, which is ordered by location id — a number that has
+  // nothing to do with where the shelf is — so the hint has to follow the
+  // route's stop order instead, and step over places already skipped.
+  const nextLine = React.useMemo(() => {
+    const uncounted = lines.filter((l) => entries[K(l.pid, l.loc)] === undefined);
+    if (uncounted.length === 0) return null;
+    if (!route?.guided) return uncounted[0];
+    const live = (b: number) => (guidedStatuses[b]?.status ?? route.stops.find((s: any) => s.bucket_id === b)?.status) !== 'skipped';
+    for (const stop of route.stops) {
+      if (!live(stop.bucket_id)) continue;
+      const hit = uncounted.find((l) => l.loc === stop.bucket_id);
+      if (hit) return hit;
+    }
+    // Everything left sits at a skipped place — still worth pointing at.
+    return uncounted[0];
+  }, [lines, entries, route, guidedStatuses]);
   const countedCount = lines.filter((l) => entries[K(l.pid, l.loc)] !== undefined).length;
   const totalCount = lines.length;
   const uncountedLines = lines.filter((l) => entries[K(l.pid, l.loc)] === undefined);
@@ -403,7 +418,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     } else {
       setEntries((prev) => ({ ...prev, [k]: qty }));
       if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
-      void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom }, loc);
+      void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom, ...(note !== undefined ? { notes: note } : {}) }, loc);
       const res = await trackedMutate({
         url: '/api/inventory/counts',
         method: 'POST',
@@ -418,17 +433,18 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   // Mark (or unmark) a product OUT OF STOCK — a deliberate "none here", distinct
   // from a not-counted row. On = record a 0 with the out_of_stock flag; off =
   // clear the entry back to not-counted. Approval records it in the portal.
-  async function saveOutOfStock(product: any, loc: number, on: boolean) {
+  async function saveOutOfStock(product: any, loc: number, on: boolean, note?: string) {
     const uom = product.uom_id?.[1] || 'Units';
     const k = K(product.id, loc);
     if (on) {
       setOos((prev) => { const n = new Set(prev); n.add(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: 0 }));
-      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom }, loc);
+      if (note !== undefined) setRowNotes((p) => ({ ...p, [k]: note }));
+      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, notes: note }, loc);
       const res = await trackedMutate({
         url: '/api/inventory/counts',
         method: 'POST',
-        body: { session_id: sessionId, product_id: product.id, count_location_id: loc, out_of_stock: true, counted_qty: 0, uom },
+        body: { session_id: sessionId, product_id: product.id, count_location_id: loc, out_of_stock: true, counted_qty: 0, uom, ...(note !== undefined ? { notes: note } : {}) },
         dedupKey: `save:${sessionId}:${product.id}:${loc}`,
       });
       if (res.queued) void sync.refresh();
@@ -971,7 +987,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             const loc = items.length > 0 ? bucketId : 0;
             return { counted: ids.filter((id) => entries[K(id, loc)] !== undefined).length, total: ids.length };
           }}
-          onFinishStop={(b) => postStopStatus(b, 'counted', null)}
+          onUnskipStop={(b) => postStopStatus(b, 'pending', null)}
           onSkipStop={(b, r) => postStopStatus(b, 'skipped', r)}
           onReview={() => setView('review')}
         />
@@ -1082,7 +1098,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           outOfStock={numpad.product ? oos.has(K(numpad.product.id, numpad.loc)) : false}
           nothingHereLabel={hasSpots ? 'Nothing at this spot' : 'Nothing here'}
           onNothingHere={(on) => {
-            if (numpad.product) saveOutOfStock(numpad.product, numpad.loc, on);
+            if (numpad.product) saveOutOfStock(numpad.product, numpad.loc, on, draftNote);
             setNumpad({ open: false, product: null, loc: 0 });
           }}
           open={numpad.open}
@@ -1105,7 +1121,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           outOfStock={oos.has(K(crateSheet.product.id, crateSheet.loc))}
           nothingHereLabel={hasSpots ? 'Nothing at this spot' : 'Nothing here'}
           onNothingHere={(on) => {
-            saveOutOfStock(crateSheet.product, crateSheet.loc, on);
+            saveOutOfStock(crateSheet.product, crateSheet.loc, on, draftNote);
             setCrateSheet({ open: false, product: null, loc: 0 });
           }}
           open={crateSheet.open}

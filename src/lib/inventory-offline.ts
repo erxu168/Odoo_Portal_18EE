@@ -149,6 +149,7 @@ export async function updateCachedEntry(
     counted_qty?: number | null;
     photos?: string[];
     uom?: string;
+    notes?: string;
     crate_qty?: number | null;
     loose_qty?: number | null;
     units_per_crate?: number | null;
@@ -220,11 +221,27 @@ export async function enqueueMutation(m: Omit<QueuedMutation, 'id' | 'createdAt'
   if (!isBrowser()) return;
   try {
     await withStore(STORE_QUEUE, 'readwrite', async (store) => {
-      // Dedup: if a queued mutation with the same dedupKey exists, replace it.
+      // Dedup: if a queued mutation with the same dedupKey exists, replace it —
+      // the newest one carries the current state for that line.
+      //
+      // BUT: replacing wholesale silently threw away a field the newer call
+      // simply didn't mention. Offline, "count 3 + note 'box was wet'" followed
+      // by tapping + would have shipped only the quantity and lost the note.
+      // The server treats an ABSENT field as "leave it alone", so carrying
+      // absent fields forward is exactly what sending both in order would have
+      // done — no more, no less.
+      const CARRY_FORWARD = ['notes'] as const;
       if (m.dedupKey) {
         const idx = store.index('dedupKey');
         const existing = await reqToPromise(idx.getAll(m.dedupKey)) as QueuedMutation[];
         for (const row of existing) {
+          const prevBody = row.body as Record<string, unknown> | undefined;
+          const nextBody = m.body as Record<string, unknown> | undefined;
+          if (prevBody && nextBody) {
+            for (const f of CARRY_FORWARD) {
+              if (!(f in nextBody) && f in prevBody) nextBody[f] = prevBody[f];
+            }
+          }
           if (row.id !== undefined) store.delete(row.id);
         }
       }

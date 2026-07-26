@@ -183,7 +183,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       if (!res.ok) { const d = await res.json().catch(() => ({})); setErrorMsg(d.error || 'Could not save the correction.'); return; }
       setReviewEntries((prev: any[]) => {
         const idx = prev.findIndex((e) => e.product_id === target.product.id && (e.count_location_id ?? 0) === target.loc);
-        const row = { ...(idx >= 0 ? prev[idx] : { product_id: target.product.id, count_location_id: target.loc, photos: [] }), counted_qty: v, out_of_stock: 0, notes: 'Manager correction' };
+        const row = { ...(idx >= 0 ? prev[idx] : { product_id: target.product.id, count_location_id: target.loc, photos: [] }), counted_qty: v, out_of_stock: 0, manager_note: 'Manager correction' };
         if (idx >= 0) { const n = [...prev]; n[idx] = row; return n; }
         return [...prev, row];
       });
@@ -500,6 +500,20 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
               </div>
             </div>
 
+            {/* What staff wanted the manager to know about the whole count. It is
+                the reason a place is empty ("basement was locked") — useless if
+                it only lives in the database. */}
+            {reviewSession.staff_note && (
+              <div className="px-4 pt-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <div className="text-[var(--fs-xs)] font-bold text-blue-700 uppercase tracking-wide mb-1">
+                    Note from the person counting
+                  </div>
+                  <p className="text-[var(--fs-sm)] text-blue-900 whitespace-pre-wrap break-words">{reviewSession.staff_note}</p>
+                </div>
+              </div>
+            )}
+
             {hasAnyCrate && (
               <div className="px-4 pt-1">
                 <div className="flex bg-gray-100 rounded-xl p-1" role="group" aria-label="Display units">
@@ -627,7 +641,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                                       {le ? (
                                         <span className={`text-[var(--fs-xs)] font-mono font-bold ${le.out_of_stock ? 'text-red-600' : 'text-gray-700'}`}>
                                           {le.out_of_stock ? 'none here' : `${le.counted_qty} ${uom}`}
-                                          {String(le.notes || '').startsWith('Manager correction') && <span className="text-amber-600 font-sans font-semibold"> {'\u00B7'} edited</span>}
+                                          {le.manager_note && <span className="text-amber-600 font-sans font-semibold"> {'\u00B7'} edited</span>}
                                         </span>
                                       ) : (
                                         <span className="text-[var(--fs-xs)] font-semibold text-amber-700">
@@ -635,6 +649,11 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                                         </span>
                                       )}
                                       {isSubmitted && <span className="text-[10px] text-gray-300">{'\u270E'}</span>}
+                                      {le?.notes && (
+                                        <span className="text-[var(--fs-xs)] text-gray-600 italic min-w-0 truncate" title={le.notes}>
+                                          {'\u201C'}{le.notes}{'\u201D'}
+                                        </span>
+                                      )}
                                     </button>
                                   );
                                 })}

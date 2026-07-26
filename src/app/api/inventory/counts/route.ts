@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, getTemplate, setCountPhotos, getCountPhotosMap, getSessionItems, getSessionLocations, updateSessionStatus } from '@/lib/inventory-db';
+import { initInventoryTables, upsertCountEntry, deleteCountEntry, getSessionEntries, getSession, getTemplate, setCountPhotos, getCountPhotosMap, getSessionItems, getSessionLocations, updateSessionStatus, getSessionLocationStatuses, setSessionLocationStatus } from '@/lib/inventory-db';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { canAccessSession } from '@/lib/inventory-access';
@@ -174,7 +174,15 @@ export async function POST(request: Request) {
   });
 
   if (Array.isArray(photos)) {
-    const entries = getSessionEntries(session_id);
+    // Counting something HERE means this place was not skipped after all. Clear
+  // the stale skip so the manager doesn't read "skipped: ran out of time" on a
+  // shelf that has real numbers on it. (Staff can still skip it again.)
+  try {
+    const st = getSessionLocationStatuses(session_id).find((x: any) => x.count_location_id === locId);
+    if (st && st.status === 'skipped') setSessionLocationStatus(session_id, locId, 'pending', null);
+  } catch { /* status bookkeeping must never fail a saved count */ }
+
+  const entries = getSessionEntries(session_id);
     // Match the row for THIS spot (same product can exist at several spots).
     const entry = entries.find((e: any) => e.product_id === product_id && (e.count_location_id ?? 0) === locId);
     if (entry) setCountPhotos('count_entries', entry.id, photos);

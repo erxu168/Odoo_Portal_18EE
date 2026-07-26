@@ -105,7 +105,7 @@ export default function CountPreview({
           statuses={statuses}
           renderRow={(p) => previewRow(p)}
           stopProgress={(_b, ids) => ({ counted: 0, total: ids.length })}   // preview: nothing is counted yet
-          onFinishStop={(b) => setStatuses((s) => ({ ...s, [b]: { status: 'counted', skip_reason: null } }))}
+          onUnskipStop={(b) => setStatuses((s) => ({ ...s, [b]: { status: 'pending', skip_reason: null } }))}
           onSkipStop={(b, r) => setStatuses((s) => ({ ...s, [b]: { status: 'skipped', skip_reason: r } }))}
           onReview={() => setReviewing(true)}
         />

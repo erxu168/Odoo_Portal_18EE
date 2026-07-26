@@ -200,14 +200,19 @@ export async function PUT(request: Request) {
     // (Sessions whose products aren't placed anywhere are guided:false.)
     const route = resolveSessionRoute(id);
     if (route.guided) {
-      // Every location with products must be visited (counted) or skipped with a
-      // reason. Uncounted items inside a visited location submit as "not counted",
-      // matching the flat flow — so we gate on the stop status, not per-item.
-      const missed = missedStops(route.stops);
+      // A stop is dealt with when staff COUNTED something there or explicitly
+      // skipped it with a reason. Counting is the signal — there is no longer a
+      // "done here" button to press (the count screen is one scroll, not doors
+      // you open), so gating on stop status alone would make submitting
+      // IMPOSSIBLE. Partially-counted stops pass, exactly as before; the review
+      // screen and the manager both still see every uncounted line.
+      const touched = new Set<number>();
+      entries.forEach((e: any) => touched.add(e.count_location_id ?? 0));
+      const missed = missedStops(route.stops).filter((s) => !touched.has(s.bucket_id));
       if (missed.length > 0) {
         const names = missed.map((s) => (s.location ? s.location.name : 'Everything else'));
         return NextResponse.json({
-          error: `Count or skip every location first. Still to do: ${names.join(', ')}.`,
+          error: `Nothing was counted in: ${names.join(', ')}. Count something there, or skip the place and say why.`,
           code: 'MISSED_LOCATIONS',
         }, { status: 400 });
       }
@@ -284,14 +289,15 @@ export async function PUT(request: Request) {
 
   const fromStatus = status === 'submitted' ? ['pending', 'in_progress']
     : status === 'rejected' ? ['submitted'] : undefined;
-  // What staff want the manager to know about the whole count ("basement was
-  // locked"). Saved before the status flips so it can't be lost on submit.
-  if (typeof staff_note === 'string') {
-    saveSessionStaffNote(id, staff_note.trim().slice(0, 1000) || null);
-  }
-
   if (updateSessionStatus(id, status, { reviewed_by: user.id, review_note, fromStatus }) === 0) {
     return NextResponse.json({ error: 'This count was just changed by someone else — reload and try again.' }, { status: 409 });
+  }
+
+  // What staff want the manager to know about the whole count ("basement was
+  // locked"). Written AFTER the guarded transition wins: a 409 must leave the
+  // session exactly as it was, note included.
+  if (typeof staff_note === 'string') {
+    saveSessionStaffNote(id, staff_note.trim().slice(0, 1000) || null);
   }
 
   // Audit log for approve/reject/submit
