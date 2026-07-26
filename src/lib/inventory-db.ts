@@ -2122,6 +2122,9 @@ export function setSessionLocationStatus(
  * Approved counts only: a submitted-but-unreviewed number is not yet a fact,
  * and the session being reviewed right now must never compare against itself.
  * Totals are summed across spots, matching how approval reads a count.
+ *
+ * An out-of-stock line counts as the zero it is. Dropping those would hide the
+ * weeks we ran out AND make "last 5 counts" a lie when only 3 came back.
  */
 export function getProductCountHistory(
   companyId: number,
@@ -2144,7 +2147,6 @@ export function getProductCountHistory(
       AND s.status = 'approved'
       AND e.product_id IN (${placeholders})
       AND s.id != ?
-      AND e.out_of_stock = 0
     GROUP BY e.product_id, s.id
     ORDER BY e.product_id, date DESC
   `).all(companyId, ...productIds, opts.excludeSessionId ?? -1) as { product_id: number; date: string; qty: number }[];

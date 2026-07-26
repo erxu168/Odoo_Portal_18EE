@@ -443,15 +443,25 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     // here — a spot the staffer skipped (with their reason) and a spot nobody
     // opened. No guessing at "unusual" numbers; the past counts are shown as
     // plain context on the line instead.
-    const attention: { product: any; kind: 'skipped' | 'missed'; where: string; why: string | null }[] = [];
+    const attention: { product: any; loc: number; kind: 'skipped' | 'missed'; where: string; why: string | null }[] = [];
     reviewProducts.forEach((p: any) => {
       const locs = snapshotLinesOf[p.id] || [];
+      if (locs.length === 0) {
+        // A legacy count has no per-spot lines to walk. Judging it by those
+        // lines would find nothing missing and cheerfully report "everything
+        // was counted" over a list nobody touched, so fall back to the product.
+        if ((entriesByProduct[p.id] || []).length === 0) {
+          attention.push({ product: p, loc: 0, kind: 'missed', where: '', why: null });
+        }
+        return;
+      }
       locs.forEach((loc: number) => {
         const has = (entriesByProduct[p.id] || []).some((e: any) => (e.count_location_id ?? 0) === loc);
         if (has) return;
         const why = reviewSkips[loc];
         attention.push({
           product: p,
+          loc,
           kind: why ? 'skipped' : 'missed',
           where: spotName(loc),
           why: why || null,
@@ -590,7 +600,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                 ) : (
                   <div className="bg-white border border-amber-200 rounded-xl overflow-hidden">
                     {attention.map((a, i) => (
-                      <div key={`${a.product.id}-${a.where}-${i}`}
+                      <div key={`${a.product.id}-${a.loc}-${i}`}
                         className="flex items-center gap-3 px-3 py-2.5 border-b border-amber-50 last:border-b-0">
                         <span className={`w-1.5 self-stretch rounded-full flex-shrink-0 ${a.kind === 'skipped' ? 'bg-orange-400' : 'bg-amber-400'}`} aria-hidden="true" />
                         <div className="min-w-0 flex-1">
@@ -598,11 +608,13 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                           <div className="text-[var(--fs-xs)] text-gray-600">
                             {a.kind === 'skipped'
                               ? <><span className="font-semibold">{a.where}</span> was skipped {'\u2014'} {'\u201C'}{a.why}{'\u201D'}</>
-                              : <><span className="font-semibold">{a.where}</span> was never counted</>}
+                              : a.where
+                                ? <><span className="font-semibold">{a.where}</span> was never counted</>
+                                : 'Never counted'}
                           </div>
                         </div>
                         {isSubmitted && (
-                          <button onClick={() => setEditLine({ product: a.product, loc: (snapshotLinesOf[a.product.id] || [0]).find((l: number) => spotName(l) === a.where) ?? 0 })}
+                          <button onClick={() => setEditLine({ product: a.product, loc: a.loc })}
                             className="flex-shrink-0 text-[var(--fs-xs)] font-bold text-blue-700 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 active:bg-blue-100">
                             Fix
                           </button>
