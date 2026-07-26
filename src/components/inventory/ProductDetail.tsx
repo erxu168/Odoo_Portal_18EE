@@ -428,7 +428,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                 ))}
                 <div className="pt-2 border-t border-gray-100">
                   <input value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)}
-                    placeholder="Search suppliers\u2026" aria-label="Search suppliers"
+                    placeholder="Search suppliers…" aria-label="Search suppliers"
                     className="w-full h-9 border border-gray-300 rounded-lg px-2.5 text-[var(--fs-sm)] mb-2" />
                 </div>
                 <div className="flex gap-2">
