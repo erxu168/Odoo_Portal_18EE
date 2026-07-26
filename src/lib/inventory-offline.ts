@@ -232,10 +232,18 @@ export async function enqueueMutation(m: Omit<QueuedMutation, 'id' | 'createdAt'
       // The server treats an ABSENT field as "leave it alone", so carrying
       // absent fields forward is exactly what sending both in order would have
       // done — no more, no less.
-      // Every field the server treats as "absent means leave it alone". Miss one
-      // and the queue quietly destroys it: count offline, attach the required
-      // proof photo, then nudge the quantity -> the photo never existed.
-      const CARRY_FORWARD = ['notes', 'photos', 'crate_qty', 'loose_qty', 'units_per_crate'] as const;
+      // Fields the server treats as "absent means leave it alone", so carrying
+      // them forward is what sending both requests in order would have done.
+      // Miss one and the queue quietly destroys it: count offline, attach the
+      // required proof photo, then nudge the quantity -> the photo never existed.
+      //
+      // The crate split is different: the server RECOMPUTES the quantity from it
+      // whenever it is present, so pasting an old split onto a newer quantity
+      // silently reinstates the old number (2x10 then "make it 21" saves 20).
+      // A quantity in the new call therefore wins outright, and the split is
+      // only carried onto calls that are not about the quantity at all.
+      const ALWAYS_CARRY = ['notes', 'photos'] as const;
+      const CARRY_UNLESS_REQUANTIFIED = ['crate_qty', 'loose_qty', 'units_per_crate'] as const;
       if (m.dedupKey) {
         const idx = store.index('dedupKey');
         const existing = await reqToPromise(idx.getAll(m.dedupKey)) as QueuedMutation[];
@@ -243,7 +251,10 @@ export async function enqueueMutation(m: Omit<QueuedMutation, 'id' | 'createdAt'
           const prevBody = row.body as Record<string, unknown> | undefined;
           const nextBody = m.body as Record<string, unknown> | undefined;
           if (prevBody && nextBody) {
-            for (const f of CARRY_FORWARD) {
+            const fields = nextBody.counted_qty !== undefined
+              ? ALWAYS_CARRY
+              : [...ALWAYS_CARRY, ...CARRY_UNLESS_REQUANTIFIED];
+            for (const f of fields) {
               if (!(f in nextBody) && f in prevBody) nextBody[f] = prevBody[f];
             }
           }

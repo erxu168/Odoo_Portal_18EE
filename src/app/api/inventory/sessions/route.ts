@@ -197,8 +197,14 @@ export async function PUT(request: Request) {
     // placed into locations), every location must be counted or skipped — even
     // if the staff set no statuses. Otherwise use the flat all-counted gate.
     // (Sessions whose products aren't placed anywhere are guided:false.)
+    // A LEGACY count (no frozen snapshot) is spot-less: POST /counts pins every
+    // one of its entries to location 0 on purpose. Its products may still have
+    // live placements, so the route builder happily reports stops it can never
+    // receive an entry at — gating on those would deadlock the count forever.
+    // Only a snapshotted session is judged place by place.
     const route = resolveSessionRoute(id);
-    if (route.guided) {
+    const hasSnapshot = getSessionItems(id).length > 0;
+    if (route.guided && hasSnapshot) {
       // A stop is dealt with when staff COUNTED something there or explicitly
       // skipped it with a reason. Counting is the signal — there is no longer a
       // "done here" button to press (the count screen is one scroll, not doors

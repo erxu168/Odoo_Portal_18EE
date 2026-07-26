@@ -10,7 +10,7 @@ import { requireAuth } from '@/lib/auth';
 import {
   initInventoryTables, getSession, getSessionEntries, getSessionItems, getProductCountHistory,
 } from '@/lib/inventory-db';
-import { canAccessSession } from '@/lib/inventory-access';
+import { canAccessSession, canAccessCompany } from '@/lib/inventory-access';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const user = requireAuth();
@@ -25,6 +25,13 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   if (!canAccessSession(user, session)) {
     return NextResponse.json({ error: 'This count belongs to another restaurant' }, { status: 403 });
   }
+  // Reaching ONE session is not the same as reaching a restaurant's whole count
+  // history. canAccessSession lets an explicitly assigned staffer in even after
+  // they have moved companies; this endpoint hands back months of that
+  // restaurant's numbers, so it asks the stricter question separately.
+  if (!session.company_id || !canAccessCompany(user, session.company_id)) {
+    return NextResponse.json({ history: {} });
+  }
 
   // Which products this count is about — the frozen snapshot when there is one,
   // otherwise whatever was actually entered.
@@ -32,10 +39,6 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   const productIds = snapshot.length > 0
     ? Array.from(new Set(snapshot.map((it: any) => it.odoo_product_id)))
     : Array.from(new Set(getSessionEntries(id).map((e: any) => e.product_id)));
-
-  // A count with no company can have no comparable history — say so plainly
-  // rather than leaking another restaurant's numbers through a null match.
-  if (!session.company_id) return NextResponse.json({ history: {} });
 
   const history = getProductCountHistory(session.company_id, productIds, { excludeSessionId: id });
   return NextResponse.json({ history });

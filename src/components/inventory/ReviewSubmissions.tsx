@@ -481,8 +481,16 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       if (!catBuckets.has(key)) catBuckets.set(key, { name, parent, products: [] });
       catBuckets.get(key)!.products.push(p);
     });
-    const categoryGroups = Array.from(catBuckets.values())
-      .map((g) => ({ ...g, left: g.products.filter((p: any) => entryMap[p.id] === undefined).length }))
+    // "Left" means every line of it is in, not merely that someone touched it —
+    // a product counted in one of its two fridges is still unfinished, and a
+    // group calling itself "all counted" over one of those is a lie.
+    const isFullyCounted = (p: any) => {
+      if (entryMap[p.id] === undefined) return false;
+      const want = snapshotLinesOf[p.id]?.length || 0;
+      return want === 0 || (entriesByProduct[p.id] || []).length >= want;
+    };
+    const categoryGroups = Array.from(catBuckets.entries())
+      .map(([path, g]) => ({ ...g, path, left: g.products.filter((p: any) => !isFullyCounted(p)).length }))
       .sort((a, b) => (b.left > 0 ? 1 : 0) - (a.left > 0 ? 1 : 0) || a.name.localeCompare(b.name));
 
     const isSubmitted = reviewSession.status === 'submitted';
@@ -640,7 +648,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   {categoryGroups.length === 0 ? (
                     <p className="text-center text-gray-400 text-[var(--fs-sm)] py-8">Nothing in this count yet.</p>
                   ) : categoryGroups.map((g) => (
-                    <div key={g.name} className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-3">
+                    <div key={g.path} className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-3">
                       <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-[var(--fs-base)] font-extrabold text-gray-900 truncate">{g.name}</span>
@@ -662,6 +670,11 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                             <span className="text-[var(--fs-base)] text-gray-800 truncate min-w-0">{p.name}</span>
                             {v === undefined ? (
                               <span className="text-[var(--fs-xs)] font-semibold text-amber-700 flex-shrink-0">not counted</span>
+                            ) : !isFullyCounted(p) ? (
+                              <span className="flex items-baseline gap-1.5 flex-shrink-0">
+                                <span className="font-mono font-semibold text-gray-900">{v} {p.uom_id?.[1] || 'Units'}</span>
+                                <span className="text-[var(--fs-xs)] font-semibold text-amber-700">partial</span>
+                              </span>
                             ) : isOutOfStock(p.id) ? (
                               <span className="text-[var(--fs-xs)] font-semibold text-red-600 flex-shrink-0">none left</span>
                             ) : (
