@@ -67,7 +67,6 @@ export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DE
             ref={inputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={handleFile}
             disabled={disabled || busy}

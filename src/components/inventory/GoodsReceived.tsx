@@ -322,7 +322,7 @@ function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabe
           className="w-full border-2 border-gray-200 rounded-xl px-3 py-3 mb-4 bg-gray-50 text-[var(--fs-base)]" />
 
         <label className="block text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1">Delivery photo (optional)</label>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhoto} className="hidden" />
+        <input ref={fileRef} type="file" accept="image/*" onChange={onPhoto} className="hidden" />
         {photo ? (
           <div className="relative mb-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useCompany } from '@/lib/company-context';
 import { useTopBar } from '@/components/ui/TopBarContext';
+import { useShift } from '@/lib/shift-context';
 
 /**
  * StationHome — the home screen for a shared department tablet (kitchen station).
@@ -26,6 +27,7 @@ export default function StationHome() {
   const router = useRouter();
   const { companyId, companyName, loading: companyLoading } = useCompany();
   const { setHidden } = useTopBar();
+  const { activePerson } = useShift();   // the PIN'd person on this shared tablet
 
   const [list, setList] = useState<any>(null);
   const [listReady, setListReady] = useState(false);
@@ -40,13 +42,15 @@ export default function StationHome() {
   // flush at the top.
   useEffect(() => { setHidden(true); return () => setHidden(false); }, [setHidden]);
 
+  // Refetch when the PIN'd person changes: the hero mounts UNDER the sign-in
+  // gate, so a fetch on mount alone always ran before anyone was signed in.
   useEffect(() => {
     fetch('/api/tasks/today')
       .then(r => r.json())
       .then(d => setList(d.list ?? null))
       .catch(() => setList(null))
       .finally(() => setListReady(true));
-  }, []);
+  }, [activePerson?.id]);
 
   useEffect(() => {
     if (companyLoading) return;          // company picker still resolving

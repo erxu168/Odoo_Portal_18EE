@@ -11,7 +11,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, hasRole } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds, getUserById } from '@/lib/db';
-import { initInventoryTables, createSession, listSessions, getSession, getSessionByTemplateAndDate, isUniqueViolation, updateSessionStatus, generateTodaySessions, saveSessionProofPhoto, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems } from '@/lib/inventory-db';
+import { initInventoryTables, createSession, listSessions, getSession, getSessionByTemplateAndDate, isUniqueViolation, updateSessionStatus, generateTodaySessions, getSessionEntries, getTemplate, getProductFlags, getCountPhotosMap , getSessionItems } from '@/lib/inventory-db';
 import { canAccessSession, companyScope } from '@/lib/inventory-access';
 import { isCanonicalDay } from '@/lib/berlin-date';
 import { resolveSessionRoute } from '@/lib/session-route';
@@ -158,7 +158,7 @@ export async function PUT(request: Request) {
 
   initInventoryTables();
   const body = await request.json();
-  const { id, status, review_note, proof_photo } = body;
+  const { id, status, review_note } = body;
   if (!id || !status) return NextResponse.json({ error: 'id and status required' }, { status: 400 });
 
   // Only these transitions exist here. Approval goes through /api/inventory/approve
@@ -265,10 +265,6 @@ export async function PUT(request: Request) {
       }
     }
 
-    // Save proof photo if provided
-    if (proof_photo) {
-      saveSessionProofPhoto(id, proof_photo);
-    }
   }
 
   // Recount: manager reopens a rejected session so staff can try again

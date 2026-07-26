@@ -29,11 +29,16 @@ interface CrateCountSheetProps {
   locationName: string;
   onSave: (crates: number, loose: number) => void;
   onClose: () => void;
+  // Optional "there is none here" control (counting screen only — Quick Count omits it).
+  outOfStock?: boolean;
+  nothingHereLabel?: string;
+  onNothingHere?: (on: boolean) => void;
 }
 
 export default function CrateCountSheet({
   open, product, unitsPerCrate, uom, packLabel, initialCrates, initialLoose,
   showSystemQty, systemQty, locationName, onSave, onClose,
+  outOfStock, nothingHereLabel, onNothingHere,
 }: CrateCountSheetProps) {
   const [crates, setCrates] = useState(0);
   const [loose, setLoose] = useState(0);
@@ -132,6 +137,18 @@ export default function CrateCountSheet({
             : `Count full ${pluralizePack(label, 2)} first, then any loose ${unit} from opened ones.`}
         </span>
       </div>
+
+      {/* Nothing here — the deliberate "none at this spot", not a counted 0 */}
+      {onNothingHere && (
+        <div className="mx-[18px] mt-3">
+          <button onClick={() => onNothingHere(!outOfStock)}
+            className={`w-full h-12 rounded-xl border text-[var(--fs-base)] font-bold transition-colors ${
+              outOfStock ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-gray-200 text-gray-500 active:bg-gray-50'
+            }`}>
+            {outOfStock ? `\u2713 ${nothingHereLabel || 'Nothing here'}` : (nothingHereLabel || 'Nothing here')}
+          </button>
+        </div>
+      )}
 
       {/* Save */}
       <div className="mt-auto px-[18px] pt-4 pb-6">

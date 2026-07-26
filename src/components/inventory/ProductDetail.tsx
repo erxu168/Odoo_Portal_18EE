@@ -81,6 +81,11 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [vendors, setVendors] = useState<{ id: number; name: string }[]>([]);
   const [addVendor, setAddVendor] = useState<number>(0);
   const [addPrice, setAddPrice] = useState('');
+  const [vendorSearch, setVendorSearch] = useState('');   // 149 suppliers — a wheel picker alone is unusable on a phone
+  const shownVendors = React.useMemo(() => {
+    const q = vendorSearch.trim().toLowerCase();
+    return q ? vendors.filter((v) => v.name.toLowerCase().includes(q)) : vendors;
+  }, [vendors, vendorSearch]);
   const [supBusy, setSupBusy] = useState(false);
   const [img, setImg] = useState(hasImage);
   const [imgVer, setImgVer] = useState(0);
@@ -347,7 +352,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
       {loading ? <Spinner /> : (
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {/* Photo */}
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={onPhotoFile} className="hidden" />
+          <input ref={fileRef} type="file" accept="image/*" onChange={onPhotoFile} className="hidden" />
           <button onClick={() => fileRef.current?.click()} disabled={busy === 'photo' || readOnly}
             className="w-full mb-4 rounded-2xl border-2 border-dashed border-gray-300 bg-white overflow-hidden active:opacity-80 disabled:opacity-50"
             aria-label="Change product photo">
@@ -421,11 +426,18 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                     </button>
                   </div>
                 ))}
-                <div className="flex gap-2 pt-2 border-t border-gray-100">
+                <div className="pt-2 border-t border-gray-100">
+                  <input value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)}
+                    placeholder="Search suppliers\u2026" aria-label="Search suppliers"
+                    className="w-full h-9 border border-gray-300 rounded-lg px-2.5 text-[var(--fs-sm)] mb-2" />
+                </div>
+                <div className="flex gap-2">
                   <select value={addVendor} onChange={(e) => setAddVendor(Number(e.target.value))}
                     className="flex-1 min-w-0 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] bg-white">
-                    <option value={0}>Choose a supplier…</option>
-                    {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                    <option value={0}>
+                      {(() => { const n = shownVendors.length; return vendorSearch ? `${n} match${n === 1 ? '' : 'es'}\u2026` : 'Choose a supplier\u2026'; })()}
+                    </option>
+                    {shownVendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                   </select>
                   <input value={addPrice} onChange={(e) => setAddPrice(e.target.value.replace(/[^0-9.]/g, ''))}
                     inputMode="decimal" placeholder="Price"

@@ -894,10 +894,6 @@ export function getSession(id: number): CountingSession | null {
   `).get(id) as CountingSession | null;
 }
 
-export function saveSessionProofPhoto(id: number, photo: string) {
-  const db = getDb();
-  db.prepare('UPDATE counting_sessions SET proof_photo = ? WHERE id = ?').run(photo, id);
-}
 
 export function updateSessionStatus(id: number, status: SessionStatus, extra?: {
   reviewed_by?: number;

@@ -14,10 +14,15 @@ interface NumpadModalProps {
   locationName: string;
   onSave: (value: number | null) => void;
   onClose: () => void;
+  // Optional "there is none here" control — rendered only when a parent wires it
+  // (the counting screen). Quick Count and other callers omit it.
+  outOfStock?: boolean;
+  nothingHereLabel?: string;
+  onNothingHere?: (on: boolean) => void;
 }
 
 export default function NumpadModal({
-  open, productName, category, uom, initialValue,
+  open, productName, category, uom, initialValue, outOfStock, nothingHereLabel, onNothingHere,
   showSystemQty, systemQty, locationName, onSave, onClose,
 }: NumpadModalProps) {
   const [buf, setBuf] = useState('');
@@ -105,6 +110,17 @@ export default function NumpadModal({
             </button>
           ))}
         </div>
+
+        {onNothingHere && (
+          <button onClick={() => onNothingHere(!outOfStock)}
+            className={`w-full h-12 mb-2 rounded-xl border text-[var(--fs-base)] font-bold transition-colors ${
+              outOfStock
+                ? 'bg-red-50 border-red-200 text-red-600'
+                : 'bg-white border-gray-200 text-gray-500 active:bg-gray-50'
+            }`}>
+            {outOfStock ? `\u2713 ${nothingHereLabel || 'Nothing here'}` : (nothingHereLabel || 'Nothing here')}
+          </button>
+        )}
 
         <div className="flex gap-2">
           <button onClick={() => setBuf('')}

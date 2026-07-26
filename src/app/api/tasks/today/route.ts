@@ -1,17 +1,25 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
+import { resolveAttribution } from '@/lib/shift-attribution';
 import { getEmployeeContext, getTodayListForDepartment } from '@/lib/odoo-tasks';
 
 export async function GET() {
   try {
     const user = requireAuth();
-    if (!user.employee_id) {
+    // A shared department tablet is a PLACE, not a person: it has no employee
+    // record of its own. The checklist follows whoever signed in with their PIN
+    // ("Working as"), exactly like ticking a task already does. Resolve BEFORE
+    // the employee check so the shared account itself never needs linking.
+    const { employeeId } = resolveAttribution(user);
+    if (!employeeId) {
       return NextResponse.json({
-        error: 'Your account is not linked to an Odoo employee record. Ask your manager.',
-        code: 'NO_EMPLOYEE',
+        error: user.is_shared_device
+          ? 'Sign in with your PIN to see your department\u2019s checklist.'
+          : 'Your account is not linked to an Odoo employee record. Ask your manager.',
+        code: user.is_shared_device ? 'NO_ACTOR' : 'NO_EMPLOYEE',
       }, { status: 409 });
     }
-    const ctx = await getEmployeeContext(user.employee_id);
+    const ctx = await getEmployeeContext(employeeId);
     if (!ctx?.department_id) {
       return NextResponse.json({
         error: 'You are not assigned to a department. Ask your manager to set your department in HR.',

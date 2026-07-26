@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthError } from '@/lib/auth';
+import { resolveAttribution } from '@/lib/shift-attribution';
 import { setLineNote, getLineSummary } from '@/lib/odoo-tasks';
 import { getDb } from '@/lib/db';
 import { sendPushToUsers } from '@/lib/push';
@@ -7,14 +8,16 @@ import { sendPushToUsers } from '@/lib/push';
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = requireAuth();
-    if (!user.employee_id) {
+    // Credit the PIN'd person on a shared tablet (matches complete/subtasks).
+    const { employeeId } = resolveAttribution(user);
+    if (!employeeId) {
       return NextResponse.json({ error: 'No employee record linked' }, { status: 409 });
     }
     const id = parseInt(params.id, 10);
     if (Number.isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
     const body = await req.json();
     const note = typeof body.note === 'string' ? body.note : '';
-    await setLineNote(id, note, user.employee_id);
+    await setLineNote(id, note, employeeId);
 
     // Best-effort push: ping every active manager/admin (except the saver) when a
     // note is added or updated. Fires asynchronously — failures never block the

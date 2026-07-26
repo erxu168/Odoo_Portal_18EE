@@ -260,7 +260,6 @@ export default function AddMeterReading() {
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={handlePhotoChange}
             className="hidden"
           />

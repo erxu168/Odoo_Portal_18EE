@@ -31,9 +31,13 @@ export async function GET(request: Request) {
       'res.partner',
       domain,
       ['id', 'name', 'email', 'phone'],
-      { limit: 50, order: 'name' },
+      // The product page renders the FULL supplier dropdown — a low limit
+      // silently hid suppliers past the first page ("MC City" bug).
+      { limit: 2000, order: 'name' },
     );
-    return NextResponse.json({ vendors });
+    // Placeholder/junk partners ("---", empty) only clutter a picker.
+    const clean = (vendors || []).filter((v: any) => v.name && !/^[\s\-\u2013\u2014_.]*$/.test(String(v.name)));
+    return NextResponse.json({ vendors: clean });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[vendors GET]', msg);

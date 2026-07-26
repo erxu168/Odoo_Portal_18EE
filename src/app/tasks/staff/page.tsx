@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useShift } from '@/lib/shift-context';
 import type { TaskList, EmployeeContext } from '@/lib/odoo-tasks';
 import ChecklistCard from '../_components/ChecklistCard';
 import BottomNav from '../_components/BottomNav';
@@ -59,6 +60,11 @@ export default function StaffPage() {
     }).catch(() => {});
   }, []);
 
+  // On a shared tablet the checklist follows the PIN'd person — reload when
+  // they sign in or out, otherwise the screen keeps the pre-sign-in state.
+  const { activePerson } = useShift();
+  const activePersonId = activePerson?.id ?? null;
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -95,7 +101,7 @@ export default function StaffPage() {
     } finally {
       setLoading(false);
     }
-  }, [date, isToday, isManagerOrAdmin]);
+  }, [date, isToday, isManagerOrAdmin, activePersonId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -252,7 +258,9 @@ export default function StaffPage() {
         ) : error ? (
           <EmptyState
             emoji="⚠️"
-            title={data?.code === 'NO_DEPARTMENT' ? 'No department' : data?.code === 'NO_EMPLOYEE' ? 'No employee record' : 'Could not load'}
+            title={data?.code === 'NO_ACTOR' ? 'Sign in to see your checklist'
+              : data?.code === 'NO_DEPARTMENT' ? 'No department'
+              : data?.code === 'NO_EMPLOYEE' ? 'No employee record' : 'Could not load'}
             message={error}
           />
         ) : !list ? (

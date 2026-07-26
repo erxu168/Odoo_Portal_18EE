@@ -4,7 +4,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BackHeader, FilterBar, FilterPill, SearchBar, CountProgress, Stepper, Spinner, EmptyState, leafCategory, ProductThumb } from './ui';
 import NumpadModal from './NumpadModal';
 import CrateCountSheet from './CrateCountSheet';
-import FilePicker from "@/components/ui/FilePicker";
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
 import PhotoCaptureStrip from './PhotoCaptureStrip';
 import OfflineBanner from './OfflineBanner';
@@ -52,7 +51,6 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [submitting, setSubmitting] = useState(false);
   const [view, setView] = useState<View>('counting');
   const [showConfirm, setShowConfirm] = useState(false);
-  const [proofPhoto, setProofPhoto] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [flags, setFlags] = useState<Record<number, boolean>>({});
   const [productImageIds, setProductImageIds] = useState<Set<number>>(new Set()); // products with a picture (thumbnail)
@@ -506,29 +504,6 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     setNumpad({ open: false, product: null, loc: 0 });
   }
 
-  function handlePhotoCapture(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxSize = 800;
-        let w = img.width, h = img.height;
-        if (w > maxSize || h > maxSize) {
-          if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
-          else { w = Math.round(w * maxSize / h); h = maxSize; }
-        }
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d')?.drawImage(img, 0, 0, w, h);
-        setProofPhoto(canvas.toDataURL('image/jpeg', 0.7));
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  }
-
   async function handleSubmit() {
     // Submit requires server validation (count completion + photo requirements),
     // and the manager review flow needs a known-good submit state. Block while
@@ -559,7 +534,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       const res = await fetch('/api/inventory/sessions', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: sessionId, status: 'submitted', proof_photo: proofPhoto }),
+        body: JSON.stringify({ id: sessionId, status: 'submitted' }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -675,16 +650,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             </div>
           )}
         </div>
-        {!isReadOnly && (
+        {oos.has(k) && (
           <div className="mt-2">
-            <button
-              onClick={() => saveOutOfStock(p, loc, !oos.has(k))}
-              className={`text-[11px] font-bold rounded-full px-2.5 py-1 border transition-colors ${
-                oos.has(k) ? 'text-red-600 border-red-200 bg-red-50' : 'text-gray-400 border-gray-200 active:bg-gray-50'
-              }`}
-            >
-              {oos.has(k) ? `\u2713 None here` : hasSpots ? 'None at this spot' : 'Mark out of stock'}
-            </button>
+            {/* Marking "nothing here" now happens INSIDE the count sheet; the row
+                only reports it, so a deliberate none still reads differently
+                from a counted 0. */}
+            <span className="inline-block text-[11px] font-bold rounded-full px-2.5 py-1 border text-red-600 border-red-200 bg-red-50">
+              {'\u2713'} {hasSpots ? 'Nothing at this spot' : 'Nothing here'}
+            </span>
           </div>
         )}
         {flagged && !isReadOnly && (val ?? 0) > 0 && (
@@ -804,28 +777,6 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             </div>
           )}
 
-          {canSubmit && (
-            <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
-              <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mb-2">Proof photo</p>
-              {proofPhoto ? (
-                <div className="relative">
-                  <img src={proofPhoto} alt="Proof" className="w-full rounded-xl border border-gray-200" />
-                  <button onClick={() => setProofPhoto('')}
-                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 flex items-center justify-center active:bg-black/70">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                  </button>
-                </div>
-              ) : (
-                <FilePicker
-                  onFile={(file) => handlePhotoCapture({ target: { files: [file] } } as any)}
-                  accept="image/*"
-                  label="Take a photo of the shelf"
-                  className="w-full py-4 rounded-xl border-2 border-dashed border-gray-300 text-gray-500 text-[var(--fs-base)] font-semibold flex items-center justify-center gap-2 active:bg-gray-50"
-                />
-              )}
-              <p className="text-[var(--fs-xs)] text-gray-400 mt-2">Photo proof is required for submission.</p>
-            </div>
-          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pb-36">
@@ -1067,6 +1018,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       {!isReadOnly && (
         <NumpadModal
+          outOfStock={numpad.product ? oos.has(K(numpad.product.id, numpad.loc)) : false}
+          nothingHereLabel={hasSpots ? 'Nothing at this spot' : 'Nothing here'}
+          onNothingHere={(on) => {
+            if (numpad.product) saveOutOfStock(numpad.product, numpad.loc, on);
+            setNumpad({ open: false, product: null, loc: 0 });
+          }}
           open={numpad.open}
           productName={numpad.product?.name || ''}
           category={numpad.product?.categ_id?.[1] || ''}
@@ -1082,6 +1039,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       {!isReadOnly && crateSheet.open && crateSheet.product && (
         <CrateCountSheet
+          outOfStock={oos.has(K(crateSheet.product.id, crateSheet.loc))}
+          nothingHereLabel={hasSpots ? 'Nothing at this spot' : 'Nothing here'}
+          onNothingHere={(on) => {
+            saveOutOfStock(crateSheet.product, crateSheet.loc, on);
+            setCrateSheet({ open: false, product: null, loc: 0 });
+          }}
           open={crateSheet.open}
           product={crateSheet.product}
           unitsPerCrate={crateSizes[crateSheet.product.id] || 0}
