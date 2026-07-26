@@ -15,7 +15,6 @@ import { initInventoryTables, createSession, listSessions, getSession, getSessio
 import { canAccessSession, companyScope } from '@/lib/inventory-access';
 import { isCanonicalDay } from '@/lib/berlin-date';
 import { resolveSessionRoute } from '@/lib/session-route';
-import { missedStops } from '@/lib/guided-route';
 import { logAudit } from '@/lib/db';
 
 
@@ -206,9 +205,15 @@ export async function PUT(request: Request) {
       // you open), so gating on stop status alone would make submitting
       // IMPOSSIBLE. Partially-counted stops pass, exactly as before; the review
       // screen and the manager both still see every uncounted line.
+      // "Dealt with" is judged on evidence only: a number written here, or an
+      // explicit skip. A stored 'counted' status is NOT accepted — the button
+      // that set it is gone, so the only way one exists now is a stale row, and
+      // honouring it would wave through a place nobody actually visited.
       const touched = new Set<number>();
       entries.forEach((e: any) => touched.add(e.count_location_id ?? 0));
-      const missed = missedStops(route.stops).filter((s) => !touched.has(s.bucket_id));
+      const missed = route.stops.filter(
+        (s) => s.product_ids.length > 0 && s.status !== 'skipped' && !touched.has(s.bucket_id),
+      );
       if (missed.length > 0) {
         const names = missed.map((s) => (s.location ? s.location.name : 'Everything else'));
         return NextResponse.json({

@@ -179,6 +179,7 @@ export async function updateCachedEntry(
             crate_qty: patch.crate_qty !== undefined ? patch.crate_qty : entries[idx].crate_qty,
             loose_qty: patch.loose_qty !== undefined ? patch.loose_qty : entries[idx].loose_qty,
             units_per_crate: patch.units_per_crate !== undefined ? patch.units_per_crate : entries[idx].units_per_crate,
+            notes: patch.notes !== undefined ? patch.notes : entries[idx].notes,
           };
         } else {
           entries.push({
@@ -190,6 +191,7 @@ export async function updateCachedEntry(
             crate_qty: patch.crate_qty ?? null,
             loose_qty: patch.loose_qty ?? null,
             units_per_crate: patch.units_per_crate ?? null,
+            notes: patch.notes,
           });
         }
       } else if (patch.photos !== undefined && idx >= 0) {
@@ -230,7 +232,10 @@ export async function enqueueMutation(m: Omit<QueuedMutation, 'id' | 'createdAt'
       // The server treats an ABSENT field as "leave it alone", so carrying
       // absent fields forward is exactly what sending both in order would have
       // done — no more, no less.
-      const CARRY_FORWARD = ['notes'] as const;
+      // Every field the server treats as "absent means leave it alone". Miss one
+      // and the queue quietly destroys it: count offline, attach the required
+      // proof photo, then nudge the quantity -> the photo never existed.
+      const CARRY_FORWARD = ['notes', 'photos', 'crate_qty', 'loose_qty', 'units_per_crate'] as const;
       if (m.dedupKey) {
         const idx = store.index('dedupKey');
         const existing = await reqToPromise(idx.getAll(m.dedupKey)) as QueuedMutation[];

@@ -173,16 +173,20 @@ export async function POST(request: Request) {
     units_per_crate: hasSplit ? Number(units_per_crate) : (isReviewerCorrection ? null : undefined),
   });
 
-  if (Array.isArray(photos)) {
-    // Counting something HERE means this place was not skipped after all. Clear
+  // Counting something HERE means this place was not skipped after all. Clear
   // the stale skip so the manager doesn't read "skipped: ran out of time" on a
-  // shelf that has real numbers on it. (Staff can still skip it again.)
-  try {
-    const st = getSessionLocationStatuses(session_id).find((x: any) => x.count_location_id === locId);
-    if (st && st.status === 'skipped') setSessionLocationStatus(session_id, locId, 'pending', null);
-  } catch { /* status bookkeeping must never fail a saved count */ }
+  // shelf that has real numbers on it. (Staff can still skip it again.) A
+  // manager correcting an already-submitted count must NOT rewrite what the
+  // counter recorded about the walk, so reviewers are excluded.
+  if (!isReviewerCorrection) {
+    try {
+      const st = getSessionLocationStatuses(session_id).find((x: any) => x.count_location_id === locId);
+      if (st && st.status === 'skipped') setSessionLocationStatus(session_id, locId, 'pending', null);
+    } catch { /* status bookkeeping must never fail a saved count */ }
+  }
 
-  const entries = getSessionEntries(session_id);
+  if (Array.isArray(photos)) {
+    const entries = getSessionEntries(session_id);
     // Match the row for THIS spot (same product can exist at several spots).
     const entry = entries.find((e: any) => e.product_id === product_id && (e.count_location_id ?? 0) === locId);
     if (entry) setCountPhotos('count_entries', entry.id, photos);

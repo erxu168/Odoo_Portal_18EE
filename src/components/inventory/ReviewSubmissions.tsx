@@ -659,6 +659,25 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                                 })}
                               </div>
                             )}
+                            {/* Flat counts have no spot rows to hang these on, so the
+                                note and the edited mark get their own line — a note
+                                the manager cannot read is a note that was never taken. */}
+                            {!hasSpotLayout && (() => {
+                              const le = (entriesByProduct[p.id] || [])[0];
+                              if (!le || (!le.notes && !le.manager_note)) return null;
+                              return (
+                                <div className="mt-1 flex items-center gap-2 min-w-0">
+                                  {le.notes && (
+                                    <span className="text-[var(--fs-xs)] text-gray-600 italic truncate" title={le.notes}>
+                                      {'\u201C'}{le.notes}{'\u201D'}
+                                    </span>
+                                  )}
+                                  {le.manager_note && (
+                                    <span className="text-[var(--fs-xs)] text-amber-600 font-semibold flex-shrink-0">edited</span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                             {(() => {
                               const entryPhotos: string[] = (entriesByProduct[p.id] || [])
                                 .flatMap((e: any) => (e.photos || []) as string[]);

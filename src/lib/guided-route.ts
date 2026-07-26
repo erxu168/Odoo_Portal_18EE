@@ -141,6 +141,12 @@ export function buildGuidedRoute(params: {
 }
 
 /** Every stop with products must be counted or skipped for a guided submit to pass. */
+/**
+ * @deprecated Stop STATUS no longer decides whether a place was dealt with —
+ * the "done here" button is gone. The submit gate reads the evidence instead
+ * (an entry at that stop, or an explicit skip). See the guided branch of
+ * PATCH /api/inventory/sessions.
+ */
 export function missedStops(stops: RouteStop[]): RouteStop[] {
   return stops.filter((s) => s.product_ids.length > 0 && s.status === 'pending');
 }

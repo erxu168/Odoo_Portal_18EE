@@ -144,9 +144,14 @@ export default function GuidedCountingFlow({
               {done ? '✓' : i + 1}
             </span>
 
-            <div
-              onClick={solo && done ? toggleSolo : undefined}
-              className={`pl-8 text-[var(--fs-base)] font-extrabold leading-tight ${solo && done ? 'cursor-pointer active:opacity-70' : ''}`}
+            {/* A real button, so folding a finished step back open works from the
+                keyboard too. It only does something once the step is done. */}
+            <button
+              type="button"
+              disabled={!(solo && done)}
+              onClick={toggleSolo}
+              aria-expanded={solo && done ? soloOpen : undefined}
+              className="w-full text-left pl-8 text-[var(--fs-base)] font-extrabold leading-tight disabled:opacity-100 enabled:active:opacity-70"
             >
               {st.room || (st.stops[0].location
                 ? `${typeLabel(st.stops[0].location.kind)} ${st.stops[0].location.name}`
@@ -159,7 +164,7 @@ export default function GuidedCountingFlow({
                   return done ? `${n} thing${n !== 1 ? 's' : ''} · all counted` : `${c} of ${n} counted here`;
                 })()}
               </span>
-            </div>
+            </button>
 
             <div className="pb-4 pt-1">
               {st.stops.map((s) => {
