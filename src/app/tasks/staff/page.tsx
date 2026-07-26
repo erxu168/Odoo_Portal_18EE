@@ -65,8 +65,11 @@ export default function StaffPage() {
   const { activePerson } = useShift();
   const activePersonId = activePerson?.id ?? null;
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `quiet` = refresh after a tick: keep the rendered list mounted so the page
+  // never jumps back to the top (a global `loading` swaps the list for
+  // skeletons, which resets the scroll position — see the no-scroll-jump rule).
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
     try {
       // First fetch context (employee → department) via /today; then if a different
@@ -109,7 +112,7 @@ export default function StaffPage() {
     const res = await fetch(`/api/tasks/lines/${lineId}/complete`, { method: 'POST' });
     const body = await res.json();
     if (!body.ok) throw new Error(body.error || 'Failed to complete');
-    await load();
+    await load(true);   // quiet: never unmount the list under the user's thumb
     showToast('Task completed');
   }
 
@@ -126,7 +129,7 @@ export default function StaffPage() {
   }
 
   async function handlePhotoUpload(lineId: number) {
-    return uploadTaskPhoto(lineId, load);
+    return uploadTaskPhoto(lineId, () => load(true));   // quiet: no scroll jump
   }
 
   async function handleNoteSave(lineId: number, note: string) {
@@ -137,7 +140,7 @@ export default function StaffPage() {
     });
     const body = await res.json();
     if (!body.ok) throw new Error(body.error || 'Failed to save note');
-    await load();
+    await load(true);   // quiet: no scroll jump
     showToast(note.trim() ? 'Note saved' : 'Note removed');
   }
 
@@ -168,6 +171,7 @@ export default function StaffPage() {
     }
   }
 
+  // Adding a task also keeps your place — you're usually at the bottom of the list.
   async function handleAdd(vals: AdHocSubmitVals) {
     let listId = data?.list?.id;
     if (!listId) listId = (await ensureList()) ?? undefined;
@@ -180,7 +184,7 @@ export default function StaffPage() {
     const body = await res.json();
     if (!body.ok) throw new Error(body.error || 'Failed to add task');
     setShowAdd(false);
-    await load();
+    await load(true);   // quiet: no scroll jump
     showToast('Task added');
   }
 
