@@ -41,7 +41,9 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [lightbox, setLightbox] = useState<{ open: boolean; photos: string[]; index: number }>({ open: false, photos: [], index: 0 });
   const [locations, setLocations] = useState<any[]>([]);
   const [dispMode, setDispMode] = useState<'split' | 'base'>('split');  // pack display toggle
-  const [groupMode, setGroupMode] = useState<'product' | 'type'>('product');  // review grouping: by product vs by location type
+  const [groupMode, setGroupMode] = useState<'product' | 'category' | 'type'>('product');  // review grouping: by product / product group / place
+  // product_id -> what it came out at the last few APPROVED counts. Context only.
+  const [reviewHistory, setReviewHistory] = useState<Record<number, { qty: number; date: string }[]>>({});
   const [reviewPackLabels, setReviewPackLabels] = useState<Record<number, string>>({});  // product_id -> count-by label
   const [reviewQCLabel, setReviewQCLabel] = useState<string | null>(null);
 
@@ -115,6 +117,14 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
         (rt?.stops || []).forEach((st: any) => { if (st.status === 'skipped') sk[st.bucket_id] = st.skip_reason || 'skipped'; });
         setReviewSkips(sk);
       } catch { setReviewSkips({}); }
+
+      // What these products came out at last time. Context for the reviewer —
+      // never a flag, never an automatic change. Missing history is normal for a
+      // young list, so a failure here just means no context is shown.
+      try {
+        const h = await fetch(`/api/inventory/sessions/${sess.id}/history`).then(r => r.ok ? r.json() : null);
+        setReviewHistory(h?.history || {});
+      } catch { setReviewHistory({}); }
 
       // Frozen snapshot decides the product set for modern sessions.
       let productIds: number[] = (countRes.items || []).length > 0
@@ -208,6 +218,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       setReviewSession(null);
       setReviewProducts([]);
       setReviewEntries([]);
+      setReviewHistory({});
       fetchData();
     } catch (err) {
       console.error(`${action} failed:`, err);
@@ -428,6 +439,42 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
     const outOfStockCount = countedProducts.filter(p => isOutOfStock(p.id)).length;
     const trueCountedCount = countedProducts.length - outOfStockCount;
     const addressedCount = countedProducts.length; // everything the staffer resolved (counted or out-of-stock)
+    // NEEDS YOUR EYE: the places this count did not settle. Only facts go in
+    // here — a spot the staffer skipped (with their reason) and a spot nobody
+    // opened. No guessing at "unusual" numbers; the past counts are shown as
+    // plain context on the line instead.
+    const attention: { product: any; kind: 'skipped' | 'missed'; where: string; why: string | null }[] = [];
+    reviewProducts.forEach((p: any) => {
+      const locs = snapshotLinesOf[p.id] || [];
+      locs.forEach((loc: number) => {
+        const has = (entriesByProduct[p.id] || []).some((e: any) => (e.count_location_id ?? 0) === loc);
+        if (has) return;
+        const why = reviewSkips[loc];
+        attention.push({
+          product: p,
+          kind: why ? 'skipped' : 'missed',
+          where: spotName(loc),
+          why: why || null,
+        });
+      });
+    });
+
+    // BY GROUP: the leaf category a cook would name ("Herbs & Greens"), with the
+    // path above it kept as context so two "Sauces" stay distinguishable.
+    const catBuckets = new Map<string, { name: string; parent: string; products: any[] }>();
+    reviewProducts.forEach((p: any) => {
+      const full = p.categ_id?.[1] || 'Other';
+      const parts = String(full).split('/').map((x: string) => x.trim()).filter(Boolean);
+      const name = parts[parts.length - 1] || 'Other';
+      const parent = parts.slice(0, -1).join(' \u203A ');
+      const key = String(full);
+      if (!catBuckets.has(key)) catBuckets.set(key, { name, parent, products: [] });
+      catBuckets.get(key)!.products.push(p);
+    });
+    const categoryGroups = Array.from(catBuckets.values())
+      .map((g) => ({ ...g, left: g.products.filter((p: any) => entryMap[p.id] === undefined).length }))
+      .sort((a, b) => (b.left > 0 ? 1 : 0) - (a.left > 0 ? 1 : 0) || a.name.localeCompare(b.name));
+
     const isSubmitted = reviewSession.status === 'submitted';
     const hasUnresolvedDrafts = countedProducts.some((p: any) => p.is_draft && !draftDecisions[p.id]);
 
@@ -449,7 +496,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       <div className="flex flex-col min-h-0 flex-1">
         <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-200">
           <div className="flex items-center justify-between mb-1">
-            <button onClick={() => { setReviewSession(null); setReviewProducts([]); setReviewEntries([]); setErrorMsg(null); }}
+            <button onClick={() => { setReviewSession(null); setReviewProducts([]); setReviewEntries([]); setReviewHistory({}); setErrorMsg(null); }}
               className="flex items-center gap-1 text-green-700 text-[var(--fs-base)] font-semibold active:opacity-70">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M15 19l-7-7 7-7"/></svg>
               Back to list
@@ -530,14 +577,91 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
             )}
 
             <div className="flex-1 overflow-y-auto px-4 pb-36">
-              {/* By product (the full review) vs By location type (read-only totals per type). */}
-              <div className="flex bg-gray-100 rounded-xl p-1 mt-2 mb-1" role="group" aria-label="Group the count by">
+              {/* PROBLEMS FIRST. A reviewer opens this screen to answer one
+                  question — is anything wrong? — so the unsettled lines come
+                  before the 200 that are fine. */}
+              <div className="mt-3">
+                <p className="text-[var(--fs-xs)] font-bold tracking-wider uppercase text-gray-400 mb-2">Needs your eye</p>
+                {attention.length === 0 ? (
+                  <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-2">
+                    <span aria-hidden="true">{'\u2713'}</span>
+                    <span className="text-[var(--fs-sm)] font-semibold text-green-800">Everything was counted {'\u2014'} nothing was skipped or missed.</span>
+                  </div>
+                ) : (
+                  <div className="bg-white border border-amber-200 rounded-xl overflow-hidden">
+                    {attention.map((a, i) => (
+                      <div key={`${a.product.id}-${a.where}-${i}`}
+                        className="flex items-center gap-3 px-3 py-2.5 border-b border-amber-50 last:border-b-0">
+                        <span className={`w-1.5 self-stretch rounded-full flex-shrink-0 ${a.kind === 'skipped' ? 'bg-orange-400' : 'bg-amber-400'}`} aria-hidden="true" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{a.product.name}</div>
+                          <div className="text-[var(--fs-xs)] text-gray-600">
+                            {a.kind === 'skipped'
+                              ? <><span className="font-semibold">{a.where}</span> was skipped {'\u2014'} {'\u201C'}{a.why}{'\u201D'}</>
+                              : <><span className="font-semibold">{a.where}</span> was never counted</>}
+                          </div>
+                        </div>
+                        {isSubmitted && (
+                          <button onClick={() => setEditLine({ product: a.product, loc: (snapshotLinesOf[a.product.id] || [0]).find((l: number) => spotName(l) === a.where) ?? 0 })}
+                            className="flex-shrink-0 text-[var(--fs-xs)] font-bold text-blue-700 px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50 active:bg-blue-100">
+                            Fix
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* One count, three ways to read it: line by line, by the groups the
+                  kitchen thinks in, or by where things physically live. */}
+              <div className="flex bg-gray-100 rounded-xl p-1 mt-4 mb-1" role="group" aria-label="Group the count by">
                 <button onClick={() => setGroupMode('product')}
                   className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition-all ${groupMode === 'product' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>By product</button>
+                <button onClick={() => setGroupMode('category')}
+                  className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition-all ${groupMode === 'category' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>By group</button>
                 <button onClick={() => setGroupMode('type')}
-                  className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition-all ${groupMode === 'type' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>By location type</button>
+                  className={`flex-1 py-2 rounded-lg text-[var(--fs-sm)] font-bold transition-all ${groupMode === 'type' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}>By place</button>
               </div>
-              {groupMode === 'type' ? (
+              {groupMode === 'category' ? (
+                <div className="mt-2">
+                  {categoryGroups.length === 0 ? (
+                    <p className="text-center text-gray-400 text-[var(--fs-sm)] py-8">Nothing in this count yet.</p>
+                  ) : categoryGroups.map((g) => (
+                    <div key={g.name} className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-3">
+                      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[var(--fs-base)] font-extrabold text-gray-900 truncate">{g.name}</span>
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border flex-shrink-0 ${
+                            g.left === 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}>
+                            {g.left === 0 ? 'all counted' : `${g.left} left`}
+                          </span>
+                        </div>
+                        <span className="text-[var(--fs-xs)] text-gray-500">
+                          {g.parent ? `${g.parent} \u00B7 ` : ''}{g.products.length} product{g.products.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      {g.products.map((p: any) => {
+                        const v = entryMap[p.id];
+                        const uom = p.uom_id?.[1] || 'Units';
+                        return (
+                          <div key={p.id} className="flex items-center justify-between gap-2 px-4 py-2 border-b border-gray-50 last:border-b-0">
+                            <span className="text-[var(--fs-base)] text-gray-800 truncate min-w-0">{p.name}</span>
+                            {v === undefined ? (
+                              <span className="text-[var(--fs-xs)] font-semibold text-amber-700 flex-shrink-0">not counted</span>
+                            ) : isOutOfStock(p.id) ? (
+                              <span className="text-[var(--fs-xs)] font-semibold text-red-600 flex-shrink-0">none left</span>
+                            ) : (
+                              <span className="font-mono font-semibold text-gray-900 flex-shrink-0">{v} {uom}</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ) : groupMode === 'type' ? (
                 <div className="mt-2">
                   {typeGroups.length === 0 ? (
                     <p className="text-center text-gray-400 text-[var(--fs-sm)] py-8">Nothing counted yet.</p>
@@ -628,6 +752,21 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                                 System: {sysQty} {uom} {diff !== null && `(${diff > 0 ? '+' : ''}${diff})`}
                               </span>
                             )}
+                            {(() => {
+                              // Past counts, as a range. A number means nothing on
+                              // its own; "28-36 the last 5 times" is what tells a
+                              // manager whether today's 31 is fine or 300 is a typo.
+                              const past = reviewHistory[p.id] || [];
+                              if (past.length === 0) return null;
+                              const qs = past.map((x) => x.qty);
+                              const lo = Math.min(...qs), hi = Math.max(...qs);
+                              return (
+                                <span className="block text-[var(--fs-xs)] text-gray-400">
+                                  Last {past.length === 1 ? 'count' : `${past.length} counts`}:{' '}
+                                  {lo === hi ? `${lo}` : `${lo}\u2013${hi}`} {uom}
+                                </span>
+                              );
+                            })()}
                             {hasSpotLayout && (snapshotLinesOf[p.id] || [0]).length > 0 && (
                               <div className="mt-1 flex flex-col gap-0.5">
                                 {(snapshotLinesOf[p.id] || [0]).map((loc: number) => {

@@ -2114,6 +2114,47 @@ export function setSessionLocationStatus(
   `).run(sessionId, countLocationId, status, skipReason ?? null, now());
 }
 
+/**
+ * What this product came out at the LAST few times it was counted and approved.
+ * Context for a reviewer staring at a number with nothing to compare it to —
+ * "28-36 Units the last five times" makes 300 obvious and 31 boring.
+ *
+ * Approved counts only: a submitted-but-unreviewed number is not yet a fact,
+ * and the session being reviewed right now must never compare against itself.
+ * Totals are summed across spots, matching how approval reads a count.
+ */
+export function getProductCountHistory(
+  companyId: number,
+  productIds: number[],
+  opts: { excludeSessionId?: number; perProduct?: number } = {},
+): Record<number, { qty: number; date: string }[]> {
+  const out: Record<number, { qty: number; date: string }[]> = {};
+  if (productIds.length === 0) return out;
+  const db = getDb();
+  const perProduct = opts.perProduct ?? 5;
+  const placeholders = productIds.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT e.product_id AS product_id,
+           s.id AS session_id,
+           COALESCE(s.scheduled_date, s.created_at) AS date,
+           SUM(COALESCE(e.counted_qty, 0)) AS qty
+    FROM count_entries e
+    JOIN counting_sessions s ON s.id = e.session_id
+    WHERE s.company_id = ?
+      AND s.status = 'approved'
+      AND e.product_id IN (${placeholders})
+      AND s.id != ?
+      AND e.out_of_stock = 0
+    GROUP BY e.product_id, s.id
+    ORDER BY e.product_id, date DESC
+  `).all(companyId, ...productIds, opts.excludeSessionId ?? -1) as { product_id: number; date: string; qty: number }[];
+  rows.forEach((r) => {
+    const list = (out[r.product_id] ||= []);
+    if (list.length < perProduct) list.push({ qty: Number(r.qty), date: String(r.date) });
+  });
+  return out;
+}
+
 export function getSessionLocationStatuses(sessionId: number): { count_location_id: number; status: string; skip_reason: string | null }[] {
   const db = getDb();
   return db.prepare(
