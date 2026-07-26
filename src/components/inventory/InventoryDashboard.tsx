@@ -80,8 +80,8 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
     ...(can('inventory.drinks.manage') ? [{ id: 'drinks-scanner', label: 'Drinks Scanner', emoji: '🥤', sublabel: 'Barcode WAJ drinks', badge: 0 }] : []),
     ...(can('inventory.drinks.manage') ? [{ id: 'drinks-editor', label: 'Edit Drinks', emoji: '✏️', sublabel: 'Name, price, tax, unit', badge: 0 }] : []),
     ...(can('inventory.location.manage') ? [{ id: 'locations', label: 'Locations', emoji: '📍', sublabel: 'Map, shelves, photos', badge: 0 }] : []),
-    // Portal-only Shift Handover submodule (its own /shift-handover route).
-    ...(can('handover.view') ? [{ id: 'shift-handover', href: '/shift-handover', label: 'Shift Handover', emoji: '🔄', sublabel: 'Notes & photos for the next shift', badge: 0 }] : []),
+    // Shift Handover is now a top-level module on the home dashboard (its own
+    // /shift-handover route) — no longer nested here.
   ];
 
   return (

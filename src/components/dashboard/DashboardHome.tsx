@@ -27,6 +27,7 @@ interface Tile {
 }
 
 const TILES: Tile[] = [
+  { id: 'shift-handover', label: 'Shift Handover', subtitle: 'Notes & photos for the next shift', href: '/shift-handover', minRole: 'staff', emoji: '🔄' },
   { id: 'production', label: 'Manufacturing', subtitle: 'Prep & production orders', href: '/manufacturing', minRole: 'staff', emoji: '🏭' },
   { id: 'recipes', label: 'Chef Guide', subtitle: 'Cooking guides', href: '/recipes', minRole: 'staff', scope: 'cooking', emoji: '👨‍🍳' },
   { id: 'production-guide', label: 'Production Guide', subtitle: 'Sauces, prep & batches', href: '/recipes', minRole: 'manager', scope: 'production', emoji: '🥫' },
@@ -159,6 +160,16 @@ export default function DashboardHome() {
         return allowedModules.includes(t.id);
       });
 
+  // Shift Handover was just promoted to a top-level tile. Users who previously
+  // customised their tile order have a saved order that predates it; without this
+  // the SortableTileGrid would append the unknown id at the BOTTOM. Prepend any
+  // freshly-promoted tile so it surfaces at the top for everyone (self-cleaning:
+  // once a user re-saves their order it already contains the id and this no-ops).
+  const PROMOTED_TILE_IDS = ['shift-handover'];
+  const normalizedTileOrder = savedOrder
+    ? [...PROMOTED_TILE_IDS.filter((id) => !savedOrder.includes(id)), ...savedOrder]
+    : savedOrder;
+
   const tasksDone = tasks?.done || 0;
   const tasksTotal = tasks?.total || 0;
   const progressPct = tasksTotal > 0 ? Math.round((tasksDone / tasksTotal) * 100) : 0;
@@ -281,7 +292,7 @@ export default function DashboardHome() {
         <ActionGrid
           items={visibleTiles}
           getItemId={(t) => t.id}
-          sortable={{ storageKey: 'dashboard_tile_order', savedOrder }}
+          sortable={{ storageKey: 'dashboard_tile_order', savedOrder: normalizedTileOrder }}
           renderItem={(tile) => {
             const count = badges[tile.id] || 0;
             const disabled = !tile.href;
