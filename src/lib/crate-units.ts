@@ -31,7 +31,11 @@ export function crateTotal(
 ): number {
   const c = Number.isFinite(crates) ? crates : 0;
   const l = Number.isFinite(loose) ? loose : 0;
-  return hasCrate(unitsPerCrate) ? c * unitsPerCrate + l : l;
+  // Rounded, because this total is STORED. 11 bunches of 0.03 kg is 0.33, but
+  // binary floating point makes it 0.32999999999999996, and that number then
+  // divides back into ten bunches and a remainder. Six decimals is far finer
+  // than any kitchen scale and leaves no room for the noise.
+  return roundQty(hasCrate(unitsPerCrate) ? c * unitsPerCrate + l : l);
 }
 
 /**
@@ -44,7 +48,14 @@ export function splitFromTotal(
 ): CrateSplit {
   const t = Number.isFinite(total) ? total : 0;
   if (!hasCrate(unitsPerCrate)) return { crates: 0, loose: t };
-  const crates = Math.floor(t / unitsPerCrate);
+  // Floor, but treat "a hair under a whole one" as a whole one. Without this a
+  // stored 0.32999999999999996 at 0.03 each reads as 10 bunches plus a loose
+  // one — the counter taps eleven times and the row says ten.
+  const raw = t / unitsPerCrate;
+  const nearest = Math.round(raw);
+  const crates = Math.abs(raw - nearest) < 1e-9 * Math.max(1, Math.abs(raw))
+    ? nearest
+    : Math.floor(raw);
   const loose = round2(t - crates * unitsPerCrate);
   return { crates, loose };
 }
@@ -145,6 +156,12 @@ export function suggestCrateSizeFromName(name: string): number | null {
     if (n > 1 && n <= 200) return n;
   }
   return null;
+}
+
+/** Kill binary-floating-point dust without touching a quantity anyone meant. */
+function roundQty(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Number.isInteger(n) ? n : Math.round(n * 1e6) / 1e6;
 }
 
 function round2(n: number): number {
