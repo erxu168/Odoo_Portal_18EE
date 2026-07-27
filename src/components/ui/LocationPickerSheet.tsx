@@ -53,6 +53,7 @@ export function TreePickerSheet({
   nodes, value, onPick, onClose, title = 'Choose',
   iconOf, hereLabel = (n: TreeNode) => `It’s right here — ${n.name}`,
   searchLabel = 'Search all places',
+  rootLabel = 'All places',
   emptyLabel = 'No places have been set up yet. A manager adds them under Stock → Locations.',
 }: {
   nodes: TreeNode[];
@@ -63,6 +64,9 @@ export function TreePickerSheet({
   iconOf?: (n: TreeNode) => string;
   hereLabel?: (n: TreeNode) => string;
   searchLabel?: string;
+  /** What the top of the trail is called — "All places" for a room, "All" for a
+   *  category. The location wording used to leak into every other tree. */
+  rootLabel?: string;
   emptyLabel?: string;
 }) {
   // sort_order is optional on a generic node; the shared path helpers want it.
@@ -213,7 +217,7 @@ export function TreePickerSheet({
             way back but Cancel. */}
         {!q && parent != null && (
           <div className="px-4 pt-2.5 flex flex-wrap items-center gap-1 text-[var(--fs-xs)] font-semibold text-gray-500">
-            <button onClick={() => setParent(null)} className="active:opacity-70">All places</button>
+            <button onClick={() => setParent(null)} className="active:opacity-70">{rootLabel}</button>
             {trail.map((t, i) => (
               <React.Fragment key={t.id}>
                 <span className="text-gray-300">›</span>

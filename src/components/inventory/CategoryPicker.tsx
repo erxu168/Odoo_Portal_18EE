@@ -103,6 +103,7 @@ export function CategoryPickerSheet({
       title={title}
       iconOf={() => '📁'}
       searchLabel="Search all categories"
+      rootLabel="Top level"
       emptyLabel="No categories yet."
       hereLabel={(n) => `Use ${n.name} itself`}
       onPick={(id) => onPick(id)}
