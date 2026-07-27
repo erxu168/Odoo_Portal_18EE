@@ -52,6 +52,11 @@ type Depth = 'leaf' | 'parent' | 'full';
 
 export default function LocationLabels({ companyId, onClose, onlyId }: { companyId: number; onClose: () => void; onlyId?: number }) {
   const [rows, setRows] = useState<LocRow[]>([]);
+  // EVERY location, kept apart from the ones being printed. A path is walked by
+  // following parent_id through this list, so printing a single label must not
+  // narrow it — filtering to one row left that row with no ancestors to find,
+  // and "+ parent" and "Full path" silently printed nothing above the name.
+  const [allLocs, setAllLocs] = useState<LocRow[]>([]);
   const [qrByLoc, setQrByLoc] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +99,7 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
         await Promise.all(wanted.map(async (row) => {
           qrs[row.id] = await QRCode.toDataURL(locationCode(row.id), { width: 240, margin: 0 });
         }));
-        if (!stale) { setRows(wanted); setQrByLoc(qrs); setLoading(false); }
+        if (!stale) { setAllLocs(locs); setRows(wanted); setQrByLoc(qrs); setLoading(false); }
       } catch {
         if (!stale) { setError('Could not load the locations.'); setLoading(false); }
       }
@@ -110,7 +115,7 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
   }, [sizeId, customW, customH]);
 
   const labels: Label[] = useMemo(() => rows.map((row) => {
-    const path = locationPath(row.id, rows);
+    const path = locationPath(row.id, allLocs);
     const above = path.slice(0, -1);
     const branch = depth === 'leaf' ? ''
       : depth === 'parent' ? (above[above.length - 1] || '')
@@ -123,7 +128,7 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
       qr: qrByLoc[row.id] || '',
       icon: iconOf(row.kind),
     };
-  }), [rows, depth, qrByLoc, iconOf]);
+  }), [rows, allLocs, depth, qrByLoc, iconOf]);
 
   const printing = labels.filter((l) => !skipped.has(l.id));
 
@@ -135,11 +140,11 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
     let deepest: LocRow | null = null;
     let best = 0;
     for (const r of rows) {
-      const d = locationPath(r.id, rows).length;
+      const d = locationPath(r.id, allLocs).length;
       if (d > best) { best = d; deepest = r; }
     }
     if (!deepest) return null;
-    const path = locationPath(deepest.id, rows);
+    const path = locationPath(deepest.id, allLocs);
     if (path.length < 2) {
       return `Every place here is top-level, so all three read the same — there is nothing above ${path[0] || 'them'} to show.`;
     }
@@ -148,7 +153,7 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
       : depth === 'parent' ? (above[above.length - 1] || '')
       : above.join(' › ');
     return `For example: ${shown ? `${shown} · ` : ''}${path[path.length - 1]}`;
-  }, [rows, depth]);
+  }, [rows, allLocs, depth]);
 
   // The name has to be legible from across a room, so it is sized to the label
   // and to how long it is — rather than shrunk to fit and unreadable, or cut off.
