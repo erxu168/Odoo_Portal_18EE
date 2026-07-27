@@ -189,9 +189,9 @@ export function TreePickerSheet({
   const empty = locations.length === 0;
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end" role="dialog" aria-modal="true" aria-label={title}>
+    <div className="fixed inset-0 z-[120] flex items-end sm:items-center sm:justify-center sm:p-6" role="dialog" aria-modal="true" aria-label={title}>
       <button aria-label="Close" onClick={onClose} className="absolute inset-0 bg-black/40" />
-      <div className="relative w-full bg-white rounded-t-3xl max-h-[90vh] flex flex-col pb-[env(safe-area-inset-bottom)]">
+      <div className="relative w-full bg-white rounded-t-3xl max-h-[90vh] flex flex-col pb-[env(safe-area-inset-bottom)] sm:max-w-md sm:rounded-3xl sm:max-h-[75vh] sm:shadow-2xl sm:pb-0">
         <div className="px-5 pt-4 pb-3 border-b border-gray-100 flex items-center gap-3">
           <span className="text-[var(--fs-lg)] font-bold text-gray-900">{title}</span>
           <button onClick={onClose} className="ml-auto text-[var(--fs-sm)] font-semibold text-gray-500 active:opacity-70">

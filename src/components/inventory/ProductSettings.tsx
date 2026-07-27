@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { CategoryPickerSheet, type CategoryRow } from './CategoryPicker';
+import { unitWords } from '@/lib/crate-units';
 import { LocationPickerSheet, type PickableLocation } from '@/components/ui/LocationPickerSheet';
 import { SearchBar, Spinner, EmptyState } from './ui';
 import ProductDetail from './ProductDetail';
@@ -66,6 +67,9 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
   const [imgVer, setImgVer] = useState(0);                                      // cache-bust <img> after an update
   const [search, setSearch] = useState('');
   const [hasPack, setHasPack] = useState<Record<number, boolean>>({});
+  const [packSizes, setPackSizes] = useState<Record<number, number>>({});
+  const [packLabels, setPackLabels] = useState<Record<number, string>>({});
+  const [looseWords, setLooseWords] = useState<Record<number, string>>({});
   // This screen's real job is finding what still needs setting up, so the
   // filters are gaps first ("no spot yet") and only then narrowing by where a
   // product lives or what it is.
@@ -92,12 +96,21 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
         setProducts(prods);
         const photoMap: Record<number, boolean> = {};
         const packMap: Record<number, boolean> = {};
+        const sizeMap: Record<number, number> = {};
+        const labelMap: Record<number, string> = {};
+        const looseMap: Record<number, string> = {};
         (flagRes.flags || []).forEach((f: any) => {
           photoMap[f.odoo_product_id] = !!f.requires_photo;
           packMap[f.odoo_product_id] = f.units_per_crate != null && Number(f.units_per_crate) > 0;
+          if (f.units_per_crate != null) sizeMap[f.odoo_product_id] = Number(f.units_per_crate);
+          if (f.pack_label) labelMap[f.odoo_product_id] = f.pack_label;
+          if (f.loose_label) looseMap[f.odoo_product_id] = f.loose_label;
         });
         setFlags(photoMap);
         setHasPack(packMap);
+        setPackSizes(sizeMap);
+        setPackLabels(labelMap);
+        setLooseWords(looseMap);
       } catch (err) {
         console.error('Failed to load product settings:', err);
       } finally {
@@ -142,6 +155,20 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     cats.forEach((c) => { if (String(c.complete_name || c.name).startsWith(mine + ' / ')) out.add(c.id); });
     return out;
   }, [catId, cats]);
+
+  /**
+   * How this product is counted, said the way a person would. The row used to
+   * print "base Units", which is Odoo's internal term for the unit stock is
+   * stored in, followed by Odoo's unnamed default — so it told a manager
+   * nothing while appearing on every line.
+   */
+  const countedAs = (p: any) => {
+    const uom = p.uom_id?.[1] || 'Units';
+    const w = unitWords(uom, packLabels[p.id], looseWords[p.id]);
+    const size = packSizes[p.id];
+    if (size && size > 0) return `1 ${w.pack} = ${size} ${w.looseFor(size)}`;
+    return `counted in ${w.looseFor(2)}`;
+  };
 
   const missing = useMemo(() => ({
     spot: (p: any) => (homeSpots[p.id] || []).length === 0,
@@ -188,7 +215,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
 
       <div className="px-4 pb-1 flex items-start gap-2 text-[var(--fs-xs)] text-gray-500 leading-snug">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C2410C" strokeWidth="2" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>
-        <span>Let staff count a product in a handy unit (piece, bunch, crate…) that converts to its base unit. Leave the size blank to count in base units only.</span>
+        <span>Set how staff count each product {'\u2014'} in bottles, bunches or crates, whichever they actually pick up. Open one to change it.</span>
       </div>
 
       <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
@@ -196,14 +223,22 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
       {/* Gaps first. On a setup screen the question is almost never "show me
           product X" — it is "what have I not finished?". Each chip carries the
           number it would leave, counted after the other filters. */}
-      <div className="px-4 pb-2 flex gap-1.5 overflow-x-auto no-scrollbar">
+      {/* One of these is always chosen, so "All" belongs in the set — otherwise
+          the only way back is tapping the active one again, which nobody finds. */}
+      <div className="px-4 pb-2 flex gap-1.5 overflow-x-auto no-scrollbar" role="group" aria-label="Show">
+        <button onClick={() => setGap(null)} aria-pressed={gap === null}
+          className={`flex-shrink-0 px-3 h-8 rounded-full text-[var(--fs-xs)] font-bold border transition-colors ${
+            gap === null ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200 text-gray-600'
+          }`}>
+          All {narrowed.length}
+        </button>
         {([
           ['spot', 'No spot', gapCounts.spot],
           ['pack', 'No pack size', gapCounts.pack],
           ['photo', 'No photo rule', gapCounts.photo],
           ['picture', 'No picture', gapCounts.picture],
         ] as const).map(([key, label, n]) => (
-          <button key={key} onClick={() => setGap(gap === key ? null : key)}
+          <button key={key} onClick={() => setGap(gap === key ? null : key)} aria-pressed={gap === key}
             className={`flex-shrink-0 px-3 h-8 rounded-full text-[var(--fs-xs)] font-bold border transition-colors ${
               gap === key ? 'bg-amber-600 border-amber-600 text-white'
                 : n > 0 ? 'bg-amber-50 border-amber-200 text-amber-800'
@@ -236,8 +271,16 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
         )}
       </div>
 
-      <p className="px-4 pb-1 text-[var(--fs-xs)] text-gray-400">
-        {filtered.length} of {products.length} products
+      <p className="px-4 pb-1 text-[var(--fs-xs)] text-gray-500">
+        {gap ? (
+          <>
+            Showing <strong className="text-gray-900">{filtered.length}</strong> product{filtered.length === 1 ? '' : 's'} with{' '}
+            {{ spot: 'no spot set', pack: 'no pack size', photo: 'no photo rule', picture: 'no picture' }[gap]}
+            {narrowed.length !== filtered.length && <> {'\u00B7'} {narrowed.length - filtered.length} hidden</>}
+          </>
+        ) : (
+          <>{filtered.length} product{filtered.length === 1 ? '' : 's'}{filtered.length !== products.length && <> of {products.length}</>}</>
+        )}
       </p>
 
       <div className="flex-1 overflow-y-auto px-4 pb-24">
@@ -263,7 +306,8 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
-                    <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5 truncate">{p.categ_id?.[1] || ''} · base {uom}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5 truncate">{p.categ_id?.[1] || ''}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5 truncate">{countedAs(p)}</div>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {on && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">📷 Photo required</span>}
                       {spots.length > 0 ? spots.map((sid) => (
