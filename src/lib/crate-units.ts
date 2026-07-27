@@ -172,13 +172,19 @@ export function suggestCrateSizeFromName(name: string): number | null {
   return null;
 }
 
-/** Kill binary-floating-point dust without touching a quantity anyone meant. */
-function roundQty(n: number): number {
+/**
+ * Kill binary-floating-point dust without touching a quantity anyone meant.
+ * Exported because the multi-level packaging engine (src/lib/packaging.ts) must
+ * round EXACTLY the same way — two roundings would disagree at the sixth decimal
+ * and a total would stop reading back as the count that produced it.
+ */
+export function roundQty(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Number.isInteger(n) ? n : Math.round(n * 1e6) / 1e6;
 }
 
-function round2(n: number): number {
+/** Display rounding (2dp). Same reason as roundQty: one definition, not two. */
+export function round2(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Number.isInteger(n) ? n : Math.round(n * 100) / 100;
 }
