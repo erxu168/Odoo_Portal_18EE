@@ -14,6 +14,7 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { canAccessSession } from '@/lib/inventory-access';
+import { allowedProductIds } from '@/lib/inventory-scope';
 import {
   initInventoryTables,
   getSession,
@@ -43,14 +44,31 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Session must be in submitted status' }, { status: 400 });
   }
 
+  // Which products this list may contain — resolved BEFORE the status is
+  // claimed, because failing here must leave the count exactly as it was.
+  // This is the money step, so it will not guess: if the list is defined by
+  // categories and Odoo cannot be asked what is in them, approval stops.
+  const scope = await allowedProductIds(session);
+  if (scope.kind === 'unknown') {
+    return NextResponse.json({
+      error: 'Cannot reach Odoo to confirm which products are on this list. Try again in a moment.',
+    }, { status: 503 });
+  }
+
   // Atomically claim the approval (only from 'submitted') BEFORE reading the
   // entries — a manager line-correction checks for 'submitted' too, so once the
   // claim lands no late correction can slip between our read and the write.
   if (updateSessionStatus(session_id, 'approved', { reviewed_by: user.id, review_note, fromStatus: 'submitted' }) === 0) {
     return NextResponse.json({ error: 'This count was just changed by someone else — reload.' }, { status: 409 });
   }
+  // From here the session is already marked approved, so every early return has
+  // to put it back — otherwise a refused approval leaves a count that says
+  // "approved" with nothing written to stock.
+  const unclaim = () => updateSessionStatus(session_id, 'submitted', { fromStatus: 'approved' });
+
   const entries = getSessionEntries(session_id);
   if (entries.length === 0) {
+    unclaim();
     return NextResponse.json({ error: 'No count entries to approve' }, { status: 400 });
   }
 
@@ -59,6 +77,21 @@ export async function POST(request: Request) {
   // never a race of several writes to the same quant. odoo_qty is the Odoo-safe
   // quantity (out-of-stock = 0); a null row is portal-only (e.g. a simple count
   // with no average) and is excluded from the Odoo write entirely.
+  // Nothing writes stock for a product that was never on the list. This is the
+  // money step, so unlike the counting screen it will NOT guess: if the list is
+  // defined by categories and Odoo cannot be asked which products those are,
+  // approval stops rather than writing a quantity it cannot justify.
+  // Nothing writes stock for a product that was never on this list.
+  const offList = entries.filter((e: any) => !scope.ids.has(e.product_id));
+  if (offList.length > 0) {
+    unclaim();
+    const ids = Array.from(new Set(offList.map((e: any) => e.product_id))).slice(0, 5).join(', ');
+    return NextResponse.json({
+      error: `This count has ${offList.length} line(s) for products that are not on the list (${ids}). Nothing was written to stock.`,
+      code: 'OFF_LIST_LINES',
+    }, { status: 400 });
+  }
+
   const writeByProduct = new Map<number, number>();
   for (const e of entries) {
     const oq = e.odoo_qty === undefined ? e.counted_qty : e.odoo_qty;  // legacy safety

@@ -13,6 +13,7 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { canAccessSession } from '@/lib/inventory-access';
 import { getOdoo } from '@/lib/odoo';
+import { allowedProductIds } from '@/lib/inventory-scope';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { crateTotal } from '@/lib/crate-units';
 import { inventoryOdooSyncEnabled } from '@/lib/inventory-config';
@@ -135,12 +136,17 @@ export async function POST(request: Request) {
     }
   } else {
     // Legacy session: spot-less counting only, validated against the template.
+    // A CATEGORY-only list used to skip this check entirely (its explicit
+    // product list is empty), which let any product id be written into someone
+    // else's count. The scope helper resolves those categories.
     locId = 0;
-    const tmpl = getTemplate(session.template_id);
-    const listIds: number[] = Array.isArray(tmpl?.product_ids) ? (tmpl!.product_ids as number[]) : [];
-    if (listIds.length > 0 && !listIds.includes(Number(product_id))) {
+    const scope = await allowedProductIds(session);
+    if (scope.kind === 'known' && !scope.ids.has(Number(product_id))) {
       return NextResponse.json({ error: 'That product is not on this count list' }, { status: 400 });
     }
+    // scope 'unknown' means Odoo could not be asked. A stray line is visible to
+    // the manager and costs nothing until approval, which refuses to guess — so
+    // let the person in front of the shelf keep counting.
   }
 
   // A reviewer correction FIXES an existing line — on a legacy session (no
