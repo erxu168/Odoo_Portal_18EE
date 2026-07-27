@@ -8,8 +8,12 @@ import {
 // Drives the real SQLite state machine end to end (no Odoo). Uses out-of-range
 // synthetic line/order ids so it never collides with real feed data.
 const FRIES_PRODUCT = 1682; // seeded 3-step profile (1st Fry / Rest / 2nd Fry)
-/** Every synthetic id these tests use sits at or above this. */
-const SYNTHETIC_FROM = 990000;
+/**
+ * Exactly the ids THIS file uses — not a range. cooktimer-setup.unit.spec.ts
+ * also works in the 990xxx space (990901), and these files share one database:
+ * a range sweep reached into its timer mid-test and made it fail.
+ */
+const SYNTHETIC_IDS = [990001, 990101, 990201, 990301, 990401];
 
 function cleanup(orderIds: number[], timerId: number) {
   const db = getDb();
@@ -31,16 +35,18 @@ function cleanup(orderIds: number[], timerId: number) {
  */
 function sweepSynthetic() {
   const db = getDb();
+  const mine = new Set(SYNTHETIC_IDS);
   const stale = db.prepare('SELECT id, pos_line_ids_json FROM cook_timers').all() as
     { id: number; pos_line_ids_json: string }[];
   for (const row of stale) {
     let lines: { lineId?: number }[] = [];
     try { lines = JSON.parse(row.pos_line_ids_json || '[]'); } catch { continue; }
-    if (lines.some((l) => Number(l?.lineId) >= SYNTHETIC_FROM)) {
+    if (lines.some((l) => mine.has(Number(l?.lineId)))) {
       db.prepare('DELETE FROM cook_timers WHERE id = ?').run(row.id);
     }
   }
-  db.prepare('DELETE FROM kds_line_ready WHERE pos_order_id >= ?').run(SYNTHETIC_FROM);
+  const q = SYNTHETIC_IDS.map(() => '?').join(',');
+  db.prepare(`DELETE FROM kds_line_ready WHERE pos_order_id IN (${q})`).run(...SYNTHETIC_IDS);
 }
 
 test.beforeEach(sweepSynthetic);
