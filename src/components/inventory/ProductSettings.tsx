@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { CategoryPickerSheet, type CategoryRow } from './CategoryPicker';
+import { LocationPickerSheet, type PickableLocation } from '@/components/ui/LocationPickerSheet';
 import { SearchBar, Spinner, EmptyState } from './ui';
 import ProductDetail from './ProductDetail';
 import { useCompany } from '@/lib/company-context';
@@ -63,6 +65,17 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
   }, [companyId, applyLocations]);
   const [imgVer, setImgVer] = useState(0);                                      // cache-bust <img> after an update
   const [search, setSearch] = useState('');
+  const [hasPack, setHasPack] = useState<Record<number, boolean>>({});
+  // This screen's real job is finding what still needs setting up, so the
+  // filters are gaps first ("no spot yet") and only then narrowing by where a
+  // product lives or what it is.
+  const [gap, setGap] = useState<null | 'spot' | 'pack' | 'photo' | 'picture'>(null);
+  const [catId, setCatId] = useState<number | null>(null);
+  const [locId, setLocId] = useState<number | null>(null);
+  const [catPick, setCatPick] = useState(false);
+  const [locPick, setLocPick] = useState(false);
+  const [cats, setCats] = useState<CategoryRow[]>([]);
+  const [locs, setLocs] = useState<PickableLocation[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -78,8 +91,13 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
         const prods = (prodRes.products || []).filter((p: any) => p.active !== false);
         setProducts(prods);
         const photoMap: Record<number, boolean> = {};
-        (flagRes.flags || []).forEach((f: any) => { photoMap[f.odoo_product_id] = !!f.requires_photo; });
+        const packMap: Record<number, boolean> = {};
+        (flagRes.flags || []).forEach((f: any) => {
+          photoMap[f.odoo_product_id] = !!f.requires_photo;
+          packMap[f.odoo_product_id] = f.units_per_crate != null && Number(f.units_per_crate) > 0;
+        });
         setFlags(photoMap);
+        setHasPack(packMap);
       } catch (err) {
         console.error('Failed to load product settings:', err);
       } finally {
@@ -89,11 +107,73 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     load();
   }, [companyId]);
 
-  const filtered = useMemo(() => {
-    if (!search) return products;
-    const q = search.toLowerCase();
-    return products.filter((p: any) => p.name.toLowerCase().includes(q));
-  }, [products, search]);
+  useEffect(() => {
+    fetch('/api/inventory/categories').then((r) => (r.ok ? r.json() : { categories: [] }))
+      .then((d) => setCats(d.categories || [])).catch(() => {});
+    fetch(`/api/inventory/count-locations${companyId ? `?company_id=${companyId}` : ''}`)
+      .then((r) => (r.ok ? r.json() : { locations: [] }))
+      .then((d) => setLocs(d.locations || [])).catch(() => {});
+  }, [companyId]);
+
+  // Every place under the chosen one counts as a match — picking "WAJ Kitchen"
+  // should find something in a drawer inside a fridge inside it.
+  const locFamily = useMemo(() => {
+    if (locId == null) return null;
+    const kids = new Map<number | null, number[]>();
+    locs.forEach((l) => {
+      const k = l.parent_id ?? null;
+      kids.set(k, [...(kids.get(k) || []), l.id]);
+    });
+    const out = new Set<number>([locId]);
+    const stack = [locId];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      for (const kid of kids.get(cur) || []) if (!out.has(kid)) { out.add(kid); stack.push(kid); }
+    }
+    return out;
+  }, [locId, locs]);
+
+  const catFamily = useMemo(() => {
+    if (catId == null) return null;
+    const chosen = cats.find((c) => c.id === catId);
+    if (!chosen) return new Set<number>([catId]);
+    const mine = String(chosen.complete_name || chosen.name);
+    const out = new Set<number>([catId]);
+    cats.forEach((c) => { if (String(c.complete_name || c.name).startsWith(mine + ' / ')) out.add(c.id); });
+    return out;
+  }, [catId, cats]);
+
+  const missing = useMemo(() => ({
+    spot: (p: any) => (homeSpots[p.id] || []).length === 0,
+    pack: (p: any) => !hasPack[p.id],
+    photo: (p: any) => !flags[p.id],
+    picture: (p: any) => !imageIds.has(p.id),
+  }), [homeSpots, hasPack, flags, imageIds]);
+
+  const narrowed = useMemo(() => {
+    let list = products;
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter((p: any) => p.name.toLowerCase().includes(q));
+    }
+    if (catFamily) list = list.filter((p: any) => catFamily.has(p.categ_id?.[0]));
+    if (locFamily) list = list.filter((p: any) => (homeSpots[p.id] || []).some((sid) => locFamily.has(sid)));
+    return list;
+  }, [products, search, catFamily, locFamily, homeSpots]);
+
+  // Counts are of what the OTHER filters already left, so a chip never promises
+  // more than tapping it delivers.
+  const gapCounts = useMemo(() => ({
+    spot: narrowed.filter(missing.spot).length,
+    pack: narrowed.filter(missing.pack).length,
+    photo: narrowed.filter(missing.photo).length,
+    picture: narrowed.filter(missing.picture).length,
+  }), [narrowed, missing]);
+
+  const filtered = useMemo(
+    () => (gap ? narrowed.filter(missing[gap]) : narrowed),
+    [narrowed, gap, missing],
+  );
 
   if (loading) return <Spinner />;
 
@@ -113,9 +193,57 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
 
       <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
 
+      {/* Gaps first. On a setup screen the question is almost never "show me
+          product X" — it is "what have I not finished?". Each chip carries the
+          number it would leave, counted after the other filters. */}
+      <div className="px-4 pb-2 flex gap-1.5 overflow-x-auto no-scrollbar">
+        {([
+          ['spot', 'No spot', gapCounts.spot],
+          ['pack', 'No pack size', gapCounts.pack],
+          ['photo', 'No photo rule', gapCounts.photo],
+          ['picture', 'No picture', gapCounts.picture],
+        ] as const).map(([key, label, n]) => (
+          <button key={key} onClick={() => setGap(gap === key ? null : key)}
+            className={`flex-shrink-0 px-3 h-8 rounded-full text-[var(--fs-xs)] font-bold border transition-colors ${
+              gap === key ? 'bg-amber-600 border-amber-600 text-white'
+                : n > 0 ? 'bg-amber-50 border-amber-200 text-amber-800'
+                : 'bg-white border-gray-200 text-gray-400'
+            }`}>
+            {label} {n}
+          </button>
+        ))}
+      </div>
+
+      {/* …then narrowing by what a product IS, or where it lives. */}
+      <div className="px-4 pb-2 flex gap-2">
+        <button onClick={() => setCatPick(true)}
+          className={`flex-1 min-w-0 h-9 px-3 rounded-lg border text-left text-[var(--fs-xs)] font-bold truncate ${
+            catId != null ? 'bg-blue-50 border-blue-300 text-blue-800' : 'bg-white border-gray-200 text-gray-500'
+          }`}>
+          {catId != null ? (cats.find((c) => c.id === catId)?.name || 'Category') : 'Any category'}
+        </button>
+        <button onClick={() => setLocPick(true)}
+          className={`flex-1 min-w-0 h-9 px-3 rounded-lg border text-left text-[var(--fs-xs)] font-bold truncate ${
+            locId != null ? 'bg-blue-50 border-blue-300 text-blue-800' : 'bg-white border-gray-200 text-gray-500'
+          }`}>
+          {locId != null ? (locs.find((l) => l.id === locId)?.name || 'Place') : 'Anywhere'}
+        </button>
+        {(gap || catId != null || locId != null) && (
+          <button onClick={() => { setGap(null); setCatId(null); setLocId(null); }}
+            className="flex-shrink-0 h-9 px-3 rounded-lg text-[var(--fs-xs)] font-bold text-gray-500 active:opacity-70">
+            Clear
+          </button>
+        )}
+      </div>
+
+      <p className="px-4 pb-1 text-[var(--fs-xs)] text-gray-400">
+        {filtered.length} of {products.length} products
+      </p>
+
       <div className="flex-1 overflow-y-auto px-4 pb-24">
         {filtered.length === 0 ? (
-          <EmptyState title="No products" body="Try a different search" />
+          <EmptyState title="Nothing matches"
+            body={gap || catId != null || locId != null ? 'Clear a filter, or try a different search.' : 'Try a different search'} />
         ) : (
           <div className="flex flex-col">
             {filtered.map((p: any) => {
@@ -179,6 +307,25 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
           }}
         />
       )}
+      {catPick && (
+        <CategoryPickerSheet
+          cats={cats}
+          value={catId}
+          title="Filter by category"
+          onPick={(id) => { setCatId(id); setCatPick(false); }}
+          onClose={() => setCatPick(false)}
+        />
+      )}
+      {locPick && (
+        <LocationPickerSheet
+          locations={locs}
+          value={locId}
+          title="Filter by place"
+          onPick={(id) => { setLocId(id); setLocPick(false); }}
+          onClose={() => setLocPick(false)}
+        />
+      )}
+
     </div>
   );
 }
