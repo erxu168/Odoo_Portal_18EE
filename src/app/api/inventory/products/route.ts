@@ -308,7 +308,12 @@ export async function GET(request: Request) {
     // browser, in category-based counting lists and on the count screen — and
     // could still be counted into stock. A draft is inactive on purpose; an
     // archived product is inactive because someone put it away.
-    const wantArchived = searchParams.get('include_archived') === '1';
+    // Asking by EXPLICIT ids means the caller already knows which products it
+    // wants — a count's frozen lines, a list's chosen products, one product's
+    // own page. Hiding an archived one there makes a record lose its contents.
+    // The filter is for BROWSING and searching, where an archived product
+    // should not turn up.
+    const wantArchived = searchParams.get('include_archived') === '1' || hasIdFilter;
     if (!wantArchived) {
       const draftIds = listDraftProductIds();
       if (draftIds.length > 0) domain.push('|', ['active', '=', true], ['id', 'in', draftIds]);
