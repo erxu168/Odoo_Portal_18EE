@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import { buildLocationTree, locationPath } from '@/lib/location-tree';
@@ -8,112 +8,253 @@ import { useLocationTypes } from '@/lib/use-location-types';
 import { locationCode } from '@/lib/location-code';
 
 /**
- * Printable location labels — a QR + name for every count location, so staff can
- * find (and later scan) places. Prints on any normal printer via the browser.
- * Rendered into a body-level portal so print CSS can hide the whole app and show
- * only the labels (no blank/repeated pages).
+ * Printable location labels — a QR and the place's name, to stick on the shelf.
+ *
+ * Sized for real label stock rather than an A4 sheet: one label per page at
+ * exactly the roll's dimensions, which is what a Zebra (and every other label
+ * printer) expects. The size is chosen here rather than assumed, because the
+ * roll in the machine is not something the portal can know.
+ *
+ * How much of the path each label carries is also a choice. "D4" alone is
+ * useless on a drawer once there are two of them; the whole chain is unreadable
+ * from across a kitchen. Default is the place plus its parent.
  */
+
 interface LocRow { id: number; parent_id: number | null; name: string; sort_order: number; kind: string }
-interface Label { id: number; name: string; area: string | null; code: string; qr: string; icon: string }
+interface Label { id: number; name: string; branch: string; code: string; qr: string; icon: string }
+
+/** Common Zebra rolls. Anything else is typed in. */
+const SIZES = [
+  { id: '75x50', label: '75 × 50', w: 75, h: 50 },
+  { id: '57x32', label: '57 × 32', w: 57, h: 32 },
+  { id: '100x50', label: '100 × 50', w: 100, h: 50 },
+] as const;
+
+type Depth = 'leaf' | 'parent' | 'full';
 
 export default function LocationLabels({ companyId, onClose, onlyId }: { companyId: number; onClose: () => void; onlyId?: number }) {
-  const [labels, setLabels] = useState<Label[]>([]);
+  const [rows, setRows] = useState<LocRow[]>([]);
+  const [qrByLoc, setQrByLoc] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
+  const [sizeId, setSizeId] = useState<string>('75x50');
+  const [customW, setCustomW] = useState('75');
+  const [customH, setCustomH] = useState('50');
+  const [depth, setDepth] = useState<Depth>('parent');
+  const [withQr, setWithQr] = useState(true);
+  const [skipped, setSkipped] = useState<Set<number>>(new Set());
+
   useEffect(() => { setMounted(true); }, []);
 
-  // Lock the page behind us while open (no nested/chained scrolling).
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, []);
 
-  // Type icons incl. this company's CUSTOM types; stable ref (memoized in the
-  // hook) so the label-build effect can depend on it and rebuild once custom
-  // types load, without re-running every render.
   const { iconOf } = useLocationTypes(companyId);
 
   useEffect(() => {
     let stale = false;
-    setLoading(true); setError(null); setLabels([]);
+    setLoading(true); setError(null);
     (async () => {
       try {
-        const d = await fetch(`/api/inventory/count-locations?company_id=${companyId}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error('load'))));
+        const d = await fetch(`/api/inventory/count-locations?company_id=${companyId}`)
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error('load'))));
         const locs: LocRow[] = d.locations || [];
-        // Walk order = the manager's arrangement, DFS to ANY depth (sort_order
-        // applied by buildLocationTree). Each label shows the full ancestor path
-        // (e.g. "Ground floor › Kitchen") above the location's own name.
-        const orderedRows: LocRow[] = [];
+        // Walking order = the manager's arrangement, depth-first to any depth,
+        // so the labels come off the printer in the order you walk the room.
+        const ordered: LocRow[] = [];
         const walk = (nodes: (LocRow & { children?: LocRow[] })[]) => {
-          for (const n of nodes) { orderedRows.push(n); walk(n.children || []); }
+          for (const n of nodes) { ordered.push(n); walk(n.children || []); }
         };
         walk(buildLocationTree(locs) as (LocRow & { children?: LocRow[] })[]);
-        // Single-location print (onlyId) vs the whole batch.
-        const rows = onlyId != null ? orderedRows.filter((r) => r.id === onlyId) : orderedRows;
-        const built = await Promise.all(rows.map(async (row) => {
-          const code = locationCode(row.id);
-          const qr = await QRCode.toDataURL(code, { width: 240, margin: 1 });
-          const ancestors = locationPath(row.id, locs).slice(0, -1).join(' › ');
-          return { id: row.id, name: row.name, area: ancestors || null, code, qr, icon: iconOf(row.kind) };
+        const wanted = onlyId != null ? ordered.filter((r) => r.id === onlyId) : ordered;
+        const qrs: Record<number, string> = {};
+        await Promise.all(wanted.map(async (row) => {
+          qrs[row.id] = await QRCode.toDataURL(locationCode(row.id), { width: 240, margin: 0 });
         }));
-        if (!stale) { setLabels(built); setLoading(false); }
+        if (!stale) { setRows(wanted); setQrByLoc(qrs); setLoading(false); }
       } catch {
         if (!stale) { setError('Could not load the locations.'); setLoading(false); }
       }
     })();
     return () => { stale = true; };
-  }, [companyId, onlyId, iconOf]);
+  }, [companyId, onlyId]);
+
+  const size = useMemo(() => {
+    if (sizeId !== 'custom') return SIZES.find((s) => s.id === sizeId) || SIZES[0];
+    const w = Math.min(300, Math.max(20, Number(customW) || 75));
+    const h = Math.min(300, Math.max(15, Number(customH) || 50));
+    return { id: 'custom', label: 'Custom', w, h };
+  }, [sizeId, customW, customH]);
+
+  const labels: Label[] = useMemo(() => rows.map((row) => {
+    const path = locationPath(row.id, rows);
+    const above = path.slice(0, -1);
+    const branch = depth === 'leaf' ? ''
+      : depth === 'parent' ? (above[above.length - 1] || '')
+      : above.join(' › ');
+    return {
+      id: row.id,
+      name: row.name,
+      branch,
+      code: locationCode(row.id),
+      qr: qrByLoc[row.id] || '',
+      icon: iconOf(row.kind),
+    };
+  }), [rows, depth, qrByLoc, iconOf]);
+
+  const printing = labels.filter((l) => !skipped.has(l.id));
+
+  // The name has to be legible from across a room, so it is sized to the label
+  // and to how long it is — rather than shrunk to fit and unreadable, or cut off.
+  const nameMm = (name: string) => {
+    const base = Math.min(size.w / 5.2, size.h / 2.6);
+    const longest = name.split(/\s+/).reduce((a, w) => Math.max(a, w.length), 0);
+    const fit = (size.w * 0.82) / Math.max(2, longest) * 1.7;
+    return Math.max(3.2, Math.min(base, fit));
+  };
 
   if (!mounted) return null;
 
   return createPortal(
-    <div className="kw-print-portal fixed inset-0 z-[120] bg-white flex flex-col">
+    <div className="kw-print-portal fixed inset-0 z-[120] bg-gray-50 flex flex-col">
       <style>{`
+        @page { size: ${size.w}mm ${size.h}mm; margin: 0; }
         @media print {
+          html, body { width: ${size.w}mm; background: #fff !important; }
           body > *:not(.kw-print-portal) { display: none !important; }
-          .kw-print-portal { position: static !important; inset: auto !important; height: auto !important; overflow: visible !important; background: #fff; }
+          .kw-print-portal { position: static !important; inset: auto !important; height: auto !important;
+                             overflow: visible !important; background: #fff !important; display: block !important; }
           .kw-no-print { display: none !important; }
-          .kw-scroll { overflow: visible !important; height: auto !important; }
-          .kw-labels { padding: 6mm !important; }
-          .kw-label { break-inside: avoid; }
+          .kw-scroll { overflow: visible !important; height: auto !important; padding: 0 !important; }
+          .kw-sheet { display: block !important; padding: 0 !important; gap: 0 !important; }
+          /* One label per page — that is what a label roll IS. */
+          .kw-label { break-after: page; page-break-after: always; box-shadow: none !important;
+                      border: 0 !important; margin: 0 !important; border-radius: 0 !important; }
+          .kw-label:last-child { break-after: auto; page-break-after: auto; }
         }
       `}</style>
 
-      <div className="kw-no-print px-5 pt-4 pb-3 border-b border-gray-200 flex items-center justify-between">
-        <div>
+      <div className="kw-no-print px-5 pt-4 pb-3 border-b border-gray-200 bg-white flex items-center justify-between gap-3">
+        <div className="min-w-0">
           <h3 className="text-lg font-bold text-gray-900">Print location labels</h3>
-          <p className="text-[var(--fs-xs)] text-gray-500">Stick these on your shelves &amp; drawers so staff can find (and scan) them</p>
+          <p className="text-[var(--fs-xs)] text-gray-500 truncate">
+            {printing.length} label{printing.length === 1 ? '' : 's'} · {size.w} × {size.h} mm
+          </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-shrink-0">
           <button onClick={onClose} className="text-gray-500 font-semibold active:opacity-70">Done</button>
-          <button onClick={() => window.print()} disabled={loading || !!error || labels.length === 0}
+          <button onClick={() => window.print()} disabled={loading || !!error || printing.length === 0}
             className="px-5 py-2 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40 active:bg-green-700">Print</button>
         </div>
       </div>
 
-      <div className="kw-scroll flex-1 overflow-y-auto">
+      <div className="kw-no-print px-5 py-3 border-b border-gray-200 bg-white flex flex-wrap gap-x-6 gap-y-3">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gray-400 mb-1.5">Label size</div>
+          <div className="flex gap-1.5 flex-wrap items-center">
+            {SIZES.map((s) => (
+              <button key={s.id} onClick={() => setSizeId(s.id)}
+                className={`px-3 h-9 rounded-lg text-[13px] font-bold border ${sizeId === s.id ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200'}`}>
+                {s.label}
+              </button>
+            ))}
+            <button onClick={() => setSizeId('custom')}
+              className={`px-3 h-9 rounded-lg text-[13px] font-bold border ${sizeId === 'custom' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200'}`}>
+              Custom
+            </button>
+            {sizeId === 'custom' && (
+              <span className="flex items-center gap-1.5">
+                <input value={customW} onChange={(e) => setCustomW(e.target.value.replace(/[^0-9.]/g, ''))}
+                  inputMode="decimal" aria-label="Label width in mm"
+                  className="w-16 h-9 border border-gray-200 rounded-lg text-center font-mono font-bold" />
+                <span className="text-gray-400 text-[13px]">×</span>
+                <input value={customH} onChange={(e) => setCustomH(e.target.value.replace(/[^0-9.]/g, ''))}
+                  inputMode="decimal" aria-label="Label height in mm"
+                  className="w-16 h-9 border border-gray-200 rounded-lg text-center font-mono font-bold" />
+                <span className="text-gray-400 text-[13px]">mm</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gray-400 mb-1.5">How much of the path</div>
+          <div className="flex gap-1.5">
+            {([['leaf', 'Place only'], ['parent', '+ parent'], ['full', 'Full path']] as const).map(([d, lbl]) => (
+              <button key={d} onClick={() => setDepth(d)}
+                className={`px-3 h-9 rounded-lg text-[13px] font-bold border ${depth === d ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200'}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[0.06em] text-gray-400 mb-1.5">QR code</div>
+          <button onClick={() => setWithQr((v) => !v)}
+            className={`px-3 h-9 rounded-lg text-[13px] font-bold border ${withQr ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-200'}`}>
+            {withQr ? 'On' : 'Off'}
+          </button>
+        </div>
+      </div>
+
+      <p className="kw-no-print px-5 py-2 text-[var(--fs-xs)] text-gray-500 bg-amber-50 border-b border-amber-200">
+        In the print dialog choose <strong>Scale 100%</strong> — not “Fit to page”, which resizes the label.
+      </p>
+
+      <div className="kw-scroll flex-1 overflow-y-auto p-4">
         {loading ? (
           <p className="text-center text-gray-400 py-16">Preparing labels…</p>
         ) : error ? (
           <p className="text-center text-red-600 py-16 font-semibold">{error}</p>
         ) : labels.length === 0 ? (
-          <p className="text-center text-gray-400 py-16">No locations yet — set them up first.</p>
+          <p className="text-center text-gray-400 py-16">No places yet — set them up first.</p>
         ) : (
-          <div className="kw-labels grid grid-cols-2 gap-3 p-4">
-            {labels.map((l) => (
-              <div key={l.id} className="kw-label border-2 border-gray-300 rounded-xl p-3 flex items-center gap-3 bg-white">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={l.qr} alt="" width={88} height={88} className="flex-shrink-0" />
-                <div className="min-w-0">
-                  {l.area && <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 truncate">{l.area}</div>}
-                  <div className="text-[17px] font-extrabold text-gray-900 leading-tight break-words">{l.icon} {l.name}</div>
-                  <div className="text-[10px] text-gray-400 font-mono mt-0.5">{l.code}</div>
+          <div className="kw-sheet flex flex-wrap gap-4 justify-center">
+            {labels.map((l) => {
+              const off = skipped.has(l.id);
+              return (
+                <div key={l.id} className={off ? 'kw-no-print' : undefined}>
+                  <div
+                    className="kw-label bg-white border border-gray-300 rounded-sm shadow-sm relative overflow-hidden"
+                    style={{ width: `${size.w}mm`, height: `${size.h}mm`, padding: `${Math.max(1.5, size.h * 0.06)}mm ${Math.max(2, size.w * 0.045)}mm` }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                      {l.branch && (
+                        <div style={{
+                          fontSize: `${Math.max(2, size.h * 0.062)}mm`, fontWeight: 700, letterSpacing: '.01em',
+                          color: '#444', textTransform: 'uppercase', lineHeight: 1.15,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>{l.branch}</div>
+                      )}
+                      <div style={{
+                        fontSize: `${nameMm(l.name)}mm`, fontWeight: 900, letterSpacing: '-.02em',
+                        lineHeight: .98, color: '#000', marginTop: '.4mm', overflowWrap: 'anywhere',
+                      }}>{l.name}</div>
+                      <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', gap: `${size.w * 0.035}mm` }}>
+                        {withQr && l.qr && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={l.qr} alt="" style={{ width: `${size.h * 0.42}mm`, height: `${size.h * 0.42}mm`, flex: '0 0 auto' }} />
+                        )}
+                        <span style={{
+                          fontFamily: 'ui-monospace, Menlo, monospace', fontSize: `${Math.max(1.8, size.h * 0.055)}mm`,
+                          fontWeight: 700, color: '#333', lineHeight: 1.1,
+                        }}>{l.code}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => setSkipped((p) => { const n = new Set(p); if (n.has(l.id)) n.delete(l.id); else n.add(l.id); return n; })}
+                    className={`kw-no-print w-full mt-1.5 text-[11px] font-bold ${off ? 'text-green-700' : 'text-gray-400'} active:opacity-70`}>
+                    {off ? 'Include this one' : 'Skip this one'}
+                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
