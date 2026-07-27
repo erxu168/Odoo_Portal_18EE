@@ -6,15 +6,45 @@ import {
 } from '../src/lib/cooktimer-db';
 
 // Drives the real SQLite state machine end to end (no Odoo). Uses out-of-range
-// synthetic line/order ids so it never collides with real feed data, and cleans
-// up after itself.
+// synthetic line/order ids so it never collides with real feed data.
 const FRIES_PRODUCT = 1682; // seeded 3-step profile (1st Fry / Rest / 2nd Fry)
+/** Every synthetic id these tests use sits at or above this. */
+const SYNTHETIC_FROM = 990000;
 
 function cleanup(orderIds: number[], timerId: number) {
   const db = getDb();
   db.prepare('DELETE FROM cook_timers WHERE id = ?').run(timerId);
   for (const o of orderIds) db.prepare('DELETE FROM kds_line_ready WHERE pos_order_id = ?').run(o);
 }
+
+/**
+ * Remove every synthetic row, whoever left it.
+ *
+ * These tests share one real SQLite file, and starting a timer CLAIMS its line.
+ * Each test used to tidy up on its last line, so a failed assertion skipped the
+ * tidying and left a running timer holding that line — and the next run failed
+ * at "createTimer returned null", planting the same seed again. One failure
+ * poisoned the file until somebody deleted the row by hand.
+ *
+ * Running before as well as after means a file already in that state heals
+ * itself rather than needing surgery.
+ */
+function sweepSynthetic() {
+  const db = getDb();
+  const stale = db.prepare('SELECT id, pos_line_ids_json FROM cook_timers').all() as
+    { id: number; pos_line_ids_json: string }[];
+  for (const row of stale) {
+    let lines: { lineId?: number }[] = [];
+    try { lines = JSON.parse(row.pos_line_ids_json || '[]'); } catch { continue; }
+    if (lines.some((l) => Number(l?.lineId) >= SYNTHETIC_FROM)) {
+      db.prepare('DELETE FROM cook_timers WHERE id = ?').run(row.id);
+    }
+  }
+  db.prepare('DELETE FROM kds_line_ready WHERE pos_order_id >= ?').run(SYNTHETIC_FROM);
+}
+
+test.beforeEach(sweepSynthetic);
+test.afterEach(sweepSynthetic);
 const line = (lineId: number, orderId: number) => [{ lineId, orderId, ref: `#T${orderId}`, qty: 1, arrivedMs: 1_700_000_000_000 }];
 
 test('seeds three stations and product-mapped profiles', () => {
