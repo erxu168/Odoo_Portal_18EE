@@ -1421,22 +1421,43 @@ export function reassignCountsForProduct(fromProductId: number, toProductId: num
  *
  * Returns the total number of rows deleted.
  */
+/**
+ * Remove a rejected draft product's counts.
+ *
+ * ONLY from counts that are still open. This used to be an unqualified
+ * `DELETE ... WHERE product_id = ?` across the whole table, so rejecting a
+ * draft reached into other restaurants' counts and into APPROVED ones — the
+ * audit record of a count that had already been signed off and written to
+ * stock. A submitted count could also lose the line its completeness gate had
+ * just passed on.
+ */
 export function deleteCountsForProduct(productId: number): number {
   const db = getDb();
+  const OPEN = "('pending','in_progress','rejected')";
 
   const quickRows = db.prepare(
-    'SELECT id FROM quick_counts WHERE product_id = ?'
+    `SELECT id FROM quick_counts WHERE product_id = ? AND COALESCE(status,'pending') IN ${OPEN}`
   ).all(productId) as { id: number }[];
   for (const r of quickRows) deleteCountPhotos('quick_counts', r.id);
 
   const entryRows = db.prepare(
-    'SELECT id FROM count_entries WHERE product_id = ?'
+    `SELECT e.id FROM count_entries e
+       JOIN counting_sessions s ON s.id = e.session_id
+      WHERE e.product_id = ? AND s.status IN ${OPEN}`
   ).all(productId) as { id: number }[];
   for (const r of entryRows) deleteCountPhotos('count_entries', r.id);
 
   let deleted = 0;
-  deleted += db.prepare('DELETE FROM quick_counts WHERE product_id = ?').run(productId).changes;
-  deleted += db.prepare('DELETE FROM count_entries WHERE product_id = ?').run(productId).changes;
+  if (quickRows.length > 0) {
+    deleted += db.prepare(
+      `DELETE FROM quick_counts WHERE id IN (${quickRows.map(() => '?').join(',')})`
+    ).run(...quickRows.map((r) => r.id)).changes;
+  }
+  if (entryRows.length > 0) {
+    deleted += db.prepare(
+      `DELETE FROM count_entries WHERE id IN (${entryRows.map(() => '?').join(',')})`
+    ).run(...entryRows.map((r) => r.id)).changes;
+  }
   return deleted;
 }
 

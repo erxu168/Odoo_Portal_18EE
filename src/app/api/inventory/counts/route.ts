@@ -14,6 +14,7 @@ import { getPermissionOverrides } from '@/lib/db';
 import { canAccessSession } from '@/lib/inventory-access';
 import { getOdoo } from '@/lib/odoo';
 import { allowedProductIds } from '@/lib/inventory-scope';
+import { getProductFlags } from '@/lib/inventory-db';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { crateTotal } from '@/lib/crate-units';
 import { inventoryOdooSyncEnabled } from '@/lib/inventory-config';
@@ -98,17 +99,9 @@ export async function POST(request: Request) {
   // Explicit "none here" — recorded distinctly from a counted 0 or an uncounted row.
   const isOut = out_of_stock === true;
 
-  // When a crate split is provided, the base total is computed HERE (server is
-  // the source of truth) so the value written to Odoo can never drift. Odoo
-  // still only ever receives the base-unit total via counted_qty. Out of stock
-  // is a deliberate zero.
-  const hasSplit = !isOut && units_per_crate != null && Number(units_per_crate) > 0
-    && (crate_qty !== undefined || loose_qty !== undefined);
-  const baseQty = isOut ? 0 : (hasSplit
-    ? crateTotal(Number(crate_qty) || 0, Number(loose_qty) || 0, Number(units_per_crate))
-    : counted_qty);
+  const sentSplit = !isOut && (crate_qty !== undefined || loose_qty !== undefined);
 
-  if (!session_id || !product_id || baseQty === undefined || baseQty === null) {
+  if (!session_id || !product_id) {
     return NextResponse.json({ error: 'session_id, product_id, counted_qty required' }, { status: 400 });
   }
 
@@ -125,12 +118,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'This count can no longer be edited' }, { status: 400 });
   }
 
-  // Untrusted client input: the quantity must be a sane finite non-negative number,
-  // and the line must be one this session actually counts — its total gets written
-  // to stock on approval, so an arbitrary product/spot/qty must never get in.
-  if (!Number.isFinite(baseQty) || baseQty < 0 || baseQty > 1e7) {
-    return NextResponse.json({ error: 'Invalid quantity' }, { status: 400 });
-  }
+  // The line must be one this session actually counts — its total gets written
+  // to stock on approval, so an arbitrary product/spot must never get in.
   const snapshot = getSessionItems(session_id);
   if (snapshot.length > 0) {
     // Modern session: the (product, spot) pair must be an exact frozen line.
@@ -150,6 +139,42 @@ export async function POST(request: Request) {
     // scope 'unknown' means Odoo could not be asked. A stray line is visible to
     // the manager and costs nothing until approval, which refuses to guess — so
     // let the person in front of the shelf keep counting.
+  }
+
+  // How many base units are in one pack. This must come from the SERVER: the
+  // request used to supply its own multiplier and the total was computed from
+  // it, so "1 crate" with units_per_crate 9999999 stored 9,999,999 — and the
+  // review screen showed the approver "1 crate". The session's frozen value
+  // wins, because a pack size edited mid-count must not rescale a saved line;
+  // a legacy count with nothing frozen falls back to the product's setting.
+  let packSize: number | null = null;
+  if (snapshot.length > 0) {
+    const line = snapshot.find(
+      (it) => it.odoo_product_id === Number(product_id) && it.count_location_id === locId,
+    );
+    packSize = line?.units_per_crate ?? null;
+  }
+  if (packSize == null) {
+    const f = getProductFlags([Number(product_id)])[0];
+    packSize = f?.units_per_crate ?? null;
+  }
+  const hasSplit = sentSplit && packSize != null && packSize > 0;
+  const baseQty = isOut ? 0 : (hasSplit
+    ? crateTotal(Number(crate_qty) || 0, Number(loose_qty) || 0, packSize as number)
+    : counted_qty);
+
+  if (baseQty === undefined || baseQty === null) {
+    return NextResponse.json({ error: 'session_id, product_id, counted_qty required' }, { status: 400 });
+  }
+  // Untrusted client input: the quantity must be a sane finite non-negative number.
+  if (!Number.isFinite(baseQty) || baseQty < 0 || baseQty > 1e7) {
+    return NextResponse.json({ error: 'Invalid quantity' }, { status: 400 });
+  }
+  // A split was sent for a product that has no pack size on this count — the
+  // client and the server disagree about what this product IS, so refuse rather
+  // than silently storing the crate figure as if it were base units.
+  if (sentSplit && !hasSplit) {
+    return NextResponse.json({ error: 'This product is not counted in packs on this list' }, { status: 400 });
   }
 
   // A reviewer correction FIXES an existing line — on a legacy session (no
@@ -179,7 +204,7 @@ export async function POST(request: Request) {
     // a split keep preserving an existing one (undefined).
     crate_qty: hasSplit ? (Number(crate_qty) || 0) : (isReviewerCorrection ? null : undefined),
     loose_qty: hasSplit ? (Number(loose_qty) || 0) : (isReviewerCorrection ? null : undefined),
-    units_per_crate: hasSplit ? Number(units_per_crate) : (isReviewerCorrection ? null : undefined),
+    units_per_crate: hasSplit ? (packSize as number) : (isReviewerCorrection ? null : undefined),
   });
 
   // Counting something HERE means this place was not skipped after all. Clear

@@ -15,6 +15,7 @@ import { initInventoryTables, createSession, listSessions, getSession, getSessio
 import { canAccessSession, companyScope } from '@/lib/inventory-access';
 import { isCanonicalDay } from '@/lib/berlin-date';
 import { resolveSessionRoute } from '@/lib/session-route';
+import { allowedProductIds } from '@/lib/inventory-scope';
 import { logAudit } from '@/lib/db';
 
 
@@ -242,23 +243,24 @@ export async function PUT(request: Request) {
           }, { status: 400 });
         }
       } else {
-      const template = getTemplate(session.template_id);
-      if (template) {
-        // getTemplate returns product_ids already parsed to number[] (parseTemplate).
-        const productIds: number[] = Array.isArray(template.product_ids) ? template.product_ids : [];
-        if (productIds.length > 0) {
+        // No snapshot: ask what this list is FOR. A category list ("count
+        // everything in Drinks") names no products, so the old check — which
+        // only ran when the explicit list was non-empty — let 1 of 200 count as
+        // finished. The same helper the save and approve paths use answers it.
+        const scope = await allowedProductIds(session);
+        const required = scope.kind === 'known' ? Array.from(scope.ids) : [];
+        if (required.length > 0) {
           // Coverage, not row count: EVERY required product must have an entry, so
           // extraneous/left-over rows can't satisfy the gate.
           const counted = new Set(entries.map((e: any) => e.product_id));
-          const missing = productIds.filter((pid) => !counted.has(pid));
+          const missing = required.filter((pid) => !counted.has(pid));
           if (missing.length > 0) {
             return NextResponse.json({
-              error: `Please count all items before submitting. ${productIds.length - missing.length}/${productIds.length} counted.`,
+              error: `Please count all items before submitting. ${required.length - missing.length}/${required.length} counted.`,
               code: 'INCOMPLETE_COUNT',
             }, { status: 400 });
           }
         }
-      }
       }
     }
 
