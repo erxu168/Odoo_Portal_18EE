@@ -95,7 +95,7 @@ export default function ManageCategories({ onClose, onChanged, baseZ = 130 }: {
               {cats.map((c) => {
                 const isEditing = editId === c.id;
                 return (
-                  <div key={c.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+                  <div key={c.id} className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 min-h-[48px]">
                     {isEditing ? (
                       <>
                         <input autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)}
@@ -109,7 +109,24 @@ export default function ManageCategories({ onClose, onChanged, baseZ = 130 }: {
                       </>
                     ) : (
                       <>
-                        <span className="flex-1 min-w-0 truncate text-[var(--fs-base)] font-semibold text-gray-800">{c.complete_name}</span>
+                        {/* The whole path, always readable. On one truncated line
+                            competing with two buttons it read "All / Central Kitchen
+                            Products / Cooked Co…" — every sibling identical up to the
+                            point where they differ. The branch sits above in small
+                            type and the category itself is the bold part. */}
+                        {(() => {
+                          const parts = String(c.complete_name || c.name).split(' / ');
+                          const leaf = parts[parts.length - 1] || c.name;
+                          const above = parts.slice(0, -1).join(' / ');
+                          return (
+                            <span className="flex-1 min-w-0">
+                              {above && (
+                                <span className="block text-[var(--fs-xs)] text-gray-400 leading-snug [overflow-wrap:anywhere]">{above}</span>
+                              )}
+                              <span className="block text-[var(--fs-base)] font-semibold text-gray-800 leading-snug [overflow-wrap:anywhere]">{leaf}</span>
+                            </span>
+                          );
+                        })()}
                         <button onClick={() => { setEditId(c.id); setEditVal(c.name); setErr(null); }} disabled={busy}
                           aria-label={`Rename ${c.name}`} className="text-[13px] font-semibold text-blue-600 active:opacity-70 disabled:opacity-40 px-2">Rename</button>
                         <button onClick={() => del(c)} disabled={busy} aria-label={`Delete ${c.name}`}

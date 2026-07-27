@@ -60,7 +60,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [uomId, setUomId] = useState<number>(product.uom_id?.[0] || 0);
   const [uoms, setUoms] = useState<{ id: number; name: string }[]>([]);
   const [catId, setCatId] = useState<number>(product.categ_id?.[0] || 0);
-  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
+  const [categories, setCategories] = useState<{ id: number; name: string; complete_name?: string }[]>([]);
   const [newCat, setNewCat] = useState(false);          // inline "create category" open?
   const [newCatName, setNewCatName] = useState('');
   const [catBusy, setCatBusy] = useState(false);
@@ -561,7 +561,9 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             }}
             className={`${box} ${newCat ? 'mb-2' : 'mb-4'}`}>
             {catId !== 0 && !categories.some((c) => c.id === catId) && <option value={catId}>{product.categ_id?.[1] || 'Current category'}</option>}
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {/* The whole path: the API already returns it, and on the leaf alone
+                two different "Sauces" are the same word twice. */}
+            {categories.map((c) => <option key={c.id} value={c.id}>{c.complete_name || c.name}</option>)}
             {!readOnly && <option value={-1}>+ New category…</option>}
           </select>
           {newCat && (
