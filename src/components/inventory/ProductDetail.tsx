@@ -7,6 +7,7 @@ import ManagePackLabels from './ManagePackLabels';
 import ManageCategories from './ManageCategories';
 import { suggestCrateSizeFromName, baseIsMeasure, pluralizePack, unitWords } from '@/lib/crate-units';
 import { CategoryPathButton, CategoryPickerSheet, CategoryForm, type CategoryRow } from './CategoryPicker';
+import PackagingLevels from './PackagingLevels';
 import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
 
@@ -584,13 +585,15 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             </p>
           </div>
 
-          {/* NOT MOUNTED YET: <PackagingLevels /> edits the nested chain
-              (box -> pack -> piece), but counting still reads units_per_crate, so
-              a manager filling it in would see nothing change on the count screen
-              — the same "I set it and it did nothing" trap the loose word already
-              fell into. It goes here the moment counting reads the chain, which
-              needs the session to SNAPSHOT it first (like units_per_crate is
-              snapshotted today) so editing packaging can't re-convert old counts. */}
+          {/* Mounted now that counting reads the chain: a count freezes it at
+              creation, the sheet offers a stepper per level, and the server does
+              the conversion from the frozen copy. Filling this in changes what
+              staff see — which was the condition for showing it at all. */}
+          <PackagingLevels
+            productId={product.id}
+            baseWord={unitWords(uomName, effPack, looseLabel).looseFor(2)}
+            readOnly={readOnly}
+          />
 
           {/* Photo rule */}
           <button onClick={togglePhotoRule} disabled={readOnly} className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 disabled:opacity-70">

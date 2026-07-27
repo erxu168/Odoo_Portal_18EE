@@ -12,6 +12,8 @@ import { useSyncQueue } from '@/hooks/useSyncQueue';
 import { patchCachedSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
 import { hasCrate, crateTotal, splitFromTotal, formatSplit, unitWords, pluralizePack } from '@/lib/crate-units';
+import { packTotal, countableLevels, splitToLevels, type PackLevel } from '@/lib/packaging';
+import PackCountSheet from './PackCountSheet';
 import GuidedCountingFlow from './GuidedCountingFlow';
 import { useTopBar } from '@/components/ui/TopBarContext';
 
@@ -78,6 +80,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [staffNote, setStaffNote] = useState('');                          // one note about the WHOLE count
   const [oos, setOos] = useState<Set<string>>(new Set());   // lines marked OUT OF STOCK (deliberate none ≠ not-counted)
   const [crateSheet, setCrateSheet] = useState<{ open: boolean; product: any | null; loc: number }>({ open: false, product: null, loc: 0 });
+  // The nested chain FROZEN into this count, per product. Sent by GET /counts.
+  const [packaging, setPackaging] = useState<Record<number, PackLevel[]>>({});
+  const [packSheet, setPackSheet] = useState<{ open: boolean; product: any | null; loc: number }>({ open: false, product: null, loc: 0 });
+  const [packSplits, setPackSplits] = useState<Record<string, { byLevel: Record<number, number>; loose: number }>>({});
   // The per-product "⋯" sheet: none left / note / photo.
   const [rowMenu, setRowMenu] = useState<{ product: any; loc: number } | null>(null);
   // Scan hit a product counted at several spots → ask which one.
@@ -191,6 +197,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       // Frozen snapshot: one line per (product, spot). Legacy sessions have none
       // -> every product becomes a single loc-0 line (derived in `lines` below).
       setItems(countRes.items || []);
+      setPackaging(countRes.packaging || {});
       const sn: Record<number, string> = {};
       (countRes.spots || []).forEach((sp: any) => { sn[sp.count_location_id] = sp.name; });
       setSpotNames(sn);
@@ -613,6 +620,35 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     if (res.queued) void sync.refresh();
   }
 
+  /**
+   * Save a nested count. Only the per-level numbers travel; the server converts
+   * them with the chain frozen into this count, so the total it stores is its
+   * own arithmetic, never a figure this screen worked out.
+   */
+  async function savePackCount(product: any, loc: number, byLevel: Record<number, number>, loose: number, note?: string) {
+    const k = K(product.id, loc);
+    const levels = packaging[product.id] || [];
+    const total = packTotal({ byLevel, loose }, levels);
+    setPackSheet({ open: false, product: null, loc: 0 });
+    setOos((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
+    setEntries((prev) => ({ ...prev, [k]: total }));
+    setPackSplits((prev) => ({ ...prev, [k]: { byLevel, loose } }));
+    if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
+    const uom = product.uom_id?.[1] || 'Units';
+    void updateCachedEntry(sessionId, product.id, { counted_qty: total, uom }, loc);
+    const res = await trackedMutate({
+      url: '/api/inventory/counts',
+      method: 'POST',
+      body: {
+        session_id: sessionId, product_id: product.id, count_location_id: loc,
+        pack_counts: byLevel, loose_qty: loose, uom,
+        ...(note !== undefined ? { notes: note } : {}),
+      },
+      dedupKey: `save:${sessionId}:${product.id}:${loc}`,
+    });
+    if (res.queued) void sync.refresh();
+  }
+
   function openNumpad(product: any, loc: number) {
     setDraftNote(rowNotes[K(product.id, loc)] || '');
     setNumpad({ open: true, product, loc });
@@ -708,6 +744,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     const words = unitWords(uom, crateLabels[p.id], looseLabels[p.id]);
     const label = words.pack;
     const measure = words.measure;
+    // A product with a frozen chain is counted level by level, not as one pack
+    // size plus loose — that is what the chain is FOR.
+    const chain = countableLevels(packaging[p.id] || []);
+    const nested = chain.length > 0;
     // The stored total is the truth. A remembered split is used only while it
     // still adds up to it, so it can never outlive the number it splits.
     const remembered = crateSplits[k];
@@ -777,6 +817,26 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 <div className="text-[10px] text-gray-400 font-normal font-mono">{formatSplit(split.crates, split.loose, words.loose, label)}</div>
               )}
             </div>
+          ) : nested ? (
+            <button
+              onClick={() => { setDraftNote(rowNotes[k] || ''); setPackSheet({ open: true, product: p, loc }); }}
+              className={`flex-shrink-0 text-right border rounded-xl px-3 py-2 min-w-[104px] active:bg-gray-50 ${val != null ? 'border-green-500 bg-green-50' : 'border-dashed border-gray-300'}`}
+            >
+              {val != null ? (
+                <>
+                  <div className="font-mono text-[var(--fs-lg)] font-bold text-gray-900 leading-none">
+                    {val}<span className="text-[10px] font-semibold text-gray-500 ml-0.5">{words.looseFor(val)}</span>
+                  </div>
+                  <div className="text-[10px] text-gray-500 mt-1 font-mono">
+                    {chain.map((l) => `${packSplits[k]?.byLevel?.[l.id] ?? 0} ${l.name}`).join(' + ')}
+                  </div>
+                </>
+              ) : (
+                <div className="text-[var(--fs-sm)] font-bold text-green-700">
+                  {chain.map((l) => pluralizePack(l.name, 2)).join(' + ')} {'\u2192'}
+                </div>
+              )}
+            </button>
           ) : isCrate && measure ? (
             <Stepper
               value={split ? split.crates : null}
@@ -1287,6 +1347,42 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               </button>
             </div>
           </div>
+        );
+      })()}
+
+      {!isReadOnly && packSheet.open && packSheet.product && (() => {
+        const pk = K(packSheet.product.id, packSheet.loc);
+        const levels = packaging[packSheet.product.id] || [];
+        const remembered = packSplits[pk];
+        // No remembered split (counted by barcode, or on another device)? Derive
+        // one from the stored total so the sheet opens on what is actually there.
+        const derived = remembered || splitToLevels(entries[pk] ?? 0, levels);
+        return (
+          <PackCountSheet
+            open
+            product={packSheet.product}
+            levels={levels}
+            uom={packSheet.product.uom_id?.[1] || 'Units'}
+            looseLabel={looseLabels[packSheet.product.id] || null}
+            initialByLevel={derived.byLevel || {}}
+            initialLoose={derived.loose || 0}
+            locationName={hasSpots ? spotLabel(packSheet.loc) : (locationName || '')}
+            showSystemQty={userRole !== 'staff'}
+            systemQty={systemQtys[packSheet.product.id] ?? null}
+            outOfStock={oos.has(pk)}
+            nothingHereLabel={hasSpots ? 'Nothing at this spot' : 'Nothing here'}
+            onNothingHere={(on) => {
+              void saveOutOfStock(packSheet.product, packSheet.loc, on, draftNote);
+              setPackSheet({ open: false, product: null, loc: 0 });
+            }}
+            note={draftNote}
+            onNoteChange={setDraftNote}
+            onSave={(byLevel, loose) => {
+              const had = rowNotes[pk] || '';
+              void savePackCount(packSheet.product, packSheet.loc, byLevel, loose, draftNote !== had ? draftNote : undefined);
+            }}
+            onClose={() => setPackSheet({ open: false, product: null, loc: 0 })}
+          />
         );
       })()}
 
