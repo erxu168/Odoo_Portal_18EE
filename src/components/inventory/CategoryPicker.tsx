@@ -104,7 +104,7 @@ export function CategoryPickerSheet({
       iconOf={() => '📁'}
       searchLabel="Search all categories"
       emptyLabel="No categories yet."
-      useHereLabel={(n) => `Use ${n.name} itself`}
+      hereLabel={(n) => `Use ${n.name} itself`}
       onPick={(id) => onPick(id)}
       onClose={onClose}
     />

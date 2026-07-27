@@ -45,13 +45,13 @@ export function LocationPickerSheet(props: {
 }
 
 /**
- * The picker itself. `useHereLabel` is what the "stop at this level" row says —
+ * The picker itself. `hereLabel` is what the "stop at this level" row says —
  * a place is where a thing IS, a category is what a thing IS, and the sentence
  * has to match or it reads as nonsense.
  */
 export function TreePickerSheet({
   nodes, value, onPick, onClose, title = 'Choose',
-  iconOf, useHereLabel = (n: TreeNode) => `It’s right here — ${n.name}`,
+  iconOf, hereLabel = (n: TreeNode) => `It’s right here — ${n.name}`,
   searchLabel = 'Search all places',
   emptyLabel = 'No places have been set up yet. A manager adds them under Stock → Locations.',
 }: {
@@ -61,7 +61,7 @@ export function TreePickerSheet({
   onClose: () => void;
   title?: string;
   iconOf?: (n: TreeNode) => string;
-  useHereLabel?: (n: TreeNode) => string;
+  hereLabel?: (n: TreeNode) => string;
   searchLabel?: string;
   emptyLabel?: string;
 }) {
@@ -258,7 +258,7 @@ export function TreePickerSheet({
                   className="w-full flex items-center gap-2.5 px-3.5 py-3 mb-2 rounded-2xl border border-green-200 bg-green-50 text-left active:bg-green-100">
                   <span aria-hidden="true">📍</span>
                   <span className="text-[var(--fs-base)] font-bold text-green-800 min-w-0 truncate">
-                    {useHereLabel(here)}
+                    {hereLabel(here)}
                   </span>
                 </button>
               )}
