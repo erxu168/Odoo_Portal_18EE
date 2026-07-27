@@ -24,6 +24,7 @@ interface PhotoCaptureStripProps {
 export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DEFAULT_MAX_PHOTOS }: PhotoCaptureStripProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -38,13 +39,19 @@ export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DE
     const take = files.slice(0, room);
     if (take.length === 0) return;
     setBusy(true);
+    setFailed(null);
     try {
       const urls: string[] = [];
+      const bad: string[] = [];
       for (const f of take) {
         const dataUrl = await fileToResizedDataUrl(f);
         if (dataUrl) urls.push(dataUrl);
+        else bad.push(f.type || f.name);
       }
       if (urls.length) onChange([...photos, ...urls]);
+      // Saying nothing was the worst outcome: the photo simply never appeared
+      // and there was no way to tell whether it was still uploading.
+      if (bad.length) setFailed(`Could not read ${bad.join(', ')} — try a JPEG, PNG, WebP or AVIF.`);
     } finally {
       setBusy(false);
     }
@@ -60,6 +67,9 @@ export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DE
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      {failed && (
+        <p className="w-full text-[var(--fs-xs)] font-semibold text-red-600 [overflow-wrap:anywhere]">{failed}</p>
+      )}
       {photos.map((p, i) => (
         <div key={i} className="relative w-14 h-14 rounded-lg overflow-hidden bg-gray-100 border border-gray-200">
           <img src={p} alt={`Photo ${i + 1}`} className="w-full h-full object-cover" />

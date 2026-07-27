@@ -35,7 +35,7 @@ export async function GET(_request: Request, { params }: { params: { product_id:
     const buf = Buffer.from(m[2], 'base64');
     // Never reflect an arbitrary/embedded MIME (e.g. svg) as the response type,
     // and stop the browser sniffing it into something executable.
-    const safe = /^image\/(png|jpe?g|webp)$/i.test(m[1]) ? m[1] : 'application/octet-stream';
+    const safe = /^image\/(png|jpe?g|webp|avif)$/i.test(m[1]) ? m[1] : 'application/octet-stream';
     return new NextResponse(buf, {
       status: 200,
       headers: {
@@ -61,10 +61,20 @@ export async function PUT(request: Request, { params }: { params: { product_id: 
 
   const body = await request.json();
   const image = body.image;
-  // Only raster images. Reject SVG (data:image/svg+xml) — it can carry script and
-  // becomes a stored-XSS vector when served same-origin under its own MIME.
-  if (typeof image !== 'string' || !/^data:image\/(png|jpe?g|webp);base64,/i.test(image)) {
-    return NextResponse.json({ error: 'image must be a PNG, JPEG or WebP photo' }, { status: 400 });
+  // Only raster images the browser can render back. AVIF and WebP are stored as
+  // they arrive — the client normally re-encodes to JPEG, but a browser that
+  // cannot DECODE the format passes the original through, and refusing it there
+  // would reject a perfectly good photo for the wrong reason.
+  //
+  // SVG stays rejected on purpose: it can carry script, and serving it back
+  // same-origin under its own MIME makes it stored XSS.
+  if (typeof image !== 'string' || !/^data:image\/(png|jpe?g|webp|avif);base64,/i.test(image)) {
+    const got = typeof image === 'string' ? /^data:([^;]+)/.exec(image)?.[1] : null;
+    return NextResponse.json({
+      error: got
+        ? `${got} cannot be used as a photo. Use a JPEG, PNG, WebP or AVIF.`
+        : 'image must be a JPEG, PNG, WebP or AVIF photo',
+    }, { status: 400 });
   }
   // Cap size (~6 MB decoded). Clients should downscale before upload.
   if (image.length > 8_000_000) {
