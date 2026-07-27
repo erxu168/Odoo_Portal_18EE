@@ -63,6 +63,8 @@
 | Supplier logins | 🔑 | | Record / create | ⏺️ |
 | Shared tablets | 📱 | | Edit | ✏️ |
 | Stats / reports | 📊 | | Locations | 📍 |
+| Staff / employees | 👥 | | Permissions / access rules | 🛡️ |
+| Staff access / invites | 🔐 | | Terminations | 📑 |
 
 ### Shared building blocks (import from `@/components/ui/`)
 
