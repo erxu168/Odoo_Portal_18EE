@@ -69,12 +69,13 @@ export function useProductFilters(companyId: number | null | undefined): Product
   }, []);
 
   useEffect(() => {
-    if (!companyId) return;
     let stale = false;
-    // Reset first: a failed load must show "nothing to filter by", never the
-    // previous restaurant's places. Chosen filters go too — an id from the old
-    // restaurant would silently match nothing.
+    // Reset FIRST, and reset even when the company is cleared. A failed load, or
+    // no restaurant at all, must show "nothing to filter by" — never the
+    // previous restaurant's places. Chosen filters go too: an id from the old
+    // restaurant silently matches nothing, which reads as a broken filter.
     setLocs([]); setHomeSpots({}); setLocId(null); setCatId(null);
+    if (!companyId) return;
     (async () => {
       try {
         const [locRes, plRes] = await Promise.all([

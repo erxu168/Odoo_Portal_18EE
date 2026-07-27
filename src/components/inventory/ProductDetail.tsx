@@ -46,7 +46,7 @@ async function downscale(file: File, maxDim = 1024, quality = 0.7): Promise<stri
 }
 
 export default function ProductDetail({ product, hasImage, onClose, onChanged, readOnly = false, fullPageHref, baseZ = 100 }: {
-  product: { id: number; name: string; uom_id?: [number, string]; categ_id?: [number, string]; barcode?: string | false; active?: boolean };
+  product: { id: number; name: string; uom_id?: [number, string]; categ_id?: [number, string]; barcode?: string | false; active?: boolean; is_draft?: boolean };
   hasImage: boolean;
   onClose: () => void;
   /** Fired after any successful save so the caller can refresh its list. */
@@ -82,7 +82,10 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [catBusy, setCatBusy] = useState(false);
   const [manageCats, setManageCats] = useState(false);  // "Edit categories" sheet
   const [catPick, setCatPick] = useState(false);        // the branch picker
-  const [isArchived, setIsArchived] = useState(product.active === false);
+  // A scan-to-create DRAFT is also active === false and is not archived — it is
+  // waiting for review. Telling its opener "it is archived" and offering "Bring
+  // this product back" would activate it outside that review flow.
+  const [isArchived, setIsArchived] = useState(product.active === false && !product.is_draft);
   const [confirmAction, setConfirmAction] = useState<'archive' | 'unarchive' | 'delete' | null>(null);
   const [lifecycleError, setLifecycleError] = useState<{ message: string; canArchive: boolean } | null>(null);
   const [catForm, setCatForm] = useState<{ editing: CategoryRow | null } | null>(null);

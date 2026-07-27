@@ -784,6 +784,22 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             </label>
           </div>
 
+          {/* The header counts what is SAVED; the rows below are what loaded. If
+              they disagree, say so — silently showing 38 rows under "39" is how
+              the archived-product bug hid for so long. Any cause counts here: a
+              failed load, a product deleted elsewhere, a permission change. */}
+          {selectedCount > selectedProducts.length && (
+            <div className="mb-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+              <p className="text-[var(--fs-xs)] font-bold text-amber-900">
+                {selectedCount - selectedProducts.length} product{selectedCount - selectedProducts.length === 1 ? '' : 's'} on this list did not load
+              </p>
+              <p className="text-[var(--fs-xs)] text-amber-800 mt-0.5">
+                They are still on the list and will still be counted, but they are not shown here.
+                Close and reopen the list before saving.
+              </p>
+            </div>
+          )}
+
           {selectedCount === 0 ? (
             <div className="bg-white border-2 border-dashed border-gray-300 rounded-xl p-6 text-center">
               <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-2">

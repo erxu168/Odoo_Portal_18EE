@@ -268,7 +268,11 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
     }
 
     // Past this line the product IS gone, so nothing below may fail the request.
-    try { deleteProductPortalData(productId); } catch { /* orphan rows beat a lie */ }
+    // Orphan rows beat a lie, but a SILENT orphan is how a deleted id comes back:
+    // this transaction also strips the id from every counting list, so if it
+    // rolls back the product stays on lists that can never render it.
+    try { deleteProductPortalData(productId); }
+    catch (e) { console.error('[inventory] portal cleanup FAILED after deleting product', productId, '- its id may still be on counting lists:', e); }
     // A template left behind with no variants is litter.
     if (tmplId) {
       try {
