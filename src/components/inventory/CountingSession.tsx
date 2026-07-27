@@ -24,6 +24,19 @@ interface CountingSessionProps {
 
 type View = 'counting' | 'review';
 
+/** loc id -> FULL path label (Area › Room › Unit) from the guided route's stops.
+ * Each stop carries its live-tree ancestors (root→parent) + its own leaf name.
+ * Static (no route statuses), so it's safe to cache for offline full-path labels. */
+function composeSpotPaths(stops: any[]): Record<number, string> {
+  const m: Record<number, string> = {};
+  (stops || []).forEach((s: any) => {
+    if (s?.location?.id != null) {
+      m[s.location.id] = [...((s.ancestors || []) as any[]).map((a) => a.name), s.location.name].join(' › ');
+    }
+  });
+  return m;
+}
+
 export default function CountingSession({ sessionId, userRole, onBack, onSubmit }: CountingSessionProps) {
   // Full-focus counting: hide the global top bar + bottom tab bar for the whole
   // count flow (same pattern the cook timer / KDS use) so the count screen isn't
@@ -71,6 +84,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [spotChoice, setSpotChoice] = useState<{ product: any; qty: number; uom: string } | null>(null);
   // -- Guided route (Phase 2) --
   const [route, setRoute] = useState<{ guided: boolean; stops: any[] } | null>(null);
+  // Full-path labels restored from the offline cache (route-derived, but the route
+  // itself isn't cached — only these STATIC paths — so no stale statuses).
+  const [cachedSpotPaths, setCachedSpotPaths] = useState<Record<number, string>>({});
   const [guidedStatuses, setGuidedStatuses] = useState<Record<number, { status: string; skip_reason: string | null }>>({});
   const [statusPending, setStatusPending] = useState(0); // in-flight location-status writes
   const [savesPending, setSavesPending] = useState(0);   // in-flight count saves/deletes
@@ -193,12 +209,18 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     } catch (err) {
       console.warn('Network fetch failed, attempting cache fallback:', err);
       const cached = await getCachedSessionData(sessionId);
-      if (cached) {
+      // Only accept a COMPLETE cache row. An independent writer (pack flags, spot
+      // paths) can create a partial row with just its own field; using that would
+      // pass undefined products into state and crash on the array ops below.
+      if (cached && cached.session && Array.isArray(cached.products)) {
         apply(cached.session, cached.products, cached.entries, cached.systemQtys);
         if (Array.isArray((cached as any).items)) setItems((cached as any).items);
         const csn: Record<number, string> = {};
         ((cached as any).spots || []).forEach((sp: any) => { csn[sp.count_location_id] = sp.name; });
         setSpotNames(csn);
+        // Restore the cached full-path labels so badges + the "Also in" note stay
+        // full-path offline (the route itself isn't cached — no stale statuses).
+        if ((cached as any).spotPaths) setCachedSpotPaths((cached as any).spotPaths);
         if (cached.flags) setFlags(cached.flags);
         if (cached.crateSizes) setCrateSizes(cached.crateSizes);
         if (cached.crateLabels) setCrateLabels(cached.crateLabels);
@@ -251,6 +273,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     fetch(`/api/inventory/sessions/${sessionId}/route`).then(r => r.ok ? r.json() : null).then((d) => {
       if (!d) return;
       setRoute(d);
+      // Cache only the STATIC path labels (not the route's dynamic statuses) so
+      // full-path labels survive an offline reload without going stale.
+      void patchCachedSessionData(sessionId, { spotPaths: composeSpotPaths(d.stops || []) });
       const st: Record<number, { status: string; skip_reason: string | null }> = {};
       (d.stops || []).forEach((s: any) => {
         if (s.status && s.status !== 'pending') st[s.bucket_id] = { status: s.status, skip_reason: s.skip_reason ?? null };
@@ -329,6 +354,16 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     return m;
   }, [lines]);
   const spotLabel = (loc: number) => (loc === 0 ? 'General' : (spotNames[loc] || `Spot ${loc}`));
+  // Staff must see the FULL location path (Area › Room › Unit), not just the leaf.
+  // The guided route enriches each stop with its live-tree ancestors, so build a
+  // loc -> full path map from it; spotFullPath falls back to the leaf name for
+  // flat (non-guided) lists that carry no route.
+  // Live route paths take precedence; cached paths fill in after an offline reload.
+  const fullPathByLoc = React.useMemo(
+    () => ({ ...cachedSpotPaths, ...composeSpotPaths(route?.stops || []) }),
+    [route, cachedSpotPaths],
+  );
+  const spotFullPath = (loc: number) => (loc === 0 ? 'General' : (fullPathByLoc[loc] || spotLabel(loc)));
   const hasSpots = React.useMemo(() => lines.some((l) => l.loc !== 0), [lines]);
 
   const filteredLines = React.useMemo(() => {
@@ -722,8 +757,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   you are — repeating it on every row is noise. The flat list has
                   no heading, so there it stays. */}
               {hasSpots && !underSpot && (
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
-                  {spotLabel(loc)}
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border max-w-full break-words ${loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>
+                  {spotFullPath(loc)}
                 </span>
               )}
             </div>
@@ -777,12 +812,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
           )}
         </div>
         {siblings.length > 0 && (
-          <p className="mt-2 text-[11px] text-blue-800 bg-blue-50/70 border border-blue-100 rounded-lg px-2.5 py-1.5 leading-snug">
-            Count only what{'\u2019'}s here {'\u00B7'}{' '}
-            {siblings.map((sl) => {
-              const sv = entries[K(p.id, sl)];
-              return `${spotLabel(sl)}: ${sv !== undefined ? `${sv} \u2713` : 'not counted yet'}`;
-            }).join(' \u00B7 ')}
+          <p className="mt-1.5 text-[11px] text-gray-500 leading-snug">
+            <span className="font-semibold text-gray-600">Also in:</span>{' '}
+            {siblings.map((sl) => spotFullPath(sl)).join(' \u00B7 ')}
           </p>
         )}
         {rowNotes[k] && (
@@ -941,7 +973,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                       </div>
                       <span className="text-[var(--fs-lg)] text-gray-900 truncate">{p.name}</span>
                       {hasSpots && (
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${l.loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>{spotLabel(l.loc)}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border max-w-full break-words ${l.loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>{spotFullPath(l.loc)}</span>
                       )}
                     </div>
                     <div className="flex-shrink-0 ml-3 text-right">
@@ -972,7 +1004,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                       </div>
                       <span className="text-[var(--fs-lg)] text-gray-500 truncate">{p.name}</span>
                       {hasSpots && (
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${l.loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>{spotLabel(l.loc)}</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border max-w-full break-words ${l.loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>{spotFullPath(l.loc)}</span>
                       )}
                     </div>
                     <span className="text-[var(--fs-sm)] text-gray-400 flex-shrink-0 ml-3">-- {uom}</span>
@@ -1146,7 +1178,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
 
       {spotChoice && (
         <div className="fixed inset-0 z-[70] bg-black/50 flex items-end justify-center" onClick={() => setSpotChoice(null)}>
-          <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-lg rounded-t-2xl p-5 pb-8 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-[var(--fs-lg)] font-bold text-gray-900 mb-1">Which spot?</h3>
             <p className="text-[var(--fs-sm)] text-gray-500 mb-3">{spotChoice.product.name} is counted at several spots {'\u2014'} where is this {spotChoice.qty}?</p>
             {(spotsOfProduct.get(spotChoice.product.id) || []).map((sl) => {
@@ -1154,8 +1186,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               return (
                 <button key={sl}
                   onClick={() => { saveCount(spotChoice.product.id, sl, spotChoice.qty, spotChoice.uom); setSpotChoice(null); }}
-                  className="w-full flex items-center justify-between px-4 py-3.5 rounded-xl border border-gray-200 font-semibold mb-2 active:bg-gray-50">
-                  <span>{spotLabel(sl)}</span>
+                  className="w-full flex items-center justify-between gap-2 px-4 py-3.5 rounded-xl border border-gray-200 font-semibold mb-2 active:bg-gray-50">
+                  <span className="text-left break-words min-w-0">{spotFullPath(sl)}</span>
                   <span className="text-[var(--fs-sm)] text-gray-400 font-mono">{cur !== undefined ? `${cur} \u2713` : '\u2014'}</span>
                 </button>
               );

@@ -35,6 +35,7 @@ export interface CachedSessionData {
   looseLabels?: Record<number, string>;   // single-unit word: bottle / piece
   items?: any[];                         // frozen (product, spot) lines of the session
   spots?: any[];                         // frozen spot names for the badges
+  spotPaths?: Record<number, string>;    // loc id -> full path label (STATIC; no route statuses) so full-path labels work offline
   cachedAt: number;
 }
 
