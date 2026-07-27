@@ -83,11 +83,15 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // WAIT for the restaurant. Without this the first paint fetched unscoped and
+    // showed all 500 products — every restaurant's — under a header naming one.
+    // The ribbon is the source of truth, so nothing is listed until it has spoken.
+    if (!companyId) return;
     async function load() {
       setLoading(true);
       try {
         const [prodRes, flagRes, imgRes] = await Promise.all([
-          fetch(`/api/inventory/products?limit=500&include_pos=1${companyId ? `&company_id=${companyId}&relevant=1` : ''}`).then(r => r.json()),
+          fetch(`/api/inventory/products?limit=500&include_pos=1&company_id=${companyId}&relevant=1`).then(r => r.json()),
           fetch('/api/inventory/product-flags').then(r => r.json()),
           fetch('/api/inventory/product-images').then(r => r.json()).catch(() => ({ with_images: [] })),
         ]);
