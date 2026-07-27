@@ -11,10 +11,25 @@ import type { NextRequest } from 'next/server';
 // so they stay gated (they must also enforce role in their own handlers).
 const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/api/auth', '/api/cron', '/api/internal/', '/api/products/', '/kds', '/api/kds', '/kiosk', '/api/kiosk', '/api/tablet', '/api/device/ping', '/invite/', '/api/invite/', '/confirm-shift', '/api/shifts/confirm/email', '/cooktimer', '/api/cooktimer/queue', '/api/cooktimer/start', '/api/cooktimer/timers'];
 
+/**
+ * Is this path public (no login required)?
+ *
+ * Matches on PATH BOUNDARIES, not a bare prefix. A bare startsWith would make
+ * "/cooktimer" also whitelist "/cooktimer-setup" (the MANAGER screen), quietly
+ * serving it to anonymous users. Entries already ending in "/" keep their
+ * intentional subtree semantics (e.g. "/api/internal/", "/invite/").
+ * Exported for unit testing — see tests/middleware-public-paths.unit.spec.ts.
+ */
+export function isPublicPath(pathname: string): boolean {
+  return PUBLIC_PATHS.some((p) =>
+    p.endsWith('/') ? pathname.startsWith(p) : pathname === p || pathname.startsWith(`${p}/`)
+  );
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+  if (isPublicPath(pathname)) {
     return NextResponse.next();
   }
 
