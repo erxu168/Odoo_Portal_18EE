@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { SearchBar, Spinner, EmptyState } from './ui';
 import ProductDetail from './ProductDetail';
 import { useCompany } from '@/lib/company-context';
-import { locationShortLabel, locationPathLabel } from '@/lib/location-tree';
+import { locationPathLabel } from '@/lib/location-tree';
 
 interface ProductSettingsProps {
   onBack: () => void;
@@ -19,21 +19,16 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
   // the Locations screen edit). Shown as read-only chips; edited on the form.
   const [homeSpots, setHomeSpots] = useState<Record<number, number[]>>({});
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});
-  const [spotFull, setSpotFull] = useState<Record<number, string>>({});
   const [detailFor, setDetailFor] = useState<any | null>(null);        // product page
 
   // Labels are derived from the CURRENT location tree, so any screen that can
   // create or rename a location must refresh them — otherwise a new spot shows
   // as "Spot 42" and a renamed one keeps its old text until remount.
   const applyLocations = React.useCallback((locs: any[]) => {
+    // Ethan: always show the FULL path in location chips (no "…" abbreviation).
     const labels: Record<number, string> = {};
-    const full: Record<number, string> = {};
-    locs.forEach((l) => {
-      labels[l.id] = locationShortLabel(l.id, locs);
-      full[l.id] = locationPathLabel(l.id, locs);
-    });
+    locs.forEach((l) => { labels[l.id] = locationPathLabel(l.id, locs); });
     setSpotLabels(labels);
-    setSpotFull(full);
   }, []);
 
   const refreshLocationLabels = React.useCallback(async () => {
@@ -51,7 +46,6 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     // restaurant's chips.
     setHomeSpots({});
     setSpotLabels({});
-    setSpotFull({});
     (async () => {
       try {
         const [plRes, locRes] = await Promise.all([
@@ -145,7 +139,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                     <div className="flex flex-wrap gap-1 mt-1">
                       {on && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">📷 Photo required</span>}
                       {spots.length > 0 ? spots.map((sid) => (
-                        <span key={sid} title={spotFull[sid] || undefined} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap flex-shrink-0 max-w-full overflow-hidden text-ellipsis">📍 {spotLabels[sid] || `Spot ${sid}`}</span>
+                        <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 max-w-full break-words">📍 {spotLabels[sid] || `Spot ${sid}`}</span>
                       )) : (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-dashed border-amber-300">📍 No spot yet</span>
                       )}

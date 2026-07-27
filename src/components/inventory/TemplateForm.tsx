@@ -13,7 +13,7 @@ import { recordHref } from '@/lib/record-links';
 import { useCompany } from '@/lib/company-context';
 import { pluralizePack } from '@/lib/crate-units';
 import { buildGuidedRoute } from '@/lib/guided-route';
-import { locationPathLabel, locationShortLabel } from '@/lib/location-tree';
+import { locationPathLabel } from '@/lib/location-tree';
 
 const FREQUENCIES = [
   { id: 'daily', label: 'Daily' },
@@ -87,7 +87,6 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   // each row's spot chips; the SpotSheet edits them (saved immediately).
   const [homeSpots, setHomeSpots] = useState<Record<number, number[]>>({});     // productId -> spot ids
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});     // spot id -> full path
-  const [spotShort, setSpotShort] = useState<Record<number, string>>({});        // spot id -> "Unit › Leaf" (chips)
   // The RAW placement rows + location metas — fed to buildGuidedRoute so the "By
   // location" preview is byte-for-byte the real guided walk (shelf order, DFS
   // walk order, multi-spot duplication, the "Everything else" bucket).
@@ -161,17 +160,12 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     // Full path so a deep spot chip reads "Basement › Freezer › Shelf 3", never
     // a truncated 2 levels.
     const labels: Record<number, string> = {};
-    const shortLabels: Record<number, string> = {};
-    locs.forEach((l) => {
-      labels[l.id] = locationPathLabel(l.id, locs);
-      shortLabels[l.id] = locationShortLabel(l.id, locs);
-    });
+    locs.forEach((l) => { labels[l.id] = locationPathLabel(l.id, locs); });
     return {
       homeSpots: map,
       placementRows: (plRes.placements || []) as { odoo_product_id: number; count_location_id: number; shelf_sort: number }[],
       countLocations: locs,
       spotLabels: labels,
-      spotShortLabels: shortLabels,
     };
   }, []);
 
@@ -180,7 +174,6 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     setPlacementRows(d.placementRows);
     setCountLocations(d.countLocations);
     setSpotLabels(d.spotLabels);
-    setSpotShort(d.spotShortLabels || {});
   }, []);
 
   // One loader for BOTH the initial load and the post-save refresh, owning the
@@ -197,7 +190,6 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
       setPlacementsError(false);
       setHomeSpots({});
       setSpotLabels({});
-      setSpotShort({});
       setPlacementRows([]);
       setCountLocations([]);
     }
@@ -402,9 +394,9 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           className="mt-1 flex flex-wrap gap-1 pl-[52px] text-left active:opacity-80">
           {(homeSpots[p.id] || []).length > 0 ? (
             (homeSpots[p.id] || []).map((sid) => (
-              <span key={sid} title={spotLabels[sid] || undefined}
-                className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap flex-shrink-0 max-w-full overflow-hidden text-ellipsis">
-                📍 {spotShort[sid] || spotLabels[sid] || `Spot ${sid}`}
+              <span key={sid}
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 max-w-full break-words">
+                📍 {spotLabels[sid] || `Spot ${sid}`}
               </span>
             ))
           ) : (
@@ -874,7 +866,6 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           productImageIds={productImageIds}
           homeSpots={homeSpots}
           spotLabels={spotLabels}
-          spotShortLabels={spotShort}
           unitHint={unitHint}
           onEditProduct={(p) => setProductEditFor(p)}
           onNewProduct={isManager ? openCreateProduct : undefined}

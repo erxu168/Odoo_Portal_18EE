@@ -14,7 +14,7 @@ import RecordLink from '@/components/ui/RecordLink';
  * lives on the screen behind this sheet.
  */
 export default function AddProductsSheet({
-  products, selectedIds, onToggle, onAddMany, productImageIds, homeSpots, spotLabels, spotShortLabels, unitHint, onEditProduct, onNewProduct, onClose,
+  products, selectedIds, onToggle, onAddMany, productImageIds, homeSpots, spotLabels, unitHint, onEditProduct, onNewProduct, onClose,
 }: {
   products: any[];
   selectedIds: Set<number>;
@@ -24,7 +24,6 @@ export default function AddProductsSheet({
   homeSpots: Record<number, number[]>;
   spotLabels: Record<number, string>;
   /** Compact "Unit › Leaf" labels for the chips (full path stays the tooltip). */
-  spotShortLabels?: Record<number, string>;
   unitHint: (p: any) => string;
   /** Drill-down: open the product's editor overlay (fix a typo / wrong unit). */
   onEditProduct: (product: any) => void;
@@ -144,9 +143,9 @@ export default function AddProductsSheet({
                     {spots.length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-0.5">
                         {spots.map((sid) => (
-                          <span key={sid} title={spotLabels[sid] || undefined}
-                            className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 whitespace-nowrap flex-shrink-0 max-w-full overflow-hidden text-ellipsis">
-                            📍 {spotShortLabels?.[sid] || spotLabels[sid] || `Spot ${sid}`}
+                          <span key={sid}
+                            className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 max-w-full break-words">
+                            📍 {spotLabels[sid] || `Spot ${sid}`}
                           </span>
                         ))}
                       </div>
