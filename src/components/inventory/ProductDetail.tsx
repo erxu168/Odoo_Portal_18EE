@@ -50,7 +50,21 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   hasImage: boolean;
   onClose: () => void;
   /** Fired after any successful save so the caller can refresh its list. */
-  onChanged: (patch: { name?: string; uom?: [number, string]; imageAdded?: boolean; flags?: { requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; loose_label?: string | null }; spots?: number[] }) => void;
+  onChanged: (patch: {
+    name?: string;
+    uom?: [number, string];
+    imageAdded?: boolean;
+    flags?: { requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; loose_label?: string | null };
+    spots?: number[];
+    /**
+     * The product was archived (false) or brought back (true). A list that hides
+     * archived products has to be TOLD — it cannot infer it from an empty patch,
+     * which is what this used to send, so every list sat stale until a reload.
+     */
+    active?: boolean;
+    /** The product is gone from Odoo. Drop it, do not try to re-read it. */
+    deleted?: true;
+  }) => void;
   /** View-only (no edit capability) — inputs disabled, no writes. */
   readOnly?: boolean;
   /** When shown as an in-flow overlay, the canonical page URL — renders an
@@ -286,7 +300,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
         }
         setConfirmAction(null);
         flash('ok', 'Product deleted');
-        onChanged({});
+        onChanged({ deleted: true });
         onClose();
         return;
       }
@@ -300,7 +314,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
       setIsArchived(!active);
       setConfirmAction(null);
       flash('ok', active ? 'Product is back' : 'Product archived');
-      onChanged({});
+      onChanged({ active });
     } catch {
       setLifecycleError({ message: 'Network error — nothing was changed.', canArchive: false });
     } finally {

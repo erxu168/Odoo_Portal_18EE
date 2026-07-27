@@ -133,7 +133,13 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
         locations={locations}
         departments={departments}
         onSave={handleSave}
-        onCancel={() => { setEditing(null); setCreating(false); }}
+        onCancel={() => {
+          // Refetch even on cancel. The editor can DELETE a product, which the
+          // server strips from every list — without this the stale template
+          // object is reused on the next open and "Save changes" writes the
+          // deleted id straight back.
+          setEditing(null); setCreating(false); fetchData();
+        }}
       />
     );
   }

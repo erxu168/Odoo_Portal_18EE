@@ -191,11 +191,16 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     if (tmplId && siblingCount === 1) await odoo.write('product.template', [tmplId], { active: body.active });
     else await odoo.write('product.product', [productId], { active: body.active });
 
-    logAudit({
-      user_id: user.id, module: 'inventory',
-      action: body.active ? 'product.unarchive' : 'product.archive',
-      target_type: 'product', target_id: productId, detail: existing.name,
-    });
+    // Same reason as the delete path: the Odoo write above already happened, so
+    // a log failure must not be reported as an archive failure — that would
+    // leave the caller's list showing a product that IS archived.
+    try {
+      logAudit({
+        user_id: user.id, module: 'inventory',
+        action: body.active ? 'product.unarchive' : 'product.archive',
+        target_type: 'product', target_id: productId, detail: existing.name,
+      });
+    } catch (e) { console.error('[inventory] archive audit log failed for', productId, e); }
     return NextResponse.json({ ok: true, active: body.active, name: existing.name });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -275,11 +280,17 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       } catch { /* the variant is gone; a stray template is cosmetic */ }
     }
 
-    // The one irreversible action in the module — it leaves a trace.
-    logAudit({
-      user_id: user.id, module: 'inventory', action: 'product.delete',
-      target_type: 'product', target_id: productId, detail: existing.name,
-    });
+    // The one irreversible action in the module — it leaves a trace. Wrapped
+    // like its neighbours above: the product is already gone, so a failure to
+    // WRITE THE LOG must not report the delete as failed. It did happen; a
+    // caller told otherwise leaves the deleted id on its lists and puts it back
+    // on the next save.
+    try {
+      logAudit({
+        user_id: user.id, module: 'inventory', action: 'product.delete',
+        target_type: 'product', target_id: productId, detail: existing.name,
+      });
+    } catch (e) { console.error('[inventory] delete audit log failed for', productId, e); }
     return NextResponse.json({ ok: true, deleted: existing.name });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';

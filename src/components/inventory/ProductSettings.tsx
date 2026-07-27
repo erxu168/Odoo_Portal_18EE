@@ -78,6 +78,34 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
   const [catId, setCatId] = useState<number | null>(null);
   const [locId, setLocId] = useState<number | null>(null);
   const [catPick, setCatPick] = useState(false);
+  // Why a row just vanished. The editor's own flash goes with the editor when
+  // it closes, so the confirmation has to live on the screen that changed — and
+  // for archiving it carries the way back, because nothing in the portal lists
+  // archived products. Without an Undo, two taps hide a product and its spots,
+  // pack size, picture and note with no route back except typing its id in the
+  // address bar.
+  const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), toast.undo ? 8000 : 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  /** Put an archived product back, from the toast. */
+  const unarchive = React.useCallback(async (id: number, nm: string) => {
+    setToast(null);
+    try {
+      const res = await fetch(`/api/inventory/products/${id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: true }),
+      });
+      if (!res.ok) { setToast({ text: `Could not bring "${nm}" back — open it from Products to try again.` }); return; }
+      setProducts((prev: any[]) => prev.map((x) => x.id === id ? { ...x, active: true } : x));
+      setToast({ text: `"${nm}" is back.` });
+    } catch {
+      setToast({ text: `Network error — "${nm}" is still archived.` });
+    }
+  }, []);
   const [locPick, setLocPick] = useState(false);
   const [cats, setCats] = useState<CategoryRow[]>([]);
   const [locs, setLocs] = useState<PickableLocation[]>([]);
@@ -182,8 +210,14 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     picture: (p: any) => !imageIds.has(p.id),
   }), [homeSpots, hasPack, flags, imageIds]);
 
+  // The one live set. Everything that counts products on this screen — the
+  // rows, the chips and the "of N" denominator — must start from the SAME base,
+  // or archiving one product makes the line read "38 products of 39" with no
+  // filter on.
+  const live = useMemo(() => products.filter((p: any) => p.active !== false), [products]);
+
   const narrowed = useMemo(() => {
-    let list = products;
+    let list = live;
     if (search) {
       const q = search.toLowerCase();
       list = list.filter((p: any) => p.name.toLowerCase().includes(q));
@@ -191,7 +225,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
     if (catFamily) list = list.filter((p: any) => catFamily.has(p.categ_id?.[0]));
     if (locFamily) list = list.filter((p: any) => (homeSpots[p.id] || []).some((sid) => locFamily.has(sid)));
     return list;
-  }, [products, search, catFamily, locFamily, homeSpots]);
+  }, [live, search, catFamily, locFamily, homeSpots]);
 
   // Counts are of what the OTHER filters already left, so a chip never promises
   // more than tapping it delivers.
@@ -284,7 +318,7 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
             {narrowed.length !== filtered.length && <> {'\u00B7'} {narrowed.length - filtered.length} hidden</>}
           </>
         ) : (
-          <>{filtered.length} product{filtered.length === 1 ? '' : 's'}{filtered.length !== products.length && <> of {products.length}</>}</>
+          <>{filtered.length} product{filtered.length === 1 ? '' : 's'}{filtered.length !== live.length && <> of {live.length}</>}</>
         )}
       </p>
 
@@ -356,6 +390,26 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
               setImageIds((prev) => { const n = new Set(prev); n.add(detailFor.id); return n; });
               setImgVer((v) => v + 1);
             }
+            // Deleted: gone for good, so the row goes and the editor closes —
+            // there is no record left behind it to return to.
+            if (patch.deleted) {
+              const gone = detailFor.id;
+              setProducts((prev: any[]) => prev.filter((x) => x.id !== gone));
+              setDetailFor(null);
+              setToast({ text: `"${detailFor.name}" was deleted.` });
+              return;
+            }
+            // Archived: this screen lists live products only, so the row leaves.
+            // The FLAG is what changes, not the array — bringing the product
+            // back drops it straight into its old place with no bookkeeping.
+            if (patch.active !== undefined) {
+              const pid = detailFor.id;
+              setProducts((prev: any[]) => prev.map((x) => x.id === pid ? { ...x, active: patch.active } : x));
+              const nm = detailFor.name;
+              setToast(patch.active
+                ? { text: `"${nm}" is back.` }
+                : { text: `"${nm}" archived — hidden from this list.`, undo: () => unarchive(pid, nm) });
+            }
           }}
         />
       )}
@@ -378,6 +432,18 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
         />
       )}
 
+      {toast && (
+        <div role="status"
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[130] bg-gray-900 text-white text-[var(--fs-sm)] font-semibold pl-4 pr-2 py-2 rounded-full shadow-lg max-w-[92vw] flex items-center gap-3">
+          <span className="min-w-0 truncate">{toast.text}</span>
+          {toast.undo && (
+            <button onClick={toast.undo}
+              className="flex-shrink-0 px-3 py-1.5 rounded-full bg-white/15 text-white font-bold active:bg-white/25">
+              Undo
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

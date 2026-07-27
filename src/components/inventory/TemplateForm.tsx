@@ -101,6 +101,16 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   const [productView, setProductView] = useState<'category' | 'location'>('category'); // "This list" preview: group by category, or by home-spot in walk order
   const [previewing, setPreviewing] = useState(false);                          // "Preview as staff" — the real guided count, read-only
   const [productEditFor, setProductEditFor] = useState<any | null>(null);       // drill-down: product editor overlay
+  // Deleting is irreversible and happens inside an overlay that then closes, so
+  // the confirmation has to survive on this screen. z-[150] deliberately: the
+  // add sheet is z-110 and the product editor z-120, and this can fire from
+  // inside either of them.
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
   const [canEditProduct, setCanEditProduct] = useState(false);                  // capability for product master edits
   const [isManager, setIsManager] = useState(false);                            // dept/product quick-create is manager+ (matches the endpoints)
   const [shiftTemplates, setShiftTemplates] = useState<any[]>([]);  // Planning shift templates (Opening/Mid/Closing) for "assign to a shift"
@@ -249,7 +259,12 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             const selData = await selRes.json();
             const seen = new Set(prods.map((p: any) => p.id));
             for (const p of (selData.products || [])) {
-              if (p.active !== false && !seen.has(p.id)) prods = [...prods, p];
+              // KEEP archived ones here. This is the by-explicit-ids fetch for
+              // what is already ON the list, and the API returns archived
+              // products for it on purpose. Dropping them was why the list said
+              // "39 products" over 38 rows: archiving never takes a product off
+              // a list, so hiding the row only hid the truth.
+              if (!seen.has(p.id)) prods = [...prods, p];
             }
           } catch { /* ignore — browse list alone still works */ }
         }
@@ -375,17 +390,34 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
   // by-location views so they never drift. Thumb, name, unit hint, drill-down,
   // remove, and the tap-to-set-location spot chips (amber when unplaced).
   function productRow(p: any) {
+    // A scan-to-create draft is ALSO active === false, and it is not archived —
+    // it is waiting for review. Labelling it "Archived" would be a lie.
+    const archived = p.active === false && !p.is_draft;
     return (
       <div key={p.id} className="border-b border-gray-100 last:border-b-0 px-4 py-2.5">
         <div className="flex items-center gap-3">
           <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
           <div className="flex-1 min-w-0">
-            <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
-            <div className="text-[var(--fs-xs)] text-gray-400 truncate">{unitHint(p)}</div>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className={`text-[var(--fs-base)] font-semibold truncate ${archived ? 'text-gray-500' : 'text-gray-900'}`}>{p.name}</span>
+              {archived && (
+                <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+                  Archived
+                </span>
+              )}
+            </div>
+            {archived ? (
+              <div className="text-[var(--fs-xs)] text-amber-700">
+                Still on this list, so it will still be counted. Tap ✕ to take it off.
+              </div>
+            ) : (
+              <div className="text-[var(--fs-xs)] text-gray-400 truncate">{unitHint(p)}</div>
+            )}
           </div>
           {/* Drill-down: open the product itself (fix name / unit / photo) */}
           <RecordLink type="product" id={p.id} label={p.name} onOpen={() => setProductEditFor(p)} />
-          <button onClick={() => removeProduct(p.id)} aria-label={`Remove ${p.name} from the list`}
+          <button onClick={() => removeProduct(p.id)}
+            aria-label={archived ? `Take ${p.name} off this list` : `Remove ${p.name} from the list`}
             className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 active:bg-red-50 active:text-red-500 flex-shrink-0">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
@@ -859,7 +891,11 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
 
       {addOpen && (
         <AddProductsSheet
-          products={allProducts}
+          // Archived products stay visible on the list itself, but must never be
+          // offered for adding — including inside "+ Add all N in <category>".
+          // Keeping the ones already selected means they still read "✓ Added"
+          // rather than silently vanishing from the sheet.
+          products={allProducts.filter((p: any) => p.active !== false || selectedProductIds.has(p.id))}
           selectedIds={selectedProductIds}
           onToggle={toggleProduct}
           onAddMany={(ids) => setSelectedProductIds((prev) => new Set([...Array.from(prev), ...ids]))}
@@ -916,13 +952,34 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           fullPageHref={recordHref('product', productEditFor.id)}
           onClose={() => setProductEditFor(null)}
           onChanged={(patch) => {
-            if (patch.name === undefined && patch.uom === undefined) return;
-            setAllProducts((prev) => prev.map((x) => x.id === productEditFor.id
-              ? { ...x, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
-              : x));
-            setProductEditFor((cur: any) => cur && cur.id === productEditFor.id
-              ? { ...cur, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
-              : cur);
+            const pid = productEditFor.id;
+            // DELETED — the product is gone from Odoo and the server has already
+            // stripped its id from every list. Keeping it would make "Save
+            // changes" put a product that no longer exists back on the list.
+            if (patch.deleted) {
+              const gone = productEditFor.name;
+              setAllProducts((prev) => prev.filter((x) => x.id !== pid));
+              setSelectedProductIds((prev) => { const n = new Set(prev); n.delete(pid); return n; });
+              setProductEditFor(null);
+              setToast(`"${gone}" was deleted and taken off this list.`);
+              return;
+            }
+            // ARCHIVED — a fact about the product, not an edit to this list. The
+            // row stays and says so, because the archived product really is
+            // still on the list and really will still be counted. Taking it off
+            // is the ✕, and stays the manager's decision.
+            if (patch.active !== undefined) {
+              setAllProducts((prev) => prev.map((x) => x.id === pid ? { ...x, active: patch.active } : x));
+              setProductEditFor((cur: any) => cur && cur.id === pid ? { ...cur, active: patch.active } : cur);
+            }
+            if (patch.name !== undefined || patch.uom !== undefined) {
+              setAllProducts((prev) => prev.map((x) => x.id === pid
+                ? { ...x, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
+                : x));
+              setProductEditFor((cur: any) => cur && cur.id === pid
+                ? { ...cur, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
+                : cur);
+            }
           }}
         />
       )}
@@ -956,6 +1013,13 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
             onHome={() => setNewDeptOpen(false)}
             onSaved={() => { const prev = new Set(deptList.map((x: any) => x.id)); setNewDeptOpen(false); refreshDepartments(prev); }}
           />
+        </div>
+      )}
+
+      {toast && (
+        <div role="status"
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[150] bg-gray-900 text-white text-[var(--fs-sm)] font-semibold px-4 py-2.5 rounded-full shadow-lg max-w-[92vw] text-center">
+          {toast}
         </div>
       )}
     </div>

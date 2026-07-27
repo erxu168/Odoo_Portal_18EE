@@ -7,7 +7,7 @@
  * and permission-aware — a user without edit capability sees the same page
  * read-only rather than an access wall.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Spinner } from '@/components/inventory/ui';
 import ProductDetail from '@/components/inventory/ProductDetail';
@@ -26,7 +26,13 @@ export default function ProductRecordPage({ params }: { params: { id: string } }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const back = () => (window.history.length > 1 ? router.back() : router.push('/products'));
+  // After a delete there is nothing to go back TO — the previous screen would
+  // render a product that no longer exists, and Back would offer to return to
+  // this page. replace() takes it out of the history instead.
+  const deleted = useRef(false);
+  const back = () => (deleted.current
+    ? router.replace('/products')
+    : window.history.length > 1 ? router.back() : router.push('/products'));
 
   useEffect(() => {
     if (!Number.isInteger(productId) || productId <= 0) { setError('Invalid product'); setLoading(false); return; }
@@ -82,7 +88,12 @@ export default function ProductRecordPage({ params }: { params: { id: string } }
       hasImage={hasImage}
       readOnly={!canEdit}
       onClose={back}
-      onChanged={() => { /* canonical page: no parent list to patch */ }}
+      onChanged={(patch) => {
+        // No parent list to patch here, but the page holds its own copy of the
+        // record, so the archived flag has to land on it too.
+        if (patch.deleted) { deleted.current = true; return; }
+        if (patch.active !== undefined) setProduct((prev: any) => (prev ? { ...prev, active: patch.active } : prev));
+      }}
     />
   );
 }
