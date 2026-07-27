@@ -248,6 +248,18 @@ export function registerDraftProduct(odooProductId: number, barcode: string, cre
   `).run(odooProductId, barcode, createdBy, now());
 }
 
+/**
+ * Products the portal created as drafts. They are INACTIVE in Odoo by design,
+ * so any query that hides inactive products has to let these back through —
+ * otherwise scanning an unknown barcode creates a product nobody can then find.
+ */
+export function listDraftProductIds(): number[] {
+  const db = getDb();
+  const rows = db.prepare("SELECT odoo_product_id FROM product_drafts WHERE status = 'pending'")
+    .all() as { odoo_product_id: number }[];
+  return rows.map((r) => r.odoo_product_id);
+}
+
 export function isDraftProduct(odooProductId: number): boolean {
   const db = getDb();
   const row = db.prepare(`SELECT 1 FROM product_drafts WHERE odoo_product_id = ? AND status = 'pending'`).get(odooProductId);
@@ -2304,19 +2316,37 @@ export function getProductCountHistory(
   return out;
 }
 
-/** How many APPROVED count lines name this product — the audit trail. */
-export function countApprovedLinesForProduct(productId: number): number {
+/**
+ * Counts this product is locked into — approved (the audit trail) or submitted
+ * (waiting for a manager).
+ *
+ * Membership counts, not just a number written down: a guided count can list a
+ * product and legitimately have no entry for it because the whole spot was
+ * skipped with a reason. Judging by entries alone declared such a product free
+ * to delete, and taking it out then rewrote what a signed-off count had
+ * covered. A submitted count is just as untouchable — remove a product from
+ * under one and it can never be approved, because approval checks every line
+ * against the list and the product is no longer on it.
+ */
+export function countLockedLinesForProduct(productId: number): number {
   const db = getDb();
-  const row = db.prepare(`
+  const LOCKED = "('approved','submitted')";
+  const entries = db.prepare(`
     SELECT COUNT(*) AS n
       FROM count_entries e
       JOIN counting_sessions s ON s.id = e.session_id
-     WHERE e.product_id = ? AND s.status = 'approved'
+     WHERE e.product_id = ? AND s.status IN ${LOCKED}
+  `).get(productId) as { n: number } | undefined;
+  const listed = db.prepare(`
+    SELECT COUNT(*) AS n
+      FROM session_count_items i
+      JOIN counting_sessions s ON s.id = i.session_id
+     WHERE i.odoo_product_id = ? AND s.status IN ${LOCKED}
   `).get(productId) as { n: number } | undefined;
   const quick = db.prepare(
     "SELECT COUNT(*) AS n FROM quick_counts WHERE product_id = ? AND status = 'approved'",
   ).get(productId) as { n: number } | undefined;
-  return (row?.n || 0) + (quick?.n || 0);
+  return (entries?.n || 0) + (listed?.n || 0) + (quick?.n || 0);
 }
 
 /**
@@ -2355,6 +2385,7 @@ export function deleteProductPortalData(productId: number): void {
         .run(...openQuick.map((r) => r.id));
     }
 
+    // Settings and placements: these describe the product, so they go with it.
     for (const [table, col] of [
       ['product_flags', 'odoo_product_id'],
       ['product_images', 'odoo_product_id'],
@@ -2362,11 +2393,26 @@ export function deleteProductPortalData(productId: number): void {
       ['product_packaging_levels', 'odoo_product_id'],
       ['product_drafts', 'odoo_product_id'],
       ['template_product_locations', 'odoo_product_id'],
-      ['session_count_items', 'odoo_product_id'],
-      ['session_packaging_levels', 'odoo_product_id'],
     ] as const) {
       try { db.prepare(`DELETE FROM ${table} WHERE ${col} = ?`).run(productId); }
       catch { /* a table this build does not have */ }
+    }
+
+    // The frozen line of a count is part of THAT COUNT, not of the product, and
+    // it only leaves with counts that are still open. Deleting it from a
+    // submitted count stranded the count forever — its entry survived while the
+    // snapshot line that justifies the entry did not, so approval refused the
+    // line as off-list and there is no path back. Deleting it from an APPROVED
+    // count quietly rewrote what a signed-off count had covered.
+    const OPEN = "('pending','in_progress','rejected')";
+    for (const table of ['session_count_items', 'session_packaging_levels'] as const) {
+      try {
+        db.prepare(`
+          DELETE FROM ${table}
+           WHERE odoo_product_id = ?
+             AND session_id IN (SELECT id FROM counting_sessions WHERE status IN ${OPEN})
+        `).run(productId);
+      } catch { /* a table this build does not have */ }
     }
 
     // Counting lists keep their products as a JSON array, so the id has to be

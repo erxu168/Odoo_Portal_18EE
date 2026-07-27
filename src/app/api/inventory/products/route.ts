@@ -27,7 +27,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, registerDraftProduct, isDraftProduct, listTemplates } from '@/lib/inventory-db';
+import { initInventoryTables, registerDraftProduct, isDraftProduct, listTemplates, listDraftProductIds } from '@/lib/inventory-db';
 
 // Process-level cache for the default category and UOM IDs.
 let _defaultCategId: number | null = null;
@@ -300,6 +300,19 @@ export async function GET(request: Request) {
         if (allowedIds.length > 0) domain.push('|', ['company_id', '=', false], ['company_id', 'in', allowedIds]);
         else domain.push(['company_id', '=', false]);
       }
+    }
+
+    // ARCHIVED products stay out unless asked for. active_test is off across
+    // this route so a portal DRAFT (which is an inactive product by design) can
+    // still be found, which meant an archived product went on appearing in the
+    // browser, in category-based counting lists and on the count screen — and
+    // could still be counted into stock. A draft is inactive on purpose; an
+    // archived product is inactive because someone put it away.
+    const wantArchived = searchParams.get('include_archived') === '1';
+    if (!wantArchived) {
+      const draftIds = listDraftProductIds();
+      if (draftIds.length > 0) domain.push('|', ['active', '=', true], ['id', 'in', draftIds]);
+      else domain.push(['active', '=', true]);
     }
 
     const products = await odoo.searchRead('product.product', domain,

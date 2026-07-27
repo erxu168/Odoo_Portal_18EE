@@ -11,9 +11,9 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides } from '@/lib/db';
+import { getPermissionOverrides, logAudit } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, countApprovedLinesForProduct, deleteProductPortalData } from '@/lib/inventory-db';
+import { initInventoryTables, countLockedLinesForProduct, deleteProductPortalData } from '@/lib/inventory-db';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const user = requireAuth();
@@ -167,13 +167,28 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     ) as { id: number; product_tmpl_id: [number, string]; name: string }[];
     if (!existing) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
 
-    // Archive the TEMPLATE, which is what Odoo's own archive button does — a
-    // variant left active under an archived template still shows up in places
-    // that read variants.
+    // Archiving the TEMPLATE is right for a product that IS its template, and
+    // wrong for one variant of several: Odoo cascades a template archive to
+    // every variant, so putting away one flavour would take its siblings with
+    // it — and unarchiving would revive variants somebody archived on purpose.
+    // So: template when it has one variant, the variant alone when it has more.
     const tmplId = Array.isArray(existing.product_tmpl_id) ? existing.product_tmpl_id[0] : null;
-    if (tmplId) await odoo.write('product.template', [tmplId], { active: body.active });
+    let siblingCount = 1;
+    if (tmplId) {
+      const variants = await odoo.searchRead(
+        'product.product', [['product_tmpl_id', '=', tmplId]], ['id'],
+        { limit: 5, context: { active_test: false } },
+      );
+      siblingCount = variants.length || 1;
+    }
+    if (tmplId && siblingCount === 1) await odoo.write('product.template', [tmplId], { active: body.active });
     else await odoo.write('product.product', [productId], { active: body.active });
 
+    logAudit({
+      user_id: user.id, module: 'inventory',
+      action: body.active ? 'product.unarchive' : 'product.archive',
+      target_type: 'product', target_id: productId, detail: existing.name,
+    });
     return NextResponse.json({ ok: true, active: body.active, name: existing.name });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
@@ -188,10 +203,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
  * product. Almost every real product will refuse — that refusal IS the answer,
  * so it is passed back in plain words rather than hidden behind a generic 500.
  *
- * The portal keeps its own records against a product id, and an APPROVED count
- * is the record of what was on a shelf on a given day. Deleting the product
- * would leave that number with no name, so a product that appears in one is
- * refused here before Odoo is even asked.
+ * The portal keeps its own records against a product id, and a submitted or
+ * APPROVED count is the record of what was on a shelf that day. Deleting the
+ * product would leave those numbers with no name — and would strand a
+ * submitted count, which can never be approved once one of its lines is no
+ * longer on the list. Refused here before Odoo is even asked.
  */
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
   const user = requireAuth();
@@ -206,11 +222,11 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
   }
 
   initInventoryTables();
-  const approved = countApprovedLinesForProduct(productId);
-  if (approved > 0) {
+  const locked = countLockedLinesForProduct(productId);
+  if (locked > 0) {
     return NextResponse.json({
-      error: `This product is part of ${approved} approved count${approved === 1 ? '' : 's'}. Deleting it would leave those numbers with no name — archive it instead.`,
-      code: 'IN_APPROVED_COUNT',
+      error: 'This product is part of a count that has been submitted or approved. Deleting it would leave those numbers with no name — archive it instead.',
+      code: 'IN_LOCKED_COUNT',
     }, { status: 409 });
   }
 
@@ -223,17 +239,12 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
     if (!existing) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
 
     const tmplId = Array.isArray(existing.product_tmpl_id) ? existing.product_tmpl_id[0] : null;
+    // ONLY the unlink may be read as a refusal. Tidying up afterwards used to
+    // sit inside the same try, so a timeout on the follow-up read reported
+    // "Odoo will not delete this" about a product that was already gone — and
+    // skipped the cleanup for good, because the retry then 404s.
     try {
       await odoo.unlink('product.product', [productId]);
-      // A template left behind with no variants is litter; remove it too, and
-      // never let that tidying failure look like the delete failed.
-      if (tmplId) {
-        const siblings = await odoo.searchRead(
-          'product.product', [['product_tmpl_id', '=', tmplId]], ['id'],
-          { limit: 1, context: { active_test: false } },
-        );
-        if (siblings.length === 0) await odoo.unlink('product.template', [tmplId]).catch(() => {});
-      }
     } catch (err: unknown) {
       // Odoo's refusal is the useful part — it names what is still using it.
       const raw = err instanceof Error ? err.message : String(err);
@@ -244,8 +255,24 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       }, { status: 409 });
     }
 
-    // Its portal-side settings go with it; open counts drop the line.
-    deleteProductPortalData(productId);
+    // Past this line the product IS gone, so nothing below may fail the request.
+    try { deleteProductPortalData(productId); } catch { /* orphan rows beat a lie */ }
+    // A template left behind with no variants is litter.
+    if (tmplId) {
+      try {
+        const siblings = await odoo.searchRead(
+          'product.product', [['product_tmpl_id', '=', tmplId]], ['id'],
+          { limit: 1, context: { active_test: false } },
+        );
+        if (siblings.length === 0) await odoo.unlink('product.template', [tmplId]);
+      } catch { /* the variant is gone; a stray template is cosmetic */ }
+    }
+
+    // The one irreversible action in the module — it leaves a trace.
+    logAudit({
+      user_id: user.id, module: 'inventory', action: 'product.delete',
+      target_type: 'product', target_id: productId, detail: existing.name,
+    });
     return NextResponse.json({ ok: true, deleted: existing.name });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';

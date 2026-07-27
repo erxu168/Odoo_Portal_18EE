@@ -550,15 +550,15 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                 inputMode="decimal" placeholder="—"
                 aria-label={`How many ${uomName} in one ${effPack}`}
                 className="w-16 h-9 border border-gray-300 rounded-lg text-center font-mono font-semibold" />
-              {packSize !== '' && !measure ? (
+              {measure ? (
+                <span className="text-[var(--fs-sm)] text-gray-400">{uomName}</span>
+              ) : (
                 <input value={looseLabel} disabled={readOnly}
                   onChange={(e) => setLooseLabel(e.target.value.slice(0, 20))}
                   onBlur={(e) => savePack(packSize, effPack, e.target.value)}
                   placeholder={uomName}
                   aria-label="What one of them is called"
                   className="w-28 h-9 border border-gray-300 rounded-lg px-2 text-[var(--fs-sm)] font-semibold" />
-              ) : (
-                <span className="text-[var(--fs-sm)] text-gray-400">{uomName}</span>
               )}
               {!readOnly && (
                 <button onClick={() => setManageUnits(true)} className="text-[11px] font-bold text-blue-700 active:opacity-70" aria-label="Edit the count-by units">Edit units</button>
@@ -570,9 +570,17 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               )}
             </div>
             <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">
-              {packSize !== '' && !measure
-                ? `Staff count whole ${pluralizePack(effPack, 2)} and loose ${unitWords(uomName, effPack, looseLabel).looseFor(2)}. Odoo still gets ${uomName}.`
-                : `Leave the size blank to count in ${uomName} only.`}
+              {packSize === '' ? (
+                <>
+                  Fill in how many {unitWords(uomName, effPack, looseLabel).looseFor(2)} are in one {effPack}
+                  {' '}and staff can count whole {pluralizePack(effPack, 2)} plus loose ones.
+                  Leave it blank and they count in {unitWords(uomName, effPack, looseLabel).looseFor(2)} only.
+                </>
+              ) : measure ? (
+                `Staff count whole ${pluralizePack(effPack, 2)}; Odoo gets ${uomName}.`
+              ) : (
+                `Staff count whole ${pluralizePack(effPack, 2)} AND loose ${unitWords(uomName, effPack, looseLabel).looseFor(2)}. Odoo still gets ${uomName}.`
+              )}
             </p>
           </div>
 
