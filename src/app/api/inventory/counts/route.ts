@@ -14,7 +14,7 @@ import { getPermissionOverrides } from '@/lib/db';
 import { canAccessSession } from '@/lib/inventory-access';
 import { getOdoo } from '@/lib/odoo';
 import { allowedProductIds } from '@/lib/inventory-scope';
-import { getProductFlags } from '@/lib/inventory-db';
+import { getProductFlags, getSessionPackagingLevels, listPackagingLevelsFor } from '@/lib/inventory-db';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { crateTotal } from '@/lib/crate-units';
 import { inventoryOdooSyncEnabled } from '@/lib/inventory-config';
@@ -82,7 +82,35 @@ export async function GET(request: Request) {
     console.error('Failed to fetch system quantities from Odoo:', e);
   }
 
-  return NextResponse.json({ entries: hydrated, system_qtys: systemQtys, items, spots });
+  // The packaging chain AS FROZEN for this session, per product. The count
+  // screen must convert with the chain the count was STARTED with, never the
+  // product's current one — otherwise editing a box size re-prices a count that
+  // is already under way.
+  const packaging: Record<number, { id: number; name: string; toBase: number; countable: boolean; allowPartial: boolean }[]> = {};
+  const frozen = getSessionPackagingLevels(parseInt(sessionId));
+  frozen.forEach((levels, pid) => {
+    packaging[pid] = levels.map((l) => (
+      { id: l.id, name: l.name, toBase: l.toBase, countable: l.countable, allowPartial: l.allowPartial }
+    ));
+  });
+  // CATEGORY-only lists resolve their products from Odoo at count time, so there
+  // is nothing to freeze at creation and the snapshot is empty for them. Fall
+  // back to the product's LIVE chain rather than leaving those counts with no
+  // packaging at all — the same live-config behaviour those lists already have
+  // for units/flags. Product-list sessions keep their frozen chain untouched.
+  if (items.length === 0) {
+    const t = getTemplate(session.template_id);
+    const pids: number[] = Array.isArray(t?.product_ids) ? (t!.product_ids as number[]) : [];
+    const live = listPackagingLevelsFor(pids.length > 0 ? pids : Object.keys(systemQtys).map(Number));
+    live.forEach((levels, pid) => {
+      if (packaging[pid]) return;
+      packaging[pid] = levels.map((l) => (
+        { id: l.id, name: l.name, toBase: l.to_base, countable: l.countable === 1, allowPartial: l.allow_partial === 1 }
+      ));
+    });
+  }
+
+  return NextResponse.json({ entries: hydrated, system_qtys: systemQtys, items, spots, packaging });
 }
 
 export async function POST(request: Request) {

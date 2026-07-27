@@ -205,6 +205,20 @@ export function initInventoryTables() {
       updated_by INTEGER,
       updated_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS session_packaging_levels (
+      session_id INTEGER NOT NULL,
+      level_id INTEGER NOT NULL,
+      odoo_product_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      to_base REAL NOT NULL,
+      countable INTEGER NOT NULL DEFAULT 1,
+      allow_partial INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (session_id, level_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_spl_session ON session_packaging_levels(session_id, odoo_product_id);
+
     CREATE INDEX IF NOT EXISTS idx_ppl_product ON product_packaging_levels(odoo_product_id, active);
     -- Two live levels of a product may not share a name ("box" twice is a typo,
     -- and the count screen would show two identical steppers). Archived rows are
@@ -280,6 +294,20 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
       updated_by INTEGER,
       updated_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS session_packaging_levels (
+      session_id INTEGER NOT NULL,
+      level_id INTEGER NOT NULL,
+      odoo_product_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      to_base REAL NOT NULL,
+      countable INTEGER NOT NULL DEFAULT 1,
+      allow_partial INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (session_id, level_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_spl_session ON session_packaging_levels(session_id, odoo_product_id);
+
     CREATE INDEX IF NOT EXISTS idx_ppl_product ON product_packaging_levels(odoo_product_id, active);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_ppl_name_live
       ON product_packaging_levels(odoo_product_id, name) WHERE active = 1;
@@ -1136,6 +1164,7 @@ export function deleteTemplate(templateId: number): void {
       db.prepare('DELETE FROM count_entries WHERE session_id = ?').run(sid);
       db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(sid);
       db.prepare('DELETE FROM session_count_locations WHERE session_id = ?').run(sid);
+      db.prepare('DELETE FROM session_packaging_levels WHERE session_id = ?').run(sid);
       db.prepare('DELETE FROM session_location_status WHERE session_id = ?').run(sid);
     }
     db.prepare('DELETE FROM counting_sessions WHERE template_id = ?').run(templateId);
@@ -1173,6 +1202,7 @@ export function deleteStalePendingSessions(templateId: number, keepDate: string 
   const wipe = db.transaction((ids: number[]) => {
     for (const id of ids) {
       db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(id);
+      db.prepare('DELETE FROM session_packaging_levels WHERE session_id = ?').run(id);
       db.prepare('DELETE FROM session_location_status WHERE session_id = ?').run(id);
       db.prepare('DELETE FROM counting_sessions WHERE id = ?').run(id);
     }
@@ -1241,6 +1271,7 @@ export function regenerateTodaySession(templateId: number): number | null {
     if (existing) {
       db.prepare('DELETE FROM session_count_items WHERE session_id = ?').run(existing.id);
       db.prepare('DELETE FROM session_count_locations WHERE session_id = ?').run(existing.id);
+      db.prepare('DELETE FROM session_packaging_levels WHERE session_id = ?').run(existing.id);
       db.prepare('DELETE FROM session_location_status WHERE session_id = ?').run(existing.id);
       db.prepare('DELETE FROM counting_sessions WHERE id = ?').run(existing.id);
     }
@@ -1625,6 +1656,27 @@ export function setProductCountMode(
 // SESSION COUNT ITEMS (frozen "what/where to count" snapshot per session)
 // ===
 
+/**
+ * A session's FROZEN packaging chains, per product — what the count was taken
+ * with, not what the product looks like today. Falls back to nothing when a
+ * session predates the snapshot; callers then use the single crate size.
+ */
+export function getSessionPackagingLevels(sessionId: number): Map<number, PackLevel[]> {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT odoo_product_id, level_id, name, to_base, countable, allow_partial, sort_order
+    FROM session_packaging_levels WHERE session_id = ?
+    ORDER BY to_base DESC, level_id
+  `).all(sessionId) as { odoo_product_id: number; level_id: number; name: string; to_base: number; countable: number; allow_partial: number; sort_order: number }[];
+  const out = new Map<number, PackLevel[]>();
+  for (const r of rows) {
+    const arr = out.get(r.odoo_product_id) || [];
+    arr.push({ id: r.level_id, name: r.name, toBase: r.to_base, countable: r.countable === 1, allowPartial: r.allow_partial === 1 });
+    out.set(r.odoo_product_id, arr);
+  }
+  return out;
+}
+
 /** Freeze a session's items at creation. Replaces any existing snapshot. */
 export function snapshotSessionItems(
   sessionId: number,
@@ -1703,6 +1755,26 @@ export function snapshotSessionFromTemplate(sessionId: number, templateId: numbe
     });
     tx();
   }
+  // Freeze each product's PACKAGING CHAIN too. Without this, editing a box size
+  // next month would silently re-convert counts taken last month — invisible, and
+  // permanent once this is the ledger. The session keeps the chain it was counted
+  // with, exactly as it already keeps the spot names and the crate size.
+  {
+    const productIds = Array.from(new Set(pairs.map((p) => p.product_id)));
+    const chains = listPackagingLevelsFor(productIds);
+    const db = getDb();
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM session_packaging_levels WHERE session_id = ?').run(sessionId);
+      const ins = db.prepare(`INSERT OR IGNORE INTO session_packaging_levels
+        (session_id, level_id, odoo_product_id, name, to_base, countable, allow_partial, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+      chains.forEach((levels, pid) => {
+        levels.forEach((l) => ins.run(sessionId, l.id, pid, l.name, l.to_base, l.countable, l.allow_partial, l.sort_order));
+      });
+    });
+    tx();
+  }
+
   const flagIds = Array.from(new Set(pairs.map(p => p.product_id)));
   const flagMap = new Map(getProductFlags(flagIds).map(f => [f.odoo_product_id, f]));
   snapshotSessionItems(sessionId, pairs.map(p => {
