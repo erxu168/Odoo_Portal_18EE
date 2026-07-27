@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
+import DropZone from '@/components/ui/DropZone';
 
 const DEFAULT_MAX_PHOTOS = 3;
 const MAX_DIMENSION = 1280;
@@ -27,11 +28,23 @@ export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DE
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file) return;
+    if (file) await addFiles([file]);
+  }
+
+  /** Shared by the picker and by dropping — one path in, whichever way you came. */
+  async function addFiles(files: File[]) {
+    if (disabled || busy) return;
+    const room = Math.max(0, max - photos.length);
+    const take = files.slice(0, room);
+    if (take.length === 0) return;
     setBusy(true);
     try {
-      const dataUrl = await fileToResizedDataUrl(file);
-      if (dataUrl) onChange([...photos, dataUrl]);
+      const urls: string[] = [];
+      for (const f of take) {
+        const dataUrl = await fileToResizedDataUrl(f);
+        if (dataUrl) urls.push(dataUrl);
+      }
+      if (urls.length) onChange([...photos, ...urls]);
     } finally {
       setBusy(false);
     }
@@ -62,7 +75,7 @@ export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DE
         </div>
       ))}
       {!atMax && (
-        <>
+        <DropZone onFiles={addFiles} multiple disabled={disabled || busy} hint="Drop">
           <input
             ref={inputRef}
             type="file"
@@ -87,7 +100,7 @@ export default function PhotoCaptureStrip({ photos, onChange, disabled, max = DE
               </svg>
             )}
           </button>
-        </>
+        </DropZone>
       )}
     </div>
   );

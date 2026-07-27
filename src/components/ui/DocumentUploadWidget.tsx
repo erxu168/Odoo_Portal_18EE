@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import PdfViewer from "@/components/ui/PdfViewer";
+import DropZone from './DropZone';
 
 /**
  * DocumentUploadWidget — Reusable document attachment component.
@@ -67,6 +68,11 @@ export default function DocumentUploadWidget({
   const [viewData, setViewData] = useState<DocumentData | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // `accept` may be ".pdf,image/*" or similar; DropZone matches on a mime
+  // prefix, so take the first mime-looking entry and fall back to accepting any
+  // file rather than silently refusing everything.
+  const dropAccept = (accept || '').split(',').map((a) => a.trim()).find((a) => a.includes('/'))?.replace(/\*$/, '') || '';
 
   async function handleUpload(file: File) {
     setUploading(true);
@@ -225,7 +231,7 @@ export default function DocumentUploadWidget({
   }
 
   // --- No document: show upload button ---
-  return (
+  const control = (
     <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl border-[1.5px] border-dashed border-gray-300 text-[var(--fs-sm)] font-semibold text-gray-500 active:bg-gray-50 cursor-pointer ${disabled || uploading ? "opacity-50 pointer-events-none" : ""}`}>
       {uploading ? (
         <>
@@ -250,5 +256,18 @@ export default function DocumentUploadWidget({
         disabled={uploading || disabled}
       />
     </label>
+  );
+
+  // Wrapped rather than rebuilt: the label above is still the click target, the
+  // drop is simply another way to reach the same upload.
+  return (
+    <DropZone
+      onFiles={(fs) => handleUpload(fs[0])}
+      accept={dropAccept}
+      disabled={uploading || disabled}
+      hint={`Drop the ${label.toLowerCase()} here`}
+    >
+      {control}
+    </DropZone>
   );
 }

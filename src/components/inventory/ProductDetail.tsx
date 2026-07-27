@@ -8,6 +8,7 @@ import ManageCategories from './ManageCategories';
 import { suggestCrateSizeFromName, baseIsMeasure, pluralizePack, unitWords } from '@/lib/crate-units';
 import { CategoryPathButton, CategoryPickerSheet, CategoryForm, type CategoryRow } from './CategoryPicker';
 import PackagingLevels from './PackagingLevels';
+import DropZone from '@/components/ui/DropZone';
 import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
 
@@ -366,9 +367,13 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   }
 
   async function onPhotoFile(e: React.ChangeEvent<HTMLInputElement>) {
-    if (readOnly) return;
     const file = e.target.files?.[0];
     e.target.value = '';
+    if (file) await uploadPhoto(file);
+  }
+
+  async function uploadPhoto(file: File) {
+    if (readOnly) return;
     if (!file) return;
     setBusy('photo');
     try {
@@ -417,19 +422,22 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {/* Photo */}
           <input ref={fileRef} type="file" accept="image/*" onChange={onPhotoFile} className="hidden" />
-          <button onClick={() => fileRef.current?.click()} disabled={busy === 'photo' || readOnly}
-            className="w-full mb-4 rounded-2xl border-2 border-dashed border-gray-300 bg-white overflow-hidden active:opacity-80 disabled:opacity-50"
-            aria-label="Change product photo">
-            {img ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={`/api/inventory/product-images/${product.id}?v=${imgVer}`} alt="" className="w-full max-h-56 object-cover" />
-            ) : (
-              <div className="py-10 text-center text-gray-400">
-                <div className="text-3xl mb-1">📷</div>
-                <div className="text-[var(--fs-sm)] font-semibold">Add a photo — camera or upload</div>
-              </div>
-            )}
-          </button>
+          <DropZone onFiles={(fs) => uploadPhoto(fs[0])} disabled={busy === 'photo' || readOnly}
+            className="mb-4" hint={img ? 'Drop to replace the photo' : 'Drop the photo here'}>
+            <button onClick={() => fileRef.current?.click()} disabled={busy === 'photo' || readOnly}
+              className="w-full rounded-2xl border-2 border-dashed border-gray-300 bg-white overflow-hidden active:opacity-80 disabled:opacity-50"
+              aria-label="Change product photo">
+              {img ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`/api/inventory/product-images/${product.id}?v=${imgVer}`} alt="" className="w-full max-h-56 object-cover" />
+              ) : (
+                <div className="py-10 text-center text-gray-400">
+                  <div className="text-3xl mb-1">📷</div>
+                  <div className="text-[var(--fs-sm)] font-semibold">Add a photo {'—'} camera, upload, or drag one in</div>
+                </div>
+              )}
+            </button>
+          </DropZone>
 
           {/* WHAT IT IS CALLED. Name, internal reference and barcode are the three
               ways a person or a scanner identifies this thing, so they sit
