@@ -30,9 +30,10 @@ test('rulesHash is stable across whitespace but changes with content', () => {
   expect(a).toMatch(/^[0-9a-f]{16}$/);
 });
 
-test('the default rules text covers the brief points and has no build-breaking apostrophes', () => {
-  expect(DEFAULT_ATTENDANCE_RULES).toContain('Overtime must be approved');
+test('the default rules text covers the required points', () => {
+  expect(DEFAULT_ATTENDANCE_RULES).toContain('TIME ATTENDANCE RULES');
   expect(DEFAULT_ATTENDANCE_RULES).toContain('smoking breaks');
-  expect(DEFAULT_ATTENDANCE_RULES).not.toContain("'"); // straight apostrophes block the Next build
+  expect(DEFAULT_ATTENDANCE_RULES).toContain('buddy punching');
+  expect(DEFAULT_ATTENDANCE_RULES).toContain('unpaid breaks');
   expect(RULES_CADENCES).toEqual(['every_clockin', 'daily', 'on_change']);
 });

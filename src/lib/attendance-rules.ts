@@ -12,19 +12,21 @@ export type RulesCadence = 'every_clockin' | 'daily' | 'on_change';
 export const RULES_CADENCES: RulesCadence[] = ['every_clockin', 'daily', 'on_change'];
 
 /** Default policy wording (manager-editable). Shown when no custom text is set. */
-export const DEFAULT_ATTENDANCE_RULES = `Attendance Rules
+export const DEFAULT_ATTENDANCE_RULES = `TIME ATTENDANCE RULES
 
-• Please arrive on time for every scheduled shift.
-• Work only during your scheduled working hours.
-• Overtime must be approved by management before it is worked.
-• All breaks, including smoking breaks, must be recorded in the system.
-• Never ask another employee to clock in or out on your behalf.
-• Do not clock in until you are ready to begin work.
-• Do not continue working after your scheduled shift without approval.
-• Follow all food safety and workplace safety procedures.
-• Report any attendance issues immediately to your manager.
-• Repeated lateness, missing clock events, or policy violations may result in disciplinary action.
-• Accurate attendance records are a condition of employment.`;
+Please help us maintain accurate attendance records by following these rules:
+
+• Clock in before you begin any work.
+• Clock out immediately after your shift has ended.
+• Record every unpaid break before leaving your work area.
+• Personal breaks, including smoking breaks, personal phone calls, and other non-work-related time away from your workstation, are unpaid and must be recorded as unpaid breaks unless authorized by management.
+• Never clock in, clock out, or record breaks for another employee.
+• If you forget to clock in, clock out, or record a break, notify your manager as soon as possible and no later than the end of your shift.
+• Review your recorded working time before leaving each day and report any errors immediately.
+• Falsifying attendance records, including buddy punching or intentionally failing to record unpaid breaks, may result in disciplinary action.
+• By clocking in, you confirm that your attendance record is accurate and that you agree to comply with these rules.
+
+Thank you for helping us keep our attendance records accurate and fair for everyone.`;
 
 /** Stable short hash of the rules text (whitespace-normalised) — used for "changed?" detection. */
 export function rulesHash(text: string): string {

@@ -70,6 +70,7 @@ export default function KioskPage() {
   const [screen, setScreen] = useState<'grid' | 'pin' | 'setup' | 'done' | 'rules'>('grid');
   const [rulesText, setRulesText] = useState('');
   const [ackPin, setAckPin] = useState('');
+  const [rulesChecked, setRulesChecked] = useState(false);
   const [staff, setStaff] = useState<KioskStaff[]>([]);
   const [selected, setSelected] = useState<KioskStaff | null>(null);
   const [pin, setPin] = useState('');
@@ -210,6 +211,7 @@ export default function KioskPage() {
           // Attendance-rules gate: show the policy, then re-punch with acknowledged=true.
           setRulesText(typeof d.rulesText === 'string' ? d.rulesText : '');
           setAckPin(finalPin);
+          setRulesChecked(false);
           setScreen('rules');
         } else if (r.ok && d.ok) {
           if (settings?.sound) beep();
@@ -445,12 +447,26 @@ export default function KioskPage() {
           <div className="w-full max-w-lg bg-white border border-gray-200 rounded-2xl p-6 text-left whitespace-pre-line text-[var(--fs-md)] text-gray-800 leading-relaxed">
             {rulesText}
           </div>
+          <label className="mt-6 w-full max-w-lg flex items-start gap-3 cursor-pointer select-none bg-white border border-gray-200 rounded-2xl p-4 active:bg-gray-50">
+            <input
+              type="checkbox"
+              checked={rulesChecked}
+              onChange={e => setRulesChecked(e.target.checked)}
+              className="mt-0.5 w-6 h-6 accent-green-600 flex-shrink-0"
+            />
+            <span className="text-[var(--fs-md)] font-semibold text-gray-800 leading-snug">
+              I have read and understood the Time Attendance Rules.
+            </span>
+          </label>
+          <div className="mt-4 max-w-lg text-center text-[var(--fs-sm)] text-gray-500 leading-snug">
+            By tapping &ldquo;Clock In&rdquo;, I confirm that I have read and understood the Time Attendance Rules.
+          </div>
           <button
             onClick={() => submitPin(ackPin, 'in', true)}
-            disabled={busy}
-            className="mt-6 w-full max-w-lg bg-green-600 text-white text-xl font-extrabold py-4 rounded-2xl active:bg-green-700 disabled:opacity-50"
+            disabled={busy || !rulesChecked}
+            className="mt-3 w-full max-w-lg bg-green-600 text-white text-xl font-extrabold py-4 rounded-2xl active:bg-green-700 disabled:opacity-40 disabled:active:bg-green-600"
           >
-            {busy ? 'One moment…' : 'I Understand'}
+            {busy ? 'One moment…' : 'Clock In'}
           </button>
           <button onClick={backToGrid} className="mt-3 text-gray-500 font-bold py-2 active:text-gray-700">
             Cancel
