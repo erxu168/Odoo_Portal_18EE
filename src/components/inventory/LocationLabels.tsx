@@ -23,12 +23,30 @@ import { locationCode } from '@/lib/location-code';
 interface LocRow { id: number; parent_id: number | null; name: string; sort_order: number; kind: string }
 interface Label { id: number; name: string; branch: string; code: string; qr: string; icon: string }
 
-/** Common Zebra rolls. Anything else is typed in. */
+/**
+ * Label stock, then ordinary paper. A4 is not a different mode — it is simply a
+ * very large label, one place per sheet, so a shelf sign printed on the office
+ * inkjet reads from across the room. Everything on the label is proportional,
+ * so the same code fills 57 × 32 mm and 210 × 297 mm.
+ */
 const SIZES = [
   { id: '75x50', label: '75 × 50', w: 75, h: 50 },
   { id: '57x32', label: '57 × 32', w: 57, h: 32 },
   { id: '100x50', label: '100 × 50', w: 100, h: 50 },
+  { id: 'a5', label: 'A5', w: 148, h: 210 },
+  { id: 'a4', label: 'A4', w: 210, h: 297 },
+  { id: 'a4l', label: 'A4 wide', w: 297, h: 210 },
 ] as const;
+
+/**
+ * Proportions that hold at 57 mm stop holding at 297 mm — a QR at 42% of an A4
+ * sheet is 12 cm across, which is absurd on a sign nobody scans from a metre
+ * away. Everything below is a fraction of the label, capped at what still makes
+ * sense on paper.
+ */
+const qrMm = (h: number) => Math.min(h * 0.42, 45);
+const smallMm = (h: number) => Math.min(Math.max(1.8, h * 0.055), 6);
+const branchMm = (h: number) => Math.min(Math.max(2, h * 0.062), 9);
 
 type Depth = 'leaf' | 'parent' | 'full';
 
@@ -109,13 +127,48 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
 
   const printing = labels.filter((l) => !skipped.has(l.id));
 
+  // What the chosen depth DOES, spelled out on a real place from this batch.
+  // Switching between the three looks identical when the only place being
+  // printed is top-level — there is nothing above it to show — and that reads
+  // as a broken preview rather than as "this one has no parent".
+  const depthNote = useMemo(() => {
+    let deepest: LocRow | null = null;
+    let best = 0;
+    for (const r of rows) {
+      const d = locationPath(r.id, rows).length;
+      if (d > best) { best = d; deepest = r; }
+    }
+    if (!deepest) return null;
+    const path = locationPath(deepest.id, rows);
+    if (path.length < 2) {
+      return `Every place here is top-level, so all three read the same — there is nothing above ${path[0] || 'them'} to show.`;
+    }
+    const above = path.slice(0, -1);
+    const shown = depth === 'leaf' ? ''
+      : depth === 'parent' ? (above[above.length - 1] || '')
+      : above.join(' › ');
+    return `For example: ${shown ? `${shown} · ` : ''}${path[path.length - 1]}`;
+  }, [rows, depth]);
+
   // The name has to be legible from across a room, so it is sized to the label
   // and to how long it is — rather than shrunk to fit and unreadable, or cut off.
-  const nameMm = (name: string) => {
-    const base = Math.min(size.w / 5.2, size.h / 2.6);
-    const longest = name.split(/\s+/).reduce((a, w) => Math.max(a, w.length), 0);
-    const fit = (size.w * 0.82) / Math.max(2, longest) * 1.7;
-    return Math.max(3.2, Math.min(base, fit));
+  const nameMm = (name: string, hasBranch: boolean) => {
+    // Whatever is left after the branch line, the footer and the padding — the
+    // name gets that and no more. Sizing on width alone let "WAJ Kitchen" wrap
+    // to two big lines and shove the QR off the bottom edge.
+    const pad = Math.min(Math.max(1.5, size.h * 0.06), 10) * 2;
+    const branchH = hasBranch ? branchMm(size.h) * 1.15 : 0;
+    const footerH = withQr ? qrMm(size.h) : smallMm(size.h) * 1.2;
+    const room = Math.max(3, size.h - pad - branchH - footerH - size.h * 0.04);
+
+    const words = name.trim().split(/\s+/).filter(Boolean);
+    const longest = words.reduce((a, w) => Math.max(a, w.length), 0) || 2;
+    const byWidth = (size.w * 0.86) / Math.max(2, longest) * 1.75;
+    // How many lines that width implies, and therefore what height it needs.
+    const perLine = Math.max(1, Math.floor((size.w * 0.86) / (byWidth * 0.55)));
+    const lines = Math.max(1, Math.ceil(name.length / Math.max(1, perLine)));
+    const byHeight = room / (lines * 1.05);
+    return Math.max(2.6, Math.min(size.w / 4.6, byWidth, byHeight));
   };
 
   if (!mounted) return null;
@@ -203,6 +256,10 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
         </div>
       </div>
 
+      {depthNote && (
+        <p className="kw-no-print px-5 pt-2 text-[var(--fs-xs)] text-gray-500">{depthNote}</p>
+      )}
+
       <p className="kw-no-print px-5 py-2 text-[var(--fs-xs)] text-gray-500 bg-amber-50 border-b border-amber-200">
         In the print dialog choose <strong>Scale 100%</strong> — not “Fit to page”, which resizes the label.
       </p>
@@ -227,22 +284,22 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
                     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                       {l.branch && (
                         <div style={{
-                          fontSize: `${Math.max(2, size.h * 0.062)}mm`, fontWeight: 700, letterSpacing: '.01em',
+                          fontSize: `${branchMm(size.h)}mm`, fontWeight: 700, letterSpacing: '.01em',
                           color: '#444', textTransform: 'uppercase', lineHeight: 1.15,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>{l.branch}</div>
                       )}
                       <div style={{
-                        fontSize: `${nameMm(l.name)}mm`, fontWeight: 900, letterSpacing: '-.02em',
+                        fontSize: `${nameMm(l.name, !!l.branch)}mm`, fontWeight: 900, letterSpacing: '-.02em',
                         lineHeight: .98, color: '#000', marginTop: '.4mm', overflowWrap: 'anywhere',
                       }}>{l.name}</div>
                       <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'flex-end', gap: `${size.w * 0.035}mm` }}>
                         {withQr && l.qr && (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={l.qr} alt="" style={{ width: `${size.h * 0.42}mm`, height: `${size.h * 0.42}mm`, flex: '0 0 auto' }} />
+                          <img src={l.qr} alt="" style={{ width: `${qrMm(size.h)}mm`, height: `${qrMm(size.h)}mm`, flex: '0 0 auto' }} />
                         )}
                         <span style={{
-                          fontFamily: 'ui-monospace, Menlo, monospace', fontSize: `${Math.max(1.8, size.h * 0.055)}mm`,
+                          fontFamily: 'ui-monospace, Menlo, monospace', fontSize: `${smallMm(size.h)}mm`,
                           fontWeight: 700, color: '#333', lineHeight: 1.1,
                         }}>{l.code}</span>
                       </div>
