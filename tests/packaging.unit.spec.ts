@@ -136,3 +136,51 @@ test('a hostile key in the level record cannot reach the total', () => {
   const evil = { byLevel: JSON.parse('{"__proto__": 5, "constructor": 7}'), loose: 3 } as never;
   expect(packTotal(evil, BUNS)).toBe(3);
 });
+
+// --- the hardening the adversarial review demanded ---------------------------
+
+test('two levels sharing an id cannot silently swallow stock', () => {
+  // 30 and 12 under the SAME id: the split wrote both into one slot and 42 came
+  // back as 12. The clash is reported, and only the first id is ever used.
+  const a: PackLevel = { id: 1, name: 'case', toBase: 30, countable: true, allowPartial: false };
+  const b: PackLevel = { id: 1, name: 'tray', toBase: 12, countable: true, allowPartial: false };
+  expect(validateLevels([a, b]).some((p) => /same id/.test(p.message))).toBe(true);
+  expect(usableLevels([a, b])).toHaveLength(1);
+  expect(packTotal(splitToLevels(42, [a, b]), [a, b])).toBe(42);
+});
+
+test('a conversion too small to store is refused, not silently zeroed', () => {
+  const tiny: PackLevel = { id: 2, name: 'speck', toBase: 4e-7, countable: true, allowPartial: false };
+  expect(validateLevels([tiny]).some((p) => /too small/.test(p.message))).toBe(true);
+  expect(usableLevels([tiny])).toHaveLength(0);
+});
+
+test('a conversion large enough to overflow is refused', () => {
+  const huge: PackLevel = { id: 3, name: 'mountain', toBase: 1e308, countable: true, allowPartial: false };
+  expect(validateLevels([huge]).some((p) => /larger than/.test(p.message))).toBe(true);
+  expect(usableLevels([huge])).toHaveLength(0);
+});
+
+test('a level worth exactly one base unit is the base unit, not packaging', () => {
+  const one: PackLevel = { id: 4, name: 'piece', toBase: 1, countable: true, allowPartial: false };
+  expect(validateLevels([one]).some((p) => /base unit itself/.test(p.message))).toBe(true);
+  expect(hasPackaging([one])).toBe(false);   // used to be true while the split skipped it
+});
+
+test('a quantity that is not a number fails loudly instead of becoming zero stock', () => {
+  expect(() => packTotal({ byLevel: { 1: NaN }, loose: 0 }, BUNS)).toThrow(/PACK_BAD_QUANTITY/);
+  expect(() => packTotal({ byLevel: { 1: Infinity }, loose: 0 }, BUNS)).toThrow(/PACK_BAD_QUANTITY/);
+  expect(() => packTotal({ byLevel: {}, loose: NaN }, BUNS)).toThrow(/PACK_BAD_QUANTITY/);
+});
+
+test('an overflowing count is refused rather than rounding to nothing', () => {
+  expect(() => packTotal({ byLevel: { 1: Number.MAX_VALUE }, loose: Number.MAX_VALUE }, BUNS))
+    .toThrow(/PACK_OVERFLOW/);
+});
+
+test('numeric-looking key variants cannot count the same level several times', () => {
+  // "1", "01", "1e0" and "0x1" all coerce to 1 — walking the record let one box
+  // be counted four times (450 instead of 30).
+  const evil = { byLevel: JSON.parse('{"1":1,"01":2,"1e0":4,"0x1":8}'), loose: 0 } as never;
+  expect(packTotal(evil, BUNS)).toBe(30);
+});

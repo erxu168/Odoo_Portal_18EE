@@ -51,7 +51,19 @@ export interface LevelProblem {
   message: string;
 }
 
+/**
+ * A level worth less than the storage quantum converts a whole package to ZERO
+ * (roundQty keeps six decimals), and a huge one overflows to Infinity, which
+ * then also rounds to zero. Both turn real stock into none, so they are refused
+ * outright rather than normalised.
+ */
+export const MIN_TO_BASE = 1e-6;
+export const MAX_TO_BASE = 1e6;
+
 const isPos = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0;
+const inRange = (n: unknown): n is number => isPos(n) && n >= MIN_TO_BASE && n <= MAX_TO_BASE;
+/** A row id has to be a real, stable identity — it keys the stored quantities. */
+const isId = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
 
 /**
  * The levels worth doing arithmetic with: valid ones, biggest first.
@@ -59,8 +71,19 @@ const isPos = (n: unknown): n is number => typeof n === 'number' && Number.isFin
  * never depend on the order rows came out of the database in.
  */
 export function usableLevels(levels: PackLevel[]): PackLevel[] {
+  const seen = new Set<number>();
   return (levels || [])
-    .filter((l) => l && isPos(l.toBase))
+    .filter((l) => {
+      if (!l || !isId(l.id) || !inRange(l.toBase)) return false;
+      // toBase === 1 IS the base unit, not packaging. Allowing it made
+      // hasPackaging() true while the splitter skipped it — the two disagreed.
+      if (l.toBase === 1) return false;
+      // A repeated id would overwrite itself in the split and lose the rest of
+      // the stock, so the FIRST wins and the clash is reported by validateLevels.
+      if (seen.has(l.id)) return false;
+      seen.add(l.id);
+      return true;
+    })
     .slice()
     .sort((a, b) => b.toBase - a.toBase || a.id - b.id);
 }
@@ -81,21 +104,42 @@ export function hasPackaging(levels: PackLevel[]): boolean {
  * count was entered must not silently re-price that count at another level's rate.
  */
 export function packTotal(count: PackCount, levels: PackLevel[]): number {
-  const byId = new Map(usableLevels(levels).map((l) => [l.id, l]));
-  let total = Number.isFinite(count?.loose) ? count.loose : 0;
-  for (const [rawId, rawQty] of Object.entries(count?.byLevel || {})) {
-    const lvl = byId.get(Number(rawId));
-    if (!lvl) continue;
-    const qty = Number.isFinite(rawQty) ? Number(rawQty) : 0;
+  // Iterate the KNOWN levels and look each id up, rather than walking whatever
+  // keys the record happens to carry. Walking the record let "1", "01", "1e0"
+  // and "0x1" all coerce to level 1, so the same level could be counted four
+  // times over; and it let inherited keys in at all.
+  const rec = (count?.byLevel || {}) as Record<string, unknown>;
+  let total = 0;
+  const loose = count?.loose;
+  if (loose !== undefined && loose !== null) {
+    if (typeof loose !== 'number' || !Number.isFinite(loose)) {
+      throw new Error('PACK_BAD_QUANTITY: the loose amount is not a number');
+    }
+    total = loose;
+  }
+  for (const lvl of usableLevels(levels)) {
+    const key = String(lvl.id);
+    if (!Object.prototype.hasOwnProperty.call(rec, key)) continue;
+    const qty = rec[key];
+    if (qty === undefined || qty === null) continue;
+    if (typeof qty !== 'number' || !Number.isFinite(qty)) {
+      throw new Error(`PACK_BAD_QUANTITY: the count for “${lvl.name}” is not a number`);
+    }
     total += qty * lvl.toBase;
   }
+  // An overflow to Infinity would round to 0 — real stock reported as none.
+  // Refuse rather than normalise a failure into a plausible quantity.
+  if (!Number.isFinite(total)) throw new Error('PACK_OVERFLOW: that count is too large to store');
   return roundQty(total);
 }
 
 /**
- * Break a base total back into whole levels + a loose remainder, biggest first —
- * so a saved 74 reads back as "2 boxes + 1 pack + 4 loose", the same shape the
- * counter entered.
+ * Break a base total back into whole levels + a loose remainder, biggest first.
+ *
+ * This is a BEST FIT, not shape recovery: only the base total is stored, so the
+ * original shape is genuinely unrecoverable. With 30s and 12s, three 12s (36)
+ * shows as "1 x 30 + 6 loose" — a correct total, a different shape. Don't claim
+ * to staff that it is what they typed.
  *
  * Only COUNTABLE levels are used: splitting into a pallet nobody counts would
  * show a number staff cannot verify on the shelf.
@@ -163,12 +207,34 @@ export function describeChain(levels: PackLevel[], baseWord: string): string {
  */
 export function validateLevels(levels: PackLevel[]): LevelProblem[] {
   const problems: LevelProblem[] = [];
+  const seenId = new Set<number>();
   const seenBase = new Map<number, PackLevel>();
   const seenName = new Set<string>();
   for (const l of levels || []) {
     if (!l) continue;
+    // A duplicate id is the dangerous one: the split writes both into the same
+    // slot, so part of the stock silently disappears (30 + 12 came back as 12).
+    if (!isId(l.id)) {
+      problems.push({ levelId: null, message: `“${l.name || 'level'}” has no valid id.` });
+    } else if (seenId.has(l.id)) {
+      problems.push({ levelId: l.id, message: `Two levels share the same id (${l.id}) — one of them would be lost.` });
+    } else {
+      seenId.add(l.id);
+    }
     if (!isPos(l.toBase)) {
       problems.push({ levelId: l.id ?? null, message: `“${l.name || 'level'}” must be worth more than zero.` });
+      continue;
+    }
+    if (l.toBase === 1) {
+      problems.push({ levelId: l.id, message: `“${l.name}” is worth one base unit — that is the base unit itself, not packaging.` });
+      continue;
+    }
+    if (l.toBase < MIN_TO_BASE) {
+      problems.push({ levelId: l.id, message: `“${l.name}” is too small to store — one of them would count as nothing.` });
+      continue;
+    }
+    if (l.toBase > MAX_TO_BASE) {
+      problems.push({ levelId: l.id, message: `“${l.name}” is larger than this can safely store.` });
       continue;
     }
     const clash = seenBase.get(l.toBase);

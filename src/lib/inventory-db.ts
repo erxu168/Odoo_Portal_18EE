@@ -8,6 +8,7 @@
 import { getDb } from './db';
 import { berlinToday, berlinWeekday } from './berlin-date';
 import { buildLocationTree } from './location-tree';
+import { MIN_TO_BASE, MAX_TO_BASE } from './packaging';
 import type {
   CountingTemplate, CountingSession, CountEntry, QuickCount,
   Frequency, AssignType, SessionStatus,
@@ -182,6 +183,34 @@ export function initInventoryTables() {
       created_at TEXT,
       UNIQUE(label)
     );
+
+    -- How a product NESTS: a box holds packs, a pack holds pieces. One row per
+    -- level; to_base is how many BASE units ONE of them is (see
+    -- src/lib/packaging.ts for why each level carries its own base value rather
+    -- than a factor to its parent). GLOBAL per product, like product_flags — a
+    -- different supplier means a different Odoo product, so one product has one
+    -- chain. The base unit itself is implicit (to_base = 1) and is never a row.
+    CREATE TABLE IF NOT EXISTS product_packaging_levels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      odoo_product_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      to_base REAL NOT NULL,
+      countable INTEGER NOT NULL DEFAULT 1,     -- may staff enter a number here?
+      allow_partial INTEGER NOT NULL DEFAULT 0, -- a sealed pack is whole-only
+      barcode TEXT,                             -- scanning a case means CASE
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_by INTEGER,
+      created_at TEXT,
+      updated_by INTEGER,
+      updated_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ppl_product ON product_packaging_levels(odoo_product_id, active);
+    -- Two live levels of a product may not share a name ("box" twice is a typo,
+    -- and the count screen would show two identical steppers). Archived rows are
+    -- exempt so a name can be retired and reused.
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ppl_name_live
+      ON product_packaging_levels(odoo_product_id, name) WHERE active = 1;
   `);
   } catch (e) {
     console.error('[krawings_inventory] table/index init error (continuing to migrate):', e instanceof Error ? e.message : e);
@@ -231,6 +260,31 @@ export function todayStr(): string {
 // ===
 
 function migrateInventorySchema(db: ReturnType<typeof getDb>) {
+  // Packaging levels are created here as well as in the big schema block above,
+  // because that block is ONE db.exec whose errors are deliberately swallowed:
+  // a legacy-incompatible statement earlier in it would skip everything after,
+  // and both packaging endpoints would then fail with "no such table".
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS product_packaging_levels (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      odoo_product_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      to_base REAL NOT NULL,
+      countable INTEGER NOT NULL DEFAULT 1,
+      allow_partial INTEGER NOT NULL DEFAULT 0,
+      barcode TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_by INTEGER,
+      created_at TEXT,
+      updated_by INTEGER,
+      updated_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ppl_product ON product_packaging_levels(odoo_product_id, active);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_ppl_name_live
+      ON product_packaging_levels(odoo_product_id, name) WHERE active = 1;
+  `);
+
   // Sessions migrations
   const sessCols = db.prepare("PRAGMA table_info('counting_sessions')").all() as { name: string }[];
   const sessColNames = sessCols.map(c => c.name);
@@ -2296,6 +2350,170 @@ const DEFAULT_PACK_LABELS = ['piece', 'bunch', 'head', 'crate', 'case', 'box', '
 export interface PackLabelRow { id: number; label: string; sort_order: number; in_use?: number }
 
 /** List the count-by units, seeding the defaults on first use. */
+// ── Multi-level packaging (box -> pack -> piece) ─────────────────────────────
+// The arithmetic lives in src/lib/packaging.ts (pure, unit-tested); this is only
+// storage. Rows are GLOBAL per Odoo product: a different supplier is a different
+// product, so one product has exactly one chain.
+
+export interface PackagingLevelRow {
+  id: number;
+  odoo_product_id: number;
+  name: string;
+  to_base: number;
+  countable: number;
+  allow_partial: number;
+  barcode: string | null;
+  sort_order: number;
+}
+
+/** A product's live levels, biggest first (the order the count screen shows). */
+export function listPackagingLevels(productId: number): PackagingLevelRow[] {
+  const db = getDb();
+  return db.prepare(`
+    SELECT id, odoo_product_id, name, to_base, countable, allow_partial, barcode, sort_order
+    FROM product_packaging_levels
+    WHERE odoo_product_id = ? AND active = 1
+    ORDER BY to_base DESC, id
+  `).all(productId) as PackagingLevelRow[];
+}
+
+/** Live levels for several products at once (one query for a whole list screen). */
+export function listPackagingLevelsFor(productIds: number[]): Map<number, PackagingLevelRow[]> {
+  const out = new Map<number, PackagingLevelRow[]>();
+  if (!productIds || productIds.length === 0) return out;
+  const db = getDb();
+  const ph = productIds.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT id, odoo_product_id, name, to_base, countable, allow_partial, barcode, sort_order
+    FROM product_packaging_levels
+    WHERE odoo_product_id IN (${ph}) AND active = 1
+    ORDER BY to_base DESC, id
+  `).all(...productIds) as PackagingLevelRow[];
+  rows.forEach((r) => {
+    const arr = out.get(r.odoo_product_id) || [];
+    arr.push(r);
+    out.set(r.odoo_product_id, arr);
+  });
+  return out;
+}
+
+/**
+ * Replace a product's whole chain in ONE transaction — all levels or none, so a
+ * half-written chain can never convert a count.
+ *
+ * Levels are ARCHIVED (active = 0), never deleted: a count entry may have been
+ * stored against a level id, and a hard delete would leave that quantity
+ * pointing at nothing. An id that is submitted again is UPDATED in place, so it
+ * keeps its identity (and anything already stored against it stays correct).
+ *
+ * Rejects a chain that would mis-convert — a non-positive `to_base`, or two live
+ * levels sharing a size/name — because a bad conversion misprices stock silently
+ * and forever.
+ */
+export function setPackagingLevels(
+  productId: number,
+  levels: { id?: number | null; name: string; to_base: number; countable?: boolean; allow_partial?: boolean; barcode?: string | null }[],
+  userId: number,
+): PackagingLevelRow[] {
+  const db = getDb();
+  if (!Array.isArray(levels)) throw new Error('PACKAGING_INVALID: levels must be a list');
+
+  // Validate STRICTLY and by hand: a malformed payload must come back as a clear
+  // 400, never a TypeError surfacing as a 500, and a string id like "12" must
+  // not be treated as a new level (which would archive the real one).
+  const clean = levels.map((raw, i) => {
+    if (!raw || typeof raw !== 'object') throw new Error(`PACKAGING_INVALID: level ${i + 1} is not filled in`);
+    const l = raw as Record<string, unknown>;
+    if (l.id !== undefined && l.id !== null && !(typeof l.id === 'number' && Number.isSafeInteger(l.id) && l.id > 0)) {
+      throw new Error(`PACKAGING_INVALID: level ${i + 1} has a bad id`);
+    }
+    if (typeof l.name !== 'string' || !l.name.trim()) throw new Error(`PACKAGING_INVALID: level ${i + 1} needs a name`);
+    if (typeof l.to_base !== 'number' || !Number.isFinite(l.to_base)) {
+      throw new Error(`PACKAGING_INVALID: “${l.name}” needs a size`);
+    }
+    if (l.to_base === 1) {
+      // The engine treats 1 as the base unit itself and drops it, so persisting
+      // it would return 200 for a level that then silently never counts.
+      throw new Error(`PACKAGING_INVALID: “${l.name}” is worth one base unit — that is the base unit itself, not packaging`);
+    }
+    if (l.to_base < MIN_TO_BASE || l.to_base > MAX_TO_BASE) {
+      // Below the storage quantum one whole package converts to zero; above it
+      // the arithmetic overflows to Infinity, which also rounds to zero.
+      throw new Error(`PACKAGING_INVALID: “${l.name}” must be between ${MIN_TO_BASE} and ${MAX_TO_BASE}`);
+    }
+    if (l.countable !== undefined && typeof l.countable !== 'boolean') throw new Error(`PACKAGING_INVALID: “${l.name}” has a bad countable flag`);
+    if (l.allow_partial !== undefined && typeof l.allow_partial !== 'boolean') throw new Error(`PACKAGING_INVALID: “${l.name}” has a bad partial flag`);
+    if (l.barcode !== undefined && l.barcode !== null && typeof l.barcode !== 'string') throw new Error(`PACKAGING_INVALID: “${l.name}” has a bad barcode`);
+    return {
+      id: (l.id as number | null | undefined) ?? null,
+      name: (l.name as string).trim().replace(/\s+/g, ' '),
+      to_base: l.to_base as number,
+      countable: l.countable === false ? 0 : 1,
+      allow_partial: l.allow_partial === true ? 1 : 0,
+      barcode: ((l.barcode as string | null | undefined) || '').trim() || null,
+    };
+  });
+
+  const bySize = new Map<number, string>();
+  const byName = new Set<string>();
+  const byId = new Set<number>();
+  for (const l of clean) {
+    // The same id twice updated one row twice and quietly dropped a level.
+    if (l.id != null) {
+      if (byId.has(l.id)) throw new Error(`PACKAGING_INVALID: “${l.name}” is listed twice`);
+      byId.add(l.id);
+    }
+    const sizeClash = bySize.get(l.to_base);
+    if (sizeClash) throw new Error(`PACKAGING_INVALID: “${l.name}” and “${sizeClash}” are both ${l.to_base}`);
+    bySize.set(l.to_base, l.name);
+    const key = l.name.toLowerCase();
+    if (byName.has(key)) throw new Error(`PACKAGING_INVALID: two levels called “${l.name}”`);
+    byName.add(key);
+  }
+
+  let saved: PackagingLevelRow[] = [];
+  const tx = db.transaction(() => {
+    // Park EVERY current row first, then bring back the submitted ones. Updating
+    // in place made a legitimate rename swap (box->pack, pack->box) collide with
+    // the partial unique index on the row that had not been renamed yet.
+    db.prepare('UPDATE product_packaging_levels SET active = 0 WHERE odoo_product_id = ? AND active = 1')
+      .run(productId);
+
+    const upd = db.prepare(`
+      UPDATE product_packaging_levels
+      SET name = ?, to_base = ?, countable = ?, allow_partial = ?, barcode = ?, sort_order = ?, active = 1,
+          updated_by = ?, updated_at = ?
+      WHERE id = ? AND odoo_product_id = ?
+    `);
+    const ins = db.prepare(`
+      INSERT INTO product_packaging_levels
+        (odoo_product_id, name, to_base, countable, allow_partial, barcode, sort_order, active, created_by, created_at, updated_by, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+    `);
+    clean.forEach((l, i) => {
+      const order = (i + 1) * 10;
+      if (l.id != null) {
+        const r = upd.run(l.name, l.to_base, l.countable, l.allow_partial, l.barcode, order, userId, now(), l.id, productId);
+        // An id from ANOTHER product changes no rows — never adopted silently.
+        if (r.changes === 0) throw new Error('PACKAGING_INVALID: that level does not belong to this product');
+      } else {
+        ins.run(productId, l.name, l.to_base, l.countable, l.allow_partial, l.barcode, order, userId, now(), userId, now());
+      }
+    });
+
+    // Read back INSIDE the transaction: a list taken after commit can already
+    // show another writer's chain, which the caller would then believe is theirs.
+    saved = db.prepare(`
+      SELECT id, odoo_product_id, name, to_base, countable, allow_partial, barcode, sort_order
+      FROM product_packaging_levels
+      WHERE odoo_product_id = ? AND active = 1
+      ORDER BY to_base DESC, id
+    `).all(productId) as PackagingLevelRow[];
+  });
+  tx.immediate();
+  return saved;
+}
+
 export function listPackLabels(): PackLabelRow[] {
   const db = getDb();
   // Seed inside ONE transaction so a concurrent worker can't observe a partial
