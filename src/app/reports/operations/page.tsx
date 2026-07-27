@@ -98,7 +98,7 @@ export default function OperationsReportPage() {
         <MonthPicker month={month} onChange={setMonth} />
       </div>
 
-      {loading && <LoadingState message="Loading operations\u2026 (slow first time)" />}
+      {loading && <LoadingState message="Loading operations… (slow first time)" />}
       {error && <ErrorState error={error} />}
 
       {data && (
@@ -196,7 +196,7 @@ export default function OperationsReportPage() {
 
           {data.sessionCashDiffs.length > 0 && (
             <>
-              <SectionTitle subtitle="Cash variance per POS session. Flagged > \u00b15\u20ac.">Cash Control</SectionTitle>
+              <SectionTitle subtitle="Cash variance per POS session. Flagged > ±5€.">Cash Control</SectionTitle>
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                 {data.sessionCashDiffs.slice(0, 20).map((s, i) => (
                   <div key={i} className={`flex justify-between items-center px-3 py-2 ${i > 0 ? 'border-t border-gray-100' : ''} ${s.flagged ? 'bg-amber-50' : ''}`}>

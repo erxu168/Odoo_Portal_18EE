@@ -173,7 +173,7 @@ export default function ManageTemplates({ onBack }: ManageTemplatesProps) {
       {/* Template list */}
       <div className="flex-1 overflow-y-auto px-4 pb-24">
         {loading ? <Spinner /> : filtered.length === 0 ? (
-          <EmptyState icon="\uD83D\uDCCB" title="No templates" body="Create your first counting list template" />
+          <EmptyState icon="📋" title="No templates" body="Create your first counting list template" />
         ) : (
           <div className="flex flex-col gap-3">
             {filtered.map((tpl: any) => {

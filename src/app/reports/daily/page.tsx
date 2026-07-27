@@ -30,7 +30,7 @@ export default function DailyReportPage() {
         <MonthPicker month={month} onChange={setMonth} />
       </div>
 
-      {loading && <LoadingState message="Loading daily breakdown\u2026" />}
+      {loading && <LoadingState message="Loading daily breakdown…" />}
       {error && <ErrorState error={error} />}
 
       {data && (

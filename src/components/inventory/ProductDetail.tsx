@@ -491,7 +491,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               <input value={packSize} disabled={readOnly}
                 onChange={(e) => setPackSize(e.target.value.replace(/[^0-9.]/g, ''))}
                 onBlur={(e) => savePack(e.target.value, effPack, looseLabel)}
-                inputMode="decimal" placeholder="\u2014"
+                inputMode="decimal" placeholder="—"
                 aria-label={`How many ${uomName} in one ${effPack}`}
                 className="w-16 h-9 border border-gray-300 rounded-lg text-center font-mono font-semibold" />
               {packSize !== '' && !measure ? (

@@ -146,7 +146,7 @@ export default function PrepItemDetail({ itemId }: { itemId: number }) {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F6F7F9]">
-        <AppHeader title="Loading\u2026" showBack onBack={() => router.back()} />
+        <AppHeader title="Loading…" showBack onBack={() => router.back()} />
         <div className="flex justify-center py-16">
           <div className="w-7 h-7 border-2 border-gray-300 border-t-cyan-600 rounded-full animate-spin" />
         </div>

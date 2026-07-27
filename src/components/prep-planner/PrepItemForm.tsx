@@ -142,7 +142,7 @@ export default function PrepItemForm({ mode, companyId, itemId, initial, onSaved
           <textarea
             value={values.notes}
             onChange={e => field('notes', e.target.value)}
-            placeholder="Optional recipe notes\u2026"
+            placeholder="Optional recipe notes…"
             rows={3}
             className="w-full px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-[14px] resize-none"
           />

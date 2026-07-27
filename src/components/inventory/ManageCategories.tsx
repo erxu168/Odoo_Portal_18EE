@@ -115,9 +115,17 @@ export default function ManageCategories({ onClose, onChanged, baseZ = 130 }: {
                             point where they differ. The branch sits above in small
                             type and the category itself is the bold part. */}
                         {(() => {
-                          const parts = String(c.complete_name || c.name).split(' / ');
-                          const leaf = parts[parts.length - 1] || c.name;
-                          const above = parts.slice(0, -1).join(' / ');
+                          // Split the path on " / " and six of these come out wrong:
+                          // a category may have a slash IN ITS NAME. "Drinks / Soft
+                          // Drinks" is one root category, not Drinks > Soft Drinks,
+                          // and "NON-FOOD / OPERATIONS" sits directly under All.
+                          // The name is authoritative; the branch is whatever the
+                          // full path has in front of it.
+                          const full = String(c.complete_name || c.name);
+                          const leaf = String(c.name || full);
+                          const above = full.endsWith(leaf)
+                            ? full.slice(0, full.length - leaf.length).replace(/\s*\/\s*$/, '')
+                            : '';
                           return (
                             <span className="flex-1 min-w-0">
                               {above && (

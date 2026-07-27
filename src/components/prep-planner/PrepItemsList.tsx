@@ -86,7 +86,7 @@ export default function PrepItemsList() {
             type="search"
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search by name, station, type\u2026"
+            placeholder="Search by name, station, type…"
             className="w-full h-12 pl-10 pr-3 rounded-xl border border-gray-200 bg-white text-[14px]"
           />
         </div>

@@ -81,7 +81,7 @@ export default function PnlReportPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
-      <AppHeader supertitle="REPORT \u00b7 ADMIN" title="P&L" subtitle={month} showBack onBack={() => router.push('/reports')} />
+      <AppHeader supertitle="REPORT · ADMIN" title="P&L" subtitle={month} showBack onBack={() => router.push('/reports')} />
       <LocationPicker locationId={locationId} onChange={setLocationId} />
 
       <div className="px-5 py-3 bg-white border-b border-gray-200 flex items-center gap-2">
@@ -89,7 +89,7 @@ export default function PnlReportPage() {
         <MonthPicker month={month} onChange={setMonth} />
       </div>
 
-      {loading && <LoadingState message="Loading P&L\u2026 (slow first time)" />}
+      {loading && <LoadingState message="Loading P&L… (slow first time)" />}
       {error && <ErrorState error={error} />}
 
       {data && (

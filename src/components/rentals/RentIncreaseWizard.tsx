@@ -150,7 +150,7 @@ export default function RentIncreaseWizard() {
   return (
     <div className="min-h-screen bg-[#F6F7F9]">
       <AppHeader
-        title="Mieterh\u00f6hung"
+        title="Mieterhöhung"
         subtitle="Rent Increase Analysis"
         showBack
         onBack={() => router.back()}

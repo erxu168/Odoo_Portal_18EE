@@ -25,7 +25,7 @@ export default function DashboardReportPage() {
       <AppHeader supertitle="REPORT" title="Dashboard" subtitle={`Today: ${today}`} showBack onBack={() => router.push('/reports')} />
       <LocationPicker locationId={locationId} onChange={setLocationId} />
 
-      {loading && <LoadingState message="Loading dashboard\u2026 (3-8s on first load)" />}
+      {loading && <LoadingState message="Loading dashboard… (3-8s on first load)" />}
       {error && <ErrorState error={error} />}
 
       {data && (
