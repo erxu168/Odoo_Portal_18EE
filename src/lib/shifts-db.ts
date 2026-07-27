@@ -111,6 +111,19 @@ function ensureTables(): void {
     CREATE INDEX IF NOT EXISTS idx_ack_company_date ON attendance_ack(company_id, ack_date);
     CREATE INDEX IF NOT EXISTS idx_ack_emp ON attendance_ack(company_id, employee_id, acked_at);
 
+    CREATE TABLE IF NOT EXISTS overtime_decision (
+      company_id INTEGER NOT NULL,
+      attendance_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reason TEXT,
+      overtime_mins INTEGER,
+      decided_by INTEGER,
+      decided_by_name TEXT,
+      decided_at TEXT,
+      PRIMARY KEY (company_id, attendance_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ot_company ON overtime_decision(company_id);
+
     CREATE TABLE IF NOT EXISTS shift_notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_id INTEGER NOT NULL,
@@ -905,6 +918,69 @@ export function attendanceAcksOn(companyId: number, ackDate: string): { employee
       )
       .all(companyId, ackDate) as { employeeId: number; ackedAt: string; device: string | null }[]
   );
+}
+
+// -- Overtime approval decisions (Phase 3) ---------------------------------------
+// Overtime EVENTS are derived on-demand from attendance × schedule (see
+// shifts-punctuality). We persist only the manager's DECISION per clock-out punch,
+// keyed by hr.attendance id, so approvals map 1:1 to the real punch and no derived
+// row can drift. Absence of a row = "pending" (not yet decided).
+
+export type OvertimeStatus = 'pending' | 'approved' | 'rejected';
+export interface OvertimeDecisionRow {
+  attendanceId: number;
+  status: OvertimeStatus;
+  reason: string | null;
+  overtimeMins: number | null;
+  decidedBy: number | null;
+  decidedByName: string | null;
+  decidedAt: string | null;
+}
+
+/** Decisions for a set of attendance ids, as a map keyed by attendance id. */
+export function overtimeDecisions(companyId: number, attendanceIds: number[]): Map<number, OvertimeDecisionRow> {
+  ensureTables();
+  const out = new Map<number, OvertimeDecisionRow>();
+  if (attendanceIds.length === 0) return out;
+  const placeholders = attendanceIds.map(() => '?').join(',');
+  const rows = getDb()
+    .prepare(
+      `SELECT attendance_id AS attendanceId, status, reason, overtime_mins AS overtimeMins,
+              decided_by AS decidedBy, decided_by_name AS decidedByName, decided_at AS decidedAt
+       FROM overtime_decision WHERE company_id=? AND attendance_id IN (${placeholders})`,
+    )
+    .all(companyId, ...attendanceIds) as OvertimeDecisionRow[];
+  for (const r of rows) out.set(r.attendanceId, r);
+  return out;
+}
+
+/** Record (or overwrite) a manager's approve/reject decision for one overtime punch. */
+export function setOvertimeDecision(
+  companyId: number,
+  attendanceId: number,
+  status: OvertimeStatus,
+  opts: { reason?: string | null; overtimeMins?: number | null; decidedBy?: number | null; decidedByName?: string | null } = {},
+): void {
+  ensureTables();
+  getDb()
+    .prepare(
+      `INSERT INTO overtime_decision
+         (company_id, attendance_id, status, reason, overtime_mins, decided_by, decided_by_name, decided_at)
+       VALUES (?,?,?,?,?,?,?,?)
+       ON CONFLICT(company_id, attendance_id) DO UPDATE SET
+         status=excluded.status, reason=excluded.reason, overtime_mins=excluded.overtime_mins,
+         decided_by=excluded.decided_by, decided_by_name=excluded.decided_by_name, decided_at=excluded.decided_at`,
+    )
+    .run(
+      companyId,
+      attendanceId,
+      status,
+      opts.reason ?? null,
+      opts.overtimeMins ?? null,
+      opts.decidedBy ?? null,
+      opts.decidedByName ?? null,
+      nowISO(),
+    );
 }
 
 // -- Shift confirm tokens (behind the "confirm you'll be there" email link) ------

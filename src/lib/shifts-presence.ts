@@ -3,11 +3,12 @@
  *
  * Combines today's published planning.slots (who is scheduled) with open
  * hr.attendance records (who has clocked in) to derive a per-shift state:
- *   present  — clocked in right now
- *   late     — scheduled, not clocked in, now past start + grace, before end
- *   due      — scheduled, not clocked in, in the window but within grace
- *   upcoming — shift hasn't started yet
- *   done     — shift end time has passed
+ *   present          — clocked in right now
+ *   missed_clock_out — clocked in, but the shift ended well ago (still not out)
+ *   late             — scheduled, not clocked in, now past start + grace, before end
+ *   due              — scheduled, not clocked in, in the window but within grace
+ *   upcoming         — shift hasn't started yet
+ *   done             — shift end time has passed
  * Anyone clocked in who is NOT on a published/assigned shift today is returned
  * separately as `unscheduledPresent`, so the board always answers "who is
  * physically here right now" even when the rota isn't published or maintained.
@@ -25,7 +26,14 @@ import { fetchWeekSlots } from '@/lib/shifts-odoo';
 import type { ShiftSlot } from '@/types/shifts';
 import { berlinParts, currentWeekKey, nowOdooUtc, odooToDate } from '@/lib/shifts-time';
 
-export type PresenceState = 'present' | 'late' | 'due' | 'upcoming' | 'done';
+export type PresenceState = 'present' | 'missed_clock_out' | 'late' | 'due' | 'upcoming' | 'done';
+
+/**
+ * How long after a scheduled shift end a still-open clock-in becomes a
+ * "missed clock-out" (someone forgot to clock out, or is on unapproved overtime).
+ * A fixed default for now; can be promoted to a per-company setting later.
+ */
+export const MISSED_CLOCKOUT_AFTER_MIN = 60;
 
 export interface PresenceRow {
   employeeId: number;
@@ -57,10 +65,12 @@ export interface PresenceResult {
   graceMin: number;
   rows: PresenceRow[];
   lateCount: number;
+  /** rows still clocked in well past their shift end */
+  missedClockOutCount: number;
   unscheduledPresent: UnscheduledPresent[];
 }
 
-const RANK: Record<PresenceState, number> = { late: 0, due: 1, present: 2, upcoming: 3, done: 4 };
+const RANK: Record<PresenceState, number> = { missed_clock_out: 0, late: 1, due: 2, present: 3, upcoming: 4, done: 5 };
 
 /**
  * Pure presence computation — no Odoo access, so it is directly unit-testable.
@@ -71,6 +81,7 @@ export function buildPresence(
   open: Map<number, OpenAttendance>,
   nowUtc: string,
   graceMin: number,
+  missedClockOutAfterMin: number = MISSED_CLOCKOUT_AFTER_MIN,
 ): PresenceResult {
   const nowMs = odooToDate(nowUtc).getTime();
   const todayDate = berlinParts(nowUtc).date;
@@ -88,7 +99,9 @@ export function buildPresence(
     let state: PresenceState;
     let minsLate = 0;
     if (att) {
-      state = 'present';
+      // Still clocked in. A short grace past the shift end is normal; well beyond
+      // it means they likely forgot to clock out (or are on unapproved overtime).
+      state = nowMs >= endMs + missedClockOutAfterMin * 60000 ? 'missed_clock_out' : 'present';
     } else if (nowMs >= endMs) {
       state = 'done';
     } else if (nowMs < startMs) {
@@ -130,7 +143,14 @@ export function buildPresence(
   }
   unscheduledPresent.sort((a, b) => odooToDate(a.checkIn).getTime() - odooToDate(b.checkIn).getTime());
 
-  return { now: nowUtc, graceMin, rows, lateCount: rows.filter(r => r.state === 'late').length, unscheduledPresent };
+  return {
+    now: nowUtc,
+    graceMin,
+    rows,
+    lateCount: rows.filter(r => r.state === 'late').length,
+    missedClockOutCount: rows.filter(r => r.state === 'missed_clock_out').length,
+    unscheduledPresent,
+  };
 }
 
 export async function computePresence(companyId: number, graceMin: number): Promise<PresenceResult> {

@@ -24,7 +24,7 @@ import { fetchEmployees, fetchWeekSlots } from '@/lib/shifts-odoo';
 import { getOdoo } from '@/lib/odoo';
 import { ATTENDANCE_POLICY_DEFAULTS, overtimeMinutes, policyFromSettings, type AttendancePolicy } from '@/lib/shifts-attendance-policy';
 import { getShiftSettings } from '@/lib/shifts-db';
-import { berlinParts, odooToDate, weekKeyToUtcRange } from '@/lib/shifts-time';
+import { berlinParts, fmtTimeRange, odooToDate, weekKeyToUtcRange } from '@/lib/shifts-time';
 
 export interface PunctualityEmployee {
   employeeId: number;
@@ -39,6 +39,25 @@ export interface PunctualityEmployee {
   matched: number;
 }
 
+/**
+ * One shift where the employee clocked out beyond the overtime grace. Keyed by
+ * the clock-out hr.attendance id so a manager approval decision maps 1:1 to the
+ * exact punch (no derived row to drift). Derived on-demand from attendance ×
+ * slots — never stored — so it always reflects current data and stays reversible.
+ */
+export interface OvertimeEvent {
+  /** hr.attendance id of the latest clock-out in the shift group. */
+  attendanceId: number;
+  employeeId: number;
+  employeeName: string;
+  /** Berlin calendar day of the scheduled shift (YYYY-MM-DD). */
+  date: string;
+  /** Human shift window, e.g. "09:00 – 17:00". */
+  shift: string;
+  /** Minutes worked beyond the scheduled end + grace. */
+  overtimeMins: number;
+}
+
 export interface PunctualityResult {
   weekKey: string;
   employees: PunctualityEmployee[];
@@ -48,6 +67,8 @@ export interface PunctualityResult {
   ambiguous: number;
   linkedMatched: number;
   fallbackMatched: number;
+  /** Per-shift overtime beyond grace, one entry per clock-out that needs approval. */
+  overtimeEvents: OvertimeEvent[];
 }
 
 /** Minimal slot shape the pure matcher needs. */
@@ -103,6 +124,10 @@ export function tallyPunctuality(
     employeeId: number;
     earliestIn: string;
     latestOut: string | null;
+    /** hr.attendance id of the record holding latestOut (for approval keying). */
+    latestOutId: number | null;
+    /** true while any segment of this shift is still clocked in (no check-out). */
+    hasOpen: boolean;
     linked: boolean;
   }
   const groups = new Map<string, Group>();
@@ -142,18 +167,29 @@ export function tallyPunctuality(
     const key = `${r.employeeId}:${slot.id}`;
     const g = groups.get(key);
     if (!g) {
-      groups.set(key, { slot, employeeId: r.employeeId, earliestIn: r.checkIn, latestOut: r.checkOut, linked });
+      groups.set(key, {
+        slot,
+        employeeId: r.employeeId,
+        earliestIn: r.checkIn,
+        latestOut: r.checkOut,
+        latestOutId: r.checkOut ? r.id : null,
+        hasOpen: r.checkOut === null,
+        linked,
+      });
     } else {
       if (odooToDate(r.checkIn).getTime() < odooToDate(g.earliestIn).getTime()) g.earliestIn = r.checkIn;
       if (r.checkOut && (!g.latestOut || odooToDate(r.checkOut).getTime() > odooToDate(g.latestOut).getTime())) {
         g.latestOut = r.checkOut;
+        g.latestOutId = r.id;
       }
+      if (r.checkOut === null) g.hasOpen = true;
       if (linked) g.linked = true;
     }
   }
 
   let linkedMatched = 0;
   let fallbackMatched = 0;
+  const overtimeEvents: OvertimeEvent[] = [];
   for (const g of Array.from(groups.values())) {
     if (g.linked) linkedMatched++;
     else fallbackMatched++;
@@ -165,7 +201,11 @@ export function tallyPunctuality(
       e.lateCount++;
       e.lateMins += lateMin;
     }
-    if (g.latestOut && g.slot.end) {
+    // Only judge the end (left-early / overtime) once the WHOLE shift is closed.
+    // While any segment is still open the final clock-out is unknown, so an early
+    // or overtime verdict here would be provisional and could disagree with the
+    // approvals queue (which likewise waits for a closed shift).
+    if (g.latestOut && g.slot.end && !g.hasOpen) {
       const outMs = odooToDate(g.latestOut).getTime();
       const endMs = odooToDate(g.slot.end).getTime();
       if (outMs < endMs) {
@@ -178,6 +218,16 @@ export function tallyPunctuality(
         if (over > 0) {
           e.overCount++;
           e.overMins += over;
+          if (g.latestOutId !== null) {
+            overtimeEvents.push({
+              attendanceId: g.latestOutId,
+              employeeId: g.employeeId,
+              employeeName: nameOf(g.employeeId),
+              date: berlinParts(g.slot.start).date,
+              shift: g.slot.end ? fmtTimeRange(g.slot.start, g.slot.end) : berlinParts(g.slot.start).hhmm,
+              overtimeMins: over,
+            });
+          }
         }
       }
     }
@@ -186,7 +236,10 @@ export function tallyPunctuality(
   const employees = Array.from(byEmp.values()).sort(
     (a, b) => b.lateMins + b.earlyMins - (a.lateMins + a.earlyMins) || a.employeeName.localeCompare(b.employeeName),
   );
-  return { weekKey, employees, unmatched, ambiguous, linkedMatched, fallbackMatched };
+  overtimeEvents.sort(
+    (a, b) => b.date.localeCompare(a.date) || b.overtimeMins - a.overtimeMins || a.employeeName.localeCompare(b.employeeName),
+  );
+  return { weekKey, employees, unmatched, ambiguous, linkedMatched, fallbackMatched, overtimeEvents };
 }
 
 function m2oId(v: unknown): number | null {

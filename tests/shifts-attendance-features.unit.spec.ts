@@ -75,6 +75,22 @@ test('presence: scheduled, no clock-in, past grace → late with minutes', () =>
   expect(r.lateCount).toBe(1);
 });
 
+test('presence: clocked in but shift ended well ago → missed clock-out', () => {
+  // NOW 17:00 Berlin. Shift 10:00–15:30 Berlin (08:00–13:30 UTC) ended 90 min ago.
+  const slots = [slot({ id: 100, employeeId: 4, employeeName: 'Cara', start: '2026-07-15 08:00:00', end: '2026-07-15 13:30:00' })];
+  const r = buildPresence(slots, open([{ id: 4, checkIn: '2026-07-15 08:00:00' }]), NOW, 10);
+  expect(r.rows[0].state).toBe('missed_clock_out');
+  expect(r.missedClockOutCount).toBe(1);
+});
+
+test('presence: clocked in just after shift end (within threshold) is still present', () => {
+  // Shift ends 14:30 UTC (30 min before NOW) — inside the 60-min missed threshold.
+  const slots = [slot({ id: 100, employeeId: 4, start: '2026-07-15 08:00:00', end: '2026-07-15 14:30:00' })];
+  const r = buildPresence(slots, open([{ id: 4, checkIn: '2026-07-15 08:00:00' }]), NOW, 10);
+  expect(r.rows[0].state).toBe('present');
+  expect(r.missedClockOutCount).toBe(0);
+});
+
 // ============================= PUNCTUALITY ==================================
 
 const rec = (o: Partial<AttendanceRecord> & { id: number; employeeId: number; checkIn: string }): AttendanceRecord => ({
@@ -159,4 +175,67 @@ test('punctuality: left-early and overtime are tallied from check_out vs slot en
     nameOf,
   );
   expect(over.employees[0]).toMatchObject({ overCount: 1, overMins: 45, earlyCount: 0 });
+});
+
+test('overtime events: one event per over-grace clock-out, keyed by the clock-out attendance id', () => {
+  const r = tallyPunctuality(
+    '2026-W29',
+    [rec({ id: 77, employeeId: 1, checkIn: '2026-07-15 14:00:00', checkOut: '2026-07-15 20:45:00' })],
+    new Map(),
+    [pslot(100, 1, '2026-07-15 14:00:00', '2026-07-15 20:00:00')],
+    nameOf,
+  );
+  expect(r.overtimeEvents).toHaveLength(1);
+  expect(r.overtimeEvents[0]).toMatchObject({
+    attendanceId: 77,
+    employeeId: 1,
+    employeeName: 'E1',
+    overtimeMins: 45,
+  });
+});
+
+test('overtime events: a clock-out within the grace produces NO event', () => {
+  const r = tallyPunctuality(
+    '2026-W29',
+    // 20:15 = 15 min past end, inside the default 20-min grace.
+    [rec({ id: 1, employeeId: 1, checkIn: '2026-07-15 14:00:00', checkOut: '2026-07-15 20:15:00' })],
+    new Map(),
+    [pslot(100, 1, '2026-07-15 14:00:00', '2026-07-15 20:00:00')],
+    nameOf,
+  );
+  expect(r.employees[0].overCount).toBe(0);
+  expect(r.overtimeEvents).toHaveLength(0);
+});
+
+test('overtime events: a split shift keys the event to the LATEST clock-out record', () => {
+  const r = tallyPunctuality(
+    '2026-W29',
+    [
+      rec({ id: 1, employeeId: 1, checkIn: '2026-07-15 14:00:00', checkOut: '2026-07-15 17:00:00' }),
+      rec({ id: 2, employeeId: 1, checkIn: '2026-07-15 17:30:00', checkOut: '2026-07-15 20:50:00' }),
+    ],
+    new Map(),
+    [pslot(100, 1, '2026-07-15 14:00:00', '2026-07-15 20:00:00')],
+    nameOf,
+  );
+  expect(r.overtimeEvents).toHaveLength(1);
+  expect(r.overtimeEvents[0].attendanceId).toBe(2); // the later punch, not the earlier one
+  expect(r.overtimeEvents[0].overtimeMins).toBe(50);
+});
+
+test('overtime events: no event while a segment of the shift is still open (avoids orphaned decisions)', () => {
+  const r = tallyPunctuality(
+    '2026-W29',
+    [
+      // one segment closed past end, another segment still clocked in (no check-out)
+      rec({ id: 1, employeeId: 1, checkIn: '2026-07-15 14:00:00', checkOut: '2026-07-15 20:50:00' }),
+      rec({ id: 2, employeeId: 1, checkIn: '2026-07-15 21:00:00', checkOut: null }),
+    ],
+    new Map(),
+    [pslot(100, 1, '2026-07-15 14:00:00', '2026-07-15 20:00:00')],
+    nameOf,
+  );
+  expect(r.overtimeEvents).toHaveLength(0); // wait until the whole shift is closed
+  // The Punctuality tally must agree — no provisional overtime while a segment is open.
+  expect(r.employees[0]).toMatchObject({ matched: 1, overCount: 0, earlyCount: 0 });
 });

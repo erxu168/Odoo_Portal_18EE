@@ -18,6 +18,7 @@ import Approvals from '@/components/shifts/Approvals';
 import PresenceBoard from '@/components/shifts/PresenceBoard';
 import Timesheet from '@/components/shifts/Timesheet';
 import Punctuality from '@/components/shifts/Punctuality';
+import OvertimeApprovals from '@/components/shifts/OvertimeApprovals';
 import ShiftSettings from '@/components/shifts/ShiftSettings';
 import PatternManager from '@/components/shifts/PatternManager';
 import ManagerOverview from '@/components/shifts/ManagerOverview';
@@ -54,6 +55,7 @@ type Screen =
   | { type: 'presence' }
   | { type: 'timesheet' }
   | { type: 'punctuality' }
+  | { type: 'overtime' }
   | { type: 'settings' }
   | { type: 'patterns' }
   | { type: 'overview' }
@@ -77,6 +79,7 @@ const PARENT: Record<Screen['type'], Screen['type']> = {
   presence: 'dashboard',
   timesheet: 'dashboard',
   punctuality: 'dashboard',
+  overtime: 'dashboard',
   settings: 'dashboard',
   patterns: 'settings',
   overview: 'dashboard',
@@ -189,6 +192,7 @@ export default function ShiftsPage() {
     else if (key === 'presence') navigate({ type: 'presence' });
     else if (key === 'timesheet') navigate({ type: 'timesheet' });
     else if (key === 'punctuality') navigate({ type: 'punctuality' });
+    else if (key === 'overtime') navigate({ type: 'overtime' });
   }
 
   const common = {
@@ -273,6 +277,8 @@ export default function ShiftsPage() {
         return <Timesheet {...common} />;
       case 'punctuality':
         return <Punctuality {...common} />;
+      case 'overtime':
+        return <OvertimeApprovals companyId={common.companyId} onBack={common.onBack} />;
       case 'settings':
         return <ShiftSettings {...common} onOpenPatterns={() => navigate({ type: 'patterns' })} />;
       case 'patterns':

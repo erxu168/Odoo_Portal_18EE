@@ -64,6 +64,7 @@ export default function ShiftsDashboard({ companyId, isManager, badges, onNaviga
     { key: 'busy', emoji: '\u{1F525}', label: 'Busy Times', sublabel: 'When we’re busiest', badge: null },
     { key: 'approvals', emoji: '✅', label: 'Approvals', sublabel: 'Covers & sick reports', badge: badges.approvals > 0 ? badges.approvals : null },
     { key: 'unconfirmed', emoji: '⏳', label: 'Not yet confirmed', sublabel: 'Who hasn’t confirmed', badge: badges.unconfirmed > 0 ? badges.unconfirmed : null },
+    { key: 'overtime', emoji: '➕', label: 'Overtime', sublabel: 'Approve extra hours', badge: null },
   ];
 
   const admin: Tile[] = [

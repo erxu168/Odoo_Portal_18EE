@@ -14,7 +14,7 @@ import { berlinParts, fmtTimeRange } from '@/lib/shifts-time';
  * late arrival surfaces without reloading. Read-only.
  */
 
-type PresenceState = 'present' | 'late' | 'due' | 'upcoming' | 'done';
+type PresenceState = 'present' | 'missed_clock_out' | 'late' | 'due' | 'upcoming' | 'done';
 
 interface PresenceRow {
   employeeId: number;
@@ -44,6 +44,7 @@ interface PresenceProps {
 
 const STATE_META: Record<PresenceState, { variant: BadgeVariant; label: string }> = {
   present: { variant: 'green', label: 'Present' },
+  missed_clock_out: { variant: 'amber', label: 'No clock-out' },
   late: { variant: 'red', label: 'Late' },
   due: { variant: 'amber', label: 'Due now' },
   upcoming: { variant: 'gray', label: 'Upcoming' },
@@ -89,6 +90,7 @@ export default function PresenceBoard({ companyId, onBack }: PresenceProps) {
   const presentCount = scheduledPresent + unscheduled.length;
   const lateRows = rows.filter(r => r.state === 'late');
   const lateNames = lateRows.map(r => r.employeeName).join(', ');
+  const missedRows = rows.filter(r => r.state === 'missed_clock_out');
   const dayLabel = (odoo: string) => berlinParts(odoo).date.slice(5).replace('-', '/'); // MM/DD
 
   return (
@@ -132,6 +134,9 @@ export default function PresenceBoard({ companyId, onBack }: PresenceProps) {
             <div className="flex gap-2">
               <StatChip value={presentCount} label="Present" />
               <StatChip value={lateRows.length} label="Late" tone={lateRows.length > 0 ? 'red' : 'default'} />
+              {missedRows.length > 0 && (
+                <StatChip value={missedRows.length} label="No clock-out" tone="amber" />
+              )}
               <StatChip value={rows.length} label="Scheduled" />
             </div>
 
@@ -188,7 +193,8 @@ export default function PresenceBoard({ companyId, onBack }: PresenceProps) {
                         </div>
                         <div className="text-[var(--fs-sm)] text-gray-500 mt-0.5">
                           {fmtTimeRange(r.start, r.end)}
-                          {r.state === 'present' && r.checkIn ? ` · in since ${hhmm(r.checkIn)}` : ''}
+                          {(r.state === 'present' || r.state === 'missed_clock_out') && r.checkIn ? ` · in since ${hhmm(r.checkIn)}` : ''}
+                          {r.state === 'missed_clock_out' ? ' · shift ended, not clocked out' : ''}
                           {r.state === 'late' ? ` · ${r.minsLate} min late` : ''}
                         </div>
                       </div>
