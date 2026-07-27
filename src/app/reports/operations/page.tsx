@@ -163,8 +163,8 @@ export default function OperationsReportPage() {
                   <div key={t.name} className={`px-3 py-3 ${i > 0 ? 'border-t border-gray-100' : ''} bg-red-50`}>
                     <div className="font-bold text-[var(--fs-sm)] text-gray-900">{t.name}</div>
                     <div className="text-[10px] text-gray-600 mt-1">
-                      Card tips: <span className="font-mono font-semibold">{fmtPct(t.cardTipRatio)}</span> &nbsp;\u00b7&nbsp;
-                      Cash tips: <span className="font-mono font-semibold">{fmtPct(t.cashTipRatio)}</span> &nbsp;\u00b7&nbsp;
+                      Card tips: <span className="font-mono font-semibold">{fmtPct(t.cardTipRatio)}</span> &nbsp;·&nbsp;
+                      Cash tips: <span className="font-mono font-semibold">{fmtPct(t.cashTipRatio)}</span> &nbsp;·&nbsp;
                       Gap: <span className="font-mono font-semibold text-red-700">{Math.abs(t.tipGapPp).toFixed(1)}pp</span>
                     </div>
                     <div className="text-[10px] text-gray-600">

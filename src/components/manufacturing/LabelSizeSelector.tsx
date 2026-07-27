@@ -187,7 +187,7 @@ export default function LabelSizeSelector({ companyId, onSizeChange }: LabelSize
         <optgroup label="Presets">
           {LABEL_SIZE_PRESETS.map(p => (
             <option key={p.id} value={`preset:${p.id}`}>
-              {p.name} \u2014 {p.description}
+              {p.name} — {p.description}
             </option>
           ))}
         </optgroup>
@@ -201,7 +201,7 @@ export default function LabelSizeSelector({ companyId, onSizeChange }: LabelSize
           </optgroup>
         )}
         <optgroup label="Other">
-          <option value="custom">Custom size\u2026</option>
+          <option value="custom">Custom size…</option>
         </optgroup>
       </select>
 

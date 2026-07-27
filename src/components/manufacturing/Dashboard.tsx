@@ -134,7 +134,7 @@ export default function Dashboard({ onNavigate, onSelectTab }: DashboardProps) {
           <button onClick={() => onSelectTab('inventory')} className="bg-white border border-gray-200 rounded-xl p-4 text-left active:bg-gray-50 transition-colors">
             <div className="flex items-center gap-2.5 mb-3">
               <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
-                <span className="text-base">\uD83D\uDCE6</span>
+                <span className="text-base">📦</span>
               </div>
               <span className="text-base font-bold text-gray-900">Inventory</span>
             </div>

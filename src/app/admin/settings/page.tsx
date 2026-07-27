@@ -224,7 +224,7 @@ export default function AdminSettingsPage() {
 
           {overrides.length === 0 ? (
             <div className="p-6 text-center">
-              <div className="text-[13px] text-gray-400">No overrides \u2014 all recipes use the global default ({globalTolerance}%)</div>
+              <div className="text-[13px] text-gray-400">No overrides — all recipes use the global default ({globalTolerance}%)</div>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
