@@ -9,6 +9,7 @@ import { suggestCrateSizeFromName, baseIsMeasure, pluralizePack, unitWords } fro
 import { CategoryPathButton, CategoryPickerSheet, CategoryForm, type CategoryRow } from './CategoryPicker';
 import PackagingLevels from './PackagingLevels';
 import DropZone from '@/components/ui/DropZone';
+import PhotoLightbox from './PhotoLightbox';
 import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
 import { plainFromOdooHtml } from '@/lib/odoo-html';
@@ -53,6 +54,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   onChanged: (patch: {
     name?: string;
     uom?: [number, string];
+    /** true after a photo is saved, false after one is removed. */
     imageAdded?: boolean;
     flags?: { requires_photo?: boolean; units_per_crate?: number | null; pack_label?: string | null; loose_label?: string | null };
     spots?: number[];
@@ -115,6 +117,8 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [supBusy, setSupBusy] = useState(false);
   const [img, setImg] = useState(hasImage);
   const [imgVer, setImgVer] = useState(0);
+  const [viewer, setViewer] = useState(false);      // full-screen photo
+  const [photoMenu, setPhotoMenu] = useState(false); // replace / remove
   const [requiresPhoto, setRequiresPhoto] = useState(false);
   const [packLabel, setPackLabel] = useState('');
   const [packSize, setPackSize] = useState('');
@@ -394,6 +398,20 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     if (file) await uploadPhoto(file);
   }
 
+  async function removePhoto() {
+    setPhotoMenu(false);
+    setBusy('photo');
+    try {
+      const res = await fetch(`/api/inventory/product-images/${product.id}`, { method: 'DELETE' });
+      if (!res.ok) { flash('err', 'Could not remove the photo'); return; }
+      setImg(false);
+      setImgVer((v) => v + 1);
+      flash('ok', 'Photo removed');
+      onChanged({ imageAdded: false });
+    } catch { flash('err', 'Network error — the photo is still there'); }
+    finally { setBusy(null); }
+  }
+
   async function uploadPhoto(file: File) {
     if (readOnly) return;
     if (!file) return;
@@ -442,23 +460,43 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
 
       {loading ? <Spinner /> : (
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {/* Photo */}
+          {/* PHOTO.
+              Tapping the picture SHOWS it, full screen and zoomable — that is
+              what a person expects a picture to do, and it is the thing that
+              actually helps someone matching a label on a shelf. Replacing and
+              removing live behind the ⋯ in the corner, the way Odoo does it,
+              so a mis-tap can no longer overwrite the photo. */}
           <input ref={fileRef} type="file" accept="image/*" onChange={onPhotoFile} className="hidden" />
           <DropZone onFiles={(fs) => uploadPhoto(fs[0])} disabled={busy === 'photo' || readOnly}
             className="mb-4" hint={img ? 'Drop to replace the photo' : 'Drop the photo here'}>
-            <button onClick={() => fileRef.current?.click()} disabled={busy === 'photo' || readOnly}
-              className="w-full rounded-2xl border-2 border-dashed border-gray-300 bg-white overflow-hidden active:opacity-80 disabled:opacity-50"
-              aria-label="Change product photo">
-              {img ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={`/api/inventory/product-images/${product.id}?v=${imgVer}`} alt="" className="w-full max-h-56 object-cover" />
-              ) : (
+            {img ? (
+              <div className="relative w-full rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                <button onClick={() => setViewer(true)} className="block w-full active:opacity-90"
+                  aria-label={`See the photo of ${product.name} full screen`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/api/inventory/product-images/${product.id}?v=${imgVer}`} alt={product.name}
+                    className="w-full max-h-56 object-cover" />
+                </button>
+                {!readOnly && (
+                  <button onClick={() => setPhotoMenu(true)} disabled={busy === 'photo'}
+                    aria-label="Replace or remove this photo"
+                    className="absolute top-2 right-2 w-9 h-9 rounded-full bg-black/55 backdrop-blur text-white flex items-center justify-center active:bg-black/70 disabled:opacity-40">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button onClick={() => fileRef.current?.click()} disabled={busy === 'photo' || readOnly}
+                className="w-full rounded-2xl border-2 border-dashed border-gray-300 bg-white overflow-hidden active:opacity-80 disabled:opacity-50"
+                aria-label="Add a product photo">
                 <div className="py-10 text-center text-gray-400">
                   <div className="text-3xl mb-1">📷</div>
                   <div className="text-[var(--fs-sm)] font-semibold">Add a photo {'—'} camera, upload, or drag one in</div>
                 </div>
-              )}
-            </button>
+              </button>
+            )}
           </DropZone>
 
           {/* WHAT IT IS CALLED. Name, internal reference and barcode are the three
@@ -785,6 +823,45 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
       )}
       {manageCats && (
         <ManageCategories baseZ={baseZ + 10} onChanged={loadCategories} onClose={() => setManageCats(false)} />
+      )}
+
+      {/* The picture, full screen and zoomable — the shared viewer, not a
+          second one. Sits ABOVE this sheet, hence the baseZ. */}
+      <PhotoLightbox
+        open={viewer}
+        photos={[`/api/inventory/product-images/${product.id}?v=${imgVer}`]}
+        caption={product.name}
+        baseZ={baseZ + 20}
+        onClose={() => setViewer(false)}
+      />
+
+      {/* Replace / remove, behind the ⋯ so neither can happen by mis-tapping
+          the picture. */}
+      {photoMenu && (
+        <div className="fixed inset-0 flex items-end" role="dialog" aria-modal="true" aria-label="Photo options"
+          style={{ zIndex: baseZ + 15 }}>
+          <button aria-label="Close" onClick={() => setPhotoMenu(false)} className="absolute inset-0 bg-black/40" />
+          <div className="relative w-full bg-white rounded-t-3xl pb-[env(safe-area-inset-bottom)] sm:max-w-sm sm:mx-auto sm:mb-6 sm:rounded-3xl">
+            <div className="px-5 pt-4 pb-2">
+              <div className="text-[var(--fs-lg)] font-bold text-gray-900">Photo</div>
+              <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5 [overflow-wrap:anywhere]">{product.name}</div>
+            </div>
+            <div className="px-5 pb-5 pt-2 flex flex-col gap-2">
+              <button onClick={() => { setPhotoMenu(false); fileRef.current?.click(); }}
+                className="w-full h-12 rounded-xl bg-green-600 text-white font-bold active:bg-green-700">
+                Replace photo
+              </button>
+              <button onClick={removePhoto}
+                className="w-full h-12 rounded-xl border border-red-200 text-red-600 font-bold active:bg-red-50">
+                Remove photo
+              </button>
+              <button onClick={() => setPhotoMenu(false)}
+                className="w-full h-11 rounded-xl border border-gray-200 text-gray-600 font-bold active:bg-gray-50">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

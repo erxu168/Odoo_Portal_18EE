@@ -7,6 +7,10 @@ interface PhotoLightboxProps {
   photos: string[];
   initialIndex?: number;
   onClose: () => void;
+  /** Stack above a sheet that opened it. Default 80 keeps existing callers put. */
+  baseZ?: number;
+  /** Shown next to the counter — the product or place the photo belongs to. */
+  caption?: string;
 }
 
 /**
@@ -14,7 +18,7 @@ interface PhotoLightboxProps {
  * native pinch-to-zoom via touch-action: pinch-zoom on the image,
  * X button to close.
  */
-export default function PhotoLightbox({ open, photos, initialIndex = 0, onClose }: PhotoLightboxProps) {
+export default function PhotoLightbox({ open, photos, initialIndex = 0, onClose, baseZ = 80, caption }: PhotoLightboxProps) {
   const [index, setIndex] = useState(initialIndex);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
 
@@ -47,9 +51,13 @@ export default function PhotoLightbox({ open, photos, initialIndex = 0, onClose 
   }
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black flex flex-col" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      <div className="flex items-center justify-between px-4 pt-12 pb-3 text-white">
-        <span className="text-[14px] font-semibold">{index + 1} / {photos.length}</span>
+    <div className="fixed inset-0 bg-black flex flex-col" style={{ zIndex: baseZ }}
+      role="dialog" aria-modal="true" aria-label={caption ? `Photo of ${caption}` : 'Photo'}
+      onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <div className="flex items-center justify-between gap-3 px-4 pt-12 pb-3 text-white">
+        <span className="text-[14px] font-semibold min-w-0 truncate">
+          {photos.length > 1 ? `${index + 1} / ${photos.length}` : ''}{photos.length > 1 && caption ? ' · ' : ''}{caption || ''}
+        </span>
         <button
           onClick={onClose}
           className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20"

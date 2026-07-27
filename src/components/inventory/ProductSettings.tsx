@@ -386,8 +386,14 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                 ? { ...x, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
                 : x));
             }
-            if (patch.imageAdded) {
-              setImageIds((prev) => { const n = new Set(prev); n.add(detailFor.id); return n; });
+            // imageAdded is true for a saved photo and false for a removed one,
+            // so the thumbnail follows both ways.
+            if (patch.imageAdded !== undefined) {
+              setImageIds((prev) => {
+                const n = new Set(prev);
+                if (patch.imageAdded) n.add(detailFor.id); else n.delete(detailFor.id);
+                return n;
+              });
               setImgVer((v) => v + 1);
             }
             // Deleted: gone for good, so the row goes and the editor closes —

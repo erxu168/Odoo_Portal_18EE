@@ -988,6 +988,15 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
               setAllProducts((prev) => prev.map((x) => x.id === pid ? { ...x, active: patch.active } : x));
               setProductEditFor((cur: any) => cur && cur.id === pid ? { ...cur, active: patch.active } : cur);
             }
+            // The list shows thumbnails, so a photo added or removed in the
+            // editor has to reach them.
+            if (patch.imageAdded !== undefined) {
+              setProductImageIds((prev) => {
+                const n = new Set(prev);
+                if (patch.imageAdded) n.add(pid); else n.delete(pid);
+                return n;
+              });
+            }
             if (patch.name !== undefined || patch.uom !== undefined) {
               setAllProducts((prev) => prev.map((x) => x.id === pid
                 ? { ...x, ...(patch.name !== undefined ? { name: patch.name } : {}), ...(patch.uom !== undefined ? { uom_id: patch.uom } : {}) }
