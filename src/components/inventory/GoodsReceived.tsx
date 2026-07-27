@@ -12,6 +12,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useCompany } from '@/lib/company-context';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { SearchBar, Spinner, EmptyState, ProductThumb, Stepper } from './ui';
+import { useProductFilters, ProductFilterBar } from './ProductFilters';
+
+/** Rows drawn at once. The list says so out loud rather than truncating silently. */
+const LIST_CAP = 100;
 import NumpadModal from './NumpadModal';
 import { crateTotal, hasCrate, splitFromTotal, formatSplit, unitWords, pluralizePack } from '@/lib/crate-units';
 
@@ -56,6 +60,10 @@ export default function GoodsReceived() {
   const [search, setSearch] = useState('');
   const [entry, setEntry] = useState<any | null>(null);   // product being logged
   const [toast, setToast] = useState<string | null>(null);
+  // 142 products behind one search box, and the list below draws at most 100 of
+  // them — so narrowing by what a product is and where it lives is the
+  // difference between finding it and not knowing it was there.
+  const filters = useProductFilters(companyId);
 
   const productName = useCallback(
     (id: number) => products.find((p) => p.id === id)?.name || `#${id}`,
@@ -127,13 +135,14 @@ export default function GoodsReceived() {
     } catch { showToast('Network error — try again'); }
   }
 
-  const filtered = React.useMemo(() => {
+  const searched = React.useMemo(() => {
     if (!search) return products;
     const q = search.toLowerCase();
     return products.filter((p) =>
       p.name.toLowerCase().includes(q)
       || (p.default_code && String(p.default_code).toLowerCase().includes(q)));
   }, [products, search]);
+  const filtered = React.useMemo(() => filters.narrow(searched), [filters, searched]);
 
   if (companyLoading || loading) return <Spinner />;
   if (!companyId) {
@@ -143,6 +152,12 @@ export default function GoodsReceived() {
   return (
     <div className="flex flex-col min-h-0 flex-1">
       <SearchBar value={search} onChange={setSearch} placeholder="Search or scan a product…" />
+
+      {/* No status chips here on purpose: this screen has no per-product state
+          worth filtering on while you are unpacking a delivery. Category and
+          place are the two that earn their room. */}
+      <ProductFilterBar filters={filters} base={filtered.length} shown={filtered.length}
+        total={products.length} capped={LIST_CAP} />
 
       <div className="flex-1 overflow-y-auto px-4 pb-28">
         {/* Recent receipts */}
@@ -186,11 +201,11 @@ export default function GoodsReceived() {
           <EmptyState title="No products" body="Try a different search." />
         ) : (
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-            {filtered.slice(0, 100).map((p, idx) => {
+            {filtered.slice(0, LIST_CAP).map((p, idx) => {
               const uom = p.uom_id?.[1] || 'Units';
               return (
                 <button key={p.id} onClick={() => setEntry(p)}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-left active:bg-gray-50 ${idx < Math.min(filtered.length, 100) - 1 ? 'border-b border-gray-100' : ''}`}>
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-left active:bg-gray-50 ${idx < Math.min(filtered.length, LIST_CAP) - 1 ? 'border-b border-gray-100' : ''}`}>
                   <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
