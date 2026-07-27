@@ -6,7 +6,7 @@ import StandardFilter from '@/components/ui/StandardFilter';
 import RecordLink from '@/components/ui/RecordLink';
 import PhotoLightbox from './PhotoLightbox';
 import NumpadModal from './NumpadModal';
-import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure, unitWords } from '@/lib/crate-units';
+import { hasCrate, splitFromTotal, formatSplit, baseIsMeasure, unitWords, crateTotal } from '@/lib/crate-units';
 import { typeIcon, typeLabel, LOCATION_TYPES } from '@/lib/location-types';
 
 interface ReviewSubmissionsProps {
@@ -741,17 +741,25 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   // split here read "5 crates" over a product with 2 in the bar and
                   // 5 in the cellar — the split of one spot, captioning the total.
                   const pEntries = entriesByProduct[p.id] || [];
-                  const split = isCrate
-                    ? (pEntries.some((e: any) => e.crate_qty != null || e.loose_qty != null)
-                        ? pEntries.reduce(
-                            (a: { crates: number; loose: number }, e: any) => ({
-                              crates: a.crates + (Number(e.crate_qty) || 0),
-                              loose: a.loose + (Number(e.loose_qty) || 0),
-                            }),
-                            { crates: 0, loose: 0 },
-                          )
-                        : splitFromTotal(val, entry?.units_per_crate))
-                    : null;
+                  const split = isCrate ? (() => {
+                    const stored = pEntries.some((e: any) => e.crate_qty != null || e.loose_qty != null)
+                      ? pEntries.reduce(
+                          (a: { crates: number; loose: number }, e: any) => ({
+                            crates: a.crates + (Number(e.crate_qty) || 0),
+                            loose: a.loose + (Number(e.loose_qty) || 0),
+                          }),
+                          { crates: 0, loose: 0 },
+                        )
+                      : null;
+                    // The stored split is only a description of the total, and the
+                    // server keeps it when a later plain save changes that total —
+                    // so a line stepped back down to zero still carried "1 bunch",
+                    // and this screen showed 1 bunch over a count of 0. Use it only
+                    // while it still adds up; otherwise derive it from the total,
+                    // which is what approval actually writes.
+                    if (stored && crateTotal(stored.crates, stored.loose, entry?.units_per_crate) === val) return stored;
+                    return splitFromTotal(val, entry?.units_per_crate);
+                  })() : null;
                   return (
                     <div key={p.id}>
                       <div className={`flex items-center justify-between py-2.5 border-b ${isVariance ? 'border-red-100 bg-red-50/50' : 'border-gray-100'}`}>

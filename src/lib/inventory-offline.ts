@@ -124,6 +124,31 @@ export async function cacheSessionData(
   }
 }
 
+/**
+ * Merge a few fields into the cached session without touching the rest.
+ *
+ * Two effects fill this row — one fetches the session, the other the per-product
+ * pack sizes — and they finish in either order. A whole-record `put` from
+ * whichever landed second wiped the other's work, and on a session's FIRST open
+ * the pack sizes always lost: the flags effect found no row to patch and did
+ * nothing, then the session write created the row with empty maps. Offline, a
+ * 24-bottle crate then looked like a single unit and three taps meant three.
+ */
+export async function patchCachedSessionData(
+  sessionId: number,
+  patch: Partial<Omit<CachedSessionData, 'cachedAt'>>,
+): Promise<void> {
+  if (!isBrowser()) return;
+  try {
+    await withStore(STORE_SESSION_CACHE, 'readwrite', async (store) => {
+      const existing = await reqToPromise(store.get(sessionId)) as (CachedSessionData & { sessionId: number }) | undefined;
+      store.put({ ...(existing || { sessionId }), ...patch, sessionId, cachedAt: Date.now() });
+    });
+  } catch (e) {
+    console.warn('[offline] failed to patch session cache:', e);
+  }
+}
+
 export async function getCachedSessionData(
   sessionId: number,
 ): Promise<CachedSessionData | null> {

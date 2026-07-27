@@ -9,7 +9,7 @@ import PhotoCaptureStrip from './PhotoCaptureStrip';
 import OfflineBanner from './OfflineBanner';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { useSyncQueue } from '@/hooks/useSyncQueue';
-import { cacheSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
+import { patchCachedSessionData, getCachedSessionData, updateCachedEntry } from '@/lib/inventory-offline';
 import { offlineSafeMutate } from '@/lib/inventory-offline-fetch';
 import { hasCrate, crateTotal, splitFromTotal, formatSplit, unitWords, pluralizePack } from '@/lib/crate-units';
 import GuidedCountingFlow from './GuidedCountingFlow';
@@ -179,22 +179,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       (countRes.spots || []).forEach((sp: any) => { sn[sp.count_location_id] = sp.name; });
       setSpotNames(sn);
 
-      // Cache to IDB for offline use. The flags effect races this one and
-      // usually WINS, because it is a single small request while this path does
-      // two round trips — so writing empty maps here erased the pack sizes it
-      // had just cached. Offline, a 24-bottle crate then looked like a plain
-      // unit and three taps saved 3 instead of 72. Keep whatever is already
-      // there and let each effect fill in only its own part.
-      const prior = await getCachedSessionData(sessionId);
-      void cacheSessionData(sessionId, {
+      // Cache to IDB for offline use. Two effects fill this row and finish in
+      // either order, so each writes ONLY its own fields — a whole-record write
+      // from here used to blank the pack sizes the flags effect had just saved.
+      void patchCachedSessionData(sessionId, {
         session: sess,
         products: loadedProducts,
         entries: countRes.entries || [],
         systemQtys: countRes.system_qtys || {},
-        flags: prior?.flags || {},
-        crateSizes: prior?.crateSizes || {},
-        crateLabels: prior?.crateLabels || {},
-        looseLabels: prior?.looseLabels || {},
         items: countRes.items || [],
         spots: countRes.spots || [],
       });
@@ -237,11 +229,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setCrateSizes(crateMap);
       setCrateLabels(labelMap);
       setLooseLabels(looseMap);
-      // Patch flags + pack sizes/words into cached session data so an offline reload has them.
-      const cached = await getCachedSessionData(sessionId);
-      if (cached) {
-        void cacheSessionData(sessionId, { ...cached, flags: map, crateSizes: crateMap, crateLabels: labelMap, looseLabels: looseMap });
-      }
+      // Pack sizes and photo rules into the cache so an offline reload still
+      // knows a crate is 24. This must work on a session's FIRST open, when the
+      // row does not exist yet — hence a patch that creates it.
+      void patchCachedSessionData(sessionId, {
+        flags: map, crateSizes: crateMap, crateLabels: labelMap, looseLabels: looseMap,
+      });
     }).catch(() => {});
   }, [sessionId]);
 

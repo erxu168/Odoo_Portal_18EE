@@ -42,7 +42,10 @@ export async function GET(request: Request) {
   // today" can never regenerate a session a device (possibly offline by now)
   // has already opened.
   if (session.status === 'pending') {
-    try { updateSessionStatus(parseInt(sessionId), 'in_progress'); } catch { /* status is advisory here */ }
+    // Guarded on 'pending' inside the UPDATE: the status was read a moment ago,
+    // and without it a count submitted in between would be quietly reopened.
+    try { updateSessionStatus(parseInt(sessionId), 'in_progress', { fromStatus: 'pending' }); }
+    catch { /* status is advisory here */ }
   }
 
   const entries = getSessionEntries(parseInt(sessionId));
