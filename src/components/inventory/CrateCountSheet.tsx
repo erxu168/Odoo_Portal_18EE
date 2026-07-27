@@ -95,12 +95,12 @@ export default function CrateCountSheet({
         <div className="text-[var(--fs-sm)] text-gray-500 mt-1.5">
           {catLeaf ? `${catLeaf} · ` : ''}
           <span className="font-semibold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md">
-            1 {label} {measure ? '≈' : '='} {unitsPerCrate} {pluralizePack(one, unitsPerCrate)}
+            1 {label} {measure ? '≈' : '='} {unitsPerCrate} {words.looseFor(unitsPerCrate)}
           </span>
         </div>
         {showSystemQty && (
           <div className="text-[var(--fs-sm)] text-gray-400 mt-2">
-            System qty: <span className="font-mono font-medium text-gray-500">{systemQty ?? '--'}</span> {pluralizePack(one, 2)}
+            System qty: <span className="font-mono font-medium text-gray-500">{systemQty ?? '--'}</span> {words.looseFor(2)}
           </div>
         )}
       </div>
@@ -109,7 +109,7 @@ export default function CrateCountSheet({
       <div className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-3.5 mx-[18px] mt-1">
         <div>
           <div className="text-[var(--fs-md)] font-bold text-gray-900">{measure ? 'Whole' : 'Full'} {pluralizePack(label, 2)}</div>
-          <div className="text-[var(--fs-xs)] text-gray-500 font-semibold mt-0.5">{measure ? '≈' : '×'} {unitsPerCrate} {pluralizePack(one, unitsPerCrate)} each</div>
+          <div className="text-[var(--fs-xs)] text-gray-500 font-semibold mt-0.5">{measure ? '≈' : '×'} {unitsPerCrate} {words.looseFor(unitsPerCrate)} each</div>
         </div>
         <Stepper value={crates} uom={pluralizePack(label, crates)}
           onMinus={() => step('crates', -1)} onPlus={() => step('crates', 1)} onTap={() => setPad('crates')} />
@@ -119,10 +119,10 @@ export default function CrateCountSheet({
       {!measure && (
         <div className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-3.5 mx-[18px] mt-2.5">
           <div>
-            <div className="text-[var(--fs-md)] font-bold text-gray-900">Loose {pluralizePack(one, 2)}</div>
+            <div className="text-[var(--fs-md)] font-bold text-gray-900">Loose {words.looseFor(2)}</div>
             <div className="text-[var(--fs-xs)] text-gray-500 font-semibold mt-0.5">from opened {pluralizePack(label, 2)}</div>
           </div>
-          <Stepper value={loose} uom={pluralizePack(one, loose)}
+          <Stepper value={loose} uom={words.looseFor(loose)}
             onMinus={() => step('loose', -1)} onPlus={() => step('loose', 1)} onTap={() => setPad('loose')} />
         </div>
       )}
@@ -135,7 +135,7 @@ export default function CrateCountSheet({
             : `(${crates} × ${unitsPerCrate}) + ${loose}`}
         </div>
         <div className="text-[40px] leading-none font-extrabold font-mono text-green-700 mt-1.5">{total}</div>
-        <div className="text-[var(--fs-sm)] text-green-700 font-bold mt-1">{pluralizePack(one, 2)} total{measure ? ' (avg)' : ''}</div>
+        <div className="text-[var(--fs-sm)] text-green-700 font-bold mt-1">{words.looseFor(2)} total{measure ? ' (avg)' : ''}</div>
       </div>
 
       {/* Note */}
@@ -144,7 +144,7 @@ export default function CrateCountSheet({
         <span>
           {measure
             ? `Count whole ${pluralizePack(label, 2)} — the ${unit} is an average, not weighed.`
-            : `Count full ${pluralizePack(label, 2)} first, then any loose ${pluralizePack(one, 2)} from opened ones.`}
+            : `Count full ${pluralizePack(label, 2)} first, then any loose ${words.looseFor(2)} from opened ones.`}
         </span>
       </div>
 
@@ -186,9 +186,9 @@ export default function CrateCountSheet({
       {/* Direct-entry numpad for whichever field was tapped */}
       <NumpadModal
         open={pad !== null}
-        productName={pad === 'crates' ? `Whole ${pluralizePack(label, 2)}` : `Loose ${pluralizePack(one, 2)}`}
+        productName={pad === 'crates' ? `Whole ${pluralizePack(label, 2)}` : `Loose ${words.looseFor(2)}`}
         category=""
-        uom={pad === 'crates' ? pluralizePack(label, 2) : pluralizePack(one, 2)}
+        uom={pad === 'crates' ? pluralizePack(label, 2) : words.looseFor(2)}
         initialValue={pad === 'crates' ? crates : loose}
         showSystemQty={false}
         systemQty={null}

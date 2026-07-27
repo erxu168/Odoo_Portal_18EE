@@ -179,16 +179,22 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       (countRes.spots || []).forEach((sp: any) => { sn[sp.count_location_id] = sp.name; });
       setSpotNames(sn);
 
-      // Cache to IDB for offline use. flags are populated separately and
-      // patched into the cache by the flags effect.
+      // Cache to IDB for offline use. The flags effect races this one and
+      // usually WINS, because it is a single small request while this path does
+      // two round trips — so writing empty maps here erased the pack sizes it
+      // had just cached. Offline, a 24-bottle crate then looked like a plain
+      // unit and three taps saved 3 instead of 72. Keep whatever is already
+      // there and let each effect fill in only its own part.
+      const prior = await getCachedSessionData(sessionId);
       void cacheSessionData(sessionId, {
         session: sess,
         products: loadedProducts,
         entries: countRes.entries || [],
         systemQtys: countRes.system_qtys || {},
-        flags: {},
-        crateSizes: {},
-        crateLabels: {},
+        flags: prior?.flags || {},
+        crateSizes: prior?.crateSizes || {},
+        crateLabels: prior?.crateLabels || {},
+        looseLabels: prior?.looseLabels || {},
         items: countRes.items || [],
         spots: countRes.spots || [],
       });
@@ -413,6 +419,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     const k = K(productId, loc);
     // A real count (or a clear) overrides an out-of-stock mark for this line.
     setOos((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
+    // ...and it replaces whatever crate split was remembered. The row shows the
+    // split as its main number, so a stale one would keep reading "11 bunches"
+    // over a line that now says none, and the next + would step from 11.
+    setCrateSplits((prev) => { if (!(k in prev)) return prev; const n = { ...prev }; delete n[k]; return n; });
     if (qty === null || qty === undefined) {
       setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
       void updateCachedEntry(sessionId, productId, { counted_qty: null }, loc);
@@ -443,6 +453,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   async function saveOutOfStock(product: any, loc: number, on: boolean, note?: string) {
     const uom = product.uom_id?.[1] || 'Units';
     const k = K(product.id, loc);
+    // "None here" is a statement about the whole line, so the remembered crate
+    // split goes with it — otherwise the row keeps displaying the old count.
+    setCrateSplits((prev) => { if (!(k in prev)) return prev; const n = { ...prev }; delete n[k]; return n; });
     if (on) {
       setOos((prev) => { const n = new Set(prev); n.add(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: 0 }));
@@ -537,10 +550,22 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     const size = crateSizes[product.id] || 0;
     if (!hasCrate(size)) return;
     const k = K(product.id, loc);
-    const cur = crateSplits[k]?.crates ?? splitFromTotal(entries[k] ?? 0, size).crates;
+    const derived = splitFromTotal(entries[k] ?? 0, size);
+    const cur = crateSplits[k]?.crates ?? derived.crates;
+    // Keep whatever loose remainder the line already carries. Forcing it to 0
+    // made one tap move the total by less than a whole pack — a line holding
+    // 16 bunches + 0.02 went to 17 bunches and LOST the 0.02.
+    const loose = crateSplits[k]?.loose ?? derived.loose;
     const next = Math.max(0, cur + delta);
     if (next === cur) return;
-    void saveCrateCount(product, loc, next, 0);
+    // Stepping down to nothing means "I looked and there are none", the same as
+    // typing 0 anywhere else. saveCrateCount deletes a zero line, which would
+    // leave the product UNCOUNTED and block the submit.
+    if (next === 0 && loose === 0) {
+      void saveCount(product.id, loc, 0, product.uom_id?.[1] || 'Units');
+      return;
+    }
+    void saveCrateCount(product, loc, next, loose);
   }
 
   // Save a line's photos. Shared by the row strip and the per-product sheet so
@@ -655,7 +680,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     const words = unitWords(uom, crateLabels[p.id], looseLabels[p.id]);
     const label = words.pack;
     const measure = words.measure;
-    const split = crateSplits[k] ?? (val != null ? splitFromTotal(val, size) : null);
+    // The stored total is the truth. A remembered split is used only while it
+    // still adds up to it, so it can never outlive the number it splits.
+    const remembered = crateSplits[k];
+    const split = (remembered && val != null && crateTotal(remembered.crates, remembered.loose, size) === val)
+      ? remembered
+      : (val != null ? splitFromTotal(val, size) : null);
     // Sibling lines: the SAME product counted at other spots — the double-count guard.
     const siblings = (spotsOfProduct.get(p.id) || []).filter((l) => l !== loc);
     return (
@@ -666,7 +696,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             <div className="flex items-baseline gap-1.5 flex-wrap">
               {/* Wrap rather than truncate: "Beef, goula…" is useless to someone
                   holding the product. Two lines beat a cut-off name. */}
-              <span className="text-[var(--fs-lg)] font-semibold text-gray-900 leading-snug">{p.name}</span>
+              <span className="text-[var(--fs-lg)] font-semibold text-gray-900 leading-snug min-w-0 [overflow-wrap:anywhere]">{p.name}</span>
               {/* The unit staff COUNT in — bunches, not the kilograms it converts
                   to. The conversion is the manager's business when ordering. */}
               <span className="text-[var(--fs-xs)] text-gray-400 flex-shrink-0">
@@ -676,13 +706,24 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   "3" means nothing until you know whether a crate is 12 or 24. */}
               {isCrate && !measure && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 flex-shrink-0">
-                  1 {label} = {size} {pluralizePack(words.loose, size)}
+                  1 {label} = {size} {words.looseFor(size)}
                 </span>
               )}
               {flagged && (
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0">
                   Photo required
                 </span>
+              )}
+              {/* Everything about one product that is not a number: none left, a
+                  note, a photo. It rides in this wrapping line rather than as a
+                  fourth column, which left the name 20px on a small phone. */}
+              {!isReadOnly && (
+                <button
+                  onClick={() => setRowMenu({ product: p, loc })}
+                  aria-label={`More for ${p.name}`}
+                  className="flex-shrink-0 h-7 min-w-[36px] px-2 -my-1 rounded-lg border border-gray-200 text-gray-500 text-[15px] font-bold leading-none active:bg-gray-50">
+                  {'\u22EF'}
+                </button>
               )}
               {/* In the walk, the shelf heading directly above already says where
                   you are — repeating it on every row is noise. The flat list has
@@ -726,12 +767,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                     {split.crates}<span className="text-[10px] font-semibold text-gray-500 ml-0.5">{pluralizePack(label, split.crates)}</span>
                   </div>
                   <div className="text-[10px] text-gray-500 mt-1 font-mono">
-                    + {split.loose} {pluralizePack(words.loose, split.loose)}
+                    + {split.loose} {words.looseFor(split.loose)}
                   </div>
                 </>
               ) : (
                 <div className="text-[var(--fs-sm)] font-bold text-green-700">
-                  {pluralizePack(label, 2)} + {pluralizePack(words.loose, 2)} {'\u2192'}
+                  {pluralizePack(label, 2)} + {words.looseFor(2)} {'\u2192'}
                 </div>
               )}
             </button>
@@ -740,17 +781,6 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               onMinus={() => stepQty(p, loc, -1)}
               onPlus={() => stepQty(p, loc, 1)}
               onTap={() => openNumpad(p, loc)} />
-          )}
-          {/* Everything a person needs to say about one product that is not a
-              number: none left, a note, a photo. It was only reachable by
-              opening the keypad, which nobody guesses. */}
-          {!isReadOnly && (
-            <button
-              onClick={() => setRowMenu({ product: p, loc })}
-              aria-label={`More for ${p.name}`}
-              className="flex-shrink-0 w-10 h-10 rounded-xl border border-gray-200 text-gray-500 text-[17px] font-bold leading-none active:bg-gray-50">
-              {'\u22EF'}
-            </button>
           )}
         </div>
         {siblings.length > 0 && (
@@ -904,7 +934,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 const isCrate = hasCrate(size);
                 const words = unitWords(uom, crateLabels[p.id], looseLabels[p.id]);
                 const label = words.pack;
-                const split = crateSplits[k] ?? (val != null ? splitFromTotal(val, size) : null);
+                // The stored total is the truth. A remembered split is used only while it
+                // still adds up to it, so it can never outlive the number it splits.
+                const remembered = crateSplits[k];
+                const split = (remembered && val != null && crateTotal(remembered.crates, remembered.loose, size) === val)
+                  ? remembered
+                  : (val != null ? splitFromTotal(val, size) : null);
                 return (
                   <div key={k} className="flex items-center justify-between py-2.5 border-b border-gray-100">
                     <div className="flex items-baseline gap-1.5 flex-1 min-w-0">
@@ -1189,7 +1224,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 <div className="text-[var(--fs-lg)] font-bold text-gray-900 leading-snug">{rowMenu.product.name}</div>
                 {hasSpots && <div className="text-[var(--fs-xs)] text-gray-500 font-semibold mt-0.5">{spotLabel(rowMenu.loc)}</div>}
               </div>
-              <button onClick={() => { openNumpad(rowMenu.product, rowMenu.loc); close(); }}
+              <button onClick={() => {
+                  // A pack line's number lives in the crate sheet. Sending it to
+                  // the base keypad let someone type "3" meaning three crates
+                  // and save three BOTTLES — a 24x error, invisible on this row.
+                  if (hasCrate(crateSizes[rowMenu.product.id])) openCrateSheet(rowMenu.product, rowMenu.loc);
+                  else openNumpad(rowMenu.product, rowMenu.loc);
+                  close();
+                }}
                 className="w-full flex items-center gap-3 px-5 py-4 border-b border-gray-100 text-left active:bg-gray-50">
                 <span className="text-[18px]" aria-hidden="true">📝</span>
                 <span className="text-[var(--fs-base)] font-semibold text-gray-900">

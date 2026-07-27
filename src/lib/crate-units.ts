@@ -66,6 +66,8 @@ export function pluralizePack(label: string, n: number): string {
   if (n === 1) return l;
   if (/(s|x|z|ch|sh)$/i.test(l)) return `${l}es`;
   if (/[^aeiou]y$/i.test(l)) return `${l.slice(0, -1)}ies`;
+  // potato -> potatoes, tomato -> tomatoes (kitchen words that take -es).
+  if (/[^aeiou]o$/i.test(l)) return `${l}es`;
   return `${l}s`;
 }
 
@@ -113,6 +115,14 @@ export interface UnitWords {
   loose: string;
   /** Weight/volume base: there is no such thing as a loose gram on a shelf. */
   measure: boolean;
+  /** True when `loose` is a word a person typed, not the raw Odoo unit. */
+  looseNamed: boolean;
+  /**
+   * The loose word for n of them. A real word gets pluralised; a raw unit code
+   * never does — "Units" is not a noun and pluralising it gives "Unitses", and
+   * "kg" gives "kgs". Ask this instead of calling pluralizePack on `loose`.
+   */
+  looseFor(n: number): string;
 }
 export function unitWords(
   uom: string | null | undefined,
@@ -121,10 +131,14 @@ export function unitWords(
 ): UnitWords {
   const unit = (uom || '').trim() || 'Units';
   const measure = baseIsMeasure(unit);
+  const named = (looseLabel || '').trim();
+  const loose = named || unit;
   return {
     pack: (packLabel || '').trim() || (measure ? 'piece' : 'crate'),
-    loose: (looseLabel || '').trim() || unit,
+    loose,
     measure,
+    looseNamed: !!named,
+    looseFor: (n: number) => (named ? pluralizePack(named, n) : unit),
   };
 }
 

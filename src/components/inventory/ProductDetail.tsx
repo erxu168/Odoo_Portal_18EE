@@ -515,7 +515,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             </div>
             <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">
               {packSize !== '' && !measure
-                ? `Staff count whole ${pluralizePack(effPack, 2)} and loose ${pluralizePack(looseLabel || uomName, 2)}. Odoo still gets ${uomName}.`
+                ? `Staff count whole ${pluralizePack(effPack, 2)} and loose ${unitWords(uomName, effPack, looseLabel).looseFor(2)}. Odoo still gets ${uomName}.`
                 : `Leave the size blank to count in ${uomName} only.`}
             </p>
           </div>

@@ -736,9 +736,20 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                   const isCrate = hasCrate(entry?.units_per_crate);
                   const pWords = unitWords(uom, reviewPackLabels[p.id], reviewLooseLabels[p.id]);
                   const packLabel = pWords.pack;
+                  // `val` is the total ACROSS spots, so the split beside it has to
+                  // be too. `entry` is only the last row iterated, and showing its
+                  // split here read "5 crates" over a product with 2 in the bar and
+                  // 5 in the cellar — the split of one spot, captioning the total.
+                  const pEntries = entriesByProduct[p.id] || [];
                   const split = isCrate
-                    ? ((entry?.crate_qty != null || entry?.loose_qty != null)
-                        ? { crates: Number(entry.crate_qty) || 0, loose: Number(entry.loose_qty) || 0 }
+                    ? (pEntries.some((e: any) => e.crate_qty != null || e.loose_qty != null)
+                        ? pEntries.reduce(
+                            (a: { crates: number; loose: number }, e: any) => ({
+                              crates: a.crates + (Number(e.crate_qty) || 0),
+                              loose: a.loose + (Number(e.loose_qty) || 0),
+                            }),
+                            { crates: 0, loose: 0 },
+                          )
                         : splitFromTotal(val, entry?.units_per_crate))
                     : null;
                   return (
