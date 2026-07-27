@@ -17,6 +17,7 @@ import { allowedProductIds } from '@/lib/inventory-scope';
 import { getProductFlags, getSessionPackagingLevels, listPackagingLevelsFor } from '@/lib/inventory-db';
 import { resolveAttribution } from '@/lib/shift-attribution';
 import { crateTotal } from '@/lib/crate-units';
+import { packTotal, usableLevels } from '@/lib/packaging';
 import { inventoryOdooSyncEnabled } from '@/lib/inventory-config';
 
 // A count line can only be written/removed while the session is still open.
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
 
   initInventoryTables();
   const body = await request.json();
-  const { session_id, product_id, count_location_id, out_of_stock, counted_qty, crate_qty, loose_qty, units_per_crate, system_qty, uom, notes, photos } = body;
+  const { session_id, product_id, count_location_id, out_of_stock, counted_qty, crate_qty, loose_qty, units_per_crate, system_qty, uom, notes, photos, pack_counts } = body;
 
   // Which spot this count is for (0 = no specific spot / legacy client).
   // Validated against the session's frozen snapshot further below.
@@ -186,10 +187,29 @@ export async function POST(request: Request) {
     const f = getProductFlags([Number(product_id)])[0];
     packSize = f?.units_per_crate ?? null;
   }
-  const hasSplit = sentSplit && packSize != null && packSize > 0;
-  const baseQty = isOut ? 0 : (hasSplit
-    ? crateTotal(Number(crate_qty) || 0, Number(loose_qty) || 0, packSize as number)
-    : counted_qty);
+  // A NESTED chain (box -> pack -> piece) beats the single pack size when the
+  // session froze one. Same rule as above and for the same reason: the level
+  // values come from the FROZEN chain, never from the request, so no caller can
+  // decide what a box is worth. What arrived is only "how many at each level".
+  const frozenChain = getSessionPackagingLevels(session_id).get(Number(product_id)) || [];
+  const chain = usableLevels(frozenChain);
+  const sentLevels = pack_counts && typeof pack_counts === 'object';
+  const hasChain = chain.length > 0 && sentLevels;
+
+  const hasSplit = !hasChain && sentSplit && packSize != null && packSize > 0;
+  const baseQty = isOut ? 0 : (
+    hasChain
+      ? packTotal({ byLevel: pack_counts as Record<number, number>, loose: Number(loose_qty) || 0 }, chain)
+      : hasSplit
+        ? crateTotal(Number(crate_qty) || 0, Number(loose_qty) || 0, packSize as number)
+        : counted_qty);
+
+  // A per-level count sent for a product with no chain on THIS count means the
+  // two sides disagree about what the product is; storing the numbers as if
+  // they were base units would invent stock.
+  if (sentLevels && !hasChain) {
+    return NextResponse.json({ error: 'This product is not counted in nested packs on this list' }, { status: 400 });
+  }
 
   if (baseQty === undefined || baseQty === null) {
     return NextResponse.json({ error: 'session_id, product_id, counted_qty required' }, { status: 400 });
@@ -233,6 +253,8 @@ export async function POST(request: Request) {
     crate_qty: hasSplit ? (Number(crate_qty) || 0) : (isReviewerCorrection ? null : undefined),
     loose_qty: hasSplit ? (Number(loose_qty) || 0) : (isReviewerCorrection ? null : undefined),
     units_per_crate: hasSplit ? (packSize as number) : (isReviewerCorrection ? null : undefined),
+    // How the counter got there, kept beside the total they got to.
+    pack_counts: hasChain ? JSON.stringify(pack_counts) : (isReviewerCorrection ? null : undefined),
   });
 
   // Counting something HERE means this place was not skipped after all. Clear

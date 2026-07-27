@@ -450,6 +450,11 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   if (!ceCols.includes('count_mode')) db.exec("ALTER TABLE count_entries ADD COLUMN count_mode TEXT");
   if (!ceCols.includes('pack_label')) db.exec("ALTER TABLE count_entries ADD COLUMN pack_label TEXT");
   if (!ceCols.includes('loose_label')) db.exec("ALTER TABLE count_entries ADD COLUMN loose_label TEXT");
+  // What was entered at each level of a nested chain, as {"levelId": qty}. The
+  // base total in counted_qty is what stock reads; this records how a person
+  // arrived at it — "2 boxes + 1 pack + 4 loose" — so a manager reviewing the
+  // count sees what the counter saw, not just the multiplied-out number.
+  if (!ceCols.includes('pack_counts')) db.exec("ALTER TABLE count_entries ADD COLUMN pack_counts TEXT");
   if (!ceCols.includes('odoo_qty')) {
     db.exec("ALTER TABLE count_entries ADD COLUMN odoo_qty REAL");
     // One-time backfill: legacy rows wrote counted_qty to Odoo — preserve that.
@@ -1320,6 +1325,8 @@ export function upsertCountEntry(data: {
   count_mode?: CountMode | null;     // snapshot of how it was counted
   pack_label?: string | null;        // snapshot
   loose_label?: string | null;       // snapshot
+  /** How many at each level of a nested chain, as JSON. undefined = leave alone. */
+  pack_counts?: string | null;
   odoo_qty?: number | null;          // converted base qty safe for Odoo; null = portal-only (no average)
 }) {
   const db = getDb();
@@ -1370,8 +1377,9 @@ export function upsertCountEntry(data: {
     // one — otherwise nudging a quantity would wipe a note somebody just wrote.
     const setNotes = data.notes !== undefined ? 'notes = ?,' : '';
     const setMgr = data.manager_note !== undefined ? 'manager_note = ?,' : '';
+    const setPack = data.pack_counts !== undefined ? 'pack_counts = ?,' : '';
     db.prepare(`
-      UPDATE count_entries SET counted_qty = ?, out_of_stock = ?, system_qty = ?, diff = ?, uom = ?, ${setNotes} ${setMgr}
+      UPDATE count_entries SET counted_qty = ?, out_of_stock = ?, system_qty = ?, diff = ?, uom = ?, ${setNotes} ${setMgr} ${setPack}
         crate_qty = ?, loose_qty = ?, units_per_crate = ?, count_mode = ?, pack_label = ?, loose_label = ?, odoo_qty = ?,
         counted_by = ?, counted_at = ?
       WHERE id = ?
@@ -1379,15 +1387,16 @@ export function upsertCountEntry(data: {
       countedQty, oos, data.system_qty ?? null, diff, data.uom,
       ...(data.notes !== undefined ? [data.notes || null] : []),
       ...(data.manager_note !== undefined ? [data.manager_note || null] : []),
+      ...(data.pack_counts !== undefined ? [data.pack_counts || null] : []),
       crateQty, looseQty, upc, cmode, plabel, llabel, odooQty, data.counted_by, now(), existing.id,
     );
   } else {
     db.prepare(`
       INSERT INTO count_entries (session_id, product_id, count_location_id, counted_qty, out_of_stock, system_qty, diff, uom, notes, manager_note,
-        crate_qty, loose_qty, units_per_crate, count_mode, pack_label, loose_label, odoo_qty, counted_by, counted_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        crate_qty, loose_qty, units_per_crate, count_mode, pack_label, loose_label, pack_counts, odoo_qty, counted_by, counted_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(data.session_id, data.product_id, locId, countedQty, oos, data.system_qty ?? null, diff, data.uom, data.notes || null, data.manager_note || null,
-      crateQty, looseQty, upc, cmode, plabel, llabel, odooQty, data.counted_by, now());
+      crateQty, looseQty, upc, cmode, plabel, llabel, data.pack_counts || null, odooQty, data.counted_by, now());
   }
 }
 
