@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
  * for stock; a location optionally references a real stock.location.
  */
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
@@ -41,10 +42,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ location: loc });
   }
 
-  const requested = parseInt(searchParams.get('company_id') || '0', 10) || null;
+  // No company on the query? Fall back to the one chosen in the blue ribbon —
+  // that picker is the source of truth for which restaurant you are looking at.
+  // Without this an unrestricted admin got an EMPTY list, because
+  // resolveScopedCompany answers null for "can see every company".
+  const cookieCompany = parseInt(cookies().get('kw_company_id')?.value || '0', 10) || null;
+  const requested = (parseInt(searchParams.get('company_id') || '0', 10) || null) ?? null;
   if (requested && !canAccessCompany(user, requested))
     return NextResponse.json({ error: 'Location not found' }, { status: 404 });
-  const companyId = resolveScopedCompany(user, requested);
+  const fallback = cookieCompany && canAccessCompany(user, cookieCompany) ? cookieCompany : null;
+  const companyId = resolveScopedCompany(user, requested ?? fallback);
   if (!companyId) return NextResponse.json({ locations: [] });
   return NextResponse.json({ locations: listCountLocations(companyId) });
 }

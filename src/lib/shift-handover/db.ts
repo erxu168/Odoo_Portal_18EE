@@ -141,8 +141,11 @@ function migrateHandoverSchema(): void {
       }
     }
   };
-  // New columns go here, e.g. addColumn('handover_log_types', 'colour', 'colour TEXT');
-  void addColumn;
+  // The place an item is stored, as a real location rather than typed words.
+  // `location_text` stays: it holds the words already typed on old entries, and
+  // for new ones it holds the full path AS IT READ when the item was put away,
+  // so history still makes sense after a shelf is renamed or removed.
+  addColumn('handover_storage_items', 'location_id', 'location_id INTEGER');
 }
 
 // ── Log types ────────────────────────────────────────────────────────────────
@@ -265,14 +268,15 @@ export function acknowledgeEntry(id: number, companyId: number, actor: { userId:
 export interface StorageItemView extends StorageItem { photo: string | null }
 
 export function createStorageItem(d: {
-  company_id: number; name: string; location_text?: string | null; use_first?: boolean;
+  company_id: number; name: string; location_id?: number | null; location_text?: string | null;
+  use_first?: boolean;
   entry_id?: number | null; added_by_user_id?: number | null; added_by_name?: string | null;
 }): number {
   const ts = nowISO();
   const r = getDb().prepare(
-    `INSERT INTO handover_storage_items (company_id, name, location_text, use_first, status, entry_id, added_by_user_id, added_by_name, added_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'here', ?, ?, ?, ?, ?, ?)`,
-  ).run(d.company_id, d.name, d.location_text ?? null, b(d.use_first), d.entry_id ?? null,
+    `INSERT INTO handover_storage_items (company_id, name, location_id, location_text, use_first, status, entry_id, added_by_user_id, added_by_name, added_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'here', ?, ?, ?, ?, ?, ?)`,
+  ).run(d.company_id, d.name, d.location_id ?? null, d.location_text ?? null, b(d.use_first), d.entry_id ?? null,
     d.added_by_user_id ?? null, d.added_by_name ?? null, ts, ts, ts);
   return r.lastInsertRowid as number;
 }

@@ -2,6 +2,8 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, operationalDate, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
+import { listCountLocations } from '@/lib/inventory-db';
+import { locationPathLabel } from '@/lib/location-tree';
 import {
   getDb, ensureDefaultLogTypes, getLogType, createLogEntry, createStorageItem,
   setEntryStorageItem, addPhoto, filterValidPhotos, getIdempotentResult, claimIdempotency,
@@ -26,8 +28,27 @@ export async function POST(request: Request) {
   const photos = filterValidPhotos(body?.photos);
   const isStorage = !!type.is_storage;
   const storageName = isStorage && typeof body?.storage?.name === 'string' ? body.storage.name.trim() : '';
-  const storageLoc = isStorage && typeof body?.storage?.location_text === 'string' ? body.storage.location_text.trim() : '';
   const useFirst = isStorage && !!body?.storage?.use_first;
+
+  // WHERE it is: a real place from the restaurant's location tree, not typed
+  // words. The id is validated against this company's own locations, and the
+  // full path is stored ALONGSIDE it so the handover still reads correctly
+  // years later, after that shelf has been renamed or taken out.
+  let storageLocId: number | null = null;
+  let storageLoc = '';
+  if (isStorage) {
+    const raw = body?.storage?.location_id;
+    const id = Number.isInteger(raw) ? Number(raw) : NaN;
+    if (!Number.isInteger(id) || id <= 0) {
+      return jsonError(400, 'Choose where you put it.');
+    }
+    const locs = listCountLocations(companyId);
+    if (!locs.some((l) => l.id === id)) {
+      return jsonError(400, 'That place is not one of this restaurant\u2019s.');
+    }
+    storageLocId = id;
+    storageLoc = locationPathLabel(id, locs);
+  }
 
   if (isStorage && !storageName) return jsonError(400, 'What did you store?');
   if (!note && photos.length === 0 && !(isStorage && storageName)) {
@@ -57,7 +78,8 @@ export async function POST(request: Request) {
     });
     if (isStorage && storageName) {
       const storageId = createStorageItem({
-        company_id: companyId, name: storageName, location_text: storageLoc || null,
+        company_id: companyId, name: storageName,
+        location_id: storageLocId, location_text: storageLoc || null,
         use_first: useFirst, entry_id: entryId, added_by_user_id: actor.userId, added_by_name: actor.name,
       });
       setEntryStorageItem(entryId, companyId, storageId);

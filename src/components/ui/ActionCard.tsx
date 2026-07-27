@@ -46,7 +46,11 @@ export function ActionCard({ emoji, label, subtitle, badge, className = '', disa
         {emoji}
       </div>
       <div className="text-[var(--fs-base)] font-bold text-gray-900 leading-tight">{label}</div>
-      {subtitle && <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5">{subtitle}</div>}
+      {/* Two lines at most: one long description used to make its whole row
+          taller than the rest, which is what made the grid look ragged. */}
+      {subtitle && (
+        <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5 line-clamp-2 [overflow-wrap:anywhere]">{subtitle}</div>
+      )}
       {showBadge && (
         <span
           className={`absolute top-3 right-3 min-w-[22px] h-[22px] px-1.5 rounded-full text-white text-[var(--fs-xs)] font-bold flex items-center justify-center ${
@@ -73,7 +77,7 @@ export interface ActionGridProps<T> {
   className?: string;
 }
 
-export function ActionGrid<T>({ items, getItemId, renderItem, sortable, className = 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 lg:gap-4' }: ActionGridProps<T>) {
+export function ActionGrid<T>({ items, getItemId, renderItem, sortable, className = 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 lg:gap-4 auto-rows-fr' }: ActionGridProps<T>) {
   if (sortable) {
     return (
       <SortableTileGrid

@@ -51,6 +51,9 @@ export interface StorageItem {
   id: number;
   company_id: number;
   name: string;
+  /** The place it is in, from the restaurant's location tree. */
+  location_id: number | null;
+  /** The full path as it read when the item was put away (or free text on old rows). */
   location_text: string | null;
   use_first: number;
   status: 'here' | 'used' | string;

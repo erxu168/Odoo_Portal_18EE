@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import PhotoCaptureStrip from '@/components/inventory/PhotoCaptureStrip';
 import { Sheet, Field, PrimaryButton, ErrorNote, OptionGrid, apiSend, useAsync } from './common';
+import { LocationPickerSheet, LocationPathButton, type PickableLocation } from '@/components/ui/LocationPickerSheet';
 import type { FeedEntry } from './EntryCard';
 
 export interface LogTypeChip { id: number; name: string; emoji: string; is_alert: boolean; is_storage: boolean }
@@ -15,13 +16,28 @@ export function AddEntrySheet({ types, editEntry, onClose, onSaved }: {
   const [note, setNote] = useState(editEntry?.note ?? '');
   const [photos, setPhotos] = useState<string[]>(editEntry?.photos ?? []);
   const [name, setName] = useState('');
-  const [where, setWhere] = useState('');
+  // WHERE it is, chosen from the restaurant's own places. It used to be a free
+  // text box, so one fridge collected a different spelling every shift.
+  const [whereId, setWhereId] = useState<number | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [places, setPlaces] = useState<PickableLocation[]>([]);
   const [useFirst, setUseFirst] = useState(false);
   const [key] = useState(() => `entry-${Math.round(Math.random() * 1e9)}`);
   const { busy, error, setError, run } = useAsync();
 
   const selected = useMemo(() => types.find((t) => t.id === typeId) || null, [types, typeId]);
   const isStorage = !isEdit && !!selected?.is_storage;
+
+  // Only fetched once a storage type is chosen — most log entries never need it.
+  useEffect(() => {
+    if (!isStorage || places.length > 0) return;
+    let alive = true;
+    fetch('/api/inventory/count-locations')
+      .then((r) => (r.ok ? r.json() : { locations: [] }))
+      .then((d) => { if (alive) setPlaces(d.locations || []); })
+      .catch(() => { /* the picker says so itself when there is nothing */ });
+    return () => { alive = false; };
+  }, [isStorage, places.length]);
 
   async function save() {
     if (isEdit) {
@@ -32,10 +48,11 @@ export function AddEntrySheet({ types, editEntry, onClose, onSaved }: {
     }
     if (!typeId) { setError('Pick a type first.'); return; }
     if (isStorage && !name.trim()) { setError('What did you store?'); return; }
+    if (isStorage && whereId == null) { setError('Choose where you put it.'); return; }
     if (!note.trim() && photos.length === 0 && !(isStorage && name.trim())) { setError('Add a note or a photo.'); return; }
     const res = await run(() => apiSend('/api/shift-handover/entries', 'POST', {
       type_id: typeId, note, photos,
-      storage: isStorage ? { name, location_text: where, use_first: useFirst } : null,
+      storage: isStorage ? { name, location_id: whereId, use_first: useFirst } : null,
       idempotency_key: key,
     }));
     if (res) onSaved();
@@ -77,9 +94,13 @@ export function AddEntrySheet({ types, editEntry, onClose, onSaved }: {
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Coleslaw"
               className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-12 text-[var(--fs-base)] outline-none focus:border-green-600" />
           </Field>
-          <Field label="Where is it? (optional)">
-            <input value={where} onChange={(e) => setWhere(e.target.value)} placeholder="e.g. Walk-in · top shelf, left"
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 h-12 text-[var(--fs-base)] outline-none focus:border-green-600" />
+          <Field label="Where did you put it?">
+            <LocationPathButton
+              locations={places}
+              value={whereId}
+              placeholder="Choose a place"
+              onOpen={() => setPickerOpen(true)}
+            />
           </Field>
           <Field label="Use this first?">
             <OptionGrid cols={2} value={useFirst ? 1 : 0} options={[{ value: 1, label: 'Yes' }, { value: 0, label: 'No' }]} onChange={(v) => setUseFirst(!!v)} />
@@ -96,6 +117,16 @@ export function AddEntrySheet({ types, editEntry, onClose, onSaved }: {
       <Field label="Photo (optional)">
         <PhotoCaptureStrip photos={photos} onChange={setPhotos} max={3} />
       </Field>
+
+      {pickerOpen && (
+        <LocationPickerSheet
+          locations={places}
+          value={whereId}
+          title="Where did you put it?"
+          onPick={(id) => { setWhereId(id); setPickerOpen(false); }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </Sheet>
   );
 }
