@@ -150,6 +150,7 @@ export default function StationHome() {
         <StationTile label="Cooking Guide" onClick={goGuide} emoji="👨‍🍳" />
         <StationTile label="Inventory" onClick={() => router.push('/inventory')} emoji="📦" />
         <StationTile label="Purchase" onClick={() => router.push('/purchase')} emoji="🛒" />
+        <StationTile label="Label Printer" onClick={() => router.push('/labels')} emoji="🏷️" />
       </div>
 
       {/* Today's roster */}
