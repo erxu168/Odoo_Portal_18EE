@@ -11,6 +11,7 @@ import PackagingLevels from './PackagingLevels';
 import DropZone from '@/components/ui/DropZone';
 import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
+import { plainFromOdooHtml } from '@/lib/odoo-html';
 
 /**
  * Product page — everything about ONE product in one place:
@@ -157,7 +158,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           const lp = m.list_price != null ? String(m.list_price) : '';
           const sp = m.standard_price != null ? String(m.standard_price) : '';
           setDefaultCode(dc); setListPrice(lp); setStandardPrice(sp);
-          const nt = typeof m.description === 'string' ? m.description : '';
+          const nt = plainFromOdooHtml(m.description);
           setNote(nt); setNote0(nt);
           setMaster0({ default_code: dc, list_price: lp, standard_price: sp });
           // Suppliers + vendor picker (manager-only, same gate as the master GET).

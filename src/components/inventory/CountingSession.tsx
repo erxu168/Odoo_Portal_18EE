@@ -16,6 +16,7 @@ import { packTotal, countableLevels, splitToLevels, type PackLevel } from '@/lib
 import PackCountSheet from './PackCountSheet';
 import GuidedCountingFlow from './GuidedCountingFlow';
 import { useTopBar } from '@/components/ui/TopBarContext';
+import { plainFromOdooHtml } from '@/lib/odoo-html';
 
 interface CountingSessionProps {
   sessionId: number;
@@ -880,9 +881,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         {/* The manager's standing note about this product, as distinct from what
             the counter writes about today. This is the whole reason the field
             exists — a note nobody reads while counting is a note wasted. */}
-        {typeof p.description === 'string' && p.description.trim() && (
-          <p className="mt-2 text-[11px] text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 leading-snug">
-            {p.description.trim()}
+        {plainFromOdooHtml(p.description) && (
+          <p className="mt-2 text-[11px] text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 leading-snug whitespace-pre-wrap">
+            {plainFromOdooHtml(p.description)}
           </p>
         )}
         {rowNotes[k] && (
