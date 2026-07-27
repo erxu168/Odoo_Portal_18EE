@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { authorize, initHandoverTables, resolveCompany, operationalDate, jsonError } from '@/lib/shift-handover/route-helpers';
 import { CAP } from '@/lib/shift-handover/access';
-import { listCountLocations } from '@/lib/inventory-db';
+import { listCountLocations, initInventoryTables } from '@/lib/inventory-db';
 import { locationPathLabel } from '@/lib/location-tree';
 import {
   getDb, ensureDefaultLogTypes, getLogType, createLogEntry, createStorageItem,
@@ -42,6 +42,10 @@ export async function POST(request: Request) {
     if (!Number.isInteger(id) || id <= 0) {
       return jsonError(400, 'Choose where you put it.');
     }
+    // The locations live in the inventory schema, which this route never set
+    // up — it worked only because the browser happens to GET them first. A
+    // direct caller, or a fresh database, hit "no such table" as a 500.
+    initInventoryTables();
     const locs = listCountLocations(companyId);
     if (!locs.some((l) => l.id === id)) {
       return jsonError(400, 'That place is not one of this restaurant\u2019s.');

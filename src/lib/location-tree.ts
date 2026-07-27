@@ -34,15 +34,17 @@ export function buildLocationTree<T extends TreeRow>(rows: T[]): LocationNode<T>
  */
 export function locationPath<T extends TreeRow & { name: string }>(id: number, rows: T[]): string[] {
   const byId = new Map<number, T>(rows.map((r) => [r.id, r]));
+  // Collected leaf-first and reversed once. Unshifting each ancestor re-copied
+  // the whole array every step, which is quadratic in the depth.
   const path: string[] = [];
   const seen = new Set<number>();
   let cur: T | undefined = byId.get(id);
   while (cur && !seen.has(cur.id)) {
     seen.add(cur.id);
-    path.unshift(cur.name);
+    path.push(cur.name);
     cur = cur.parent_id != null ? byId.get(cur.parent_id) : undefined;
   }
-  return path;
+  return path.reverse();
 }
 
 /** The full path joined for display, e.g. "Ground floor › Kitchen › Freezer". */

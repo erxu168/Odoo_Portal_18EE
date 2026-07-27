@@ -37,51 +37,100 @@ export function LocationPickerSheet({
   const [parent, setParent] = useState<number | null>(null);
   const [query, setQuery] = useState('');
 
-  // Start where the current choice already is, so re-opening does not send you
-  // back to the top of the building.
-  useEffect(() => {
-    if (value == null) return;
-    const cur = locations.find((l) => l.id === value);
-    if (cur) setParent(cur.parent_id ?? null);
-  }, [value, locations]);
+  const byId = useMemo(
+    () => new Map(locations.map((l) => [l.id, l])),
+    [locations],
+  );
+
+  /**
+   * The parent we will actually navigate by. A row whose parent has been
+   * deleted, or which sits in a loop, is treated as a top-level place instead
+   * of vanishing from the list entirely — a place you cannot see is a place
+   * you cannot say your soup is in.
+   */
+  const effParent = useMemo(() => {
+    // Each node is resolved once and the answer is remembered for everything
+    // below it, so this stays linear however deep the tree runs.
+    const loops = new Map<number, boolean>();
+    for (const start of locations) {
+      if (loops.has(start.id)) continue;
+      const walked: number[] = [];
+      const onPath = new Set<number>();
+      let cur: number | null = start.id;
+      let looped = false;
+      for (;;) {
+        if (cur == null) break;
+        const known = loops.get(cur);
+        if (known !== undefined) { looped = known; break; }
+        if (onPath.has(cur)) { looped = true; break; }
+        onPath.add(cur);
+        walked.push(cur);
+        const p: number | null = byId.get(cur)?.parent_id ?? null;
+        cur = p != null && byId.has(p) ? p : null;
+      }
+      for (const id of walked) loops.set(id, looped);
+    }
+    const m = new Map<number, number | null>();
+    for (const l of locations) {
+      const p = l.parent_id ?? null;
+      m.set(l.id, loops.get(l.id) || p == null || !byId.has(p) ? null : p);
+    }
+    return m;
+  }, [locations, byId]);
 
   const childrenOf = useMemo(() => {
     const m = new Map<number | null, PickableLocation[]>();
     locations.forEach((l) => {
-      const k = l.parent_id ?? null;
+      const k = effParent.get(l.id) ?? null;
       const arr = m.get(k) || [];
       arr.push(l);
       m.set(k, arr);
     });
     m.forEach((arr) => arr.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)));
     return m;
-  }, [locations]);
+  }, [locations, effParent]);
 
+  // One pass, deepest first, with an explicit stack — no recursion to overflow
+  // and no re-walking the same ancestors for every leaf.
   const countUnder = useMemo(() => {
     const n = new Map<number, number>();
-    const walk = (id: number): number => {
-      const kids = childrenOf.get(id) || [];
-      const total = kids.reduce((a, k) => a + 1 + walk(k.id), 0);
-      n.set(id, total);
-      return total;
-    };
-    (childrenOf.get(null) || []).forEach((r) => walk(r.id));
+    for (const root of childrenOf.get(null) || []) {
+      const stack: { id: number; done: boolean }[] = [{ id: root.id, done: false }];
+      while (stack.length) {
+        const cur = stack.pop()!;
+        const kids = childrenOf.get(cur.id) || [];
+        if (cur.done) {
+          n.set(cur.id, kids.reduce((a, k) => a + 1 + (n.get(k.id) || 0), 0));
+        } else {
+          stack.push({ id: cur.id, done: true });
+          for (const k of kids) stack.push({ id: k.id, done: false });
+        }
+      }
+    }
     return n;
   }, [childrenOf]);
 
   const trail = useMemo(() => {
     const out: PickableLocation[] = [];
-    let cur = parent;
     const guard = new Set<number>();
+    let cur = parent;
     while (cur != null && !guard.has(cur)) {
       guard.add(cur);
-      const node = locations.find((l) => l.id === cur);
+      const node = byId.get(cur);
       if (!node) break;
-      out.unshift(node);
-      cur = node.parent_id ?? null;
+      out.push(node);
+      cur = effParent.get(node.id) ?? null;
     }
-    return out;
-  }, [parent, locations]);
+    return out.reverse();
+  }, [parent, byId, effParent]);
+
+  // Start where the current choice already is, so re-opening does not send you
+  // back to the top of the building.
+  useEffect(() => {
+    if (value == null) return;
+    const cur = byId.get(value);
+    if (cur) setParent(effParent.get(cur.id) ?? null);
+  }, [value, byId, effParent]);
 
   const q = query.trim().toLowerCase();
   const results = q
@@ -123,14 +172,17 @@ export function LocationPickerSheet({
         )}
 
         {/* Where you are, so a deep shelf is never anonymous. */}
-        {!q && trail.length > 0 && (
+        {/* Rendered whenever you are not at the top, even if the trail above
+            cannot be reconstructed — otherwise a broken tree leaves you with no
+            way back but Cancel. */}
+        {!q && parent != null && (
           <div className="px-4 pt-2.5 flex flex-wrap items-center gap-1 text-[var(--fs-xs)] font-semibold text-gray-500">
             <button onClick={() => setParent(null)} className="active:opacity-70">All places</button>
             {trail.map((t, i) => (
               <React.Fragment key={t.id}>
                 <span className="text-gray-300">›</span>
                 <button
-                  onClick={() => setParent(i === trail.length - 1 ? t.parent_id ?? null : t.id)}
+                  onClick={() => setParent(i === trail.length - 1 ? effParent.get(t.id) ?? null : t.id)}
                   className={`active:opacity-70 ${i === trail.length - 1 ? 'text-gray-900 font-bold' : ''}`}
                 >
                   {t.name}
