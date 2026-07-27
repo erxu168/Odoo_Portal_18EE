@@ -2304,6 +2304,87 @@ export function getProductCountHistory(
   return out;
 }
 
+/** How many APPROVED count lines name this product — the audit trail. */
+export function countApprovedLinesForProduct(productId: number): number {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT COUNT(*) AS n
+      FROM count_entries e
+      JOIN counting_sessions s ON s.id = e.session_id
+     WHERE e.product_id = ? AND s.status = 'approved'
+  `).get(productId) as { n: number } | undefined;
+  const quick = db.prepare(
+    "SELECT COUNT(*) AS n FROM quick_counts WHERE product_id = ? AND status = 'approved'",
+  ).get(productId) as { n: number } | undefined;
+  return (row?.n || 0) + (quick?.n || 0);
+}
+
+/**
+ * Remove the portal's SETTINGS for a product that has just been deleted
+ * outright — its flags, photos, placements, packaging chain, draft record and
+ * membership of counting lists — plus any line in a count still open.
+ *
+ * Deliberately narrow. A product id also appears in purchase order lines,
+ * receipts, POS links and prep history, and those are business records, not
+ * settings; if any existed in Odoo it would have refused the delete, and where
+ * only the portal has them, leaving a row that names a gone product is far
+ * better than destroying the record. Approved counts are ruled out before this
+ * is ever called (see countApprovedLinesForProduct).
+ */
+export function deleteProductPortalData(productId: number): void {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    // Photos hang off row ids, so they go before the rows do — and only for
+    // lines in counts that are still open.
+    const openEntries = db.prepare(`
+      SELECT e.id FROM count_entries e
+        JOIN counting_sessions s ON s.id = e.session_id
+       WHERE e.product_id = ? AND s.status IN ('pending','in_progress','rejected')
+    `).all(productId) as { id: number }[];
+    openEntries.forEach((r) => deleteCountPhotos('count_entries', r.id));
+    if (openEntries.length > 0) {
+      db.prepare(`DELETE FROM count_entries WHERE id IN (${openEntries.map(() => '?').join(',')})`)
+        .run(...openEntries.map((r) => r.id));
+    }
+    const openQuick = db.prepare(
+      "SELECT id FROM quick_counts WHERE product_id = ? AND COALESCE(status,'pending') IN ('pending','rejected')",
+    ).all(productId) as { id: number }[];
+    openQuick.forEach((r) => deleteCountPhotos('quick_counts', r.id));
+    if (openQuick.length > 0) {
+      db.prepare(`DELETE FROM quick_counts WHERE id IN (${openQuick.map(() => '?').join(',')})`)
+        .run(...openQuick.map((r) => r.id));
+    }
+
+    for (const [table, col] of [
+      ['product_flags', 'odoo_product_id'],
+      ['product_images', 'odoo_product_id'],
+      ['product_locations', 'odoo_product_id'],
+      ['product_packaging_levels', 'odoo_product_id'],
+      ['product_drafts', 'odoo_product_id'],
+      ['template_product_locations', 'odoo_product_id'],
+      ['session_count_items', 'odoo_product_id'],
+      ['session_packaging_levels', 'odoo_product_id'],
+    ] as const) {
+      try { db.prepare(`DELETE FROM ${table} WHERE ${col} = ?`).run(productId); }
+      catch { /* a table this build does not have */ }
+    }
+
+    // Counting lists keep their products as a JSON array, so the id has to be
+    // taken out by hand or every list keeps asking for something that is gone.
+    try {
+      const rows = db.prepare('SELECT id, product_ids FROM counting_templates').all() as { id: number; product_ids: string }[];
+      const upd = db.prepare('UPDATE counting_templates SET product_ids = ? WHERE id = ?');
+      for (const r of rows) {
+        let ids: number[] = [];
+        try { ids = JSON.parse(r.product_ids || '[]'); } catch { continue; }
+        if (!Array.isArray(ids) || !ids.includes(productId)) continue;
+        upd.run(JSON.stringify(ids.filter((x) => x !== productId)), r.id);
+      }
+    } catch { /* leave the lists alone rather than corrupt them */ }
+  });
+  tx();
+}
+
 export function getSessionLocationStatuses(sessionId: number): { count_location_id: number; status: string; skip_reason: string | null }[] {
   const db = getDb();
   return db.prepare(

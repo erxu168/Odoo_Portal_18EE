@@ -13,6 +13,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+import { initInventoryTables, countApprovedLinesForProduct, deleteProductPortalData } from '@/lib/inventory-db';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const user = requireAuth();
@@ -130,5 +131,124 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[products PUT]', msg);
     return NextResponse.json({ error: msg }, { status: 400 });
+  }
+}
+
+/**
+ * PATCH /api/inventory/products/[id]  { active: boolean }
+ *
+ * Archive or bring back a product. Archiving is what Odoo itself does when you
+ * "delete" something that has history: it disappears from lists, counts, order
+ * guides and the POS, and everything it was part of still reads correctly.
+ * Reversible, which is why it is the ordinary action and DELETE is not.
+ */
+export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {
+    return NextResponse.json({ error: 'Manager access required' }, { status: 403 });
+  }
+
+  const productId = parseInt(params.id, 10);
+  if (!Number.isFinite(productId) || productId <= 0) {
+    return NextResponse.json({ error: 'Invalid product id' }, { status: 400 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  if (typeof body.active !== 'boolean') {
+    return NextResponse.json({ error: 'active must be true or false' }, { status: 400 });
+  }
+
+  try {
+    const odoo = getOdoo();
+    const [existing] = await odoo.searchRead(
+      'product.product', [['id', '=', productId]], ['id', 'product_tmpl_id', 'name'],
+      { limit: 1, context: { active_test: false } },
+    ) as { id: number; product_tmpl_id: [number, string]; name: string }[];
+    if (!existing) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+
+    // Archive the TEMPLATE, which is what Odoo's own archive button does — a
+    // variant left active under an archived template still shows up in places
+    // that read variants.
+    const tmplId = Array.isArray(existing.product_tmpl_id) ? existing.product_tmpl_id[0] : null;
+    if (tmplId) await odoo.write('product.template', [tmplId], { active: body.active });
+    else await odoo.write('product.product', [productId], { active: body.active });
+
+    return NextResponse.json({ ok: true, active: body.active, name: existing.name });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/inventory/products/[id]
+ *
+ * A real delete, which Odoo permits only while nothing has ever used the
+ * product. Almost every real product will refuse — that refusal IS the answer,
+ * so it is passed back in plain words rather than hidden behind a generic 500.
+ *
+ * The portal keeps its own records against a product id, and an APPROVED count
+ * is the record of what was on a shelf on a given day. Deleting the product
+ * would leave that number with no name, so a product that appears in one is
+ * refused here before Odoo is even asked.
+ */
+export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+  const user = requireAuth();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!roleCan(user.role, 'inventory.productsettings.manage', getPermissionOverrides())) {
+    return NextResponse.json({ error: 'Manager access required' }, { status: 403 });
+  }
+
+  const productId = parseInt(params.id, 10);
+  if (!Number.isFinite(productId) || productId <= 0) {
+    return NextResponse.json({ error: 'Invalid product id' }, { status: 400 });
+  }
+
+  initInventoryTables();
+  const approved = countApprovedLinesForProduct(productId);
+  if (approved > 0) {
+    return NextResponse.json({
+      error: `This product is part of ${approved} approved count${approved === 1 ? '' : 's'}. Deleting it would leave those numbers with no name — archive it instead.`,
+      code: 'IN_APPROVED_COUNT',
+    }, { status: 409 });
+  }
+
+  try {
+    const odoo = getOdoo();
+    const [existing] = await odoo.searchRead(
+      'product.product', [['id', '=', productId]], ['id', 'product_tmpl_id', 'name'],
+      { limit: 1, context: { active_test: false } },
+    ) as { id: number; product_tmpl_id: [number, string]; name: string }[];
+    if (!existing) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+
+    const tmplId = Array.isArray(existing.product_tmpl_id) ? existing.product_tmpl_id[0] : null;
+    try {
+      await odoo.unlink('product.product', [productId]);
+      // A template left behind with no variants is litter; remove it too, and
+      // never let that tidying failure look like the delete failed.
+      if (tmplId) {
+        const siblings = await odoo.searchRead(
+          'product.product', [['product_tmpl_id', '=', tmplId]], ['id'],
+          { limit: 1, context: { active_test: false } },
+        );
+        if (siblings.length === 0) await odoo.unlink('product.template', [tmplId]).catch(() => {});
+      }
+    } catch (err: unknown) {
+      // Odoo's refusal is the useful part — it names what is still using it.
+      const raw = err instanceof Error ? err.message : String(err);
+      return NextResponse.json({
+        error: 'Odoo will not delete this product because something still uses it — archive it instead.',
+        detail: raw.slice(0, 400),
+        code: 'ODOO_REFUSED',
+      }, { status: 409 });
+    }
+
+    // Its portal-side settings go with it; open counts drop the line.
+    deleteProductPortalData(productId);
+    return NextResponse.json({ ok: true, deleted: existing.name });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

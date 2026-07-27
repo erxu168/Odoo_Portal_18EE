@@ -43,7 +43,7 @@ async function downscale(file: File, maxDim = 1024, quality = 0.7): Promise<stri
 }
 
 export default function ProductDetail({ product, hasImage, onClose, onChanged, readOnly = false, fullPageHref, baseZ = 100 }: {
-  product: { id: number; name: string; uom_id?: [number, string]; categ_id?: [number, string]; barcode?: string | false };
+  product: { id: number; name: string; uom_id?: [number, string]; categ_id?: [number, string]; barcode?: string | false; active?: boolean };
   hasImage: boolean;
   onClose: () => void;
   /** Fired after any successful save so the caller can refresh its list. */
@@ -65,6 +65,9 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [catBusy, setCatBusy] = useState(false);
   const [manageCats, setManageCats] = useState(false);  // "Edit categories" sheet
   const [catPick, setCatPick] = useState(false);        // the branch picker
+  const [isArchived, setIsArchived] = useState(product.active === false);
+  const [confirmAction, setConfirmAction] = useState<'archive' | 'unarchive' | 'delete' | null>(null);
+  const [lifecycleError, setLifecycleError] = useState<{ message: string; canArchive: boolean } | null>(null);
   const [catForm, setCatForm] = useState<{ editing: CategoryRow | null } | null>(null);
   const loadCategories = () => fetch('/api/inventory/categories')
     .then((r) => (r.ok ? r.json() : { categories: [] }))
@@ -252,6 +255,49 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
    * Create a category, or save an edited one. Moving IS editing — the parent is
    * just another field — so one function does both and they cannot drift.
    */
+  /**
+   * Archive, bring back, or delete. Odoo's refusal to delete is the useful
+   * answer, not an error to swallow — it names what still uses the product —
+   * so it is shown as written, with archiving offered as the way forward.
+   */
+  async function runLifecycle(action: 'archive' | 'unarchive' | 'delete') {
+    setBusy('lifecycle');
+    setLifecycleError(null);
+    try {
+      if (action === 'delete') {
+        const res = await fetch(`/api/inventory/products/${product.id}`, { method: 'DELETE' });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setLifecycleError({
+            message: d.error || 'Could not delete this product.',
+            canArchive: res.status === 409,
+          });
+          return;
+        }
+        setConfirmAction(null);
+        flash('ok', 'Product deleted');
+        onChanged({});
+        onClose();
+        return;
+      }
+      const active = action === 'unarchive';
+      const res = await fetch(`/api/inventory/products/${product.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setLifecycleError({ message: d.error || 'Could not save.', canArchive: false }); return; }
+      setIsArchived(!active);
+      setConfirmAction(null);
+      flash('ok', active ? 'Product is back' : 'Product archived');
+      onChanged({});
+    } catch {
+      setLifecycleError({ message: 'Network error — nothing was changed.', canArchive: false });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function saveCategory(editing: CategoryRow | null, nm: string, parentId: number | null) {
     if (!nm) return;
     setCatBusy(true);
@@ -605,7 +651,55 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               disabled={readOnly || busy === 'master' || barcode.trim() === (product.barcode || '')}
               className="px-4 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">Save</button>
           </div>
+
+          {/* Taking a product out of use. Archive reads as the ordinary action
+              because it is the one that almost always applies; delete sits
+              under it and looks like what it is. */}
+          {!readOnly && (
+            <>
+              <label className={label}>Take it out of use</label>
+              {isArchived ? (
+                <button onClick={() => setConfirmAction('unarchive')} disabled={!!busy}
+                  className="w-full mb-2 flex items-center gap-3 px-3 py-3 rounded-xl border border-green-200 bg-green-50 text-left active:bg-green-100 disabled:opacity-50">
+                  <span aria-hidden="true">↩️</span>
+                  <span>
+                    <span className="block text-[var(--fs-base)] font-bold text-green-800">Bring this product back</span>
+                    <span className="block text-[var(--fs-xs)] text-green-700">It is archived — hidden from lists, counts and the POS.</span>
+                  </span>
+                </button>
+              ) : (
+                <button onClick={() => setConfirmAction('archive')} disabled={!!busy}
+                  className="w-full mb-2 flex items-center gap-3 px-3 py-3 rounded-xl border border-amber-300 bg-amber-50 text-left active:bg-amber-100 disabled:opacity-50">
+                  <span aria-hidden="true">📥</span>
+                  <span>
+                    <span className="block text-[var(--fs-base)] font-bold text-amber-800">Archive this product</span>
+                    <span className="block text-[var(--fs-xs)] text-amber-700">Hidden everywhere. Counts and orders keep it. Undo any time.</span>
+                  </span>
+                </button>
+              )}
+              <button onClick={() => setConfirmAction('delete')} disabled={!!busy}
+                className="w-full mb-8 flex items-center gap-3 px-3 py-3 rounded-xl border border-red-200 text-left active:bg-red-50 disabled:opacity-50">
+                <span aria-hidden="true">🗑️</span>
+                <span>
+                  <span className="block text-[var(--fs-base)] font-bold text-red-600">Delete for good</span>
+                  <span className="block text-[var(--fs-xs)] text-red-500">Only possible while nothing has ever used it.</span>
+                </span>
+              </button>
+            </>
+          )}
         </div>
+      )}
+
+      {confirmAction && (
+        <ProductLifecycleSheet
+          action={confirmAction}
+          productName={name}
+          busy={busy === 'lifecycle'}
+          error={lifecycleError}
+          onArchiveInstead={() => { setLifecycleError(null); setConfirmAction('archive'); }}
+          onCancel={() => { setConfirmAction(null); setLifecycleError(null); }}
+          onConfirm={() => runLifecycle(confirmAction)}
+        />
       )}
 
       {spotSheet && companyId && (
@@ -626,6 +720,89 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
       {manageCats && (
         <ManageCategories baseZ={baseZ + 10} onChanged={loadCategories} onClose={() => setManageCats(false)} />
       )}
+    </div>
+  );
+}
+
+/**
+ * Confirming a product's fate. One sheet for all three because they answer the
+ * same question — what happens to this product and what happens to its history
+ * — and three near-identical sheets would drift.
+ */
+function ProductLifecycleSheet({
+  action, productName, busy, error, onConfirm, onCancel, onArchiveInstead,
+}: {
+  action: 'archive' | 'unarchive' | 'delete';
+  productName: string;
+  busy: boolean;
+  error: { message: string; canArchive: boolean } | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+  onArchiveInstead: () => void;
+}) {
+  const copy = {
+    archive: {
+      title: 'Archive this product?',
+      lead: 'It stops appearing in counting lists, order guides, the POS and search — for everyone.',
+      keep: 'Counts it already appears in keep it, approved history and all. You can bring it back any time.',
+      cta: 'Archive it',
+      tone: 'amber' as const,
+    },
+    unarchive: {
+      title: 'Bring this product back?',
+      lead: 'It starts appearing again in lists, counts, order guides and search.',
+      keep: 'Nothing else changes — its settings, photos and history were kept while it was away.',
+      cta: 'Bring it back',
+      tone: 'green' as const,
+    },
+    delete: {
+      title: 'Delete for good?',
+      lead: 'This removes the product from Odoo entirely. There is no undo.',
+      keep: 'It only works while nothing has ever used it — no stock moves, no sales, no approved count. Otherwise archiving is the way.',
+      cta: 'Delete it',
+      tone: 'red' as const,
+    },
+  }[action];
+
+  const btn = copy.tone === 'red' ? 'bg-red-600' : copy.tone === 'amber' ? 'bg-amber-600' : 'bg-green-600';
+
+  return (
+    <div className="fixed inset-0 z-[140] flex items-end" role="dialog" aria-modal="true">
+      <button aria-label="Close" onClick={onCancel} className="absolute inset-0 bg-black/40" />
+      <div className="relative w-full bg-white rounded-t-3xl max-h-[90vh] overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+        <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+          <div className="text-[var(--fs-lg)] font-bold text-gray-900">{copy.title}</div>
+          <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5 [overflow-wrap:anywhere]">{productName}</div>
+        </div>
+
+        <div className="px-5 py-4">
+          <p className="text-[var(--fs-sm)] text-gray-800">{copy.lead}</p>
+          <p className="text-[var(--fs-sm)] text-gray-500 mt-2">{copy.keep}</p>
+
+          {error && (
+            <div className="mt-4 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+              <p className="text-[var(--fs-sm)] font-semibold text-red-700 [overflow-wrap:anywhere]">{error.message}</p>
+              {error.canArchive && (
+                <button onClick={onArchiveInstead}
+                  className="mt-2.5 w-full h-11 rounded-xl bg-amber-600 text-white font-bold active:bg-amber-700">
+                  Archive it instead
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 pb-5">
+          <button onClick={onConfirm} disabled={busy}
+            className={`w-full h-12 rounded-xl ${btn} text-white font-bold disabled:opacity-40`}>
+            {busy ? 'Working…' : copy.cta}
+          </button>
+          <button onClick={onCancel} disabled={busy}
+            className="w-full h-11 mt-2 rounded-xl border border-gray-200 text-gray-600 font-bold disabled:opacity-40">
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
