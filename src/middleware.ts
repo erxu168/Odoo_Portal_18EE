@@ -5,7 +5,11 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/api/auth', '/api/cron', '/api/internal/', '/api/products/', '/kds', '/api/kds', '/kiosk', '/api/kiosk', '/api/tablet', '/api/device/ping', '/invite/', '/api/invite/', '/confirm-shift', '/api/shifts/confirm/email'];
+// The Cooking Timer is a no-login kitchen-tablet screen (same model as /kds).
+// Only the STAFF screen + its operating APIs are public; the manager Setup APIs
+// (/api/cooktimer/profiles, /api/cooktimer/stations) are intentionally NOT here
+// so they stay gated (they must also enforce role in their own handlers).
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/api/auth', '/api/cron', '/api/internal/', '/api/products/', '/kds', '/api/kds', '/kiosk', '/api/kiosk', '/api/tablet', '/api/device/ping', '/invite/', '/api/invite/', '/confirm-shift', '/api/shifts/confirm/email', '/cooktimer', '/api/cooktimer/queue', '/api/cooktimer/start', '/api/cooktimer/timers'];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
