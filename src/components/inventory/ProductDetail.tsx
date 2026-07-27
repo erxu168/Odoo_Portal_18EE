@@ -6,6 +6,7 @@ import SpotSheet from './SpotSheet';
 import ManagePackLabels from './ManagePackLabels';
 import ManageCategories from './ManageCategories';
 import { suggestCrateSizeFromName, baseIsMeasure, pluralizePack, unitWords } from '@/lib/crate-units';
+import { CategoryPathButton, CategoryPickerSheet, CategoryForm, type CategoryRow } from './CategoryPicker';
 import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
 
@@ -61,10 +62,10 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [uoms, setUoms] = useState<{ id: number; name: string }[]>([]);
   const [catId, setCatId] = useState<number>(product.categ_id?.[0] || 0);
   const [categories, setCategories] = useState<{ id: number; name: string; complete_name?: string }[]>([]);
-  const [newCat, setNewCat] = useState(false);          // inline "create category" open?
-  const [newCatName, setNewCatName] = useState('');
   const [catBusy, setCatBusy] = useState(false);
   const [manageCats, setManageCats] = useState(false);  // "Edit categories" sheet
+  const [catPick, setCatPick] = useState(false);        // the branch picker
+  const [catForm, setCatForm] = useState<{ editing: CategoryRow | null } | null>(null);
   const loadCategories = () => fetch('/api/inventory/categories')
     .then((r) => (r.ok ? r.json() : { categories: [] }))
     .then((cd) => setCategories(cd.categories || []))
@@ -247,27 +248,36 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
 
   // Quick-create a category in Odoo without leaving the form, then select +
   // assign it (in-place create rule — no dead-end picker).
-  async function createCategory() {
-    const nm = newCatName.trim();
+  /**
+   * Create a category, or save an edited one. Moving IS editing — the parent is
+   * just another field — so one function does both and they cannot drift.
+   */
+  async function saveCategory(editing: CategoryRow | null, nm: string, parentId: number | null) {
     if (!nm) return;
     setCatBusy(true);
     try {
       const res = await fetch('/api/inventory/categories', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: nm }),
+        method: editing ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editing ? { id: editing.id, name: nm, parent_id: parentId }
+                                     : { name: nm, parent_id: parentId }),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok || !d.category?.id) { flash('err', d.error || 'Could not create category'); return; }
+      if (!res.ok || !d.category?.id) { flash('err', d.error || 'Could not save the category'); return; }
       await loadCategories();
-      const prev = catId;
-      setCatId(d.category.id);
-      if (await saveMaster({ categ_id: d.category.id })) {
-        setNewCat(false); setNewCatName('');
-      } else {
-        setCatId(prev);
+      setCatForm(null);
+      if (!editing) {
+        // A category made here is the one you wanted for this product.
+        const prev = catId;
+        setCatId(d.category.id);
+        if (!(await saveMaster({ categ_id: d.category.id }))) setCatId(prev);
       }
-    } catch { flash('err', 'Network error — category not created'); }
-    finally { setCatBusy(false); }
+      flash('ok', editing ? 'Category saved' : 'Category created');
+    } catch {
+      flash('err', 'Network error \u2014 the category was not saved.');
+    } finally {
+      setCatBusy(false);
+    }
   }
 
   async function savePack(nextSize: string, nextLabel: string, nextLoose: string) {
@@ -551,31 +561,39 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             <label className={`${label} mb-0`} htmlFor="pd-cat">Category</label>
             {!readOnly && <button type="button" onClick={() => setManageCats(true)} className="text-[11px] font-bold text-blue-700 active:opacity-70">Edit categories</button>}
           </div>
-          <select id="pd-cat" value={newCat ? -1 : catId} disabled={readOnly || busy === 'master' || catBusy}
-            onChange={async (e) => {
-              const next = Number(e.target.value);
-              if (next === -1) { setNewCat(true); setNewCatName(''); return; }
-              setNewCat(false);
-              const prev = catId; setCatId(next);
-              if (!(await saveMaster({ categ_id: next }))) setCatId(prev);
-            }}
-            className={`${box} ${newCat ? 'mb-2' : 'mb-4'}`}>
-            {catId !== 0 && !categories.some((c) => c.id === catId) && <option value={catId}>{product.categ_id?.[1] || 'Current category'}</option>}
-            {/* The whole path: the API already returns it, and on the leaf alone
-                two different "Sauces" are the same word twice. */}
-            {categories.map((c) => <option key={c.id} value={c.id}>{c.complete_name || c.name}</option>)}
-            {!readOnly && <option value={-1}>+ New category…</option>}
-          </select>
-          {newCat && (
-            <div className="flex gap-2 mb-4">
-              <input autoFocus value={newCatName} onChange={(e) => setNewCatName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') createCategory(); if (e.key === 'Escape') { setNewCat(false); setNewCatName(''); } }}
-                placeholder="New category name" className={box} disabled={catBusy} />
-              <button onClick={createCategory} disabled={catBusy || !newCatName.trim()}
-                className="px-4 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40 whitespace-nowrap">{catBusy ? 'Adding…' : 'Add'}</button>
-              <button onClick={() => { setNewCat(false); setNewCatName(''); }} disabled={catBusy}
-                className="px-4 rounded-xl bg-gray-100 font-bold">Cancel</button>
-            </div>
+          {/* A branch, walked — not 46 leaf names printed flush left. */}
+          <div className="mb-2">
+            <CategoryPathButton cats={categories} value={catId || null} disabled={readOnly || busy === 'master' || catBusy}
+              placeholder="Choose a category" onOpen={() => setCatPick(true)} />
+          </div>
+          {!readOnly && (
+            <button onClick={() => setCatForm({ editing: null })} disabled={catBusy}
+              className="text-[11px] font-bold text-green-700 active:opacity-70 mb-4 disabled:opacity-40">
+              ＋ New category
+            </button>
+          )}
+          {catPick && (
+            <CategoryPickerSheet
+              cats={categories}
+              value={catId || null}
+              onPick={async (next) => {
+                setCatPick(false);
+                if (next === catId) return;
+                const prev = catId; setCatId(next);
+                if (!(await saveMaster({ categ_id: next }))) setCatId(prev);
+              }}
+              onClose={() => setCatPick(false)}
+            />
+          )}
+          {catForm && (
+            <CategoryForm
+              cats={categories}
+              editing={catForm.editing}
+              initialParent={catForm.editing ? undefined : (catId || null)}
+              busy={catBusy}
+              onCancel={() => setCatForm(null)}
+              onSave={async (nm, parentId) => { await saveCategory(catForm.editing, nm, parentId); }}
+            />
           )}
 
           {/* Barcode — editable */}

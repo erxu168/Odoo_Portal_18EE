@@ -84,10 +84,41 @@ export async function PATCH(request: Request) {
   const name = typeof body.name === 'string' ? body.name.trim() : '';
   if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: 'A valid category id is required' }, { status: 400 });
   if (!name) return NextResponse.json({ error: 'A name is required' }, { status: 400 });
+  // `parent_id` present at all = a move. null/0 means "make it a top-level one",
+  // which is different from not asking to move it, so absence is what we test.
+  const moving = 'parent_id' in body;
+  const rawParent = Number(body.parent_id);
+  const parentId = Number.isInteger(rawParent) && rawParent > 0 ? rawParent : null;
 
   try {
     const odoo = getOdoo();
-    await odoo.write('product.category', [id], { name });
+    if (moving && parentId !== null) {
+      if (parentId === id) {
+        return NextResponse.json({ error: 'A category cannot sit inside itself.' }, { status: 400 });
+      }
+      // Walking DOWN into its own subtree would detach the branch from the tree
+      // and Odoo would loop building the path. Refuse in plain words instead.
+      const all = await odoo.searchRead(
+        'product.category', [], ['id', 'parent_id'],
+        { limit: 5000, context: { active_test: false } },
+      ) as { id: number; parent_id: [number, string] | false }[];
+      const parentOf = new Map(all.map((c) => [c.id, Array.isArray(c.parent_id) ? c.parent_id[0] : null]));
+      const seen = new Set<number>();
+      let cur: number | null | undefined = parentId;
+      while (cur != null && !seen.has(cur)) {
+        if (cur === id) {
+          return NextResponse.json(
+            { error: 'That category sits inside this one — pick somewhere else.' },
+            { status: 400 },
+          );
+        }
+        seen.add(cur);
+        cur = parentOf.get(cur) ?? null;
+      }
+    }
+    const vals: Record<string, unknown> = { name };
+    if (moving) vals.parent_id = parentId === null ? false : parentId;
+    await odoo.write('product.category', [id], vals);
     const [updated] = await odoo.searchRead('product.category', [['id', '=', id]], ['id', 'name', 'complete_name'], { limit: 1 });
     return NextResponse.json({ category: updated || { id, name, complete_name: name } });
   } catch (err: unknown) {

@@ -25,15 +25,51 @@ export interface PickableLocation {
   sort_order: number;
 }
 
-export function LocationPickerSheet({
-  locations, value, onPick, onClose, title = 'Where is it?',
-}: {
+/** Anything arranged as a tree can be picked here — places, categories. */
+export interface TreeNode {
+  id: number;
+  parent_id: number | null;
+  name: string;
+  sort_order?: number;
+}
+
+export function LocationPickerSheet(props: {
   locations: PickableLocation[];
   value: number | null;
   onPick: (id: number, label: string) => void;
   onClose: () => void;
   title?: string;
 }) {
+  const { locations, ...rest } = props;
+  return <TreePickerSheet nodes={locations} iconOf={(n) => typeIcon((n as PickableLocation).kind)} {...rest} />;
+}
+
+/**
+ * The picker itself. `useHereLabel` is what the "stop at this level" row says —
+ * a place is where a thing IS, a category is what a thing IS, and the sentence
+ * has to match or it reads as nonsense.
+ */
+export function TreePickerSheet({
+  nodes, value, onPick, onClose, title = 'Choose',
+  iconOf, useHereLabel = (n: TreeNode) => `It’s right here — ${n.name}`,
+  searchLabel = 'Search all places',
+  emptyLabel = 'No places have been set up yet. A manager adds them under Stock → Locations.',
+}: {
+  nodes: TreeNode[];
+  value: number | null;
+  onPick: (id: number, label: string) => void;
+  onClose: () => void;
+  title?: string;
+  iconOf?: (n: TreeNode) => string;
+  useHereLabel?: (n: TreeNode) => string;
+  searchLabel?: string;
+  emptyLabel?: string;
+}) {
+  // sort_order is optional on a generic node; the shared path helpers want it.
+  const locations = useMemo(
+    () => nodes.map((n) => ({ ...n, sort_order: n.sort_order ?? 0 })),
+    [nodes],
+  );
   const [parent, setParent] = useState<number | null>(null);
   const [query, setQuery] = useState('');
 
@@ -79,7 +115,7 @@ export function LocationPickerSheet({
   }, [locations, byId]);
 
   const childrenOf = useMemo(() => {
-    const m = new Map<number | null, PickableLocation[]>();
+    const m = new Map<number | null, (TreeNode & { sort_order: number })[]>();
     locations.forEach((l) => {
       const k = effParent.get(l.id) ?? null;
       const arr = m.get(k) || [];
@@ -111,7 +147,7 @@ export function LocationPickerSheet({
   }, [childrenOf]);
 
   const trail = useMemo(() => {
-    const out: PickableLocation[] = [];
+    const out: (TreeNode & { sort_order: number })[] = [];
     const guard = new Set<number>();
     let cur = parent;
     while (cur != null && !guard.has(cur)) {
@@ -143,7 +179,7 @@ export function LocationPickerSheet({
   const shown = childrenOf.get(parent) || [];
   const here = parent != null ? locations.find((l) => l.id === parent) : null;
 
-  const choose = (l: PickableLocation) => onPick(l.id, locationPathLabel(l.id, locations));
+  const choose = (l: TreeNode) => onPick(l.id, locationPathLabel(l.id, locations));
 
   // Nothing set up yet — say so instead of showing an empty box.
   const empty = locations.length === 0;
@@ -164,8 +200,8 @@ export function LocationPickerSheet({
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search all places"
-              aria-label="Search all places"
+              placeholder={searchLabel}
+              aria-label={searchLabel}
               className="w-full h-11 bg-gray-50 border border-gray-200 rounded-xl px-3.5 text-[var(--fs-base)] outline-none focus:border-green-600"
             />
           </div>
@@ -195,7 +231,7 @@ export function LocationPickerSheet({
         <div className="flex-1 overflow-y-auto px-4 pt-2 pb-4">
           {empty ? (
             <p className="text-center text-[var(--fs-sm)] text-gray-500 py-10 px-4">
-              No places have been set up yet. A manager adds them under Stock {'→'} Locations.
+              {emptyLabel}
             </p>
           ) : q ? (
             results.length === 0 ? (
@@ -205,7 +241,7 @@ export function LocationPickerSheet({
                 {results.map(({ loc, path }) => (
                   <button key={loc.id} onClick={() => choose(loc)}
                     className="w-full flex items-center gap-2.5 px-3.5 py-3 border-b border-gray-100 last:border-b-0 text-left active:bg-gray-50">
-                    <span aria-hidden="true">{typeIcon(loc.kind)}</span>
+                    <span aria-hidden="true">{iconOf ? iconOf(loc) : '📁'}</span>
                     <span className="min-w-0">
                       <span className="block text-[var(--fs-base)] font-semibold text-gray-900 truncate">{loc.name}</span>
                       <span className="block text-[var(--fs-xs)] text-gray-400 truncate">{path}</span>
@@ -222,7 +258,7 @@ export function LocationPickerSheet({
                   className="w-full flex items-center gap-2.5 px-3.5 py-3 mb-2 rounded-2xl border border-green-200 bg-green-50 text-left active:bg-green-100">
                   <span aria-hidden="true">📍</span>
                   <span className="text-[var(--fs-base)] font-bold text-green-800 min-w-0 truncate">
-                    It{'’'}s right here {'—'} {here.name}
+                    {useHereLabel(here)}
                   </span>
                 </button>
               )}
@@ -236,7 +272,7 @@ export function LocationPickerSheet({
                       <div key={l.id} className="flex items-stretch border-b border-gray-100 last:border-b-0">
                         <button onClick={() => choose(l)}
                           className="flex-1 flex items-center gap-2.5 px-3.5 py-3 text-left min-w-0 active:bg-gray-50">
-                          <span aria-hidden="true">{typeIcon(l.kind)}</span>
+                          <span aria-hidden="true">{iconOf ? iconOf(l) : '📁'}</span>
                           <span className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{l.name}</span>
                         </button>
                         {inside > 0 && (
