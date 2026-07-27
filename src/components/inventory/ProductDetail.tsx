@@ -206,16 +206,19 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     finally { setBusy(null); }
   }
 
-  // Selling & cost (internal ref, sales price, cost) — one PUT for whatever changed.
-  const sellingCostDirty = !!master0 && (defaultCode !== master0.default_code || listPrice !== master0.list_price || standardPrice !== master0.standard_price);
-  async function saveSellingCost() {
-    if (!master0 || readOnly) return;
-    const patch: { default_code?: string; list_price?: number; standard_price?: number } = {};
-    if (defaultCode !== master0.default_code) patch.default_code = defaultCode.trim();
-    if (listPrice !== master0.list_price) patch.list_price = Number(listPrice || 0);
-    if (standardPrice !== master0.standard_price) patch.standard_price = Number(standardPrice || 0);
-    if (Object.keys(patch).length === 0) return;
-    if (await saveMaster(patch)) setMaster0({ default_code: defaultCode, list_price: listPrice, standard_price: standardPrice });
+  /**
+   * Save ONE master field and move the baseline with it, so the next blur on an
+   * untouched field is a no-op rather than a second write of the same value.
+   */
+  async function saveField(patch: { default_code?: string; list_price?: number; standard_price?: number }) {
+    if (!master0) return;
+    if (await saveMaster(patch)) {
+      setMaster0({
+        default_code: patch.default_code !== undefined ? patch.default_code : master0.default_code,
+        list_price: patch.list_price !== undefined ? String(patch.list_price) : master0.list_price,
+        standard_price: patch.standard_price !== undefined ? String(patch.standard_price) : master0.standard_price,
+      });
+    }
   }
 
   async function reloadSuppliers() {
@@ -428,42 +431,51 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             )}
           </button>
 
-          {/* Name */}
+          {/* WHAT IT IS CALLED. Name, internal reference and barcode are the three
+              ways a person or a scanner identifies this thing, so they sit
+              together. The reference used to live under "Selling & cost", where
+              it had nothing to do with either. */}
           <label className={label} htmlFor="pd-name">Name</label>
-          <div className="flex gap-2 mb-4">
-            <input id="pd-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={200} disabled={readOnly} className={box} />
-            <button onClick={() => name.trim() !== product.name && saveMaster({ name: name.trim() })}
-              disabled={readOnly || busy === 'master' || name.trim() === product.name || name.trim().length < 2}
-              className="px-4 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">Save</button>
-          </div>
+          <input id="pd-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={200}
+            disabled={readOnly}
+            onBlur={() => { const v = name.trim(); if (v.length >= 2 && v !== product.name) saveMaster({ name: v }); }}
+            className={`${box} mb-4`} />
 
-          {/* Selling & cost (Odoo master) — loaded + shown for managers only. */}
+          {master0 && !readOnly && (
+            <>
+              <label className={label} htmlFor="pd-ref">Internal reference</label>
+              <input id="pd-ref" value={defaultCode} onChange={(e) => setDefaultCode(e.target.value)} maxLength={64}
+                placeholder="e.g. BBQ-HOT-40"
+                onBlur={() => { if (defaultCode !== master0.default_code) saveField({ default_code: defaultCode.trim() }); }}
+                className={`${box} mb-4`} />
+            </>
+          )}
+
+          {/* Money. Kept as its own block because it is the one thing here that
+              changes what a dish earns, but saved the same way as everything
+              else — the screen had three different rules for committing a
+              change, which is one more than anybody can learn. */}
           {master0 && !readOnly && (
             <div className="mb-4">
               <label className={label}>Selling & cost</label>
-              <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-3">
-                <div>
-                  <div className="text-[var(--fs-xs)] font-semibold text-gray-500 mb-1">Internal reference</div>
-                  <input value={defaultCode} onChange={(e) => setDefaultCode(e.target.value)} maxLength={64}
-                    placeholder="e.g. BBQ-HOT-40" className={box} />
-                </div>
+              <div className="bg-white border border-gray-200 rounded-xl p-3">
                 <div className="flex gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-xs)] font-semibold text-gray-500 mb-1">Sales price</div>
                     <input value={listPrice} onChange={(e) => setListPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-                      inputMode="decimal" placeholder="0.00" className={box} />
+                      inputMode="decimal" placeholder="0.00"
+                      onBlur={() => { if (listPrice !== master0.list_price && listPrice !== '') saveField({ list_price: Number(listPrice) }); }}
+                      className={box} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[var(--fs-xs)] font-semibold text-gray-500 mb-1">Cost</div>
                     <input value={standardPrice} onChange={(e) => setStandardPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-                      inputMode="decimal" placeholder="0.00" className={box} />
+                      inputMode="decimal" placeholder="0.00"
+                      onBlur={() => { if (standardPrice !== master0.standard_price && standardPrice !== '') saveField({ standard_price: Number(standardPrice) }); }}
+                      className={box} />
                   </div>
                 </div>
-                <button onClick={saveSellingCost} disabled={busy === 'master' || !sellingCostDirty}
-                  className="w-full py-2.5 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">
-                  {busy === 'master' ? 'Saving…' : 'Save selling & cost'}
-                </button>
-                <p className="text-[var(--fs-xs)] text-gray-400">Writes to Odoo — affects sales & margins.</p>
+                <p className="text-[var(--fs-xs)] text-gray-400 mt-2.5">Writes to Odoo {'—'} affects sales &amp; margins.</p>
               </div>
             </div>
           )}
@@ -655,13 +667,10 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
 
           {/* Barcode — editable */}
           <label className={label} htmlFor="pd-barcode">Barcode</label>
-          <div className="flex gap-2 mb-8">
-            <input id="pd-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} disabled={readOnly}
-              placeholder="Scan or type…" className={`${box} font-mono`} />
-            <button onClick={() => (barcode.trim() !== (product.barcode || '')) && saveMaster({ barcode: barcode.trim() })}
-              disabled={readOnly || busy === 'master' || barcode.trim() === (product.barcode || '')}
-              className="px-4 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40">Save</button>
-          </div>
+          <input id="pd-barcode" value={barcode} onChange={(e) => setBarcode(e.target.value)} disabled={readOnly}
+            placeholder="Scan or type…"
+            onBlur={() => { const v = barcode.trim(); if (v !== (product.barcode || '')) saveMaster({ barcode: v }); }}
+            className={`${box} font-mono mb-8`} />
 
           {/* Taking a product out of use. Archive reads as the ordinary action
               because it is the one that almost always applies; delete sits
