@@ -41,6 +41,9 @@ interface SettingsForm {
   attendanceRulesEnabled: boolean;
   attendanceRulesText: string;
   attendanceRulesCadence: 'every_clockin' | 'daily' | 'on_change';
+  attendanceBreakAfter6hMin: number;
+  attendanceBreakAfter9hMin: number;
+  attendanceBreakMinSegmentMin: number;
 }
 
 const ANSWER_HOURS = [4, 8, 12, 24];
@@ -148,6 +151,9 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
           s.attendanceRulesCadence === 'every_clockin' || s.attendanceRulesCadence === 'on_change'
             ? s.attendanceRulesCadence
             : 'daily',
+        attendanceBreakAfter6hMin: minOr(s.attendanceBreakAfter6hMin, 30),
+        attendanceBreakAfter9hMin: minOr(s.attendanceBreakAfter9hMin, 45),
+        attendanceBreakMinSegmentMin: minOr(s.attendanceBreakMinSegmentMin, 15),
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Network error');
@@ -588,6 +594,64 @@ export default function ShiftSettings({ companyId, onBack, onOpenPatterns }: Shi
                 />
               </div>
             )}
+
+            <SectionTitle>Break rules</SectionTitle>
+            <div className="mx-4 bg-white rounded-xl border border-gray-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_8px_rgba(0,0,0,0.06)] overflow-hidden">
+              <SettingRow
+                title="Break after 6 hours"
+                hint="Minutes of break required once more than 6h is worked (German law: 30)."
+                divider={false}
+                control={
+                  <select
+                    className={selectClass}
+                    aria-label="Break minutes required after six hours"
+                    value={form.attendanceBreakAfter6hMin}
+                    onChange={e => update({ attendanceBreakAfter6hMin: Number(e.target.value) })}
+                  >
+                    {Array.from(new Set([0, 15, 20, 30, 45, form.attendanceBreakAfter6hMin])).sort((a, b) => a - b).map(m => (
+                      <option key={m} value={m}>{m} min</option>
+                    ))}
+                  </select>
+                }
+              />
+              <SettingRow
+                title="Break after 9 hours"
+                hint="Minutes of break required once more than 9h is worked (German law: 45)."
+                divider
+                control={
+                  <select
+                    className={selectClass}
+                    aria-label="Break minutes required after nine hours"
+                    value={form.attendanceBreakAfter9hMin}
+                    onChange={e => update({ attendanceBreakAfter9hMin: Number(e.target.value) })}
+                  >
+                    {Array.from(new Set([0, 30, 45, 60, form.attendanceBreakAfter9hMin])).sort((a, b) => a - b).map(m => (
+                      <option key={m} value={m}>{m} min</option>
+                    ))}
+                  </select>
+                }
+              />
+              <SettingRow
+                title="Shortest break that counts"
+                hint="A pause shorter than this doesn&rsquo;t count toward the required break (German law: 15)."
+                divider
+                control={
+                  <select
+                    className={selectClass}
+                    aria-label="Shortest qualifying break in minutes"
+                    value={form.attendanceBreakMinSegmentMin}
+                    onChange={e => update({ attendanceBreakMinSegmentMin: Number(e.target.value) })}
+                  >
+                    {Array.from(new Set([5, 10, 15, 20, form.attendanceBreakMinSegmentMin])).sort((a, b) => a - b).map(m => (
+                      <option key={m} value={m}>{m} min</option>
+                    ))}
+                  </select>
+                }
+              />
+            </div>
+            <div className="mx-4 mt-1.5 text-[var(--fs-sm)] text-gray-400 leading-snug">
+              Shifts short of the required break show up in the Compliance report.
+            </div>
 
             {onOpenPatterns && (
               <>

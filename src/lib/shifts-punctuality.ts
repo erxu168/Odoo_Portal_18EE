@@ -20,11 +20,21 @@
  */
 import type { AttendanceRecord } from '@/lib/shifts-attendance';
 import { fetchAttendanceRange } from '@/lib/shifts-attendance';
-import { fetchEmployees, fetchWeekSlots } from '@/lib/shifts-odoo';
+import { fetchEmployees, fetchSlotsInRange, fetchWeekSlots } from '@/lib/shifts-odoo';
+import type { ShiftSlot } from '@/types/shifts';
 import { getOdoo } from '@/lib/odoo';
-import { ATTENDANCE_POLICY_DEFAULTS, overtimeMinutes, policyFromSettings, type AttendancePolicy } from '@/lib/shifts-attendance-policy';
+import {
+  analyzeShiftBreak,
+  ATTENDANCE_POLICY_DEFAULTS,
+  BREAK_POLICY_DEFAULTS,
+  breakPolicyFromSettings,
+  overtimeMinutes,
+  policyFromSettings,
+  type AttendancePolicy,
+  type BreakPolicy,
+} from '@/lib/shifts-attendance-policy';
 import { getShiftSettings } from '@/lib/shifts-db';
-import { berlinParts, fmtTimeRange, odooToDate, weekKeyToUtcRange } from '@/lib/shifts-time';
+import { berlinParts, dateToOdoo, fmtTimeRange, odooToDate, weekKeyToUtcRange } from '@/lib/shifts-time';
 
 export interface PunctualityEmployee {
   employeeId: number;
@@ -35,6 +45,10 @@ export interface PunctualityEmployee {
   earlyMins: number;
   overCount: number;
   overMins: number;
+  /** shifts (matched, closed) that fell short of the required rest break */
+  missedBreakCount: number;
+  /** total minutes of break shortfall across those shifts */
+  breakShortfallMins: number;
   /** shifts matched (linked + fallback) for this employee */
   matched: number;
 }
@@ -92,6 +106,14 @@ export function tallyPunctuality(
   fallbackSlots: PunctSlot[],
   nameOf: (id: number) => string,
   policy: AttendancePolicy = ATTENDANCE_POLICY_DEFAULTS,
+  breakPolicy: BreakPolicy = BREAK_POLICY_DEFAULTS,
+  /**
+   * When set, only shifts whose SCHEDULED START falls in [startMs, endMs) are
+   * tallied. Used with a padded attendance fetch so an overnight shift at a range
+   * edge is completed from its out-of-window segments, while shifts that merely
+   * touch the padding (their slot starts outside the range) are not counted.
+   */
+  slotStartRange?: { startMs: number; endMs: number },
 ): PunctualityResult {
   const byEmp = new Map<number, PunctualityEmployee>();
   const get = (id: number): PunctualityEmployee => {
@@ -106,6 +128,8 @@ export function tallyPunctuality(
         earlyMins: 0,
         overCount: 0,
         overMins: 0,
+        missedBreakCount: 0,
+        breakShortfallMins: 0,
         matched: 0,
       };
       byEmp.set(id, e);
@@ -128,6 +152,8 @@ export function tallyPunctuality(
     latestOutId: number | null;
     /** true while any segment of this shift is still clocked in (no check-out). */
     hasOpen: boolean;
+    /** closed work segments as [inMs, outMs] instants (for break-rule analysis). */
+    segments: Array<[number, number]>;
     linked: boolean;
   }
   const groups = new Map<string, Group>();
@@ -164,6 +190,9 @@ export function tallyPunctuality(
       continue;
     }
 
+    const seg: [number, number] | null = r.checkOut
+      ? [odooToDate(r.checkIn).getTime(), odooToDate(r.checkOut).getTime()]
+      : null;
     const key = `${r.employeeId}:${slot.id}`;
     const g = groups.get(key);
     if (!g) {
@@ -174,9 +203,11 @@ export function tallyPunctuality(
         latestOut: r.checkOut,
         latestOutId: r.checkOut ? r.id : null,
         hasOpen: r.checkOut === null,
+        segments: seg ? [seg] : [],
         linked,
       });
     } else {
+      if (seg) g.segments.push(seg);
       if (odooToDate(r.checkIn).getTime() < odooToDate(g.earliestIn).getTime()) g.earliestIn = r.checkIn;
       if (r.checkOut && (!g.latestOut || odooToDate(r.checkOut).getTime() > odooToDate(g.latestOut).getTime())) {
         g.latestOut = r.checkOut;
@@ -191,6 +222,12 @@ export function tallyPunctuality(
   let fallbackMatched = 0;
   const overtimeEvents: OvertimeEvent[] = [];
   for (const g of Array.from(groups.values())) {
+    // Ownership: only tally shifts whose scheduled start is inside the range
+    // (skips groups formed from padded, out-of-range attendance).
+    if (slotStartRange) {
+      const startMs = odooToDate(g.slot.start).getTime();
+      if (startMs < slotStartRange.startMs || startMs >= slotStartRange.endMs) continue;
+    }
     if (g.linked) linkedMatched++;
     else fallbackMatched++;
 
@@ -231,6 +268,17 @@ export function tallyPunctuality(
         }
       }
     }
+
+    // Missed break (ArbZG §4): a fully-closed shift whose qualifying rest breaks —
+    // the gaps between segments that are long enough to count — fall short of what
+    // the worked hours require. Open shifts are skipped (not yet final).
+    if (!g.hasOpen && g.segments.length > 0) {
+      const b = analyzeShiftBreak(g.segments, breakPolicy);
+      if (b.missed) {
+        e.missedBreakCount++;
+        e.breakShortfallMins += b.shortfallMin;
+      }
+    }
   }
 
   const employees = Array.from(byEmp.values()).sort(
@@ -251,25 +299,61 @@ function str(v: unknown): string {
 
 export async function fetchWeekPunctuality(companyId: number, weekKey: string): Promise<PunctualityResult> {
   const { startOdoo, endOdoo } = weekKeyToUtcRange(weekKey);
-  const [records, employees, weekSlots] = await Promise.all([
+  const [records, slots] = await Promise.all([
     fetchAttendanceRange(companyId, startOdoo, endOdoo),
-    fetchEmployees(companyId),
     fetchWeekSlots(companyId, weekKey),
   ]);
+  return punctualityFromData(companyId, weekKey, records, slots);
+}
+
+/**
+ * Punctuality over a whole ISO-week RANGE, computed in ONE pass. Fetching all
+ * attendance + slots for the range and grouping once means a shift whose segments
+ * straddle a week boundary (an overnight Sunday→Monday shift) stays a SINGLE group
+ * — it can't be double-counted or judged on half its segments the way summing
+ * per-week results would. Used by the compliance report.
+ */
+export async function fetchRangePunctuality(companyId: number, fromWeek: string, toWeek: string): Promise<PunctualityResult> {
+  const startOdoo = weekKeyToUtcRange(fromWeek).startOdoo;
+  const endOdoo = weekKeyToUtcRange(toWeek).endOdoo;
+  const startMs = odooToDate(startOdoo).getTime();
+  const endMs = odooToDate(endOdoo).getTime();
+  const DAY = 86_400_000;
+  // Pad the attendance fetch by a day each side so an overnight shift at a range
+  // EDGE is completed from its out-of-window segments; the slot-start ownership
+  // filter then keeps only shifts that actually start inside the range.
+  const [records, slots] = await Promise.all([
+    fetchAttendanceRange(companyId, dateToOdoo(new Date(startMs - DAY)), dateToOdoo(new Date(endMs + DAY))),
+    fetchSlotsInRange(companyId, startOdoo, endOdoo),
+  ]);
+  return punctualityFromData(companyId, `${fromWeek}..${toWeek}`, records, slots, { startMs, endMs });
+}
+
+/**
+ * Shared core: build the slot lookups from already-fetched records + slots and run
+ * the tally. `key` is just the result label (week key or range key). Linked slots
+ * outside the fetched window are read directly and company-checked.
+ */
+async function punctualityFromData(
+  companyId: number,
+  key: string,
+  records: AttendanceRecord[],
+  slots: ShiftSlot[],
+  slotStartRange?: { startMs: number; endMs: number },
+): Promise<PunctualityResult> {
+  const employees = await fetchEmployees(companyId);
   const nameMap = new Map(employees.map(e => [e.id, e.name]));
   const nameOf = (id: number) => nameMap.get(id) ?? `Employee #${id}`;
 
-  // Published, assigned slots this week drive the fallback (and are the in-week
-  // linked slots too). They are already company-scoped by fetchWeekSlots.
-  const fallbackSlots: PunctSlot[] = weekSlots
+  const fallbackSlots: PunctSlot[] = slots
     .filter(s => s.state === 'published' && s.employeeId !== null)
     .map(s => ({ id: s.id, employeeId: s.employeeId, start: s.start, end: s.end }));
 
   const slotById = new Map<number, PunctSlot>();
-  for (const s of weekSlots) slotById.set(s.id, { id: s.id, employeeId: s.employeeId, start: s.start, end: s.end });
+  for (const s of slots) slotById.set(s.id, { id: s.id, employeeId: s.employeeId, start: s.start, end: s.end });
 
-  // A linked slot may fall outside this week (overnight boundary) — read those
-  // directly and validate the company before trusting them.
+  // A linked slot may fall outside the fetched window (overnight boundary) — read
+  // those directly and validate the company before trusting them.
   const linkedIds = Array.from(
     new Set(records.map(r => r.planningSlotId).filter((v): v is number => v !== null)),
   ).filter(id => !slotById.has(id));
@@ -291,5 +375,15 @@ export async function fetchWeekPunctuality(companyId: number, weekKey: string): 
     }
   }
 
-  return tallyPunctuality(weekKey, records, slotById, fallbackSlots, nameOf, policyFromSettings(getShiftSettings(companyId)));
+  const settings = getShiftSettings(companyId);
+  return tallyPunctuality(
+    key,
+    records,
+    slotById,
+    fallbackSlots,
+    nameOf,
+    policyFromSettings(settings),
+    breakPolicyFromSettings(settings),
+    slotStartRange,
+  );
 }

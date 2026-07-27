@@ -223,6 +223,62 @@ test('overtime events: a split shift keys the event to the LATEST clock-out reco
   expect(r.overtimeEvents[0].overtimeMins).toBe(50);
 });
 
+test('slotStartRange: only shifts whose slot starts inside the range are tallied', () => {
+  const inRange = pslot(100, 1, '2026-07-15 08:00:00', '2026-07-15 12:00:00'); // Jul 15
+  const outRange = pslot(200, 1, '2026-07-20 08:00:00', '2026-07-20 12:00:00'); // Jul 20 (excluded)
+  const records = [
+    rec({ id: 1, employeeId: 1, checkIn: '2026-07-15 08:10:00', checkOut: '2026-07-15 12:00:00', planningSlotId: 100 }),
+    rec({ id: 2, employeeId: 1, checkIn: '2026-07-20 08:10:00', checkOut: '2026-07-20 12:00:00', planningSlotId: 200 }),
+  ];
+  const slotById = new Map([[100, inRange], [200, outRange]]);
+  const range = { startMs: Date.UTC(2026, 6, 13), endMs: Date.UTC(2026, 6, 20) }; // Jul 13–20 (excl)
+  const r = tallyPunctuality('range', records, slotById, [], nameOf, undefined, undefined, range);
+  expect(r.employees).toHaveLength(1);
+  expect(r.employees[0].matched).toBe(1); // only the Jul 15 shift; Jul 20 slot is out of range
+  expect(r.employees[0].lateCount).toBe(1); // the in-range shift was 10 min late
+});
+
+test('slotStartRange: an overnight shift completes from a padded continuation segment (ONE shift)', () => {
+  // Slot Sun 20:00 → Mon 04:00. Two linked segments: one in range (Sun), one on the
+  // padded Monday (past the range end). Both link to slot 100 → one group.
+  const slot = pslot(100, 1, '2026-07-19 20:00:00', '2026-07-20 04:00:00');
+  const records = [
+    rec({ id: 1, employeeId: 1, checkIn: '2026-07-19 20:00:00', checkOut: '2026-07-19 23:30:00', planningSlotId: 100 }),
+    rec({ id: 2, employeeId: 1, checkIn: '2026-07-20 00:00:00', checkOut: '2026-07-20 04:00:00', planningSlotId: 100 }),
+  ];
+  const slotById = new Map([[100, slot]]);
+  const range = { startMs: Date.UTC(2026, 6, 13), endMs: Date.UTC(2026, 6, 20) }; // ends Mon 00:00 (Jul 20)
+  const r = tallyPunctuality('range', records, slotById, [], nameOf, undefined, undefined, range);
+  expect(r.employees).toHaveLength(1);
+  expect(r.employees[0].matched).toBe(1); // ONE shift, both segments (slot start Sun is in range)
+  expect(r.employees[0].missedBreakCount).toBe(0); // 7.5h worked, 30-min gap satisfies the break
+});
+
+test('missed break: a 7h single-segment shift is flagged; a 7h shift with a 30-min gap is not', () => {
+  // Missed: one 07:00-14:00 UTC segment (7h), no break.
+  const missed = tallyPunctuality(
+    '2026-W29',
+    [rec({ id: 1, employeeId: 1, checkIn: '2026-07-15 07:00:00', checkOut: '2026-07-15 14:00:00' })],
+    new Map(),
+    [pslot(100, 1, '2026-07-15 07:00:00', '2026-07-15 14:00:00')],
+    nameOf,
+  );
+  expect(missed.employees[0]).toMatchObject({ missedBreakCount: 1, breakShortfallMins: 30 });
+
+  // OK: two segments with a 30-min gap → 7h worked, break satisfied.
+  const ok = tallyPunctuality(
+    '2026-W29',
+    [
+      rec({ id: 1, employeeId: 1, checkIn: '2026-07-15 07:00:00', checkOut: '2026-07-15 10:30:00' }),
+      rec({ id: 2, employeeId: 1, checkIn: '2026-07-15 11:00:00', checkOut: '2026-07-15 14:30:00' }),
+    ],
+    new Map(),
+    [pslot(100, 1, '2026-07-15 07:00:00', '2026-07-15 14:30:00')],
+    nameOf,
+  );
+  expect(ok.employees[0].missedBreakCount).toBe(0);
+});
+
 test('overtime events: no event while a segment of the shift is still open (avoids orphaned decisions)', () => {
   const r = tallyPunctuality(
     '2026-W29',

@@ -43,6 +43,105 @@ export function policyFromSettings(s: {
 
 const MIN = 60_000;
 
+/**
+ * Break rules (Phase 4). German ArbZG §4 defaults: a rest break of at least
+ * `after6hMin` once working time exceeds 6h, and `after9hMin` once it exceeds 9h.
+ * The law lets the break be split, but only into blocks of at least
+ * `minSegmentMin` (15 min) — shorter pauses do NOT count toward the requirement.
+ */
+export interface BreakPolicy {
+  after6hMin: number;
+  after9hMin: number;
+  /** shortest gap that counts as a qualifying rest break (min) */
+  minSegmentMin: number;
+}
+
+export const BREAK_POLICY_DEFAULTS: BreakPolicy = {
+  after6hMin: 30,
+  after9hMin: 45,
+  minSegmentMin: 15,
+};
+
+export function breakPolicyFromSettings(s: {
+  attendanceBreakAfter6hMin: number;
+  attendanceBreakAfter9hMin: number;
+  attendanceBreakMinSegmentMin: number;
+}): BreakPolicy {
+  return {
+    after6hMin: s.attendanceBreakAfter6hMin,
+    after9hMin: s.attendanceBreakAfter9hMin,
+    minSegmentMin: s.attendanceBreakMinSegmentMin,
+  };
+}
+
+/**
+ * Break (minutes) required for a shift given the minutes actually WORKED.
+ * >9h → after9hMin; >6h → after6hMin; otherwise none. Thresholds are strict (a
+ * shift of exactly 6h needs no break; 6h01m does).
+ */
+export function requiredBreakMinutes(workedMin: number, policy: BreakPolicy = BREAK_POLICY_DEFAULTS): number {
+  if (workedMin > 540) return policy.after9hMin;
+  if (workedMin > 360) return policy.after6hMin;
+  return 0;
+}
+
+export interface BreakAnalysis {
+  workedMin: number;
+  /** total break time in qualifying blocks (>= minSegmentMin) */
+  qualifyingBreakMin: number;
+  requiredMin: number;
+  shortfallMin: number;
+  missed: boolean;
+}
+
+/**
+ * Analyse a shift's break compliance from its work SEGMENTS (each `[inMs, outMs]`
+ * absolute instants for one clock-in→clock-out). Merges overlaps defensively,
+ * sums worked time, and credits only the gaps between segments that are long
+ * enough to count as a real rest break. A break at the very end (after the last
+ * segment) does not exist — there is no gap after the final clock-out.
+ */
+export function analyzeShiftBreak(
+  segments: Array<[number, number]>,
+  policy: BreakPolicy = BREAK_POLICY_DEFAULTS,
+): BreakAnalysis {
+  const sorted = segments
+    .filter(([a, b]) => b > a)
+    .sort((s1, s2) => s1[0] - s2[0]);
+  // Merge overlapping/adjacent segments so overlaps aren't double-counted as work
+  // and don't masquerade as negative gaps.
+  const merged: Array<[number, number]> = [];
+  for (const seg of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && seg[0] <= last[1]) {
+      if (seg[1] > last[1]) last[1] = seg[1];
+    } else {
+      merged.push([seg[0], seg[1]]);
+    }
+  }
+  let workedMs = 0;
+  for (const [a, b] of merged) workedMs += b - a;
+  let qualifyingBreakMs = 0;
+  for (let i = 1; i < merged.length; i++) {
+    const gap = merged[i][0] - merged[i - 1][1];
+    if (gap >= policy.minSegmentMin * MIN) qualifyingBreakMs += gap;
+  }
+  // Compare against the legal thresholds on the EXACT worked duration (not the
+  // display-rounded minutes) so a shift just over 6h/9h — e.g. 6h00m30s — is not
+  // rounded down under the threshold. Likewise the shortfall test uses exact ms.
+  const requiredMin = requiredBreakMinutes(workedMs / MIN, policy);
+  const missed = requiredMin > 0 && qualifyingBreakMs < requiredMin * MIN;
+  const workedMin = Math.round(workedMs / MIN);
+  const qualifyingBreakMin = Math.floor(qualifyingBreakMs / MIN); // conservative: never over-credit
+  return {
+    workedMin,
+    qualifyingBreakMin,
+    requiredMin,
+    shortfallMin: missed ? requiredMin - qualifyingBreakMin : 0,
+    missed,
+  };
+}
+
 /** Clock-in verdict. `earlyin` = before the allowed window; `late` = after start. */
 export type ClockInNote = 'ontime' | 'earlyin' | 'late';
 export interface ClockInVerdict {

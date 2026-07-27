@@ -122,6 +122,11 @@ function addDays(date: string, days: number): string {
 /** All slots of a company whose Berlin-week is weekKey, ordered by start. */
 export async function fetchWeekSlots(companyId: number, weekKey: string): Promise<ShiftSlot[]> {
   const { startOdoo, endOdoo } = weekKeyToUtcRange(weekKey);
+  return fetchSlotsInRange(companyId, startOdoo, endOdoo);
+}
+
+/** Published/draft slots whose start falls in [startOdoo, endOdoo). Company-scoped. */
+export async function fetchSlotsInRange(companyId: number, startOdoo: string, endOdoo: string): Promise<ShiftSlot[]> {
   const rows = (await getOdoo().searchRead(
     'planning.slot',
     [
@@ -130,7 +135,7 @@ export async function fetchWeekSlots(companyId: number, weekKey: string): Promis
       ['start_datetime', '<', endOdoo],
     ],
     SLOT_FIELDS,
-    { limit: 1000, order: 'start_datetime asc, id asc' },
+    { limit: 5000, order: 'start_datetime asc, id asc' },
   )) as OdooRow[];
   return rows.map(mapSlot);
 }

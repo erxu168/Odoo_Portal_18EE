@@ -310,6 +310,9 @@ function ensureTables(): void {
     ['attendance_rules_enabled', 'INTEGER NOT NULL DEFAULT 0'],
     ['attendance_rules_text', "TEXT NOT NULL DEFAULT ''"],
     ['attendance_rules_cadence', "TEXT NOT NULL DEFAULT 'daily'"],
+    ['attendance_break_after_6h_min', 'INTEGER NOT NULL DEFAULT 30'],
+    ['attendance_break_after_9h_min', 'INTEGER NOT NULL DEFAULT 45'],
+    ['attendance_break_min_segment_min', 'INTEGER NOT NULL DEFAULT 15'],
   ] as const) {
     try { db.exec(`ALTER TABLE shift_settings ADD COLUMN ${col} ${def}`); }
     catch (e) { if (!String((e as Error)?.message).includes('duplicate column')) throw e; }
@@ -735,6 +738,9 @@ interface SettingsRow {
   attendance_rules_enabled?: number;
   attendance_rules_text?: string;
   attendance_rules_cadence?: string;
+  attendance_break_after_6h_min?: number;
+  attendance_break_after_9h_min?: number;
+  attendance_break_min_segment_min?: number;
 }
 
 /** Defaults for the employer on-cost (AG) percentages when a row predates them. */
@@ -748,6 +754,9 @@ const ATTENDANCE_DEFAULTS = {
   attendanceRulesEnabled: false,
   attendanceRulesText: DEFAULT_ATTENDANCE_RULES,
   attendanceRulesCadence: 'daily',
+  attendanceBreakAfter6hMin: 30,
+  attendanceBreakAfter9hMin: 45,
+  attendanceBreakMinSegmentMin: 15,
 } as const;
 
 /** Defaults for the email-reminder fields (also used when a settings row predates them). */
@@ -807,6 +816,9 @@ export function getShiftSettings(companyId: number): ShiftSettings {
       row.attendance_rules_cadence === 'every_clockin' || row.attendance_rules_cadence === 'on_change'
         ? row.attendance_rules_cadence
         : 'daily',
+    attendanceBreakAfter6hMin: row.attendance_break_after_6h_min ?? ATTENDANCE_DEFAULTS.attendanceBreakAfter6hMin,
+    attendanceBreakAfter9hMin: row.attendance_break_after_9h_min ?? ATTENDANCE_DEFAULTS.attendanceBreakAfter9hMin,
+    attendanceBreakMinSegmentMin: row.attendance_break_min_segment_min ?? ATTENDANCE_DEFAULTS.attendanceBreakMinSegmentMin,
   };
 }
 
@@ -820,8 +832,8 @@ export function companiesRequiringConfirmation(): number[] {
 export function saveShiftSettings(s: ShiftSettings): void {
   ensureTables();
   getDb().prepare(`
-    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, ag_cost_minijob, ag_cost_regular, attendance_early_window_min, attendance_overtime_grace_min, attendance_allow_early, attendance_rules_enabled, attendance_rules_text, attendance_rules_cadence, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO shift_settings (company_id, require_approval, answer_deadline_hours, settle_buffer_hours, allow_ask_all, allow_sick_report, require_confirmation, confirm_by_hours, reminder_email_enabled, reminder_evening_time, reminder_morning_time, reminder_final_lead_hours, reminder_quiet_start, reminder_quiet_end, ag_cost_minijob, ag_cost_regular, attendance_early_window_min, attendance_overtime_grace_min, attendance_allow_early, attendance_rules_enabled, attendance_rules_text, attendance_rules_cadence, attendance_break_after_6h_min, attendance_break_after_9h_min, attendance_break_min_segment_min, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(company_id) DO UPDATE SET
       require_approval = excluded.require_approval,
       answer_deadline_hours = excluded.answer_deadline_hours,
@@ -844,6 +856,9 @@ export function saveShiftSettings(s: ShiftSettings): void {
       attendance_rules_enabled = excluded.attendance_rules_enabled,
       attendance_rules_text = excluded.attendance_rules_text,
       attendance_rules_cadence = excluded.attendance_rules_cadence,
+      attendance_break_after_6h_min = excluded.attendance_break_after_6h_min,
+      attendance_break_after_9h_min = excluded.attendance_break_after_9h_min,
+      attendance_break_min_segment_min = excluded.attendance_break_min_segment_min,
       updated_at = excluded.updated_at
   `).run(
     s.companyId,
@@ -868,6 +883,9 @@ export function saveShiftSettings(s: ShiftSettings): void {
     s.attendanceRulesEnabled ? 1 : 0,
     s.attendanceRulesText,
     s.attendanceRulesCadence,
+    s.attendanceBreakAfter6hMin,
+    s.attendanceBreakAfter9hMin,
+    s.attendanceBreakMinSegmentMin,
     nowISO(),
   );
 }
@@ -918,6 +936,24 @@ export function attendanceAcksOn(companyId: number, ackDate: string): { employee
       )
       .all(companyId, ackDate) as { employeeId: number; ackedAt: string; device: string | null }[]
   );
+}
+
+/** Per-employee acknowledgement stats over an inclusive Berlin date range (for the compliance report). */
+export function attendanceAckStatsInRange(
+  companyId: number,
+  fromDate: string,
+  toDate: string,
+): Map<number, { count: number; distinctDays: number }> {
+  ensureTables();
+  const rows = getDb()
+    .prepare(
+      `SELECT employee_id AS employeeId, COUNT(*) AS count, COUNT(DISTINCT ack_date) AS distinctDays
+       FROM attendance_ack WHERE company_id=? AND ack_date>=? AND ack_date<=? GROUP BY employee_id`,
+    )
+    .all(companyId, fromDate, toDate) as { employeeId: number; count: number; distinctDays: number }[];
+  const out = new Map<number, { count: number; distinctDays: number }>();
+  for (const r of rows) out.set(r.employeeId, { count: r.count, distinctDays: r.distinctDays });
+  return out;
 }
 
 // -- Overtime approval decisions (Phase 3) ---------------------------------------

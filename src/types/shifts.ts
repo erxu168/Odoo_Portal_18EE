@@ -99,6 +99,12 @@ export interface ShiftSettings {
   attendanceRulesText: string;
   /** Attendance rules: how often staff must re-acknowledge. */
   attendanceRulesCadence: 'every_clockin' | 'daily' | 'on_change';
+  /** Break rules: minutes of break required once >6h is worked (ArbZG §4: 30). */
+  attendanceBreakAfter6hMin: number;
+  /** Break rules: minutes of break required once >9h is worked (ArbZG §4: 45). */
+  attendanceBreakAfter9hMin: number;
+  /** Break rules: shortest gap (min) that counts as a qualifying rest break (15). */
+  attendanceBreakMinSegmentMin: number;
 }
 
 /** Snapshot of the slot at cover-request creation time. */

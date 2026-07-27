@@ -96,11 +96,17 @@ export async function PUT(req: NextRequest) {
     const attendanceRulesEnabled = readBool(body.attendanceRulesEnabled, current.attendanceRulesEnabled);
     const attendanceRulesText = readRulesText(body.attendanceRulesText, current.attendanceRulesText);
     const attendanceRulesCadence = readCadence(body.attendanceRulesCadence, current.attendanceRulesCadence);
+    const attendanceBreakAfter6hMin = readMinutes(body.attendanceBreakAfter6hMin, current.attendanceBreakAfter6hMin);
+    const attendanceBreakAfter9hMin = readMinutes(body.attendanceBreakAfter9hMin, current.attendanceBreakAfter9hMin);
+    const attendanceBreakMinSegmentMin = readMinutes(body.attendanceBreakMinSegmentMin, current.attendanceBreakMinSegmentMin);
 
     if (
       attendanceRulesEnabled === null ||
       attendanceRulesText === null ||
       attendanceRulesCadence === null ||
+      attendanceBreakAfter6hMin === null ||
+      attendanceBreakAfter9hMin === null ||
+      attendanceBreakMinSegmentMin === null ||
       attendanceEarlyWindowMin === null ||
       attendanceOvertimeGraceMin === null ||
       attendanceAllowEarly === null ||
@@ -146,6 +152,9 @@ export async function PUT(req: NextRequest) {
       attendanceRulesEnabled,
       attendanceRulesText,
       attendanceRulesCadence,
+      attendanceBreakAfter6hMin,
+      attendanceBreakAfter9hMin,
+      attendanceBreakMinSegmentMin,
     };
     saveShiftSettings(settings);
 

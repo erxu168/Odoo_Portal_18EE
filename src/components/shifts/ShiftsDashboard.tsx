@@ -70,6 +70,7 @@ export default function ShiftsDashboard({ companyId, isManager, badges, onNaviga
   const admin: Tile[] = [
     { key: 'roster', emoji: '\u{1F465}', label: 'Roster & Caps', sublabel: 'Team, caps & skills', badge: null },
     { key: 'punctuality', emoji: '⏰', label: 'Punctuality', sublabel: 'Late · early · overtime', badge: null },
+    { key: 'compliance', emoji: '\u{1F4CB}', label: 'Compliance', sublabel: 'Breaks · repeat offenders', badge: null },
     { key: 'timesheet', emoji: '\u{1F9FE}', label: 'Timesheets', sublabel: '§17 records · export', badge: null },
   ];
 
