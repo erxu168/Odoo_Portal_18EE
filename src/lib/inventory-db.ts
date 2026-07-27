@@ -8,7 +8,7 @@
 import { getDb } from './db';
 import { berlinToday, berlinWeekday } from './berlin-date';
 import { buildLocationTree } from './location-tree';
-import { MIN_TO_BASE, MAX_TO_BASE } from './packaging';
+import { MIN_TO_BASE, MAX_TO_BASE, type PackLevel } from './packaging';
 import type {
   CountingTemplate, CountingSession, CountEntry, QuickCount,
   Frequency, AssignType, SessionStatus,
@@ -2364,6 +2364,21 @@ export interface PackagingLevelRow {
   allow_partial: number;
   barcode: string | null;
   sort_order: number;
+}
+
+/**
+ * Storage row -> the shape the pure engine speaks. Lives here (not in the API
+ * route) because a Next.js route file may only export its HTTP handlers — an
+ * extra export fails the build, and tsc --noEmit does not catch it.
+ */
+export function toPackLevel(r: PackagingLevelRow): PackLevel {
+  return {
+    id: r.id,
+    name: r.name,
+    toBase: r.to_base,
+    countable: r.countable === 1,
+    allowPartial: r.allow_partial === 1,
+  };
 }
 
 /** A product's live levels, biggest first (the order the count screen shows). */

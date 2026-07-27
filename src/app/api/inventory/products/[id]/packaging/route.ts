@@ -17,8 +17,8 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { initInventoryTables, listPackagingLevels, setPackagingLevels, type PackagingLevelRow } from '@/lib/inventory-db';
-import { validateLevels, describeChain, type PackLevel } from '@/lib/packaging';
+import { initInventoryTables, listPackagingLevels, setPackagingLevels, toPackLevel } from '@/lib/inventory-db';
+import { validateLevels, describeChain } from '@/lib/packaging';
 import { canAccessCompany } from '@/lib/inventory-access';
 import { getOdoo } from '@/lib/odoo';
 import type { PortalUser } from '@/lib/auth';
@@ -66,17 +66,6 @@ function pid(params: { id: string }) {
   if (!/^\d+$/.test(raw)) return null;
   const n = Number(raw);
   return Number.isSafeInteger(n) && n > 0 ? n : null;
-}
-
-/** Storage row -> the shape the pure engine speaks. */
-export function toPackLevel(r: PackagingLevelRow): PackLevel {
-  return {
-    id: r.id,
-    name: r.name,
-    toBase: r.to_base,
-    countable: r.countable === 1,
-    allowPartial: r.allow_partial === 1,
-  };
 }
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
