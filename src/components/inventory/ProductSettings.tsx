@@ -312,6 +312,9 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
                     <div className="text-[var(--fs-base)] font-semibold text-gray-900 truncate">{p.name}</div>
                     <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5 truncate">{p.categ_id?.[1] || ''}</div>
                     <div className="text-[var(--fs-xs)] text-gray-400 mt-0.5 truncate">{countedAs(p)}</div>
+                    {typeof p.description === 'string' && p.description.trim() && (
+                      <div className="text-[var(--fs-xs)] text-blue-700 mt-0.5 truncate">📝 {p.description.trim()}</div>
+                    )}
                     <div className="flex flex-wrap gap-1 mt-1">
                       {on && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">📷 Photo required</span>}
                       {spots.length > 0 ? spots.map((sid) => (

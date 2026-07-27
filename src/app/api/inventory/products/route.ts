@@ -321,7 +321,7 @@ export async function GET(request: Request) {
     }
 
     const products = await odoo.searchRead('product.product', domain,
-      ['id', 'name', 'default_code', 'product_tmpl_id', 'categ_id', 'uom_id', 'type', 'barcode', 'active', 'available_in_pos', 'company_id'],
+      ['id', 'name', 'default_code', 'product_tmpl_id', 'categ_id', 'uom_id', 'type', 'barcode', 'active', 'available_in_pos', 'company_id', 'description'],
       { limit, order: 'categ_id, name', context: { active_test: false } }
     );
 

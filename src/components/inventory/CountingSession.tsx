@@ -877,6 +877,14 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
             {siblings.map((sl) => spotFullPath(sl)).join(' \u00B7 ')}
           </p>
         )}
+        {/* The manager's standing note about this product, as distinct from what
+            the counter writes about today. This is the whole reason the field
+            exists — a note nobody reads while counting is a note wasted. */}
+        {typeof p.description === 'string' && p.description.trim() && (
+          <p className="mt-2 text-[11px] text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 leading-snug">
+            {p.description.trim()}
+          </p>
+        )}
         {rowNotes[k] && (
           <p className="mt-2 text-[var(--fs-xs)] text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5 leading-snug">
             📝 {rowNotes[k]}

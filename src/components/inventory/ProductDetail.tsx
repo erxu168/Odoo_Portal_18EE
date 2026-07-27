@@ -82,6 +82,8 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [listPrice, setListPrice] = useState('');
   const [standardPrice, setStandardPrice] = useState('');
   const [master0, setMaster0] = useState<{ default_code: string; list_price: string; standard_price: string } | null>(null);
+  const [note, setNote] = useState('');
+  const [note0, setNote0] = useState('');
   // Suppliers (Odoo product.supplierinfo) + the vendor picker list.
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [vendors, setVendors] = useState<{ id: number; name: string }[]>([]);
@@ -155,6 +157,8 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           const lp = m.list_price != null ? String(m.list_price) : '';
           const sp = m.standard_price != null ? String(m.standard_price) : '';
           setDefaultCode(dc); setListPrice(lp); setStandardPrice(sp);
+          const nt = typeof m.description === 'string' ? m.description : '';
+          setNote(nt); setNote0(nt);
           setMaster0({ default_code: dc, list_price: lp, standard_price: sp });
           // Suppliers + vendor picker (manager-only, same gate as the master GET).
           Promise.all([
@@ -188,7 +192,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     setTimeout(() => setMsg(null), kind === 'ok' ? 1800 : 4000);
   }
 
-  async function saveMaster(patch: { name?: string; uom_id?: number; categ_id?: number; barcode?: string; default_code?: string; list_price?: number; standard_price?: number }) {
+  async function saveMaster(patch: { name?: string; uom_id?: number; categ_id?: number; barcode?: string; default_code?: string; list_price?: number; standard_price?: number; description?: string }) {
     if (readOnly) return false;
     setBusy('master');
     try {
@@ -456,6 +460,22 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                 placeholder="e.g. BBQ-HOT-40"
                 onBlur={() => { if (defaultCode !== master0.default_code) saveField({ default_code: defaultCode.trim() }); }}
                 className={`${box} mb-4`} />
+            </>
+          )}
+
+          {!readOnly && (
+            <>
+              <label className={label} htmlFor="pd-note">Note</label>
+              <textarea id="pd-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={5000}
+                placeholder="Anything worth knowing — where it hides, how to spot it, who to ask"
+                onBlur={async () => {
+                  if (note === note0) return;
+                  if (await saveMaster({ description: note })) setNote0(note);
+                }}
+                className={`${box} mb-1 min-h-[76px] py-2.5`} />
+              <p className="text-[var(--fs-xs)] text-gray-400 mb-4">
+                Staff see this while counting. It is the same note as in Odoo.
+              </p>
             </>
           )}
 

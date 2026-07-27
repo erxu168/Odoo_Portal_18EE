@@ -28,7 +28,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   try {
     const odoo = getOdoo();
     const rows = await odoo.searchRead('product.product', [['id', '=', productId]],
-      ['id', 'name', 'default_code', 'barcode', 'categ_id', 'uom_id', 'list_price', 'standard_price', 'taxes_id'],
+      ['id', 'name', 'default_code', 'barcode', 'categ_id', 'uom_id', 'list_price', 'standard_price', 'taxes_id', 'description'],
       { limit: 1, context: { active_test: false } });
     if (rows.length === 0) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     return NextResponse.json({ product: rows[0] });
@@ -95,6 +95,13 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const cost = Number(body.standard_price);
     if (!Number.isFinite(cost) || cost < 0) return NextResponse.json({ error: 'Cost must be a number of 0 or more' }, { status: 400 });
     vals.standard_price = cost;
+  }
+  if (body.description !== undefined) {
+    // Odoo's own note field on the product, so a note typed here is the note an
+    // Odoo user reads — rather than a second place the same thing can live.
+    const note = String(body.description);
+    if (note.length > 5000) return NextResponse.json({ error: 'Note is too long' }, { status: 400 });
+    vals.description = note.trim() === '' ? false : note;
   }
   if (Object.keys(vals).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
