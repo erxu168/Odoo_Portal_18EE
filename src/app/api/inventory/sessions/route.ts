@@ -264,16 +264,29 @@ export async function PUT(request: Request) {
       }
     }
 
-    // Enforce photo requirement: for any flagged product with qty > 0,
-    // there must be at least one photo attached.
+    // Enforce the photo requirement: a flagged line with a real quantity needs
+    // a photo.
+    //
+    // The rule comes from the SESSION'S OWN frozen copy where there is one. A
+    // manager switching the flag off mid-count used to retire the requirement
+    // from lines already counted under it, and switching it on demanded photos
+    // for lines counted before anyone asked. The count is judged by the rules it
+    // started under; only a snapshot-less legacy count falls back to live flags.
     {
+      const snapshot = getSessionItems(session.id);
+      const frozen = new Map<string, boolean>();
+      snapshot.forEach((it: any) => frozen.set(`${it.odoo_product_id}:${it.count_location_id}`, !!it.requires_photo));
       const productIds = entries.map((e: any) => e.product_id);
       const flagRows = getProductFlags(productIds);
       const flagMap: Record<number, boolean> = {};
       flagRows.forEach((f: any) => { flagMap[f.odoo_product_id] = !!f.requires_photo; });
+      const needsPhoto = (e: any) => {
+        const k = `${e.product_id}:${e.count_location_id ?? 0}`;
+        return frozen.has(k) ? frozen.get(k)! : !!flagMap[e.product_id];
+      };
       const photoMap = getCountPhotosMap('count_entries', entries.map((e: any) => e.id));
       const missing = entries.filter((e: any) =>
-        flagMap[e.product_id] && e.counted_qty > 0 && (photoMap[e.id]?.length || 0) === 0
+        needsPhoto(e) && e.counted_qty > 0 && (photoMap[e.id]?.length || 0) === 0
       );
       if (missing.length > 0) {
         return NextResponse.json({

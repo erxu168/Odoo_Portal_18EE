@@ -88,7 +88,12 @@ export async function POST(request: Request) {
   const productIds: number[] = entries.map((e: any) => Number(e.product_id)).filter(Boolean);
   const flagRows = getProductFlags(productIds);
   const flagMap: Record<number, boolean> = {};
-  flagRows.forEach(f => { flagMap[f.odoo_product_id] = !!f.requires_photo; });
+  // The authoritative pack size per product, read here once for the whole batch.
+  const sizeMap: Record<number, number | null> = {};
+  flagRows.forEach(f => {
+    flagMap[f.odoo_product_id] = !!f.requires_photo;
+    sizeMap[f.odoo_product_id] = f.units_per_crate ?? null;
+  });
 
   // Server-side validation: flagged + qty>0 must have at least one photo
   for (const entry of entries) {
@@ -104,14 +109,27 @@ export async function POST(request: Request) {
 
   // Compute + validate EVERY entry BEFORE inserting any, so an invalid quantity
   // can't leave a partial batch persisted (a retry would then duplicate rows).
+  // The pack size comes from the PRODUCT, never from the request. Multiplying a
+  // crate figure by a number the caller supplied means "1 crate" can be any
+  // total it likes — the same hole the session-count route already lost.
+  // `flagMap` above is built from getProductFlags for exactly these products.
   const prepared = entries.map((entry: any) => {
-    const upc = entry.units_per_crate != null && Number(entry.units_per_crate) > 0 ? Number(entry.units_per_crate) : null;
-    const hasSplit = upc !== null && (entry.crate_qty !== undefined || entry.loose_qty !== undefined);
+    const pid = Number(entry.product_id);
+    const upc = sizeMap[pid] != null && sizeMap[pid] > 0 ? sizeMap[pid] : null;
+    const sentSplit = entry.crate_qty !== undefined || entry.loose_qty !== undefined;
+    const hasSplit = upc !== null && sentSplit;
     const baseQty = hasSplit
       ? crateTotal(Number(entry.crate_qty) || 0, Number(entry.loose_qty) || 0, upc)
       : Number(entry.counted_qty);
-    return { entry, upc, hasSplit, baseQty };
+    return { entry, upc, hasSplit, baseQty, sentSplit };
   });
+  const strayPack = prepared.find((p) => p.sentSplit && !p.hasSplit);
+  if (strayPack) {
+    return NextResponse.json(
+      { error: `Product ${strayPack.entry.product_id} is not counted in packs` },
+      { status: 400 },
+    );
+  }
   for (const p of prepared) {
     if (!Number.isFinite(p.baseQty) || p.baseQty < 0 || p.baseQty > 1e7) {
       return NextResponse.json({ error: `Invalid quantity for product ${p.entry.product_id}` }, { status: 400 });
