@@ -520,6 +520,14 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             </p>
           </div>
 
+          {/* NOT MOUNTED YET: <PackagingLevels /> edits the nested chain
+              (box -> pack -> piece), but counting still reads units_per_crate, so
+              a manager filling it in would see nothing change on the count screen
+              — the same "I set it and it did nothing" trap the loose word already
+              fell into. It goes here the moment counting reads the chain, which
+              needs the session to SNAPSHOT it first (like units_per_crate is
+              snapshotted today) so editing packaging can't re-convert old counts. */}
+
           {/* Photo rule */}
           <button onClick={togglePhotoRule} disabled={readOnly} className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4 disabled:opacity-70">
             <span className="text-[var(--fs-base)] font-semibold text-gray-900">Photo required when counting</span>
