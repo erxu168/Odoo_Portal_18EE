@@ -201,23 +201,27 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       const nav = navigator as any;
       let device: BleAny = null;
       try {
+        // SHOW EVERYTHING and let the person choose.
+        //
+        // This used to filter on names beginning ZD / Zebra / ZQ / ZT / XXRZ,
+        // and plenty of Zebras advertise their SERIAL instead — a ZD420 appears
+        // as "D2J203404050". The chooser then opened EMPTY. There was an
+        // accept-all fallback, but it only ran if requestDevice threw; an empty
+        // chooser does not throw, it waits, and cancelling it was read as "the
+        // user changed their mind", so the fallback was unreachable.
+        //
+        // Filtering by the Zebra service UUID is no better: a printer has to
+        // ADVERTISE that service for it to match, and many do not. The person
+        // holding the phone knows which printer is theirs — the same reason the
+        // Android path now shows the paired list instead of guessing by name.
         device = await nav.bluetooth.requestDevice({
-          filters: [
-            { namePrefix: 'ZD' }, { namePrefix: 'Zebra' },
-            { namePrefix: 'XXRZ' }, { namePrefix: 'ZQ' }, { namePrefix: 'ZT' },
-          ],
+          acceptAllDevices: true,
           optionalServices: ALL_OPTIONAL_SERVICES,
         });
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes('cancelled') || msg.includes('canceled')) { setStatus('idle'); return false; }
-        try {
-          device = await nav.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: ALL_OPTIONAL_SERVICES });
-        } catch (e2: unknown) {
-          const msg2 = e2 instanceof Error ? e2.message : String(e2);
-          if (msg2.includes('cancelled') || msg2.includes('canceled')) { setStatus('idle'); return false; }
-          throw e2;
-        }
+        throw e;
       }
       if (!device) { setStatus('idle'); return false; }
       deviceRef.current = device;
