@@ -1216,12 +1216,25 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
     }
   }
 
-  async function handleReject() {
+  // Rejecting deletes any counting already done for this draft. The server
+  // refuses the first attempt and names what would go; only then can it be
+  // confirmed. Nobody's numbers disappear without them being told first.
+  const [willErase, setWillErase] = useState<string[] | null>(null);
+
+  async function handleReject(confirm = false) {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch(`/api/inventory/products/${product.id}/reject`, { method: 'POST' });
+      const res = await fetch(
+        `/api/inventory/products/${product.id}/reject${confirm ? '?confirm=1' : ''}`,
+        { method: 'POST' },
+      );
       const data = await res.json();
+      if (res.status === 409 && data.code === 'WOULD_ERASE_COUNTS') {
+        setWillErase(data.work?.where || ['some counting already done']);
+        setSubmitting(false);
+        return;
+      }
       if (!res.ok) { setError(data.error || 'Reject failed'); setSubmitting(false); return; }
       onRejected();
     } catch (err) {
@@ -1353,11 +1366,20 @@ function DraftReviewPanel({ product, onApproved, onLinked, onRejected }: DraftRe
       {mode === 'reject' && (
         <div className="space-y-2">
           <p className="text-[13px] text-gray-700">Reject this product and drop its count line?</p>
+          {willErase && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-2.5 py-2">
+              <p className="text-[12px] font-bold text-red-800">This deletes numbers someone already counted:</p>
+              <ul className="mt-1 text-[12px] text-red-700 list-disc pl-4">
+                {willErase.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+              <p className="text-[11px] text-red-700 mt-1">There is no way to get them back.</p>
+            </div>
+          )}
           {error && <p className="text-[12px] text-red-600">{error}</p>}
           <div className="flex gap-2">
-            <button onClick={() => setMode('idle')} disabled={submitting} className="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-[13px] font-semibold">Back</button>
-            <button onClick={handleReject} disabled={submitting} className="flex-1 py-2 rounded-lg bg-red-600 text-white text-[13px] font-bold">
-              {submitting ? 'Rejecting…' : 'Confirm reject'}
+            <button onClick={() => { setMode('idle'); setWillErase(null); }} disabled={submitting} className="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-[13px] font-semibold">Back</button>
+            <button onClick={() => handleReject(!!willErase)} disabled={submitting} className="flex-1 py-2 rounded-lg bg-red-600 text-white text-[13px] font-bold">
+              {submitting ? 'Rejecting…' : willErase ? 'Yes, delete those numbers' : 'Confirm reject'}
             </button>
           </div>
         </div>

@@ -11,9 +11,10 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides, logAudit } from '@/lib/db';
+import { getPermissionOverrides, logAudit, parseCompanyIds } from '@/lib/db';
+
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, countLockedLinesForProduct, deleteProductPortalData } from '@/lib/inventory-db';
+import { initInventoryTables, describeCountWorkForProduct, deleteProductPortalData, isDraftProduct } from '@/lib/inventory-db';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const user = requireAuth();
@@ -234,11 +235,32 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
   }
 
   initInventoryTables();
-  const locked = countLockedLinesForProduct(productId);
-  if (locked > 0) {
+  // Refuse while any counted number depends on this product — including a count
+  // still open on someone's tablet right now. Naming what is in the way is the
+  // point: "it is in a count" gives a manager nothing to do about it.
+  // Scoped: a manager is told something is in the way, never another
+  // restaurant's list name.
+  const visible = parseCompanyIds(user.allowed_company_ids);
+  const work = describeCountWorkForProduct(productId, visible.length > 0 ? visible : null);
+  if (work.total > 0) {
+    // A draft is ALREADY inactive, so "archive it" is a no-op that would relabel
+    // a product awaiting review as archived. Reject in Review is its real way out.
+    const isDraft = isDraftProduct(productId);
+    const what = work.where.length > 0
+      ? work.where.join(', ')
+      : `${work.lockedLines} line${work.lockedLines === 1 ? '' : 's'} in a submitted or approved count`;
+    // Say what archiving ACTUALLY does. It hides the product from searching and
+    // from adding to lists — it does NOT take it off a list that already names
+    // it, and such a list still counts it. Promising otherwise is the same lie
+    // this module was just fixed for.
+    const wayOut = isDraft
+      ? 'Reject it in Review instead — that clears its counts and closes the draft.'
+      : 'Archive it instead: every number is kept, and it stops turning up in searches and when adding products. If it is on a counting list, take it off there as well.';
     return NextResponse.json({
-      error: 'This product is part of a count that has been submitted or approved. Deleting it would leave those numbers with no name — archive it instead.',
+      error: `Someone has already counted this product — ${what}. Deleting it would erase those numbers. ${wayOut}`,
       code: 'IN_LOCKED_COUNT',
+      canArchive: !isDraft,
+      work,
     }, { status: 409 });
   }
 
@@ -271,8 +293,12 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
     // Orphan rows beat a lie, but a SILENT orphan is how a deleted id comes back:
     // this transaction also strips the id from every counting list, so if it
     // rolls back the product stays on lists that can never render it.
-    try { deleteProductPortalData(productId); }
+    let preserved = 0;
+    try { preserved = deleteProductPortalData(productId).countWorkPreserved; }
     catch (e) { console.error('[inventory] portal cleanup FAILED after deleting product', productId, '- its id may still be on counting lists:', e); }
+    if (preserved > 0) {
+      console.warn('[inventory] product', productId, 'was deleted while', preserved, 'count entries arrived — they were KEPT, not erased');
+    }
     // A template left behind with no variants is litter.
     if (tmplId) {
       try {
@@ -295,7 +321,15 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
         target_type: 'product', target_id: productId, detail: existing.name,
       });
     } catch (e) { console.error('[inventory] delete audit log failed for', productId, e); }
-    return NextResponse.json({ ok: true, deleted: existing.name });
+    return NextResponse.json({
+      ok: true,
+      deleted: existing.name,
+      // Somebody counted it while it was being deleted. Their numbers were kept,
+      // and the manager is told rather than left to find out.
+      ...(preserved > 0 ? {
+        warning: `Someone counted this product while it was being deleted. Those ${preserved} number${preserved === 1 ? '' : 's'} were kept.`,
+      } : {}),
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });
