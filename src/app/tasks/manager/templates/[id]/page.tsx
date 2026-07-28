@@ -9,8 +9,8 @@ import { useCompany } from '@/lib/company-context';
 import AttachmentList from '../../../_components/AttachmentList';
 import ChecklistCard from '../../../_components/ChecklistCard';
 import RecurrenceEditor from '../../../_components/RecurrenceEditor';
-import SetupGuideEditor, { type GuidePin, type EditorPhoto } from '../../../_components/SetupGuideEditor';
-import { compressImage } from '../../../_components/photoUpload';
+import { type GuidePin, type EditorPhoto } from '../../../_components/SetupGuideEditor';
+import GuidedTutorialEditor from '../../../_components/GuidedTutorialEditor';
 import Toast from '@/components/ui/Toast';
 import { useToast } from '../../../_components/useToast';
 
@@ -538,39 +538,26 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
   const [submitting, setSubmitting]   = useState(false);
   const [error, setError]             = useState<string | null>(null);
 
-  // ── Setup guide (multi-photo) ───────────────────────────────
-  // `photos` mixes server photos (URL route) and pending uploads (data URL,
-  // uploaded on save with their client-assigned seq). Removed server photos are
-  // collected and DELETEd on save.
-  const [isSetupGuide, setIsSetupGuide] = useState(line?.is_setup_guide ?? false);
+  // ── Guided tutorial (replaces the retired inline "setup guide") ─────────────
+  // The old setup-guide CREATION path is gone: is_setup_guide is now pinned false
+  // so every line saves as a normal task. The photo/seq state below is kept ONLY
+  // so the save function's (now unreachable) setup-guide branches keep type-
+  // checking without rewriting the save flow — none of it ever becomes active.
+  // A line's optional how-to now lives in a separate GuidedTutorialEditor (its own
+  // API), opened per already-saved line via `guideEditorOpen` below.
+  const [isSetupGuide] = useState(false);
+  const [guideEditorOpen, setGuideEditorOpen] = useState(false);
   const [photos, setPhotos] = useState<EditorPhoto[]>(
     (line?.setup_photo_seqs ?? []).map(seq => ({
       seq,
       url: `/api/tasks/templates/${tplId}/lines/${line!.id}/setup-photo?seq=${seq}`,
     })),
   );
-  const [removedSeqs, setRemovedSeqs] = useState<number[]>([]);
-  // Count of photos still compressing — Save is blocked until they land, so a
-  // pick started before Save can't finish after submit() snapshots `photos`.
-  const [photoBusy, setPhotoBusy] = useState(0);
+  const [removedSeqs] = useState<number[]>([]);
+  const [photoBusy] = useState(0);
   // New lines: remember the id created by the first successful save, so a retry
-  // after a failed photo upload PATCHes instead of POSTing a duplicate task.
+  // after a failed upload PATCHes instead of POSTing a duplicate task.
   const [createdLineId, setCreatedLineId] = useState<number | null>(null);
-  // Provisional seqs for not-yet-uploaded photos live at 1,000,000+ so they (a)
-  // sort AFTER every real photo — keeping add-order on screen — and (b) sit far
-  // above any real seq that can exist: the server allocates seqs from 0 (MAX+1)
-  // and a line holds at most a handful of reference photos, so real seqs stay in
-  // the low tens and can never reach the provisional band. 1,000,000 + a small
-  // per-editor counter also can't overflow Odoo's int4 (max ~2.1e9). So against
-  // our own client — which only APPENDS new photos (server picks the real seq)
-  // or REPLACES an existing small seq, and never posts a photo in the 1M band —
-  // a provisional-vs-real collision cannot occur, and pins are remapped to real
-  // seqs on save. RESIDUAL (documented-deferred): a *different* authorized client
-  // deliberately creating a photo at a >=1,000,000 seq could still collide. Fully
-  // closing that adversarial case means taking the pin<->photo link off the
-  // shared integer namespace (opaque photo keys) or a server-side transactional
-  // save-guide aggregate — out of scope for this client fast-follow.
-  const seqRef = useRef<number>(1_000_000);
 
   // Set when the manager dismisses the modal. A save already in flight then skips
   // its onSaved (which refreshes the list and closes the CURRENTLY open modal), so
@@ -580,51 +567,6 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
   // reach across to a modal that has moved on.
   const closedRef = useRef(false);
   const handleClose = () => { closedRef.current = true; onClose(); };
-
-  async function addSetupPhoto(file: File) {
-    // Provisional local seq only — the SERVER assigns the real one on append
-    // (append-without-seq), and submit() remaps pins if it differs.
-    const seq = seqRef.current++;
-    setPhotoBusy(n => n + 1);
-    try {
-      const { base64 } = await compressImage(file, 1280, 0.85);
-      // Insert in seq order: overlapping compressions finish out of order, and
-      // the server sorts by seq — keep the on-screen order identical.
-      setPhotos(prev => [...prev, { seq, url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64, isNew: true }]
-        .sort((a, b) => a.seq - b.seq));
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Could not read image');
-    } finally {
-      setPhotoBusy(n => n - 1);
-    }
-  }
-
-  async function replaceSetupPhoto(seq: number, file: File) {
-    const hasPins = subtasks.some(s => s.pin_photo_seq === seq);
-    if (hasPins && !confirm('Replacing this photo clears the pins placed on it. Continue?')) return;
-    setPhotoBusy(n => n + 1);
-    try {
-      const { base64 } = await compressImage(file, 1280, 0.85);
-      if (hasPins) setSubtasks(prev => prev.filter(s => s.pin_photo_seq !== seq));
-      setPhotos(prev => prev.map(p => p.seq === seq
-        // Preserve isNew: replacing a not-yet-uploaded photo must still APPEND
-        // (no seq) on save, or it could overwrite another editor's slot.
-        ? { ...p, url: `data:image/jpeg;base64,${base64}`, pendingBase64: base64 }
-        : p));
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Could not read image');
-    } finally {
-      setPhotoBusy(n => n - 1);
-    }
-  }
-
-  function removeSetupPhoto(seq: number) {
-    const target = photos.find(p => p.seq === seq);
-    if (!target) return;
-    setPhotos(prev => prev.filter(p => p.seq !== seq));
-    setSubtasks(prev => prev.filter(s => s.pin_photo_seq !== seq));
-    if (!target.pendingBase64) setRemovedSeqs(prev => [...prev, seq]);
-  }
 
   async function uploadAttachment(file: File) {
     setUploadingFile(true);
@@ -853,6 +795,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
   }
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/40 z-[60] flex items-end sm:items-center justify-center" onClick={handleClose}>
       <div className="bg-white w-full max-w-md rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[90dvh]" onClick={e => e.stopPropagation()}>
         <h2 className="font-bold text-gray-800 text-lg px-5 pt-5 pb-3 flex-shrink-0">{line ? 'Edit task' : 'Add task'}</h2>
@@ -919,46 +862,45 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
               <p className="text-[11px] text-gray-400 mt-1">Shown to staff above the photo upload button.</p>
             </div>
           )}
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={isSetupGuide}
-              onChange={e => setIsSetupGuide(e.target.checked)}
-            />
-            <span>📍 Setup guide <span className="text-gray-400 font-normal">(photo with numbered pins)</span></span>
-          </label>
-
-          {isSetupGuide ? (
-            <SetupGuideEditor
-              departmentId={departmentId}
-              pins={subtasks}
-              onPinsChange={setSubtasks}
-              photos={photos}
-              onAddPhoto={addSetupPhoto}
-              onReplacePhoto={replaceSetupPhoto}
-              onRemovePhoto={removeSetupPhoto}
-              disabled={submitting}
-            />
-          ) : (
-            <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Subtasks</label>
-              <div className="space-y-1.5">
-                {subtasks.map((s, i) => (
-                  <div key={i} className="flex gap-2">
-                    <input value={s.name} onChange={e => setSubtasks(prev => prev.map((p, idx) => idx === i ? { ...p, name: e.target.value } : p))}
-                      placeholder="Subtask name"
-                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                    <button onClick={() => setSubtasks(prev => prev.filter((_, idx) => idx !== i))}
-                      className="text-xs text-red-500 hover:text-red-600 px-2">Remove</button>
-                  </div>
-                ))}
-                <button onClick={() => setSubtasks(prev => [...prev, { name: '', pin_x: 0, pin_y: 0, pin_photo_seq: 0 }])}
-                  className="text-xs font-semibold text-orange-600 hover:text-orange-700">
-                  + Add subtask
-                </button>
-              </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Subtasks</label>
+            <div className="space-y-1.5">
+              {subtasks.map((s, i) => (
+                <div key={i} className="flex gap-2">
+                  <input value={s.name} onChange={e => setSubtasks(prev => prev.map((p, idx) => idx === i ? { ...p, name: e.target.value } : p))}
+                    placeholder="Subtask name"
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  <button onClick={() => setSubtasks(prev => prev.filter((_, idx) => idx !== i))}
+                    className="text-xs text-red-500 hover:text-red-600 px-2">Remove</button>
+                </div>
+              ))}
+              <button onClick={() => setSubtasks(prev => [...prev, { name: '', pin_x: 0, pin_y: 0, pin_photo_seq: 0 }])}
+                className="text-xs font-semibold text-orange-600 hover:text-orange-700">
+                + Add subtask
+              </button>
             </div>
-          )}
+          </div>
+
+          {/* Guided tutorial — optional step-by-step how-to, saved via its OWN API
+              (independent of this line's save). Only offered for an already-saved
+              line, since the guide needs a real lineId. */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Guided tutorial</label>
+            {line && line.id > 0 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setGuideEditorOpen(true)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                >
+                  📖 Edit guided tutorial
+                </button>
+                <p className="text-[11px] text-gray-400 mt-1">A step-by-step how-to for staff. Optional — it never completes the task.</p>
+              </>
+            ) : (
+              <p className="text-[11px] text-gray-400">💡 Save this task first, then reopen it to add a guided tutorial.</p>
+            )}
+          </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Schedule</label>
             <RecurrenceEditor value={recurrence} onChange={setRecurrence} />
@@ -1013,5 +955,15 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
         </div>
       </div>
     </div>
+    {guideEditorOpen && line && line.id > 0 && (
+      <GuidedTutorialEditor
+        templateId={tplId}
+        lineId={line.id}
+        lineName={line.name}
+        onClose={() => setGuideEditorOpen(false)}
+        onSaved={onBackgroundRefresh}
+      />
+    )}
+    </>
   );
 }

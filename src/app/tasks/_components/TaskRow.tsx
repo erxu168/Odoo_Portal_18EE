@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { TaskListLine, TaskSubtask, ModuleLink, SubtaskToggleResult } from '@/lib/odoo-tasks';
 import SubtaskList from './SubtaskList';
 import AttachmentList from './AttachmentList';
-import SetupGuideView from './SetupGuideView';
+import GuidedTutorialPlayer from './GuidedTutorialPlayer';
 
 interface Props {
   task: TaskListLine;
@@ -50,18 +50,9 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-/** Per-photo URL builder for a setup guide. Real daily lines serve their own
- * snapshots; manager-preview lines use synthetic negative ids, so they read the
- * TEMPLATE line's photos (via source_template_line_id) instead. */
-export function setupPhotoUrlFor(task: TaskListLine): (seq: number) => string {
-  if (task.id < 0 && task.source_template_line_id) {
-    return (seq) => `/api/tasks/template-lines/${task.source_template_line_id}/setup-photo?seq=${seq}`;
-  }
-  return (seq) => `/api/tasks/lines/${task.id}/setup-photo?seq=${seq}`;
-}
-
 export default function TaskRow({ task, taskListId: _taskListId, onComplete, onSubtaskToggle, onPhotoUpload, onNoteSave, onReload, readOnly = false }: Props) {
   const [subtasks, setSubtasks]     = useState<TaskSubtask[]>(task.subtasks);
+  const [showGuide, setShowGuide]   = useState(false);
   // Count of photos uploaded against this task — derived from runtime-scoped image attachments
   // plus a transient "just uploaded" counter for instant feedback before the parent reload settles.
   const persistedPhotos = task.attachments.filter(
@@ -79,38 +70,6 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
   const [noteDirty, setNoteDirty]   = useState(false);
 
   if (task.state === 'done') return null;
-
-  // Setup guides are pin-driven: no tap-to-complete row — the SetupGuideView
-  // owns the photo, the check-off list, and auto-completion.
-  if (task.is_setup_guide) {
-    return (
-      <div className="relative px-4 py-3.5 border-b border-gray-100 last:border-0">
-        {task.is_ad_hoc && <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500" aria-hidden="true" />}
-        <div className="flex items-start justify-between gap-2">
-          <p className={`font-semibold text-sm leading-snug ${task.state === 'overdue' ? 'text-red-700' : 'text-gray-800'}`}>
-            {task.name}
-          </p>
-          <span className="text-[10px] font-bold uppercase tracking-wide text-orange-700 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full flex-shrink-0">
-            📍 Setup guide
-          </span>
-        </div>
-        {task.deadline_datetime && (
-          <span className={`mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-            task.state === 'overdue' ? 'bg-red-100 text-red-700' : 'bg-blue-50 text-blue-700'
-          }`}>
-            {task.state === 'overdue' ? '⚠ Overdue' : `⏱ By ${formatTime(task.deadline_datetime)}`}
-          </span>
-        )}
-        <SetupGuideView
-          task={task}
-          photoUrlFor={setupPhotoUrlFor(task)}
-          onSubtaskToggle={onSubtaskToggle}
-          onReload={onReload}
-          readOnly={readOnly}
-        />
-      </div>
-    );
-  }
 
   const allSubtasksDone = subtasks.length === 0 || subtasks.every(s => s.done);
   const isLocked        = subtasks.length > 0 && !allSubtasksDone;
@@ -178,6 +137,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
   const linkHref = task.module_link_type !== 'none' ? MODULE_HREFS[task.module_link_type] : null;
 
   return (
+    <>
     <div onClick={handleTap}
       className={`relative flex items-start gap-3 px-4 py-3.5 border-b border-gray-100 last:border-0 transition-colors ${readOnly ? '' : 'cursor-pointer'} ${
         completing ? 'opacity-40 pointer-events-none' :
@@ -224,6 +184,16 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
             </span>
           )}
         </div>
+
+        {task.has_guide && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); setShowGuide(true); }}
+            className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors"
+          >
+            📖 Show me how{task.guide_step_count ? ` · ${task.guide_step_count} step${task.guide_step_count === 1 ? '' : 's'}` : ''}
+          </button>
+        )}
 
         {subtasks.length > 0 && (
           <p className={`text-xs mt-1.5 font-medium ${
@@ -319,5 +289,7 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
         {error && <p className="mt-1.5 text-xs font-semibold text-red-600">{error}</p>}
       </div>
     </div>
+    {showGuide && <GuidedTutorialPlayer lineId={task.id} onClose={() => setShowGuide(false)} />}
+    </>
   );
 }

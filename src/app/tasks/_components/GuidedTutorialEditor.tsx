@@ -1,0 +1,905 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type MutableRefObject } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import PinnableImage from '@/components/ui/PinnableImage';
+import { isValidYoutubeUrl, canonicalYoutubeUrl } from '@/lib/youtube-url';
+import type { GuideStepRead, GuideStepSave, GuidePin, GuideMediaType } from '@/lib/task-guide';
+import { compressImage } from './photoUpload';
+
+/*
+ * GuidedTutorialEditor — manager/admin editor for a task's optional "guided
+ * tutorial": an ordered list of how-to steps attached to a TEMPLATE line. It is
+ * PURELY INSTRUCTIONAL — nothing here ever completes a task (no toggle, no
+ * subtask, no completed_at). It mirrors SetupGuideEditor's save-freeze and
+ * late-callback guards, but this component owns its own load/save/delete.
+ *
+ * Server contract (krawings.task.template.line.portal_save_guide): a save is an
+ * ATOMIC AGGREGATE REBUILD — the server unlinks every existing step and recreates
+ * them fresh, so ALL local step ids go stale the instant a save succeeds. A step
+ * whose photo/pdf is unchanged sends its `id` and NO *_base64, and the server
+ * carries the prior bytes over by that id. Therefore, after a successful save we
+ * MUST re-GET the guide so local steps pick up their new ids (and drop the pending
+ * base64 the server now owns) — otherwise a second save would reference deleted
+ * ids and lose the "kept" photos. Optimistic concurrency: PUT sends the current
+ * `revision`; a stale editor gets 409 and must reload.
+ */
+
+interface Props {
+  templateId: number;
+  lineId: number;
+  lineName: string;
+  onClose: () => void;
+  onSaved?: () => void;
+}
+
+/** One step as the editor works with it: a stable local `key` (used for React
+ * keys AND dnd-kit ids — server ids are unstable across saves), the server `id`
+ * when it exists, and per-media working fields. */
+interface EditorStep {
+  /** Stable within this editor session; regenerated on every (re)load. */
+  key: string;
+  /** Server id — present for a loaded step, absent for one added this session.
+   * Goes STALE after any successful save (aggregate rebuild), hence the re-GET. */
+  id?: number;
+  media_type: GuideMediaType;
+  explanation: string;
+  // photo
+  pins: GuidePin[];
+  /** Base64 (NO data: prefix) for a NEW/replaced photo — sent as image_base64. */
+  photoBase64?: string;
+  photoFilename?: string;
+  /** Display src: media-route URL for kept bytes, or a local data: URL when pending. */
+  photoUrl?: string;
+  /** True when the server holds bytes AND no replacement is pending (⇒ send no base64). */
+  hasExistingPhoto?: boolean;
+  // pdf
+  pdfBase64?: string;
+  pdfFilename?: string;
+  pdfUrl?: string;
+  hasExistingPdf?: boolean;
+  // youtube
+  youtube_url?: string;
+}
+
+const STEP_TYPES: { type: GuideMediaType; emoji: string; label: string; hint: string }[] = [
+  { type: 'photo',   emoji: '📷', label: 'Photo', hint: 'Picture with optional note-pins' },
+  { type: 'youtube', emoji: '🎬', label: 'Video', hint: 'A YouTube link' },
+  { type: 'tip',     emoji: '⚠️', label: 'Tip',   hint: 'A short warning or reminder' },
+  { type: 'pdf',     emoji: '📄', label: 'PDF',   hint: 'A document to open' },
+];
+
+const TYPE_META: Record<GuideMediaType, { emoji: string; label: string }> =
+  Object.fromEntries(STEP_TYPES.map(t => [t.type, { emoji: t.emoji, label: t.label }])) as Record<GuideMediaType, { emoji: string; label: string }>;
+
+function clamp01(n: number): number {
+  return Math.min(1, Math.max(0, Number.isFinite(n) ? n : 0));
+}
+
+function hasPhoto(s: EditorStep): boolean {
+  return !!(s.photoBase64 || s.hasExistingPhoto);
+}
+function hasPdf(s: EditorStep): boolean {
+  return !!(s.pdfBase64 || s.hasExistingPdf);
+}
+
+export default function GuidedTutorialEditor({ templateId, lineId, lineName, onClose, onSaved }: Props) {
+  const guideBase = `/api/tasks/templates/${templateId}/lines/${lineId}/guide`;
+  const mediaHref = useCallback(
+    (stepId: number) => `${guideBase}/steps/${stepId}/media`,
+    [guideBase],
+  );
+
+  const [steps, setSteps] = useState<EditorStep[]>([]);
+  const [published, setPublished] = useState(false);
+  const [revision, setRevision] = useState(0);
+  const [hadGuide, setHadGuide] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [stale, setStale] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  /** The pin whose note is being edited, scoped by step key so numbering/focus
+   * never leak between steps. */
+  const [activePin, setActivePin] = useState<{ key: string; index: number } | null>(null);
+  /** Steps whose photo/pdf byte-processing is in flight — their controls freeze
+   * so a pin can't be added between the replace-confirm and the atomic swap. */
+  const [busySteps, setBusySteps] = useState<Set<string>>(new Set());
+  /** Existing steps whose stored media failed to load (corrupt bytes). */
+  const [imgError, setImgError] = useState<Set<string>>(new Set());
+
+  // ── Synchronous mirrors (refs) so async callbacks read CURRENT values ────────
+  // React state is snapshotted when a callback is created; a compression or fetch
+  // that resolves later must consult the ref, not the stale captured value.
+  const savingRef = useRef(false);
+  const mountedRef = useRef(true);
+  /** Count of in-flight media (compress/FileReader) ops. Save refuses to start
+   * while > 0, closing the same-tick race where a file was picked but Save still
+   * saw the old React state. */
+  const pendingMediaRef = useRef(0);
+  /** Per-step "latest media op" token: a slow first pick must not overwrite a
+   * later replacement. Only the newest token for a key may write. */
+  const mediaTokens = useRef<Map<string, number>>(new Map());
+  const keySeq = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const nextKey = () => `k${keySeq.current++}`;
+
+  const hydrate = useCallback((r: GuideStepRead): EditorStep => {
+    const media = mediaHref(r.id);
+    return {
+      key: `k${keySeq.current++}`,
+      id: r.id,
+      media_type: r.media_type,
+      explanation: r.explanation || '',
+      pins: r.media_type === 'photo'
+        ? (r.pins || []).map(p => ({ id: p.id, pin_x: p.pin_x, pin_y: p.pin_y, note: p.note || '' }))
+        : [],
+      photoFilename: r.image_filename || undefined,
+      photoUrl: r.has_image ? media : undefined,
+      hasExistingPhoto: !!r.has_image,
+      pdfFilename: r.pdf_filename || undefined,
+      pdfUrl: r.has_pdf ? media : undefined,
+      hasExistingPdf: !!r.has_pdf,
+      youtube_url: r.youtube_url || '',
+    };
+  }, [mediaHref]);
+
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
+    setLoadError(null);
+    try {
+      const res = await fetch(guideBase, { credentials: 'same-origin' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.error || `Could not load the guide (${res.status})`);
+      if (!mountedRef.current) return;
+      const raw: GuideStepRead[] = Array.isArray(body.steps) ? body.steps : [];
+      setSteps(raw.map(hydrate));
+      setPublished(!!body.published);
+      setRevision(Number(body.revision) || 0);
+      setHadGuide(raw.length > 0);
+      setStale(false);
+      setDirty(false);
+      setActivePin(null);
+      setImgError(new Set());
+      mediaTokens.current = new Map();
+    } catch (e: unknown) {
+      if (!mountedRef.current) return;
+      if (!opts?.silent) setLoadError(e instanceof Error ? e.message : 'Could not load the guide');
+      else setError(e instanceof Error ? e.message : 'Could not refresh the guide');
+    } finally {
+      if (mountedRef.current && !opts?.silent) setLoading(false);
+    }
+  }, [guideBase, hydrate]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Escape closes (unless a save or media op is in flight). Re-subscribe when the
+  // values it reads change so the closure never goes stale.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, saving]);
+
+  // ── Mutation choke points (all refuse to write while frozen) ────────────────
+  const markDirty = () => { if (!savingRef.current) setDirty(true); };
+
+  const patchStep = useCallback((key: string, patch: Partial<EditorStep>) => {
+    if (savingRef.current) return;
+    setSteps(prev => prev.map(s => (s.key === key ? { ...s, ...patch } : s)));
+    setDirty(true);
+  }, []);
+
+  const setPins = useCallback((key: string, pins: GuidePin[]) => {
+    if (savingRef.current) return;
+    setSteps(prev => prev.map(s => (s.key === key ? { ...s, pins } : s)));
+    setDirty(true);
+  }, []);
+
+  function addStep(type: GuideMediaType) {
+    if (savingRef.current) return;
+    setSteps(prev => [...prev, {
+      key: nextKey(),
+      media_type: type,
+      explanation: '',
+      pins: [],
+      hasExistingPhoto: false,
+      hasExistingPdf: false,
+      youtube_url: '',
+    }]);
+    setDirty(true);
+  }
+
+  function removeStep(key: string) {
+    if (savingRef.current) return;
+    setSteps(prev => prev.filter(s => s.key !== key));
+    setActivePin(a => (a?.key === key ? null : a));
+    setDirty(true);
+  }
+
+  // ── Async media processing with save/superseded/exists guards ───────────────
+  function beginMedia(key: string): number {
+    pendingMediaRef.current += 1;
+    setBusySteps(prev => { const n = new Set(prev); n.add(key); return n; });
+    const t = (mediaTokens.current.get(key) || 0) + 1;
+    mediaTokens.current.set(key, t);
+    return t;
+  }
+  function endMedia(key: string) {
+    pendingMediaRef.current = Math.max(0, pendingMediaRef.current - 1);
+    setBusySteps(prev => { const n = new Set(prev); n.delete(key); return n; });
+  }
+  /** Apply a media result IFF: still mounted, no save started, this is still the
+   * newest op for the key, and the step still exists. `patch === null` means the
+   * op failed (error already surfaced) — just release the busy state. */
+  function applyMedia(key: string, token: number, patch: Partial<EditorStep> | null) {
+    endMedia(key);
+    if (!mountedRef.current || savingRef.current) return;
+    if (mediaTokens.current.get(key) !== token) return; // a newer pick supersedes this one
+    if (patch === null) return;
+    setSteps(prev => (prev.some(s => s.key === key) ? prev.map(s => (s.key === key ? { ...s, ...patch } : s)) : prev));
+    setDirty(true);
+  }
+
+  async function pickPhoto(key: string, file: File) {
+    if (savingRef.current) return;
+    const token = beginMedia(key);
+    setActivePin(a => (a?.key === key ? null : a)); // pins are cleared on replace
+    try {
+      const { base64, filename } = await compressImage(file, 1280, 0.85);
+      setImgError(prev => { const n = new Set(prev); n.delete(key); return n; });
+      // Install the replacement AND clear pins atomically — pins point at the old
+      // photo's coordinates and would be wrong on the new one. Only reached on a
+      // SUCCESSFUL compression, so a failed replace never loses the old pins.
+      applyMedia(key, token, {
+        photoBase64: base64,
+        photoFilename: filename,
+        photoUrl: `data:image/jpeg;base64,${base64}`,
+        hasExistingPhoto: false,
+        pins: [],
+      });
+    } catch (e: unknown) {
+      applyMedia(key, token, null);
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Could not process that photo');
+    }
+  }
+
+  function pickPdf(key: string, file: File) {
+    if (savingRef.current) return;
+    const token = beginMedia(key);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const base64 = result.split(',')[1] || '';
+      let ok = false;
+      try { ok = atob(base64.slice(0, 8)).startsWith('%PDF'); } catch { ok = false; }
+      if (!ok || !base64) {
+        applyMedia(key, token, null);
+        if (mountedRef.current) setError('That file does not look like a PDF.');
+        return;
+      }
+      applyMedia(key, token, {
+        pdfBase64: base64,
+        pdfFilename: file.name || 'document.pdf',
+        pdfUrl: undefined,
+        hasExistingPdf: false,
+      });
+    };
+    reader.onerror = () => {
+      applyMedia(key, token, null);
+      if (mountedRef.current) setError('Could not read that PDF.');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ── Reorder (pointer + touch + keyboard). Numbering re-derives from order. ───
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const onDragEnd = useCallback((e: DragEndEvent) => {
+    // A drag begun before Save may still deliver its drop — discard it.
+    if (savingRef.current) return;
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    setSteps(prev => {
+      const oldIndex = prev.findIndex(s => s.key === active.id);
+      const newIndex = prev.findIndex(s => s.key === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+    setDirty(true);
+  }, []);
+
+  // ── Validation, save, delete ────────────────────────────────────────────────
+  function validate(): string | null {
+    if (steps.length === 0) return 'Add at least one step, or use "Remove guide" to delete it.';
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      const n = i + 1;
+      if (!s.explanation.trim()) return `Step ${n}: add an explanation.`;
+      if (s.media_type === 'photo') {
+        if (!hasPhoto(s)) return `Step ${n}: add a photo.`;
+        if (s.pins.some(p => !p.note.trim())) return `Step ${n}: every note-pin needs a note.`;
+      } else if (s.media_type === 'youtube') {
+        if (!isValidYoutubeUrl(s.youtube_url || '')) return `Step ${n}: enter a valid YouTube link.`;
+      } else if (s.media_type === 'pdf') {
+        if (!hasPdf(s)) return `Step ${n}: attach a PDF.`;
+      }
+    }
+    if (published && steps.length === 0) return 'Add a step before publishing, or switch to Draft.';
+    return null;
+  }
+
+  function buildSteps(): GuideStepSave[] {
+    return steps.map(s => {
+      const out: GuideStepSave = { media_type: s.media_type, explanation: s.explanation.trim() };
+      if (s.id) out.id = s.id;
+      if (s.media_type === 'photo') {
+        out.pins = s.pins.map(p => {
+          const pin: GuidePin = { pin_x: clamp01(p.pin_x), pin_y: clamp01(p.pin_y), note: p.note.trim() };
+          if (p.id) pin.id = p.id;
+          return pin;
+        });
+        // Send base64 ONLY for a new/replaced photo; a kept photo (id, no base64)
+        // makes the server carry its prior bytes forward.
+        if (s.photoBase64) { out.image_base64 = s.photoBase64; out.image_filename = s.photoFilename || 'photo.jpg'; }
+      } else if (s.media_type === 'pdf') {
+        if (s.pdfBase64) { out.pdf_base64 = s.pdfBase64; out.pdf_filename = s.pdfFilename || 'document.pdf'; }
+      } else if (s.media_type === 'youtube') {
+        out.youtube_url = canonicalYoutubeUrl(s.youtube_url) || (s.youtube_url || '').trim();
+      }
+      return out;
+    });
+  }
+
+  async function handleSave() {
+    if (savingRef.current) return;
+    if (pendingMediaRef.current > 0) { setError('Wait for the photo or PDF to finish processing.'); return; }
+    const v = validate();
+    if (v) { setError(v); setNotice(null); return; }
+
+    setError(null); setNotice(null);
+    savingRef.current = true; setSaving(true);
+    // Snapshot the payload AFTER freezing, so no concurrent mutation can slip in.
+    const payload = { revision, published, steps: buildSteps() };
+    try {
+      const res = await fetch(guideBase, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 409) {
+        // Do NOT silently adopt the returned revision — ids/media may differ.
+        if (mountedRef.current) {
+          setStale(true);
+          setError(body?.error || 'Someone else changed this guide. Reload the latest version, then redo your changes.');
+        }
+        return;
+      }
+      if (!res.ok || body?.ok === false) {
+        if (mountedRef.current) setError(body?.error || `Could not save (${res.status}).`);
+        return;
+      }
+      if (typeof body?.revision === 'number' && mountedRef.current) setRevision(body.revision);
+      onSaved?.();
+      // MANDATORY: the server rebuilt the aggregate, so every local id is now
+      // stale. Re-GET to refresh ids + drop the base64 the server now owns, or a
+      // follow-up save would reference deleted ids and lose kept photos.
+      savingRef.current = false;
+      await load({ silent: true });
+      if (mountedRef.current) setNotice('Saved.');
+    } catch (e: unknown) {
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Could not save the guide.');
+    } finally {
+      savingRef.current = false;
+      if (mountedRef.current) setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (savingRef.current) return;
+    if (!confirm('Remove this whole guide? Every step will be permanently deleted. This cannot be undone.')) return;
+    setError(null); setNotice(null);
+    savingRef.current = true; setSaving(true);
+    try {
+      const res = await fetch(guideBase, { method: 'DELETE', credentials: 'same-origin' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body?.ok === false) {
+        if (mountedRef.current) setError(body?.error || 'Could not remove the guide.');
+        return;
+      }
+      onSaved?.();
+      if (!mountedRef.current) return;
+      setSteps([]);
+      setPublished(false);
+      setHadGuide(false);
+      setActivePin(null);
+      if (typeof body?.revision === 'number') setRevision(body.revision);
+      setDirty(false);
+      setNotice('Guide removed.');
+    } catch (e: unknown) {
+      if (mountedRef.current) setError(e instanceof Error ? e.message : 'Could not remove the guide.');
+    } finally {
+      savingRef.current = false;
+      if (mountedRef.current) setSaving(false);
+    }
+  }
+
+  function requestClose() {
+    if (savingRef.current || pendingMediaRef.current > 0) return;
+    if (dirty && !confirm('Discard your unsaved changes?')) return;
+    onClose();
+  }
+
+  function reloadStale() {
+    if (savingRef.current) return;
+    if (dirty && !confirm('Reload the latest version? Your unsaved changes will be discarded.')) return;
+    load();
+  }
+
+  const frozen = saving;
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/40 flex items-end sm:items-center justify-center">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Guided tutorial for ${lineName}`}
+        className="bg-white w-full max-w-md sm:max-w-lg rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[92dvh] shadow-xl"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header — portal blue */}
+        <div className="bg-blue-600 text-white px-4 py-3 rounded-t-2xl flex items-start gap-3 flex-shrink-0">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-blue-100">Guided tutorial</p>
+            <h2 className="text-base font-bold leading-tight truncate">{lineName}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={requestClose}
+            disabled={frozen}
+            aria-label="Close"
+            className="w-9 h-9 -mr-1 flex-shrink-0 rounded-full flex items-center justify-center text-white/90 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-40"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto min-h-0 px-4 py-3">
+          {loading ? (
+            <p className="text-sm text-gray-500 py-8 text-center">Loading…</p>
+          ) : loadError ? (
+            <div className="py-8 text-center space-y-3">
+              <p className="text-sm text-red-600 font-semibold">{loadError}</p>
+              <button type="button" onClick={() => load()} className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+                Try again
+              </button>
+            </div>
+          ) : (
+            <fieldset disabled={frozen} className="border-0 p-0 m-0 space-y-3 min-w-0">
+              <p className="text-[12px] text-gray-500 leading-snug">
+                Build a step-by-step how-to for this task. It only shows staff how to do the job — it never
+                ticks the task off. Staff still complete the task themselves.
+              </p>
+
+              {/* Draft / Published toggle */}
+              <div className="rounded-xl border border-gray-200 p-3 flex items-center gap-3">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={published}
+                  aria-label={published ? 'Published — visible to staff' : 'Draft — hidden from staff'}
+                  onClick={() => { setPublished(v => !v); markDirty(); }}
+                  className={`relative w-11 h-6 flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${published ? 'bg-green-600' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${published ? 'translate-x-5' : ''}`} />
+                </button>
+                <div className="min-w-0">
+                  <p className={`text-sm font-semibold ${published ? 'text-green-700' : 'text-gray-700'}`}>
+                    {published ? 'Published' : 'Draft'}
+                  </p>
+                  <p className="text-[11px] text-gray-500 leading-snug">
+                    {published ? 'Staff can see this guide.' : 'Draft is hidden from staff until you publish.'}
+                  </p>
+                </div>
+              </div>
+
+              {stale && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
+                  <p className="text-[12px] text-red-700 font-semibold">
+                    This guide was changed somewhere else. Reload the latest version before saving, or your
+                    changes will keep being rejected.
+                  </p>
+                  <button type="button" onClick={reloadStale} className="text-[12px] font-bold text-red-700 underline">
+                    Reload latest
+                  </button>
+                </div>
+              )}
+
+              {steps.length === 0 ? (
+                <p className="text-[13px] text-gray-500 text-center py-4">No steps yet — add your first below.</p>
+              ) : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+                  <SortableContext items={steps.map(s => s.key)} strategy={verticalListSortingStrategy}>
+                    <div className="space-y-2">
+                      {steps.map((s, i) => (
+                        <StepCard
+                          key={s.key}
+                          step={s}
+                          index={i}
+                          total={steps.length}
+                          frozen={frozen}
+                          busy={busySteps.has(s.key)}
+                          imgError={imgError.has(s.key)}
+                          activeIndex={activePin?.key === s.key ? activePin.index : null}
+                          onSetActive={(idx) => setActivePin(idx === null ? null : { key: s.key, index: idx })}
+                          onPatch={(patch) => patchStep(s.key, patch)}
+                          onPins={(pins) => setPins(s.key, pins)}
+                          onPickPhoto={(f) => pickPhoto(s.key, f)}
+                          onPickPdf={(f) => pickPdf(s.key, f)}
+                          onImgError={() => setImgError(prev => { const n = new Set(prev); n.add(s.key); return n; })}
+                          onRemove={() => removeStep(s.key)}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              )}
+
+              {/* Add-step control */}
+              <div className="rounded-xl border-2 border-dashed border-gray-300 p-3">
+                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">Add a step</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {STEP_TYPES.map(t => (
+                    <button
+                      key={t.type}
+                      type="button"
+                      onClick={() => addStep(t.type)}
+                      className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-200 bg-white text-left hover:border-blue-400 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    >
+                      <span className="text-lg leading-none" aria-hidden="true">{t.emoji}</span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-gray-800">{t.label}</span>
+                        <span className="block text-[10px] text-gray-500 leading-tight">{t.hint}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {hadGuide && (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="w-full text-[13px] font-semibold text-red-600 hover:text-red-700 py-2"
+                >
+                  Remove guide
+                </button>
+              )}
+            </fieldset>
+          )}
+        </div>
+
+        {/* Footer */}
+        {!loading && !loadError && (
+          <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 py-3 space-y-2 rounded-b-2xl sm:rounded-b-2xl">
+            {error && <p className="text-[12px] font-semibold text-red-600" role="alert">{error}</p>}
+            {notice && !error && <p className="text-[12px] font-semibold text-green-700">{notice}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={requestClose}
+                disabled={frozen}
+                className="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:opacity-50"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={frozen || stale}
+                className="flex-[2] py-2.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save guide'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── One sortable step card ────────────────────────────────────────────────────
+
+interface StepCardProps {
+  step: EditorStep;
+  index: number;
+  total: number;
+  frozen: boolean;
+  busy: boolean;
+  imgError: boolean;
+  activeIndex: number | null;
+  onSetActive: (index: number | null) => void;
+  onPatch: (patch: Partial<EditorStep>) => void;
+  onPins: (pins: GuidePin[]) => void;
+  onPickPhoto: (file: File) => void;
+  onPickPdf: (file: File) => void;
+  onImgError: () => void;
+  onRemove: () => void;
+}
+
+function StepCard({
+  step, index, total, frozen, busy, imgError, activeIndex,
+  onSetActive, onPatch, onPins, onPickPhoto, onPickPdf, onImgError, onRemove,
+}: StepCardProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.key, disabled: frozen });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 30 : ('auto' as number | string),
+  };
+  const disabled = frozen || busy;
+  const meta = TYPE_META[step.media_type];
+
+  // Focus the note field of a freshly-placed / tapped pin.
+  const noteRefs = useRef<Record<number, HTMLInputElement | null>>({});
+  useEffect(() => {
+    if (activeIndex != null) noteRefs.current[activeIndex]?.focus();
+  }, [activeIndex, step.pins.length]);
+
+  const ytUrl = (step.youtube_url || '').trim();
+  const ytInvalid = ytUrl.length > 0 && !isValidYoutubeUrl(ytUrl);
+
+  return (
+    <div ref={setNodeRef} style={style} className={`rounded-xl border bg-white ${step.media_type === 'tip' ? 'border-amber-200' : 'border-gray-200'}`}>
+      {/* Card header: drag handle + step number + type + remove */}
+      <div className="flex items-center gap-2 px-3 pt-3">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label={`Reorder step ${index + 1}`}
+          className="w-8 h-8 flex-shrink-0 rounded-lg bg-gray-100 active:bg-gray-200 flex items-center justify-center text-gray-400 cursor-grab touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
+            <circle cx="9" cy="12" r="1.6" /><circle cx="15" cy="12" r="1.6" />
+            <circle cx="9" cy="18" r="1.6" /><circle cx="15" cy="18" r="1.6" />
+          </svg>
+        </button>
+        <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-[12px] font-bold flex items-center justify-center flex-shrink-0">
+          {index + 1}
+        </span>
+        <span className="flex-1 min-w-0 text-[12px] font-semibold text-gray-500 flex items-center gap-1">
+          <span aria-hidden="true">{meta.emoji}</span>{meta.label}
+          <span className="text-gray-300"> · Step {index + 1} of {total}</span>
+        </span>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-[12px] font-semibold text-red-600 hover:text-red-700 px-1"
+        >
+          Remove
+        </button>
+      </div>
+
+      <div className="px-3 pb-3 pt-2 space-y-2">
+        {/* Media area, by type */}
+        {step.media_type === 'photo' && (
+          <PhotoStep
+            step={step} disabled={disabled} busy={busy} imgError={imgError} activeIndex={activeIndex}
+            noteRefs={noteRefs}
+            onSetActive={onSetActive} onPins={onPins} onPickPhoto={onPickPhoto} onImgError={onImgError}
+          />
+        )}
+
+        {step.media_type === 'youtube' && (
+          <div>
+            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">YouTube link</label>
+            <input
+              type="url"
+              inputMode="url"
+              value={step.youtube_url || ''}
+              onChange={e => onPatch({ youtube_url: e.target.value })}
+              placeholder="https://www.youtube.com/watch?v=…"
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${ytInvalid ? 'border-red-300 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-400'}`}
+            />
+            {ytInvalid
+              ? <p className="text-[11px] text-red-600 mt-1">That is not a valid YouTube link.</p>
+              : ytUrl && <p className="text-[11px] text-green-700 mt-1">Valid YouTube link.</p>}
+          </div>
+        )}
+
+        {step.media_type === 'pdf' && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-2.5">
+            {hasPdf(step) ? (
+              <div className="flex items-center gap-2 text-sm">
+                <span aria-hidden="true">📄</span>
+                <span className="flex-1 min-w-0 truncate text-gray-800">{step.pdfFilename || 'document.pdf'}</span>
+                {step.pdfUrl ? (
+                  <a href={step.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-[12px] font-semibold text-blue-600 hover:text-blue-700 flex-shrink-0">Open</a>
+                ) : (
+                  <span className="text-[11px] text-gray-400 flex-shrink-0">New — save to view</span>
+                )}
+              </div>
+            ) : (
+              <p className="text-[12px] text-gray-500">No document attached yet.</p>
+            )}
+            <label className={`mt-2 inline-block text-[12px] font-semibold text-blue-600 hover:text-blue-700 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+              {hasPdf(step) ? 'Replace PDF' : 'Choose PDF'}
+              <input
+                type="file" accept="application/pdf" className="hidden" disabled={disabled}
+                onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onPickPdf(f); }}
+              />
+            </label>
+            {busy && <span className="ml-2 text-[11px] text-gray-400">Reading…</span>}
+          </div>
+        )}
+
+        {/* Explanation — required for every step */}
+        <div>
+          <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+            {step.media_type === 'tip' ? 'Tip / warning' : 'Explanation'}
+          </label>
+          <textarea
+            value={step.explanation}
+            onChange={e => onPatch({ explanation: e.target.value })}
+            rows={step.media_type === 'tip' ? 3 : 2}
+            placeholder={step.media_type === 'tip' ? 'e.g. Never put water on a grease fire.' : 'Explain what to do in this step.'}
+            className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+              step.media_type === 'tip'
+                ? 'border-amber-300 bg-amber-50 text-amber-900 placeholder-amber-400 focus:ring-amber-400'
+                : 'border-gray-200 focus:ring-blue-400'
+            }`}
+          />
+          {step.media_type === 'tip' && (
+            <p className="text-[11px] text-amber-600 mt-1 flex items-center gap-1">
+              <span aria-hidden="true">⚠️</span> Shown to staff as a highlighted warning.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Photo step body: image + editable note-pins ───────────────────────────────
+
+interface PhotoStepProps {
+  step: EditorStep;
+  disabled: boolean;
+  busy: boolean;
+  imgError: boolean;
+  activeIndex: number | null;
+  noteRefs: MutableRefObject<Record<number, HTMLInputElement | null>>;
+  onSetActive: (index: number | null) => void;
+  onPins: (pins: GuidePin[]) => void;
+  onPickPhoto: (file: File) => void;
+  onImgError: () => void;
+}
+
+function PhotoStep({ step, disabled, busy, imgError, activeIndex, noteRefs, onSetActive, onPins, onPickPhoto, onImgError }: PhotoStepProps) {
+  const photo = hasPhoto(step);
+
+  function onFile(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    // Replacing a photo that carries pins wipes them (coords go stale) — confirm.
+    if (photo && step.pins.length > 0 &&
+        !confirm('Replace this photo? Its note-pins will be removed because they point to the old photo.')) return;
+    onPickPhoto(f);
+  }
+
+  return (
+    <div className="space-y-2">
+      {!photo ? (
+        <label className={`flex flex-col items-center justify-center gap-1 px-3 py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-[12px] font-semibold text-gray-500 cursor-pointer hover:bg-gray-100 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+          <span className="text-2xl" aria-hidden="true">📷</span>
+          {busy ? 'Processing…' : 'Add a photo'}
+          {/* No `capture` — offer camera, camera roll and files (photo-input rule). */}
+          <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={onFile} />
+        </label>
+      ) : imgError ? (
+        <div className="px-3 py-6 bg-white border border-red-200 rounded-lg text-[12px] text-red-600 text-center">
+          Couldn&apos;t load this photo. Replace it below.
+        </div>
+      ) : (
+        <div className="flex justify-center bg-gray-50 rounded-lg p-1">
+          <PinnableImage
+            src={step.photoUrl || ''}
+            mode="edit"
+            disabled={disabled}
+            pins={step.pins.map((p, i) => ({ pin_x: p.pin_x, pin_y: p.pin_y, label: p.note || `Note ${i + 1}`, number: i + 1 }))}
+            activeIndex={activeIndex}
+            onPlace={(x, y) => {
+              const next = [...step.pins, { pin_x: x, pin_y: y, note: '' }];
+              onPins(next);
+              onSetActive(next.length - 1);
+            }}
+            onPinMove={(i, x, y) => onPins(step.pins.map((p, idx) => (idx === i ? { ...p, pin_x: x, pin_y: y } : p)))}
+            onPinClick={(i) => onSetActive(activeIndex === i ? null : i)}
+            onImageError={onImgError}
+          />
+        </div>
+      )}
+
+      {photo && !imgError && (
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-gray-500">
+            {step.pins.length} note-pin{step.pins.length === 1 ? '' : 's'} · tap the photo to add one
+          </span>
+          <label className={`text-[11px] font-semibold text-blue-600 hover:text-blue-700 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            {busy ? 'Processing…' : 'Replace photo'}
+            <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={onFile} />
+          </label>
+        </div>
+      )}
+
+      {/* Note-pin list — each pin carries an editable note (required). */}
+      {step.pins.length > 0 && (
+        <ul className="space-y-1">
+          {step.pins.map((p, i) => (
+            <li
+              key={i}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border ${activeIndex === i ? 'bg-orange-50 border-orange-300' : 'bg-white border-gray-200'}`}
+            >
+              <span className="w-5 h-5 rounded-full bg-orange-500 text-white text-[11px] font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+              <input
+                ref={el => { noteRefs.current[i] = el; }}
+                value={p.note}
+                onChange={e => onPins(step.pins.map((pp, idx) => (idx === i ? { ...pp, note: e.target.value } : pp)))}
+                onFocus={() => onSetActive(i)}
+                placeholder="What is this pin pointing at?"
+                className="flex-1 min-w-0 px-2 py-1 border border-gray-200 rounded-md text-[13px] focus:outline-none focus:ring-2 focus:ring-orange-400"
+              />
+              <button
+                type="button"
+                onClick={() => { onPins(step.pins.filter((_, idx) => idx !== i)); onSetActive(null); }}
+                className="text-[11px] font-semibold text-red-500 hover:text-red-600 flex-shrink-0"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

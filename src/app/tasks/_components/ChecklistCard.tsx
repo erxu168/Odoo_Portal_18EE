@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { TaskList, TaskListLine, DayPart, SubtaskToggleResult } from '@/lib/odoo-tasks';
-import TaskRow, { setupPhotoUrlFor } from './TaskRow';
-import SetupGuideView from './SetupGuideView';
+import TaskRow from './TaskRow';
 
 interface Props {
   taskList: TaskList;
@@ -163,16 +162,6 @@ function DayPartSection({ part, lines, taskListId, onComplete, onSubtaskToggle, 
                           {task.completed_by_name ? ` · ${task.completed_by_name}` : ''}
                           {task.photo_uploaded ? ' · \u{1F4F8}' : ''}
                         </p>
-                        {task.is_setup_guide && (
-                          <SetupGuideView
-                            task={task}
-                            photoUrlFor={setupPhotoUrlFor(task)}
-                            onSubtaskToggle={onSubtaskToggle}
-                            onReload={onReload}
-                            readOnly={readOnly}
-                            defaultCollapsed
-                          />
-                        )}
                         {task.note && (
                           <div className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-yellow-50 border border-yellow-200 text-xs text-yellow-900">
                             <span className="font-semibold">📝 Note: </span>{task.note}
