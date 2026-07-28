@@ -18,6 +18,24 @@ export const STEP_TYPE_OPTIONS = [
   { value: 'action' as CookStepType, label: 'Action' },
 ];
 
+/**
+ * Does this dish match what the manager typed?
+ *
+ * Matches the name shown to COOKS or the dish's real name on the TILL, so
+ * searching "Smokey" finds a profile whose cook-facing name was shortened to
+ * "Jerk Chicken" (and vice versa). Case-insensitive substring; an empty query
+ * matches everything.
+ */
+export function matchesProfileSearch(
+  profile: { name: string; productName?: string | null },
+  query: string,
+): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return profile.name.toLowerCase().includes(needle)
+    || (profile.productName ?? '').toLowerCase().includes(needle);
+}
+
 /** Light-theme chip styling per step type. */
 export function stepChipClass(type: CookStepType): string {
   if (type === 'action') return 'bg-sky-50 text-sky-700 border-sky-200';

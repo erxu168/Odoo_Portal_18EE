@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import Toast from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import type { CookProfile, CookProfileInput, CookStationAdmin } from '@/types/cooktimer';
+import type { CookProfileAdmin, CookProfileInput, CookStationAdmin } from '@/types/cooktimer';
 import ProfilesTab from './ProfilesTab';
 import StationsTab from './StationsTab';
 import ProfileEditor from './ProfileEditor';
@@ -29,9 +29,9 @@ async function call(url: string, method: string, body?: unknown): Promise<{ ok: 
 
 export default function CookSetupClient() {
   const [tab, setTab] = useState<Tab>('profiles');
-  const [profiles, setProfiles] = useState<CookProfile[] | null>(null);
+  const [profiles, setProfiles] = useState<CookProfileAdmin[] | null>(null);
   const [stations, setStations] = useState<CookStationAdmin[] | null>(null);
-  const [editor, setEditor] = useState<{ profile: CookProfile | null } | null>(null);
+  const [editor, setEditor] = useState<{ profile: CookProfileAdmin | null } | null>(null);
   const [toast, setToast] = useState<ToastState>({ message: '', type: 'info', visible: false });
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   // Destination for "move dishes & delete" — a ref so picking it never re-renders the dialog.
@@ -147,12 +147,12 @@ export default function CookSetupClient() {
     }
     return { ok: false, error: data.error || 'Could not save.' };
   }
-  async function toggleProfile(p: CookProfile, active: boolean) {
+  async function toggleProfile(p: CookProfileAdmin, active: boolean) {
     const { ok, data } = await call(`/api/cooktimer/profiles/${p.id}`, 'PATCH', { active });
     if (ok && Array.isArray(data.profiles)) applyProfileResponse(data);
     else { showToast(data.error || 'Could not update profile', 'error'); void reloadAll(); }
   }
-  function deleteProfile(p: CookProfile) {
+  function deleteProfile(p: CookProfileAdmin) {
     setConfirm({
       title: `Delete ${p.name}?`,
       message: 'This removes the cook profile and its steps.',

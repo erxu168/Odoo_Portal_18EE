@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
-import type { CookProfile, CookProfileAdmin, CookStationAdmin } from '@/types/cooktimer';
-import { fmtDuration, totalCookSeconds, stepChipClass, stationDot } from './utils';
+import type { CookProfileAdmin, CookStationAdmin } from '@/types/cooktimer';
+import { fmtDuration, totalCookSeconds, stepChipClass, stationDot, matchesProfileSearch } from './utils';
 import Toggle from './Toggle';
 
 /** Cook Profiles tab — profiles grouped by station, each showing its step chain,
@@ -9,17 +9,16 @@ import Toggle from './Toggle';
 export default function ProfilesTab({
   profiles, stations, onEdit, onNew, onToggleActive, onDelete,
 }: {
-  profiles: CookProfile[];
+  profiles: CookProfileAdmin[];
   stations: CookStationAdmin[];
-  onEdit: (p: CookProfile) => void;
+  onEdit: (p: CookProfileAdmin) => void;
   onNew: () => void;
-  onToggleActive: (p: CookProfile, active: boolean) => void;
-  onDelete: (p: CookProfile) => void;
+  onToggleActive: (p: CookProfileAdmin, active: boolean) => void;
+  onDelete: (p: CookProfileAdmin) => void;
 }) {
   const [q, setQ] = useState('');
   const activeCount = profiles.filter(p => p.active).length;
-  const needle = q.trim().toLowerCase();
-  const filtered = needle ? profiles.filter(p => p.name.toLowerCase().includes(needle)) : profiles;
+  const filtered = profiles.filter(p => matchesProfileSearch(p, q));
 
   return (
     <div className="px-4 py-4">
@@ -74,7 +73,7 @@ export default function ProfilesTab({
 function ProfileRow({
   profile, onEdit, onToggle, onDelete,
 }: {
-  profile: CookProfile;
+  profile: CookProfileAdmin;
   onEdit: () => void;
   onToggle: (v: boolean) => void;
   onDelete: () => void;
@@ -92,10 +91,15 @@ function ProfileRow({
           {profile.odooProductId == null && (
             <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 flex-shrink-0">NO DISH LINKED</span>
           )}
-          {(profile as CookProfileAdmin).hasRunningTimer && (
+          {profile.hasRunningTimer && (
             <span className="text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200 rounded px-1.5 py-0.5 flex-shrink-0">COOKING NOW</span>
           )}
         </div>
+        {/* The till name, only when it differs from the cook-facing name — search
+            matches it, so it must be visible or a hit looks unexplained. */}
+        {profile.productName && profile.productName !== profile.name && (
+          <div className="text-[11px] text-gray-400 mb-1.5 truncate">on the till: {profile.productName}</div>
+        )}
         <div className="flex flex-wrap items-center gap-1.5">
           {profile.steps.map((s, i) => (
             <span key={s.id} className="flex items-center gap-1.5">

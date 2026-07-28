@@ -19,7 +19,7 @@ interface EditStep { key: string; label: string; stepType: CookStepType; duratio
 export default function ProfileEditor({
   profile, stations, onClose, onSave,
 }: {
-  profile: CookProfile | null;
+  profile: CookProfileAdmin | null;
   stations: CookStationAdmin[];
   onClose: () => void;
   onSave: (input: CookProfileInput, id: number | null) => Promise<{ ok: boolean; error?: string }>;
@@ -40,8 +40,8 @@ export default function ProfileEditor({
   const [maxBatch, setMaxBatch] = useState<string>(profile?.maxBatch != null ? String(profile.maxBatch) : '');
   // A timer running on this dish blocks step/station edits server-side — say so
   // UP FRONT rather than rejecting the save after the manager rebuilt the chain.
-  const busy = !!(profile as CookProfileAdmin | null)?.hasRunningTimer;
-  const productName = (profile as CookProfileAdmin | null)?.productName ?? null;
+  const busy = !!profile?.hasRunningTimer;
+  const productName = profile?.productName ?? null;
   // A freshly picked dish must show ITS name, not the one loaded with the profile.
   const shownProductName = productId === profile?.odooProductId ? (pickedName ?? productName) : pickedName;
   const [steps, setSteps] = useState<EditStep[]>(() =>
