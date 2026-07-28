@@ -79,6 +79,30 @@ class KrawingsTaskTemplateLine(models.Model):
         'krawings.task.setup.photo', 'template_line_id',
     )
 
+    # ── Guided tutorial (optional per-task how-to) ───────────────────────
+    # An ordered sequence of steps (photo / youtube / tip / pdf + explanation;
+    # photo steps may carry note-pins). PURELY INSTRUCTIONAL — never completes
+    # the task; staff still tick it themselves. Managers/admins edit here; a
+    # PUBLISHED guide is snapshotted onto each daily line at spawn. This
+    # supersedes the setup-guide fields above (migrated in 18.0.7.0.0).
+    guide_step_ids = fields.One2many('krawings.task.guide.step', 'template_line_id')
+    guide_published = fields.Boolean(
+        default=False,
+        help="When on, staff see this task's guide. Off = draft (managers only).",
+    )
+    guide_revision = fields.Integer(
+        default=0,
+        help='Bumped on every guide save; optimistic-concurrency token for the editor.',
+    )
+    has_guide = fields.Boolean(compute='_compute_guide', store=True)
+    guide_step_count = fields.Integer(compute='_compute_guide', store=True)
+
+    @api.depends('guide_step_ids')
+    def _compute_guide(self):
+        for rec in self:
+            rec.guide_step_count = len(rec.guide_step_ids)
+            rec.has_guide = bool(rec.guide_step_ids)
+
     # ── Recurrence rule (per task) ───────────────────────────────────────
     # Keys here are read by recurrence.applies_on() via rule_from_record().
     recurrence_type = fields.Selection(

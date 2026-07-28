@@ -173,14 +173,46 @@ class KrawingsTaskTemplate(models.Model):
                     # preserved so pin_photo_seq needs no remapping. The
                     # filestore checksum-dedupes identical photo bytes.
                     'is_setup_guide': tline.is_setup_guide,
-                    'setup_photo_ids': [
+                    # Legacy setup-guide snapshot — only for lines still flagged
+                    # is_setup_guide. After the 18.0.7.0.0 migration converts a
+                    # guide (is_setup_guide→false), its retained template photos
+                    # are NOT re-copied; the guided-tutorial snapshot below takes over.
+                    'setup_photo_ids': ([
                         (0, 0, {
                             'sequence': p.sequence,
                             'image': p.image,
                             'filename': p.filename or False,
                         })
                         for p in tline.setup_photo_ids
-                    ],
+                    ] if tline.is_setup_guide else []),
+                    # Guided-tutorial snapshot: only a PUBLISHED guide is copied
+                    # onto the daily line (drafts stay invisible to staff). Deep
+                    # copy of every step + its note-pins; filestore checksum-
+                    # dedupes identical image/pdf bytes. Purely instructional.
+                    'guide_snapshot_revision': tline.guide_revision if tline.guide_published else 0,
+                    'guide_step_ids': ([
+                        (0, 0, {
+                            'sequence': s.sequence,
+                            'media_type': s.media_type,
+                            'explanation': s.explanation,
+                            'image': s.image,
+                            'image_filename': s.image_filename or False,
+                            'pdf_file': s.pdf_file,
+                            'pdf_filename': s.pdf_filename or False,
+                            'youtube_url': s.youtube_url or False,
+                            'source_template_step_id': s.id,
+                            'pin_ids': [
+                                (0, 0, {
+                                    'sequence': pin.sequence,
+                                    'pin_x': pin.pin_x,
+                                    'pin_y': pin.pin_y,
+                                    'note': pin.note,
+                                })
+                                for pin in s.pin_ids.sorted('sequence')
+                            ],
+                        })
+                        for s in tline.guide_step_ids.sorted('sequence')
+                    ] if tline.guide_published else []),
                     'subtask_ids': [
                         (0, 0, {
                             'name': st.name,

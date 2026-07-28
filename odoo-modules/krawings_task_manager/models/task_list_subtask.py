@@ -24,6 +24,11 @@ class KrawingsTaskListSubtask(models.Model):
     pin_x = fields.Float(help='0.0–1.0, fraction across the reference image.')
     pin_y = fields.Float(help='0.0–1.0, fraction down the reference image.')
 
+    # Set by the 18.0.7.0.0 migration on daily pin-subtasks that were converted
+    # into guided-tutorial note-pins. Retained for audit (their done/toggled_at
+    # history), but excluded from the portal and no longer toggleable.
+    legacy_guide_pin = fields.Boolean(default=False, readonly=True)
+
     @api.constrains('pin_x', 'pin_y')
     def _check_pin_bounds(self):
         for rec in self:
@@ -44,10 +49,8 @@ class KrawingsTaskListSubtask(models.Model):
             'toggled_at': fields.Datetime.now(),
             'toggled_by_id': emp_id,
         })
-        # On a setup guide, ticking/unticking a pin drives the parent line's
-        # completion. Return the resulting line state so the portal can refresh.
-        line = self.line_id
-        if line.is_setup_guide:
-            line._sync_setup_guide_completion(employee)
-            return {'is_setup_guide': True, 'line_completed': bool(line.completed_at)}
+        # Subtasks are ordinary checklist items — they NEVER complete the task.
+        # (Guided-tutorial note-pins are a separate model, purely instructional,
+        # and never touch completion.) Staff complete the task via the normal
+        # control only.
         return {'is_setup_guide': False, 'line_completed': False}

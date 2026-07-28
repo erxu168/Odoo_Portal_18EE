@@ -59,6 +59,20 @@ class KrawingsTaskListLine(models.Model):
         'krawings.task.setup.photo', 'list_line_id',
     )
 
+    # ── Guided tutorial snapshot (copied from the template at spawn; only
+    # when the template guide was PUBLISHED). Immutable per-day history.
+    # Purely instructional — never affects completion. ───────────────────
+    guide_step_ids = fields.One2many('krawings.task.guide.step', 'list_line_id')
+    guide_snapshot_revision = fields.Integer(readonly=True)
+    has_guide = fields.Boolean(compute='_compute_guide', store=True)
+    guide_step_count = fields.Integer(compute='_compute_guide', store=True)
+
+    @api.depends('guide_step_ids')
+    def _compute_guide(self):
+        for rec in self:
+            rec.guide_step_count = len(rec.guide_step_ids)
+            rec.has_guide = bool(rec.guide_step_ids)
+
     photo_uploaded = fields.Boolean(compute='_compute_photo_uploaded', store=False)
     state = fields.Selection([
         ('pending', 'Pending'),
@@ -201,21 +215,6 @@ class KrawingsTaskListLine(models.Model):
             'data_base64': att.datas and att.datas.decode('ascii') if att.datas else '',
         }
 
-    def _locked_pin_status(self):
-        """Flush pending writes, take a row lock on this line (FOR UPDATE), and
-        return (total_pins, done_pins) read straight from the DB. Serializes the
-        completion decision across concurrent pin toggles and manual completion
-        (ORM buffers writes; raw SQL does not auto-flush, hence the flush)."""
-        self.env.flush_all()
-        self.env.cr.execute(
-            'SELECT id FROM krawings_task_list_line WHERE id = %s FOR UPDATE', (self.id,),
-        )
-        self.env.cr.execute(
-            'SELECT COUNT(*), COUNT(*) FILTER (WHERE done) '
-            'FROM krawings_task_list_subtask WHERE line_id = %s', (self.id,),
-        )
-        return self.env.cr.fetchone()
-
     def _write_completed(self, employee):
         """Attribute + stamp completion. Callers must have already validated the
         gate (pins / photo) under the row lock."""
@@ -230,21 +229,12 @@ class KrawingsTaskListLine(models.Model):
     def mark_done(self, employee):
         """Mark this line done, attributed to `employee` (hr.employee record or id).
 
-        For setup-guide lines completion is pin-driven: we take the row lock and
-        re-read pin state from the DB, so a manual completion cannot race a
-        concurrent uncheck, and reject while any pin is unchecked. There is no
-        bypass argument — the auto-complete path only reaches `_write_completed`
-        after verifying pins under the same lock."""
+        Completion is manual: staff tick the task. A guided tutorial attached to
+        the task is purely instructional and never gates or drives completion.
+        The only gate is a required proof photo."""
         self.ensure_one()
         if self.completed_at:
             return True
-        if self.is_setup_guide:
-            total, done = self._locked_pin_status()
-            self.invalidate_recordset(['completed_at'])
-            if self.completed_at:
-                return True
-            if not total or total != done:
-                raise UserError('Finish every setup step before completing this guide.')
         if self.photo_required and not self.photo_uploaded:
             raise UserError('A photo is required before completing this task.')
         self._write_completed(employee)
@@ -259,43 +249,13 @@ class KrawingsTaskListLine(models.Model):
         })
         return True
 
-    def _sync_setup_guide_completion(self, employee):
-        """Centralised, locked completion for setup-guide lines. A guide
-        auto-completes when it has ≥1 pin, every pin is done, and the photo gate
-        is satisfied; it reopens when a pin is unchecked (or the gate fails).
-
-        Called from the subtask-toggle path and the proof-photo upload/delete
-        paths. Returns True if the line is now completed.
-
-        Race safety: two staff ticking the final two pins concurrently must not
-        leave an all-checked guide stuck pending. We flush pending writes, take a
-        row lock on the parent line (FOR UPDATE), then count pin state straight
-        from the DB — so the two toggles serialize and the second one sees the
-        first's committed tick. Never raises mid-toggle: if the photo gate is
-        unmet it simply leaves the line pending."""
-        self.ensure_one()
-        if not self.is_setup_guide:
-            return bool(self.completed_at)
-        total, done = self._locked_pin_status()
-        self.invalidate_recordset(['completed_at', 'photo_uploaded'])
-        all_pins_done = bool(total) and total == done
-        photo_ok = (not self.photo_required) or self.photo_uploaded
-        if all_pins_done and photo_ok:
-            if not self.completed_at:
-                # Pins already verified under the lock — complete directly
-                # (avoids re-locking through mark_done).
-                self._write_completed(employee)
-        elif self.completed_at:
-            self.mark_undone()
-        return bool(self.completed_at)
-
     def resync_setup_guide(self, employee):
-        """Public entry so the portal can re-drive setup-guide completion after a
-        proof photo is added or removed (photo-required guides). No-op for
-        non-guide lines. (`_sync_setup_guide_completion` is underscore-prefixed
-        and therefore not RPC-callable.)"""
+        """Compatibility no-op. Guided tutorials never drive completion, so there
+        is nothing to re-sync when a proof photo changes. Kept RPC-callable so an
+        older portal build during a deploy window does not error; the legacy
+        setup-guide→tutorial migration (18.0.7.0.0) clears is_setup_guide."""
         self.ensure_one()
-        return self._sync_setup_guide_completion(employee)
+        return bool(self.completed_at)
 
     @api.model
     def portal_toggle_subtask(self, line_id, subtask_id, done, employee, allowed_company_ids=None):
@@ -318,14 +278,12 @@ class KrawingsTaskListLine(models.Model):
         sub = self.env['krawings.task.list.subtask'].sudo().browse(int(subtask_id))
         if not sub.exists() or sub.line_id.id != line.id:
             raise UserError('Subtask does not belong to this task.')
+        if sub.legacy_guide_pin:
+            raise UserError('This item is part of a converted guide and can no longer be changed.')
         sub.toggle(done, employee)
-        line.invalidate_recordset(['completed_at'])
-        return {
-            'is_setup_guide': line.is_setup_guide,
-            # Only guides complete via subtask toggles; keep the old contract of
-            # reporting no completion for ordinary subtasks.
-            'line_completed': bool(line.is_setup_guide and line.completed_at),
-        }
+        # Subtasks never complete the line; report the line's own (independent)
+        # completion so the caller can refresh.
+        return {'is_setup_guide': False, 'line_completed': bool(line.completed_at)}
 
     def set_note(self, note, employee):
         """Write the free-text note, attributing it to `employee` (hr.employee record or id).
