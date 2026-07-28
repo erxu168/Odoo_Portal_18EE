@@ -13,7 +13,7 @@
 import { getDb } from './db';
 import { berlinStamp, stampToEpoch } from './cooktimer-time';
 import type {
-  CookStation, CookStationAdmin, CookProfile, CookProfileInput, CookStepType,
+  CookStation, CookStationAdmin, CookProfile, CookProfileAdmin, CookProfileInput, CookStepType,
   CookStep, CoveredLine, CookTimerDTO, DoneEntry,
 } from '@/types/cooktimer';
 
@@ -205,7 +205,7 @@ function loadSteps(db: ReturnType<typeof getDb>, profileId: number): CookStep[] 
     .map(s => ({ id: s.id, seq: s.seq, label: s.label, durationSeconds: s.duration_seconds, stepType: s.step_type as CookStep['stepType'] }));
 }
 
-function toProfile(db: ReturnType<typeof getDb>, r: ProfileRow, stationName: string): CookProfile {
+function toProfile(db: ReturnType<typeof getDb>, r: ProfileRow): CookProfile {
   return {
     id: r.id, odooProductId: r.odoo_product_id, name: r.name, stationId: r.station_id,
     maxBatch: r.max_batch, active: !!r.active, steps: loadSteps(db, r.id),
@@ -228,7 +228,7 @@ export function getActiveProfilesByProduct(): Map<number, CookProfile & { statio
   const map = new Map<number, CookProfile & { stationName: string }>();
   for (const r of rows) {
     const stationName = stations.get(r.station_id) || 'Station';
-    map.set(r.odoo_product_id as number, { ...toProfile(db, r, stationName), stationName });
+    map.set(r.odoo_product_id as number, { ...toProfile(db, r), stationName });
   }
   return map;
 }
@@ -240,7 +240,7 @@ function getProfileWithStation(db: ReturnType<typeof getDb>, profileId: number):
   if (!r) return null;
   const st = db.prepare('SELECT name FROM cook_stations WHERE id = ?').get(r.station_id) as { name: string } | undefined;
   const stationName = st?.name || 'Station';
-  return { ...toProfile(db, r, stationName), stationName };
+  return { ...toProfile(db, r), stationName };
 }
 
 /** Line ids already covered by a running timer OR already marked ready — these
@@ -332,6 +332,45 @@ function claimedLineIdsTx(db: ReturnType<typeof getDb>): Set<number> {
   }
   for (const r of db.prepare('SELECT pos_line_id FROM kds_line_ready').all() as { pos_line_id: number }[]) claimed.add(r.pos_line_id);
   return claimed;
+}
+
+/**
+ * Create SEVERAL timers (one per max-batch chunk) in ONE transaction.
+ *
+ * A COOK ALL that exceeds the profile's batch size becomes several baskets, and
+ * the whole request must still be all-or-nothing: claims are re-checked once
+ * inside the transaction, and if anything throws, no basket is left started.
+ * Batches whose lines were all claimed elsewhere are skipped. Returns the timers
+ * created (empty if every requested line was already taken).
+ */
+export function createTimerBatches(
+  profileId: number,
+  stationId: number,
+  batches: CoveredLine[][],
+  startedBy?: string,
+): CookTimerDTO[] {
+  ensureCookTables();
+  const db = getDb();
+  return db.transaction((): CookTimerDTO[] => {
+    const claimed = claimedLineIdsTx(db);
+    const now = berlinStamp();
+    const ins = db.prepare(
+      `INSERT INTO cook_timers (profile_id, station_id, pos_line_ids_json, order_refs_json, current_step, step_started_at, state, muted, started_by, created_at)
+       VALUES (?, ?, ?, ?, 0, ?, 'running', 0, ?, ?)`
+    );
+    const made: CookTimerDTO[] = [];
+    for (const batch of batches) {
+      const fresh = batch.filter(l => !claimed.has(l.lineId));
+      if (fresh.length === 0) continue;
+      // Claim within this transaction so two chunks can't cover the same line.
+      for (const l of fresh) claimed.add(l.lineId);
+      const refs = Array.from(new Set(fresh.map(l => l.ref)));
+      const id = ins.run(profileId, stationId, JSON.stringify(fresh), JSON.stringify(refs), now, startedBy ?? null, now)
+        .lastInsertRowid as number;
+      made.push(rowToDTO(db, getRow(db, id)!));
+    }
+    return made;
+  })();
 }
 
 /**
@@ -471,7 +510,7 @@ function getProfileById(db: ReturnType<typeof getDb>, id: number): CookProfile |
   const r = db.prepare(
     'SELECT id, odoo_product_id, name, station_id, max_batch, active FROM cook_profiles WHERE id = ?'
   ).get(id) as ProfileRow | undefined;
-  return r ? toProfile(db, r, '') : null;
+  return r ? toProfile(db, r) : null;
 }
 
 /** True if the submitted steps differ from what is stored (label/type/duration/count). */
@@ -638,23 +677,41 @@ export function reorderStations(orderedIds: number[]): CookStationAdmin[] {
   return listStationsAdmin();
 }
 
-export function deleteStation(id: number): void {
+/**
+ * Delete a station. If it still holds profiles, the caller must say where those
+ * profiles go (`moveToStationId`) — they are reassigned in the SAME transaction,
+ * so the manager is never left at a dead end ("move them first" with no way to
+ * move them). Passing no destination keeps the old refuse-with-a-count behaviour.
+ */
+export function deleteStation(id: number, moveToStationId?: number | null): void {
   ensureCookTables();
   const db = getDb();
   db.transaction(() => {
     const cur = db.prepare('SELECT id FROM cook_stations WHERE id = ?').get(id);
     if (!cur) throw new CookSetupError('Station not found.', 404);
-    const pc = (db.prepare('SELECT COUNT(*) AS c FROM cook_profiles WHERE station_id = ?').get(id) as { c: number }).c;
-    if (pc > 0) throw new CookSetupError(`This station still has ${pc} profile${pc === 1 ? '' : 's'}. Move or delete them first.`, 409);
     if (runningStationIds(db).has(id)) throw new CookSetupError('A timer is running at this station right now.', 409);
+
+    const pc = (db.prepare('SELECT COUNT(*) AS c FROM cook_profiles WHERE station_id = ?').get(id) as { c: number }).c;
+    if (pc > 0) {
+      if (moveToStationId == null) {
+        throw new CookSetupError(`This station still has ${pc} profile${pc === 1 ? '' : 's'}. Choose where to move them.`, 409);
+      }
+      if (moveToStationId === id) throw new CookSetupError('Pick a different station to move them to.');
+      if (!db.prepare('SELECT id FROM cook_stations WHERE id = ?').get(moveToStationId)) {
+        throw new CookSetupError('That station does not exist.');
+      }
+      db.prepare('UPDATE cook_profiles SET station_id = ? WHERE station_id = ?').run(moveToStationId, id);
+    }
     db.prepare('DELETE FROM cook_stations WHERE id = ?').run(id);
   })();
 }
 
 // -- Profiles --
 
-/** All profiles (incl. inactive) with steps, grouped by station order then name. */
-export function listProfilesAdmin(): CookProfile[] {
+/** All profiles (incl. inactive) with steps, grouped by station order then name.
+ *  `hasRunningTimer` lets Setup warn BEFORE a manager rebuilds a step chain that
+ *  the save would reject. `productName` is filled in by the API from the till. */
+export function listProfilesAdmin(): CookProfileAdmin[] {
   ensureCookTables();
   const db = getDb();
   const rows = db.prepare(
@@ -662,7 +719,15 @@ export function listProfilesAdmin(): CookProfile[] {
      FROM cook_profiles p JOIN cook_stations s ON s.id = p.station_id
      ORDER BY s.sort, s.id, p.name COLLATE NOCASE, p.id`
   ).all() as ProfileRow[];
-  return rows.map(r => toProfile(db, r, ''));
+  const running = new Set<number>(
+    (db.prepare("SELECT DISTINCT profile_id FROM cook_timers WHERE state = 'running'").all() as { profile_id: number }[])
+      .map(r => r.profile_id)
+  );
+  return rows.map(r => ({
+    ...toProfile(db, r),
+    productName: null,                       // filled by the API (live Odoo lookup)
+    hasRunningTimer: running.has(r.id),
+  }));
 }
 
 export function createProfile(input: CookProfileInput): CookProfile {

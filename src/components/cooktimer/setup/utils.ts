@@ -18,6 +18,24 @@ export const STEP_TYPE_OPTIONS = [
   { value: 'action' as CookStepType, label: 'Action' },
 ];
 
+/**
+ * Does this dish match what the manager typed?
+ *
+ * Matches the name shown to COOKS or the dish's real name on the TILL, so
+ * searching "Smokey" finds a profile whose cook-facing name was shortened to
+ * "Jerk Chicken" (and vice versa). Case-insensitive substring; an empty query
+ * matches everything.
+ */
+export function matchesProfileSearch(
+  profile: { name: string; productName?: string | null },
+  query: string,
+): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  return profile.name.toLowerCase().includes(needle)
+    || (profile.productName ?? '').toLowerCase().includes(needle);
+}
+
 /** Light-theme chip styling per step type. */
 export function stepChipClass(type: CookStepType): string {
   if (type === 'action') return 'bg-sky-50 text-sky-700 border-sky-200';
@@ -25,7 +43,10 @@ export function stepChipClass(type: CookStepType): string {
   return 'bg-green-50 text-green-700 border-green-200';
 }
 
-const DOTS = ['bg-orange-500', 'bg-amber-400', 'bg-red-500', 'bg-sky-500', 'bg-emerald-500', 'bg-violet-500', 'bg-pink-500', 'bg-teal-500'];
+// Heat-ordered kitchen palette: the first three land on the real WAJ stations
+// (Grill orange, Deep Fry & Smoker amber, Oven red). Later stations continue in
+// the same family — no violet/pink, which read as arbitrary next to the others.
+const DOTS = ['bg-orange-500', 'bg-amber-400', 'bg-red-500', 'bg-teal-500', 'bg-sky-500', 'bg-emerald-500', 'bg-rose-400', 'bg-slate-500'];
 /** Deterministic accent dot per station (stations have no stored color). */
 export function stationDot(index: number): string {
   return DOTS[((index % DOTS.length) + DOTS.length) % DOTS.length];

@@ -46,7 +46,7 @@ export default function ProductPickerSheet({
         value={q}
         onChange={e => setQ(e.target.value)}
         placeholder="Search products…"
-        className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-[15px] mb-3 focus:outline-none focus:border-sky-400"
+        className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-[15px] mb-3 focus:outline-none focus:border-green-500"
       />
       <div className="flex flex-col divide-y divide-gray-100 max-h-[52vh] overflow-y-auto">
         {results.map(p => (

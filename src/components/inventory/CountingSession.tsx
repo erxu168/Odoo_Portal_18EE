@@ -96,7 +96,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   const [cachedSpotPaths, setCachedSpotPaths] = useState<Record<number, string>>({});
   const [guidedStatuses, setGuidedStatuses] = useState<Record<number, { status: string; skip_reason: string | null }>>({});
   const [statusPending, setStatusPending] = useState(0); // in-flight location-status writes
-  const [savesPending, setSavesPending] = useState(0);   // in-flight count saves/deletes
+  const [savesPending, setSavesPending] = useState(0);
+  // A refusal the server sent back. Shown until dismissed — a count that did
+  // not save is not something to flash for three seconds and hide.
+  const [saveError, setSaveError] = useState<string | null>(null);   // in-flight count saves/deletes
 
   // -- Barcode scanner --
   const [showScanner, setShowScanner] = useState(false);
@@ -437,7 +440,19 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   // A count save/delete wrapped so it counts as "in flight" — submission waits
   // for these to settle, otherwise a save racing behind submit would hit the
   // now-submitted edit lock (400) and be dropped, losing the count.
-  async function trackedMutate(opts: Parameters<typeof offlineSafeMutate>[0]) {
+  /**
+   * A 4xx is a DEFINITE refusal — offlineSafeMutate queues 5xx and network
+   * failures for retry, so anything reaching here with ok:false and
+   * queued:false was rejected outright and will never be sent again.
+   *
+   * Every caller used to check only `queued`, so a refusal left the number on
+   * the screen with nothing stored: staff saw "1 of 1 counted" over an empty
+   * count. Now the optimistic change is undone and the refusal is on screen.
+   */
+  async function trackedMutate(
+    opts: Parameters<typeof offlineSafeMutate>[0],
+    rollback?: () => void,
+  ) {
     setSavesPending((n) => n + 1);
     try {
       const res = await offlineSafeMutate(opts);
@@ -445,6 +460,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       // BEFORE we drop savesPending — otherwise there'd be a window where both
       // counters read zero and submit could slip past a not-yet-synced count.
       if (res.queued) await sync.refresh();
+      else if (!res.ok) {
+        rollback?.();
+        setSaveError(res.error || 'That did not save — try again.');
+      }
       return res;
     } finally {
       setSavesPending((n) => n - 1);
@@ -469,6 +488,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       });
       if (res.queued) void sync.refresh();
     } else {
+      const wasQty = entries[k];
       setEntries((prev) => ({ ...prev, [k]: qty }));
       if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
       void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom, ...(note !== undefined ? { notes: note } : {}) }, loc);
@@ -478,6 +498,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         body: { session_id: sessionId, product_id: productId, count_location_id: loc, counted_qty: qty, uom,
           ...(note !== undefined ? { notes: note } : {}) },
         dedupKey: `save:${sessionId}:${productId}:${loc}`,
+      }, () => {
+        setEntries((prev) => {
+          const n = { ...prev };
+          if (wasQty === undefined) delete n[k]; else n[k] = wasQty;
+          return n;
+        });
       });
       if (res.queued) void sync.refresh();
     }
@@ -630,6 +656,8 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     const k = K(product.id, loc);
     const levels = packaging[product.id] || [];
     const total = packTotal({ byLevel, loose }, levels);
+    const wasQty = entries[k];
+    const wasSplit = packSplits[k];
     setPackSheet({ open: false, product: null, loc: 0 });
     setOos((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
     setEntries((prev) => ({ ...prev, [k]: total }));
@@ -646,6 +674,19 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         ...(note !== undefined ? { notes: note } : {}),
       },
       dedupKey: `save:${sessionId}:${product.id}:${loc}`,
+    }, () => {
+      // Refused: put the line back exactly as it was, so the row cannot show a
+      // total the count does not contain.
+      setEntries((prev) => {
+        const n = { ...prev };
+        if (wasQty === undefined) delete n[k]; else n[k] = wasQty;
+        return n;
+      });
+      setPackSplits((prev) => {
+        const n = { ...prev };
+        if (wasSplit === undefined) delete n[k]; else n[k] = wasSplit;
+        return n;
+      });
     });
     if (res.queued) void sync.refresh();
   }
@@ -954,7 +995,31 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         </div>
 
         <OfflineBanner sync={sync} />
-
+      {saveError && (
+        <div role="alert" className="mx-4 mt-2 mb-1 rounded-xl bg-red-50 border border-red-300 px-3 py-2.5 flex items-start gap-2">
+          <span aria-hidden="true" className="text-red-600 font-bold">!</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[var(--fs-sm)] font-bold text-red-800">Not saved</p>
+            <p className="text-[var(--fs-xs)] text-red-700 leading-snug [overflow-wrap:anywhere]">{saveError}</p>
+            <p className="text-[var(--fs-xs)] text-red-700 mt-0.5">The line has been put back the way it was.</p>
+          </div>
+          <button onClick={() => setSaveError(null)} aria-label="Dismiss"
+            className="flex-shrink-0 w-7 h-7 rounded-lg text-red-700 font-bold active:bg-red-100">×</button>
+        </div>
+      )}
+              {saveError && (
+        <div role="alert" className="mx-4 mt-2 mb-1 rounded-xl bg-red-50 border border-red-300 px-3 py-2.5 flex items-start gap-2">
+          <span aria-hidden="true" className="text-red-600 font-bold">!</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[var(--fs-sm)] font-bold text-red-800">Not saved</p>
+            <p className="text-[var(--fs-xs)] text-red-700 leading-snug [overflow-wrap:anywhere]">{saveError}</p>
+            <p className="text-[var(--fs-xs)] text-red-700 mt-0.5">The line has been put back the way it was.</p>
+          </div>
+          <button onClick={() => setSaveError(null)} aria-label="Dismiss"
+            className="flex-shrink-0 w-7 h-7 rounded-lg text-red-700 font-bold active:bg-red-100">×</button>
+        </div>
+      )}
+      
         <div className="px-4 pt-4">
           <div className="bg-white border border-gray-200 rounded-2xl p-4 mb-3">
             <div className="flex items-center justify-between mb-3">

@@ -13,7 +13,8 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { listProfilesAdmin, listStationsAdmin, updateProfile, setProfileActive, deleteProfile, CookSetupError } from '@/lib/cooktimer-db';
+import { listStationsAdmin, updateProfile, setProfileActive, deleteProfile, CookSetupError } from '@/lib/cooktimer-db';
+import { listProfilesWithNames } from '@/lib/cooktimer-products';
 import type { CookProfileInput } from '@/types/cooktimer';
 
 const CAP = 'cooktimer.config.manage';
@@ -50,7 +51,7 @@ export async function PATCH(request: Request, ctx: { params: { id: string } }) {
     } else {
       return NextResponse.json({ error: 'Provide a full profile (with steps) or an active flag' }, { status: 400 });
     }
-    return NextResponse.json({ profiles: listProfilesAdmin(), stations: listStationsAdmin() });
+    return NextResponse.json({ ...(await listProfilesWithNames()), stations: listStationsAdmin() });
   } catch (err) {
     return fail(err);
   }
@@ -63,7 +64,7 @@ export async function DELETE(_request: Request, ctx: { params: { id: string } })
   if (!Number.isFinite(id)) return NextResponse.json({ error: 'id must be an integer' }, { status: 400 });
   try {
     deleteProfile(id);
-    return NextResponse.json({ profiles: listProfilesAdmin(), stations: listStationsAdmin() });
+    return NextResponse.json({ ...(await listProfilesWithNames()), stations: listStationsAdmin() });
   } catch (err) {
     return fail(err);
   }

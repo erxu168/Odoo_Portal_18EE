@@ -1,17 +1,16 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import AppHeader from '@/components/ui/AppHeader';
 import Toast from '@/components/ui/Toast';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import type { CookProfile, CookProfileInput, CookStationAdmin } from '@/types/cooktimer';
+import type { CookProfileAdmin, CookProfileInput, CookStationAdmin } from '@/types/cooktimer';
 import ProfilesTab from './ProfilesTab';
 import StationsTab from './StationsTab';
 import ProfileEditor from './ProfileEditor';
 
 type Tab = 'profiles' | 'stations';
 interface ToastState { message: string; type: 'success' | 'error' | 'info'; visible: boolean; }
-interface ConfirmState { title: string; message: string; confirmLabel: string; onConfirm: () => void; }
+interface ConfirmState { title: string; message: string; confirmLabel: string; extra?: React.ReactNode; onConfirm: () => void; }
 
 async function call(url: string, method: string, body?: unknown): Promise<{ ok: boolean; data: any }> {
   try {
@@ -29,14 +28,18 @@ async function call(url: string, method: string, body?: unknown): Promise<{ ok: 
 }
 
 export default function CookSetupClient() {
-  const router = useRouter();
   const [tab, setTab] = useState<Tab>('profiles');
-  const [profiles, setProfiles] = useState<CookProfile[] | null>(null);
+  const [profiles, setProfiles] = useState<CookProfileAdmin[] | null>(null);
   const [stations, setStations] = useState<CookStationAdmin[] | null>(null);
-  const [editor, setEditor] = useState<{ profile: CookProfile | null } | null>(null);
+  const [editor, setEditor] = useState<{ profile: CookProfileAdmin | null } | null>(null);
   const [toast, setToast] = useState<ToastState>({ message: '', type: 'info', visible: false });
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  // Destination for "move dishes & delete" — a ref so picking it never re-renders the dialog.
+  const moveTargetRef = useRef<number | null>(null);
   const [loadError, setLoadError] = useState(false);
+  // True when Odoo could not be reached for live dish names — shown as a banner
+  // so a manager reads 'names unavailable', not 'these dishes were deleted'.
+  const [namesUnavailable, setNamesUnavailable] = useState(false);
 
   function showToast(message: string, type: ToastState['type'] = 'info') {
     setToast({ message, type, visible: true });
@@ -52,6 +55,7 @@ export default function CookSetupClient() {
       if (!Array.isArray(pr.profiles) || !Array.isArray(sr.stations)) throw new Error('bad payload');
       setProfiles(pr.profiles);
       setStations(sr.stations);
+      setNamesUnavailable(!!pr.productNameUnavailable);
     } catch {
       setLoadError(true);
     }
@@ -82,15 +86,46 @@ export default function CookSetupClient() {
     });
   }
   function deleteStation(s: CookStationAdmin) {
+    const others = (stations ?? []).filter(x => x.id !== s.id);
+    const holdsDishes = s.profileCount > 0;
+
+    // A station that still holds dishes is NOT a dead end: ask where they go and
+    // move them as part of the same delete.
+    if (holdsDishes && others.length === 0) {
+      showToast(`${s.name} is your only station, so its dishes have nowhere to go. Add another station first.`, 'error');
+      return;
+    }
+    moveTargetRef.current = others[0]?.id ?? null;
+
     setConfirm({
       title: `Delete ${s.name}?`,
-      message: 'This removes the station. Its profiles must be moved off first.',
-      confirmLabel: 'Delete station',
+      message: holdsDishes
+        ? `${s.name} still has ${s.profileCount} dish${s.profileCount === 1 ? '' : 'es'} on it. Choose where they should go — they keep their cooking steps.`
+        : 'This removes the station. It has no dishes on it. This cannot be undone.',
+      confirmLabel: holdsDishes ? 'Move dishes & delete' : 'Delete station',
+      extra: holdsDishes ? (
+        <select
+          aria-label="Move dishes to"
+          defaultValue={String(others[0]?.id ?? '')}
+          onChange={e => { moveTargetRef.current = Number(e.target.value); }}
+          className="w-full rounded-xl border border-gray-300 px-3 py-3 text-[15px] min-h-[48px] bg-white focus:outline-none focus:border-green-500"
+        >
+          {others.map(o => <option key={o.id} value={o.id}>Move to {o.name}</option>)}
+        </select>
+      ) : undefined,
       onConfirm: async () => {
+        const moveTo = holdsDishes ? moveTargetRef.current : null;
         setConfirm(null);
-        const { ok, data } = await call(`/api/cooktimer/stations/${s.id}`, 'DELETE');
-        if (ok && Array.isArray(data.stations)) { setStations(data.stations); showToast(`Deleted ${s.name}`, 'success'); }
-        else showToast(data.error || 'Could not delete station', 'error');
+        const { ok, data } = await call(`/api/cooktimer/stations/${s.id}`, 'DELETE',
+          moveTo != null ? { moveToStationId: moveTo } : undefined);
+        if (ok && Array.isArray(data.stations)) {
+          setStations(data.stations);
+          if (Array.isArray(data.profiles)) setProfiles(data.profiles);
+          const to = others.find(o => o.id === moveTo)?.name;
+          showToast(holdsDishes && to
+            ? `${s.profileCount} moved to ${to} · ${s.name} deleted`
+            : `Deleted ${s.name}`, 'success');
+        } else showToast(data.error || 'Could not delete station', 'error');
       },
     });
   }
@@ -100,6 +135,7 @@ export default function CookSetupClient() {
   // which gates station delete) — apply both so the Stations tab stays accurate.
   function applyProfileResponse(data: any) {
     if (Array.isArray(data.profiles)) setProfiles(data.profiles);
+    if ('productNameUnavailable' in data) setNamesUnavailable(!!data.productNameUnavailable);
     if (Array.isArray(data.stations)) setStations(data.stations);
   }
   async function saveProfile(input: CookProfileInput, id: number | null): Promise<{ ok: boolean; error?: string }> {
@@ -111,12 +147,12 @@ export default function CookSetupClient() {
     }
     return { ok: false, error: data.error || 'Could not save.' };
   }
-  async function toggleProfile(p: CookProfile, active: boolean) {
+  async function toggleProfile(p: CookProfileAdmin, active: boolean) {
     const { ok, data } = await call(`/api/cooktimer/profiles/${p.id}`, 'PATCH', { active });
     if (ok && Array.isArray(data.profiles)) applyProfileResponse(data);
     else { showToast(data.error || 'Could not update profile', 'error'); void reloadAll(); }
   }
-  function deleteProfile(p: CookProfile) {
+  function deleteProfile(p: CookProfileAdmin) {
     setConfirm({
       title: `Delete ${p.name}?`,
       message: 'This removes the cook profile and its steps.',
@@ -134,15 +170,22 @@ export default function CookSetupClient() {
 
   return (
     <div className="min-h-screen bg-[#F6F7F9] pb-16">
-      <AppHeader supertitle="Cooking Timer" title="Setup" subtitle="Stations & cook profiles"
-        showBack onBack={() => router.push('/')} />
+      {/* Top-level module screen reached from the dashboard, so the single left
+          control is HOME (a back arrow here just went to '/' as well). */}
+      <AppHeader supertitle="Cooking Timer" title="Setup" subtitle="Dishes & stations" />
+
+      {namesUnavailable && (
+        <div className="mx-4 mt-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[13px] px-3 py-2.5">
+          Could not reach the till just now, so some dish names may be missing. Everything else still works.
+        </div>
+      )}
 
       {/* tabs */}
       <div className="flex gap-1 px-4 pt-3 bg-white border-b border-gray-200 sticky top-0 z-10">
         {(['profiles', 'stations'] as Tab[]).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2.5 text-sm font-bold rounded-t-lg border-b-2 ${tab === t ? 'text-gray-900 border-green-500' : 'text-gray-400 border-transparent'}`}>
-            {t === 'profiles' ? 'Cook profiles' : 'Stations'}
+            {t === 'profiles' ? 'Dishes' : 'Stations'}
           </button>
         ))}
       </div>
@@ -193,6 +236,7 @@ export default function CookSetupClient() {
           title={confirm.title}
           message={confirm.message}
           confirmLabel={confirm.confirmLabel}
+          extra={confirm.extra}
           variant="danger"
           onConfirm={confirm.onConfirm}
           onCancel={() => setConfirm(null)}

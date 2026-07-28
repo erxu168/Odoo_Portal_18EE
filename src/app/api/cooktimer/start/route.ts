@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getKdsSettings } from '@/lib/kds-db';
 import { KDS_LOCATION_ID } from '@/types/kds';
-import { createTimer } from '@/lib/cooktimer-db';
-import { loadEligibleLines } from '@/lib/cooktimer-queue';
+import { createTimerBatches } from '@/lib/cooktimer-db';
+import { loadEligibleLines, splitIntoBatches } from '@/lib/cooktimer-queue';
 import type { CoveredLine } from '@/types/cooktimer';
 
 export const dynamic = 'force-dynamic';
@@ -46,11 +46,18 @@ export async function POST(req: NextRequest) {
     const lines: CoveredLine[] = selected.map(l => ({
       lineId: l.lineId, orderId: l.orderId, ref: l.ref, qty: l.qty, arrivedMs: l.arrivedMs,
     }));
-    const timer = createTimer(profileId, selected[0].stationId, lines);
-    if (!timer) {
+
+    // Respect the profile's max batch size: a request bigger than one basket
+    // becomes SEVERAL timers rather than one oversized one. All baskets are
+    // created in ONE transaction, so the request stays all-or-nothing.
+    const batches = splitIntoBatches(lines, selected[0].maxBatch ?? null);
+    const timers = createTimerBatches(profileId, selected[0].stationId, batches);
+
+    if (timers.length === 0) {
       return NextResponse.json({ error: 'Those items were just started on another tablet' }, { status: 409 });
     }
-    return NextResponse.json({ timer });
+    // `timer` kept for backwards compatibility with the existing client.
+    return NextResponse.json({ timer: timers[0], timers, batches: timers.length });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[cooktimer] start error:', msg);

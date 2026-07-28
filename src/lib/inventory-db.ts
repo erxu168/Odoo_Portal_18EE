@@ -2326,36 +2326,82 @@ export function getProductCountHistory(
 }
 
 /**
- * Counts this product is locked into — approved (the audit trail) or submitted
- * (waiting for a manager).
+ * How much recorded counting work a delete would destroy. Non-zero means refuse.
  *
- * Membership counts, not just a number written down: a guided count can list a
- * product and legitimately have no entry for it because the whole spot was
- * skipped with a reason. Judging by entries alone declared such a product free
- * to delete, and taking it out then rewrote what a signed-off count had
- * covered. A submitted count is just as untouchable — remove a product from
- * under one and it can never be approved, because approval checks every line
- * against the list and the product is no longer on it.
+ * An ENTRY is a number a person typed on a shelf — including "nothing here",
+ * which is also an answer. It is work whatever state its count is in, so any
+ * entry blocks the delete. It used to block only for submitted and approved
+ * counts, while the cleanup deleted entries from pending, in_progress and
+ * rejected ones: a manager could delete a product while someone was mid-count
+ * and wipe what they had already entered, with nothing said to either of them.
+ *
+ * A frozen SNAPSHOT LINE is different. In an untouched count it is just "this
+ * product was on the list", carries no one's work, and is safely dropped — so
+ * it only blocks for counts that are submitted or approved, where the line is
+ * what justifies the numbers.
+ *
+ * Archiving remains the way through: it hides the product without touching a
+ * single recorded number.
  */
 export function countLockedLinesForProduct(productId: number): number {
+  // One implementation, counted once — see describeCountWorkForProduct below.
+  return describeCountWorkForProduct(productId).total;
+}
+
+/**
+ * The same question, answered in words a manager can act on: what exactly would
+ * be destroyed. "It is in a count" is not actionable; "Marco has counted this on
+ * Daily Count, still open" is.
+ */
+export function describeCountWorkForProduct(
+  productId: number,
+  /** Restaurants the caller may see. Lists outside them are counted but not named. */
+  visibleCompanyIds?: number[] | null,
+): {
+  total: number; entries: number; quick: number; lockedLines: number; where: string[];
+} {
   const db = getDb();
   const LOCKED = "('approved','submitted')";
-  const entries = db.prepare(`
-    SELECT COUNT(*) AS n
+  const rows = db.prepare(`
+    SELECT s.status AS status, COUNT(*) AS n,
+           COALESCE(t.name, 'a count') AS list_name,
+           s.company_id AS company_id
       FROM count_entries e
       JOIN counting_sessions s ON s.id = e.session_id
-     WHERE e.product_id = ? AND s.status IN ${LOCKED}
-  `).get(productId) as { n: number } | undefined;
-  const listed = db.prepare(`
-    SELECT COUNT(*) AS n
-      FROM session_count_items i
+      LEFT JOIN counting_templates t ON t.id = s.template_id
+     WHERE e.product_id = ?
+     GROUP BY s.status, t.name, s.company_id
+     ORDER BY n DESC
+  `).all(productId) as { status: string; n: number; list_name: string; company_id: number | null }[];
+  // A quick count is an entered quantity — except a REJECTED one, which a
+  // manager has already thrown away. Blocking on those would be a dead end:
+  // nothing in the portal can clear a rejected quick count, and the cleanup
+  // deletes them anyway, so the product could never be deleted by any route.
+  const quick = (db.prepare(
+    "SELECT COUNT(*) AS n FROM quick_counts WHERE product_id = ? AND COALESCE(status,'pending') != 'rejected'",
+  ).get(productId) as { n: number } | undefined)?.n || 0;
+  const lockedLines = (db.prepare(`
+    SELECT COUNT(*) AS n FROM session_count_items i
       JOIN counting_sessions s ON s.id = i.session_id
      WHERE i.odoo_product_id = ? AND s.status IN ${LOCKED}
-  `).get(productId) as { n: number } | undefined;
-  const quick = db.prepare(
-    "SELECT COUNT(*) AS n FROM quick_counts WHERE product_id = ? AND status = 'approved'",
-  ).get(productId) as { n: number } | undefined;
-  return (entries?.n || 0) + (listed?.n || 0) + (quick?.n || 0);
+  `).get(productId) as { n: number } | undefined)?.n || 0;
+
+  const plain: Record<string, string> = {
+    pending: 'not started yet', in_progress: 'still being counted',
+    submitted: 'waiting to be approved', approved: 'already approved',
+    rejected: 'sent back to be redone',
+  };
+  // A manager must be told SOMETHING is in the way, but never the name of
+  // another restaurant's counting list.
+  const canSee = (cid: number | null) =>
+    !visibleCompanyIds || cid == null || visibleCompanyIds.includes(cid);
+  const where = rows.map((r) => {
+    const what = canSee(r.company_id) ? `on "${r.list_name}"` : 'at another restaurant';
+    return `${r.n} ${r.n === 1 ? 'entry' : 'entries'} ${what} (${plain[r.status] || r.status})`;
+  });
+  if (quick > 0) where.push(`${quick} quick ${quick === 1 ? 'count' : 'counts'}`);
+  const entries = rows.reduce((n, r) => n + r.n, 0);
+  return { total: entries + quick + lockedLines, entries, quick, lockedLines, where };
 }
 
 /**
@@ -2370,28 +2416,38 @@ export function countLockedLinesForProduct(productId: number): number {
  * better than destroying the record. Approved counts are ruled out before this
  * is ever called (see countApprovedLinesForProduct).
  */
-export function deleteProductPortalData(productId: number): void {
+export function deleteProductPortalData(productId: number): { countWorkPreserved: number } {
   const db = getDb();
+  let preserved = 0;
   const tx = db.transaction(() => {
-    // Photos hang off row ids, so they go before the rows do — and only for
-    // lines in counts that are still open.
-    const openEntries = db.prepare(`
-      SELECT e.id FROM count_entries e
-        JOIN counting_sessions s ON s.id = e.session_id
-       WHERE e.product_id = ? AND s.status IN ('pending','in_progress','rejected')
-    `).all(productId) as { id: number }[];
-    openEntries.forEach((r) => deleteCountPhotos('count_entries', r.id));
-    if (openEntries.length > 0) {
-      db.prepare(`DELETE FROM count_entries WHERE id IN (${openEntries.map(() => '?').join(',')})`)
-        .run(...openEntries.map((r) => r.id));
-    }
-    const openQuick = db.prepare(
-      "SELECT id FROM quick_counts WHERE product_id = ? AND COALESCE(status,'pending') IN ('pending','rejected')",
-    ).all(productId) as { id: number }[];
-    openQuick.forEach((r) => deleteCountPhotos('quick_counts', r.id));
-    if (openQuick.length > 0) {
-      db.prepare(`DELETE FROM quick_counts WHERE id IN (${openQuick.map(() => '?').join(',')})`)
-        .run(...openQuick.map((r) => r.id));
+    // The route checked for counting work BEFORE talking to Odoo, and that call
+    // can take up to 30 seconds. Somebody can finish a shelf in that window. So
+    // ask again HERE, inside the transaction, where nothing can interleave:
+    // if work has appeared, keep every entry and delete only the rest.
+    // The Odoo product is already gone by now, so there is nothing to roll back
+    // to — the choice is keep the numbers or lose them, and we keep them.
+    preserved = describeCountWorkForProduct(productId).total;
+    if (preserved === 0) {
+      // Photos hang off row ids, so they go before the rows do — and only for
+      // lines in counts that are still open.
+      const openEntries = db.prepare(`
+        SELECT e.id FROM count_entries e
+          JOIN counting_sessions s ON s.id = e.session_id
+         WHERE e.product_id = ? AND s.status IN ('pending','in_progress','rejected')
+      `).all(productId) as { id: number }[];
+      openEntries.forEach((r) => deleteCountPhotos('count_entries', r.id));
+      if (openEntries.length > 0) {
+        db.prepare(`DELETE FROM count_entries WHERE id IN (${openEntries.map(() => '?').join(',')})`)
+          .run(...openEntries.map((r) => r.id));
+      }
+      const openQuick = db.prepare(
+        "SELECT id FROM quick_counts WHERE product_id = ? AND COALESCE(status,'pending') IN ('pending','rejected')",
+      ).all(productId) as { id: number }[];
+      openQuick.forEach((r) => deleteCountPhotos('quick_counts', r.id));
+      if (openQuick.length > 0) {
+        db.prepare(`DELETE FROM quick_counts WHERE id IN (${openQuick.map(() => '?').join(',')})`)
+          .run(...openQuick.map((r) => r.id));
+      }
     }
 
     // Settings and placements: these describe the product, so they go with it.
@@ -2438,6 +2494,7 @@ export function deleteProductPortalData(productId: number): void {
     } catch { /* leave the lists alone rather than corrupt them */ }
   });
   tx();
+  return { countWorkPreserved: preserved };
 }
 
 export function getSessionLocationStatuses(sessionId: number): { count_location_id: number; status: string; skip_reason: string | null }[] {

@@ -13,6 +13,7 @@ import { getPermissionOverrides } from '@/lib/db';
 import {
   listStationsAdmin, updateStation, deleteStation, CookSetupError,
 } from '@/lib/cooktimer-db';
+import { listProfilesWithNames } from '@/lib/cooktimer-products';
 
 const CAP = 'cooktimer.config.manage';
 
@@ -54,14 +55,43 @@ export async function PATCH(request: Request, ctx: { params: { id: string } }) {
   }
 }
 
-export async function DELETE(_request: Request, ctx: { params: { id: string } }) {
+/**
+ * DELETE /api/cooktimer/stations/[id]   optional body { moveToStationId }
+ * Deleting a station that still holds cook profiles requires saying where those
+ * profiles go; they are reassigned in the same transaction. Profiles change
+ * station, so the fresh profile list is returned too.
+ */
+export async function DELETE(request: Request, ctx: { params: { id: string } }) {
   const g = gate();
   if (g.error) return g.error;
   const id = parseInt(ctx.params.id, 10);
   if (!Number.isFinite(id)) return NextResponse.json({ error: 'id must be an integer' }, { status: 400 });
+
+  // An EMPTY body means "plain delete"; MALFORMED JSON is a client error and
+  // must not silently fall through to deleting the station.
+  let moveToStationId: number | null = null;
+  const raw = (await request.text()).trim();
+  if (raw !== '') {
+    let body: unknown;
+    try { body = JSON.parse(raw); } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Body must be a JSON object' }, { status: 400 });
+    }
+    const v = (body as { moveToStationId?: unknown }).moveToStationId;
+    if (v != null) {
+      // Require a real JSON number — Number(true) would otherwise become id 1.
+      if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) {
+        return NextResponse.json({ error: 'moveToStationId must be a station id' }, { status: 400 });
+      }
+      moveToStationId = v;
+    }
+  }
+
   try {
-    deleteStation(id);
-    return NextResponse.json({ stations: listStationsAdmin() });
+    deleteStation(id, moveToStationId);
+    return NextResponse.json({ stations: listStationsAdmin(), ...(await listProfilesWithNames()) });
   } catch (err) {
     return fail(err);
   }

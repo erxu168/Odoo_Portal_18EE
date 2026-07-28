@@ -468,7 +468,7 @@ export default function KioskPage() {
           >
             {busy ? 'One moment…' : 'Clock In'}
           </button>
-          <button onClick={backToGrid} className="mt-3 text-gray-500 font-bold py-2 active:text-gray-700">
+          <button onClick={backToGrid} className="mt-3 text-gray-500 font-bold min-h-[44px] px-4 py-2 active:text-gray-700">
             Cancel
           </button>
         </div>
@@ -492,7 +492,7 @@ export default function KioskPage() {
         <div className="flex-1 flex flex-col items-center p-6">
           <button
             onClick={backToGrid}
-            className="self-start bg-white border border-gray-200 rounded-full px-5 py-2.5 font-bold text-gray-600 active:bg-gray-100"
+            className="self-start bg-white border border-gray-200 rounded-full px-5 py-3 min-h-[44px] font-bold text-gray-600 active:bg-gray-100"
           >
             ‹ Back
           </button>
@@ -506,7 +506,7 @@ export default function KioskPage() {
               <span key={i} className={`w-4 h-4 rounded-full ${pin.length > i ? 'bg-green-600' : 'border-2 border-gray-300'}`} />
             ))}
           </div>
-          <div className="h-6 mb-2">{pinError && <div className="text-red-600 font-bold">Wrong PIN — try again</div>}</div>
+          <div className="h-6 mb-2">{pinError && <div className="text-red-600 font-bold">⚠ Wrong PIN — try again</div>}</div>
           <div className="grid grid-cols-3 gap-3 w-full max-w-xs">
             {keys.map(k => (
               <button
@@ -567,7 +567,7 @@ export default function KioskPage() {
           )}
 
           <div className="mt-6 text-center">
-            <button onClick={requestForgot} disabled={busy} className="text-gray-500 font-semibold underline active:text-gray-700 disabled:opacity-50">
+            <button onClick={requestForgot} disabled={busy} className="inline-block min-h-[44px] px-4 py-3 text-gray-500 font-semibold underline active:text-gray-700 disabled:opacity-50">
               Forgot PIN?
             </button>
             {forgotMsg && <div className="text-sm text-gray-600 mt-2 max-w-xs">{forgotMsg}</div>}
@@ -583,7 +583,7 @@ export default function KioskPage() {
         <div className="flex-1 flex flex-col items-center p-6">
           <button
             onClick={backToGrid}
-            className="self-start bg-white border border-gray-200 rounded-full px-5 py-2.5 font-bold text-gray-600 active:bg-gray-100"
+            className="self-start bg-white border border-gray-200 rounded-full px-5 py-3 min-h-[44px] font-bold text-gray-600 active:bg-gray-100"
           >
             ‹ Back
           </button>
@@ -605,7 +605,7 @@ export default function KioskPage() {
               >
                 {busy ? 'Sending…' : 'Email me a code'}
               </button>
-              {setupError && <div className="text-red-600 font-semibold text-sm text-center mt-4">{setupError}</div>}
+              {setupError && <div className="text-red-600 font-semibold text-sm text-center mt-4">⚠ {setupError}</div>}
             </div>
           ) : (
             <div className="flex flex-col w-full max-w-xs mt-2 gap-3">
@@ -639,7 +639,7 @@ export default function KioskPage() {
                   className={setupInputCls}
                 />
               </div>
-              {setupError && <div className="text-red-600 font-semibold text-sm text-center">{setupError}</div>}
+              {setupError && <div className="text-red-600 font-semibold text-sm text-center">⚠ {setupError}</div>}
               <button
                 onClick={confirmSetup}
                 disabled={busy}
@@ -647,7 +647,7 @@ export default function KioskPage() {
               >
                 {busy ? 'Setting up…' : 'Set PIN & clock in'}
               </button>
-              <button onClick={requestSetupCode} disabled={busy} className="text-gray-500 font-semibold underline text-sm active:text-gray-700 disabled:opacity-50">
+              <button onClick={requestSetupCode} disabled={busy} className="inline-block min-h-[44px] px-4 py-3 text-gray-500 font-semibold underline text-sm active:text-gray-700 disabled:opacity-50">
                 Resend code
               </button>
             </div>
@@ -692,7 +692,7 @@ export default function KioskPage() {
                   </div>
                   <div className="text-[17px] font-bold text-gray-900 text-center leading-tight">{s.name}</div>
                   {!s.hasPin ? (
-                    <div className="text-sm font-bold text-blue-600">Set up PIN</div>
+                    <div className="text-sm font-bold text-blue-600">🔑 Set up PIN</div>
                   ) : s.clockedIn ? (
                     <div className="text-sm font-bold text-green-600">● Working</div>
                   ) : s.onBreak ? (

@@ -21,6 +21,38 @@ export interface EligibleLine {
   stationId: number;
   stationName: string;
   stepLabels: string[];
+  /** Portions one batch may hold (null = no limit). Set per profile by a manager. */
+  maxBatch: number | null;
+}
+
+/**
+ * Split lines into batches that respect a profile's max batch size, counting
+ * PORTIONS (a POS line can be qty 3). Oldest first, greedy: a line is added to
+ * the current batch while it fits, otherwise it opens the next one. A single
+ * line bigger than the limit gets its own batch — a POS line is atomic and
+ * cannot be split without splitting it in Odoo. null/0 limit = one batch.
+ */
+export function splitIntoBatches<T extends { qty: number; arrivedMs: number }>(
+  lines: T[],
+  maxBatch: number | null,
+): T[][] {
+  if (!maxBatch || maxBatch < 1 || lines.length === 0) return lines.length ? [lines] : [];
+  const ordered = [...lines].sort((a, b) => a.arrivedMs - b.arrivedMs);
+  const batches: T[][] = [];
+  let cur: T[] = [];
+  let count = 0;
+  for (const l of ordered) {
+    const q = Math.max(1, Math.ceil(l.qty || 1));
+    if (cur.length > 0 && count + q > maxBatch) {
+      batches.push(cur);
+      cur = [];
+      count = 0;
+    }
+    cur.push(l);
+    count += q;
+  }
+  if (cur.length) batches.push(cur);
+  return batches;
 }
 
 function orderRef(o: FiredOrder): string {
@@ -52,6 +84,7 @@ export async function loadEligibleLines(configId: number): Promise<Map<number, E
         profileId: prof.id, profileName: prof.name,
         stationId: prof.stationId, stationName: prof.stationName,
         stepLabels: prof.steps.map(s => s.label),
+        maxBatch: prof.maxBatch ?? null,
       });
     }
   }

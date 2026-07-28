@@ -230,26 +230,64 @@ function escapeZPL(text: string): string {
     .replace(/~/g, '\\~');
 }
 
-export async function sendToZebra(ip: string, port: number, zpl: string): Promise<void> {
-  const net = await import('net');
-  return new Promise((resolve, reject) => {
-    const socket = new net.Socket();
-    const timeout = setTimeout(() => {
-      socket.destroy();
-      reject(new Error(`Printer connection timed out (${ip}:${port})`));
-    }, 5000);
 
-    socket.connect(port, ip, () => {
-      socket.write(zpl, 'utf-8', (err) => {
-        clearTimeout(timeout);
-        if (err) { socket.destroy(); reject(err); }
-        else { socket.end(); resolve(); }
-      });
-    });
+/**
+ * A LOCATION label — the QR a person scans, the place's name, and as much of
+ * the path above it as they asked for.
+ *
+ * Separate from generateZPL because it is a different label, not a variant:
+ * that one is a product/expiry/lot label with a Code128 barcode, this one is a
+ * shelf sticker with a QR. Sharing a function would have meant a pile of
+ * optional fields and two layouts fighting inside one set of percentages.
+ * They live in the same file so ZPL is written in exactly one place.
+ *
+ * Everything is a fraction of the label, so the same code fills 57 × 32 mm and
+ * 100 × 50 mm without a second template.
+ */
+export function generateLocationZPL(
+  label: { name: string; branch?: string; code: string },
+  opts: { widthMm: number; heightMm: number; dpi?: number },
+): string {
+  const dpi = opts.dpi ?? 203;
+  const scale = dotsPerMm(dpi);
+  const wDots = Math.round(opts.widthMm * scale);
+  const hDots = Math.round(opts.heightMm * scale);
+  const margin = Math.round(2 * scale);
+  const printW = wDots - margin * 2;
 
-    socket.on('error', (err) => {
-      clearTimeout(timeout);
-      reject(new Error(`Printer error (${ip}:${port}): ${err.message}`));
-    });
-  });
+  // The QR is the point of the label, so it is sized first and everything else
+  // fits beside it. ^BQ magnification is an integer number of dots per module;
+  // a 25-module code (version 2, the size KWLOC-123 lands in) times the
+  // magnification is the printed width.
+  const qrTargetDots = Math.min(Math.round(hDots * 0.62), Math.round(printW * 0.42));
+  const mag = Math.max(2, Math.min(10, Math.round(qrTargetDots / 25)));
+  const qrDots = mag * 25;
+  const qrY = Math.round((hDots - qrDots) / 2);
+
+  const textX = margin + qrDots + Math.round(3 * scale);
+  const textW = wDots - margin - textX;
+
+  const branchF = font(Math.max(14, hDots * 0.085));
+  const nameF = font(Math.max(20, hDots * 0.19));
+  const codeF = font(Math.max(12, hDots * 0.065));
+
+  // Name block is vertically centred against the QR.
+  const blockH = (label.branch ? branchF.h + Math.round(2 * scale) : 0) + nameF.h + Math.round(2 * scale) + codeF.h;
+  let y = Math.max(margin, Math.round((hDots - blockH) / 2));
+
+  const lines: string[] = ['^XA', `^PW${wDots}`, `^LL${hDots}`, '^CI28', '^LH0,0'];
+
+  lines.push(`^FO${margin},${Math.max(margin, qrY)}^BQN,2,${mag}^FDQA,${escapeZPL(label.code)}^FS`);
+
+  if (label.branch) {
+    lines.push(`^FO${textX},${y}^A0N,${branchF.h},${branchF.w}^FB${textW},1,0,L,0^FD${escapeZPL(label.branch)}^FS`);
+    y += branchF.h + Math.round(2 * scale);
+  }
+  // Up to two lines for the name — a drawer called "Shelf R-side" must not be cut.
+  lines.push(`^FO${textX},${y}^A0N,${nameF.h},${nameF.w}^FB${textW},2,0,L,0^FD${escapeZPL(label.name)}^FS`);
+  y += nameF.h * 2 + Math.round(2 * scale);
+  lines.push(`^FO${textX},${Math.min(y, hDots - margin - codeF.h)}^A0N,${codeF.h},${codeF.w}^FB${textW},1,0,L,0^FD${escapeZPL(label.code)}^FS`);
+
+  lines.push('^XZ');
+  return lines.join('\n');
 }

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { FilterBar, FilterPill, SearchBar, Stepper, Spinner, EmptyState } from './ui';
+import { useProductFilters, ProductFilterBar } from './ProductFilters';
 import NumpadModal from './NumpadModal';
 import CrateCountSheet from './CrateCountSheet';
 import BarcodeScanner from '@/components/ui/BarcodeScanner';
@@ -24,7 +25,6 @@ export default function QuickCount({ userRole }: QuickCountProps) {
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [catFilter, setCatFilter] = useState('all');
   const [locFilter, setLocFilter] = useState<number | null>(null);
   const [counts, setCounts] = useState<Record<number, number>>({});
   const [numpad, setNumpad] = useState<{ open: boolean; product: any | null }>({ open: false, product: null });
@@ -164,18 +164,17 @@ export default function QuickCount({ userRole }: QuickCountProps) {
     setSubmitted(false);
   }, [companyId]);
 
-  const categories = React.useMemo(() => {
-    const cats = new Map<number, string>();
-    products.forEach((p) => { if (p.categ_id) cats.set(p.categ_id[0], p.categ_id[1]); });
-    return Array.from(cats.entries()).map(([id, name]) => ({ id, name }));
-  }, [products]);
+  // The shared bar. NOTE this is the product's own category and the SPOT it
+  // lives in — nothing to do with the stock-location pills above, which choose
+  // where the count is posted. Hence the label on those.
+  const filters = useProductFilters(companyId);
 
-  const filtered = React.useMemo(() => {
-    let list = [...products];
-    if (search) list = list.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
-    if (catFilter !== 'all') list = list.filter((p) => p.categ_id?.[0] === Number(catFilter));
-    return list;
-  }, [products, search, catFilter]);
+  const searched = React.useMemo(() => {
+    if (!search) return products;
+    const q = search.toLowerCase();
+    return products.filter((p) => p.name.toLowerCase().includes(q));
+  }, [products, search]);
+  const filtered = React.useMemo(() => filters.narrow(searched), [filters, searched]);
 
   const countedN = Object.keys(counts).length;
   const locName = locations.find((l) => l.id === locFilter)?.complete_name?.split('/')[0] || '';
@@ -300,6 +299,10 @@ export default function QuickCount({ userRole }: QuickCountProps) {
       {/* Location pills — only shown when the active company has multiple
           internal locations. Company scope comes from the top-bar selector. */}
       {locations.length > 1 && (
+        <>
+          <p className="px-4 pt-1 pb-1 text-[var(--fs-xs)] font-bold tracking-wide uppercase text-gray-400">
+            Counting into
+          </p>
         <FilterBar>
           {locations.map((loc) => (
             <FilterPill key={loc.id}
@@ -308,19 +311,13 @@ export default function QuickCount({ userRole }: QuickCountProps) {
               onClick={() => setLocFilter(loc.id)} />
           ))}
         </FilterBar>
+        </>
       )}
 
       <SearchBar value={search} onChange={setSearch} placeholder="Type product name..." />
 
-      {/* Category pills */}
-      {categories.length > 1 && (
-        <FilterBar>
-          <FilterPill active={catFilter === 'all'} label="All" onClick={() => setCatFilter('all')} />
-          {categories.map((c) => (
-            <FilterPill key={c.id} active={catFilter === String(c.id)} label={c.name} onClick={() => setCatFilter(String(c.id))} />
-          ))}
-        </FilterBar>
-      )}
+      <ProductFilterBar filters={filters} base={filtered.length} shown={filtered.length}
+        total={products.length} />
 
       {/* Counted badge */}
       {countedN > 0 && (

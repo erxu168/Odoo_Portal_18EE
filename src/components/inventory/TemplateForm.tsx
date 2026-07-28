@@ -921,6 +921,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           unitHint={unitHint}
           onEditProduct={(p) => setProductEditFor(p)}
           onNewProduct={isManager ? openCreateProduct : undefined}
+          companyId={formCompanyId}
           onClose={() => setAddOpen(false)}
         />
       )}

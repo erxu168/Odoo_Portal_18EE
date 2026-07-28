@@ -11,7 +11,27 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'portal.db');
+/**
+ * Where the SQLite file lives. In production this is always ./data/portal.db —
+ * nothing in staging or production sets an override.
+ *
+ * PORTAL_DB_PATH lets a test run against a throwaway file, so a spec can drive
+ * the REAL db functions instead of either writing to the live dev database or
+ * re-implementing the logic it is meant to be testing.
+ *
+ * When the runner also exposes a worker index, each parallel worker gets its
+ * OWN file — otherwise workers race on one database, which made the cooktimer
+ * specs intermittently fail. Resolved lazily (not at import) because the runner
+ * sets these variables inside the worker process.
+ */
+function resolveDbPath(): string {
+  const override = process.env.PORTAL_DB_PATH;
+  if (!override) return path.join(process.cwd(), 'data', 'portal.db');
+  const worker = process.env.TEST_PARALLEL_INDEX;
+  if (!worker) return override;
+  const ext = path.extname(override) || '.db';
+  return path.join(path.dirname(override), `${path.basename(override, ext)}-${worker}${ext}`);
+}
 
 let _db: Database.Database | null = null;
 
@@ -21,8 +41,9 @@ function nowISO(): string {
 
 export function getDb(): Database.Database {
   if (!_db) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    _db = new Database(DB_PATH);
+    const dbPath = resolveDbPath();
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    _db = new Database(dbPath);
     _db.pragma('journal_mode = WAL');
     _db.pragma('foreign_keys = ON');
     initTables(_db);

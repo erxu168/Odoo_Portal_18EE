@@ -431,6 +431,27 @@ export default function LabelPrint({ onBack, onDone }: LabelPrintProps) {
               </button>
             )}
           </div>
+
+          {/* Same picker as the inventory label screen. A Zebra that advertises
+              its SERIAL as its Bluetooth name (a ZD420 shows as "D2J203404050")
+              matches no name rule, so the only honest move is to show what IS
+              paired and let the person point at their printer. */}
+          {ble.paired.length > 0 && !ble.isConnected && (
+            <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-gray-500 mb-1.5">
+                Paired devices — pick your printer
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {ble.paired.map((d) => (
+                  <button key={d.address}
+                    onClick={async () => { setError(null); const ok = await ble.connectTo(d.address, d.name); if (!ok && ble.error) setError(ble.error); }}
+                    className="px-3 h-9 rounded-lg border border-gray-300 bg-white text-[13px] font-bold text-gray-800 active:bg-gray-100">
+                    {d.name || d.address}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

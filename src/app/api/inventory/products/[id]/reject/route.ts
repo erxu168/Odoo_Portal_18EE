@@ -7,15 +7,15 @@ export const dynamic = 'force-dynamic';
  *
  * Manager+ only.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, deleteCountsForProduct, markDraftStatus } from '@/lib/inventory-db';
+import { initInventoryTables, deleteCountsForProduct, markDraftStatus, describeCountWorkForProduct } from '@/lib/inventory-db';
 
 export async function POST(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: { id: string } },
 ) {
   const user = requireAuth();
@@ -46,9 +46,25 @@ export async function POST(
       return NextResponse.json({ error: 'Product is not a draft' }, { status: 400 });
     }
 
+    // Rejecting DOES erase counting work — deleteCountsForProduct hard-deletes
+    // the entries and quick counts in every open count. That is right (a
+    // rejected draft must be able to leave), but it must never be silent, which
+    // is the same fault the delete guard exists to prevent. So: unless the
+    // caller has already been shown what will go and confirmed it, refuse and
+    // hand back the list.
+    const work = describeCountWorkForProduct(draftId);
+    const confirmed = request.nextUrl.searchParams.get('confirm') === '1';
+    if (work.total > 0 && !confirmed) {
+      return NextResponse.json({
+        error: `Someone has already counted this — ${work.where.join(', ')}. Rejecting it deletes those numbers.`,
+        code: 'WOULD_ERASE_COUNTS',
+        work,
+      }, { status: 409 });
+    }
+
     const rowsDeleted = deleteCountsForProduct(draftId);
     markDraftStatus(draftId, 'rejected');
-    return NextResponse.json({ success: true, rows_deleted: rowsDeleted });
+    return NextResponse.json({ success: true, rows_deleted: rowsDeleted, erased: work.total });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     console.error('[products/reject POST]', msg);

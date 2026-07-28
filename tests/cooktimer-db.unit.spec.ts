@@ -3,17 +3,62 @@ import { getDb } from '../src/lib/db';
 import {
   listStations, getActiveProfilesByProduct, createTimer, advanceTimer,
   setTimerMute, cancelTimer, finishTimer, getReadyLineIds, getClaimedLineIds,
+  createProfile, deleteProfile, listProfilesAdmin, createStation, deleteStation, createTimerBatches,
 } from '../src/lib/cooktimer-db';
 
 // Drives the real SQLite state machine end to end (no Odoo). Uses out-of-range
 // synthetic line/order ids so it never collides with real feed data.
-const FRIES_PRODUCT = 1682; // seeded 3-step profile (1st Fry / Rest / 2nd Fry)
+//
+// The fixture profile is CREATED here rather than relying on the seeded ones:
+// placeholder profiles only seed against the staging Odoo host, so a fresh
+// database (a clean clone, CI) has none and these tests must not depend on it.
+const FRIES_PRODUCT = 990_1682; // synthetic product id — never a real till product
+
+const FIXTURE_STATION = '__cooktimer-db spec station';
+
+/**
+ * A 3-step profile (1st Fry / Rest / 2nd Fry) owned by this spec, on its OWN
+ * station. It gets a dedicated station because a sibling spec asserts on station
+ * profile counts and deletes stations — parking a profile on a shared station
+ * raced it.
+ */
+function ensureFixtureProfile(): void {
+  if (getActiveProfilesByProduct().has(FRIES_PRODUCT)) return;
+  const stationId = listStations(false).find(s => s.name === FIXTURE_STATION)?.id
+    ?? createStation(FIXTURE_STATION).id;
+  if (!stationId) throw new Error('could not create the fixture station');
+  createProfile({
+    odooProductId: FRIES_PRODUCT,
+    name: '__test French Fries',
+    stationId,
+    maxBatch: null,
+    active: true,
+    steps: [
+      { label: '1st Fry', stepType: 'cook', durationSeconds: 210 },
+      { label: 'Rest', stepType: 'rest', durationSeconds: 120 },
+      { label: '2nd Fry', stepType: 'cook', durationSeconds: 150 },
+    ],
+  });
+}
+
+// These spec files share ONE real SQLite file and Playwright runs them in
+// parallel workers, so every mutation here is scoped to THIS spec's own product
+// id. An earlier broad "delete anything named __test*" sweep raced a sibling
+// spec's fixtures and failed it.
+test.beforeAll(ensureFixtureProfile);
+
+test.afterAll(() => {
+  const mine = listProfilesAdmin().find(p => p.odooProductId === FRIES_PRODUCT);
+  if (mine) { try { deleteProfile(mine.id); } catch { /* a timer still references it — sweepSynthetic clears that */ } }
+  const st = listStations(false).find(s => s.name === FIXTURE_STATION);
+  if (st) { try { deleteStation(st.id); } catch { /* still in use */ } }
+});
 /**
  * Exactly the ids THIS file uses — not a range. cooktimer-setup.unit.spec.ts
  * also works in the 990xxx space (990901), and these files share one database:
  * a range sweep reached into its timer mid-test and made it fail.
  */
-const SYNTHETIC_IDS = [990001, 990101, 990201, 990301, 990401];
+const SYNTHETIC_IDS = [990001, 990101, 990201, 990301, 990401, 990501, 990502, 990503, 990601];
 
 function cleanup(orderIds: number[], timerId: number) {
   const db = getDb();
@@ -53,11 +98,13 @@ test.beforeEach(sweepSynthetic);
 test.afterEach(sweepSynthetic);
 const line = (lineId: number, orderId: number) => [{ lineId, orderId, ref: `#T${orderId}`, qty: 1, arrivedMs: 1_700_000_000_000 }];
 
-test('seeds three stations and product-mapped profiles', () => {
+test('stations are seeded and a profile maps a product to an ordered step chain', () => {
   expect(listStations().length).toBeGreaterThanOrEqual(3);
   const profs = getActiveProfilesByProduct();
   expect(profs.size).toBeGreaterThan(0);
-  expect(profs.get(FRIES_PRODUCT)?.steps.length).toBe(3);
+  const fries = profs.get(FRIES_PRODUCT);
+  expect(fries?.steps.length).toBe(3);
+  expect(fries?.steps.map(s => s.label)).toEqual(['1st Fry', 'Rest', '2nd Fry']);
 });
 
 test('full cook flow: start -> advance x2 -> finish writes kds_line_ready', () => {
@@ -135,4 +182,33 @@ test('cancel releases the line back to the queue and marks nothing ready', () =>
   expect(getClaimedLineIds().has(L)).toBe(false); // re-enters the queue
   expect(getReadyLineIds().has(L)).toBe(false);   // not marked ready
   cleanup([O], t.id);
+});
+
+test('createTimerBatches makes one timer per basket, atomically', () => {
+  const fries = getActiveProfilesByProduct().get(FRIES_PRODUCT)!;
+  const mk = (id: number) => ({ lineId: id, orderId: id, ref: `#B${id}`, qty: 1, arrivedMs: 1_700_000_000_000 + id });
+  const batches = [[mk(990501), mk(990502)], [mk(990503)]];
+
+  const timers = createTimerBatches(fries.id, fries.stationId, batches);
+  expect(timers.length).toBe(2);
+  expect(timers[0].lines.map(l => l.lineId)).toEqual([990501, 990502]);
+  expect(timers[1].lines.map(l => l.lineId)).toEqual([990503]);
+  // Every line is claimed, so none re-enters the TO COOK queue.
+  const claimed = getClaimedLineIds();
+  for (const id of [990501, 990502, 990503]) expect(claimed.has(id)).toBe(true);
+
+  // A second identical request claims nothing (no double-start across tablets).
+  expect(createTimerBatches(fries.id, fries.stationId, batches).length).toBe(0);
+
+  const db = getDb();
+  for (const t of timers) db.prepare('DELETE FROM cook_timers WHERE id = ?').run(t.id);
+});
+
+test('createTimerBatches never puts the same line in two baskets', () => {
+  const fries = getActiveProfilesByProduct().get(FRIES_PRODUCT)!;
+  const dup = { lineId: 990601, orderId: 990601, ref: '#D', qty: 1, arrivedMs: 1_700_000_000_000 };
+  const timers = createTimerBatches(fries.id, fries.stationId, [[dup], [dup]]);
+  expect(timers.length).toBe(1); // the second basket's only line was already claimed
+  const db = getDb();
+  for (const t of timers) db.prepare('DELETE FROM cook_timers WHERE id = ?').run(t.id);
 });

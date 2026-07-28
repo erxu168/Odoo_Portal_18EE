@@ -221,7 +221,13 @@ export async function POST(request: Request) {
   // A split was sent for a product that has no pack size on this count — the
   // client and the server disagree about what this product IS, so refuse rather
   // than silently storing the crate figure as if it were base units.
-  if (sentSplit && !hasSplit) {
+  //
+  // NOT when a nested chain handled it. The box/pack/piece sheet also sends
+  // loose_qty (its "loose kg" row), which makes sentSplit true, but that number
+  // was already consumed by packTotal against the frozen chain. Without this,
+  // EVERY nested count was refused — the whole box→pack→piece feature could not
+  // save a single line, while the screen said it had.
+  if (sentSplit && !hasSplit && !hasChain) {
     return NextResponse.json({ error: 'This product is not counted in packs on this list' }, { status: 400 });
   }
 
