@@ -11,7 +11,12 @@ import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'portal.db');
+// Overridable so a test can run against a throwaway file instead of the real
+// database. Nothing in staging or production sets it, so the default path is
+// unchanged — but without it, any test that exercises real db functions has to
+// either write to the live dev database or re-implement the logic it is meant
+// to be testing.
+const DB_PATH = process.env.PORTAL_DB_PATH || path.join(process.cwd(), 'data', 'portal.db');
 
 let _db: Database.Database | null = null;
 
