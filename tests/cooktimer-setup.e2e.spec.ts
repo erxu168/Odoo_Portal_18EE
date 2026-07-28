@@ -7,15 +7,19 @@ import { test, expect, type Page } from '@playwright/test';
  */
 const BASE = 'https://portal.krawings.de';
 const MGR = {
-  email: process.env.SMOKE_MANAGER_EMAIL || 'marco.bauer@krawings.de',
+  // marco@test.krawings.de does not exist on staging (401); the documented admin
+  // account does, and admin satisfies cooktimer.config.manage.
+  email: process.env.SMOKE_MANAGER_EMAIL || 'biz@krawings.de',
   password: process.env.SMOKE_MANAGER_PASSWORD || 'test1234',
 };
 
 async function login(page: Page, email: string, password: string) {
   await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.getByPlaceholder('Email').fill(email);
-  await page.getByPlaceholder('Password').fill(password);
-  await page.getByRole('button', { name: /sign in|log in/i }).click();
+  // Select by input TYPE — the placeholders are copy ("you@example.com",
+  // "Enter your password"), so getByPlaceholder('Email') never matches.
+  await page.locator('input[type="email"]').fill(email);
+  await page.locator('input[type="password"]').fill(password);
+  await page.getByRole('button', { name: /^sign in$/i }).click();
   await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 30000 });
 }
 
@@ -26,11 +30,27 @@ test('the manager setup screen is NOT public (middleware boundary fix)', async (
   expect(res?.status()).toBeLessThan(400);
 });
 
-test('the setup APIs refuse an anonymous caller', async ({ request }) => {
+test('the setup APIs never return data to an anonymous caller', async ({ request }) => {
   for (const path of ['/api/cooktimer/profiles', '/api/cooktimer/stations']) {
-    const res = await request.get(`${BASE}${path}`);
-    expect([401, 403], `${path} must not be readable anonymously`).toContain(res.status());
+    // The middleware bounces anonymous callers to /login (307). Follow it and
+    // assert no setup data comes back either way — the point is "no data",
+    // whether that arrives as a redirect, a 401 or a 403.
+    const res = await request.get(`${BASE}${path}`, { maxRedirects: 0 });
+    expect([301, 302, 307, 308, 401, 403], `${path} leaked a 200`).toContain(res.status());
+    if (res.status() >= 300 && res.status() < 400) {
+      expect(res.headers()['location'] || '').toContain('/login');
+    }
+    const followed = await request.get(`${BASE}${path}`);
+    const body = await followed.text();
+    expect(body, `${path} must not expose profiles/stations`).not.toMatch(/"(profiles|stations)"\s*:/);
   }
+});
+
+test('the public cook-tablet queue still works (the fix did not over-gate it)', async ({ request }) => {
+  const res = await request.get(`${BASE}/api/cooktimer/queue`);
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(Array.isArray(body.stations)).toBe(true);
 });
 
 test('a manager sees dishes grouped by station, with live till names', async ({ page }) => {

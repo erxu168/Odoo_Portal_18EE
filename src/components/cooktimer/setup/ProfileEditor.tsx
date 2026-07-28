@@ -108,7 +108,7 @@ export default function ProfileEditor({
       {/* header */}
       <div className="flex items-center gap-3 px-4 h-14 bg-white border-b border-gray-200 flex-shrink-0">
         <button onClick={onClose} className="text-[15px] font-semibold text-gray-500 active:text-gray-800">Cancel</button>
-        <div className="flex-1 text-center font-bold text-gray-900">{profile ? 'Edit profile' : 'New profile'}</div>
+        <div className="flex-1 text-center font-bold text-gray-900">{profile ? 'Edit dish' : 'New dish'}</div>
         <div className="w-[52px]" />
       </div>
 
@@ -224,7 +224,7 @@ export default function ProfileEditor({
       {/* sticky footer */}
       <div className="flex-shrink-0 border-t border-gray-200 bg-white px-4 py-3">
         <PrimaryButton busy={saving} disabled={!canSave} onClick={handleSave}>
-          {profile ? 'Save changes' : 'Create profile'}
+          {profile ? 'Save changes' : 'Add dish'}
         </PrimaryButton>
       </div>
 
@@ -290,17 +290,17 @@ function SortableStepRow({
           ✕
         </button>
       </div>
-      <div className="flex items-center gap-2 mt-2 pl-8">
-        <div className="flex-1">
-          <OptionGrid<CookStepType>
-            value={step.stepType}
-            options={STEP_TYPE_OPTIONS}
-            cols={3}
-            ariaLabel="Step type"
-            onChange={v => onChange({ stepType: v, durationSeconds: v === 'action' ? 0 : (step.durationSeconds || 60) })}
-          />
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+      {/* Type and time each get their own row: side by side they collided on a
+          phone and the labels rendered as "Coo" / "Actio". */}
+      <div className="mt-2 pl-8">
+        <OptionGrid<CookStepType>
+          value={step.stepType}
+          options={STEP_TYPE_OPTIONS}
+          cols={3}
+          ariaLabel="Step type"
+          onChange={v => onChange({ stepType: v, durationSeconds: v === 'action' ? 0 : (step.durationSeconds || 60) })}
+        />
+        <div className="flex items-center gap-1.5 mt-2">
           {step.stepType === 'action' ? (
             <span className="text-xs font-bold text-sky-600 tracking-wide px-1">INSTANT</span>
           ) : (
