@@ -60,7 +60,24 @@ android/**/.DS_Store
 /playwright/.cache/
 .env.smoke.local
 __pycache__/
-android/
 android-kds/
 android-timeclock/
 .superpowers/
+
+# Capacitor Android — COMMIT the sources (the custom Zebra plugin lives here);
+# never the build output. The blanket `android/` rule used to sit below and
+# quietly kept the whole native app off GitHub, contradicting the note above.
+android/build/
+android/**/build/
+android/.gradle/
+android/**/.gradle/
+android/.idea/
+android/**/.idea/
+android/.cxx/
+android/.externalNativeBuild/
+android/local.properties
+android/**/local.properties
+android/**/src/main/assets/public/
+android/**/output-metadata.json
+*.apk
+*.aab
