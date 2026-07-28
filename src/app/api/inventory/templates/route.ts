@@ -296,6 +296,45 @@ export async function PUT(request: Request) {
     }
   }
 
+  // A product ARCHIVED since the editor loaded must not be added by a save from
+  // that stale screen — two managers working at once, or one with the Add
+  // sheet open for a while. Only NEWLY added ids are checked: a product already
+  // on the list stays, because archiving deliberately does not take it off (the
+  // list says so on screen, and the next count really does include it).
+  if (Array.isArray(updates.product_ids)) {
+    const wanted: number[] = updates.product_ids.map(Number).filter(Number.isFinite);
+    // getTemplate already parses this into an array.
+    const before: number[] = Array.isArray(existing.product_ids) ? existing.product_ids : [];
+    const added = wanted.filter((pid) => !before.includes(pid));
+    if (added.length > 0) {
+      try {
+        const odoo = getOdoo();
+        const live = await odoo.searchRead(
+          'product.product', [['id', 'in', added], ['active', '=', true]], ['id'],
+        ) as { id: number }[];
+        const liveIds = new Set(live.map((r) => r.id));
+        const refused = added.filter((pid) => !liveIds.has(pid));
+        if (refused.length > 0) {
+          const names = await odoo.searchRead(
+            'product.product', [['id', 'in', refused]], ['id', 'name'],
+            { context: { active_test: false } },
+          ) as { id: number; name: string }[];
+          const listed = names.map((n) => n.name).join(', ') || `${refused.length} product(s)`;
+          return NextResponse.json({
+            error: `Archived or deleted since you opened this list: ${listed}. Reopen the list and try again.`,
+            code: 'ADDED_NOT_LIVE',
+            product_ids: refused,
+          }, { status: 409 });
+        }
+      } catch (e) {
+        // Odoo unreachable is NOT a reason to lose the manager's edit — the
+        // worst case is an archived id on a list, which the editor now shows
+        // and explains. Log it and save.
+        console.warn('[inventory] could not verify newly added products are live:', e);
+      }
+    }
+  }
+
   updateTemplate(id, updates);
 
   // Keep generated sessions consistent with a MOVED ad-hoc date: remove the old

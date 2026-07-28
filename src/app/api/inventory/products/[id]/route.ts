@@ -150,6 +150,28 @@ export async function PUT(request: Request, { params }: { params: { id: string }
  * guides and the POS, and everything it was part of still reads correctly.
  * Reversible, which is why it is the ordinary action and DELETE is not.
  */
+/**
+ * Most products in this Odoo are GLOBAL (company_id = false) — 1067 of 1193 —
+ * and a shared product genuinely belongs to everyone, so any manager with the
+ * permission may archive or delete it. But a product TAGGED to one restaurant
+ * is that restaurant's, and a manager scoped elsewhere has no business
+ * archiving or deleting it.
+ */
+function companyDenial(
+  user: { role: string; allowed_company_ids: string | null },
+  productCompany: [number, string] | false | null | undefined,
+): NextResponse | null {
+  const owner = Array.isArray(productCompany) ? productCompany[0] : null;
+  if (owner == null) return null;                     // global — shared by design
+  const allowed = parseCompanyIds(user.allowed_company_ids);
+  if (user.role === 'admin' && allowed.length === 0) return null;   // unrestricted admin
+  if (allowed.includes(owner)) return null;
+  return NextResponse.json({
+    error: `This product belongs to ${Array.isArray(productCompany) ? productCompany[1] : 'another restaurant'}. Ask someone there to change it.`,
+    code: 'WRONG_COMPANY',
+  }, { status: 403 });
+}
+
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -170,10 +192,12 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   try {
     const odoo = getOdoo();
     const [existing] = await odoo.searchRead(
-      'product.product', [['id', '=', productId]], ['id', 'product_tmpl_id', 'name'],
+      'product.product', [['id', '=', productId]], ['id', 'product_tmpl_id', 'name', 'company_id'],
       { limit: 1, context: { active_test: false } },
-    ) as { id: number; product_tmpl_id: [number, string]; name: string }[];
+    ) as { id: number; product_tmpl_id: [number, string]; name: string; company_id: [number, string] | false }[];
     if (!existing) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    const denied = companyDenial(user, existing.company_id);
+    if (denied) return denied;
 
     // Archiving the TEMPLATE is right for a product that IS its template, and
     // wrong for one variant of several: Odoo cascades a template archive to
@@ -189,8 +213,24 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       );
       siblingCount = variants.length || 1;
     }
-    if (tmplId && siblingCount === 1) await odoo.write('product.template', [tmplId], { active: body.active });
-    else await odoo.write('product.product', [productId], { active: body.active });
+    // A write that TIMES OUT may still have committed. Reporting that as a
+    // failure is the worst outcome: the caller keeps showing a product that IS
+    // archived, which is the exact staleness this module was just fixed for.
+    // So on any error, go and look before deciding.
+    try {
+      if (tmplId && siblingCount === 1) await odoo.write('product.template', [tmplId], { active: body.active });
+      else await odoo.write('product.product', [productId], { active: body.active });
+    } catch (err: unknown) {
+      const [after] = await odoo.searchRead(
+        'product.product', [['id', '=', productId]], ['id', 'active'],
+        { limit: 1, context: { active_test: false } },
+      ).catch(() => []) as { id: number; active: boolean }[];
+      if (!after || after.active !== body.active) {
+        // It really did not happen — report it as written, nothing changed.
+        throw err;
+      }
+      console.warn('[inventory] archive of', productId, 'reported an error but DID commit — treating as success:', err);
+    }
 
     // Same reason as the delete path: the Odoo write above already happened, so
     // a log failure must not be reported as an archive failure — that would
@@ -267,10 +307,12 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
   try {
     const odoo = getOdoo();
     const [existing] = await odoo.searchRead(
-      'product.product', [['id', '=', productId]], ['id', 'product_tmpl_id', 'name'],
+      'product.product', [['id', '=', productId]], ['id', 'product_tmpl_id', 'name', 'company_id'],
       { limit: 1, context: { active_test: false } },
-    ) as { id: number; product_tmpl_id: [number, string]; name: string }[];
+    ) as { id: number; product_tmpl_id: [number, string]; name: string; company_id: [number, string] | false }[];
     if (!existing) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    const denied = companyDenial(user, existing.company_id);
+    if (denied) return denied;
 
     const tmplId = Array.isArray(existing.product_tmpl_id) ? existing.product_tmpl_id[0] : null;
     // ONLY the unlink may be read as a refusal. Tidying up afterwards used to
@@ -280,13 +322,25 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
     try {
       await odoo.unlink('product.product', [productId]);
     } catch (err: unknown) {
-      // Odoo's refusal is the useful part — it names what is still using it.
-      const raw = err instanceof Error ? err.message : String(err);
-      return NextResponse.json({
-        error: 'Odoo will not delete this product because something still uses it — archive it instead.',
-        detail: raw.slice(0, 400),
-        code: 'ODOO_REFUSED',
-      }, { status: 409 });
+      // The delete may have COMMITTED and only the response been lost — a
+      // timeout looks identical to a refusal from here. Look before calling it
+      // a refusal, or the caller keeps a product that no longer exists and puts
+      // its id back on the next save.
+      const [still] = await odoo.searchRead(
+        'product.product', [['id', '=', productId]], ['id'],
+        { limit: 1, context: { active_test: false } },
+      ).catch(() => [{ id: productId }]) as { id: number }[];
+      if (still) {
+        // Genuinely still there: Odoo's refusal is the useful part — it names
+        // what is still using the product.
+        const raw = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({
+          error: 'Odoo will not delete this product because something still uses it — archive it instead.',
+          detail: raw.slice(0, 400),
+          code: 'ODOO_REFUSED',
+        }, { status: 409 });
+      }
+      console.warn('[inventory] delete of', productId, 'reported an error but the product IS gone — continuing cleanup:', err);
     }
 
     // Past this line the product IS gone, so nothing below may fail the request.
