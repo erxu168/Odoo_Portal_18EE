@@ -20,5 +20,43 @@
                 ('template_line_id.template_id.company_id', 'in', company_ids),
                 ('list_line_id.list_id.company_id', 'in', company_ids)]</field>
         </record>
+        <!-- Guided-tutorial steps/pins carry image/pdf bytes; scope them to the
+             company through whichever parent line is set (rules don't propagate
+             through Many2one). -->
+        <record id="rule_task_guide_step_company" model="ir.rule">
+            <field name="name">Guide step: company multi-company rule</field>
+            <field name="model_id" ref="model_krawings_task_guide_step"/>
+            <field name="domain_force">['|',
+                ('template_line_id.template_id.company_id', 'in', company_ids),
+                ('list_line_id.list_id.company_id', 'in', company_ids)]</field>
+        </record>
+        <record id="rule_task_guide_pin_company" model="ir.rule">
+            <field name="name">Guide pin: company multi-company rule</field>
+            <field name="model_id" ref="model_krawings_task_guide_pin"/>
+            <field name="domain_force">['|',
+                ('step_id.template_line_id.template_id.company_id', 'in', company_ids),
+                ('step_id.list_line_id.list_id.company_id', 'in', company_ids)]</field>
+        </record>
+        <!-- Daily snapshots are immutable: only sudo (spawn / migration) may
+             write or unlink guide records that belong to a daily list line. A
+             non-sudo user (incl. managers) can only edit TEMPLATE guides. -->
+        <record id="rule_task_guide_step_daily_readonly" model="ir.rule">
+            <field name="name">Guide step: daily snapshot is read-only</field>
+            <field name="model_id" ref="model_krawings_task_guide_step"/>
+            <field name="domain_force">[('list_line_id', '=', False)]</field>
+            <field name="perm_read" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+        <record id="rule_task_guide_pin_daily_readonly" model="ir.rule">
+            <field name="name">Guide pin: daily snapshot is read-only</field>
+            <field name="model_id" ref="model_krawings_task_guide_pin"/>
+            <field name="domain_force">[('step_id.list_line_id', '=', False)]</field>
+            <field name="perm_read" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
     </data>
 </odoo>

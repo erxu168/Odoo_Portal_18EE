@@ -1,5 +1,5 @@
 from odoo import api, fields, models
-from odoo.exceptions import ValidationError
+from odoo.exceptions import UserError, ValidationError
 
 
 class KrawingsTaskListSubtask(models.Model):
@@ -35,6 +35,23 @@ class KrawingsTaskListSubtask(models.Model):
             for val in (rec.pin_x, rec.pin_y):
                 if val < 0.0 or val > 1.0:
                     raise ValidationError('Pin coordinates must be between 0 and 1.')
+
+    def _legacy_locked(self):
+        """Converted guide pins are immutable audit rows. sudo (spawn/migration)
+        may still touch them."""
+        return not self.env.su and any(s.legacy_guide_pin for s in self)
+
+    def write(self, vals):
+        # Allow only flipping the legacy flag itself (the migration marks rows);
+        # block any staff/portal mutation of a converted pin.
+        if set(vals) - {'legacy_guide_pin'} and self._legacy_locked():
+            raise UserError('This item is part of a converted guide and can no longer be changed.')
+        return super().write(vals)
+
+    def unlink(self):
+        if self._legacy_locked():
+            raise UserError('This converted guide item cannot be deleted.')
+        return super().unlink()
 
     def toggle(self, done, employee):
         self.ensure_one()

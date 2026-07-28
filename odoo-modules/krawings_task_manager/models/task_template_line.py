@@ -94,14 +94,17 @@ class KrawingsTaskTemplateLine(models.Model):
         default=0,
         help='Bumped on every guide save; optimistic-concurrency token for the editor.',
     )
-    has_guide = fields.Boolean(compute='_compute_guide', store=True)
+    has_guide = fields.Boolean(compute='_compute_guide', store=True,
+                               help='A PUBLISHED guide with at least one step exists.')
     guide_step_count = fields.Integer(compute='_compute_guide', store=True)
 
-    @api.depends('guide_step_ids')
+    @api.depends('guide_step_ids', 'guide_published')
     def _compute_guide(self):
         for rec in self:
             rec.guide_step_count = len(rec.guide_step_ids)
-            rec.has_guide = bool(rec.guide_step_ids)
+            # has_guide reflects staff visibility (published + non-empty). The
+            # editor uses guide_step_count to know a draft has content.
+            rec.has_guide = bool(rec.guide_published and rec.guide_step_ids)
 
     # ── Recurrence rule (per task) ───────────────────────────────────────
     # Keys here are read by recurrence.applies_on() via rule_from_record().

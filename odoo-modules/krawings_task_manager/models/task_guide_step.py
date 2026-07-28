@@ -1,3 +1,6 @@
+import re
+from urllib.parse import urlparse, parse_qs
+
 from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
@@ -9,6 +12,32 @@ MEDIA_TYPES = [
     ('tip', 'Tip / warning'),
     ('pdf', 'PDF document'),
 ]
+
+_YT_ID = re.compile(r'^[A-Za-z0-9_-]{11}$')
+
+
+def youtube_video_id(url):
+    """Return the 11-char video id for an accepted YouTube URL, else None.
+    Server-side gate mirroring the portal's youtube-url.ts: https only, known
+    hosts/paths, strict id shape. Defends against direct Odoo writes."""
+    try:
+        u = urlparse((url or '').strip())
+    except (ValueError, TypeError):
+        return None
+    if u.scheme != 'https':
+        return None
+    host = (u.hostname or '').lower()
+    vid = None
+    if host in ('www.youtube.com', 'youtube.com', 'm.youtube.com'):
+        if u.path == '/watch':
+            vid = (parse_qs(u.query).get('v') or [None])[0]
+        elif u.path.startswith('/embed/'):
+            vid = u.path.split('/embed/', 1)[1].split('/')[0]
+        elif u.path.startswith('/shorts/'):
+            vid = u.path.split('/shorts/', 1)[1].split('/')[0]
+    elif host == 'youtu.be':
+        vid = u.path.lstrip('/').split('/')[0]
+    return vid if vid and _YT_ID.match(vid) else None
 
 
 class KrawingsTaskGuideStep(models.Model):
@@ -74,8 +103,11 @@ class KrawingsTaskGuideStep(models.Model):
                 raise ValidationError('A photo step needs a photo.')
             if mt == 'pdf' and not s.pdf_file:
                 raise ValidationError('A PDF step needs a PDF file.')
-            if mt == 'youtube' and not (s.youtube_url and s.youtube_url.strip()):
-                raise ValidationError('A YouTube step needs a video link.')
+            if mt == 'youtube':
+                if not (s.youtube_url and s.youtube_url.strip()):
+                    raise ValidationError('A YouTube step needs a video link.')
+                if not youtube_video_id(s.youtube_url):
+                    raise ValidationError('Enter a valid YouTube link (youtube.com/watch, youtu.be, /shorts or /embed).')
             # Forbidden combinations — keep each step type clean.
             if mt != 'photo' and s.pin_ids:
                 raise ValidationError('Only photo steps can have note-pins.')
@@ -122,6 +154,8 @@ class KrawingsTaskGuideStep(models.Model):
         'template' or 'list'; company-scoped through the parent line and fails
         CLOSED for a company-less parent. Returns {filename, mimetype,
         data_base64} or False."""
+        if kind not in ('template', 'list'):
+            return False
         rec = self.sudo().browse(int(step_id))
         if not rec.exists():
             return False
@@ -132,9 +166,11 @@ class KrawingsTaskGuideStep(models.Model):
             return False
         company = (rec.template_line_id.template_id.company_id
                    if rec.template_line_id else rec.list_line_id.list_id.company_id)
-        if allowed_company_ids:
-            if not company.id or company.id not in [int(c) for c in allowed_company_ids]:
-                return False
+        # Fail CLOSED: require an explicit allowed-company scope, and the
+        # parent's company must be inside it. A company-less parent never leaks.
+        allowed = [int(c) for c in (allowed_company_ids or [])]
+        if not allowed or not company.id or company.id not in allowed:
+            return False
         if rec.media_type == 'photo' and rec.image:
             raw = rec.image
             return {
