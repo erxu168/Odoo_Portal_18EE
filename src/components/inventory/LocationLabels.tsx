@@ -6,6 +6,8 @@ import QRCode from 'qrcode';
 import { buildLocationTree, locationPath } from '@/lib/location-tree';
 import { useLocationTypes } from '@/lib/use-location-types';
 import { locationCode } from '@/lib/location-code';
+import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
+import { generateLocationZPL } from '@/lib/zpl';
 
 /**
  * Printable location labels — a QR and the place's name, to stick on the shelf.
@@ -58,6 +60,12 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
   // and "+ parent" and "Full path" silently printed nothing above the name.
   const [allLocs, setAllLocs] = useState<LocRow[]>([]);
   const [qrByLoc, setQrByLoc] = useState<Record<number, string>>({});
+  // The SAME Zebra hook manufacturing uses — one Bluetooth implementation for
+  // the whole portal, native Classic in the Android app and Web BLE in a
+  // browser. Paper printing stays exactly as it was; this is a second way out,
+  // not a replacement.
+  const zebra = useZebraBluetooth();
+  const [zebraMsg, setZebraMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -129,6 +137,39 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
       icon: iconOf(row.kind),
     };
   }), [rows, allLocs, depth, qrByLoc, iconOf]);
+
+  async function connectZebra() {
+    setZebraMsg(null);
+    const ok = await zebra.connect();
+    if (!ok) setZebraMsg(zebra.error || 'Could not connect to the printer.');
+  }
+
+  /**
+   * Send the labels to the Zebra as ZPL.
+   *
+   * The printer is told the size we are printing at, so what comes out matches
+   * what is on screen even when the roll loaded is a different one. Sent one
+   * label at a time, and stopped at the first failure rather than firing the
+   * rest at a printer that is not listening — a jam should cost one label, not
+   * the whole batch.
+   */
+  async function printToZebra() {
+    setZebraMsg(null);
+    let done = 0;
+    for (const l of labels) {
+      const zpl = generateLocationZPL(
+        { name: l.name, branch: l.branch, code: l.code },
+        { widthMm: size.w, heightMm: size.h },
+      );
+      const ok = await zebra.print(zpl);
+      if (!ok) {
+        setZebraMsg(`${done} of ${labels.length} printed, then: ${zebra.error || 'the printer stopped responding'}.`);
+        return;
+      }
+      done += 1;
+    }
+    setZebraMsg(`${done} label${done === 1 ? '' : 's'} sent to ${zebra.printerName || 'the printer'}.`);
+  }
 
   const printing = labels.filter((l) => !skipped.has(l.id));
 
@@ -202,10 +243,30 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
           <h3 className="text-lg font-bold text-gray-900">Print location labels</h3>
           <p className="text-[var(--fs-xs)] text-gray-500 truncate">
             {printing.length} label{printing.length === 1 ? '' : 's'} · {size.w} × {size.h} mm
+            {zebra.isConnected && <span className="text-gray-900 font-semibold"> · {zebra.printerName || 'Zebra'} connected</span>}
           </p>
+          {zebraMsg && (
+            <p className="text-[var(--fs-xs)] font-semibold text-gray-900 mt-0.5 [overflow-wrap:anywhere]">{zebraMsg}</p>
+          )}
+          {zebra.error && !zebraMsg && (
+            <p className="text-[var(--fs-xs)] font-semibold text-red-700 mt-0.5 [overflow-wrap:anywhere]">{zebra.error}</p>
+          )}
         </div>
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <button onClick={onClose} className="text-gray-500 font-semibold active:opacity-70">Done</button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button onClick={onClose} className="text-gray-500 font-semibold active:opacity-70 px-2">Done</button>
+          {zebra.isSupported && (
+            zebra.isConnected ? (
+              <button onClick={printToZebra} disabled={zebra.status === 'printing' || printing.length === 0}
+                className="px-4 py-2 rounded-xl bg-gray-900 text-white font-bold disabled:opacity-40 active:bg-black">
+                {zebra.status === 'printing' ? 'Printing…' : `Zebra (${printing.length})`}
+              </button>
+            ) : (
+              <button onClick={connectZebra} disabled={zebra.status === 'connecting' || zebra.status === 'scanning'}
+                className="px-4 py-2 rounded-xl border border-gray-300 text-gray-700 font-bold disabled:opacity-40 active:bg-gray-50">
+                {zebra.status === 'connecting' || zebra.status === 'scanning' ? 'Connecting…' : 'Connect Zebra'}
+              </button>
+            )
+          )}
           <button onClick={() => window.print()} disabled={loading || !!error || printing.length === 0}
             className="px-5 py-2 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40 active:bg-green-700">Print</button>
         </div>
