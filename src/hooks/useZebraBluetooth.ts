@@ -18,6 +18,10 @@ export type BleStatus = 'idle' | 'scanning' | 'connecting' | 'connected' | 'prin
 
 export interface UseZebraBluetoothReturn {
   connect: () => Promise<boolean>;
+  /** Paired devices to choose from when the name rule recognised none. */
+  paired: { name?: string; address: string }[];
+  /** Connect to a device the user picked, whatever it calls itself. */
+  connectTo: (address: string, name?: string) => Promise<boolean>;
   disconnect: () => void;
   print: (zpl: string) => Promise<boolean>;
   isConnected: boolean;
@@ -47,6 +51,8 @@ function getNativeBT(): BleAny | null {
 export function useZebraBluetooth(): UseZebraBluetoothReturn {
   const [status, setStatus] = useState<BleStatus>('idle');
   const [printerName, setPrinterName] = useState<string | null>(null);
+  // Paired devices found when the name rule matched nothing — offered as a picker.
+  const [paired, setPaired] = useState<{ name?: string; address: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const deviceRef = useRef<BleAny>(null);
@@ -118,9 +124,15 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
       });
 
       if (!zebra) {
+        // Do NOT tell someone to pair a printer they have already paired. Many
+        // Zebras advertise their SERIAL as the Bluetooth name (a ZD420 shows up
+        // as e.g. "D2J203404050"), which no name rule can recognise. Say what
+        // was actually found and let them point at the right one.
+        setPaired(devices || []);
         setError(
-          'No paired Zebra printer found.\n' +
-          'Go to Android Settings \u2192 Bluetooth \u2192 pair the ZD420T first, then try again.'
+          (devices || []).length > 0
+            ? 'None of the paired devices is named like a Zebra. Many printers use their serial number as the Bluetooth name — pick yours from the list.'
+            : 'No paired Bluetooth devices at all. Pair the printer in Android Settings \u2192 Bluetooth first.'
         );
         setStatus('error');
         return false;
@@ -301,5 +313,31 @@ export function useZebraBluetooth(): UseZebraBluetoothReturn {
     return isNative ? printNative(zpl) : printBle(zpl);
   }, [isNative, printNative, printBle]);
 
-  return { connect, disconnect, print, isConnected, isSupported, printerName, status, error };
+  /**
+   * Connect to a device the user picked from the paired list.
+   *
+   * No name check: they are looking at the printer. A rule that guesses from
+   * the Bluetooth name cannot cope with a Zebra that advertises its serial, and
+   * guessing wrongly is worse than asking.
+   */
+  const connectTo = useCallback(async (address: string, name?: string): Promise<boolean> => {
+    if (!nativeBT) { setError('Picking a paired device needs the Android app.'); return false; }
+    try {
+      setStatus('connecting');
+      setError(null);
+      await nativeBT.connect({ address });
+      nativeAddressRef.current = address;
+      setPrinterName(name || 'Zebra Printer');
+      setPaired([]);
+      setStatus('connected');
+      return true;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Could not connect to ${name || address}: ${msg}`);
+      setStatus('error');
+      return false;
+    }
+  }, [nativeBT]);
+
+  return { connect, connectTo, paired, disconnect, print, isConnected, isSupported, printerName, status, error };
 }

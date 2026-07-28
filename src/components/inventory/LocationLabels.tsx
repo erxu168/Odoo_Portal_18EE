@@ -239,18 +239,12 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
       `}</style>
 
       <div className="kw-no-print px-5 pt-4 pb-3 border-b border-gray-200 bg-white flex items-center justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h3 className="text-lg font-bold text-gray-900">Print location labels</h3>
           <p className="text-[var(--fs-xs)] text-gray-500 truncate">
             {printing.length} label{printing.length === 1 ? '' : 's'} · {size.w} × {size.h} mm
             {zebra.isConnected && <span className="text-gray-900 font-semibold"> · {zebra.printerName || 'Zebra'} connected</span>}
           </p>
-          {zebraMsg && (
-            <p className="text-[var(--fs-xs)] font-semibold text-gray-900 mt-0.5 [overflow-wrap:anywhere]">{zebraMsg}</p>
-          )}
-          {zebra.error && !zebraMsg && (
-            <p className="text-[var(--fs-xs)] font-semibold text-red-700 mt-0.5 [overflow-wrap:anywhere]">{zebra.error}</p>
-          )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button onClick={onClose} className="text-gray-500 font-semibold active:opacity-70 px-2">Done</button>
@@ -271,6 +265,40 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
             className="px-5 py-2 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40 active:bg-green-700">Print</button>
         </div>
       </div>
+
+      {/* Printer status gets its OWN full-width row. Sitting beside the buttons
+          it was squeezed to a couple of characters wide and wrapped one letter
+          per line — the exact flex-row clipping the project CSS rules warn
+          about. A message nobody can read is the same as no message. */}
+      {(zebraMsg || zebra.error || zebra.paired.length > 0) && (
+        <div className={`kw-no-print px-5 py-3 border-b ${zebra.error ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+          {zebraMsg && <p className="text-[13px] font-semibold text-gray-900 [overflow-wrap:anywhere]">{zebraMsg}</p>}
+          {zebra.error && !zebraMsg && (
+            <p className="text-[13px] font-semibold text-red-800 [overflow-wrap:anywhere] whitespace-pre-line">{zebra.error}</p>
+          )}
+          {zebra.paired.length > 0 && (
+            <div className="mt-2">
+              <p className="text-[11px] font-bold uppercase tracking-[0.06em] text-gray-500 mb-1.5">Paired devices — pick your printer</p>
+              <div className="flex flex-wrap gap-2">
+                {zebra.paired.map((d) => (
+                  <button key={d.address}
+                    onClick={async () => {
+                      setZebraMsg(null);
+                      const ok = await zebra.connectTo(d.address, d.name);
+                      if (ok) setZebraMsg(`Connected to ${d.name || d.address}.`);
+                    }}
+                    className="px-3 h-9 rounded-lg border border-gray-300 bg-white text-[13px] font-bold text-gray-800 active:bg-gray-100">
+                    {d.name || d.address}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1.5">
+                Many Zebras use their serial number as the Bluetooth name, so yours may not say “Zebra”.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="kw-no-print px-5 py-3 border-b border-gray-200 bg-white flex flex-wrap gap-x-6 gap-y-3">
         <div>
