@@ -76,7 +76,7 @@ const TableStrip = React.forwardRef<HTMLDivElement>(function TableStrip(_props, 
           >
             <div className="kds-tc-top">
               <div className="kds-tc-name">
-                {isNext && <div className="kds-tc-next-dot" />}
+                {isNext && <><div className="kds-tc-next-dot" /><span className="kds-tc-next-word">NEXT</span></>}
                 {o.table}
               </div>
               <OrderTypePill type={o.type} size="sm" />

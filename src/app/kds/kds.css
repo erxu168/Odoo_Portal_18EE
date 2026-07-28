@@ -821,3 +821,26 @@
 .kds-stopwatch-actions .kds-timer-start { flex: 1; padding: 16px; font-size: 16px; }
 .kds-timer-reset { flex: 1; background: var(--card); border: 1px solid var(--card-border); color: var(--text); border-radius: 8px; padding: 16px; font-size: 16px; font-weight: 800; cursor: pointer; }
 .kds-timer-reset:active { transform: scale(0.97); }
+
+/* ── Wave 4 (design standard): 44px minimum touch targets on primary controls.
+   The dense board instruments (dish qty, ticket/table numerals, timers, clock,
+   stopwatch) and the deliberately-compacted header tabs are intentionally sized
+   and are NOT touched — status colours already match the standard palette. ── */
+.kds-fire-btn,
+.kds-tc-ready-btn,
+.kds-fp-pass-ready,
+.kds-newbatch-add,
+.kds-pipe-toggle-btn,
+.kds-timer-tab,
+.kds-timer-start,
+.kds-timer-reset,
+.kds-settings-input,
+.kds-settings-select,
+.kds-settings-save,
+.kds-modal-btns button {
+  min-height: 44px;
+}
+.kds-topbar-btn { min-width: 44px; min-height: 44px; justify-content: center; }
+.kds-timer-btn { width: 44px; height: 44px; }
+/* "NEXT" word beside the next-order dot — status is never colour-only. */
+.kds-tc-next-word { font-size: 10px; font-weight: 900; letter-spacing: 0.06em; color: var(--red); flex-shrink: 0; }
