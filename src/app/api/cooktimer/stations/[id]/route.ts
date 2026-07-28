@@ -13,6 +13,7 @@ import { getPermissionOverrides } from '@/lib/db';
 import {
   listStationsAdmin, updateStation, deleteStation, CookSetupError,
 } from '@/lib/cooktimer-db';
+import { listProfilesWithNames } from '@/lib/cooktimer-products';
 
 const CAP = 'cooktimer.config.manage';
 
@@ -54,14 +55,33 @@ export async function PATCH(request: Request, ctx: { params: { id: string } }) {
   }
 }
 
-export async function DELETE(_request: Request, ctx: { params: { id: string } }) {
+/**
+ * DELETE /api/cooktimer/stations/[id]   optional body { moveToStationId }
+ * Deleting a station that still holds cook profiles requires saying where those
+ * profiles go; they are reassigned in the same transaction. Profiles change
+ * station, so the fresh profile list is returned too.
+ */
+export async function DELETE(request: Request, ctx: { params: { id: string } }) {
   const g = gate();
   if (g.error) return g.error;
   const id = parseInt(ctx.params.id, 10);
   if (!Number.isFinite(id)) return NextResponse.json({ error: 'id must be an integer' }, { status: 400 });
+
+  let moveToStationId: number | null = null;
   try {
-    deleteStation(id);
-    return NextResponse.json({ stations: listStationsAdmin() });
+    const body = await request.json();
+    if (body && typeof body === 'object' && (body as { moveToStationId?: unknown }).moveToStationId != null) {
+      const n = Number((body as { moveToStationId: unknown }).moveToStationId);
+      if (!Number.isInteger(n) || n <= 0) {
+        return NextResponse.json({ error: 'moveToStationId must be a station id' }, { status: 400 });
+      }
+      moveToStationId = n;
+    }
+  } catch { /* no body — plain delete of an empty station */ }
+
+  try {
+    deleteStation(id, moveToStationId);
+    return NextResponse.json({ stations: listStationsAdmin(), profiles: await listProfilesWithNames() });
   } catch (err) {
     return fail(err);
   }

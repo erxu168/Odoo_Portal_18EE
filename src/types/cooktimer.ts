@@ -53,6 +53,15 @@ export interface CookProfileInput {
   steps: CookStepInput[];
 }
 
+/** A profile as shown on the manager Setup screen. `productName` is resolved
+ *  LIVE from the till (Odoo) each time Setup loads, so renaming a dish on the
+ *  till shows through here; null means the mapped product no longer exists.
+ *  `hasRunningTimer` drives the "COOKING NOW" badge + edit guards. */
+export interface CookProfileAdmin extends CookProfile {
+  productName: string | null;
+  hasRunningTimer: boolean;
+}
+
 export interface CookProfile {
   id: number;
   odooProductId: number | null;

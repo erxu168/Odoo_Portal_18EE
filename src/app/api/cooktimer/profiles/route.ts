@@ -12,7 +12,8 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { listProfilesAdmin, listStationsAdmin, createProfile, CookSetupError } from '@/lib/cooktimer-db';
+import { listStationsAdmin, createProfile, CookSetupError } from '@/lib/cooktimer-db';
+import { listProfilesWithNames } from '@/lib/cooktimer-products';
 import type { CookProfileInput } from '@/types/cooktimer';
 
 const CAP = 'cooktimer.config.manage';
@@ -36,7 +37,7 @@ export async function GET() {
   const g = gate();
   if (g.error) return g.error;
   try {
-    return NextResponse.json({ profiles: listProfilesAdmin() });
+    return NextResponse.json({ profiles: await listProfilesWithNames() });
   } catch (err) {
     return fail(err);
   }
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
     // The DB layer's validateProfileInput coerces + validates every field.
     createProfile(body as CookProfileInput);
     // Return stations too: their profileCount changed, which gates station delete.
-    return NextResponse.json({ profiles: listProfilesAdmin(), stations: listStationsAdmin() }, { status: 201 });
+    return NextResponse.json({ profiles: await listProfilesWithNames(), stations: listStationsAdmin() }, { status: 201 });
   } catch (err) {
     return fail(err);
   }

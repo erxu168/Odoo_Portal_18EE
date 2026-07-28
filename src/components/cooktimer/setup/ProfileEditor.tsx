@@ -9,7 +9,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { OptionGrid } from '@/components/ui/OptionGrid';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
-import type { CookProfile, CookProfileInput, CookStationAdmin, CookStepType } from '@/types/cooktimer';
+import type { CookProfile, CookProfileAdmin, CookProfileInput, CookStationAdmin, CookStepType } from '@/types/cooktimer';
 import { STEP_TYPE_OPTIONS, totalCookSeconds, fmtDuration } from './utils';
 import ProductPickerSheet from './ProductPickerSheet';
 
@@ -33,6 +33,11 @@ export default function ProfileEditor({
     profile?.stationId ?? (stations.find(s => s.active) ?? stations[0])?.id ?? null,
   );
   const [active, setActive] = useState(profile?.active ?? false);
+  const [maxBatch, setMaxBatch] = useState<string>(profile?.maxBatch != null ? String(profile.maxBatch) : '');
+  // A timer running on this dish blocks step/station edits server-side — say so
+  // UP FRONT rather than rejecting the save after the manager rebuilt the chain.
+  const busy = !!(profile as CookProfileAdmin | null)?.hasRunningTimer;
+  const productName = (profile as CookProfileAdmin | null)?.productName ?? null;
   const [steps, setSteps] = useState<EditStep[]>(() =>
     profile?.steps.length
       ? profile.steps.map(s => ({ key: `db${s.id}`, label: s.label, stepType: s.stepType, durationSeconds: s.durationSeconds }))
@@ -78,7 +83,7 @@ export default function ProfileEditor({
       odooProductId: productId,
       name: name.trim(),
       stationId,
-      maxBatch: profile?.maxBatch ?? null, // batch-limit UI is phase 2; preserve any stored value
+      maxBatch: maxBatch.trim() === '' ? null : Number(maxBatch),
       active,
       steps: steps.map(s => ({
         label: s.label.trim(),
@@ -107,20 +112,32 @@ export default function ProfileEditor({
           <div className="rounded-xl bg-red-50 border border-red-200 text-red-800 text-sm px-3 py-2.5">{error}</div>
         )}
 
-        {/* product */}
+        {busy && (
+          <div className="rounded-xl bg-sky-50 border border-sky-200 text-sky-800 text-sm px-3 py-2.5">
+            This dish is <b>cooking right now</b>. You can rename it or change the batch size,
+            but its steps and station stay locked until that timer finishes.
+          </div>
+        )}
+
+        {/* dish (till product) */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-          <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-2">Product</div>
+          <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-2">Dish</div>
           {productId == null ? (
-            <button onClick={() => setPickerOpen(true)} className="w-full rounded-xl border border-dashed border-gray-300 text-gray-500 py-3 font-semibold active:bg-gray-50">
-              Pick a product from the catalog
+            <button onClick={() => setPickerOpen(true)} className="w-full rounded-xl border border-dashed border-gray-300 text-gray-500 py-3.5 font-semibold active:bg-gray-50 min-h-[48px]">
+              Choose a dish from the till menu
             </button>
           ) : (
             <div className="flex items-center gap-3">
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-900 truncate">{name || 'Selected product'}</div>
-                <div className="text-xs text-gray-400">Odoo product #{productId}</div>
+                {/* The REAL till name, looked up live — not just the id. */}
+                <div className="font-semibold text-gray-900 truncate">{productName ?? (name || 'Selected dish')}</div>
+                <div className="text-xs text-gray-400">
+                  {productName === null && profile?.odooProductId != null
+                    ? `Not on the till any more (#${productId})`
+                    : `On the till as #${productId}`}
+                </div>
               </div>
-              <button onClick={() => setPickerOpen(true)} className="text-sm font-semibold text-sky-600 active:text-sky-800">Change</button>
+              <button onClick={() => setPickerOpen(true)} className="text-sm font-bold text-green-700 underline decoration-green-300 min-h-[44px] px-1.5 active:text-green-800">Change</button>
             </div>
           )}
         </div>
@@ -128,21 +145,36 @@ export default function ProfileEditor({
         {/* name + station + batch */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 space-y-3">
           <div>
-            <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-1">Display name</div>
+            <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-1">Name shown to cooks</div>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Shown on the timer card"
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-[15px] focus:outline-none focus:border-sky-400" />
+              className="w-full rounded-xl border border-gray-300 px-3 py-3 text-[15px] min-h-[48px] focus:outline-none focus:border-green-500" />
           </div>
           <div>
             <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-1">Station</div>
-            <select value={stationId ?? ''} onChange={e => setStationId(Number(e.target.value))}
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-[15px] bg-white focus:outline-none focus:border-sky-400">
+            <select value={stationId ?? ''} onChange={e => setStationId(Number(e.target.value))} disabled={busy}
+              className="w-full rounded-xl border border-gray-300 px-3 py-3 text-[15px] min-h-[48px] bg-white focus:outline-none focus:border-green-500 disabled:bg-gray-50 disabled:text-gray-400">
               {stations.map(s => (
                 <option key={s.id} value={s.id}>{s.name}{s.active ? '' : ' (off)'}</option>
               ))}
             </select>
           </div>
-          <label className="flex items-center justify-between pt-1">
-            <span className="text-[15px] font-semibold text-gray-800">Active <span className="font-medium text-gray-400">— appears in the TO COOK queue</span></span>
+          <div>
+            <div className="text-[11px] font-bold tracking-wide text-gray-500 uppercase mb-1">Most per batch</div>
+            <div className="flex items-center gap-2.5">
+              <input
+                value={maxBatch} inputMode="numeric" aria-label="Most portions per batch"
+                onChange={e => setMaxBatch(e.target.value.replace(/[^0-9]/g, '').slice(0, 3))}
+                placeholder="No limit"
+                className="w-24 rounded-xl border border-gray-300 px-3 py-3 text-[15px] min-h-[48px] text-center tabular-nums focus:outline-none focus:border-green-500"
+              />
+              <span className="text-xs text-gray-500 leading-snug">
+                How many portions fit in one basket. COOK&nbsp;ALL splits into
+                several timers instead of one oversized batch. Leave blank for no limit.
+              </span>
+            </div>
+          </div>
+          <label className="flex items-center justify-between pt-1 min-h-[44px]">
+            <span className="text-[15px] font-semibold text-gray-800">On <span className="font-medium text-gray-400">— shows in the cooks&rsquo; TO COOK list</span></span>
             <input type="checkbox" checked={active} onChange={e => setActive(e.target.checked)} className="w-6 h-6 accent-green-500" />
           </label>
         </div>
@@ -230,14 +262,14 @@ function SortableStepRow({
           value={step.label}
           onChange={e => onChange({ label: e.target.value })}
           placeholder="Step name"
-          className="flex-1 min-w-0 rounded-lg border border-gray-300 px-2.5 py-2 text-[15px] bg-white focus:outline-none focus:border-sky-400"
+          className="flex-1 min-w-0 rounded-lg border border-gray-300 px-2.5 py-2 text-[15px] bg-white focus:outline-none focus:border-green-500"
         />
         <button
           type="button"
           onClick={onRemove}
           disabled={!canRemove}
           aria-label="Remove step"
-          className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${canRemove ? 'text-red-500 active:bg-red-50' : 'text-gray-300 cursor-default'}`}
+          className={`w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 ${canRemove ? 'text-red-500 active:bg-red-50' : 'text-gray-300 cursor-default'}`}
         >
           ✕
         </button>
@@ -260,13 +292,13 @@ function SortableStepRow({
               <input
                 inputMode="numeric" aria-label="Minutes"
                 value={min} onChange={e => setMin(Number(e.target.value.replace(/[^0-9]/g, '')) || 0)}
-                className="w-12 rounded-lg border border-gray-300 px-2 py-2 text-[15px] text-center tabular-nums bg-white focus:outline-none focus:border-sky-400"
+                className="w-12 rounded-lg border border-gray-300 px-2 py-2 text-[15px] text-center tabular-nums bg-white focus:outline-none focus:border-green-500"
               />
               <span className="text-gray-400 text-sm font-bold">:</span>
               <input
                 inputMode="numeric" aria-label="Seconds"
                 value={String(sec).padStart(2, '0')} onChange={e => setSec(Number(e.target.value.replace(/[^0-9]/g, '')) || 0)}
-                className="w-12 rounded-lg border border-gray-300 px-2 py-2 text-[15px] text-center tabular-nums bg-white focus:outline-none focus:border-sky-400"
+                className="w-12 rounded-lg border border-gray-300 px-2 py-2 text-[15px] text-center tabular-nums bg-white focus:outline-none focus:border-green-500"
               />
               <span className="text-[10px] text-gray-400 font-semibold">m:ss</span>
             </>

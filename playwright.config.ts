@@ -1,4 +1,6 @@
 import { defineConfig } from '@playwright/test';
+import path from 'path';
+import os from 'os';
 
 // Load local robot credentials for `npm run smoke` on a dev machine.
 // In CI these come from GitHub secrets, so a missing file is fine.
@@ -15,6 +17,16 @@ const ENVS: Record<string, string> = {
 
 const target = process.env.SMOKE_ENV ?? 'staging';
 const baseURL = ENVS[target] ?? ENVS.staging;
+
+// Unit specs exercise the real SQLite layer. Give EVERY worker its own scratch
+// database so they can neither race each other on one file (which made the
+// cooktimer specs flaky) nor mutate the developer's live data/portal.db.
+// Playwright loads this config in each worker process and sets
+// TEST_PARALLEL_INDEX there, so each worker lands on a distinct file.
+if (!process.env.PORTAL_DB_PATH) {
+  const worker = process.env.TEST_PARALLEL_INDEX ?? '0';
+  process.env.PORTAL_DB_PATH = path.join(os.tmpdir(), `krawings-test-portal-${worker}.db`);
+}
 
 export default defineConfig({
   testDir: './tests',

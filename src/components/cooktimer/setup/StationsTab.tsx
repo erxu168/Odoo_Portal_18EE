@@ -62,7 +62,7 @@ export default function StationsTab({
           <input autoFocus value={newName} onChange={e => setNewName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') submitAdd(); if (e.key === 'Escape') { setAdding(false); setNewName(''); } }}
             placeholder="Station name (e.g. Salamander)"
-            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-[15px] focus:outline-none focus:border-sky-400" />
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-[15px] focus:outline-none focus:border-green-500" />
           <button onClick={() => { setAdding(false); setNewName(''); }} className="text-sm font-semibold text-gray-500 px-2">Cancel</button>
           <button onClick={submitAdd} className="rounded-lg bg-green-600 text-white font-bold text-sm px-3 py-2 active:brightness-110">Add</button>
         </div>
@@ -124,20 +124,40 @@ function StationRow({
         <input autoFocus value={val} onChange={e => setVal(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setEditing(false); setVal(station.name); } }}
           onBlur={save}
-          className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-[15px] focus:outline-none focus:border-sky-400" />
+          className="flex-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-[15px] focus:outline-none focus:border-green-500" />
       ) : (
         <span className="flex-1 font-bold text-[15px] text-gray-900 truncate">{station.name}</span>
       )}
-      <span className="text-[11px] text-gray-400 font-semibold flex-shrink-0">{station.profileCount} profile{station.profileCount === 1 ? '' : 's'}</span>
+      <span className="text-[11px] text-gray-400 font-semibold flex-shrink-0">{station.profileCount} dish{station.profileCount === 1 ? '' : 'es'}</span>
       <Toggle on={station.active} onChange={onToggle} label={`${station.name} active`} />
       {!editing && (
-        <button onClick={() => { setVal(station.name); setEditing(true); }} aria-label={`Rename ${station.name}`} className="w-8 h-8 rounded-lg text-gray-400 hover:text-gray-700 active:bg-gray-100 flex items-center justify-center flex-shrink-0">✎</button>
+        <button onClick={() => { setVal(station.name); setEditing(true); }} aria-label={`Rename ${station.name}`} className="w-11 h-11 rounded-lg text-gray-400 hover:text-gray-700 active:bg-gray-100 flex items-center justify-center flex-shrink-0"><PencilIcon /></button>
       )}
-      <button onClick={onDelete} disabled={!canDelete}
-        title={canDelete ? 'Delete station' : 'Move its profiles off first'}
+      {/* Holding dishes is no longer a dead end: the confirm step offers to move
+          them. Only a RUNNING timer still blocks deletion outright. */}
+      <button onClick={onDelete} disabled={station.hasRunningTimer}
+        title={station.hasRunningTimer ? 'A timer is running here right now' : 'Delete station'}
         aria-label={`Delete ${station.name}`}
-        className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${canDelete ? 'text-gray-300 hover:text-red-500 active:bg-red-50' : 'text-gray-200 cursor-default'}`}>🗑</button>
+        className={`w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 ${station.hasRunningTimer ? 'text-gray-200 cursor-default' : 'text-gray-300 hover:text-red-500 active:bg-red-50'}`}><TrashIcon /></button>
     </div>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13" />
+    </svg>
   );
 }
 

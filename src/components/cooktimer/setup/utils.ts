@@ -25,7 +25,10 @@ export function stepChipClass(type: CookStepType): string {
   return 'bg-green-50 text-green-700 border-green-200';
 }
 
-const DOTS = ['bg-orange-500', 'bg-amber-400', 'bg-red-500', 'bg-sky-500', 'bg-emerald-500', 'bg-violet-500', 'bg-pink-500', 'bg-teal-500'];
+// Heat-ordered kitchen palette: the first three land on the real WAJ stations
+// (Grill orange, Deep Fry & Smoker amber, Oven red). Later stations continue in
+// the same family — no violet/pink, which read as arbitrary next to the others.
+const DOTS = ['bg-orange-500', 'bg-amber-400', 'bg-red-500', 'bg-teal-500', 'bg-sky-500', 'bg-emerald-500', 'bg-rose-400', 'bg-slate-500'];
 /** Deterministic accent dot per station (stations have no stored color). */
 export function stationDot(index: number): string {
   return DOTS[((index % DOTS.length) + DOTS.length) % DOTS.length];
