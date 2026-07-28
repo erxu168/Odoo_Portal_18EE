@@ -3,7 +3,7 @@ import { getDb } from '../src/lib/db';
 import {
   listStations, getActiveProfilesByProduct, createTimer, advanceTimer,
   setTimerMute, cancelTimer, finishTimer, getReadyLineIds, getClaimedLineIds,
-  createProfile, deleteProfile, listProfilesAdmin, createStation, deleteStation,
+  createProfile, deleteProfile, listProfilesAdmin, createStation, deleteStation, createTimerBatches,
 } from '../src/lib/cooktimer-db';
 
 // Drives the real SQLite state machine end to end (no Odoo). Uses out-of-range
@@ -58,7 +58,7 @@ test.afterAll(() => {
  * also works in the 990xxx space (990901), and these files share one database:
  * a range sweep reached into its timer mid-test and made it fail.
  */
-const SYNTHETIC_IDS = [990001, 990101, 990201, 990301, 990401];
+const SYNTHETIC_IDS = [990001, 990101, 990201, 990301, 990401, 990501, 990502, 990503, 990601];
 
 function cleanup(orderIds: number[], timerId: number) {
   const db = getDb();
@@ -182,4 +182,33 @@ test('cancel releases the line back to the queue and marks nothing ready', () =>
   expect(getClaimedLineIds().has(L)).toBe(false); // re-enters the queue
   expect(getReadyLineIds().has(L)).toBe(false);   // not marked ready
   cleanup([O], t.id);
+});
+
+test('createTimerBatches makes one timer per basket, atomically', () => {
+  const fries = getActiveProfilesByProduct().get(FRIES_PRODUCT)!;
+  const mk = (id: number) => ({ lineId: id, orderId: id, ref: `#B${id}`, qty: 1, arrivedMs: 1_700_000_000_000 + id });
+  const batches = [[mk(990501), mk(990502)], [mk(990503)]];
+
+  const timers = createTimerBatches(fries.id, fries.stationId, batches);
+  expect(timers.length).toBe(2);
+  expect(timers[0].lines.map(l => l.lineId)).toEqual([990501, 990502]);
+  expect(timers[1].lines.map(l => l.lineId)).toEqual([990503]);
+  // Every line is claimed, so none re-enters the TO COOK queue.
+  const claimed = getClaimedLineIds();
+  for (const id of [990501, 990502, 990503]) expect(claimed.has(id)).toBe(true);
+
+  // A second identical request claims nothing (no double-start across tablets).
+  expect(createTimerBatches(fries.id, fries.stationId, batches).length).toBe(0);
+
+  const db = getDb();
+  for (const t of timers) db.prepare('DELETE FROM cook_timers WHERE id = ?').run(t.id);
+});
+
+test('createTimerBatches never puts the same line in two baskets', () => {
+  const fries = getActiveProfilesByProduct().get(FRIES_PRODUCT)!;
+  const dup = { lineId: 990601, orderId: 990601, ref: '#D', qty: 1, arrivedMs: 1_700_000_000_000 };
+  const timers = createTimerBatches(fries.id, fries.stationId, [[dup], [dup]]);
+  expect(timers.length).toBe(1); // the second basket's only line was already claimed
+  const db = getDb();
+  for (const t of timers) db.prepare('DELETE FROM cook_timers WHERE id = ?').run(t.id);
 });

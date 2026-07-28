@@ -67,21 +67,31 @@ export async function DELETE(request: Request, ctx: { params: { id: string } }) 
   const id = parseInt(ctx.params.id, 10);
   if (!Number.isFinite(id)) return NextResponse.json({ error: 'id must be an integer' }, { status: 400 });
 
+  // An EMPTY body means "plain delete"; MALFORMED JSON is a client error and
+  // must not silently fall through to deleting the station.
   let moveToStationId: number | null = null;
-  try {
-    const body = await request.json();
-    if (body && typeof body === 'object' && (body as { moveToStationId?: unknown }).moveToStationId != null) {
-      const n = Number((body as { moveToStationId: unknown }).moveToStationId);
-      if (!Number.isInteger(n) || n <= 0) {
+  const raw = (await request.text()).trim();
+  if (raw !== '') {
+    let body: unknown;
+    try { body = JSON.parse(raw); } catch {
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Body must be a JSON object' }, { status: 400 });
+    }
+    const v = (body as { moveToStationId?: unknown }).moveToStationId;
+    if (v != null) {
+      // Require a real JSON number — Number(true) would otherwise become id 1.
+      if (typeof v !== 'number' || !Number.isInteger(v) || v <= 0) {
         return NextResponse.json({ error: 'moveToStationId must be a station id' }, { status: 400 });
       }
-      moveToStationId = n;
+      moveToStationId = v;
     }
-  } catch { /* no body — plain delete of an empty station */ }
+  }
 
   try {
     deleteStation(id, moveToStationId);
-    return NextResponse.json({ stations: listStationsAdmin(), profiles: await listProfilesWithNames() });
+    return NextResponse.json({ stations: listStationsAdmin(), ...(await listProfilesWithNames()) });
   } catch (err) {
     return fail(err);
   }

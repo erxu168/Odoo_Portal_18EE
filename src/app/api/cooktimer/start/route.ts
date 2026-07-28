@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getKdsSettings } from '@/lib/kds-db';
 import { KDS_LOCATION_ID } from '@/types/kds';
-import { createTimer } from '@/lib/cooktimer-db';
+import { createTimerBatches } from '@/lib/cooktimer-db';
 import { loadEligibleLines, splitIntoBatches } from '@/lib/cooktimer-queue';
 import type { CoveredLine } from '@/types/cooktimer';
 
@@ -48,12 +48,10 @@ export async function POST(req: NextRequest) {
     }));
 
     // Respect the profile's max batch size: a request bigger than one basket
-    // becomes SEVERAL timers rather than one oversized one. Each createTimer
-    // re-checks the claim in its own transaction, so this stays race-safe.
+    // becomes SEVERAL timers rather than one oversized one. All baskets are
+    // created in ONE transaction, so the request stays all-or-nothing.
     const batches = splitIntoBatches(lines, selected[0].maxBatch ?? null);
-    const timers = batches
-      .map(batch => createTimer(profileId, selected[0].stationId, batch))
-      .filter((t): t is NonNullable<typeof t> => !!t);
+    const timers = createTimerBatches(profileId, selected[0].stationId, batches);
 
     if (timers.length === 0) {
       return NextResponse.json({ error: 'Those items were just started on another tablet' }, { status: 409 });

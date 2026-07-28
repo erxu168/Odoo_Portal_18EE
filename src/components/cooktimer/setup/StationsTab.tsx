@@ -105,7 +105,6 @@ function StationRow({
 
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(station.name);
-  const canDelete = station.profileCount === 0 && !station.hasRunningTimer;
 
   function save() {
     const n = val.trim();

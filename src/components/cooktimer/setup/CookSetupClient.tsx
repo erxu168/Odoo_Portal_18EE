@@ -37,6 +37,9 @@ export default function CookSetupClient() {
   // Destination for "move dishes & delete" — a ref so picking it never re-renders the dialog.
   const moveTargetRef = useRef<number | null>(null);
   const [loadError, setLoadError] = useState(false);
+  // True when Odoo could not be reached for live dish names — shown as a banner
+  // so a manager reads 'names unavailable', not 'these dishes were deleted'.
+  const [namesUnavailable, setNamesUnavailable] = useState(false);
 
   function showToast(message: string, type: ToastState['type'] = 'info') {
     setToast({ message, type, visible: true });
@@ -52,6 +55,7 @@ export default function CookSetupClient() {
       if (!Array.isArray(pr.profiles) || !Array.isArray(sr.stations)) throw new Error('bad payload');
       setProfiles(pr.profiles);
       setStations(sr.stations);
+      setNamesUnavailable(!!pr.productNameUnavailable);
     } catch {
       setLoadError(true);
     }
@@ -131,6 +135,7 @@ export default function CookSetupClient() {
   // which gates station delete) — apply both so the Stations tab stays accurate.
   function applyProfileResponse(data: any) {
     if (Array.isArray(data.profiles)) setProfiles(data.profiles);
+    if ('productNameUnavailable' in data) setNamesUnavailable(!!data.productNameUnavailable);
     if (Array.isArray(data.stations)) setStations(data.stations);
   }
   async function saveProfile(input: CookProfileInput, id: number | null): Promise<{ ok: boolean; error?: string }> {
@@ -168,6 +173,12 @@ export default function CookSetupClient() {
       {/* Top-level module screen reached from the dashboard, so the single left
           control is HOME (a back arrow here just went to '/' as well). */}
       <AppHeader supertitle="Cooking Timer" title="Setup" subtitle="Dishes & stations" />
+
+      {namesUnavailable && (
+        <div className="mx-4 mt-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[13px] px-3 py-2.5">
+          Could not reach the till just now, so some dish names may be missing. Everything else still works.
+        </div>
+      )}
 
       {/* tabs */}
       <div className="flex gap-1 px-4 pt-3 bg-white border-b border-gray-200 sticky top-0 z-10">

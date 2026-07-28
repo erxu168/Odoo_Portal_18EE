@@ -28,6 +28,10 @@ export default function ProfileEditor({
   const newKey = () => `n${keyRef.current++}`;
 
   const [productId, setProductId] = useState<number | null>(profile?.odooProductId ?? null);
+  // Name of the CURRENTLY selected dish: seeded from the live lookup, then
+  // replaced when the manager picks a different one (otherwise the card kept
+  // showing the previous dish's name next to the new id).
+  const [pickedName, setPickedName] = useState<string | null>(null);
   const [name, setName] = useState(profile?.name ?? '');
   const [stationId, setStationId] = useState<number | null>(
     profile?.stationId ?? (stations.find(s => s.active) ?? stations[0])?.id ?? null,
@@ -38,6 +42,8 @@ export default function ProfileEditor({
   // UP FRONT rather than rejecting the save after the manager rebuilt the chain.
   const busy = !!(profile as CookProfileAdmin | null)?.hasRunningTimer;
   const productName = (profile as CookProfileAdmin | null)?.productName ?? null;
+  // A freshly picked dish must show ITS name, not the one loaded with the profile.
+  const shownProductName = productId === profile?.odooProductId ? (pickedName ?? productName) : pickedName;
   const [steps, setSteps] = useState<EditStep[]>(() =>
     profile?.steps.length
       ? profile.steps.map(s => ({ key: `db${s.id}`, label: s.label, stepType: s.stepType, durationSeconds: s.durationSeconds }))
@@ -129,11 +135,14 @@ export default function ProfileEditor({
           ) : (
             <div className="flex items-center gap-3">
               <div className="flex-1 min-w-0">
-                {/* The REAL till name, looked up live — not just the id. */}
-                <div className="font-semibold text-gray-900 truncate">{productName ?? (name || 'Selected dish')}</div>
+                {/* The REAL till name: whatever was just picked wins, else the
+                    live lookup for the saved dish. */}
+                <div className="font-semibold text-gray-900 truncate">{shownProductName ?? (name || 'Selected dish')}</div>
                 <div className="text-xs text-gray-400">
-                  {productName === null && profile?.odooProductId != null
-                    ? `Not on the till any more (#${productId})`
+                  {shownProductName == null
+                    // We cannot tell "deleted from the till" from "till unreachable"
+                    // here, so never assert deletion.
+                    ? `Could not read the till name (#${productId})`
                     : `On the till as #${productId}`}
                 </div>
               </div>
@@ -188,19 +197,26 @@ export default function ProfileEditor({
           <p className="text-xs text-gray-400 mb-3 leading-relaxed">
             Drag the <span className="font-bold">grip</span> to reorder. <b>Cook</b>/<b>Rest</b> count down and alarm; <b>Action</b> is an instant prompt (e.g. Spray beer) with no timer.
           </p>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-            <SortableContext items={steps.map(s => s.key)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2.5">
-                {steps.map((s, i) => (
-                  <SortableStepRow key={s.key} step={s} index={i} canRemove={steps.length > 1}
-                    onChange={patch => patchStep(s.key, patch)} onRemove={() => removeStep(s.key)} />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-          <button onClick={addStep} className="mt-3 w-full rounded-xl border border-dashed border-green-400 text-green-700 py-2.5 font-bold active:bg-green-50">
-            ＋ Add step
-          </button>
+          {/* While a timer runs the server rejects step changes, so make the
+              controls genuinely read-only rather than letting a manager rebuild
+              the chain and only find out on Save. */}
+          <fieldset disabled={busy} className={busy ? 'opacity-60' : undefined}>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={steps.map(s => s.key)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-2.5">
+                  {steps.map((s, i) => (
+                    <SortableStepRow key={s.key} step={s} index={i} canRemove={steps.length > 1 && !busy}
+                      onChange={patch => patchStep(s.key, patch)} onRemove={() => removeStep(s.key)} />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+            {!busy && (
+              <button onClick={addStep} className="mt-3 w-full rounded-xl border border-dashed border-green-400 text-green-700 py-3 font-bold active:bg-green-50 min-h-[48px]">
+                ＋ Add step
+              </button>
+            )}
+          </fieldset>
         </div>
         <div className="h-2" />
       </div>
@@ -215,7 +231,7 @@ export default function ProfileEditor({
       {pickerOpen && (
         <ProductPickerSheet
           onClose={() => setPickerOpen(false)}
-          onPick={p => { setProductId(p.id); if (!name.trim()) setName(p.name); setPickerOpen(false); }}
+          onPick={p => { setProductId(p.id); setPickedName(p.name); if (!name.trim()) setName(p.name); setPickerOpen(false); }}
         />
       )}
     </div>
@@ -252,7 +268,7 @@ function SortableStepRow({
           {...attributes}
           {...listeners}
           aria-label="Drag to reorder step"
-          className="px-1.5 py-2 text-gray-400 cursor-grab active:cursor-grabbing touch-none select-none"
+          className="w-11 h-11 flex items-center justify-center text-gray-400 cursor-grab active:cursor-grabbing touch-none select-none"
           style={{ touchAction: 'none' }}
         >
           <GripIcon />

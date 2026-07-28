@@ -51,7 +51,7 @@ export async function PATCH(request: Request, ctx: { params: { id: string } }) {
     } else {
       return NextResponse.json({ error: 'Provide a full profile (with steps) or an active flag' }, { status: 400 });
     }
-    return NextResponse.json({ profiles: await listProfilesWithNames(), stations: listStationsAdmin() });
+    return NextResponse.json({ ...(await listProfilesWithNames()), stations: listStationsAdmin() });
   } catch (err) {
     return fail(err);
   }
@@ -64,7 +64,7 @@ export async function DELETE(_request: Request, ctx: { params: { id: string } })
   if (!Number.isFinite(id)) return NextResponse.json({ error: 'id must be an integer' }, { status: 400 });
   try {
     deleteProfile(id);
-    return NextResponse.json({ profiles: await listProfilesWithNames(), stations: listStationsAdmin() });
+    return NextResponse.json({ ...(await listProfilesWithNames()), stations: listStationsAdmin() });
   } catch (err) {
     return fail(err);
   }
