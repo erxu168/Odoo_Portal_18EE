@@ -253,6 +253,30 @@ follow and expensive to relearn.
    until labelled; the correct "can't delete the *head* unit" guard read as a bug
    because it gave no reason or path forward.)
 
+## User-Flow-First Process (binding — all new / changed / expanded features)
+
+Before writing implementation code for any feature, work through the whole user flow and
+**present the pre-coding plan for sign-off** — do NOT code straight from a high-level ask.
+Full 24-section spec: vault `claude-memory/feedback_user_flow_process.md`.
+
+- **Pre-coding output, get sign-off FIRST (spec §20):** feature summary · user roles · entry
+  points · numbered main flow · alternative flows · error & recovery flows · screen/component
+  changes · data-model changes · permission changes (UI **and** backend) · acceptance criteria
+  (Given/When/Then) · open assumptions · implementation plan.
+- **Cover the whole flow, not the happy path:** alternative / error / empty / loading / success /
+  cancel states; permissions enforced server-side (not just hidden buttons); business rules + their
+  failure messages; status transitions (allowed AND prohibited); audit/history; notifications;
+  accessibility; responsive desktop/tablet/mobile; and every dependency of a shared component
+  before you change it.
+- **STOP and ask before coding** when the objective / role / "done"-state / permissions are
+  unclear, a destructive action lacks recovery + confirmation, business rules conflict, or a change
+  could corrupt or silently overwrite live data. Minor gaps → assume + state the assumption.
+- **Scale to the change:** a typo, rename, config value, favicon, or moving one existing tile skips
+  the full treatment; anything adding a screen, field, status, permission, or new path does not.
+- **Reuse, don't duplicate; don't ship isolated changes** (reinforces the Canonical Record Page +
+  Design Principles rules above). Adversarial review (Codex / fleet) for anything touching counts,
+  money, or Odoo writes. End with a completion report (spec §24).
+
 ## Test Users
 
 | Name | Role | employee_id | Password |
