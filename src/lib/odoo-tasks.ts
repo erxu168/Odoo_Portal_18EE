@@ -68,6 +68,10 @@ export interface TaskListLine {
   has_setup_photo: boolean;
   /** Sequences of this line's setup photos, display order (multi-photo guides). */
   setup_photo_seqs: number[];
+  /** Guided tutorial: a published guide snapshot exists on this line. */
+  has_guide: boolean;
+  /** Number of steps in the guide (0 when none). */
+  guide_step_count: number;
 }
 
 export interface TaskList {
@@ -275,6 +279,8 @@ const LINE_FIELDS = [
   'note', 'note_at', 'note_by_id', 'note_by_name',
   // Setup guide: filename only (never the binary — served via its own route).
   'is_setup_guide', 'setup_photo_filename',
+  // Guided tutorial: presence + step count (content loaded lazily on open).
+  'has_guide', 'guide_step_count',
 ];
 
 const SUBTASK_FIELDS = [
@@ -311,7 +317,9 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
 
   const allSubtaskIds = lines.flatMap((l: any) => l.subtask_ids || []);
   const subtasks = allSubtaskIds.length
-    ? await odoo.searchRead('krawings.task.list.subtask', [['id', 'in', allSubtaskIds]], SUBTASK_FIELDS, { limit: 1000 })
+    // Exclude legacy_guide_pin rows: pins from a migrated setup-guide are now
+    // guided-tutorial pins, kept only as read-only audit — never shown as subtasks.
+    ? await odoo.searchRead('krawings.task.list.subtask', [['id', 'in', allSubtaskIds], ['legacy_guide_pin', '=', false]], SUBTASK_FIELDS, { limit: 1000 })
     : [];
   const subtasksByLine = new Map<number, TaskSubtask[]>();
   for (const s of subtasks) {
@@ -373,6 +381,8 @@ async function hydrateListRecord(rec: any): Promise<TaskList> {
     // Photo rows are canonical; the legacy filename covers un-migrated lines.
     setup_photo_seqs: photoSeqsByLine.get(l.id) || (l.setup_photo_filename ? [0] : []),
     has_setup_photo: (photoSeqsByLine.get(l.id) || []).length > 0 || !!l.setup_photo_filename,
+    has_guide: !!l.has_guide,
+    guide_step_count: l.guide_step_count || 0,
   }));
 
   // Sort: opening → mid_day → closing, then sequence

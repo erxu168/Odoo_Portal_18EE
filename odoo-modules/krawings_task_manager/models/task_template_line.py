@@ -1,6 +1,15 @@
 import mimetypes
 
 from odoo import api, fields, models
+from odoo.exceptions import UserError
+
+# Guide size caps — keep aggregate JSON-RPC saves and the nightly snapshot bounded.
+GUIDE_MAX_STEPS = 40
+GUIDE_MAX_PINS = 20
+GUIDE_MAX_EXPLANATION = 2000
+GUIDE_MAX_NOTE = 500
+GUIDE_MAX_IMAGE_B64 = 12 * 1024 * 1024   # ~9 MB decoded
+GUIDE_MAX_PDF_B64 = 20 * 1024 * 1024     # ~15 MB decoded
 
 
 def _guess_image_mime(filename):
@@ -105,6 +114,145 @@ class KrawingsTaskTemplateLine(models.Model):
             # has_guide reflects staff visibility (published + non-empty). The
             # editor uses guide_step_count to know a draft has content.
             rec.has_guide = bool(rec.guide_published and rec.guide_step_ids)
+
+    # ── Guided-tutorial editor RPC (manager/admin; company checked in the route) ──
+    @api.model
+    def portal_read_guide(self, template_line_id):
+        """Return a template line's full guide for the editor. Media bytes are
+        NOT inlined — the editor fetches them via the step-media route."""
+        line = self.sudo().browse(int(template_line_id))
+        if not line.exists():
+            return False
+        steps = []
+        for s in line.guide_step_ids.sorted('sequence'):
+            steps.append({
+                'id': s.id,
+                'media_type': s.media_type,
+                'explanation': s.explanation or '',
+                'has_image': bool(s.image),
+                'image_filename': s.image_filename or '',
+                'has_pdf': bool(s.pdf_file),
+                'pdf_filename': s.pdf_filename or '',
+                'youtube_url': s.youtube_url or '',
+                'pins': [
+                    {'id': p.id, 'pin_x': p.pin_x, 'pin_y': p.pin_y, 'note': p.note or ''}
+                    for p in s.pin_ids.sorted('sequence')
+                ],
+            })
+        return {'revision': line.guide_revision, 'published': line.guide_published, 'steps': steps}
+
+    @api.model
+    def portal_save_guide(self, template_line_id, revision, published, steps):
+        """Atomically replace a template line's whole ordered guide.
+
+        Row-locks the line and compares `revision` (optimistic concurrency): a
+        stale editor gets {conflict:True} (mapped to 409) instead of clobbering
+        another manager. Array order is authoritative → normalized sequences.
+        A step may `keep` its existing photo/pdf (no base64 re-sent); the prior
+        bytes are carried over server-side. Everything is validated by the step/
+        pin model constraints. Returns {ok, revision}."""
+        line = self.sudo().browse(int(template_line_id))
+        if not line.exists():
+            raise UserError('Task not found.')
+        steps = steps or []
+        if len(steps) > GUIDE_MAX_STEPS:
+            raise UserError('A guide can have at most %s steps.' % GUIDE_MAX_STEPS)
+
+        self.env.flush_all()
+        self.env.cr.execute(
+            'SELECT guide_revision FROM krawings_task_template_line WHERE id = %s FOR UPDATE',
+            (line.id,),
+        )
+        row = self.env.cr.fetchone()
+        current = (row[0] if row else 0) or 0
+        if int(revision) != int(current):
+            return {'conflict': True, 'revision': current}
+
+        # Snapshot existing media so a `keep` step needn't re-upload its bytes.
+        prior = {
+            s.id: {
+                'image': s.image, 'image_filename': s.image_filename,
+                'pdf_file': s.pdf_file, 'pdf_filename': s.pdf_filename,
+            }
+            for s in line.guide_step_ids
+        }
+        line.guide_step_ids.unlink()  # cascade pins; clean sequences on rebuild
+
+        Step = self.env['krawings.task.guide.step'].sudo()
+        Pin = self.env['krawings.task.guide.pin'].sudo()
+        seq = 10
+        for st in steps:
+            mt = st.get('media_type')
+            explanation = (st.get('explanation') or '').strip()
+            if len(explanation) > GUIDE_MAX_EXPLANATION:
+                raise UserError('An explanation is too long (max %s characters).' % GUIDE_MAX_EXPLANATION)
+            prev = prior.get(int(st.get('id') or 0), {})
+            vals = {
+                'template_line_id': line.id,
+                'sequence': seq,
+                'media_type': mt,
+                'explanation': explanation,
+                'image': False, 'image_filename': False,
+                'pdf_file': False, 'pdf_filename': False,
+                'youtube_url': False,
+            }
+            if mt == 'photo':
+                if st.get('image_base64'):
+                    b64 = st['image_base64']
+                    if len(b64) > GUIDE_MAX_IMAGE_B64:
+                        raise UserError('A photo is too large (max ~9 MB).')
+                    vals['image'] = b64
+                    vals['image_filename'] = st.get('image_filename') or 'photo.jpg'
+                else:
+                    vals['image'] = prev.get('image')
+                    vals['image_filename'] = prev.get('image_filename')
+            elif mt == 'pdf':
+                if st.get('pdf_base64'):
+                    b64 = st['pdf_base64']
+                    if len(b64) > GUIDE_MAX_PDF_B64:
+                        raise UserError('A PDF is too large (max ~15 MB).')
+                    vals['pdf_file'] = b64
+                    vals['pdf_filename'] = st.get('pdf_filename') or 'document.pdf'
+                else:
+                    vals['pdf_file'] = prev.get('pdf_file')
+                    vals['pdf_filename'] = prev.get('pdf_filename')
+            elif mt == 'youtube':
+                vals['youtube_url'] = (st.get('youtube_url') or '').strip()
+            # 'tip' keeps everything empty.
+            step = Step.create(vals)   # model constraints validate media + explanation
+
+            if mt == 'photo':
+                pins = st.get('pins') or []
+                if len(pins) > GUIDE_MAX_PINS:
+                    raise UserError('A photo can have at most %s note-pins.' % GUIDE_MAX_PINS)
+                pseq = 10
+                for p in pins:
+                    note = (p.get('note') or '').strip()
+                    if len(note) > GUIDE_MAX_NOTE:
+                        raise UserError('A pin note is too long (max %s characters).' % GUIDE_MAX_NOTE)
+                    Pin.create({
+                        'step_id': step.id,
+                        'sequence': pseq,
+                        'pin_x': float(p.get('pin_x') or 0.0),
+                        'pin_y': float(p.get('pin_y') or 0.0),
+                        'note': note,
+                    })
+                    pseq += 10
+            seq += 10
+
+        new_rev = current + 1
+        line.write({'guide_revision': new_rev, 'guide_published': bool(published)})
+        return {'ok': True, 'revision': new_rev}
+
+    @api.model
+    def portal_delete_guide(self, template_line_id):
+        """Remove a template line's whole guide."""
+        line = self.sudo().browse(int(template_line_id))
+        if not line.exists():
+            raise UserError('Task not found.')
+        line.guide_step_ids.unlink()
+        line.write({'guide_published': False, 'guide_revision': (line.guide_revision or 0) + 1})
+        return {'ok': True, 'revision': line.guide_revision}
 
     # ── Recurrence rule (per task) ───────────────────────────────────────
     # Keys here are read by recurrence.applies_on() via rule_from_record().

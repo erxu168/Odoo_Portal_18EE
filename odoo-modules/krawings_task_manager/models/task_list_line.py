@@ -73,6 +73,34 @@ class KrawingsTaskListLine(models.Model):
             rec.guide_step_count = len(rec.guide_step_ids)
             rec.has_guide = bool(rec.guide_step_ids)
 
+    @api.model
+    def portal_read_guide(self, list_line_id, allowed_company_ids=None):
+        """Staff: read a daily line's guide snapshot for the player. Media bytes
+        come via the step-media route. Fails CLOSED on company scope."""
+        line = self.sudo().browse(int(list_line_id))
+        if not line.exists():
+            return False
+        company = line.list_id.company_id
+        allowed = [int(c) for c in (allowed_company_ids or [])]
+        if not allowed or not company.id or company.id not in allowed:
+            return False
+        steps = []
+        for s in line.guide_step_ids.sorted('sequence'):
+            steps.append({
+                'id': s.id,
+                'media_type': s.media_type,
+                'explanation': s.explanation or '',
+                'has_image': bool(s.image),
+                'has_pdf': bool(s.pdf_file),
+                'pdf_filename': s.pdf_filename or '',
+                'youtube_url': s.youtube_url or '',
+                'pins': [
+                    {'pin_x': p.pin_x, 'pin_y': p.pin_y, 'note': p.note or ''}
+                    for p in s.pin_ids.sorted('sequence')
+                ],
+            })
+        return {'line_name': line.name, 'steps': steps}
+
     photo_uploaded = fields.Boolean(compute='_compute_photo_uploaded', store=False)
     state = fields.Selection([
         ('pending', 'Pending'),

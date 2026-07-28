@@ -121,6 +121,8 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
       is_setup_guide: tl.is_setup_guide,
       has_setup_photo: tl.has_setup_photo,
       setup_photo_seqs: tl.setup_photo_seqs,
+      has_guide: false,          // wired to the real guide in the editor/player phase
+      guide_step_count: 0,
       state: 'pending',
       completed_at: null,
       completed_by_id: null,
