@@ -73,7 +73,7 @@ export default function KioskLoginGate({ onUnlock, onClose }: Props) {
             placeholder="Password"
             className="w-full h-14 px-4 rounded-2xl border border-gray-200 bg-white text-lg text-gray-900 outline-none focus:border-green-600"
           />
-          <div className="h-5 text-center">{error && <span className="text-red-600 font-bold text-sm">{error}</span>}</div>
+          <div className="h-5 text-center">{error && <span className="text-red-600 font-bold text-sm">⚠ {error}</span>}</div>
           <button
             type="submit"
             disabled={busy || !email || !password}

@@ -63,7 +63,7 @@ export default function KioskSettings({ settings, onChange, onClose }: Props) {
     <div className="fixed inset-0 z-[120] bg-gray-50 flex flex-col" onPointerDown={bump} onKeyDown={bump}>
       <header className="bg-[#1A1F2E] text-white px-6 py-4 flex items-center justify-between">
         <div className="text-[18px] font-extrabold tracking-tight">⚙ Kiosk settings</div>
-        <button onClick={onClose} className="text-white/80 font-semibold active:text-white">Close</button>
+        <button onClick={onClose} className="text-white/80 font-semibold active:text-white min-h-[44px] px-3 py-2">Close</button>
       </header>
       {unlocked ? (
         <KioskSettingsForm
