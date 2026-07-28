@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { FilterBar, FilterPill, ProductThumb, leafCategory } from './ui';
+import { ProductThumb, leafCategory } from './ui';
+import { useProductFilters, ProductFilterBar } from './ProductFilters';
 import RecordLink from '@/components/ui/RecordLink';
 
 /**
@@ -13,8 +14,11 @@ import RecordLink from '@/components/ui/RecordLink';
  * walls — you never lose track of what's selected, because the list itself
  * lives on the screen behind this sheet.
  */
+/** Rows drawn at once. The bar says so out loud rather than truncating silently. */
+const LIST_CAP = 200;
+
 export default function AddProductsSheet({
-  products, selectedIds, onToggle, onAddMany, productImageIds, homeSpots, spotLabels, unitHint, onEditProduct, onNewProduct, onClose,
+  products, selectedIds, onToggle, onAddMany, productImageIds, homeSpots, spotLabels, unitHint, onEditProduct, onNewProduct, onClose, companyId,
 }: {
   products: any[];
   selectedIds: Set<number>;
@@ -31,10 +35,15 @@ export default function AddProductsSheet({
    *  current search), then it's added to the list. Omit to hide the affordance. */
   onNewProduct?: (initialName: string) => void;
   onClose: () => void;
+  /** The LIST's restaurant — not the ribbon's — so the place filter matches it. */
+  companyId?: number | null;
 }) {
   const [search, setSearch] = useState('');
-  const [catFilter, setCatFilter] = useState<string>('all');
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // The shared bar, so narrowing here works exactly as it does everywhere else.
+  // The old row of one pill per category was flat: picking a parent found
+  // nothing, and 22 pills is not a filter, it is a second list to scroll.
+  const filters = useProductFilters(companyId ?? null);
 
   // Autofocus the search — this sheet is search-first by design.
   useEffect(() => {
@@ -47,31 +56,18 @@ export default function AddProductsSheet({
     return () => clearTimeout(t);
   }, []);
 
-  const categories = useMemo(() => {
-    const m = new Map<number, { id: number; name: string; count: number }>();
-    for (const p of products) {
-      if (!p.categ_id) continue;
-      const [id, name] = p.categ_id;
-      const e = m.get(id);
-      if (e) e.count++;
-      else m.set(id, { id, name, count: 1 });
-    }
-    return Array.from(m.values()).sort((a, b) => b.count - a.count);
-  }, [products]);
-
-  const visible = useMemo(() => {
-    let list = products;
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter((p) => p.name.toLowerCase().includes(q)
-        || (p.default_code && String(p.default_code).toLowerCase().includes(q)));
-    }
-    if (catFilter !== 'all') list = list.filter((p) => p.categ_id?.[0] === Number(catFilter));
-    return list;
-  }, [products, search, catFilter]);
+  const searched = useMemo(() => {
+    if (!search) return products;
+    const q = search.toLowerCase();
+    return products.filter((p) => p.name.toLowerCase().includes(q)
+      || (p.default_code && String(p.default_code).toLowerCase().includes(q)));
+  }, [products, search]);
+  const visible = useMemo(() => filters.narrow(searched), [filters, searched]);
 
   const notAdded = visible.filter((p) => !selectedIds.has(p.id));
-  const activeCatName = catFilter !== 'all' ? leafCategory(categories.find((c) => String(c.id) === catFilter)?.name || '') : null;
+  const activeCatName = filters.catId != null
+    ? leafCategory(filters.cats.find((c) => c.id === filters.catId)?.name || '')
+    : null;
 
   return (
     <div className="fixed inset-0 z-[110] bg-black/50 flex items-end" role="dialog" aria-modal="true" aria-label="Add products">
@@ -100,16 +96,13 @@ export default function AddProductsSheet({
           </div>
         </div>
 
-        <FilterBar>
-          <FilterPill active={catFilter === 'all'} label="All" onClick={() => setCatFilter('all')} />
-          {categories.map((c) => (
-            <FilterPill key={c.id} active={catFilter === String(c.id)} label={leafCategory(c.name)} count={c.count}
-              onClick={() => setCatFilter(String(c.id))} />
-          ))}
-        </FilterBar>
+        <div className="pt-2">
+          <ProductFilterBar filters={filters} base={visible.length} shown={visible.length}
+            total={products.length} capped={LIST_CAP} />
+        </div>
 
         {/* Bulk add for the current view — replaces the old select-all wall */}
-        {notAdded.length > 1 && (search || catFilter !== 'all') && (
+        {notAdded.length > 1 && (search || filters.active) && (
           <div className="px-4 pb-2">
             <button onClick={() => onAddMany(notAdded.map((p) => p.id))}
               className="w-full py-2.5 rounded-lg bg-green-50 border border-green-200 text-green-800 text-[var(--fs-sm)] font-semibold active:bg-green-100">
