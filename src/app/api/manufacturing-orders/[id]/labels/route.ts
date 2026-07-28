@@ -20,7 +20,8 @@ import {
   getSplitByMo, getContainers, getPrinter, createPrintJob,
   updatePrintJobStatus, markContainerPrinted, markSplitPrinted,
 } from '@/lib/labeling-db';
-import { generateZPL, resolveLabelSize, sendToZebra } from '@/lib/zpl';
+import { generateZPL, resolveLabelSize } from '@/lib/zpl';
+import { sendToZebra } from '@/lib/zpl-net';
 import { getOdoo } from '@/lib/odoo';
 import type { LabelData } from '@/types/labeling';
 

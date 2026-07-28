@@ -230,29 +230,6 @@ function escapeZPL(text: string): string {
     .replace(/~/g, '\\~');
 }
 
-export async function sendToZebra(ip: string, port: number, zpl: string): Promise<void> {
-  const net = await import('net');
-  return new Promise((resolve, reject) => {
-    const socket = new net.Socket();
-    const timeout = setTimeout(() => {
-      socket.destroy();
-      reject(new Error(`Printer connection timed out (${ip}:${port})`));
-    }, 5000);
-
-    socket.connect(port, ip, () => {
-      socket.write(zpl, 'utf-8', (err) => {
-        clearTimeout(timeout);
-        if (err) { socket.destroy(); reject(err); }
-        else { socket.end(); resolve(); }
-      });
-    });
-
-    socket.on('error', (err) => {
-      clearTimeout(timeout);
-      reject(new Error(`Printer error (${ip}:${port}): ${err.message}`));
-    });
-  });
-}
 
 /**
  * A LOCATION label — the QR a person scans, the place's name, and as much of
