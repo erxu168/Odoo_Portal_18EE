@@ -65,7 +65,14 @@ jobs:
           printf '' > www/index.html
 
       - name: Generate the native Android project
-        run: npx cap add android
+        run: |
+          # The repo now commits a DIFFERENT native app (de.krawings.portal, with the
+          # Zebra/barcode plugins, built by android-apk.yml). It shares the repo-root
+          # android/ path. The Department Device (de.krawings.station) is the OPEN variant
+          # and must generate its OWN throwaway project, so drop any checked-out android/
+          # first (CI checkout only — the committed Portal app is untouched).
+          rm -rf android
+          npx cap add android
 
       # NOTE: no kiosk lock-task step here — this is the OPEN variant. (The Time Clock
       # app wires in native lock-task code; the Krawings Department Device intentionally does not.)
