@@ -26,6 +26,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+import { taxDiffCommands, currentCompanyTax } from '@/lib/product-tax';
 
 // What a Jerk (Kottbusser Damm 96) — branch under Ssam Korean BBQ. Verified on
 // staging 2026-06-30. NOTE: company 5 "What a Jerk" and 7 "WAJ ALT" are the old
@@ -81,13 +82,23 @@ export async function GET(request: Request) {
         ['id', 'name', 'lst_price', 'uom_id', 'taxes_id', 'pos_categ_ids'],
       );
       if (!p) return NextResponse.json({ error: 'Drink not found' }, { status: 404 });
+      // WAJ's tax, not whichever sorts first. The list holds one tax per company
+      // ordered by company id, so `taxes_id[0]` — what this used to return — is
+      // frequently Krawings' or Ssam's rate, shown to a WAJ manager as theirs.
+      const wajSale = await odoo.searchRead('account.tax',
+        [['company_id', '=', WAJ_COMPANY_ID], ['type_tax_use', '=', 'sale']],
+        ['id'], { limit: 500, context: { active_test: false } });
+      const myTax = currentCompanyTax(
+        (p.taxes_id as number[]) || [],
+        wajSale.map((t: { id: number }) => t.id),
+      );
       return NextResponse.json({
         product: {
           id: p.id,
           name: p.name,
           price: p.lst_price,
           uom_id: Array.isArray(p.uom_id) ? p.uom_id[0] : null,
-          tax_id: Array.isArray(p.taxes_id) && p.taxes_id.length ? p.taxes_id[0] : null,
+          tax_id: myTax,
           pos_categ_id: Array.isArray(p.pos_categ_ids) && p.pos_categ_ids.length ? p.pos_categ_ids[0] : null,
         },
       });
@@ -184,7 +195,55 @@ export async function POST(request: Request) {
       const uomId = Number(body.uom_id);
       if (Number.isFinite(uomId) && uomId > 0) { vals.uom_id = uomId; vals.uom_po_id = uomId; }
       const taxId = Number(body.tax_id);
-      if (Number.isFinite(taxId) && taxId > 0) vals.taxes_id = [[6, 0, [taxId]]];
+      if (Number.isFinite(taxId) && taxId > 0) {
+        // This line used to be `vals.taxes_id = [[6, 0, [taxId]]]` — a full SET,
+        // which REPLACES the whole list. A product's taxes span every company at
+        // once (one shared bottle carries WAJ's tax, Ssam's and Krawings' side by
+        // side), so setting WAJ's that way deleted the other two.
+        //
+        // No damage was ever done: every product this screen has edited happened
+        // to be tagged to one company, where there was nothing else to lose. But
+        // the screen can search any till product, some of which are shared, so it
+        // was one edit away from wiping another restaurant's VAT.
+        //
+        // Unlink/link touches only WAJ's row and never names another company's.
+        const [tmpl] = await odoo.read('product.template', [prod.product_tmpl_id[0]], ['taxes_id']);
+        const onProduct = (tmpl?.taxes_id as number[]) || [];
+        // Two different questions, two different reads — the same asymmetry the
+        // Products route needs.
+        //
+        // "Which of these are WAJ's, so I can displace them?" must include
+        // retired taxes and taxes since retyped away from 'sale', or one of WAJ's
+        // own would look like another company's, survive the write, and leave the
+        // drink carrying two WAJ sales taxes.
+        //
+        // "May this one be CHOSEN?" is the opposite: active only, right company,
+        // right type. Validating against the permissive set would let a crafted
+        // request attach a retired rate.
+        const [owners, chosenRows] = await Promise.all([
+          onProduct.length > 0
+            ? odoo.searchRead('account.tax', [['id', 'in', onProduct]], ['id', 'company_id'],
+                { limit: onProduct.length, context: { active_test: false } })
+            : Promise.resolve([]),
+          odoo.searchRead('account.tax', [['id', '=', taxId]],
+            ['id', 'company_id', 'type_tax_use'], { limit: 1 }),
+        ]);
+        const chosen = chosenRows[0] as { company_id: [number, string] | false; type_tax_use: string } | undefined;
+        if (!chosen) {
+          return NextResponse.json({ error: 'That tax is retired or does not exist' }, { status: 400 });
+        }
+        if ((Array.isArray(chosen.company_id) ? chosen.company_id[0] : null) !== WAJ_COMPANY_ID) {
+          return NextResponse.json({ error: 'That tax belongs to a different restaurant' }, { status: 400 });
+        }
+        if (chosen.type_tax_use !== 'sale') {
+          return NextResponse.json({ error: 'That is not a sales tax' }, { status: 400 });
+        }
+        const owned = (owners as { id: number; company_id: [number, string] | false }[])
+          .filter((t) => (Array.isArray(t.company_id) ? t.company_id[0] : null) === WAJ_COMPANY_ID)
+          .map((t) => t.id);
+        const cmds = taxDiffCommands(onProduct, [...owned, taxId], taxId);
+        if (cmds.length > 0) vals.taxes_id = cmds;
+      }
       const posCategId = Number(body.pos_categ_id);
       if (Number.isFinite(posCategId) && posCategId > 0) vals.pos_categ_ids = [[6, 0, [posCategId]]];
 

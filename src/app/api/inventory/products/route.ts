@@ -30,6 +30,7 @@ import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, registerDraftProduct, isDraftProduct, listTemplates, listDraftProductIds, listPortalCreatedProductIds } from '@/lib/inventory-db';
 import { CATALOG_FIELDS, SLIM_CATALOG_FIELDS } from '@/lib/product-scope';
 import { getCachedRelevance, setCachedRelevance, getStaleRelevance, evictOtherExpired } from '@/lib/relevance-cache';
+import { buildProductVals } from '@/lib/product-create';
 
 // Process-level cache for the default category and UOM IDs.
 let _defaultCategId: number | null = null;
@@ -405,15 +406,12 @@ export async function POST(request: Request) {
     const categId = await getDefaultCategId();
     const uomId = await getDefaultUomId();
 
-    const newId = await odoo.create('product.product', {
-      name,
-      barcode,
-      categ_id: categId,
-      uom_id: uomId,
-      uom_po_id: uomId,
-      type: 'consu',
-      active: false,
-    });
+    // Inactive until reviewed, but stock-tracked from the start: it was scanned
+    // off a shelf during a count, so it is by definition something held. This
+    // used to omit is_storable, so approving a scanned product produced one that
+    // could never be counted — the very thing the scan was for.
+    const newId = await odoo.create('product.product',
+      buildProductVals({ name, uomId, categId, barcode, inactive: true }));
 
     registerDraftProduct(newId, barcode, (user as any).id);
 

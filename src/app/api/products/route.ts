@@ -20,6 +20,7 @@ import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, recordPortalCreatedProduct } from '@/lib/inventory-db';
 import { invalidateRelevance } from '@/lib/relevance-cache';
+import { buildProductVals } from '@/lib/product-create';
 
 export const dynamic = 'force-dynamic';
 
@@ -117,24 +118,10 @@ export async function POST(request: Request) {
       }
     }
 
-    const vals: Record<string, unknown> = {
-      name,
-      type: 'consu',            // Odoo 18: "Goods". Services are not stock.
-      is_storable: isStorable,  // THE field every earlier creator here omitted
-      tracking: 'none',         // no lot/serial — a separate decision, made in Odoo
-      categ_id: categId,
-      uom_id: uomId,
-      // Buying unit follows the stock unit. They must share a unit family, and
-      // starting them equal is the only choice guaranteed valid; a different
-      // buying unit is set later on the product page.
-      uom_po_id: uomId,
-    };
-    if (barcode) vals.barcode = barcode;
-    if (defaultCode) vals.default_code = defaultCode;
-    // purchase_ok / sale_ok / company_id are left to Odoo's defaults on purpose:
-    // shared across restaurants and orderable, which is what every product in
-    // this catalog already is. Overriding them here would quietly make products
-    // created from the portal behave unlike every existing one.
+    // Shared with Purchase and the scan-a-barcode flow, so a field added for one
+    // reaches all of them. Those three used to disagree, which is how every
+    // product the portal has ever made ended up untracked in stock.
+    const vals = buildProductVals({ name, uomId, categId, barcode, defaultCode, isStorable });
 
     const productId = await odoo.create('product.product', vals);
 

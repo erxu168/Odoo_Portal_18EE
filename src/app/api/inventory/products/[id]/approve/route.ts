@@ -21,6 +21,7 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, isDraftProduct, markDraftStatus } from '@/lib/inventory-db';
+import { buildDraftApprovalVals } from '@/lib/product-create';
 
 export async function POST(
   request: Request,
@@ -106,28 +107,45 @@ export async function POST(
       }
     }
 
-    // Apply core fields. standard_price goes on product.product if provided.
-    const writeVals: Record<string, any> = {
-      name,
-      categ_id: categId,
-      uom_id: uomId,
-      uom_po_id: uomId,
-      active: true,
-    };
-    if (cost !== null) writeVals.standard_price = cost;
-    await odoo.write('product.product', [productId], writeVals);
-    markDraftStatus(productId, 'approved');
-
-    // Create a supplier info row linking the vendor to the product.
-    // product.supplierinfo.product_tmpl_id is the template; price is cost.
+    // ORDER MATTERS. The supplier row is written FIRST, and the product is only
+    // activated and marked approved once it has succeeded.
+    //
+    // It used to run the other way: activate, mark approved, then create the
+    // supplier. A supplier failure then returned a 500 to a manager whose product
+    // was already live and already gone from the review queue — so the error said
+    // "it failed" while the work was half done and no longer reachable. This way
+    // a supplier failure leaves the draft exactly as it was, and the manager can
+    // simply try again.
+    //
+    // The remaining risk is inverted and much smaller: if the activation below
+    // fails after the supplier row is written, a vendor price sits on a product
+    // still awaiting review. The write is an upsert keyed on (template, vendor),
+    // so retrying corrects it rather than stacking rows.
     if (vendorId !== null && templateId) {
-      await odoo.create('product.supplierinfo', {
-        partner_id: vendorId,
-        product_tmpl_id: templateId,
-        price: cost !== null ? cost : 0,
-        min_qty: 0,
-      });
+      // Upsert, not create. If the supplier row succeeds and the activation
+      // below fails, the draft stays pending and the manager retries — and a
+      // plain create would add a second row every time, or leave a stale price
+      // behind if they corrected the cost. Nothing in the review screen shows
+      // these rows, so nobody would ever see the pile.
+      const existingLink = await odoo.searchRead('product.supplierinfo',
+        [['product_tmpl_id', '=', templateId], ['partner_id', '=', vendorId]],
+        ['id'], { limit: 1 });
+      const linkVals = { price: cost !== null ? cost : 0, min_qty: 0 };
+      if (existingLink.length > 0) {
+        await odoo.write('product.supplierinfo', [existingLink[0].id as number], linkVals);
+      } else {
+        await odoo.create('product.supplierinfo', {
+          partner_id: vendorId, product_tmpl_id: templateId, ...linkVals,
+        });
+      }
     }
+
+    // is_storable is set here too (see lib/product-create.ts): a scanned product
+    // is something on a shelf, and approving it without this produced a product
+    // that could never take the count it was scanned for.
+    await odoo.write('product.product', [productId],
+      buildDraftApprovalVals({ name, uomId, categId, cost }));
+    markDraftStatus(productId, 'approved');
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
