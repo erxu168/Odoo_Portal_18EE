@@ -81,3 +81,10 @@ android/**/src/main/assets/public/
 android/**/output-metadata.json
 *.apk
 *.aab
+
+# Department Device app (apps/department-device) — android/, web stub and adaptive
+# icon layers are all generated per build, never committed.
+/apps/department-device/android/
+/apps/department-device/www/
+/apps/department-device/assets/icon-foreground.png
+/apps/department-device/assets/icon-background.png
