@@ -171,6 +171,7 @@ and simultaneous staging builds broke each other. Rules:
 9. Unused params: remove or prefix with `_`
 10. JSX apostrophes block build — use `\u2019` (right single quote)
 11. Don't pipe `npm run build` — it masks the exit code
+12. `npx tsc --noEmit` is NOT the full deploy gate: **ESLint errors fail the staging build** (`next build` lints; a single `no-unused-expressions` quarantined a SHA on 2026-07-29). Before pushing, also run `npx next lint --file <changed files>`.
 
 ## Role Hierarchy (enforced in UI and API)
 
