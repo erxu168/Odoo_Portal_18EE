@@ -21,11 +21,15 @@ on:
     paths:
       - 'apps/portal/**'
       - '.github/workflows/android-apk.yml'
+      - 'package.json'
+      - 'package-lock.json'
   push:
     branches: [ main ]
     paths:
       - 'apps/portal/**'
       - '.github/workflows/android-apk.yml'
+      - 'package.json'
+      - 'package-lock.json'
 
 jobs:
   build:
