@@ -17,9 +17,21 @@ import { initFloorplanTables } from './db';
 import { normalizeCode, polygonCentroid, validStoredPolygon } from './geometry';
 import type { Pt } from './types';
 
+export type PublishFailCode = 'not_found' | 'not_draft' | 'conflict' | 'bad_coords' | 'company_mismatch' | 'duplicate_codes';
+
 export type PublishResult =
   | { ok: true; createdRooms: number; createdSpots: number; linked: number; anchors: number }
-  | { ok: false; code: 'not_found' | 'not_draft' | 'conflict' | 'bad_coords' | 'company_mismatch' | 'duplicate_codes'; detail?: string };
+  | { ok: false; code: PublishFailCode; detail?: string };
+
+/**
+ * Failure INSIDE the transaction must THROW — better-sqlite3 only rolls back
+ * on exceptions. An early `return` after the first INSERT would silently
+ * COMMIT a half-published plan (this exact bug shipped to the dev seed run:
+ * a duplicate-code failure left 19 rooms behind).
+ */
+class PublishAbort extends Error {
+  constructor(public code: PublishFailCode, public detail?: string) { super(code); }
+}
 
 interface CandRow {
   id: number;
@@ -42,18 +54,18 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
 
   let result: PublishResult = { ok: false, code: 'not_found' };
 
-  db.transaction(() => {
+  const run = db.transaction(() => {
     const rev = db.prepare('SELECT * FROM inventory_floor_revisions WHERE id = ?').get(revisionId) as
       | { id: number; floor_id: number; status: string; version: number }
       | undefined;
-    if (!rev) { result = { ok: false, code: 'not_found' }; return; }
-    if (rev.status !== 'draft') { result = { ok: false, code: 'not_draft' }; return; }
-    if (rev.version !== expectedVersion) { result = { ok: false, code: 'conflict' }; return; }
+    if (!rev) throw new PublishAbort('not_found');
+    if (rev.status !== 'draft') throw new PublishAbort('not_draft');
+    if (rev.version !== expectedVersion) throw new PublishAbort('conflict');
 
     const floor = db.prepare('SELECT * FROM inventory_floors WHERE id = ?').get(rev.floor_id) as
       | { id: number; company_id: number; current_revision_id: number | null }
       | undefined;
-    if (!floor) { result = { ok: false, code: 'not_found' }; return; }
+    if (!floor) throw new PublishAbort('not_found');
     const companyId = floor.company_id;
 
     const kept = (db.prepare(
@@ -66,8 +78,7 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
       let poly: unknown;
       try { poly = JSON.parse(c.polygon); } catch { poly = null; }
       if (!validPolygon(poly)) {
-        result = { ok: false, code: 'bad_coords', detail: `"${c.raw_text}" has an invalid position` };
-        return;
+        throw new PublishAbort('bad_coords', `"${c.raw_text}" has an invalid position`);
       }
       polys.set(c.id, poly);
     }
@@ -76,8 +87,7 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
     for (const c of kept.filter(k => k.disposition === 'linked')) {
       const loc = c.linked_location_id ? getCountLocation(c.linked_location_id) : null;
       if (!loc || loc.company_id !== companyId) {
-        result = { ok: false, code: 'company_mismatch', detail: `"${c.raw_text}" links to a spot outside this restaurant` };
-        return;
+        throw new PublishAbort('company_mismatch', `"${c.raw_text}" links to a spot outside this restaurant`);
       }
     }
 
@@ -91,10 +101,7 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
     for (const c of roomCands) {
       const label = c.raw_text.trim();
       const key = normalizeCode(label);
-      if (roomIds.has(key)) {
-        result = { ok: false, code: 'duplicate_codes', detail: `Room "${label}" appears twice` };
-        return;
-      }
+      if (roomIds.has(key)) throw new PublishAbort('duplicate_codes', `Room "${label}" appears twice`);
       const already = existingByName.get(key);
       if (already) {
         roomIds.set(key, already.id); // room already exists → reuse, don't duplicate
@@ -141,12 +148,10 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
       const roomId = resolveRoom(c.proposed_room);
       const dupKey = `${roomId ?? 'none'}|${code}`;
       if (claimed.has(dupKey)) {
-        result = { ok: false, code: 'duplicate_codes', detail: `"${code}" appears twice in the same room — rename or untick one` };
-        return;
+        throw new PublishAbort('duplicate_codes', `"${code}" appears twice in the same room — rename or untick one`);
       }
       if (roomId !== null && childrenByParent.get(roomId)?.has(code)) {
-        result = { ok: false, code: 'duplicate_codes', detail: `"${code}" already exists in that room — link it instead of creating a copy` };
-        return;
+        throw new PublishAbort('duplicate_codes', `"${code}" already exists in that room — link it instead of creating a copy`);
       }
       claimed.set(dupKey, c.raw_text);
       spotPlan.push({ cand: c, roomId, locationId: null });
@@ -207,7 +212,13 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
     });
 
     result = { ok: true, createdRooms, createdSpots, linked, anchors };
-  })();
+  });
 
+  try {
+    run();
+  } catch (e: unknown) {
+    if (e instanceof PublishAbort) return { ok: false, code: e.code, detail: e.detail };
+    throw e;
+  }
   return result;
 }

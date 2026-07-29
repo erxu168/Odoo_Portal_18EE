@@ -178,6 +178,25 @@ test('creating a code that already exists in that room tells the reviewer to lin
   expect((res as { detail?: string }).detail).toContain('link');
 });
 
+test('a failure AFTER the first write still rolls back everything (throw-inside-transaction)', () => {
+  // Regression: early `return` inside db.transaction() COMMITS what was already
+  // written — a duplicate-code failure once left 19 rooms behind on the dev
+  // seed. The duplicate here is detected AFTER the room insert would run.
+  const before = (listCountLocations(CO) as unknown[]).length;
+  const { revId } = seed([
+    roomCand(0, 'Rollback Room'),
+    spotCand(1, 'SLF 7', 'shelf', 'Rollback Room'),
+    spotCand(2, 'SLF 7', 'shelf', 'Rollback Room'),
+  ]);
+  setDispositions(revId, 'create');
+  const res = publishRevision(revId, ACTOR, 1);
+  expect(res.ok).toBe(false);
+  expect((res as { code: string }).code).toBe('duplicate_codes');
+  expect((listCountLocations(CO) as unknown[]).length).toBe(before); // the room must NOT survive
+  expect((listCountLocations(CO) as Array<{ name: string }>).find(l => l.name === 'Rollback Room')).toBeUndefined();
+  expect(getRevision(revId)!.status).toBe('draft');
+});
+
 test('a new revision supersedes the previous published one', () => {
   const { floorId, revId } = seed([roomCand(0, 'Room F')]);
   setDispositions(revId, 'create');
