@@ -28,6 +28,7 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, registerDraftProduct, isDraftProduct, listTemplates, listDraftProductIds } from '@/lib/inventory-db';
+import { CATALOG_FIELDS, SLIM_CATALOG_FIELDS } from '@/lib/product-scope';
 
 // Process-level cache for the default category and UOM IDs.
 let _defaultCategId: number | null = null;
@@ -320,10 +321,28 @@ export async function GET(request: Request) {
       else domain.push(['active', '=', true]);
     }
 
+    // slim=1: the same DOMAIN, a fraction of the payload. The Products
+    // dashboard prints counts of exactly this list, and the only way a tile can
+    // be guaranteed not to contradict the screen it opens is to ask the same
+    // question — so it asks this one, minus the HTML descriptions and supplier
+    // hydration it has no use for.
+    const slim = searchParams.get('slim') === '1';
     const products = await odoo.searchRead('product.product', domain,
-      ['id', 'name', 'default_code', 'product_tmpl_id', 'categ_id', 'uom_id', 'type', 'barcode', 'active', 'available_in_pos', 'company_id', 'description'],
+      slim ? [...SLIM_CATALOG_FIELDS] : [...CATALOG_FIELDS],
       { limit, order: 'categ_id, name', context: { active_test: false } }
     );
+
+    if (slim) {
+      return NextResponse.json({
+        products: products.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          active: p.active,
+          is_storable: p.is_storable,
+          is_draft: p.active === false && isDraftProduct(p.id),
+        })),
+      });
+    }
 
     // Tag portal-created drafts, and surface the internal display name + order
     // code + (when matched) the supplier's wording so the picker can show the

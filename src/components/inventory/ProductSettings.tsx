@@ -9,14 +9,27 @@ import ProductDetail from './ProductDetail';
 import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
 import { plainFromOdooHtml } from '@/lib/odoo-html';
+import { recordHref } from '@/lib/record-links';
+
+/** The setup gaps this screen can filter to. */
+export type ProductGap = 'untracked' | 'spot' | 'pack' | 'photo' | 'picture';
 
 interface ProductSettingsProps {
   onBack: () => void;
   /** Open the batch photo grid. Omitted where the screen has no route to it. */
   onBatchPhotos?: () => void;
+  /**
+   * Arrive with a gap already selected — how a dashboard tile hands over to the
+   * list. The filter stays fully editable afterwards; this only sets where the
+   * user lands, so tapping "3 need a picture" does not then require finding and
+   * tapping the same filter again.
+   */
+  initialGap?: ProductGap | null;
+  /** Heading, so the same list can present itself as the screen the tile promised. */
+  title?: string;
 }
 
-export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettingsProps) {
+export default function ProductSettings({ onBack, onBatchPhotos, initialGap = null, title = 'Product settings' }: ProductSettingsProps) {
   const { companyId } = useCompany();
   const [products, setProducts] = useState<any[]>([]);
   const [flags, setFlags] = useState<Record<number, boolean>>({});
@@ -76,7 +89,7 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
   // This screen's real job is finding what still needs setting up, so the
   // filters are gaps first ("no spot yet") and only then narrowing by where a
   // product lives or what it is.
-  const [gap, setGap] = useState<null | 'spot' | 'pack' | 'photo' | 'picture'>(null);
+  const [gap, setGap] = useState<ProductGap | null>(initialGap);
   const [catId, setCatId] = useState<number | null>(null);
   const [locId, setLocId] = useState<number | null>(null);
   const [catPick, setCatPick] = useState(false);
@@ -112,12 +125,18 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
   const [cats, setCats] = useState<CategoryRow[]>([]);
   const [locs, setLocs] = useState<PickableLocation[]>([]);
   const [loading, setLoading] = useState(true);
+  const loadRef = React.useRef(0);                                              // newest-request token
 
   useEffect(() => {
     // WAIT for the restaurant. Without this the first paint fetched unscoped and
     // showed all 500 products — every restaurant's — under a header naming one.
     // The ribbon is the source of truth, so nothing is listed until it has spoken.
     if (!companyId) return;
+    // Only the NEWEST request may write state. Switching restaurant twice
+    // quickly otherwise lets the first reply land last, leaving one
+    // restaurant's products under another's name — and the dashboard, which
+    // does guard, would then disagree with this screen for no visible reason.
+    const token = ++loadRef.current;
     async function load() {
       setLoading(true);
       try {
@@ -126,6 +145,7 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
           fetch('/api/inventory/product-flags').then(r => r.json()),
           fetch('/api/inventory/product-images').then(r => r.json()).catch(() => ({ with_images: [] })),
         ]);
+        if (token !== loadRef.current) return;
         setImageIds(new Set<number>(imgRes.with_images || []));
         const prods = (prodRes.products || []).filter((p: any) => p.active !== false);
         setProducts(prods);
@@ -149,7 +169,7 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
       } catch (err) {
         console.error('Failed to load product settings:', err);
       } finally {
-        setLoading(false);
+        if (token === loadRef.current) setLoading(false);
       }
     }
     load();
@@ -210,6 +230,11 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
     pack: (p: any) => !hasPack[p.id],
     photo: (p: any) => !flags[p.id],
     picture: (p: any) => !imageIds.has(p.id),
+    // Odoo 18 asks "is it a physical good?" (type) and "do we track how much of
+    // it we hold?" (is_storable) separately, and the second defaults to NO.
+    // A product with it off holds no stock figure, so an approved count has
+    // nowhere to write — which is why this gap is listed first below.
+    untracked: (p: any) => p.is_storable === false,
   }), [homeSpots, hasPack, flags, imageIds]);
 
   // The one live set. Everything that counts products on this screen — the
@@ -232,6 +257,7 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
   // Counts are of what the OTHER filters already left, so a chip never promises
   // more than tapping it delivers.
   const gapCounts = useMemo(() => ({
+    untracked: narrowed.filter(missing.untracked).length,
     spot: narrowed.filter(missing.spot).length,
     pack: narrowed.filter(missing.pack).length,
     photo: narrowed.filter(missing.photo).length,
@@ -251,7 +277,7 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
         <button onClick={onBack} className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center active:bg-gray-200">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
-        <h1 className="text-[var(--fs-xl)] font-bold text-gray-900">Product settings</h1>
+        <h1 className="text-[var(--fs-xl)] font-bold text-gray-900 min-w-0 truncate">{title}</h1>
       </div>
 
       <div className="px-4 pb-1 flex items-start gap-2 text-[var(--fs-xs)] text-gray-500 leading-snug">
@@ -280,6 +306,9 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
           All {narrowed.length}
         </button>
         {([
+          // First, because it is the only gap that stops a count reaching Odoo
+          // at all — the rest merely make counting slower or less certain.
+          ['untracked', 'Not counted', gapCounts.untracked],
           ['spot', 'No spot', gapCounts.spot],
           ['pack', 'No pack size', gapCounts.pack],
           ['photo', 'No photo rule', gapCounts.photo],
@@ -322,7 +351,7 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
         {gap ? (
           <>
             Showing <strong className="text-gray-900">{filtered.length}</strong> product{filtered.length === 1 ? '' : 's'} with{' '}
-            {{ spot: 'no spot set', pack: 'no pack size', photo: 'no photo rule', picture: 'no picture' }[gap]}
+            {{ untracked: 'no stock figure in Odoo — a count of these cannot be saved', spot: 'no spot set', pack: 'no pack size', photo: 'no photo rule', picture: 'no picture' }[gap]}
             {narrowed.length !== filtered.length && <> {'\u00B7'} {narrowed.length - filtered.length} hidden</>}
           </>
         ) : (
@@ -359,6 +388,9 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
                       <div className="text-[var(--fs-xs)] text-blue-700 mt-0.5 truncate">📝 {plainFromOdooHtml(p.description)}</div>
                     )}
                     <div className="flex flex-wrap gap-1 mt-1">
+                      {p.is_storable === false && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300">⚠️ Not counted in stock</span>
+                      )}
                       {on && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200">📷 Photo required</span>}
                       {spots.length > 0 ? spots.map((sid) => (
                         <span key={sid} className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 max-w-full break-words">📍 {spotLabels[sid] || `Spot ${sid}`}</span>
@@ -379,6 +411,12 @@ export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettin
         <ProductDetail
           product={detailFor}
           hasImage={imageIds.has(detailFor.id)}
+          // The overlay is right for this screen — you work down a list of
+          // fifty products and closing one must put you back where you were,
+          // not at the top of a reloaded list. The portal's canonical-record
+          // rule allows that only WITH a way out to the real page, which this
+          // mount was missing.
+          fullPageHref={recordHref('product', detailFor.id)}
           onClose={() => setDetailFor(null)}
           onChanged={(patch) => {
             if (patch.flags) {
