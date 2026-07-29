@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import { CompanyPill } from '@/components/ui/CompanyPill';
 import { processPdf, suggestRooms, buildRevisionFormData, countPdfPages } from '@/lib/inventory-floorplan/pdf-client';
+import { allowedActionKeysForRole } from '@/lib/permissions';
 import type { FloorplanTypeInfo } from '@/lib/inventory-floorplan/manifest';
 
 interface FloorRow {
@@ -31,6 +32,15 @@ export default function FloorplanManage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadFloorRef = useRef<number | null>(null);
   const tokenRef = useRef(0);
+  const [capabilities, setCapabilities] = useState<string[]>(() => allowedActionKeysForRole('staff', {}));
+  const [capsLoaded, setCapsLoaded] = useState(false);
+  useEffect(() => {
+    fetch('/api/auth/me').then(r => r.json()).then(d => {
+      if (Array.isArray(d.user?.capabilities)) setCapabilities(d.user.capabilities);
+      setCapsLoaded(true);
+    }).catch(() => setCapsLoaded(true));
+  }, []);
+  const canManage = capabilities.includes('inventory.location.manage');
 
   const load = useCallback(() => {
     const token = ++tokenRef.current;
@@ -118,8 +128,15 @@ export default function FloorplanManage() {
         onBack={() => router.push('/inventory/floorplan')}
         action={<CompanyPill onSwitched={load} />}
       />
+      {capsLoaded && !canManage && (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-8 text-center">
+          <div className="text-3xl">🔒</div>
+          <p className="text-[14px] font-semibold text-gray-800">Managers only</p>
+          <p className="text-[12.5px] text-gray-500">Managing floor plans needs the location-manage permission.</p>
+        </div>
+      )}
       <input ref={fileRef} type="file" accept="application/pdf" className="hidden" onChange={e => onFile(e.target.files?.[0] ?? null)} />
-      <div className="flex flex-col gap-3 p-4">
+      <div className={`flex flex-col gap-3 p-4 ${capsLoaded && !canManage ? 'hidden' : ''}`}>
         {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700">{error}</div>}
         {busy && <div className="rounded-xl bg-blue-50 px-4 py-3 text-[13px] font-medium text-blue-700">{busy}</div>}
 

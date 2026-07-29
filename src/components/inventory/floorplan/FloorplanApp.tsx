@@ -13,6 +13,7 @@ import AppHeader from '@/components/ui/AppHeader';
 import { CompanyPill } from '@/components/ui/CompanyPill';
 import { allowedActionKeysForRole } from '@/lib/permissions';
 import type { FloorplanManifest, FloorplanTypeInfo } from '@/lib/inventory-floorplan/manifest';
+import { cacheFloorplan, getCachedFloorplan } from '@/lib/inventory-floorplan/offline';
 import FloorplanMap, { type FlyTarget } from './FloorplanMap';
 import FloorplanSearch from './FloorplanSearch';
 import FloorplanSpotSheet from './FloorplanSpotSheet';
@@ -46,8 +47,12 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const [addForm, setAddForm] = useState<{ x: number; y: number; code: string; roomId: number | null } | null>(null);
   const [editSel, setEditSel] = useState<{ anchorId: number; locationId: number; label: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
+  const [offlineFrom, setOfflineFrom] = useState<string | null>(null);
+  const [offlineRasters, setOfflineRasters] = useState<Record<number, string>>({});
   const tokenRef = useRef(0);
   const seqRef = useRef(0);
+  const userIdRef = useRef<number | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toast = (msg: string) => {
     setNotice(msg);
@@ -58,6 +63,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
       if (Array.isArray(d.user?.capabilities)) setCapabilities(d.user.capabilities);
+      if (typeof d.user?.id === 'number') { setUserId(d.user.id); userIdRef.current = d.user.id; }
     }).catch(() => { /* keep staff defaults */ });
   }, []);
 
@@ -79,6 +85,8 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         const data = d as ManifestResponse;
         setResp(data);
         setState('ready');
+        setOfflineFrom(null);
+        setOfflineRasters({});
         const floors = data.manifest?.floors.filter(f => f.revision) ?? [];
         let floorId: number | null = null;
         if (data.focus) floorId = data.focus.floorId;
@@ -94,10 +102,39 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           setFlyTo({ cx: data.focus.cx, cy: data.focus.cy, seq: ++seqRef.current });
         }
       })
-      .catch(() => { if (tokenRef.current === token) setState('error'); });
+      .catch(async () => {
+        if (tokenRef.current !== token) return;
+        // No network — fall back to the last complete snapshot for this
+        // user+company (opened at least once online), clearly labelled.
+        const cookieCompany = typeof document !== 'undefined'
+          ? parseInt((document.cookie.match(/(?:^|; )kw_company_id=(\d+)/) || [])[1] ?? '0', 10)
+          : 0;
+        const uid = userIdRef.current;
+        if (uid && cookieCompany) {
+          const cached = await getCachedFloorplan(uid, cookieCompany);
+          if (tokenRef.current === token && cached) {
+            setResp({ manifest: cached.manifest, focus: null, focusMissing: false });
+            setOfflineRasters(cached.rasterUrls);
+            setOfflineFrom(cached.cachedAt);
+            setState('ready');
+            const floors = cached.manifest.floors.filter(f => f.revision);
+            setActiveFloorId(floors[0]?.id ?? null);
+            return;
+          }
+        }
+        if (tokenRef.current === token) setState('error');
+      });
   }, [focusLocationId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // After a successful ONLINE load, snapshot the plan for offline use.
+  useEffect(() => {
+    if (state === 'ready' && resp?.manifest && userId && !offlineFrom) {
+      void cacheFloorplan(userId, resp.manifest);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, resp?.manifest, userId, offlineFrom]);
 
   const manifest = resp?.manifest ?? null;
   const typesByKey = useMemo(() => {
@@ -249,6 +286,11 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   return (
     <div className={rootClass}>
       {header}
+      {offlineFrom && (
+        <div className="bg-amber-500 px-3 py-1.5 text-center text-[11.5px] font-bold text-white">
+          Offline — showing the plan saved {new Date(offlineFrom).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+        </div>
+      )}
       {resp?.focusMissing && (
         <div className="mx-3 mt-2 rounded-xl bg-amber-50 px-4 py-2.5 text-[12.5px] font-medium text-amber-800">
           This spot isn’t placed on a floor plan yet — a manager can add it in edit mode.
@@ -319,7 +361,9 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       )}
       <div className="relative min-h-0 flex-1">
         <FloorplanMap
-          revision={activeFloor.revision}
+          revision={offlineFrom && activeFloor.revision && offlineRasters[activeFloor.revision.id]
+            ? { ...activeFloor.revision, rasterUrl: offlineRasters[activeFloor.revision.id] }
+            : activeFloor.revision}
           anchors={activeAnchors}
           typesByKey={typesByKey}
           selectedId={selectedId}

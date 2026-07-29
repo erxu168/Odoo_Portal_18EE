@@ -42,6 +42,15 @@ export default function AppDrawer({ open, onClose }: AppDrawerProps) {
   async function handleLogout() {
     setLoggingOut(true);
     try {
+      // Cached floor plans are per-user company data on possibly-shared
+      // devices — drop them before the session ends (best effort).
+      try {
+        const me = await fetch('/api/auth/me').then(r => r.json()).catch(() => null);
+        if (me?.user?.id) {
+          const { clearFloorplanCache } = await import('@/lib/inventory-floorplan/offline');
+          await clearFloorplanCache(me.user.id);
+        }
+      } catch { /* never block logout */ }
       await fetch('/api/auth/logout', { method: 'POST' });
       onClose();
       router.push('/login');
