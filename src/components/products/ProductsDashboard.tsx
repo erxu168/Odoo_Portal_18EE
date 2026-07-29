@@ -25,6 +25,8 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { ActionGrid, ActionCard } from '@/components/ui/ActionCard';
+import CreateProductSheet from '@/components/products/CreateProductSheet';
+import { useAddProduct } from '@/components/products/useAddProduct';
 import { useCompany } from '@/lib/company-context';
 
 interface Counts {
@@ -43,6 +45,7 @@ export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen:
   // quick succession otherwise lets the FIRST reply land last and print the
   // wrong restaurant's numbers under the new name.
   const reqRef = useRef(0);
+  const add = useAddProduct();
 
   useEffect(() => {
     if (!companyId) return;
@@ -133,6 +136,13 @@ export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen:
         </div>
       )}
 
+      <button
+        onClick={add.start}
+        className="w-full mb-4 bg-green-600 text-white rounded-2xl py-4 text-[var(--fs-base)] font-bold active:bg-green-700 active:scale-[0.99] transition-transform"
+      >
+        + Add a product
+      </button>
+
       <ActionGrid
         items={tiles}
         getItemId={(t) => t.key}
@@ -145,6 +155,22 @@ export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen:
             badge={tile.badge ? { value: tile.badge, tone: tile.danger ? 'danger' : 'count', ariaLabel: `${tile.badge} ${tile.label}` } : undefined}
           />
         )}
+      />
+
+      <CreateProductSheet
+        open={add.open}
+        initialName=""
+        units={add.units}
+        categories={add.categories}
+        saving={add.saving}
+        error={add.error}
+        context="catalog"
+        canCreateCategory
+        onClose={add.close}
+        onCreate={(p) => add.create({
+          name: p.name, uom_id: p.uom_id, categ_id: p.categ_id,
+          default_code: p.default_code, barcode: p.barcode, is_storable: p.is_storable,
+        })}
       />
     </div>
   );

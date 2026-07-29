@@ -493,11 +493,16 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
       });
       const d = await res.json().catch(() => ({}));
 
-      if (res.status === 409 && d.existing_id) {
+      // An ACTIVE product of that name already exists — resolve to it instead of
+      // dead-ending. An ARCHIVED one must not be pulled onto a live counting
+      // list silently: it is hidden everywhere else and staff would be asked to
+      // count something the business has retired.
+      if (res.status === 409 && d.existing_id && d.existing_active !== false && d.code !== 'NAME_EXISTS_ARCHIVED') {
         if (await addExistingProductById(d.existing_id)) { setCreateOpen(false); setCreateName(''); }
         else setCreateErr(d.error || 'That product already exists but could not be added');
         return;
       }
+      if (res.status === 409) { setCreateErr(d.error || 'That product already exists'); return; }
       if (!res.ok || !d.product?.id) { setCreateErr(d.error || 'Could not create the product'); return; }
 
       const p = d.product;

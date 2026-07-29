@@ -8,15 +8,18 @@
  * read-only rather than an access wall.
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Spinner } from '@/components/inventory/ui';
 import ProductDetail from '@/components/inventory/ProductDetail';
 import { allowedActionKeysForRole, type Role } from '@/lib/permissions';
 import { RECORD_EDIT_CAP } from '@/lib/record-links';
 
 // Next 14 passes route params as a plain object to client pages.
-export default function ProductRecordPage({ params }: { params: { id: string } }) {
+function ProductRecord({ params }: { params: { id: string } }) {
   const router = useRouter();
+  // ?new=1 — arrived straight from "Add a product", so the page leads with what
+  // is still missing instead of a screen of empty fields.
+  const justCreated = useSearchParams().get('new') === '1';
   // Validate the WHOLE segment — "12junk" must not resolve to product 12.
   const productId = /^\d+$/.test(params.id) ? parseInt(params.id, 10) : NaN;
 
@@ -87,6 +90,7 @@ export default function ProductRecordPage({ params }: { params: { id: string } }
       product={product}
       hasImage={hasImage}
       readOnly={!canEdit}
+      justCreated={justCreated}
       onClose={back}
       onChanged={(patch) => {
         // No parent list to patch here, but the page holds its own copy of the
@@ -95,5 +99,14 @@ export default function ProductRecordPage({ params }: { params: { id: string } }
         if (patch.active !== undefined) setProduct((prev: any) => (prev ? { ...prev, active: patch.active } : prev));
       }}
     />
+  );
+}
+
+export default function ProductRecordPage({ params }: { params: { id: string } }) {
+  // useSearchParams needs a Suspense boundary in the app router.
+  return (
+    <React.Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center"><Spinner /></div>}>
+      <ProductRecord params={params} />
+    </React.Suspense>
   );
 }

@@ -27,8 +27,9 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, registerDraftProduct, isDraftProduct, listTemplates, listDraftProductIds } from '@/lib/inventory-db';
+import { initInventoryTables, registerDraftProduct, isDraftProduct, listTemplates, listDraftProductIds, listPortalCreatedProductIds } from '@/lib/inventory-db';
 import { CATALOG_FIELDS, SLIM_CATALOG_FIELDS } from '@/lib/product-scope';
+import { getCachedRelevance, setCachedRelevance, getStaleRelevance, evictOtherExpired } from '@/lib/relevance-cache';
 
 // Process-level cache for the default category and UOM IDs.
 let _defaultCategId: number | null = null;
@@ -42,9 +43,6 @@ let _defaultUomId: number | null = null;
 // quant in X, is a component of one of X's (or a shared) BOM, sits on one of
 // X's purchase lines, or is referenced by a portal counting template.
 // Company-TAGGED products are always shown regardless (see domain below).
-const RELEVANT_TTL_MS = 5 * 60 * 1000;
-const _relevantCache = new Map<number, { ids: number[]; at: number }>();
-
 /**
  * searchRead everything matching `domain`, paginating by an id cursor so a
  * large set is never silently truncated (Odoo returns at most `limit` rows
@@ -72,15 +70,9 @@ async function readAllByIdCursor(
 }
 
 async function getRelevantProductIds(companyId: number): Promise<number[]> {
-  const hit = _relevantCache.get(companyId);
-  if (hit && Date.now() - hit.at < RELEVANT_TTL_MS) return hit.ids;
-  // Evict OTHER companies' expired entries so arbitrary company ids can't
-  // grow the map forever. This company's expired entry stays until a
-  // successful refresh overwrites it — during an Odoo outage every request
-  // then consistently serves the stale set (and retries the refresh).
-  _relevantCache.forEach((v, k) => {
-    if (k !== companyId && Date.now() - v.at >= RELEVANT_TTL_MS) _relevantCache.delete(k);
-  });
+  const fresh = getCachedRelevance(companyId);
+  if (fresh) return fresh;
+  evictOtherExpired(companyId);
 
   try {
     const ids = new Set<number>();
@@ -125,14 +117,20 @@ async function getRelevantProductIds(companyId: number): Promise<number[]> {
       }
     }
 
+    // 5. Created by this portal. A product made a minute ago has no stock, no
+    // BOM, no order and is on no list — every signal above misses it, so without
+    // this it disappears from the catalog it was created on.
+    listPortalCreatedProductIds().forEach((pid) => ids.add(pid));
+
     const arr = Array.from(ids);
-    _relevantCache.set(companyId, { ids: arr, at: Date.now() });
+    setCachedRelevance(companyId, arr);
     return arr;
   } catch (e) {
     // A stale set beats failing open (all shared products) or closed (none)
-    if (hit) {
+    const stale = getStaleRelevance(companyId);
+    if (stale) {
       console.error('[relevant-products] refresh failed — serving stale cache:', e);
-      return hit.ids;
+      return stale;
     }
     throw e;
   }

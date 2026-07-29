@@ -47,7 +47,7 @@ async function downscale(file: File, maxDim = 1024, quality = 0.7): Promise<stri
   } catch { return dataUrl; }
 }
 
-export default function ProductDetail({ product, hasImage, onClose, onChanged, readOnly = false, fullPageHref, baseZ = 100 }: {
+export default function ProductDetail({ product, hasImage, onClose, onChanged, readOnly = false, fullPageHref, baseZ = 100, justCreated = false }: {
   product: { id: number; name: string; uom_id?: [number, string]; categ_id?: [number, string]; barcode?: string | false; active?: boolean; is_draft?: boolean };
   hasImage: boolean;
   onClose: () => void;
@@ -82,6 +82,13 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   fullPageHref?: string;
   /** Base z-index (Tailwind numeric) so this can stack ABOVE another sheet. */
   baseZ?: number;
+  /**
+   * Arrived here straight from "Add a product". The intake sheet asks only what
+   * cannot be guessed, so a brand-new product is deliberately incomplete — this
+   * says WHICH parts, in the order they matter, instead of presenting a page of
+   * empty fields and leaving the manager to work out what counts.
+   */
+  justCreated?: boolean;
 }) {
   const { companyId } = useCompany();
   const [name, setName] = useState(product.name);
@@ -630,6 +637,61 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
 
       {loading ? <Spinner /> : (
         <div className="flex-1 overflow-y-auto px-5 py-4">
+          {/* WHAT IS STILL MISSING. Shown only straight after creating, and only
+              while something is actually outstanding, so it is a hand-off from
+              the intake sheet rather than a permanent nag. Ticks update live as
+              each field saves — every item below reads the same state the
+              section it points at writes. */}
+          {justCreated && !readOnly && (() => {
+            const items = [
+              { done: img, label: 'Add a picture', why: 'so staff match it on the shelf' },
+              // master0 is what Odoo HAS, not what is in the box. Reading the
+              // input would tick the moment someone typed a digit, and stay
+              // ticked if the save then failed.
+              { done: !!master0 && master0.standard_price !== '' && Number(master0.standard_price) > 0,
+                label: 'What you pay for it', why: 'gives the stock a value' },
+              ...(taxOpts.purchase.length > 0 || taxOpts.sale.length > 0
+                ? [{ done: purchaseTax != null || saleTax != null, label: 'Tax', why: 'for this restaurant' }] : []),
+              { done: homeSpots.length > 0, label: 'Where it lives', why: 'puts it on the right counting walk' },
+              { done: parMin !== '' || parMax !== '', label: 'Par level', why: 'how much to keep in' },
+            ];
+            const left = items.filter((i) => !i.done);
+            // Only claim it is countable when it actually is. The intake switch
+            // can be turned off deliberately, and then no count of it can ever
+            // be saved — saying "ready to count" would be a plain untruth.
+            const countable = storable !== false;
+            if (left.length === 0) {
+              return (
+                <div className="mb-4 bg-green-50 border border-green-300 rounded-xl p-3 text-[var(--fs-sm)] font-bold text-green-800">
+                  ✓ That is everything {'—'} this product is ready to {countable ? 'count and order' : 'order'}.
+                </div>
+              );
+            }
+            return (
+              <div className="mb-4 bg-white border border-gray-200 rounded-xl p-3">
+                <div className="text-[var(--fs-sm)] font-bold text-gray-900 mb-0.5">Product created</div>
+                <div className="text-[var(--fs-xs)] text-gray-500 mb-2.5">
+                  {countable
+                    ? 'It can be counted and ordered already.'
+                    : 'It can be ordered already, but it is not counted in stock — see Stock below.'}{' '}
+                  {left.length} thing{left.length === 1 ? '' : 's'} would make it better:
+                </div>
+                <ul className="space-y-1.5">
+                  {items.map((i) => (
+                    <li key={i.label} className="flex items-start gap-2 text-[var(--fs-xs)]">
+                      <span className={`flex-shrink-0 mt-[1px] ${i.done ? 'text-green-600' : 'text-gray-300'}`} aria-hidden="true">
+                        {i.done ? '✓' : '○'}
+                      </span>
+                      <span className={i.done ? 'text-gray-400 line-through' : 'text-gray-700'}>
+                        <span className="font-semibold">{i.label}</span>
+                        <span className="text-gray-400"> {'—'} {i.why}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
           {/* PHOTO.
               Tapping the picture SHOWS it, full screen and zoomable — that is
               what a person expects a picture to do, and it is the thing that

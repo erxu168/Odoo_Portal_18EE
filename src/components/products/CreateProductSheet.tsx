@@ -12,6 +12,7 @@ interface CategoryOption { id: number; name: string }
  * own), and `context` only tunes the copy, accent, and which extra fields show.
  *  - 'purchase'  → price + supplier code + par level, "Create & add to guide"
  *  - 'inventory' → name/unit/category only,          "Create & add to list"
+ *  - 'catalog'   → + barcode and the stock switch,   "Create product"
  *
  * When `canCreateCategory` is set, the Category select also offers an in-place
  * "+ New category" (no dead-end picker) — gated by the caller because creating a
@@ -25,8 +26,19 @@ interface CreateProductSheetProps {
   saving: boolean;
   error: string;
   onClose: () => void;
-  onCreate: (payload: { name: string; uom_id: number; price: number; categ_id: number; default_code: string; par_level: number }) => void;
-  context?: 'purchase' | 'inventory';
+  onCreate: (payload: {
+    name: string; uom_id: number; price: number; categ_id: number;
+    default_code: string; par_level: number;
+    /** 'catalog' only. Optional so the two older callers are unaffected. */
+    barcode?: string;
+    /**
+     * 'catalog' only — Odoo 18 is_storable. Defaults ON here because anything
+     * added to a stock catalog is something you hold, and Odoo's own default of
+     * OFF is why 133 existing products cannot be counted.
+     */
+    is_storable?: boolean;
+  }) => void;
+  context?: 'purchase' | 'inventory' | 'catalog';
   /** Stacking base so it always sits above the picker that opened it. */
   baseZ?: number;
   /** Show the in-place "+ New category" affordance (permission-gated by caller). */
@@ -43,6 +55,8 @@ export default function CreateProductSheet({
   const [categId, setCategId] = useState<number>(0);
   const [productCode, setProductCode] = useState('');
   const [parLevelStr, setParLevelStr] = useState('');
+  const [barcode, setBarcode] = useState('');
+  const [storable, setStorable] = useState(true);
   // In-place category create (categories created here persist across prop
   // refreshes via createdCats, so a fresh `categories` prop can't drop them).
   const [createdCats, setCreatedCats] = useState<CategoryOption[]>([]);
@@ -52,12 +66,16 @@ export default function CreateProductSheet({
   const [catErr, setCatErr] = useState('');
 
   const isPurchase = context === 'purchase';
+  const isCatalog = context === 'catalog';
   const inputCls = `w-full bg-white border border-gray-200 rounded-lg px-3 h-11 text-[var(--fs-base)] text-gray-900 outline-none ${isPurchase ? 'focus:border-[#F5800A]' : 'focus:border-green-500'}`;
   const btnCls = isPurchase ? 'bg-[#F5800A] active:bg-[#E86000]' : 'bg-green-600 active:bg-green-700';
-  const submitLabel = isPurchase ? 'Create & add to guide' : 'Create & add to list';
+  const submitLabel = isPurchase ? 'Create & add to guide'
+    : isCatalog ? 'Create product' : 'Create & add to list';
   const footnote = isPurchase
     ? 'Creates the product in Odoo (marked orderable) and adds it here.'
-    : 'Creates the product in Odoo and adds it to this list.';
+    : isCatalog
+      ? 'Creates it in Odoo, then opens its page so you can add a picture, price and the rest.'
+      : 'Creates the product in Odoo and adds it to this list.';
 
   const allCats = useMemo(() => {
     const seen = new Set(categories.map((c) => c.id));
@@ -78,6 +96,8 @@ export default function CreateProductSheet({
     setPriceStr('');
     setProductCode('');
     setParLevelStr('');
+    setBarcode('');
+    setStorable(true);
     setCreatedCats([]);
     setNewCatOpen(false);
     setNewCatName('');
@@ -120,17 +140,28 @@ export default function CreateProductSheet({
 
   // Block the main submit while a category is being created/typed, else the
   // product would save under the PREVIOUS category.
-  const canSubmit = name.trim().length > 0 && uomId > 0 && !saving && !catBusy && !newCatOpen;
+  // A category is required for EVERY context: the create endpoint rejects a
+  // product without one (landing in Odoo's "All" is the state this module exists
+  // to prevent), so letting the sheet submit without one only produces a server
+  // error the user cannot act on. Matters most when the category list failed to
+  // load — then this disables the button instead of failing on save.
+  const canSubmit = name.trim().length > 0 && uomId > 0 && categId > 0
+    && !saving && !catBusy && !newCatOpen;
 
   return (
-    <div className="fixed inset-0 flex items-end justify-center bg-black/40" style={{ zIndex: baseZ }} onClick={onClose}>
+    <div className="fixed inset-0 flex items-end justify-center bg-black/40" style={{ zIndex: baseZ }}
+      onClick={saving ? undefined : onClose}>
       <div
         className="w-full max-w-md bg-white rounded-t-2xl max-h-[90vh] overflow-y-auto p-4 pb-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-[var(--fs-lg)] font-bold text-gray-900">New product</h3>
-          <button onClick={onClose} className="text-gray-400 text-[22px] leading-none px-2" aria-label="Close">×</button>
+          {/* Not closable mid-save: the parent navigates to the new product on
+              success, and being thrown onto a page you thought you had cancelled
+              is worse than waiting a second. */}
+          <button onClick={onClose} disabled={saving}
+            className="text-gray-400 text-[22px] leading-none px-2 disabled:opacity-30" aria-label="Close">×</button>
         </div>
 
         {error && (
@@ -191,6 +222,38 @@ export default function CreateProductSheet({
           </div>
         )}
 
+        {isCatalog && (
+          <>
+            <label className="text-[10px] font-bold uppercase tracking-wide text-gray-400 block mb-1.5">
+              Barcode <span className="normal-case font-normal">(optional)</span>
+            </label>
+            <input value={barcode} onChange={(e) => setBarcode(e.target.value)}
+              inputMode="numeric" placeholder="Scan or type it"
+              className={`${inputCls} mb-1`} />
+            <p className="text-[11px] text-gray-400 mb-4">
+              Lets staff scan it during a count instead of searching for it.
+            </p>
+
+            {/* The switch that stops this product being uncountable. Odoo asks
+                "do we track how much we hold?" separately from "is it a physical
+                thing?", and its own answer is no. */}
+            <button type="button" onClick={() => setStorable((v) => !v)} aria-pressed={storable}
+              className={`w-full flex items-center gap-3 text-left border rounded-xl p-3 mb-4 ${
+                storable ? 'bg-white border-gray-200' : 'bg-amber-50 border-amber-300'}`}>
+              <span className={`flex-shrink-0 w-11 h-[26px] rounded-full relative transition-colors ${storable ? 'bg-green-600' : 'bg-gray-300'}`}>
+                <span className={`absolute top-[3px] w-5 h-5 rounded-full bg-white shadow transition-all ${storable ? 'left-[23px]' : 'left-[3px]'}`} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[var(--fs-sm)] font-bold text-gray-900">Count this in stock</span>
+                <span className="block text-[11px] text-gray-500">
+                  {storable ? 'Odoo keeps a quantity, so counts of it can be saved.'
+                    : 'No quantity is kept — a count of it cannot be saved. Only turn this off for something you never count.'}
+                </span>
+              </span>
+            </button>
+          </>
+        )}
+
         {isPurchase && (
           <div className="flex gap-2 mb-4">
             <div className="flex-1 min-w-0">
@@ -205,7 +268,12 @@ export default function CreateProductSheet({
         )}
 
         <button
-          onClick={() => onCreate({ name: name.trim(), uom_id: uomId, price: parseFloat(priceStr) || 0, categ_id: categId, default_code: productCode.trim(), par_level: parseFloat(parLevelStr) || 0 })}
+          onClick={() => onCreate({
+            name: name.trim(), uom_id: uomId, price: parseFloat(priceStr) || 0,
+            categ_id: categId, default_code: productCode.trim(),
+            par_level: parseFloat(parLevelStr) || 0,
+            ...(isCatalog ? { barcode: barcode.trim(), is_storable: storable } : {}),
+          })}
           disabled={!canSubmit}
           className={`w-full py-3.5 rounded-xl text-white text-[var(--fs-base)] font-bold ${btnCls} disabled:opacity-50`}
         >

@@ -10,6 +10,8 @@ import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
 import { plainFromOdooHtml } from '@/lib/odoo-html';
 import { recordHref } from '@/lib/record-links';
+import CreateProductSheet from '@/components/products/CreateProductSheet';
+import { useAddProduct } from '@/components/products/useAddProduct';
 
 /** The setup gaps this screen can filter to. */
 export type ProductGap = 'untracked' | 'spot' | 'pack' | 'photo' | 'picture';
@@ -126,6 +128,7 @@ export default function ProductSettings({ onBack, onBatchPhotos, initialGap = nu
   const [locs, setLocs] = useState<PickableLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const loadRef = React.useRef(0);                                              // newest-request token
+  const add = useAddProduct();
 
   useEffect(() => {
     // WAIT for the restaurant. Without this the first paint fetched unscoped and
@@ -285,7 +288,15 @@ export default function ProductSettings({ onBack, onBatchPhotos, initialGap = nu
         <span>Set how staff count each product {'\u2014'} in bottles, bunches or crates, whichever they actually pick up. Open one to change it.</span>
       </div>
 
-      <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
+      <div className="flex items-center gap-2 pr-4">
+        <div className="flex-1 min-w-0">
+          <SearchBar value={search} onChange={setSearch} placeholder="Search products..." />
+        </div>
+        <button onClick={add.start}
+          className="flex-shrink-0 h-10 px-4 rounded-full bg-green-600 text-white text-[var(--fs-sm)] font-bold active:bg-green-700">
+          + Add
+        </button>
+      </div>
 
       {/* Gaps first. On a setup screen the question is almost never "show me
           product X" — it is "what have I not finished?". Each chip carries the
@@ -472,6 +483,22 @@ export default function ProductSettings({ onBack, onBatchPhotos, initialGap = nu
           }}
         />
       )}
+      <CreateProductSheet
+        open={add.open}
+        initialName={search}
+        units={add.units}
+        categories={add.categories}
+        saving={add.saving}
+        error={add.error}
+        context="catalog"
+        canCreateCategory
+        baseZ={140}
+        onClose={add.close}
+        onCreate={(p) => add.create({
+          name: p.name, uom_id: p.uom_id, categ_id: p.categ_id,
+          default_code: p.default_code, barcode: p.barcode, is_storable: p.is_storable,
+        })}
+      />
       {catPick && (
         <CategoryPickerSheet
           cats={cats}

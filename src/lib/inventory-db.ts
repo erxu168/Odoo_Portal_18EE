@@ -110,6 +110,24 @@ export function initInventoryTables() {
       updated_at      TEXT
     );
 
+    -- Products this portal created.
+    --
+    -- Exists because of the relevance filter on the catalog: a shared product is
+    -- only listed when this restaurant actually USES it (has stock of it, buys
+    -- it, builds with it, counts it). That is right for browsing 1000+ shared
+    -- products and exactly wrong for one a manager created thirty seconds ago —
+    -- it has none of those things yet, so it vanished from the very screen it
+    -- was created on, with no way back to it but the URL.
+    --
+    -- Deliberately a separate table rather than a flag on product_flags: this
+    -- records an EVENT (the portal made this), not a setting, and nothing should
+    -- be able to clear it by changing a preference.
+    CREATE TABLE IF NOT EXISTS portal_created_products (
+      odoo_product_id INTEGER PRIMARY KEY,
+      created_at      TEXT NOT NULL,
+      created_by      INTEGER
+    );
+
     CREATE TABLE IF NOT EXISTS count_photos (
       id           INTEGER PRIMARY KEY AUTOINCREMENT,
       source_table TEXT NOT NULL,
@@ -3063,4 +3081,24 @@ export function mergePackLabels(fromId: number, intoId: number): { ok: boolean; 
     db.prepare('DELETE FROM pack_labels WHERE id = ?').run(fromId);
     return { ok: true, moved };
   })();
+}
+
+/**
+ * Remember that the portal created this product, so the catalog's relevance
+ * filter cannot hide it before it has been used for anything.
+ *
+ * Idempotent — re-recording is a no-op, so a retried create cannot fail here.
+ */
+export function recordPortalCreatedProduct(odooProductId: number, userId: number | null): void {
+  getDb().prepare(
+    `INSERT INTO portal_created_products (odoo_product_id, created_at, created_by)
+     VALUES (?, ?, ?) ON CONFLICT(odoo_product_id) DO NOTHING`,
+  ).run(odooProductId, new Date().toISOString(), userId);
+}
+
+/** Every product the portal created — unioned into the relevance set. */
+export function listPortalCreatedProductIds(): number[] {
+  const rows = getDb().prepare('SELECT odoo_product_id FROM portal_created_products')
+    .all() as { odoo_product_id: number }[];
+  return rows.map((r) => r.odoo_product_id);
 }
