@@ -97,6 +97,7 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
       const updates = cands.map(c => ({
         id: c.id,
         disposition: c.disposition === 'pending' ? 'create' : c.disposition,
+        proposed_kind: c.proposed_kind,
         proposed_type: c.proposed_type,
         proposed_room: c.proposed_room,
         ignored_reason: c.disposition === 'ignored' ? (c.ignored_reason ?? 'review') : null,
@@ -104,9 +105,12 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
       const put = await fetch(`/api/inventory/floorplan-revisions/${revisionId}/review`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ updates }),
       });
-      if (!put.ok) { setError((await put.json()).error ?? 'Could not save the review'); setBusy(false); return; }
+      const putJson = await put.json();
+      if (!put.ok) { setError(putJson.error ?? 'Could not save the review'); setBusy(false); return; }
+      // Publish with the version RETURNED by the save — the load-time version
+      // is stale the moment the save bumps it.
       const pub = await fetch(`/api/inventory/floorplan-revisions/${revisionId}/publish`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: data.revision.version }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: putJson.version ?? data.revision.version }),
       });
       const d = await pub.json();
       if (!pub.ok) {
@@ -251,7 +255,11 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
             {noise.slice(0, 40).map(c => (
               <button
                 key={c.id}
-                onClick={() => patch(c.id, { disposition: c.disposition === 'ignored' ? 'create' : 'ignored', proposed_kind: 'spot' as never })}
+                onClick={() => patch(c.id, {
+                  disposition: c.disposition === 'ignored' ? 'create' : 'ignored',
+                  proposed_kind: 'spot' as never,
+                  proposed_type: c.proposed_type ?? 'utility',
+                })}
                 className={`h-8 max-w-full truncate rounded-full border px-2.5 text-[11px] font-medium ${c.disposition === 'ignored' ? 'border-gray-200 bg-gray-50 text-gray-400' : 'border-green-300 bg-green-50 text-green-800'}`}
               >
                 {c.raw_text.trim().slice(0, 30)}

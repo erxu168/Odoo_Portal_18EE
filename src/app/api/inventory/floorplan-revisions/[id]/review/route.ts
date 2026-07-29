@@ -10,8 +10,10 @@ import {
   initFloorplanTables, getRevision, getFloor, listCandidates, updateCandidate,
 } from '@/lib/inventory-floorplan/db';
 import { validStoredPolygon } from '@/lib/inventory-floorplan/geometry';
+import { getDb } from '@/lib/db';
 
 const DISPOSITIONS = new Set(['pending', 'create', 'linked', 'ignored']);
+const KINDS = new Set(['spot', 'room', 'other']);
 
 function loadAuthorized(idRaw: string, user: Parameters<typeof canAccessCompany>[0]) {
   const id = parseInt(idRaw, 10);
@@ -76,17 +78,37 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     if (u.linked_location_id !== undefined && u.linked_location_id !== null && !(Number(u.linked_location_id) > 0)) {
       return NextResponse.json({ error: 'Invalid linked spot' }, { status: 400 });
     }
+    if (u.proposed_kind !== undefined && !KINDS.has(String(u.proposed_kind))) {
+      return NextResponse.json({ error: 'Invalid label kind' }, { status: 400 });
+    }
   }
 
-  for (const u of updates) {
-    updateCandidate(Number(u.id), {
-      disposition: u.disposition !== undefined ? String(u.disposition) : undefined,
-      ignored_reason: u.ignored_reason !== undefined ? (u.ignored_reason == null ? null : String(u.ignored_reason).slice(0, 120)) : undefined,
-      linked_location_id: u.linked_location_id !== undefined ? (u.linked_location_id == null ? null : Number(u.linked_location_id)) : undefined,
-      proposed_type: u.proposed_type !== undefined ? (u.proposed_type == null ? null : String(u.proposed_type).slice(0, 40)) : undefined,
-      proposed_room: u.proposed_room !== undefined ? (u.proposed_room == null ? null : String(u.proposed_room).slice(0, 120)) : undefined,
-      polygon: u.polygon !== undefined ? u.polygon : undefined,
-    });
+  // One transaction: re-check draft status INSIDE it and bump the optimistic
+  // version, so two reviewers cannot silently interleave (Codex finding #6).
+  // The caller publishes with the RETURNED version.
+  const db = getDb();
+  let newVersion = 0;
+  let stillDraft = true;
+  db.transaction(() => {
+    const fresh = db.prepare('SELECT status, version FROM inventory_floor_revisions WHERE id = ?')
+      .get(loaded.revision.id) as { status: string; version: number } | undefined;
+    if (!fresh || fresh.status !== 'draft') { stillDraft = false; return; }
+    for (const u of updates) {
+      updateCandidate(Number(u.id), {
+        disposition: u.disposition !== undefined ? String(u.disposition) : undefined,
+        ignored_reason: u.ignored_reason !== undefined ? (u.ignored_reason == null ? null : String(u.ignored_reason).slice(0, 120)) : undefined,
+        linked_location_id: u.linked_location_id !== undefined ? (u.linked_location_id == null ? null : Number(u.linked_location_id)) : undefined,
+        proposed_kind: u.proposed_kind !== undefined ? String(u.proposed_kind) : undefined,
+        proposed_type: u.proposed_type !== undefined ? (u.proposed_type == null ? null : String(u.proposed_type).slice(0, 40)) : undefined,
+        proposed_room: u.proposed_room !== undefined ? (u.proposed_room == null ? null : String(u.proposed_room).slice(0, 120)) : undefined,
+        polygon: u.polygon !== undefined ? u.polygon : undefined,
+      });
+    }
+    newVersion = fresh.version + 1;
+    db.prepare('UPDATE inventory_floor_revisions SET version = ? WHERE id = ?').run(newVersion, loaded.revision.id);
+  })();
+  if (!stillDraft) {
+    return NextResponse.json({ error: 'This plan version was published while you reviewed — reload' }, { status: 409 });
   }
-  return NextResponse.json({ message: 'Review saved', updated: updates.length });
+  return NextResponse.json({ message: 'Review saved', updated: updates.length, version: newVersion });
 }

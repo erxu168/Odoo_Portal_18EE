@@ -61,6 +61,7 @@ const BUILTIN_COLORS: Record<string, string> = {
   walkin: '#06B6D4', fridge: '#06B6D4', counterfridge: '#06B6D4',
   freezer: '#6366F1', counterfreezer: '#6366F1',
   dryshelf: '#3B82F6', shelf: '#16A34A', drawer: '#8B5CF6', bin: '#8B5CF6',
+  floorspace: '#3B82F6', cabinet: '#8B5CF6', utility: '#64748B',
 };
 const CUSTOM_FALLBACK = '#64748B';
 

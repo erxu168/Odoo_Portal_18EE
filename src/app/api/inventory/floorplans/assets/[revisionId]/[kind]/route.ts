@@ -11,6 +11,8 @@ import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
 import { authorizeFloorplan, FLOORPLAN_CAP, canAccessCompany } from '@/lib/inventory-floorplan/access';
+import { roleCan } from '@/lib/permissions';
+import { getPermissionOverrides } from '@/lib/db';
 import { initFloorplanTables, getRevision, getFloor } from '@/lib/inventory-floorplan/db';
 import { getDb } from '@/lib/db';
 
@@ -25,6 +27,12 @@ export async function GET(_request: Request, { params }: { params: { revisionId:
   const revision = Number.isFinite(id) && id > 0 ? getRevision(id) : null;
   const floor = revision ? getFloor(revision.floor_id) : null;
   if (!revision || !floor || !canAccessCompany(authz.user, floor.company_id)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+  // Staff (view cap) see only the LIVE plan. Drafts, superseded versions and
+  // their PDFs are review material — manage-only (Codex finding #1).
+  const isCurrentPublished = revision.status === 'published' && floor.current_revision_id === revision.id && floor.active;
+  if (!isCurrentPublished && !roleCan(authz.actor.role as never, FLOORPLAN_CAP.manage, getPermissionOverrides())) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

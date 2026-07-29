@@ -322,12 +322,13 @@ export function listCandidates(revisionId: number): CandidateRow[] {
 
 export function updateCandidate(id: number, updates: {
   disposition?: string; ignored_reason?: string | null; linked_location_id?: number | null;
-  proposed_type?: string | null; proposed_room?: string | null; polygon?: Pt[];
+  proposed_kind?: string; proposed_type?: string | null; proposed_room?: string | null; polygon?: Pt[];
 }): void {
   initFloorplanTables();
   const sets: string[] = [];
   const vals: unknown[] = [];
   if (updates.disposition !== undefined) { sets.push('disposition = ?'); vals.push(updates.disposition); }
+  if (updates.proposed_kind !== undefined) { sets.push('proposed_kind = ?'); vals.push(updates.proposed_kind); }
   if (updates.ignored_reason !== undefined) { sets.push('ignored_reason = ?'); vals.push(updates.ignored_reason); }
   if (updates.linked_location_id !== undefined) { sets.push('linked_location_id = ?'); vals.push(updates.linked_location_id); }
   if (updates.proposed_type !== undefined) { sets.push('proposed_type = ?'); vals.push(updates.proposed_type); }

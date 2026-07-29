@@ -93,6 +93,9 @@ export default function FloorplanMap({
       worldRef.current = world;
       buildLayers(world);
       styleLayers(world);
+      // A fly target that arrived BEFORE the map existed (QR deep link on a
+      // cold load) must still run — the seq-effect fired into the void.
+      if (flyRef.current) applyFly(world, flyRef.current);
     })();
     return () => {
       cancelled = true;
@@ -115,7 +118,7 @@ export default function FloorplanMap({
       if (a.display === 'pin') {
         const icon = L.divIcon({
           className: 'kw-fp-pin',
-          html: `<span>${typesByKey[a.typeKey]?.icon ?? '📍'}</span>${escapeHtml(a.label)}`,
+          html: `<span>${escapeHtml(typesByKey[a.typeKey]?.icon ?? '📍')}</span>${escapeHtml(a.label)}`,
           iconSize: undefined,
         });
         const pin = L.marker(fracToLatLng(w, { x: a.cx, y: a.cy }), { icon }).addTo(map);
@@ -206,16 +209,21 @@ export default function FloorplanMap({
   }, [selectedId, filterType]);
 
   // Glide so the target lands ~38% from the top — clear of the bottom sheet.
-  useEffect(() => {
-    const w = worldRef.current;
-    if (!w || !flyTo) return;
+  const flyRef = useRef<FlyTarget | null>(null);
+  flyRef.current = flyTo ?? null;
+  const applyFly = (w: World, target: FlyTarget) => {
     const { map } = w;
-    const ll = fracToLatLng(w, { x: flyTo.cx, y: flyTo.cy });
+    const ll = fracToLatLng(w, { x: target.cx, y: target.cy });
     const targetZoom = Math.min(Math.max(map.getZoom(), map.getMinZoom() + 1.4), map.getMaxZoom() - 0.3);
     const pt = map.project(ll, targetZoom);
     const size = map.getSize();
     const center = map.unproject(pt.add([0, size.y * 0.12] as unknown as Leaflet.PointExpression), targetZoom);
     map.flyTo(center, targetZoom, { duration: 0.5 });
+  };
+  useEffect(() => {
+    const w = worldRef.current;
+    if (!w || !flyTo) return;
+    applyFly(w, flyTo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flyTo?.seq]);
 

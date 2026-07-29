@@ -15,6 +15,8 @@ const HTTP_BY_CODE: Record<string, number> = {
   bad_coords: 400,
   company_mismatch: 400,
   duplicate_codes: 409,
+  unknown_room: 400,
+  floor_archived: 409,
 };
 
 const MESSAGE_BY_CODE: Record<string, string> = {
@@ -24,6 +26,8 @@ const MESSAGE_BY_CODE: Record<string, string> = {
   bad_coords: 'A label has an invalid position',
   company_mismatch: 'A linked spot belongs to another restaurant',
   duplicate_codes: 'Duplicate codes in one room',
+  unknown_room: 'A label points at a room that does not exist',
+  floor_archived: 'This floor was archived — restore it before publishing',
 };
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {

@@ -32,6 +32,37 @@ function rasterMimeFromMagic(buf: Buffer): 'image/webp' | 'image/png' | null {
   return null;
 }
 
+/**
+ * ACTUAL pixel dimensions from the image header — limits must never trust
+ * client metadata (Codex finding #2). Returns null when the header is
+ * unreadable, which rejects the upload.
+ */
+function rasterDims(buf: Buffer, mime: 'image/webp' | 'image/png'): { w: number; h: number } | null {
+  try {
+    if (mime === 'image/png') {
+      if (buf.toString('ascii', 12, 16) !== 'IHDR') return null;
+      return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+    }
+    const fourcc = buf.toString('ascii', 12, 16);
+    if (fourcc === 'VP8X') {
+      return { w: 1 + buf.readUIntLE(24, 3), h: 1 + buf.readUIntLE(27, 3) };
+    }
+    if (fourcc === 'VP8 ') {
+      return { w: buf.readUInt16LE(26) & 0x3fff, h: buf.readUInt16LE(28) & 0x3fff };
+    }
+    if (fourcc === 'VP8L') {
+      if (buf[20] !== 0x2f) return null;
+      const b0 = buf[21], b1 = buf[22], b2 = buf[23], b3 = buf[24];
+      const w = 1 + (((b1 & 0x3f) << 8) | b0);
+      const h = 1 + (((b3 & 0x0f) << 10) | (b2 << 2) | ((b1 & 0xc0) >> 6));
+      return { w, h };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 const KIND_SET = new Set(['spot', 'room', 'other']);
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
@@ -77,16 +108,30 @@ export async function POST(request: Request, { params }: { params: { id: string 
   } catch { return NextResponse.json({ error: 'Invalid upload metadata' }, { status: 400 }); }
 
   const pageWidth = Number(meta.pageWidth), pageHeight = Number(meta.pageHeight);
-  const rasterWidth = Number(meta.rasterWidth), rasterHeight = Number(meta.rasterHeight);
-  const pageNumber = Number(meta.pageNumber) || 1;
-  const pageCount = Number(meta.pageCount) || 1;
-  const rotation = Number(meta.rotation) || 0;
-  if (!(pageWidth > 0) || !(pageHeight > 0) || !(rasterWidth > 0) || !(rasterHeight > 0)) {
+  const pageNumber = Number(meta.pageNumber);
+  const pageCount = Number(meta.pageCount);
+  const rotation = Number(meta.rotation);
+  if (!(pageWidth > 0) || !(pageHeight > 0) || pageWidth > 20000 || pageHeight > 20000) {
     return NextResponse.json({ error: 'Invalid page dimensions' }, { status: 400 });
   }
-  if (rasterWidth * rasterHeight > MAX_RASTER_PIXELS) {
+  if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 500 ||
+      !Number.isInteger(pageCount) || pageCount < 1 || pageCount > 500 || pageNumber > pageCount) {
+    return NextResponse.json({ error: 'Invalid page selection' }, { status: 400 });
+  }
+  // Rotated pages would need the full pdf.js viewport transform for label
+  // coordinates — refused loudly instead of placed wrongly (v1).
+  if (rotation !== 0) {
+    return NextResponse.json({ error: 'This page is rotated — export it upright from Illustrator and upload again' }, { status: 400 });
+  }
+  // Pixel caps run against the DECODED HEADER, never client metadata.
+  const actual = rasterDims(rasterBuf, rasterMime);
+  if (!actual || actual.w < 100 || actual.h < 100) {
+    return NextResponse.json({ error: 'The rendered image could not be read' }, { status: 400 });
+  }
+  if (actual.w * actual.h > MAX_RASTER_PIXELS) {
     return NextResponse.json({ error: 'The rendered image is too large' }, { status: 400 });
   }
+  const rasterWidth = actual.w, rasterHeight = actual.h;
   if (!Array.isArray(candidates) || candidates.length > MAX_CANDIDATES) {
     return NextResponse.json({ error: 'Too many detected labels' }, { status: 400 });
   }

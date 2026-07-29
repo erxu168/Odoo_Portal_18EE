@@ -13,7 +13,10 @@ import { authorizeFloorplan, FLOORPLAN_CAP, canAccessCompany } from '@/lib/inven
 import { initFloorplanTables, getFloor, getRevision, createAnchor } from '@/lib/inventory-floorplan/db';
 import { initInventoryTables, createCountLocation, getCountLocation, listCountLocations } from '@/lib/inventory-db';
 import { normalizeCode } from '@/lib/inventory-floorplan/geometry';
+import { LOCATION_TYPES } from '@/lib/location-types';
 import { getDb } from '@/lib/db';
+
+const ROOMISH = new Set(['room', 'area', 'floor']);
 
 const PIN_HALF_W = 0.012; // nominal tap polygon around an app-placed pin
 const PIN_HALF_H = 0.008;
@@ -44,28 +47,30 @@ export async function POST(request: Request) {
   if (!code || code.length > 60) return NextResponse.json({ error: 'A spot code is required' }, { status: 400 });
   const typeKey = String(body.typeKey ?? '').slice(0, 40);
   if (!typeKey) return NextResponse.json({ error: 'Pick a type' }, { status: 400 });
+  // The type must come from the registry: built-ins or this company's own list.
+  const knownType = LOCATION_TYPES.some(t => t.key === typeKey) ||
+    !!getDb().prepare('SELECT 1 FROM location_kinds WHERE company_id = ? AND kind = ?').get(floor.company_id, typeKey);
+  if (!knownType) return NextResponse.json({ error: 'Unknown location type' }, { status: 400 });
 
   let roomId: number | null = null;
   if (body.roomLocationId != null) {
     const room = getCountLocation(Number(body.roomLocationId));
-    if (!room || room.company_id !== floor.company_id) {
+    if (!room || room.company_id !== floor.company_id || !room.active || !ROOMISH.has(room.kind)) {
       return NextResponse.json({ error: 'Invalid room' }, { status: 400 });
     }
     roomId = room.id;
   }
 
-  // Same-room duplicate guard, same rule as publish.
-  const siblings = (listCountLocations(floor.company_id) as Array<{ name: string; parent_id: number | null }>)
-    .filter(l => l.parent_id === roomId);
-  if (siblings.some(s => normalizeCode(s.name) === code)) {
-    return NextResponse.json({ error: `“${code}” already exists in that room — pick another code` }, { status: 409 });
-  }
-
   const db = getDb();
   let locationId = 0;
   let anchorId = 0;
+  let duplicate = false;
   const clamp = (v: number) => Math.min(1, Math.max(0, v));
   db.transaction(() => {
+    // Duplicate guard INSIDE the transaction — same rule as publish.
+    const siblings = (listCountLocations(floor.company_id) as Array<{ name: string; parent_id: number | null }>)
+      .filter(l => l.parent_id === roomId);
+    if (siblings.some(s => normalizeCode(s.name) === code)) { duplicate = true; return; }
     locationId = createCountLocation({
       parent_id: roomId, company_id: floor.company_id, name: code, kind: typeKey,
       description: null, photo: null, odoo_location_id: null, created_by: authz.actor.userId,
@@ -83,6 +88,9 @@ export async function POST(request: Request) {
       created_by: authz.actor.userId,
     });
   })();
+  if (duplicate) {
+    return NextResponse.json({ error: `“${code}” already exists in that room — pick another code` }, { status: 409 });
+  }
 
   return NextResponse.json({ locationId, anchorId }, { status: 201 });
 }

@@ -80,6 +80,9 @@ export async function processPdf(file: File, pageNumber = 1): Promise<ProcessedP
   try {
     const page = await doc.getPage(pageNumber);
     const base = page.getViewport({ scale: 1 });
+    if ((base.rotation ?? 0) % 360 !== 0) {
+      throw new Error('This page is rotated — export it upright from Illustrator and try again');
+    }
 
     // ---- raster, stepping down if the device refuses the allocation --------
     let rendered: { blob: Blob; mime: string; width: number; height: number } | null = null;

@@ -251,11 +251,14 @@ function escapeZPL(text: string): string {
  * square must still fit its box, so magnification is derived from this.
  */
 function qrModules(payloadLen: number): number {
-  if (payloadLen <= 26) return 25;  // v2 — classic KWLOC-<id>
-  if (payloadLen <= 42) return 29;  // v3
-  if (payloadLen <= 62) return 33;  // v4 — typical floorplan URL
-  if (payloadLen <= 84) return 37;  // v5
-  return 41;                        // v6 — very long URLs
+  // Byte-mode capacities at ECC **Q** — the level `^FDQA,` actually selects
+  // (Codex finding #20): v2=20, v3=32, v4=46, v5=60, v6=74 bytes.
+  if (payloadLen <= 20) return 25;  // v2 — classic KWLOC-<id>
+  if (payloadLen <= 32) return 29;  // v3
+  if (payloadLen <= 46) return 33;  // v4
+  if (payloadLen <= 60) return 37;  // v5 — typical floorplan URL
+  if (payloadLen <= 74) return 41;  // v6
+  return 45;                        // v7 — very long base URLs
 }
 
 export function generateLocationZPL(

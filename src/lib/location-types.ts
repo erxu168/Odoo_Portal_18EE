@@ -23,7 +23,7 @@ export interface LocationType {
 export const LOCATION_TYPES: LocationType[] = [
   { key: 'floor',    label: 'Floor',          icon: '🏢', suggests: ['room'] },
   { key: 'area',     label: 'Area',           icon: '🗺️', suggests: ['room', 'fridge', 'freezer', 'counterfridge', 'counterfreezer', 'walkin', 'dryshelf', 'shelf'] },
-  { key: 'room',     label: 'Room',           icon: '🚪', temp: 'ambient', suggests: ['fridge', 'freezer', 'counterfridge', 'counterfreezer', 'walkin', 'dryshelf', 'shelf'] },
+  { key: 'room',     label: 'Room',           icon: '🚪', temp: 'ambient', suggests: ['fridge', 'freezer', 'counterfridge', 'counterfreezer', 'walkin', 'dryshelf', 'shelf', 'floorspace', 'cabinet'] },
   { key: 'walkin',   label: 'Walk-in cooler', icon: '❄️', temp: 'cold',   suggests: ['shelf', 'drawer', 'bin'] },
   { key: 'fridge',   label: 'Fridge',         icon: '🧊', temp: 'cold',   suggests: ['shelf', 'drawer', 'bin'] },
   { key: 'freezer',  label: 'Freezer',        icon: '🥶', temp: 'frozen', suggests: ['shelf', 'drawer', 'bin'] },
@@ -31,12 +31,15 @@ export const LOCATION_TYPES: LocationType[] = [
   { key: 'counterfreezer', label: 'Countertop freezer', icon: '🥶', temp: 'frozen', suggests: ['shelf', 'drawer', 'bin'] },
   { key: 'dryshelf', label: 'Dry shelving',   icon: '📦', temp: 'dry',    suggests: ['shelf', 'drawer', 'bin'] },
   { key: 'shelf',    label: 'Shelf',          icon: '🗄️', suggests: ['drawer', 'shelf', 'bin'] },
+  { key: 'floorspace', label: 'Floor space',  icon: '📦', suggests: ['bin'] },
+  { key: 'cabinet',  label: 'Cabinet',        icon: '🧰', suggests: ['shelf', 'drawer', 'bin'] },
+  { key: 'utility',  label: 'Utility',        icon: '🔧', suggests: [] },
   { key: 'drawer',   label: 'Drawer',         icon: '🗃️', suggests: ['bin'] },
   { key: 'bin',      label: 'Bin / crate',    icon: '🧺', suggests: ['bin'] },
 ];
 
 /** Types offered at the TOP level ("+ Add …" with no parent). */
-export const TOP_LEVEL_TYPE_KEYS = ['floor', 'area', 'room', 'fridge', 'freezer', 'counterfridge', 'counterfreezer', 'walkin', 'dryshelf'];
+export const TOP_LEVEL_TYPE_KEYS = ['floor', 'area', 'room', 'fridge', 'freezer', 'counterfridge', 'counterfreezer', 'walkin', 'dryshelf', 'utility'];
 
 const FALLBACK: LocationType = { key: 'area', label: 'Location', icon: '📍', suggests: [] };
 

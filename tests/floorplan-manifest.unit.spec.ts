@@ -95,17 +95,26 @@ test('Odoo unavailable is a flagged state, never an empty lie', () => {
   expect(m.products).toEqual([]);
 });
 
-test('type registry = built-ins + company customs with color fallback', () => {
+test('type registry = built-ins + company customs; built-ins shadow same-key customs', () => {
+  // 'utility' is a BUILT-IN since the Codex round (floorspace/cabinet/utility
+  // joined location-types.ts) — a same-key company row must NOT duplicate it.
   getDb().prepare(
     "INSERT OR IGNORE INTO location_kinds (company_id, kind, label, sort_order, icon, color) VALUES (?,?,?,0,?,?)",
-  ).run(CO, 'utility', 'Utility', '🔧', '#334455');
+  ).run(CO, 'utility', 'Old Custom Utility', '🔧', '#334455');
   getDb().prepare(
-    "INSERT OR IGNORE INTO location_kinds (company_id, kind, label, sort_order, icon, color) VALUES (?,?,?,1,?,NULL)",
+    "INSERT OR IGNORE INTO location_kinds (company_id, kind, label, sort_order, icon, color) VALUES (?,?,?,1,?,?)",
+  ).run(CO, 'winecellar', 'Wine Cellar', '🍷', '#7C2D12');
+  getDb().prepare(
+    "INSERT OR IGNORE INTO location_kinds (company_id, kind, label, sort_order, icon, color) VALUES (?,?,?,2,?,NULL)",
   ).run(CO, 'firstaid', 'First Aid', '🚑');
 
   const types = getTypeRegistry(CO);
   expect(types.find(t => t.key === 'shelf')).toMatchObject({ label: 'Shelf', custom: false, color: '#16A34A' });
-  expect(types.find(t => t.key === 'utility')).toMatchObject({ label: 'Utility', custom: true, color: '#334455' });
+  expect(types.find(t => t.key === 'floorspace')).toMatchObject({ label: 'Floor space', custom: false, color: '#3B82F6' });
+  expect(types.find(t => t.key === 'cabinet')).toMatchObject({ label: 'Cabinet', custom: false, color: '#8B5CF6' });
+  expect(types.filter(t => t.key === 'utility').length).toBe(1);
+  expect(types.find(t => t.key === 'utility')).toMatchObject({ custom: false, color: '#64748B' });
+  expect(types.find(t => t.key === 'winecellar')).toMatchObject({ label: 'Wine Cellar', custom: true, color: '#7C2D12' });
   expect(types.find(t => t.key === 'firstaid')).toMatchObject({ label: 'First Aid', icon: '🚑', custom: true, color: '#64748B' });
 });
 

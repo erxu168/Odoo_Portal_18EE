@@ -17,7 +17,7 @@ import { initFloorplanTables } from './db';
 import { normalizeCode, polygonCentroid, validStoredPolygon } from './geometry';
 import type { Pt } from './types';
 
-export type PublishFailCode = 'not_found' | 'not_draft' | 'conflict' | 'bad_coords' | 'company_mismatch' | 'duplicate_codes';
+export type PublishFailCode = 'not_found' | 'not_draft' | 'conflict' | 'bad_coords' | 'company_mismatch' | 'duplicate_codes' | 'unknown_room' | 'floor_archived';
 
 export type PublishResult =
   | { ok: true; createdRooms: number; createdSpots: number; linked: number; anchors: number }
@@ -66,6 +66,7 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
       | { id: number; company_id: number; current_revision_id: number | null }
       | undefined;
     if (!floor) throw new PublishAbort('not_found');
+    if (!(floor as { active?: number }).active) throw new PublishAbort('floor_archived');
     const companyId = floor.company_id;
 
     const kept = (db.prepare(
@@ -89,11 +90,17 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
       if (!loc || loc.company_id !== companyId) {
         throw new PublishAbort('company_mismatch', `"${c.raw_text}" links to a spot outside this restaurant`);
       }
+      if (!(loc as { active?: boolean | number }).active) {
+        throw new PublishAbort('company_mismatch', `"${c.raw_text}" links to an archived spot`);
+      }
     }
 
     // ---- resolve rooms: staged creations first, then existing by name -------
     const existing = listCountLocations(companyId) as Array<{ id: number; name: string; parent_id: number | null; kind: string }>;
-    const existingByName = new Map(existing.map(l => [normalizeCode(l.name), l]));
+    // Only room-like locations may be matched by NAME — a spot that happens to
+    // be called "FREEZER" must never become a parent (Codex finding #8).
+    const ROOMISH = new Set(['room', 'area', 'floor']);
+    const existingByName = new Map(existing.filter(l => ROOMISH.has(l.kind)).map(l => [normalizeCode(l.name), l]));
     const roomIds = new Map<string, number>(); // normalized room name -> location id
     let createdRooms = 0;
 
@@ -117,12 +124,17 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
     const linkedRoomCands = kept.filter(k => k.proposed_kind === 'room' && k.disposition === 'linked');
     for (const c of linkedRoomCands) roomIds.set(normalizeCode(c.raw_text), c.linked_location_id as number);
 
-    const resolveRoom = (name: string | null): number | null => {
+    // A named room MUST resolve — silently creating the spot at the root would
+    // scatter orphans across the tree. No room named at all stays allowed
+    // (utility points like the fuse box live outside rooms by design).
+    const resolveRoom = (c: CandRow): number | null => {
+      const name = c.proposed_room;
       if (!name || !name.trim()) return null;
       const key = normalizeCode(name);
       if (roomIds.has(key)) return roomIds.get(key)!;
       const found = existingByName.get(key);
-      return found ? found.id : null;
+      if (found) return found.id;
+      throw new PublishAbort('unknown_room', `"${c.raw_text}" is assigned to room "${name}", which is neither on this plan nor an existing room`);
     };
 
     // ---- spots: same-room duplicate codes are a publish blocker -------------
@@ -144,13 +156,19 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
     };
 
     const spotPlan: Array<{ cand: CandRow; roomId: number | null; locationId: number | null }> = [];
+    const linkedTargets = new Set<number>();
     for (const c of spotCands) {
       const code = normalizeCode(c.normalized_text || c.raw_text);
       if (c.disposition === 'linked') {
-        spotPlan.push({ cand: c, roomId: null, locationId: c.linked_location_id as number });
+        const target = c.linked_location_id as number;
+        if (linkedTargets.has(target)) {
+          throw new PublishAbort('duplicate_codes', `Two labels link to the same spot ("${c.raw_text}") — untick one or link it elsewhere`);
+        }
+        linkedTargets.add(target);
+        spotPlan.push({ cand: c, roomId: null, locationId: target });
         continue;
       }
-      const roomId = resolveRoom(c.proposed_room);
+      const roomId = resolveRoom(c);
       const dupKey = `${roomId ?? 'none'}|${code}`;
       if (claimed.has(dupKey)) {
         throw new PublishAbort('duplicate_codes', `"${code}" appears twice in the same room — rename or untick one`);
@@ -161,6 +179,12 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
       // every product placement. (Identity = room + code, per the owner's
       // naming system; the same code in ANOTHER room is a different spot.)
       const already = roomId !== null ? existingChild(roomId, code) : null;
+      if (already !== null) {
+        if (linkedTargets.has(already)) {
+          throw new PublishAbort('duplicate_codes', `Two labels resolve to the same existing spot ("${code}")`);
+        }
+        linkedTargets.add(already);
+      }
       spotPlan.push({ cand: c, roomId, locationId: already });
     }
 

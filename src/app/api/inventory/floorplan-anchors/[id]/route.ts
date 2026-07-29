@@ -18,6 +18,8 @@ function loadAuthorized(idRaw: string, user: Parameters<typeof canAccessCompany>
   const revision = getRevision(anchor.revision_id);
   const floor = revision ? getFloor(revision.floor_id) : null;
   if (!floor || !canAccessCompany(user, floor.company_id)) return null;
+  // History is immutable: only the LIVE plan's markers may move or vanish.
+  if (!floor.active || revision!.status !== 'published' || floor.current_revision_id !== revision!.id) return null;
   return { anchor, revision: revision!, floor };
 }
 

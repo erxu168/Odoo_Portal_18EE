@@ -229,3 +229,30 @@ test('a new revision supersedes the previous published one', () => {
   expect(getRevision(rev2)!.status).toBe('published');
   expect(getDb().prepare('SELECT current_revision_id AS c FROM inventory_floors WHERE id=?').get(floorId)).toEqual({ c: rev2 });
 });
+
+test('a spot assigned to a nonexistent room BLOCKS publish instead of landing at the root', () => {
+  const before = (listCountLocations(CO) as unknown[]).length;
+  const { revId } = seed([
+    spotCand(0, 'SLF 4', 'shelf', 'Ghost Room'),
+  ]);
+  setDispositions(revId, 'create');
+  const res = publishRevision(revId, ACTOR, 1);
+  expect(res.ok).toBe(false);
+  expect((res as { code: string }).code).toBe('unknown_room');
+  expect((listCountLocations(CO) as unknown[]).length).toBe(before);
+});
+
+test('two labels linked to the SAME existing spot block publish (no 500 from the unique index)', () => {
+  const target = createCountLocation({
+    parent_id: null, company_id: CO, name: 'LINK TARGET', kind: 'shelf',
+    description: null, photo: null, odoo_location_id: null, created_by: 1,
+  });
+  const { revId } = seed([
+    { item_index: 0, raw_text: 'SLF 8', normalized_text: 'SLF 8', polygon: box(0.2, 0.2), rotation_degrees: 0, proposed_kind: 'spot' as const, proposed_type: 'shelf', proposed_room: null },
+    { item_index: 1, raw_text: 'SLF 9', normalized_text: 'SLF 9', polygon: box(0.3, 0.2), rotation_degrees: 0, proposed_kind: 'spot' as const, proposed_type: 'shelf', proposed_room: null },
+  ]);
+  getDb().prepare("UPDATE inventory_floor_candidates SET disposition='linked', linked_location_id=? WHERE revision_id=?").run(target, revId);
+  const res = publishRevision(revId, ACTOR, 1);
+  expect(res.ok).toBe(false);
+  expect((res as { code: string }).code).toBe('duplicate_codes');
+});
