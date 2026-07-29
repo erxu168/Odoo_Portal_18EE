@@ -508,11 +508,20 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             className="mb-4" hint={img ? 'Drop to replace the photo' : 'Drop the photo here'}>
             {img ? (
               <div className="relative w-full rounded-2xl border border-gray-200 bg-white overflow-hidden">
-                <button onClick={() => setViewer(true)} className="block w-full active:opacity-90"
+                {/* object-CONTAIN, not cover.
+                    A product photo has to show the PRODUCT. `object-cover` fills
+                    the box by cropping, so on a wide screen a tall bottle was
+                    trimmed to its middle — a yellow band with no label and no
+                    shape, useless to someone trying to recognise it on a shelf.
+                    Contain fits the whole thing inside a fixed-height frame; the
+                    frame keeps its height so the form below does not jump around
+                    as photos of different shapes load. */}
+                <button onClick={() => setViewer(true)}
+                  className="block w-full h-56 sm:h-72 bg-gray-50 active:opacity-90"
                   aria-label={`See the photo of ${product.name} full screen`}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={`/api/inventory/product-images/${product.id}?v=${imgVer}`} alt={product.name}
-                    className="w-full max-h-56 object-cover" />
+                    className="w-full h-full object-contain" />
                 </button>
                 {!readOnly && (
                   <button onClick={() => setPhotoMenu(true)} disabled={busy === 'photo'}
