@@ -275,9 +275,23 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
           <div className="text-3xl">🗺️</div>
           <p className="text-[14px] font-semibold text-gray-800">No floor plan here yet</p>
-          <p className="text-[12.5px] text-gray-500">
-            A manager can upload the plan PDF under Inventory → Locations → Floorplans — labels are detected automatically.
-          </p>
+          {canManage ? (
+            <>
+              <p className="text-[12.5px] text-gray-500">
+                Upload the Illustrator PDF for this restaurant — labels are detected automatically.
+              </p>
+              <button
+                onClick={() => router.push('/inventory/floorplan/manage')}
+                className="mt-1 h-11 rounded-full bg-green-600 px-6 text-[14px] font-bold text-white active:scale-[0.98]"
+              >
+                🛠 Manage floor plans
+              </button>
+            </>
+          ) : (
+            <p className="text-[12.5px] text-gray-500">
+              Ask a manager to upload the plan — it takes about a minute.
+            </p>
+          )}
         </div>
       </div>
     );
