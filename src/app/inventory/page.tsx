@@ -61,7 +61,7 @@ export default function InventoryPage() {
       <InventoryDashboard
         userRole={userRole}
         capabilities={capabilities}
-        onNavigate={(id) => setScreen({ type: id as any })}
+        onNavigate={(id) => { if (id === 'floorplan') router.push('/inventory/floorplan'); else setScreen({ type: id as any }); }}
         onHome={goHome}
       />
     );
@@ -173,7 +173,7 @@ export default function InventoryPage() {
     <InventoryDashboard
       userRole={userRole}
       capabilities={capabilities}
-      onNavigate={(id) => setScreen({ type: id as any })}
+      onNavigate={(id) => { if (id === 'floorplan') router.push('/inventory/floorplan'); else setScreen({ type: id as any }); }}
       onHome={goHome}
     />
   );
