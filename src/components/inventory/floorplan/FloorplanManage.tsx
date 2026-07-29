@@ -143,6 +143,15 @@ export default function FloorplanManage() {
                   {f.revision ? `Plan v${f.revision.revision_no} · published` : 'No plan yet'}
                 </span>
               </span>
+              {f.revision && (
+                <button
+                  onClick={() => router.push(`/inventory/floorplan/print?floor=${f.id}`)}
+                  aria-label={`Print ${f.name}`}
+                  className="h-10 w-10 flex-shrink-0 rounded-full border-[1.5px] border-gray-200 text-[14px] active:scale-95"
+                >
+                  🖨
+                </button>
+              )}
               <button
                 onClick={() => startUpload(f.id)}
                 disabled={busy != null}

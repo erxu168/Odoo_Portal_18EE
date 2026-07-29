@@ -139,6 +139,13 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
         ) : undefined} />
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
+        {/* Where this spot lives — jumps to the floorplan focused on it. */}
+        <button
+          onClick={() => router.push(`/inventory/floorplan?spot=${loc.id}`)}
+          className="mb-4 flex h-11 w-full items-center justify-center gap-2 rounded-full border-[1.5px] border-blue-600 text-[13.5px] font-bold text-blue-600 active:scale-[0.98]"
+        >
+          🗺️ Show on map
+        </button>
         {loc.photo && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={loc.photo} alt="" className="w-full max-h-56 object-cover rounded-2xl border border-gray-200 mb-4" />

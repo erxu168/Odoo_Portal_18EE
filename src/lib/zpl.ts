@@ -244,8 +244,22 @@ function escapeZPL(text: string): string {
  * Everything is a fraction of the label, so the same code fills 57 × 32 mm and
  * 100 × 50 mm without a second template.
  */
+/**
+ * QR module count (side length) by byte-mode payload length at ECC M — the
+ * mode ^BQ uses for our data. Longer payloads (floorplan deep-link URLs) land
+ * in higher QR versions with more, therefore smaller, modules; the printed
+ * square must still fit its box, so magnification is derived from this.
+ */
+function qrModules(payloadLen: number): number {
+  if (payloadLen <= 26) return 25;  // v2 — classic KWLOC-<id>
+  if (payloadLen <= 42) return 29;  // v3
+  if (payloadLen <= 62) return 33;  // v4 — typical floorplan URL
+  if (payloadLen <= 84) return 37;  // v5
+  return 41;                        // v6 — very long URLs
+}
+
 export function generateLocationZPL(
-  label: { name: string; branch?: string; code: string },
+  label: { name: string; branch?: string; code: string; qrData?: string },
   opts: { widthMm: number; heightMm: number; dpi?: number },
 ): string {
   const dpi = opts.dpi ?? 203;
@@ -257,11 +271,13 @@ export function generateLocationZPL(
 
   // The QR is the point of the label, so it is sized first and everything else
   // fits beside it. ^BQ magnification is an integer number of dots per module;
-  // a 25-module code (version 2, the size KWLOC-123 lands in) times the
-  // magnification is the printed width.
+  // the module count follows the payload (KWLOC-123 = 25, a deep-link URL
+  // more), and module count times magnification is the printed width.
+  const qrPayload = label.qrData ?? label.code;
+  const modules = qrModules(qrPayload.length);
   const qrTargetDots = Math.min(Math.round(hDots * 0.62), Math.round(printW * 0.42));
-  const mag = Math.max(2, Math.min(10, Math.round(qrTargetDots / 25)));
-  const qrDots = mag * 25;
+  const mag = Math.max(2, Math.min(10, Math.round(qrTargetDots / modules)));
+  const qrDots = mag * modules;
   const qrY = Math.round((hDots - qrDots) / 2);
 
   const textX = margin + qrDots + Math.round(3 * scale);
@@ -277,7 +293,7 @@ export function generateLocationZPL(
 
   const lines: string[] = ['^XA', `^PW${wDots}`, `^LL${hDots}`, '^CI28', '^LH0,0'];
 
-  lines.push(`^FO${margin},${Math.max(margin, qrY)}^BQN,2,${mag}^FDQA,${escapeZPL(label.code)}^FS`);
+  lines.push(`^FO${margin},${Math.max(margin, qrY)}^BQN,2,${mag}^FDQA,${escapeZPL(qrPayload)}^FS`);
 
   if (label.branch) {
     lines.push(`^FO${textX},${y}^A0N,${branchF.h},${branchF.w}^FB${textW},1,0,L,0^FD${escapeZPL(label.branch)}^FS`);

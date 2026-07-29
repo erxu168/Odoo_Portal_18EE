@@ -31,6 +31,8 @@ export interface FloorplanAppProps {
 
 export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppProps) {
   const router = useRouter();
+  const rootClass = onClose ? 'flex h-full flex-col overflow-hidden bg-gray-50' : 'flex h-[100dvh] flex-col overflow-hidden bg-gray-50';
+  const stateClass = onClose ? 'flex h-full flex-col bg-gray-50' : 'flex min-h-screen flex-col bg-gray-50';
   const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading');
   const [resp, setResp] = useState<ManifestResponse | null>(null);
   const [activeFloorId, setActiveFloorId] = useState<number | null>(null);
@@ -208,7 +210,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
 
   if (state === 'loading') {
     return (
-      <div className="flex min-h-screen flex-col bg-gray-50">
+      <div className={stateClass}>
         {header}
         <div className="flex flex-1 items-center justify-center text-[13px] text-gray-500">Loading the floorplan…</div>
       </div>
@@ -216,7 +218,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   }
   if (state === 'error' || !manifest) {
     return (
-      <div className="flex min-h-screen flex-col bg-gray-50">
+      <div className={stateClass}>
         {header}
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
           <div className="text-3xl">🗺️</div>
@@ -231,7 +233,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const floorsWithPlans = manifest.floors.filter(f => f.revision);
   if (floorsWithPlans.length === 0 || !activeFloor?.revision) {
     return (
-      <div className="flex min-h-screen flex-col bg-gray-50">
+      <div className={stateClass}>
         {header}
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center">
           <div className="text-3xl">🗺️</div>
@@ -245,7 +247,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   }
 
   return (
-    <div className="flex h-[100dvh] flex-col overflow-hidden bg-gray-50">
+    <div className={rootClass}>
       {header}
       {resp?.focusMissing && (
         <div className="mx-3 mt-2 rounded-xl bg-amber-50 px-4 py-2.5 text-[12.5px] font-medium text-amber-800">

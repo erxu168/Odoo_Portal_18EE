@@ -1,6 +1,11 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { typeIcon, typeLabel } from '@/lib/location-types';
+
+// Loaded only when someone actually opens the map — keeps Leaflet out of the
+// counting bundle. Rendered as an OVERLAY so the count state stays mounted.
+const FloorplanOverlay = dynamic(() => import('@/components/inventory/floorplan/FloorplanOverlay'), { ssr: false });
 
 /**
  * The count, as ONE walk you scroll — not doors you open.
@@ -57,6 +62,7 @@ export default function GuidedCountingFlow({
   const [skipFor, setSkipFor] = useState<number | null>(null);
   // Stops the user re-opened by hand after they auto-collapsed.
   const [reopened, setReopened] = useState<Set<number>>(new Set());
+  const [mapSpotId, setMapSpotId] = useState<number | null>(null);
 
   const effStatus = (s: Stop) => statuses[s.bucket_id]?.status ?? s.status ?? 'pending';
   const withProducts = stops.filter((s) => s.product_ids.length > 0);
@@ -177,13 +183,14 @@ export default function GuidedCountingFlow({
                 const label = s.location ? typeLabel(s.location.kind) : '';
                 return (
                   <div key={s.bucket_id} className="mt-2 first:mt-1">
-                    {!solo && <button
+                    {!solo && <div className="flex items-center gap-1 mb-1.5">
+                    <button
                       onClick={() => setReopened((p) => {
                         const n = new Set(p);
                         if (n.has(s.bucket_id)) n.delete(s.bucket_id); else n.add(s.bucket_id);
                         return n;
                       })}
-                      className="w-full flex items-center gap-1.5 text-left mb-1.5 pl-8 active:opacity-70"
+                      className="min-w-0 flex-1 flex items-center gap-1.5 text-left pl-8 active:opacity-70"
                     >
                       <span className="text-[var(--fs-sm)] flex-shrink-0" aria-hidden="true">
                         {s.location ? typeIcon(s.location.kind) : '📦'}
@@ -198,7 +205,17 @@ export default function GuidedCountingFlow({
                       }`}>
                         {skipped ? 'skipped' : `${counted}/${total}`}{(full || skipped) ? (collapsed ? ' ▸' : ' ▾') : ''}
                       </span>
-                    </button>}
+                    </button>
+                    {s.bucket_id > 0 && (
+                      <button
+                        onClick={() => setMapSpotId(s.bucket_id)}
+                        aria-label={`Show ${shelf} on the floorplan`}
+                        className="h-8 w-8 flex-shrink-0 rounded-lg border border-gray-200 bg-white text-[13px] active:scale-95"
+                      >
+                        🗺️
+                      </button>
+                    )}
+                    </div>}
 
                     {!collapsed && (
                       <>
@@ -254,6 +271,9 @@ export default function GuidedCountingFlow({
           onPick={(r) => { onSkipStop(skipFor, r); setSkipFor(null); }}
           onClose={() => setSkipFor(null)}
         />
+      )}
+      {mapSpotId != null && (
+        <FloorplanOverlay locationId={mapSpotId} onClose={() => setMapSpotId(null)} />
       )}
     </div>
   );

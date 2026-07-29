@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import { buildLocationTree, locationPath } from '@/lib/location-tree';
 import { useLocationTypes } from '@/lib/use-location-types';
-import { locationCode } from '@/lib/location-code';
+import { locationCode, locationDeepLink } from '@/lib/location-code';
 import { useZebraBluetooth } from '@/hooks/useZebraBluetooth';
 import { generateLocationZPL } from '@/lib/zpl';
 
@@ -105,7 +105,7 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
         const wanted = onlyId != null ? ordered.filter((r) => r.id === onlyId) : ordered;
         const qrs: Record<number, string> = {};
         await Promise.all(wanted.map(async (row) => {
-          qrs[row.id] = await QRCode.toDataURL(locationCode(row.id), { width: 240, margin: 0 });
+          qrs[row.id] = await QRCode.toDataURL(locationDeepLink(row.id), { width: 240, margin: 0 });
         }));
         if (!stale) { setAllLocs(locs); setRows(wanted); setQrByLoc(qrs); setLoading(false); }
       } catch {
@@ -158,7 +158,7 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
     let done = 0;
     for (const l of labels) {
       const zpl = generateLocationZPL(
-        { name: l.name, branch: l.branch, code: l.code },
+        { name: l.name, branch: l.branch, code: l.code, qrData: locationDeepLink(l.id) },
         { widthMm: size.w, heightMm: size.h },
       );
       const ok = await zebra.print(zpl);

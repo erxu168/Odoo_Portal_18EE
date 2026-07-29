@@ -31,3 +31,14 @@ test('admin overrides can restrict the view key', () => {
   expect(roleCan('staff', 'inventory.floorplan.view', overrides)).toBe(false);
   expect(roleCan('manager', 'inventory.floorplan.view', overrides)).toBe(true);
 });
+
+// parseLocationCode understands both sticker generations
+import { parseLocationCode } from '../src/lib/location-code';
+
+test('parseLocationCode accepts classic codes AND floorplan deep links', () => {
+  expect(parseLocationCode('KWLOC-42')).toBe(42);
+  expect(parseLocationCode('https://staff.krawings.de/inventory/floorplan?spot=42')).toBe(42);
+  expect(parseLocationCode('https://portal.krawings.de/inventory/floorplan?spot=7&x=1')).toBe(7);
+  expect(parseLocationCode('https://example.com/?spot=13')).toBe(13); // any origin — the id is what matters
+  expect(parseLocationCode('random text')).toBeNull();
+});

@@ -87,3 +87,28 @@ test('nothing is positioned outside the label', () => {
     expect(Number(m[2])).toBeLessThan(H);
   }
 });
+
+// ---- floorplan QR deep links (qrData) --------------------------------------
+
+test('without qrData the label is byte-identical to before (no silent change to printed stock)', () => {
+  const z1 = generateLocationZPL({ name: 'Walk in Cooler 1', code: 'KWLOC-25' }, AT);
+  const z2 = generateLocationZPL({ name: 'Walk in Cooler 1', code: 'KWLOC-25', qrData: undefined }, AT);
+  expect(z2).toBe(z1);
+});
+
+test('qrData replaces the QR payload but NOT the printed code', () => {
+  const url = 'https://staff.krawings.de/inventory/floorplan?spot=123';
+  const z = generateLocationZPL({ name: 'Freezer #1', code: 'KWLOC-123', qrData: url }, AT);
+  expect(z).toContain(`^FDQA,${url}^FS`);
+  expect(z).toContain('KWLOC-123'); // the human-readable code still prints
+});
+
+test('a URL payload shrinks the module magnification so the QR stays inside its box', () => {
+  const url = 'https://staff.krawings.de/inventory/floorplan?spot=123456';
+  const short = generateLocationZPL({ name: 'D4', code: 'KWLOC-9' }, AT);
+  const long = generateLocationZPL({ name: 'D4', code: 'KWLOC-9', qrData: url }, AT);
+  const magShort = Number(short.match(/\^BQN,2,(\d+)/)![1]);
+  const magLong = Number(long.match(/\^BQN,2,(\d+)/)![1]);
+  expect(magLong).toBeLessThan(magShort);   // more modules -> smaller dots-per-module
+  expect(magLong).toBeGreaterThanOrEqual(2); // still scannable
+});
