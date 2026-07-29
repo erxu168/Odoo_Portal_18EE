@@ -20,6 +20,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { initInventoryTables, listLocationKinds, addLocationKind, deleteLocationKind, renameLocationKind } from '@/lib/inventory-db';
+import { setLocationKindColor } from '@/lib/inventory-floorplan/db';
 import { canAccessCompany, resolveScopedCompany } from '@/lib/inventory-access';
 
 const KEY = 'inventory.location.manage';
@@ -61,9 +62,16 @@ export async function POST(request: Request) {
   const icon = body.icon != null ? String(body.icon).trim() : '';
   if (icon && icon.length > 8) return NextResponse.json({ error: 'Pick a single emoji for the icon' }, { status: 400 });
 
+  // Optional marker color for the floorplan (hex like #16A34A).
+  const color = body.color != null ? String(body.color).trim() : '';
+  if (color && !/^#[0-9a-f]{6}$/i.test(color)) {
+    return NextResponse.json({ error: 'The color must look like #16A34A' }, { status: 400 });
+  }
+
   const row = addLocationKind(companyId, label, icon, user.id);
   if (!row) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
-  return NextResponse.json({ kind: row }, { status: 201 });
+  if (color) setLocationKindColor(row.id, companyId, color);
+  return NextResponse.json({ kind: { ...row, color: color || null } }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
@@ -88,9 +96,15 @@ export async function PATCH(request: Request) {
   const icon = body.icon != null ? String(body.icon).trim() : '';
   if (icon && icon.length > 8) return NextResponse.json({ error: 'Pick a single emoji for the icon' }, { status: 400 });
 
+  const color = body.color !== undefined ? (body.color == null ? null : String(body.color).trim()) : undefined;
+  if (color != null && color !== '' && !/^#[0-9a-f]{6}$/i.test(color)) {
+    return NextResponse.json({ error: 'The color must look like #16A34A' }, { status: 400 });
+  }
+
   const result = renameLocationKind(id, companyId, label, icon);
   if (!result.ok && result.dupe) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
   if (!result.ok) return NextResponse.json({ error: 'Type not found' }, { status: 404 });
+  if (color !== undefined) setLocationKindColor(id, companyId, color || null);
   return NextResponse.json({ message: 'Type renamed' });
 }
 

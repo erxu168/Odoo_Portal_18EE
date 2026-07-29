@@ -21,7 +21,7 @@ import type { Pt } from '../src/lib/inventory-floorplan/types';
  * real inventory data.
  */
 
-const CO = 3;
+const CO = 500000 + Math.floor(Math.random() * 400000); // unique per run: the worker scratch DB persists across runs
 const ACTOR = { userId: 1, name: 'Test Admin' };
 let seq = 0;
 
@@ -117,7 +117,7 @@ test('a single bad coordinate aborts the WHOLE publish (nothing created)', () =>
 
 test('linking a spot from another restaurant is refused', () => {
   const foreign = createCountLocation({
-    parent_id: null, company_id: 5, name: 'WAJ Shelf', kind: 'shelf',
+    parent_id: null, company_id: CO + 1, name: 'WAJ Shelf', kind: 'shelf',
     description: null, photo: null, odoo_location_id: null, created_by: 1,
   });
   const { revId } = seed([
@@ -151,15 +151,18 @@ test('same-room duplicate codes block publish; cross-room duplicates are fine', 
   expect(publishRevision(ok.revId, ACTOR, 1).ok).toBe(true);
 });
 
-test('creating a code that already exists in that room tells the reviewer to link', () => {
+test('re-uploading a plan AUTO-LINKS same-room same-code spots — placements carry over', () => {
   const { revId, floorId } = seed([
     roomCand(0, 'Room E'),
     spotCand(1, 'REF 1', 'fridge', 'Room E'),
   ]);
   setDispositions(revId, 'create');
   expect(publishRevision(revId, ACTOR, 1).ok).toBe(true);
+  const locs1 = listCountLocations(CO) as Array<{ id: number; name: string; parent_id: number | null }>;
+  const roomE = locs1.find(l => l.name === 'Room E')!;
+  const refId = locs1.find(l => l.name === 'REF 1' && l.parent_id === roomE.id)!.id;
 
-  // second revision of the SAME floor tries to create REF 1 in Room E again
+  // v2 of the SAME floor detects REF 1 in Room E again → same spot, linked.
   const docId = createFloorDocument({
     company_id: CO, original_filename: 'v2.pdf', pdf_relpath: 'floorplans/v2.pdf',
     sha256: 'v2', byte_size: 10, page_count: 1, uploaded_by: 1,
@@ -170,12 +173,18 @@ test('creating a code that already exists in that room tells the reviewer to lin
     raster_relpath: 'floorplans/v2.webp', raster_mime: 'image/webp',
     raster_width: 100, raster_height: 100, raster_bytes: 1, uploaded_by: 1,
   });
-  insertCandidates(rev2, [spotCand(0, 'REF 1', 'fridge', 'Room E')]);
+  insertCandidates(rev2, [
+    { item_index: 0, raw_text: 'Room E', normalized_text: 'ROOM E', polygon: box(0.5, 0.1), rotation_degrees: 0, proposed_kind: 'room' as const },
+    spotCand(1, 'REF 1', 'fridge', 'Room E'),
+  ]);
   setDispositions(rev2, 'create');
   const res = publishRevision(rev2, ACTOR, 1);
-  expect(res.ok).toBe(false);
-  expect((res as { code: string; detail?: string }).code).toBe('duplicate_codes');
-  expect((res as { detail?: string }).detail).toContain('link');
+  expect(res).toMatchObject({ ok: true, createdRooms: 0, createdSpots: 0, linked: 1 });
+  const anchors = listAnchors(rev2);
+  expect(anchors.find(a => a.label === 'REF 1')!.count_location_id).toBe(refId); // SAME spot id
+  // no duplicate location row appeared IN ROOM E (other rooms may have their own REF 1)
+  expect((listCountLocations(CO) as Array<{ name: string; parent_id: number | null }>)
+    .filter(l => l.name === 'REF 1' && l.parent_id === roomE.id).length).toBe(1);
 });
 
 test('a failure AFTER the first write still rolls back everything (throw-inside-transaction)', () => {

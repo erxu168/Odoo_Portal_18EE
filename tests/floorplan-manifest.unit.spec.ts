@@ -21,7 +21,7 @@ import type { Pt } from '../src/lib/inventory-floorplan/types';
  * breaks if publish and manifest ever drift apart.
  */
 
-const CO = 3;
+const CO = 500000 + Math.floor(Math.random() * 400000); // unique per run: the worker scratch DB persists across runs
 const ACTOR = { userId: 1, name: 'Test Admin' };
 
 function box(x: number, y: number): Pt[] {

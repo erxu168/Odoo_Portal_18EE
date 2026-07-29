@@ -393,6 +393,15 @@ export function deleteAnchor(id: number): void {
 }
 
 /**
+ * Color of a custom location type (location_kinds is owned by inventory-db;
+ * only the floorplan needs color, so the setter lives here, not there).
+ */
+export function setLocationKindColor(id: number, companyId: number, color: string | null): void {
+  initFloorplanTables();
+  getDb().prepare('UPDATE location_kinds SET color = ? WHERE id = ? AND company_id = ?').run(color, id, companyId);
+}
+
+/**
  * Where a spot lives on the published map — or null. Only PUBLISHED revisions
  * of ACTIVE floors count: a draft/superseded revision or an archived floor must
  * never leak into staff search, QR deep links, or "Show on map".

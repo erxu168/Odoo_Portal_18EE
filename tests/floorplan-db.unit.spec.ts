@@ -30,7 +30,7 @@ import {
   getPrimaryAnchorForLocation,
 } from '../src/lib/inventory-floorplan/db';
 
-const CO = 3; // Ssam
+const CO = 500000 + Math.floor(Math.random() * 400000); // unique per run: the worker scratch DB persists across runs
 let seq = 0; // unique floor names — every test shares one scratch DB file
 
 function seedRevision() {
@@ -76,7 +76,7 @@ test('floor names are unique per company, case-insensitive; other companies unaf
   initFloorplanTables();
   createFloor({ company_id: CO, name: 'Ground', code: 'EG', created_by: 1 });
   expect(() => createFloor({ company_id: CO, name: 'ground', code: 'EG2', created_by: 1 })).toThrow();
-  expect(() => createFloor({ company_id: 5, name: 'Ground', code: 'EG', created_by: 1 })).not.toThrow();
+  expect(() => createFloor({ company_id: CO + 1, name: 'Ground', code: 'EG', created_by: 1 })).not.toThrow();
 });
 
 test('document → floor → revision → candidates → anchors round-trip', () => {

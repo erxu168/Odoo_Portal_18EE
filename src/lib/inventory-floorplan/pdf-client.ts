@@ -19,6 +19,7 @@ export interface CandidateDraft {
   rotationDegrees: number;
   proposedKind: 'spot' | 'room' | 'other';
   proposedType?: string | null;
+  proposedRoom?: string | null;
 }
 
 export interface ProcessedPdf {
@@ -151,6 +152,39 @@ export function buildRevisionFormData(file: File, processed: ProcessedPdf): Form
   form.append('meta', JSON.stringify(processed.meta));
   form.append('candidates', JSON.stringify(processed.candidates));
   return form;
+}
+
+/**
+ * Propose a room for every spot candidate: the nearest detected room label.
+ * The owner's plans put the room name inside the room, so nearest-centroid is
+ * right most of the time; where numbering would collide inside one room the
+ * next-nearest room is proposed instead (the reviewer has the final word, and
+ * publish still blocks real duplicates).
+ */
+export function suggestRooms(candidates: CandidateDraft[]): CandidateDraft[] {
+  const centroid = (poly: Pt[]): Pt => ({
+    x: poly.reduce((s, p) => s + p.x, 0) / (poly.length || 1),
+    y: poly.reduce((s, p) => s + p.y, 0) / (poly.length || 1),
+  });
+  const rooms = candidates
+    .filter(c => c.proposedKind === 'room')
+    .map(c => ({ name: c.rawText.trim(), c: centroid(c.polygon) }));
+  if (rooms.length === 0) return candidates;
+
+  const taken = new Set<string>();
+  return candidates.map(cand => {
+    if (cand.proposedKind !== 'spot') return cand;
+    const c = centroid(cand.polygon);
+    const byDist = rooms
+      .map(r => ({ name: r.name, d: Math.hypot(c.x - r.c.x, c.y - r.c.y) }))
+      .sort((a, b) => a.d - b.d);
+    let room: string | null = null;
+    for (const r of byDist) {
+      const key = `${r.name}|${cand.normalizedText}`;
+      if (!taken.has(key)) { room = r.name; taken.add(key); break; }
+    }
+    return { ...cand, proposedRoom: room };
+  });
 }
 
 // re-exported so upload UI can show per-candidate rotation without importing geometry

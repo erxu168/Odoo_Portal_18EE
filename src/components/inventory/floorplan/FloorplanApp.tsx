@@ -39,8 +39,19 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const [filterType, setFilterType] = useState<string | null>(null);
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null);
   const [capabilities, setCapabilities] = useState<string[]>(() => allowedActionKeysForRole('staff', {}));
+  const [edit, setEdit] = useState(false);
+  const [armed, setArmed] = useState<string | null>(null);
+  const [addForm, setAddForm] = useState<{ x: number; y: number; code: string; roomId: number | null } | null>(null);
+  const [editSel, setEditSel] = useState<{ anchorId: number; locationId: number; label: string } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const tokenRef = useRef(0);
   const seqRef = useRef(0);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toast = (msg: string) => {
+    setNotice(msg);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 2600);
+  };
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
@@ -132,6 +143,58 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   }, [manifest, activeFloorId]);
 
   const closeSheet = () => { setSheetId(null); setSelectedId(null); };
+  const canManage = capabilities.includes('inventory.location.manage');
+
+  const PREFIX: Record<string, string> = { shelf: 'SLF', floorspace: 'FLS', cabinet: 'CAB', fridge: 'REF', freezer: 'FRZ' };
+  const suggestCode = (typeKey: string): string => {
+    const prefix = PREFIX[typeKey] ?? (typesByKey[typeKey]?.label ?? typeKey).toUpperCase();
+    let max = 0;
+    for (const a of activeAnchors) {
+      const m = a.label.match(new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ?(\\d+)$`, 'i'));
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    return `${prefix} ${max + 1}`;
+  };
+
+  const placeSpot = async () => {
+    if (!addForm || !armed || activeFloorId == null) return;
+    const res = await fetch('/api/inventory/floorplan-anchors', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        floorId: activeFloorId, x: addForm.x, y: addForm.y,
+        typeKey: armed, code: addForm.code, roomLocationId: addForm.roomId,
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) { toast(d.error ?? 'Could not add the spot'); return; }
+    setAddForm(null);
+    setArmed(null);
+    toast(`${addForm.code} placed — drag its handle to fine-tune`);
+    load();
+  };
+
+  const moveAnchor = async (anchor: { id: number }, polygon: { x: number; y: number }[], cx: number, cy: number) => {
+    const res = await fetch(`/api/inventory/floorplan-anchors/${anchor.id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ polygon, cx, cy }),
+    });
+    if (!res.ok) toast('Could not save the new position — it will snap back on reload');
+    else toast('Position saved');
+  };
+
+  const removeAnchor = async () => {
+    if (!editSel) return;
+    const res = await fetch(`/api/inventory/floorplan-anchors/${editSel.anchorId}`, { method: 'DELETE' });
+    if (!res.ok) toast('Could not remove the marker');
+    else toast(`${editSel.label} removed from the map — the spot itself still exists`);
+    setEditSel(null);
+    load();
+  };
+
+  const roomOptions = useMemo(
+    () => (manifest ? manifest.places.filter(p => p.bucket === 'room' && p.floorId === activeFloorId) : []),
+    [manifest, activeFloorId],
+  );
 
   const header = (
     <AppHeader
@@ -207,7 +270,51 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
             {t.label}
           </button>
         ))}
+        {canManage && !onClose && (
+          <>
+            <button
+              onClick={() => { setEdit(e => !e); setArmed(null); setEditSel(null); closeSheet(); }}
+              className={`h-[34px] flex-shrink-0 rounded-full border px-3.5 text-[12px] font-bold ${edit ? 'border-green-600 bg-green-600 text-white' : 'border-blue-600 bg-white text-blue-600'}`}
+            >
+              {edit ? '✓ Done' : '✏️ Edit'}
+            </button>
+            <button
+              onClick={() => router.push('/inventory/floorplan/manage')}
+              className="h-[34px] flex-shrink-0 rounded-full border border-gray-200 bg-white px-3.5 text-[12px] font-bold text-gray-700"
+            >
+              🛠 Plans
+            </button>
+          </>
+        )}
       </div>
+      {edit && (
+        <div className="flex items-center gap-1.5 overflow-x-auto border-y border-gray-200 bg-gray-900 px-3 py-2 [scrollbar-width:none]">
+          <span className="flex-shrink-0 text-[10px] font-extrabold tracking-[0.08em] text-gray-400">ADD:</span>
+          {(manifest?.types ?? []).filter(t => !['floor', 'area'].includes(t.key)).map(t => (
+            <button
+              key={t.key}
+              onClick={() => setArmed(armed === t.key ? null : t.key)}
+              className={`flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold ${armed === t.key ? 'border-white bg-white text-gray-900' : 'border-gray-600 bg-transparent text-gray-100'}`}
+            >
+              <span>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {edit && (
+        <div className="bg-gray-800 px-3 py-1.5 text-[11.5px] font-medium text-gray-200">
+          {armed
+            ? `Tap the plan where the ${typesByKey[armed]?.label.toLowerCase() ?? 'spot'} is.`
+            : 'Drag a round handle to move a marker · tap a marker to remove it · pick a type above to add one.'}
+        </div>
+      )}
+      {editSel && (
+        <div className="flex items-center gap-2 bg-red-50 px-3 py-2">
+          <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-red-900">{editSel.label}</span>
+          <button onClick={removeAnchor} className="h-9 flex-shrink-0 rounded-full bg-red-600 px-3.5 text-[12px] font-bold text-white">Remove marker</button>
+          <button onClick={() => setEditSel(null)} className="h-9 flex-shrink-0 rounded-full border border-gray-300 bg-white px-3.5 text-[12px] font-bold text-gray-700">Cancel</button>
+        </div>
+      )}
       <div className="relative min-h-0 flex-1">
         <FloorplanMap
           revision={activeFloor.revision}
@@ -215,11 +322,28 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           typesByKey={typesByKey}
           selectedId={selectedId}
           filterType={filterType}
-          editable={false}
-          onTapAnchor={id => { setSelectedId(id); setSheetId(id); }}
-          onTapEmpty={() => closeSheet()}
+          editable={edit}
+          onTapAnchor={id => {
+            if (edit) {
+              const a = activeAnchors.find(x => x.locationId === id);
+              if (a) setEditSel({ anchorId: a.id, locationId: id, label: a.label });
+              return;
+            }
+            setSelectedId(id); setSheetId(id);
+          }}
+          onTapEmpty={pt => {
+            if (edit && armed) { setAddForm({ x: pt.x, y: pt.y, code: suggestCode(armed), roomId: roomOptions[0]?.locationId ?? null }); return; }
+            if (!edit) closeSheet();
+            setEditSel(null);
+          }}
+          onMoveAnchor={(a, polygon, cx, cy) => moveAnchor(a, polygon, cx, cy)}
           flyTo={flyTo}
         />
+        {notice && (
+          <div className="pointer-events-none absolute bottom-4 left-1/2 z-[30] -translate-x-1/2 rounded-full bg-gray-900/90 px-4 py-2 text-[12px] font-semibold text-white">
+            {notice}
+          </div>
+        )}
         {floorsWithPlans.length > 1 && (
           <div className="absolute bottom-4 right-3 z-[20] flex flex-col gap-1.5">
             {floorsWithPlans.map(f => (
@@ -243,13 +367,41 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           </button>
         )}
       </div>
-      {sheetId != null && (
+      {sheetId != null && !edit && (
         <FloorplanSpotSheet
           locationId={sheetId}
           typesByKey={typesByKey}
           canEditProductPhotos={capabilities.includes('inventory.productsettings.manage')}
           onClose={closeSheet}
         />
+      )}
+      {addForm && armed && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-gray-900/40 p-6" onClick={() => setAddForm(null)}>
+          <div className="w-full max-w-xs rounded-2xl bg-white p-4" onClick={e => e.stopPropagation()}>
+            <h4 className="mb-3 text-[15px] font-bold text-gray-900">
+              {typesByKey[armed]?.icon} Add {typesByKey[armed]?.label.toLowerCase()} here
+            </h4>
+            <input
+              value={addForm.code}
+              onChange={e => setAddForm(f => (f ? { ...f, code: e.target.value } : f))}
+              aria-label="Spot code"
+              className="mb-2 h-11 w-full rounded-xl border-[1.5px] border-gray-200 px-3.5 text-[14px] font-semibold outline-none focus:border-blue-600"
+            />
+            <select
+              value={addForm.roomId ?? ''}
+              onChange={e => setAddForm(f => (f ? { ...f, roomId: e.target.value ? Number(e.target.value) : null } : f))}
+              aria-label="Room"
+              className="mb-3 h-11 w-full rounded-xl border-[1.5px] border-gray-200 bg-white px-3 text-[13px] font-semibold text-gray-700 outline-none"
+            >
+              <option value="">· no room ·</option>
+              {roomOptions.map(r => <option key={r.locationId} value={r.locationId}>{r.label}</option>)}
+            </select>
+            <div className="flex gap-2">
+              <button onClick={() => setAddForm(null)} className="h-11 flex-1 rounded-full border-[1.5px] border-gray-200 text-[13.5px] font-bold text-gray-700">Cancel</button>
+              <button onClick={placeSpot} className="h-11 flex-1 rounded-full bg-green-600 text-[13.5px] font-bold text-white">Add spot</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

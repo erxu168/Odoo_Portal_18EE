@@ -138,6 +138,11 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
     let linked = 0;
     let anchors = 0;
 
+    const existingChild = (roomId: number | null, code: string): number | null => {
+      const hit = existing.find(l => l.parent_id === roomId && normalizeCode(l.name) === code);
+      return hit ? hit.id : null;
+    };
+
     const spotPlan: Array<{ cand: CandRow; roomId: number | null; locationId: number | null }> = [];
     for (const c of spotCands) {
       const code = normalizeCode(c.normalized_text || c.raw_text);
@@ -150,11 +155,13 @@ export function publishRevision(revisionId: number, actor: { userId: number; nam
       if (claimed.has(dupKey)) {
         throw new PublishAbort('duplicate_codes', `"${code}" appears twice in the same room — rename or untick one`);
       }
-      if (roomId !== null && childrenByParent.get(roomId)?.has(code)) {
-        throw new PublishAbort('duplicate_codes', `"${code}" already exists in that room — link it instead of creating a copy`);
-      }
       claimed.set(dupKey, c.raw_text);
-      spotPlan.push({ cand: c, roomId, locationId: null });
+      // Same code in the same room ALREADY exists → that IS this spot: link to
+      // it instead of failing or duplicating, so re-uploading plan v1.4 keeps
+      // every product placement. (Identity = room + code, per the owner's
+      // naming system; the same code in ANOTHER room is a different spot.)
+      const already = roomId !== null ? existingChild(roomId, code) : null;
+      spotPlan.push({ cand: c, roomId, locationId: already });
     }
 
     for (const p of spotPlan) {
