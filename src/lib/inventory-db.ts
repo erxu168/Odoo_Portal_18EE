@@ -136,6 +136,21 @@ export function initInventoryTables() {
       updated_at TEXT NOT NULL
     );
 
+    -- How much of a product this restaurant wants to hold. PER COMPANY on
+    -- purpose: WAJ and Ssam keep different volumes of the same thing, unlike
+    -- pack size and the loose word (product_flags), which are shared.
+    -- Stored in BASE units — the unit staff count in — so the ordering maths
+    -- never has to guess what "2" meant.
+    CREATE TABLE IF NOT EXISTS product_par (
+      odoo_product_id INTEGER NOT NULL,
+      company_id      INTEGER NOT NULL,
+      par_min         REAL,
+      par_max         REAL,
+      updated_by      INTEGER,
+      updated_at      TEXT,
+      PRIMARY KEY (odoo_product_id, company_id)
+    );
+
     CREATE TABLE IF NOT EXISTS product_locations (
       odoo_product_id INTEGER NOT NULL,
       count_location_id INTEGER NOT NULL,
@@ -1203,6 +1218,57 @@ export function deleteTemplate(templateId: number): void {
  * that already has entries). Used to guard hard-delete: a manager may only purge
  * a list with real history if they're an unrestricted admin.
  */
+export interface ProductPar { odoo_product_id: number; par_min: number | null; par_max: number | null }
+
+/** Par for these products at ONE restaurant. Missing = no par set, which is fine. */
+export function getProductPar(companyId: number, productIds?: number[]): ProductPar[] {
+  const db = getDb();
+  if (productIds && productIds.length === 0) return [];
+  const filter = productIds && productIds.length > 0
+    ? ` AND odoo_product_id IN (${productIds.map(() => '?').join(',')})`
+    : '';
+  return db.prepare(
+    `SELECT odoo_product_id, par_min, par_max FROM product_par WHERE company_id = ?${filter}`,
+  ).all(companyId, ...(productIds || [])) as ProductPar[];
+}
+
+/**
+ * Set or clear par for one product at one restaurant.
+ *
+ * Both null clears it — a product with no par simply never triggers an ordering
+ * suggestion, and nothing on the counting screen changes for it. A max below
+ * the min is refused rather than stored: "order up to less than you already
+ * wanted" is not a thing, and silently swapping them would hide a typo.
+ */
+export function setProductPar(
+  productId: number,
+  companyId: number,
+  parMin: number | null,
+  parMax: number | null,
+  userId: number,
+): void {
+  const clean = (v: number | null) =>
+    v == null || !Number.isFinite(v) || v < 0 ? null : v;
+  const lo = clean(parMin);
+  const hi = clean(parMax);
+  if (lo != null && hi != null && hi < lo) {
+    throw new Error('PAR_INVALID: the most you want cannot be less than the least you want');
+  }
+  const db = getDb();
+  if (lo == null && hi == null) {
+    db.prepare('DELETE FROM product_par WHERE odoo_product_id = ? AND company_id = ?')
+      .run(productId, companyId);
+    return;
+  }
+  db.prepare(`
+    INSERT INTO product_par (odoo_product_id, company_id, par_min, par_max, updated_by, updated_at)
+    VALUES (?,?,?,?,?,?)
+    ON CONFLICT(odoo_product_id, company_id) DO UPDATE SET
+      par_min = excluded.par_min, par_max = excluded.par_max,
+      updated_by = excluded.updated_by, updated_at = excluded.updated_at
+  `).run(productId, companyId, lo, hi, userId, now());
+}
+
 export function templateHasRealSessions(templateId: number): boolean {
   const db = getDb();
   const row = db.prepare(`

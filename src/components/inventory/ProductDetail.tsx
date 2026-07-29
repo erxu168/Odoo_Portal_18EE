@@ -123,12 +123,49 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [packLabel, setPackLabel] = useState('');
   const [packSize, setPackSize] = useState('');
   const [looseLabel, setLooseLabel] = useState('');
+  // PAR — how much this restaurant wants to hold. Stored per company, unlike
+  // pack size above, which is shared: WAJ and Ssam keep different volumes of the
+  // same product.
+  const [parMin, setParMin] = useState('');
+  const [parMax, setParMax] = useState('');
+  const [parErr, setParErr] = useState('');
   const [homeSpots, setHomeSpots] = useState<number[]>([]);
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});
   const [spotSheet, setSpotSheet] = useState(false);
   // Editable "Count by" units (seeded from the defaults) + the manage sheet.
   const [packUnits, setPackUnits] = useState<string[]>(PACK_LABELS);
   const [manageUnits, setManageUnits] = useState(false);
+  const loadPar = React.useCallback(() => {
+    if (!companyId) return;
+    fetch(`/api/inventory/product-par?company_id=${companyId}&ids=${product.id}`)
+      .then((r) => (r.ok ? r.json() : { par: [] }))
+      .then((d) => {
+        const row = (d.par || [])[0];
+        setParMin(row?.par_min != null ? String(row.par_min) : '');
+        setParMax(row?.par_max != null ? String(row.par_max) : '');
+      })
+      .catch(() => {});
+  }, [companyId, product.id]);
+  useEffect(() => { loadPar(); }, [loadPar]);
+
+  async function savePar(nextMin: string, nextMax: string) {
+    if (readOnly || !companyId) return;
+    setParErr('');
+    try {
+      const res = await fetch('/api/inventory/product-par', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          product_id: product.id, company_id: companyId,
+          par_min: nextMin.trim() === '' ? null : Number(nextMin),
+          par_max: nextMax.trim() === '' ? null : Number(nextMax),
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setParErr(d.error || 'Could not save the par level'); loadPar(); return; }
+      flash('ok', 'Par level saved');
+    } catch { setParErr('Network error — the par level was not saved.'); }
+  }
+
   const loadUnits = () => fetch('/api/inventory/pack-labels')
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => { if (d?.labels) setPackUnits(d.labels.map((x: any) => x.label)); })
@@ -678,6 +715,48 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
               ) : (
                 `Staff count whole ${pluralizePack(effPack, 2)} AND loose ${unitWords(uomName, effPack, looseLabel).looseFor(2)}. Odoo still gets ${uomName}.`
               )}
+            </p>
+          </div>
+
+          {/* PAR — the least and the most of this you want to hold HERE.
+              Directly under the pack settings on purpose: par is typed in base
+              units, and the line below turns it into packs so nobody has to do
+              the arithmetic in their head. */}
+          <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 mb-4">
+            <div className="flex items-baseline justify-between gap-2">
+              <label className={label}>Par level</label>
+              <span className="text-[var(--fs-xs)] text-gray-400">this restaurant only</span>
+            </div>
+            <div className="flex gap-2 mt-1">
+              <div className="flex-1 min-w-0">
+                <div className="text-[var(--fs-xs)] text-gray-500 mb-1">Least (min)</div>
+                <input value={parMin} inputMode="decimal" disabled={readOnly}
+                  onChange={(e) => setParMin(e.target.value.replace(/[^0-9.]/g, ''))}
+                  onBlur={(e) => savePar(e.target.value, parMax)}
+                  placeholder="—" aria-label="Least you want to hold"
+                  className={`${box} text-center font-mono`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[var(--fs-xs)] text-gray-500 mb-1">Most (max)</div>
+                <input value={parMax} inputMode="decimal" disabled={readOnly}
+                  onChange={(e) => setParMax(e.target.value.replace(/[^0-9.]/g, ''))}
+                  onBlur={(e) => savePar(parMin, e.target.value)}
+                  placeholder="—" aria-label="Most you want to hold"
+                  className={`${box} text-center font-mono`} />
+              </div>
+            </div>
+            {parErr && <p className="text-[var(--fs-xs)] font-semibold text-red-600 mt-1.5">{parErr}</p>}
+            <p className="text-[var(--fs-xs)] text-gray-400 mt-1.5">
+              In {unitWords(uomName, effPack, looseLabel).looseFor(2)}
+              {Number(packSize) > 0 && (parMin !== '' || parMax !== '') && (
+                <>
+                  {' — '}
+                  {parMin !== '' && `${parMin} = ${(Number(parMin) / Number(packSize)).toFixed(2).replace(/\.?0+$/, '')} ${pluralizePack(effPack, 2)}`}
+                  {parMin !== '' && parMax !== '' && ', '}
+                  {parMax !== '' && `${parMax} = ${(Number(parMax) / Number(packSize)).toFixed(2).replace(/\.?0+$/, '')} ${pluralizePack(effPack, 2)}`}
+                </>
+              )}
+              . {parMin !== '' ? `Below ${parMin}, ordering suggests topping up${parMax !== '' ? ` to ${parMax}` : ''}.` : 'Leave blank for no par.'}
             </p>
           </div>
 
