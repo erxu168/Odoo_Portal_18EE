@@ -153,12 +153,19 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
    * rest at a printer that is not listening — a jam should cost one label, not
    * the whole batch.
    */
+  const printing = labels.filter((l) => !skipped.has(l.id));
+
   async function printToZebra() {
     setZebraMsg(null);
     let done = 0;
-    for (const l of labels) {
+    // Only the labels still ticked — "Skip this one" must not waste stickers
+    // on the Zebra path any more than on paper.
+    for (const l of printing) {
       const zpl = generateLocationZPL(
-        { name: l.name, branch: l.branch, code: l.code, qrData: locationDeepLink(l.id) },
+        // The QR toggle applies to Zebra too: with QR "off" the label still
+        // prints a small classic-code QR (the ZPL layout is built around one),
+        // but not the long deep link.
+        { name: l.name, branch: l.branch, code: l.code, qrData: withQr ? locationDeepLink(l.id) : undefined },
         { widthMm: size.w, heightMm: size.h },
       );
       const ok = await zebra.print(zpl);
@@ -171,7 +178,6 @@ export default function LocationLabels({ companyId, onClose, onlyId }: { company
     setZebraMsg(`${done} label${done === 1 ? '' : 's'} sent to ${zebra.printerName || 'the printer'}.`);
   }
 
-  const printing = labels.filter((l) => !skipped.has(l.id));
 
   // What the chosen depth DOES, spelled out on a real place from this batch.
   // Switching between the three looks identical when the only place being

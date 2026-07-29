@@ -49,7 +49,18 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const [notice, setNotice] = useState<string | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
   const [offlineFrom, setOfflineFrom] = useState<string | null>(null);
-  const [offlineRasters, setOfflineRasters] = useState<Record<number, string>>({});
+  const [offlineRasters, setOfflineRastersRaw] = useState<Record<number, string>>({});
+  // Object URLs hold their blobs alive until revoked — always release the
+  // previous set when replacing, and everything on unmount (audit finding).
+  const setOfflineRasters = useCallback((next: Record<number, string>) => {
+    setOfflineRastersRaw(prev => {
+      for (const url of Object.values(prev)) { if (!Object.values(next).includes(url)) URL.revokeObjectURL(url); }
+      return next;
+    });
+  }, []);
+  useEffect(() => () => {
+    setOfflineRastersRaw(prev => { for (const url of Object.values(prev)) URL.revokeObjectURL(url); return {}; });
+  }, []);
   const tokenRef = useRef(0);
   const seqRef = useRef(0);
   const userIdRef = useRef<number | null>(null);
@@ -83,7 +94,15 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         if (tokenRef.current !== token) return;
         if (!ok) { setState('error'); return; }
         const data = d as ManifestResponse;
-        setResp(data);
+        // A reload can mean a COMPANY switch — stale selection/sheet/edit state
+        // must never point into the previous restaurant's spots.
+        setResp(prev => {
+          if (prev?.manifest && data.manifest && prev.manifest.companyId !== data.manifest.companyId) {
+            setSelectedId(null); setSheetId(null); setFilterType(null);
+            setEdit(false); setEditSel(null); setArmed(null); setAddForm(null);
+          }
+          return data;
+        });
         setState('ready');
         setOfflineFrom(null);
         setOfflineRasters({});
@@ -160,6 +179,9 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     setSelectedId(null);
     setSheetId(null);
     setFilterType(null);
+    setEditSel(null);   // never keep a Remove-marker bar for an off-screen anchor
+    setArmed(null);
+    setAddForm(null);
     if (manifest && typeof window !== 'undefined') {
       window.localStorage.setItem(`kw_fp_floor_${manifest.companyId}`, String(floorId));
     }

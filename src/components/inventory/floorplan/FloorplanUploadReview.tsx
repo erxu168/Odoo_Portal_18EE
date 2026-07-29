@@ -132,7 +132,7 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
         value={c.proposed_type ?? ''}
         onChange={e => patch(c.id, { proposed_type: e.target.value })}
         aria-label={`Type of ${c.raw_text}`}
-        className="h-8 flex-shrink-0 rounded-full border-0 px-2.5 text-[11px] font-bold text-white outline-none"
+        className="h-10 flex-shrink-0 rounded-full border-0 px-2.5 text-[11px] font-bold text-white outline-none"
         style={{ background: t?.color ?? '#64748B' }}
       >
         {spotTypes.map(x => <option key={x.key} value={x.key}>{x.icon} {x.label}</option>)}
@@ -211,7 +211,7 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
                 <button
                   onClick={e => { e.stopPropagation(); patch(c.id, { disposition: c.disposition === 'ignored' ? 'create' : 'ignored' }); }}
                   aria-label={c.disposition === 'ignored' ? `Keep ${c.raw_text}` : `Ignore ${c.raw_text}`}
-                  className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[13px] font-bold text-white ${c.disposition === 'ignored' ? 'bg-gray-300' : 'bg-green-600'}`}
+                  className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-[14px] font-bold text-white ${c.disposition === 'ignored' ? 'bg-gray-300' : 'bg-green-600'}`}
                 >
                   {c.disposition === 'ignored' ? '–' : '✓'}
                 </button>
@@ -223,7 +223,7 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
                   value={c.proposed_room ?? NO_ROOM}
                   onChange={e => patch(c.id, { proposed_room: e.target.value === NO_ROOM ? null : e.target.value })}
                   aria-label={`Room of ${c.raw_text}`}
-                  className="ml-auto h-8 max-w-[42%] flex-shrink rounded-lg border border-gray-200 bg-white px-1.5 text-[11.5px] font-semibold text-gray-600 outline-none"
+                  className="ml-auto h-10 max-w-[42%] flex-shrink rounded-lg border border-gray-200 bg-white px-1.5 text-[11.5px] font-semibold text-gray-600 outline-none"
                 >
                   <option value={NO_ROOM}>· no room ·</option>
                   {roomNames.map(r => <option key={r} value={r}>{r}</option>)}

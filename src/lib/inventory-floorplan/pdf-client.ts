@@ -99,6 +99,9 @@ export async function processPdf(file: File, pageNumber = 1): Promise<ProcessedP
       try {
         await page.render({ canvasContext: ctx, viewport: vp }).promise;
         const { blob, mime } = await canvasToBlob(canvas);
+        // The server caps the upload at 15 MB — an unusually dense plan can
+        // encode too large at full size; step down instead of failing later.
+        if (blob.size > 14 * 1024 * 1024) continue;
         rendered = { blob, mime, width: canvas.width, height: canvas.height };
         break;
       } catch {
@@ -164,11 +167,15 @@ export function buildRevisionFormData(file: File, processed: ProcessedPdf): Form
  * next-nearest room is proposed instead (the reviewer has the final word, and
  * publish still blocks real duplicates).
  */
-export function suggestRooms(candidates: CandidateDraft[]): CandidateDraft[] {
+export function suggestRooms(candidates: CandidateDraft[], pageWidth = 1, pageHeight = 1): CandidateDraft[] {
   const centroid = (poly: Pt[]): Pt => ({
     x: poly.reduce((s, p) => s + p.x, 0) / (poly.length || 1),
     y: poly.reduce((s, p) => s + p.y, 0) / (poly.length || 1),
   });
+  // Distances in PAGE POINTS, not fractions — fraction axes have different
+  // physical scales on non-square pages and can flip "nearest" (audit finding).
+  const dx = (a: number, b: number) => (a - b) * pageWidth;
+  const dy = (a: number, b: number) => (a - b) * pageHeight;
   const rooms = candidates
     .filter(c => c.proposedKind === 'room')
     .map(c => ({ name: c.rawText.trim(), c: centroid(c.polygon) }));
@@ -179,7 +186,7 @@ export function suggestRooms(candidates: CandidateDraft[]): CandidateDraft[] {
     if (cand.proposedKind !== 'spot') return cand;
     const c = centroid(cand.polygon);
     const byDist = rooms
-      .map(r => ({ name: r.name, d: Math.hypot(c.x - r.c.x, c.y - r.c.y) }))
+      .map(r => ({ name: r.name, d: Math.hypot(dx(c.x, r.c.x), dy(c.y, r.c.y)) }))
       .sort((a, b) => a.d - b.d);
     let room: string | null = null;
     for (const r of byDist) {

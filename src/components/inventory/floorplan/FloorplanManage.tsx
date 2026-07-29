@@ -44,14 +44,19 @@ export default function FloorplanManage() {
 
   const load = useCallback(() => {
     const token = ++tokenRef.current;
+    setError(null);
     Promise.all([
-      fetch('/api/inventory/floorplans').then(r => r.json()),
-      fetch('/api/inventory/floorplan').then(r => r.json()),
+      fetch('/api/inventory/floorplans').then(r => r.ok ? r.json() : Promise.reject(new Error('floors'))),
+      fetch('/api/inventory/floorplan').then(r => r.ok ? r.json() : Promise.reject(new Error('manifest'))),
     ]).then(([f, m]) => {
       if (tokenRef.current !== token) return;
       setFloors(f.floors ?? []);
       setTypes(m.manifest?.types ?? []);
-    }).catch(() => { if (tokenRef.current === token) setError('Could not load — check your connection'); });
+    }).catch(() => {
+      if (tokenRef.current !== token) return;
+      setFloors([]); // never leave the card stuck on "Loading…"
+      setError('Could not load the floor plans — check your connection.');
+    });
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -88,7 +93,7 @@ export default function FloorplanManage() {
       }
       setBusy('Rendering the plan + reading your labels…');
       const processed = await processPdf(file, pageNumber);
-      processed.candidates = suggestRooms(processed.candidates);
+      processed.candidates = suggestRooms(processed.candidates, processed.meta.pageWidth, processed.meta.pageHeight);
       setBusy(`Found ${processed.candidates.filter(c => c.proposedKind === 'spot').length} storage labels — uploading…`);
       const res = await fetch(`/api/inventory/floorplans/${floorId}/revisions`, {
         method: 'POST',
@@ -137,7 +142,12 @@ export default function FloorplanManage() {
       )}
       <input ref={fileRef} type="file" accept="application/pdf" className="hidden" onChange={e => onFile(e.target.files?.[0] ?? null)} />
       <div className={`flex flex-col gap-3 p-4 ${capsLoaded && !canManage ? 'hidden' : ''}`}>
-        {error && <div className="rounded-xl bg-red-50 px-4 py-3 text-[13px] font-medium text-red-700">{error}</div>}
+        {error && (
+          <div className="flex items-center gap-3 rounded-xl bg-red-50 px-4 py-3">
+            <span className="min-w-0 flex-1 text-[13px] font-medium text-red-700">{error}</span>
+            <button onClick={load} className="h-9 flex-shrink-0 rounded-full border border-red-200 bg-white px-3.5 text-[12px] font-bold text-red-700">Try again</button>
+          </div>
+        )}
         {busy && <div className="rounded-xl bg-blue-50 px-4 py-3 text-[13px] font-medium text-blue-700">{busy}</div>}
 
         <div className="rounded-2xl border border-gray-200 bg-white p-4">

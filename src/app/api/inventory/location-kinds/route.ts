@@ -17,13 +17,10 @@ export const dynamic = 'force-dynamic';
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides } from '@/lib/db';
 import { initInventoryTables, listLocationKinds, addLocationKind, deleteLocationKind, renameLocationKind } from '@/lib/inventory-db';
 import { setLocationKindColor } from '@/lib/inventory-floorplan/db';
+import { authorizeFloorplan, FLOORPLAN_CAP } from '@/lib/inventory-floorplan/access';
 import { canAccessCompany, resolveScopedCompany } from '@/lib/inventory-access';
-
-const KEY = 'inventory.location.manage';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -40,10 +37,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const user = requireAuth();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!roleCan(user.role, KEY, getPermissionOverrides()))
-    return NextResponse.json({ error: 'Forbidden — manager role required' }, { status: 403 });
+  // Same guard as the rest of the floorplan/locations family: module gate +
+  // resolved shared-tablet actor, so writes are attributed to the person.
+  const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
+  if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
+  const user = authz.user;
   initInventoryTables();
 
   const body = await request.json();
@@ -68,17 +66,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The color must look like #16A34A' }, { status: 400 });
   }
 
-  const row = addLocationKind(companyId, label, icon, user.id);
+  const row = addLocationKind(companyId, label, icon, authz.actor.userId);
   if (!row) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
   if (color) setLocationKindColor(row.id, companyId, color);
   return NextResponse.json({ kind: { ...row, color: color || null } }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
-  const user = requireAuth();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!roleCan(user.role, KEY, getPermissionOverrides()))
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
+  if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
+  const user = authz.user;
   initInventoryTables();
 
   const body = await request.json().catch(() => ({}));
@@ -109,10 +106,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const user = requireAuth();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  if (!roleCan(user.role, KEY, getPermissionOverrides()))
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const authz = authorizeFloorplan(FLOORPLAN_CAP.manage, { requireResolvedActor: true });
+  if (!authz.ok) return NextResponse.json({ error: authz.error }, { status: authz.status });
+  const user = authz.user;
   initInventoryTables();
 
   const { searchParams } = new URL(request.url);
