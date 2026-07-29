@@ -10,7 +10,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice, reorderGuideItems, getCompanyForPurchaseLocation } from '@/lib/purchase-db';
-import { initInventoryTables, getProductPar } from '@/lib/inventory-db';
+import { initInventoryTables, getProductPar, setProductPar } from '@/lib/inventory-db';
 import { canAccessPurchaseLocation, isUnrestrictedAdmin } from '@/lib/purchase-access';
 import { getDb } from '@/lib/db';
 
@@ -86,6 +86,23 @@ export async function POST(request: Request) {
     par_level: typeof par_level === 'number' ? par_level : 0,
     product_code: typeof product_code === 'string' ? product_code : '',
   });
+
+  // A par typed here must land where par actually LIVES. It was still being
+  // written only to purchase_guide_items.par_level, which the GET above no
+  // longer reads — so a manager's number vanished on the very next load.
+  if (typeof par_level === 'number' && par_level > 0) {
+    const companyId = getCompanyForPurchaseLocation(location_id);
+    if (companyId != null) {
+      initInventoryTables();
+      const existing = getProductPar(companyId, [product_id])[0];
+      // Never overwrite a par already set in product settings — that screen is
+      // the source of truth, and this is a convenience field beside it.
+      if (!existing || (existing.par_min == null && existing.par_max == null)) {
+        try { setProductPar(product_id, companyId, par_level, existing?.par_max ?? null, user.id); }
+        catch (e) { console.warn('[purchase] could not store par for', product_id, e); }
+      }
+    }
+  }
 
   return NextResponse.json({ id: itemId, message: 'Item added to guide' }, { status: 201 });
 }

@@ -180,6 +180,12 @@ export async function updateCachedEntry(
     crate_qty?: number | null;
     loose_qty?: number | null;
     units_per_crate?: number | null;
+    // The two non-number ANSWERS. Without these the cache stored a bare 0, so
+    // reloading offline turned "couldn't find it" into a counted zero — and a
+    // counted zero is written to stock, which is the opposite of what the
+    // person standing at the shelf said.
+    out_of_stock?: boolean;
+    not_found?: boolean;
   },
   countLocationId: number = 0,
 ): Promise<void> {
@@ -207,6 +213,11 @@ export async function updateCachedEntry(
             loose_qty: patch.loose_qty !== undefined ? patch.loose_qty : entries[idx].loose_qty,
             units_per_crate: patch.units_per_crate !== undefined ? patch.units_per_crate : entries[idx].units_per_crate,
             notes: patch.notes !== undefined ? patch.notes : entries[idx].notes,
+            // The answer flags travel with the number. Both default to false on
+            // an ordinary save, so counting a product clears a previous
+            // "nothing here" / "couldn't find it" in the cache too.
+            out_of_stock: patch.out_of_stock ?? false,
+            not_found: patch.not_found ?? false,
           };
         } else {
           entries.push({
@@ -219,6 +230,8 @@ export async function updateCachedEntry(
             loose_qty: patch.loose_qty ?? null,
             units_per_crate: patch.units_per_crate ?? null,
             notes: patch.notes,
+            out_of_stock: patch.out_of_stock ?? false,
+            not_found: patch.not_found ?? false,
           });
         }
       } else if (patch.photos !== undefined && idx >= 0) {

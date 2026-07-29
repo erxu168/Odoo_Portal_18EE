@@ -199,8 +199,12 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         ).then(r => r.json());
         loadedProducts = prodRes.products || [];
       } else if (categoryIds.length > 0) {
+        // Same 200-row trap as the explicit-ids fetch above: a category with
+        // more products than that rendered only the first 200, and the submit
+        // gate requires every product the category resolves to. 2000 is well
+        // past any real category here and still bounded.
         const promises = categoryIds.map(cid =>
-          fetch(`/api/inventory/products?category_id=${cid}&include_pos=1`).then(r => r.json())
+          fetch(`/api/inventory/products?category_id=${cid}&include_pos=1&limit=2000`).then(r => r.json())
         );
         const results = await Promise.all(promises);
         const seen = new Set<number>();
@@ -569,7 +573,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setOos((prev) => { const n = new Set(prev); n.delete(k); return n; });
       setNotFound((prev) => { const n = new Set(prev); n.add(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: 0 }));
-      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom }, loc);
+      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, not_found: true }, loc);
       await trackedMutate({
         url: '/api/inventory/counts',
         method: 'POST',
@@ -604,7 +608,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       setNotFound((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: 0 }));
       if (note !== undefined) setRowNotes((p) => ({ ...p, [k]: note }));
-      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, notes: note }, loc);
+      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, notes: note, out_of_stock: true }, loc);
       const res = await trackedMutate({
         url: '/api/inventory/counts',
         method: 'POST',
