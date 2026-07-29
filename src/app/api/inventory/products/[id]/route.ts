@@ -16,7 +16,7 @@ import { getPermissionOverrides, logAudit, parseCompanyIds } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, describeCountWorkForProduct, deleteProductPortalData, isDraftProduct } from '@/lib/inventory-db';
 import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
-import { taxDiffCommands, reconcileCompanyTax } from '@/lib/product-tax';
+import { taxDiffCommands } from '@/lib/product-tax';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const user = requireAuth();
@@ -135,11 +135,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   const wantsSaleTax = body.sale_tax_id !== undefined;
   const wantsPurchaseTax = body.purchase_tax_id !== undefined;
   const taxCompanyRaw = body.company_id;
-  /** Set when a tax was written, so the state can be checked after the write. */
-  let reconcileAfterWrite: null | {
-    companyId: number; sale: boolean; purchase: boolean;
-    saleChosen: number | null; purchaseChosen: number | null; owned: number[];
-  } = null;
   if (wantsSaleTax || wantsPurchaseTax) {
     const companyId = Number(taxCompanyRaw);
     if (!Number.isInteger(companyId) || companyId <= 0) {
@@ -259,19 +254,21 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         }
         throw e;
       }
-      // Read back after writing, and correct any leftover.
+      // KNOWN LIMIT, stated rather than papered over. Two managers at the SAME
+      // restaurant saving different taxes on the same product within the same
+      // second each write "unlink the old one, link mine", and both links land —
+      // leaving that restaurant holding two taxes.
       //
-      // The commands above were computed from a read that is now stale. Two
-      // managers at the SAME restaurant saving different taxes seconds apart each
-      // emit "unlink the old one, link mine", and both links land — leaving the
-      // product with two of this restaurant's taxes, which is a wrong invoice.
-      // Unlink/link removed the cross-COMPANY danger; this removes the
-      // same-company one. Normally there is nothing to correct, so it costs one
-      // read and no write.
-      reconcileAfterWrite = { companyId, sale: wantsSaleTax, purchase: wantsPurchaseTax,
-        saleChosen: body.sale_tax_id === '' || body.sale_tax_id == null ? null : Number(body.sale_tax_id),
-        purchaseChosen: body.purchase_tax_id === '' || body.purchase_tax_id == null ? null : Number(body.purchase_tax_id),
-        owned: Array.from(ownedByCompany) };
+      // A post-write read-back-and-tidy was tried and REMOVED: both requests
+      // tidy too, each unlinking what it sees as the other's stray, and the
+      // product can end up with NO tax for the restaurant. That is worse than
+      // the duplicate, and it was reproduced on staging. Fixing this properly
+      // needs serialisation Odoo's RPC does not offer here.
+      //
+      // What matters is bounded: another RESTAURANT's tax can never be lost,
+      // because the write never names it. A same-restaurant duplicate is
+      // detected on the next open and the screen says so, and picking a rate
+      // clears it.
     }
     if (vals.uom_id) {
       const uom = await odoo.searchRead('uom.uom', [['id', '=', vals.uom_id as number], ['active', '=', true]], ['id', 'category_id'], { limit: 1 });
@@ -291,34 +288,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       }
     }
     await odoo.write('product.product', [productId], vals);
-
-    if (reconcileAfterWrite) {
-      const r = reconcileAfterWrite;
-      try {
-        const [after] = await odoo.searchRead('product.product', [['id', '=', productId]],
-          ['taxes_id', 'supplier_taxes_id'], { limit: 1, context: { active_test: false } });
-        const fix: Record<string, unknown> = {};
-        if (r.sale) {
-          const c = reconcileCompanyTax(after?.taxes_id || [], r.owned, r.saleChosen);
-          if (c.length > 0) fix.taxes_id = c;
-        }
-        if (r.purchase) {
-          const c = reconcileCompanyTax(after?.supplier_taxes_id || [], r.owned, r.purchaseChosen);
-          if (c.length > 0) fix.supplier_taxes_id = c;
-        }
-        if (Object.keys(fix).length > 0) {
-          console.warn('[products PUT] concurrent tax edit corrected on product', productId, fix);
-          await odoo.write('product.product', [productId], fix);
-        }
-      } catch (e: unknown) {
-        // The main write succeeded, so this must not turn into a failure — the
-        // caller's change IS saved. Logged loudly because a surviving duplicate
-        // is a wrong tax on an invoice, and the screen's own warning will show it
-        // on the next open.
-        console.error('[products PUT] tax reconcile failed on product', productId,
-          e instanceof Error ? e.message : e);
-      }
-    }
 
     return NextResponse.json({ message: 'Product updated' });
   } catch (err: unknown) {

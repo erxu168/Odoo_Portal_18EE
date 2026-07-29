@@ -86,9 +86,17 @@ export type TaxCommand = [3, number] | [4, number];
  *
  * It does NOT make two saves for the SAME restaurant safe. Both read tax A, one
  * chooses B and one chooses C, and each emits "unlink A, link mine" — leaving
- * the product with B AND C. That is why the route re-reads after writing and
- * corrects any leftover (see reconcileCompanyTax below); unlink/link removes the
- * cross-company danger, not every race.
+ * the product with B AND C.
+ *
+ * That limit is accepted deliberately. A post-write tidy-up was tried and
+ * removed: both requests tidy, each unlinking what it reads as the other's
+ * stray, and the restaurant can end with NO tax at all — reproduced on staging,
+ * and worse than the duplicate. Real prevention needs serialisation this RPC
+ * layer cannot give.
+ *
+ * The danger that IS eliminated is the one that crosses restaurants: this write
+ * never names another company's tax, so it can never lose one. A same-restaurant
+ * duplicate is visible (hasConflictingTax) and repaired by picking a rate.
  */
 export function taxDiffCommands(
   productTaxIds: number[],
@@ -107,27 +115,3 @@ export function taxDiffCommands(
   return cmds;
 }
 
-/**
- * What still needs unlinking AFTER a write, given what the product actually
- * holds now.
- *
- * The write above computes its commands from a read that has since gone stale.
- * If another save for the same restaurant landed in between, both taxes end up
- * linked — so the route reads back and calls this. It returns the unlinks needed
- * to leave exactly the intended tax, and nothing when the state is already
- * right (the normal case, so the correction costs one read and no write).
- *
- * Deliberately only ever UNLINKS. If the intended tax has vanished — because the
- * other save cleared it — that is that save's decision, and re-adding it here
- * would start the two requests fighting.
- */
-export function reconcileCompanyTax(
-  actualTaxIds: number[],
-  companyTaxIds: readonly number[],
-  intended: number | null,
-): TaxCommand[] {
-  const owned = new Set(companyTaxIds);
-  return actualTaxIds
-    .filter((id) => owned.has(id) && id !== intended)
-    .map((id) => [3, id] as TaxCommand);
-}

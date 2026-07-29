@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import {
-  currentCompanyTax, hasConflictingTax, taxDiffCommands, reconcileCompanyTax,
+  currentCompanyTax, hasConflictingTax, taxDiffCommands,
 } from '../src/lib/product-tax';
 
 /**
@@ -126,53 +126,44 @@ test('every command is an unlink or a link — never a SET', () => {
   }
 });
 
-/* --- THE SAME-RESTAURANT RACE --------------------------------------------- *
- * Unlink/link removes the cross-company danger but not this one: two managers
- * at the SAME restaurant saving different taxes seconds apart each emit "unlink
- * the old, link mine", and both links land. The route reads back after writing
- * and calls reconcileCompanyTax to converge on one.
+/* --- THE KNOWN LIMIT ------------------------------------------------------ *
+ * Unlink/link makes cross-restaurant loss impossible. It does NOT make two
+ * saves for the SAME restaurant safe. That is accepted deliberately: a post-write
+ * tidy-up was tried and removed because both requests tidy, each unlinking what
+ * it reads as the other's stray, and the restaurant can end with NO tax at all —
+ * reproduced on staging, and worse than the duplicate.
+ *
+ * These pin the limit so it stays a known, detected state rather than a surprise.
  * -------------------------------------------------------------------------- */
 
-test('two same-restaurant saves leave BOTH taxes linked — the race, pinned', () => {
+test('two same-restaurant saves leave BOTH taxes linked — the accepted limit', () => {
   // Both read [55, 124, 226]. One picks 224, the other 232.
   const a = taxDiffCommands(PRODUCT, WAJ_SALE, 224);
   const b = taxDiffCommands(PRODUCT, WAJ_SALE, 232);
-  // Replay both against the starting state, in order.
   let state = [...PRODUCT];
   for (const [op, id] of [...a, ...b]) {
     state = op === 3 ? state.filter((x) => x !== id) : [...state, id];
   }
-  expect(state, 'both new taxes survive — one restaurant, two sale taxes').toEqual([55, 124, 224, 232]);
+  expect(state, 'one restaurant, two sale taxes').toEqual([55, 124, 224, 232]);
+  // The screen detects it and says so, which is what makes the limit tolerable.
   expect(hasConflictingTax(state, WAJ_SALE)).toBe(true);
 });
 
-test('reconcile then leaves exactly the intended one, other companies untouched', () => {
-  const raced = [55, 124, 224, 232];
-  const fix = reconcileCompanyTax(raced, WAJ_SALE, 232);      // 232 was the later intent
-  expect(fix).toEqual([[3, 224]]);
-  let state = [...raced];
-  for (const [, id] of fix) state = state.filter((x) => x !== id);
-  expect(state).toEqual([55, 124, 232]);
-  expect(hasConflictingTax(state, WAJ_SALE)).toBe(false);
-  expect(state).toContain(55);                                 // Krawings safe
-  expect(state).toContain(124);                                // Ssam safe
-});
-
-test('reconcile does nothing when the state is already right — the normal case', () => {
-  expect(reconcileCompanyTax(PRODUCT, WAJ_SALE, 226)).toEqual([]);
-  expect(reconcileCompanyTax([55, 124], WAJ_SALE, null)).toEqual([]);
-});
-
-test('reconcile only ever UNLINKS — it never re-adds a tax another save cleared', () => {
-  // The other save cleared this restaurant's tax entirely. Re-adding the intent
-  // here would start the two requests fighting, so it must not.
-  const cmds = reconcileCompanyTax([55, 124], WAJ_SALE, 226);
-  expect(cmds).toEqual([]);
-  for (const [op] of reconcileCompanyTax([55, 124, 224, 232], WAJ_SALE, 232)) {
-    expect(op, 'reconcile must never link').toBe(3);
+test('and even in that race, NO other restaurant loses anything', () => {
+  // The whole point. Whatever order the two writes land in, neither names
+  // Krawings' 55 or Ssam's 124, so both survive.
+  const a = taxDiffCommands(PRODUCT, WAJ_SALE, 224);
+  const b = taxDiffCommands(PRODUCT, WAJ_SALE, 232);
+  for (const order of [[...a, ...b], [...b, ...a]]) {
+    let state = [...PRODUCT];
+    for (const [op, id] of order) {
+      state = op === 3 ? state.filter((x) => x !== id) : [...state, id];
+    }
+    expect(state, 'Krawings survives every ordering').toContain(55);
+    expect(state, 'Ssam survives every ordering').toContain(124);
   }
 });
 
-test('reconcile after a CLEAR removes whatever another save linked', () => {
-  expect(reconcileCompanyTax([55, 124, 224], WAJ_SALE, null)).toEqual([[3, 224]]);
+test('picking a rate afterwards repairs the duplicate in one write', () => {
+  expect(taxDiffCommands([55, 124, 224, 232], WAJ_SALE, 232)).toEqual([[3, 224]]);
 });
