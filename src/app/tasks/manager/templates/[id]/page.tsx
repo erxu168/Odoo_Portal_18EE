@@ -121,8 +121,10 @@ function previewListFromTemplate(tpl: TaskTemplate): TaskList {
       is_setup_guide: tl.is_setup_guide,
       has_setup_photo: tl.has_setup_photo,
       setup_photo_seqs: tl.setup_photo_seqs,
-      has_guide: false,          // wired to the real guide in the editor/player phase
-      guide_step_count: 0,
+      // Staff only ever see a PUBLISHED guide, so the preview mirrors that:
+      // show the "Show me how" button only when the guide is live with steps.
+      has_guide: tl.guide_published && tl.guide_step_count > 0,
+      guide_step_count: tl.guide_step_count,
       state: 'pending',
       completed_at: null,
       completed_by_id: null,
@@ -437,6 +439,22 @@ export default function TemplateEditPage({ params }: PageProps) {
                           <p className="text-[11px] font-semibold text-orange-600 mt-1">
                             🔁 {recurrenceSummary(l.recurrence)}
                           </p>
+                          {l.guide_step_count > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                📖 Guide · {l.guide_step_count} step{l.guide_step_count === 1 ? '' : 's'}
+                              </span>
+                              {l.guide_published ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 text-green-700 border border-green-200">
+                                  ● Live
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                  ● Draft
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {l.subtasks.length > 0 && (
                             <ul className="mt-1.5 space-y-0.5">
                               {l.subtasks.map(s => (
@@ -547,6 +565,35 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
   // API), opened per already-saved line via `guideEditorOpen` below.
   const [isSetupGuide] = useState(false);
   const [guideEditorOpen, setGuideEditorOpen] = useState(false);
+  // Local mirror of the guide's step count + published state, so the tutorial
+  // button label stays correct after the editor saves/removes a guide WITHOUT
+  // closing this modal. The `line` prop is a snapshot taken when the modal
+  // opened; a background list refresh updates the row behind the modal but not
+  // this captured prop, so we re-read the guide directly on the editor's onSaved.
+  const [guideMeta, setGuideMeta] = useState<{ stepCount: number; published: boolean }>({
+    stepCount: line?.guide_step_count ?? 0,
+    published: !!line?.guide_published,
+  });
+  // Orders overlapping refreshes: the editor can allow a second save (and a
+  // second refresh) before the first GET returns, so only the latest-STARTED
+  // refresh may write — a slower earlier response can't clobber newer state.
+  const guideMetaGen = useRef(0);
+  async function refreshGuideMeta() {
+    if (!line || line.id <= 0) return;
+    const myGen = ++guideMetaGen.current;
+    try {
+      const res = await fetch(`/api/tasks/templates/${tplId}/lines/${line.id}/guide`);
+      if (!res.ok) return;
+      const body = await res.json();
+      if (myGen !== guideMetaGen.current) return;   // superseded by a newer refresh
+      setGuideMeta({
+        stepCount: Array.isArray(body.steps) ? body.steps.length : 0,
+        published: !!body.published,
+      });
+    } catch {
+      // Leave the prior label — the row badge behind the modal still refreshes on close.
+    }
+  }
   const [photos, setPhotos] = useState<EditorPhoto[]>(
     (line?.setup_photo_seqs ?? []).map(seq => ({
       seq,
@@ -891,9 +938,11 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
                 <button
                   type="button"
                   onClick={() => setGuideEditorOpen(true)}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 >
-                  📖 Edit guided tutorial
+                  {guideMeta.stepCount > 0
+                    ? `📖 Edit guide · ${guideMeta.stepCount} step${guideMeta.stepCount === 1 ? '' : 's'} · ${guideMeta.published ? 'Live' : 'Draft'}`
+                    : '📖 Add guided tutorial'}
                 </button>
                 <p className="text-[11px] text-gray-400 mt-1">A step-by-step how-to for staff. Optional — it never completes the task.</p>
               </>
@@ -961,7 +1010,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
         lineId={line.id}
         lineName={line.name}
         onClose={() => setGuideEditorOpen(false)}
-        onSaved={onBackgroundRefresh}
+        onSaved={() => { onBackgroundRefresh(); void refreshGuideMeta(); }}
       />
     )}
     </>

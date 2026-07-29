@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import PinnableImage from '@/components/ui/PinnableImage';
+import { useTopBar } from '@/components/ui/TopBarContext';
 import { youtubeEmbedUrl, youtubeWatchUrl } from '@/lib/youtube-url';
-import type { StaffGuide, StaffGuideStep } from '@/lib/task-guide';
+import type { StaffGuide, StaffGuideStep, TemplateGuide } from '@/lib/task-guide';
 
 /**
  * GuidedTutorialPlayer — STAFF full-screen player for a task's guided tutorial.
@@ -19,13 +20,20 @@ import type { StaffGuide, StaffGuideStep } from '@/lib/task-guide';
  * docs/superpowers/specs/2026-07-28-guided-tutorials-design.md).
  *
  * Data (same-origin JSON, read-only):
- *   GET /api/tasks/lines/{lineId}/guide                       -> StaffGuide
- *   GET /api/tasks/lines/{lineId}/guide/steps/{stepId}/media  -> raw photo/pdf bytes
+ *   Staff (default):
+ *     GET /api/tasks/lines/{lineId}/guide                       -> StaffGuide
+ *     GET /api/tasks/lines/{lineId}/guide/steps/{stepId}/media  -> raw photo/pdf bytes
+ *   Manager preview (when `templateId` is set — read-only, never completes):
+ *     GET /api/tasks/templates/{templateId}/lines/{lineId}/guide                      -> TemplateGuide
+ *     GET /api/tasks/templates/{templateId}/lines/{lineId}/guide/steps/{stepId}/media -> raw bytes
  */
 
 interface Props {
   lineId: number;
   onClose: () => void;
+  /** When set, render a manager PREVIEW of the TEMPLATE line's guide (read-only,
+   * never completes anything). Omitted for the normal staff daily-snapshot view. */
+  templateId?: number;
 }
 
 /** Focusable descendants, in DOM order, used to trap Tab inside the dialog. */
@@ -38,7 +46,7 @@ function focusableWithin(root: HTMLElement | null): HTMLElement[] {
   );
 }
 
-export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
+export default function GuidedTutorialPlayer({ lineId, onClose, templateId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [guide, setGuide] = useState<StaffGuide | null>(null);
@@ -47,6 +55,25 @@ export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
   const [activePin, setActivePin] = useState<number | null>(null);
   // Steps whose photo failed to load — show explanation + placeholder instead.
   const [imgError, setImgError] = useState<Set<number>>(new Set());
+  // Bumped by a "Try again" tap to re-run the guide fetch.
+  const [reloadTick, setReloadTick] = useState(0);
+
+  // Hide the portal's global top bar while the full-screen player is open so the
+  // stray date/company chrome doesn't peek above it. Capture the bar's state at
+  // mount and RESTORE it on unmount (not force "shown") — the manager editor's
+  // preview opens this player while the editor itself has already hidden the bar,
+  // so a blind setHidden(false) would flash the global bar back while the editor
+  // stays open. In the plain staff case the prior state is "shown", so this still
+  // restores to shown exactly as before.
+  const { hidden, setHidden } = useTopBar();
+  useEffect(() => {
+    const prevHidden = hidden;
+    setHidden(true);
+    return () => setHidden(prevHidden);
+    // Mount-only: capture the bar state once; re-running on `hidden` changes
+    // would clobber the captured baseline.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setHidden]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const pinSheetRef = useRef<HTMLDivElement>(null);
@@ -64,11 +91,15 @@ export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
   const isLast = index >= total - 1;
 
   const mediaSrc = useCallback(
-    (sid: number) => `/api/tasks/lines/${lineId}/guide/steps/${sid}/media`,
-    [lineId],
+    (sid: number) =>
+      templateId
+        ? `/api/tasks/templates/${templateId}/lines/${lineId}/guide/steps/${sid}/media`
+        : `/api/tasks/lines/${lineId}/guide/steps/${sid}/media`,
+    [lineId, templateId],
   );
 
-  // Load the daily snapshot guide once per line.
+  // Load the guide: the staff daily snapshot, or (preview) the template line's
+  // guide. Re-runs on line/template change and on a "Try again" tap (reloadTick).
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -78,9 +109,32 @@ export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
     setActivePin(null);
     setImgError(new Set());
 
-    fetch(`/api/tasks/lines/${lineId}/guide`, { headers: { Accept: 'application/json' } })
+    const guideUrl = templateId
+      ? `/api/tasks/templates/${templateId}/lines/${lineId}/guide`
+      : `/api/tasks/lines/${lineId}/guide`;
+
+    fetch(guideUrl, { headers: { Accept: 'application/json' } })
       .then(async res => {
-        if (!res.ok) throw new Error(`Could not load the how-to (${res.status})`);
+        if (!res.ok) throw new Error('guide-load-failed');
+        if (templateId) {
+          // Template read returns { revision, published, steps } with no
+          // line_name — normalise into the StaffGuide shape the player consumes.
+          const tg = (await res.json()) as TemplateGuide;
+          const normalized: StaffGuide = {
+            line_name: '',
+            steps: tg.steps.map(s => ({
+              id: s.id,
+              media_type: s.media_type,
+              explanation: s.explanation,
+              has_image: s.has_image,
+              has_pdf: s.has_pdf,
+              pdf_filename: s.pdf_filename,
+              youtube_url: s.youtube_url,
+              pins: s.pins.map(p => ({ pin_x: p.pin_x, pin_y: p.pin_y, note: p.note })),
+            })),
+          };
+          return normalized;
+        }
         return (await res.json()) as StaffGuide;
       })
       .then(data => {
@@ -90,7 +144,7 @@ export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
       .catch((e: unknown) => {
         if (cancelled) return;
         console.warn('[tasks] guided tutorial load failed', e);
-        setError(e instanceof Error ? e.message : 'Could not load the how-to');
+        setError('load-failed');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -99,12 +153,32 @@ export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [lineId]);
+  }, [lineId, templateId, reloadTick]);
 
   // Any pin note belongs to the step it was opened on — close it on navigation.
+  // Also clear the step we're landing on from imgError, so a photo that failed
+  // earlier gets a fresh load attempt when the user comes back to it.
   useEffect(() => {
     setActivePin(null);
-  }, [index]);
+    const sid = guide?.steps[index]?.id;
+    if (sid === undefined) return;
+    setImgError(prev => {
+      if (!prev.has(sid)) return prev;
+      const next = new Set(prev);
+      next.delete(sid);
+      return next;
+    });
+  }, [index, guide]);
+
+  // "Try again" on a broken photo — drop it from imgError so it reloads.
+  const retryImage = useCallback((sid: number) => {
+    setImgError(prev => {
+      if (!prev.has(sid)) return prev;
+      const next = new Set(prev);
+      next.delete(sid);
+      return next;
+    });
+  }, []);
 
   // Focus management + trap (mount once). Move focus into the dialog, keep Tab
   // cycling inside it, close on Esc (a pin sheet first, then the player), and
@@ -197,7 +271,7 @@ export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
               How-to guide
             </p>
             <h1 id={titleId} className="text-lg font-bold leading-tight truncate">
-              {guide?.line_name || 'Guided tutorial'}
+              {guide?.line_name || (templateId ? 'Guide preview' : 'Guided tutorial')}
             </h1>
           </div>
           <button
@@ -256,14 +330,25 @@ export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
               <div className="text-3xl mb-2" aria-hidden="true">
                 &#x26A0;&#xFE0F;
               </div>
-              <p className="text-sm font-semibold text-gray-700">{error}</p>
-              <button
-                type="button"
-                onClick={onClose}
-                className="mt-4 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold active:bg-gray-200"
-              >
-                Close
-              </button>
+              <p className="text-sm font-semibold text-gray-700">
+                Couldn&rsquo;t load the how-to. Check your connection and try again.
+              </p>
+              <div className="mt-4 flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setReloadTick(t => t + 1)}
+                  className="px-4 py-2 rounded-lg bg-[#16A34A] text-white text-sm font-semibold active:bg-[#15803D]"
+                >
+                  Try again
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold active:bg-gray-200"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           )}
 
@@ -274,6 +359,13 @@ export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
               </div>
               <p className="text-sm font-semibold text-gray-700">No how-to yet</p>
               <p className="mt-1 text-xs text-gray-500">There are no steps to show for this task.</p>
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-4 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold active:bg-gray-200"
+              >
+                Close
+              </button>
             </div>
           )}
 
@@ -288,6 +380,7 @@ export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
                 activePin={activePin}
                 onPinClick={i => setActivePin(a => (a === i ? null : i))}
                 onImageError={() => setImgError(prev => new Set(prev).add(step.id))}
+                onRetry={() => retryImage(step.id)}
                 lineName={guide?.line_name || ''}
                 stepNo={index + 1}
               />
@@ -307,22 +400,35 @@ export default function GuidedTutorialPlayer({ lineId, onClose }: Props) {
       {/* Footer nav */}
       {!loading && !error && total > 0 && (
         <div className="flex-shrink-0 bg-white border-t border-gray-200 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <div className="flex items-center gap-3 max-w-md mx-auto">
-            <button
-              type="button"
-              onClick={goBack}
-              disabled={index === 0}
-              className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 active:bg-gray-50 disabled:opacity-40 disabled:pointer-events-none motion-safe:transition-colors"
-            >
-              &#x2190; Back
-            </button>
-            <button
-              type="button"
-              onClick={goNext}
-              className="flex-[1.4] py-3 rounded-xl bg-[#16A34A] text-white text-sm font-semibold active:bg-[#15803D] motion-safe:transition-colors"
-            >
-              {isLast ? 'Done' : 'Next →'}
-            </button>
+          <div className="max-w-md mx-auto">
+            {/* Persistent reminder — the guide is instructional only; staff still
+                tick the task off themselves. Hidden in manager preview. */}
+            {!templateId && (
+              <p className="mb-2 text-center text-xs font-medium text-gray-500">
+                This just shows you how — you still tick the task off yourself.
+              </p>
+            )}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={index === 0}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 active:bg-gray-50 disabled:opacity-40 disabled:pointer-events-none motion-safe:transition-colors"
+              >
+                &#x2190; Back
+              </button>
+              <button
+                type="button"
+                onClick={goNext}
+                className={`flex-[1.4] py-3 rounded-xl text-sm font-semibold motion-safe:transition-colors ${
+                  isLast
+                    ? 'border border-gray-300 bg-white text-gray-700 active:bg-gray-100'
+                    : 'bg-[#16A34A] text-white active:bg-[#15803D]'
+                }`}
+              >
+                {isLast ? 'Got it' : 'Next →'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -377,6 +483,7 @@ function StepMedia({
   activePin,
   onPinClick,
   onImageError,
+  onRetry,
   lineName,
   stepNo,
 }: {
@@ -386,6 +493,7 @@ function StepMedia({
   activePin: number | null;
   onPinClick: (index: number) => void;
   onImageError: () => void;
+  onRetry: () => void;
   lineName: string;
   stepNo: number;
 }) {
@@ -416,7 +524,9 @@ function StepMedia({
           <div className="text-2xl mb-1" aria-hidden="true">
             &#x1F4F9;
           </div>
-          <p className="text-sm font-semibold text-gray-600">Video unavailable</p>
+          <p className="text-sm font-medium text-gray-600">
+            Video couldn&rsquo;t load — follow the written steps below; you can still finish the task.
+          </p>
         </div>
       );
     }
@@ -454,7 +564,9 @@ function StepMedia({
           <div className="text-2xl mb-1" aria-hidden="true">
             &#x1F4C4;
           </div>
-          <p className="text-sm font-semibold text-gray-500">PDF unavailable</p>
+          <p className="text-sm font-medium text-gray-600">
+            PDF couldn&rsquo;t load — follow the written steps below; you can still finish the task.
+          </p>
         </div>
       );
     }
@@ -485,7 +597,18 @@ function StepMedia({
         <div className="text-2xl mb-1" aria-hidden="true">
           &#x1F5BC;&#xFE0F;
         </div>
-        <p className="text-sm font-semibold text-gray-500">Photo unavailable</p>
+        <p className="text-sm font-medium text-gray-600">
+          Photo couldn&rsquo;t load — follow the written steps below; you can still finish the task.
+        </p>
+        {broken && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-3 px-4 py-2 rounded-lg border border-gray-300 bg-white text-sm font-semibold text-gray-700 active:bg-gray-100"
+          >
+            Try again
+          </button>
+        )}
       </div>
     );
   }
@@ -494,6 +617,7 @@ function StepMedia({
     <div className="flex justify-center rounded-2xl bg-gray-100 p-1.5">
       <PinnableImage
         src={src}
+        alt={`Step ${stepNo} photo`}
         mode="view"
         pins={step.pins.map((p, i) => ({
           pin_x: p.pin_x,

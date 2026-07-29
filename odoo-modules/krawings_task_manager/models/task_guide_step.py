@@ -68,7 +68,10 @@ class KrawingsTaskGuideStep(models.Model):
 
     sequence = fields.Integer(required=True, default=0)
     media_type = fields.Selection(MEDIA_TYPES, required=True, default='photo')
-    explanation = fields.Text(required=True)
+    # Not DB-required: a DRAFT guide may hold half-finished steps (empty
+    # explanation / missing media). Completeness is enforced only at PUBLISH
+    # time in portal_save_guide, so managers can save work-in-progress.
+    explanation = fields.Text()
 
     # photo steps only (attachment=True → bytes live in ir.attachment, exactly
     # like setup photos; they are NOT proof photos and never show in the task's
@@ -93,21 +96,18 @@ class KrawingsTaskGuideStep(models.Model):
          'Step sequence numbers must be unique per list line.'),
     ]
 
-    @api.constrains('media_type', 'image', 'pdf_file', 'youtube_url', 'explanation', 'pin_ids')
+    @api.constrains('media_type', 'image', 'pdf_file', 'youtube_url', 'pin_ids')
     def _check_media(self):
+        """STRUCTURAL integrity only — enforced on every step, incl. drafts.
+        Completeness (a non-empty explanation and the step's own media) is a
+        PUBLISH-time rule and lives in portal_save_guide, so a draft can hold
+        half-finished steps."""
         for s in self:
-            if not (s.explanation and s.explanation.strip()):
-                raise ValidationError('Every guide step needs an explanation.')
             mt = s.media_type
-            if mt == 'photo' and not s.image:
-                raise ValidationError('A photo step needs a photo.')
-            if mt == 'pdf' and not s.pdf_file:
-                raise ValidationError('A PDF step needs a PDF file.')
-            if mt == 'youtube':
-                if not (s.youtube_url and s.youtube_url.strip()):
-                    raise ValidationError('A YouTube step needs a video link.')
-                if not youtube_video_id(s.youtube_url):
-                    raise ValidationError('Enter a valid YouTube link (youtube.com/watch, youtu.be, /shorts or /embed).')
+            # If a YouTube link IS present it must be a real YouTube link
+            # (blocks non-YouTube URLs reaching staff / the embed).
+            if s.youtube_url and not youtube_video_id(s.youtube_url):
+                raise ValidationError('Enter a valid YouTube link (youtube.com/watch, youtu.be, /shorts or /embed).')
             # Forbidden combinations — keep each step type clean.
             if mt != 'photo' and s.pin_ids:
                 raise ValidationError('Only photo steps can have note-pins.')

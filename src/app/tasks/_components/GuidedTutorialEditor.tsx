@@ -20,6 +20,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import PinnableImage from '@/components/ui/PinnableImage';
+import GuidedTutorialPlayer from './GuidedTutorialPlayer';
+import { useTopBar } from '@/components/ui/TopBarContext';
 import { isValidYoutubeUrl, canonicalYoutubeUrl } from '@/lib/youtube-url';
 import type { GuideStepRead, GuideStepSave, GuidePin, GuideMediaType } from '@/lib/task-guide';
 import { compressImage } from './photoUpload';
@@ -75,6 +77,8 @@ interface EditorStep {
   pdfFilename?: string;
   pdfUrl?: string;
   hasExistingPdf?: boolean;
+  /** Byte size of a NEWLY attached PDF (shown next to its filename). */
+  pdfSize?: number;
   // youtube
   youtube_url?: string;
 }
@@ -89,6 +93,14 @@ const STEP_TYPES: { type: GuideMediaType; emoji: string; label: string; hint: st
 const TYPE_META: Record<GuideMediaType, { emoji: string; label: string }> =
   Object.fromEntries(STEP_TYPES.map(t => [t.type, { emoji: t.emoji, label: t.label }])) as Record<GuideMediaType, { emoji: string; label: string }>;
 
+/** Sane upper bounds enforced even on a Draft save (not full per-step validity).
+ * Kept in parity with the server (GUIDE_MAX_STEPS / GUIDE_MAX_PINS in
+ * task_template_line.py) so the client never green-lights what the server rejects. */
+const MAX_STEPS = 40;
+const MAX_PINS = 20;
+/** Server rejects PDFs above ~15 MB — reject early with a plain message. */
+const MAX_PDF_BYTES = 15 * 1024 * 1024;
+
 function clamp01(n: number): number {
   return Math.min(1, Math.max(0, Number.isFinite(n) ? n : 0));
 }
@@ -98,6 +110,26 @@ function hasPhoto(s: EditorStep): boolean {
 }
 function hasPdf(s: EditorStep): boolean {
   return !!(s.pdfBase64 || s.hasExistingPdf);
+}
+
+/** Human-readable file size for the attached-PDF row. */
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+/** Focusable descendants, in DOM order, used to trap Tab inside the dialog.
+ * Mirrors GuidedTutorialPlayer's helper, but uses the `:disabled` pseudo-class
+ * (not the `[disabled]` attribute) so controls disabled indirectly by the
+ * save-time `<fieldset disabled>` are correctly treated as NOT focusable. */
+function focusableWithin(root: HTMLElement | null): HTMLElement[] {
+  if (!root) return [];
+  const sel =
+    'a[href],button:not(:disabled),textarea:not(:disabled),input:not(:disabled),select:not(:disabled),iframe,[tabindex]:not([tabindex="-1"]):not(:disabled)';
+  return Array.from(root.querySelectorAll<HTMLElement>(sel)).filter(
+    el => el.offsetParent !== null || el === document.activeElement,
+  );
 }
 
 export default function GuidedTutorialEditor({ templateId, lineId, lineName, onClose, onSaved }: Props) {
@@ -119,6 +151,15 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
   const [notice, setNotice] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [dirty, setDirty] = useState(false);
+  /** Staff-player preview of the SAVED guide (opens over the editor). */
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  // Hide the global top bar while this full-height editor is open.
+  const { setHidden } = useTopBar();
+  useEffect(() => {
+    setHidden(true);
+    return () => setHidden(false);
+  }, [setHidden]);
 
   /** The pin whose note is being edited, scoped by step key so numbering/focus
    * never leak between steps. */
@@ -134,6 +175,12 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
   // that resolves later must consult the ref, not the stale captured value.
   const savingRef = useRef(false);
   const mountedRef = useRef(true);
+  /** The dialog container — focused on open, traps Tab, restores opener on close. */
+  const dialogRef = useRef<HTMLDivElement>(null);
+  /** Live mirror so the mount-only key handlers can bail while preview is open
+   * (the preview player owns focus + Escape while it is up). */
+  const previewOpenRef = useRef(false);
+  previewOpenRef.current = previewOpen;
   /** Count of in-flight media (compress/FileReader) ops. Save refuses to start
    * while > 0, closing the same-tick race where a file was picked but Save still
    * saw the old React state. */
@@ -200,28 +247,78 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
   useEffect(() => { load(); }, [load]);
 
   // Escape closes (unless a save or media op is in flight). Re-subscribe when the
-  // values it reads change so the closure never goes stale.
+  // values it reads change so the closure never goes stale. While the preview
+  // player is up it owns Escape, so bail.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') requestClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (previewOpenRef.current) return;
+      if (e.key === 'Escape') requestClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dirty, saving]);
 
+  // Focus management + Tab trap (mount once). Move focus into the dialog, keep Tab
+  // cycling inside it, and restore focus to the opener (the row's edit button) on
+  // unmount. Escape is handled by the effect above. Mirrors GuidedTutorialPlayer.
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Tab') return;
+      if (previewOpenRef.current) return; // the preview player traps its own focus
+      const root = dialogRef.current;
+      if (!root) return;
+      const nodes = focusableWithin(root);
+      if (nodes.length === 0) {
+        e.preventDefault();
+        root.focus();
+        return;
+      }
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey) {
+        if (active === first || active === root || !root.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !root.contains(active)) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      opener?.focus?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Mutation choke points (all refuse to write while frozen) ────────────────
-  const markDirty = () => { if (!savingRef.current) setDirty(true); };
+  // Marking dirty also clears any lingering "Saved." notice, so success copy
+  // never outlives the edit that invalidated it.
+  const markDirty = useCallback(() => {
+    if (savingRef.current) return;
+    setDirty(true);
+    setNotice(null);
+  }, []);
 
   const patchStep = useCallback((key: string, patch: Partial<EditorStep>) => {
     if (savingRef.current) return;
     setSteps(prev => prev.map(s => (s.key === key ? { ...s, ...patch } : s)));
-    setDirty(true);
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   const setPins = useCallback((key: string, pins: GuidePin[]) => {
     if (savingRef.current) return;
     setSteps(prev => prev.map(s => (s.key === key ? { ...s, pins } : s)));
-    setDirty(true);
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   function addStep(type: GuideMediaType) {
     if (savingRef.current) return;
@@ -234,14 +331,26 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
       hasExistingPdf: false,
       youtube_url: '',
     }]);
-    setDirty(true);
+    markDirty();
+  }
+
+  /** True when a step holds work worth confirming before it is thrown away. */
+  function stepHasContent(s: EditorStep): boolean {
+    return !!(hasPhoto(s) || hasPdf(s) || s.explanation.trim() ||
+      (s.pins && s.pins.length > 0) || (s.youtube_url || '').trim());
   }
 
   function removeStep(key: string) {
     if (savingRef.current) return;
+    const idx = steps.findIndex(s => s.key === key);
+    if (idx === -1) return;
+    // Confirm only when there's something to lose — an empty just-added step goes
+    // quietly. Mirrors the "Remove guide" confirm wording.
+    if (stepHasContent(steps[idx]) &&
+        !confirm(`Remove step ${idx + 1}? Its photo and notes will be deleted. This can't be undone.`)) return;
     setSteps(prev => prev.filter(s => s.key !== key));
     setActivePin(a => (a?.key === key ? null : a));
-    setDirty(true);
+    markDirty();
   }
 
   // ── Async media processing with save/superseded/exists guards ───────────────
@@ -265,7 +374,7 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
     if (mediaTokens.current.get(key) !== token) return; // a newer pick supersedes this one
     if (patch === null) return;
     setSteps(prev => (prev.some(s => s.key === key) ? prev.map(s => (s.key === key ? { ...s, ...patch } : s)) : prev));
-    setDirty(true);
+    markDirty();
   }
 
   async function pickPhoto(key: string, file: File) {
@@ -293,6 +402,12 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
 
   function pickPdf(key: string, file: File) {
     if (savingRef.current) return;
+    // Reject oversized files before reading them — matches the server's ~15 MB cap.
+    if (file.size > MAX_PDF_BYTES) {
+      const mb = Math.round(file.size / (1024 * 1024));
+      setError(`That PDF is ${mb} MB — please use one under 15 MB.`);
+      return;
+    }
     const token = beginMedia(key);
     const reader = new FileReader();
     reader.onload = () => {
@@ -310,6 +425,7 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
         pdfFilename: file.name || 'document.pdf',
         pdfUrl: undefined,
         hasExistingPdf: false,
+        pdfSize: file.size,
       });
     };
     reader.onerror = () => {
@@ -336,15 +452,24 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
       if (oldIndex === -1 || newIndex === -1) return prev;
       return arrayMove(prev, oldIndex, newIndex);
     });
-    setDirty(true);
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   // ── Validation, save, delete ────────────────────────────────────────────────
-  function validate(): string | null {
+  // A Draft only has to clear sane bounds (so a manager can save partial work and
+  // come back). PUBLISHING additionally requires every step to be fully complete.
+  function validate(forPublish: boolean): string | null {
     if (steps.length === 0) return 'Add at least one step, or use "Remove guide" to delete it.';
+    if (steps.length > MAX_STEPS) return `Too many steps (max ${MAX_STEPS}). Remove some before saving.`;
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
       const n = i + 1;
+      // Bounds enforced for BOTH draft and publish.
+      if (s.media_type === 'photo' && s.pins.length > MAX_PINS) {
+        return `Step ${n}: too many note-pins (max ${MAX_PINS}).`;
+      }
+      // Full per-step content is required ONLY when publishing.
+      if (!forPublish) continue;
       if (!s.explanation.trim()) return `Step ${n}: add an explanation.`;
       if (s.media_type === 'photo') {
         if (!hasPhoto(s)) return `Step ${n}: add a photo.`;
@@ -355,7 +480,6 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
         if (!hasPdf(s)) return `Step ${n}: attach a PDF.`;
       }
     }
-    if (published && steps.length === 0) return 'Add a step before publishing, or switch to Draft.';
     return null;
   }
 
@@ -384,7 +508,8 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
   async function handleSave() {
     if (savingRef.current) return;
     if (pendingMediaRef.current > 0) { setError('Wait for the photo or PDF to finish processing.'); return; }
-    const v = validate();
+    // Draft saves allow incomplete steps; publishing requires a complete guide.
+    const v = validate(published);
     if (v) { setError(v); setNotice(null); return; }
 
     setError(null); setNotice(null);
@@ -464,19 +589,23 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
 
   function reloadStale() {
     if (savingRef.current) return;
-    if (dirty && !confirm('Reload the latest version? Your unsaved changes will be discarded.')) return;
+    // Never auto-discard the manager's in-memory work — always confirm first.
+    if (!confirm('This discards your unsaved changes. Continue?')) return;
     load();
   }
 
   const frozen = saving;
 
   return (
+    <>
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-end sm:items-center justify-center">
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={`Guided tutorial for ${lineName}`}
-        className="bg-white w-full max-w-md sm:max-w-lg rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[92dvh] shadow-xl"
+        className="bg-white w-full max-w-md sm:max-w-lg rounded-t-2xl sm:rounded-2xl flex flex-col max-h-[92dvh] shadow-xl outline-none"
         onClick={e => e.stopPropagation()}
       >
         {/* Header — portal blue */}
@@ -490,7 +619,7 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
             onClick={requestClose}
             disabled={frozen}
             aria-label="Close"
-            className="w-9 h-9 -mr-1 flex-shrink-0 rounded-full flex items-center justify-center text-white/90 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-40"
+            className="w-11 h-11 -mr-1 flex-shrink-0 rounded-full flex items-center justify-center text-white/90 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:opacity-40"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M18 6 6 18M6 6l12 12" />
@@ -533,7 +662,9 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
                     {published ? 'Published' : 'Draft'}
                   </p>
                   <p className="text-[11px] text-gray-500 leading-snug">
-                    {published ? 'Staff can see this guide.' : 'Draft is hidden from staff until you publish.'}
+                    {dirty
+                      ? (published ? 'Staff will see this after you save.' : 'Staff won’t see this until you publish.')
+                      : (published ? 'Staff can see this guide.' : 'Draft is hidden from staff until you publish.')}
                   </p>
                 </div>
               </div>
@@ -630,6 +761,15 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
               </button>
               <button
                 type="button"
+                onClick={() => setPreviewOpen(true)}
+                disabled={frozen || dirty || steps.length === 0}
+                title={dirty ? 'Save to preview' : undefined}
+                className="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:opacity-50"
+              >
+                Preview
+              </button>
+              <button
+                type="button"
                 onClick={handleSave}
                 disabled={frozen || stale}
                 className="flex-[2] py-2.5 rounded-lg bg-green-600 text-white text-sm font-bold hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 disabled:opacity-50"
@@ -641,6 +781,15 @@ export default function GuidedTutorialEditor({ templateId, lineId, lineName, onC
         )}
       </div>
     </div>
+
+    {/* Staff-player preview of the SAVED guide. Enabled only when clean (not
+        dirty) with at least one step, since the player reads the saved template.
+        Passing templateId makes the player read this TEMPLATE line's guide (the
+        manager-preview endpoint) rather than a daily staff line of the same id. */}
+    {previewOpen && (
+      <GuidedTutorialPlayer templateId={templateId} lineId={lineId} onClose={() => setPreviewOpen(false)} />
+    )}
+    </>
   );
 }
 
@@ -683,8 +832,13 @@ function StepCard({
     if (activeIndex != null) noteRefs.current[activeIndex]?.focus();
   }, [activeIndex, step.pins.length]);
 
+  // YouTube: only flag an invalid link once the field is blurred, so the red
+  // error doesn't flash on every keystroke of an in-progress URL. The positive
+  // "Valid YouTube link." confirmation may show as soon as the URL is complete.
+  const [ytFocused, setYtFocused] = useState(false);
   const ytUrl = (step.youtube_url || '').trim();
   const ytInvalid = ytUrl.length > 0 && !isValidYoutubeUrl(ytUrl);
+  const ytShowError = ytInvalid && !ytFocused;
 
   return (
     <div ref={setNodeRef} style={style} className={`rounded-xl border bg-white ${step.media_type === 'tip' ? 'border-amber-200' : 'border-gray-200'}`}>
@@ -695,7 +849,7 @@ function StepCard({
           {...attributes}
           {...listeners}
           aria-label={`Reorder step ${index + 1}`}
-          className="w-8 h-8 flex-shrink-0 rounded-lg bg-gray-100 active:bg-gray-200 flex items-center justify-center text-gray-400 cursor-grab touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className="w-11 h-11 flex-shrink-0 rounded-lg bg-gray-100 active:bg-gray-200 flex items-center justify-center text-gray-400 cursor-grab touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <circle cx="9" cy="6" r="1.6" /><circle cx="15" cy="6" r="1.6" />
@@ -708,12 +862,12 @@ function StepCard({
         </span>
         <span className="flex-1 min-w-0 text-[12px] font-semibold text-gray-500 flex items-center gap-1">
           <span aria-hidden="true">{meta.emoji}</span>{meta.label}
-          <span className="text-gray-300"> · Step {index + 1} of {total}</span>
+          <span className="text-gray-500"> · Step {index + 1} of {total}</span>
         </span>
         <button
           type="button"
           onClick={onRemove}
-          className="text-[12px] font-semibold text-red-600 hover:text-red-700 px-1"
+          className="min-h-[44px] px-2 -mr-1 flex items-center flex-shrink-0 text-[12px] font-semibold text-red-600 hover:text-red-700"
         >
           Remove
         </button>
@@ -723,7 +877,7 @@ function StepCard({
         {/* Media area, by type */}
         {step.media_type === 'photo' && (
           <PhotoStep
-            step={step} disabled={disabled} busy={busy} imgError={imgError} activeIndex={activeIndex}
+            step={step} stepNo={index + 1} disabled={disabled} busy={busy} imgError={imgError} activeIndex={activeIndex}
             noteRefs={noteRefs}
             onSetActive={onSetActive} onPins={onPins} onPickPhoto={onPickPhoto} onImgError={onImgError}
           />
@@ -737,12 +891,16 @@ function StepCard({
               inputMode="url"
               value={step.youtube_url || ''}
               onChange={e => onPatch({ youtube_url: e.target.value })}
+              onFocus={() => setYtFocused(true)}
+              onBlur={() => setYtFocused(false)}
               placeholder="https://www.youtube.com/watch?v=…"
-              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${ytInvalid ? 'border-red-300 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-400'}`}
+              className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 ${ytShowError ? 'border-red-300 focus:ring-red-400' : 'border-gray-200 focus:ring-blue-400'}`}
             />
-            {ytInvalid
-              ? <p className="text-[11px] text-red-600 mt-1">That is not a valid YouTube link.</p>
-              : ytUrl && <p className="text-[11px] text-green-700 mt-1">Valid YouTube link.</p>}
+            {ytShowError ? (
+              <p className="text-[11px] text-red-600 mt-1">That is not a valid YouTube link.</p>
+            ) : ytUrl && !ytInvalid ? (
+              <p className="text-[11px] text-green-700 mt-1">Valid YouTube link.</p>
+            ) : null}
           </div>
         )}
 
@@ -751,7 +909,10 @@ function StepCard({
             {hasPdf(step) ? (
               <div className="flex items-center gap-2 text-sm">
                 <span aria-hidden="true">📄</span>
-                <span className="flex-1 min-w-0 truncate text-gray-800">{step.pdfFilename || 'document.pdf'}</span>
+                <span className="flex-1 min-w-0 truncate text-gray-800">
+                  {step.pdfFilename || 'document.pdf'}
+                  {step.pdfSize ? <span className="text-gray-500"> · {formatFileSize(step.pdfSize)}</span> : null}
+                </span>
                 {step.pdfUrl ? (
                   <a href={step.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-[12px] font-semibold text-blue-600 hover:text-blue-700 flex-shrink-0">Open</a>
                 ) : (
@@ -803,6 +964,7 @@ function StepCard({
 
 interface PhotoStepProps {
   step: EditorStep;
+  stepNo: number;
   disabled: boolean;
   busy: boolean;
   imgError: boolean;
@@ -814,7 +976,7 @@ interface PhotoStepProps {
   onImgError: () => void;
 }
 
-function PhotoStep({ step, disabled, busy, imgError, activeIndex, noteRefs, onSetActive, onPins, onPickPhoto, onImgError }: PhotoStepProps) {
+function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRefs, onSetActive, onPins, onPickPhoto, onImgError }: PhotoStepProps) {
   const photo = hasPhoto(step);
 
   function onFile(e: ChangeEvent<HTMLInputElement>) {
@@ -827,6 +989,16 @@ function PhotoStep({ step, disabled, busy, imgError, activeIndex, noteRefs, onSe
     onPickPhoto(f);
   }
 
+  // Shared place-a-pin path for BOTH tap-to-place (pointer) and the keyboard
+  // "Add pin" button. Focus follows the new pin's note input (via onSetActive)
+  // so a keyboard user can type its note, then Tab to the pin to nudge it.
+  function placePin(x: number, y: number) {
+    if (disabled) return;
+    const next = [...step.pins, { pin_x: clamp01(x), pin_y: clamp01(y), note: '' }];
+    onPins(next);
+    onSetActive(next.length - 1);
+  }
+
   return (
     <div className="space-y-2">
       {!photo ? (
@@ -837,22 +1009,25 @@ function PhotoStep({ step, disabled, busy, imgError, activeIndex, noteRefs, onSe
           <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={onFile} />
         </label>
       ) : imgError ? (
-        <div className="px-3 py-6 bg-white border border-red-200 rounded-lg text-[12px] text-red-600 text-center">
-          Couldn&apos;t load this photo. Replace it below.
+        // Corrupt stored photo — offer a replacement input right here so the step
+        // isn't a dead-end (deleting the whole step used to be the only way out).
+        <div className="px-3 py-5 bg-white border border-red-200 rounded-lg text-center space-y-2">
+          <p className="text-[12px] text-red-600">Couldn&apos;t load this photo. Replace it below.</p>
+          <label className={`min-h-[44px] inline-flex items-center justify-center text-[12px] font-semibold text-blue-600 hover:text-blue-700 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            {busy ? 'Processing…' : 'Choose a new photo'}
+            <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={onFile} />
+          </label>
         </div>
       ) : (
         <div className="flex justify-center bg-gray-50 rounded-lg p-1">
           <PinnableImage
             src={step.photoUrl || ''}
+            alt={`Step ${stepNo} photo`}
             mode="edit"
             disabled={disabled}
             pins={step.pins.map((p, i) => ({ pin_x: p.pin_x, pin_y: p.pin_y, label: p.note || `Note ${i + 1}`, number: i + 1 }))}
             activeIndex={activeIndex}
-            onPlace={(x, y) => {
-              const next = [...step.pins, { pin_x: x, pin_y: y, note: '' }];
-              onPins(next);
-              onSetActive(next.length - 1);
-            }}
+            onPlace={placePin}
             onPinMove={(i, x, y) => onPins(step.pins.map((p, idx) => (idx === i ? { ...p, pin_x: x, pin_y: y } : p)))}
             onPinClick={(i) => onSetActive(activeIndex === i ? null : i)}
             onImageError={onImgError}
@@ -861,14 +1036,26 @@ function PhotoStep({ step, disabled, busy, imgError, activeIndex, noteRefs, onSe
       )}
 
       {photo && !imgError && (
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-gray-500">
-            {step.pins.length} note-pin{step.pins.length === 1 ? '' : 's'} · tap the photo to add one
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-gray-500 min-w-0">
+            {step.pins.length} note-pin{step.pins.length === 1 ? '' : 's'} · tap the photo or Add pin
           </span>
-          <label className={`text-[11px] font-semibold text-blue-600 hover:text-blue-700 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-            {busy ? 'Processing…' : 'Replace photo'}
-            <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={onFile} />
-          </label>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Keyboard path to create a pin (WCAG 2.1.1): places one at centre,
+                then arrows nudge it and the note field takes focus to describe it. */}
+            <button
+              type="button"
+              onClick={() => placePin(0.5, 0.5)}
+              disabled={disabled}
+              className="min-h-[44px] flex items-center px-1 text-[11px] font-semibold text-blue-600 hover:text-blue-700 disabled:opacity-50"
+            >
+              + Add pin
+            </button>
+            <label className={`min-h-[44px] flex items-center text-[11px] font-semibold text-blue-600 hover:text-blue-700 cursor-pointer ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+              {busy ? 'Processing…' : 'Replace photo'}
+              <input type="file" accept="image/*" className="hidden" disabled={disabled} onChange={onFile} />
+            </label>
+          </div>
         </div>
       )}
 

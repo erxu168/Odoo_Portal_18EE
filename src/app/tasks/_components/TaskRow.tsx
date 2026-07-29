@@ -93,7 +93,13 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
     }
     setCompleting(true);
     try { await onComplete(task.id); }
-    catch (e: unknown) { setError(e instanceof Error ? e.message : 'Failed'); setCompleting(false); }
+    catch {
+      // Never surface a raw server/Odoo string to staff — Odoo forwards long
+      // technical messages that mean nothing to a line cook. Always show a
+      // plain, actionable line instead.
+      setError("Couldn't mark this done — check your connection and tap again.");
+      setCompleting(false);
+    }
   }
 
   async function handleSubtask(subtaskId: number, done: boolean) {
@@ -109,8 +115,9 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
     try {
       await onNoteSave(task.id, note);
       setNoteDirty(false);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to save note');
+    } catch {
+      // Keep the plain fallback — never leak the raw server/Odoo error text.
+      setError('Failed to save note');
     } finally {
       setNoteSaving(false);
     }
@@ -128,7 +135,8 @@ export default function TaskRow({ task, taskListId: _taskListId, onComplete, onS
     } catch (err: unknown) {
       // Don't surface an error if the user just dismissed the camera.
       const cancelled = !!(err && typeof err === 'object' && 'cancelled' in err);
-      if (!cancelled) setError(err instanceof Error ? err.message : 'Photo upload failed');
+      // Keep the plain fallback — never leak the raw server/Odoo error text.
+      if (!cancelled) setError('Photo upload failed');
     }
     finally { setUploading(false); }
   }

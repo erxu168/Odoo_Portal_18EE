@@ -143,6 +143,12 @@ export interface TaskTemplateLine {
   has_setup_photo: boolean;
   /** Sequences of this line's setup photos, display order (multi-photo guides). */
   setup_photo_seqs: number[];
+  /** Guided tutorial: whether the guide snapshot is published (visible to staff). */
+  guide_published: boolean;
+  /** Number of steps in the guide (0 when none). */
+  guide_step_count: number;
+  /** Convenience: published AND has steps (server-computed). */
+  has_guide: boolean;
 }
 
 /** A template subtask. On a setup-guide line it doubles as a pin (pin_x/pin_y in 0–1, optional catalog item). */
@@ -626,6 +632,8 @@ const TEMPLATE_LINE_FIELDS = [
   'recurrence_month', 'exception_ids',
   // Setup guide: filename only (never the binary).
   'is_setup_guide', 'setup_photo_filename',
+  // Guided tutorial: published state + step count (content loaded lazily on open).
+  'guide_published', 'guide_step_count', 'has_guide',
 ];
 
 const TEMPLATE_SUBTASK_FIELDS = ['id', 'line_id', 'name', 'sequence', 'pin_x', 'pin_y', 'pin_photo_seq', 'item_id'];
@@ -745,6 +753,9 @@ export async function getTemplate(id: number): Promise<TaskTemplate | null> {
     is_setup_guide: !!l.is_setup_guide,
     setup_photo_seqs: tplPhotoSeqs.get(l.id) || (l.setup_photo_filename ? [0] : []),
     has_setup_photo: (tplPhotoSeqs.get(l.id) || []).length > 0 || !!l.setup_photo_filename,
+    guide_published: !!l.guide_published,
+    guide_step_count: l.guide_step_count || 0,
+    has_guide: !!l.has_guide,
     recurrence: {
       type: (l.recurrence_type || 'daily') as RecurrenceType,
       interval: l.recurrence_interval || 1,

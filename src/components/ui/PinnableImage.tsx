@@ -33,6 +33,8 @@ interface Props {
    * gesture here instead of committing a move after the parent snapshotted pins. */
   disabled?: boolean;
   className?: string;
+  /** Accessible description of the image (falls back to a generic label). */
+  alt?: string;
 }
 
 /** Movement below this (px) counts as a tap, not a drag. */
@@ -51,7 +53,7 @@ const DRAG_THRESHOLD = 5;
  * the pins ONLY, so page scrolling elsewhere keeps working (iOS pitfall #4).
  */
 export default function PinnableImage({
-  src, pins, mode, activeIndex = null, onPinClick, onPlace, onPinMove, onImageError, disabled = false, className = '',
+  src, pins, mode, activeIndex = null, onPinClick, onPlace, onPinMove, onImageError, disabled = false, className = '', alt,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   // Live position of the pin being dragged (render-only; committed on drop).
@@ -134,7 +136,7 @@ export default function PinnableImage({
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
-        alt="Setup reference"
+        alt={alt || 'Guide photo'}
         onError={onImageError}
         className="block max-w-full h-auto rounded-lg"
         draggable={false}
@@ -162,6 +164,19 @@ export default function PinnableImage({
               if (gesture.current && e.pointerId === gesture.current.pointerId) {
                 gesture.current = null; setDrag(null);
               }
+            }}
+            onKeyDown={(e) => {
+              // Keyboard nudge — makes pins operable without a pointer (WCAG 2.1.1).
+              if (mode !== 'edit' || !onPinMove || disabled) return;
+              const STEP = e.shiftKey ? 0.05 : 0.01;
+              let dx = 0, dy = 0;
+              if (e.key === 'ArrowLeft') dx = -STEP;
+              else if (e.key === 'ArrowRight') dx = STEP;
+              else if (e.key === 'ArrowUp') dy = -STEP;
+              else if (e.key === 'ArrowDown') dy = STEP;
+              else return;
+              e.preventDefault();
+              onPinMove(i, Math.min(1, Math.max(0, x + dx)), Math.min(1, Math.max(0, y + dy)));
             }}
             style={{
               left: `${x * 100}%`,

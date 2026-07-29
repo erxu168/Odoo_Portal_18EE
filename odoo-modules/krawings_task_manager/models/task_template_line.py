@@ -176,6 +176,23 @@ class KrawingsTaskTemplateLine(models.Model):
             }
             for s in line.guide_step_ids
         }
+
+        # Completeness is a PUBLISH-time rule: a published guide must have every
+        # step finished (explanation + its own media). A DRAFT may be saved with
+        # half-finished steps so managers can checkpoint work-in-progress.
+        if published:
+            for idx, st in enumerate(steps, 1):
+                mt = st.get('media_type')
+                prev = prior.get(int(st.get('id') or 0), {})
+                if not (st.get('explanation') or '').strip():
+                    raise UserError('Step %s needs an explanation before you can publish.' % idx)
+                if mt == 'photo' and not (st.get('image_base64') or prev.get('image')):
+                    raise UserError('Step %s needs a photo before you can publish.' % idx)
+                if mt == 'pdf' and not (st.get('pdf_base64') or prev.get('pdf_file')):
+                    raise UserError('Step %s needs a PDF before you can publish.' % idx)
+                if mt == 'youtube' and not (st.get('youtube_url') or '').strip():
+                    raise UserError('Step %s needs a YouTube link before you can publish.' % idx)
+
         line.guide_step_ids.unlink()  # cascade pins; clean sequences on rebuild
 
         Step = self.env['krawings.task.guide.step'].sudo()
