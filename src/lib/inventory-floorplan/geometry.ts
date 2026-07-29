@@ -73,6 +73,15 @@ export function normalizeCode(s: string): string {
   return s.trim().replace(/\s+/g, ' ').toUpperCase();
 }
 
+/** The storage invariant every persisted polygon must satisfy: ≥3 finite points in [0,1]². */
+export function validStoredPolygon(poly: unknown): poly is Pt[] {
+  return Array.isArray(poly) && poly.length >= 3 && poly.length <= 12 && poly.every(p =>
+    p != null && typeof p === 'object' &&
+    Number.isFinite((p as Pt).x) && Number.isFinite((p as Pt).y) &&
+    (p as Pt).x >= 0 && (p as Pt).x <= 1 && (p as Pt).y >= 0 && (p as Pt).y <= 1,
+  );
+}
+
 const STORAGE_TYPE: Record<string, string> = {
   SLF: 'shelf',
   FLS: 'floorspace',
