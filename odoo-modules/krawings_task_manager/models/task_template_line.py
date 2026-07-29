@@ -1,7 +1,7 @@
 import mimetypes
 
 from odoo import api, fields, models
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
 # Guide size caps — keep aggregate JSON-RPC saves and the nightly snapshot bounded.
 GUIDE_MAX_STEPS = 40
@@ -114,6 +114,30 @@ class KrawingsTaskTemplateLine(models.Model):
             # has_guide reflects staff visibility (published + non-empty). The
             # editor uses guide_step_count to know a draft has content.
             rec.has_guide = bool(rec.guide_published and rec.guide_step_ids)
+
+    @api.constrains('guide_published', 'guide_step_ids')
+    def _check_published_guide_complete(self):
+        """Invariant: a PUBLISHED guide is always complete (>=1 step, every step
+        has an explanation + its own media). This is the backstop that makes
+        "published ⟹ complete" true even against a direct write to
+        guide_published or a step, and guarantees the nightly snapshot only ever
+        copies complete guides. portal_save_guide raises friendlier per-step
+        messages before this fires."""
+        for line in self:
+            if not line.guide_published:
+                continue
+            steps = line.guide_step_ids.sorted('sequence')
+            if not steps:
+                raise ValidationError('A published guide needs at least one step.')
+            for i, s in enumerate(steps, 1):
+                if not (s.explanation and s.explanation.strip()):
+                    raise ValidationError('Step %s needs an explanation before the guide can be published.' % i)
+                if s.media_type == 'photo' and not s.image:
+                    raise ValidationError('Step %s needs a photo before the guide can be published.' % i)
+                if s.media_type == 'pdf' and not s.pdf_file:
+                    raise ValidationError('Step %s needs a PDF before the guide can be published.' % i)
+                if s.media_type == 'youtube' and not (s.youtube_url and s.youtube_url.strip()):
+                    raise ValidationError('Step %s needs a YouTube link before the guide can be published.' % i)
 
     # ── Guided-tutorial editor RPC (manager/admin; company checked in the route) ──
     @api.model

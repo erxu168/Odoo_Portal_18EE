@@ -46,13 +46,16 @@ function isPdf(base64: string): boolean {
 }
 
 /** Validate + normalize the incoming steps array (server-side; the model also validates). */
-function sanitizeSteps(raw: unknown): GuideStepSave[] {
+function sanitizeSteps(raw: unknown, published: boolean): GuideStepSave[] {
   if (!Array.isArray(raw)) throw new AuthError('steps must be an array', 400);
+  // `published` gates COMPLETENESS: a draft may hold half-finished steps (empty
+  // explanation, no photo yet). Structural checks (valid bytes / valid YouTube
+  // if present, note-pins need a note) always apply. Mirrors the Odoo model.
   return raw.map((s: any, i: number) => {
     const mt = s?.media_type;
     if (!MEDIA_TYPES.has(mt)) throw new AuthError(`Step ${i + 1}: unknown type`, 400);
     const explanation = String(s?.explanation ?? '').trim();
-    if (!explanation) throw new AuthError(`Step ${i + 1}: an explanation is required`, 400);
+    if (published && !explanation) throw new AuthError(`Step ${i + 1}: an explanation is required`, 400);
     const out: GuideStepSave = { media_type: mt, explanation };
     if (Number.isInteger(s?.id)) out.id = s.id;
     if (mt === 'photo') {
@@ -60,7 +63,7 @@ function sanitizeSteps(raw: unknown): GuideStepSave[] {
         if (!isImage(s.image_base64)) throw new AuthError(`Step ${i + 1}: not a valid image`, 415);
         out.image_base64 = s.image_base64;
         out.image_filename = String(s?.image_filename ?? 'photo.jpg');
-      } else if (!Number.isInteger(s?.id)) {
+      } else if (published && !Number.isInteger(s?.id)) {
         throw new AuthError(`Step ${i + 1}: a photo is required`, 400);
       }
       const pins = Array.isArray(s?.pins) ? s.pins.map((p: any) => ({
@@ -73,13 +76,17 @@ function sanitizeSteps(raw: unknown): GuideStepSave[] {
         if (!isPdf(s.pdf_base64)) throw new AuthError(`Step ${i + 1}: not a valid PDF`, 415);
         out.pdf_base64 = s.pdf_base64;
         out.pdf_filename = String(s?.pdf_filename ?? 'document.pdf');
-      } else if (!Number.isInteger(s?.id)) {
+      } else if (published && !Number.isInteger(s?.id)) {
         throw new AuthError(`Step ${i + 1}: a PDF is required`, 400);
       }
     } else if (mt === 'youtube') {
       const url = String(s?.youtube_url ?? '').trim();
-      if (!isValidYoutubeUrl(url)) throw new AuthError(`Step ${i + 1}: enter a valid YouTube link`, 400);
-      out.youtube_url = url;
+      if (url) {
+        if (!isValidYoutubeUrl(url)) throw new AuthError(`Step ${i + 1}: enter a valid YouTube link`, 400);
+        out.youtube_url = url;
+      } else if (published) {
+        throw new AuthError(`Step ${i + 1}: a YouTube link is required`, 400);
+      }
     }
     return out;
   });
@@ -112,7 +119,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string; 
     const revision = Number(body?.revision);
     if (!Number.isInteger(revision)) return NextResponse.json({ error: 'Missing revision' }, { status: 400 });
     const published = !!body?.published;
-    const steps = sanitizeSteps(body?.steps);
+    const steps = sanitizeSteps(body?.steps, published);
     const result = await saveTemplateGuide(p.lineId, revision, published, steps);
     if (result?.conflict) {
       return NextResponse.json(
