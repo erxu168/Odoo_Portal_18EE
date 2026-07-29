@@ -12,12 +12,14 @@ import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import { Spinner } from '@/components/inventory/ui';
 import ProductSettings from '@/components/inventory/ProductSettings';
+import BatchPhotos from '@/components/products/BatchPhotos';
 import { allowedActionKeysForRole, type Role } from '@/lib/permissions';
 import { RECORD_EDIT_CAP } from '@/lib/record-links';
 
 export default function ProductsPage() {
   const router = useRouter();
   const [state, setState] = useState<'loading' | 'ok' | 'denied'>('loading');
+  const [screen, setScreen] = useState<'list' | 'photos'>('list');
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -46,9 +48,22 @@ export default function ProductsPage() {
     );
   }
 
+  // Batch photos is catalogue work, not counting, so it lives here rather than
+  // in Inventory — and it is a MODE of this screen, not a new route, so the
+  // product list stays the one place products are managed from.
+  if (screen === 'photos') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col">
+        <AppHeader title="Batch photos" subtitle="Paste a picture for many products at once"
+          showBack onBack={() => setScreen('list')} />
+        <BatchPhotos onBack={() => setScreen('list')} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <ProductSettings onBack={() => router.push('/')} />
+      <ProductSettings onBack={() => router.push('/')} onBatchPhotos={() => setScreen('photos')} />
     </div>
   );
 }

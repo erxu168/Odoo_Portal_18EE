@@ -13,6 +13,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { initInventoryTables, getProductImage, setProductImage, deleteProductImage } from '@/lib/inventory-db';
+import { fetchImageFromUrl } from '@/lib/fetch-image-url';
 
 function pid(params: { product_id: string }): number {
   return parseInt(params.product_id, 10);
@@ -60,7 +61,24 @@ export async function PUT(request: Request, { params }: { params: { product_id: 
   if (!Number.isFinite(productId) || productId <= 0) return NextResponse.json({ error: 'Invalid product id' }, { status: 400 });
 
   const body = await request.json();
-  const image = body.image;
+  let image = body.image;
+
+  // A pasted image ADDRESS: "Copy image address" is one right-click away, and
+  // the alternative is a trip through the download folder. The server does the
+  // fetching, which is why fetch-image-url.ts exists — a URL a user pastes is a
+  // URL this machine then requests, and without a guard that reaches anything
+  // the server can reach.
+  if (!image && typeof body.image_url === 'string' && body.image_url.trim()) {
+    try {
+      const got = await fetchImageFromUrl(body.image_url);
+      image = got.dataUrl;
+    } catch (err: unknown) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : 'That image could not be fetched.' },
+        { status: 400 },
+      );
+    }
+  }
   // Only raster images the browser can render back. AVIF and WebP are stored as
   // they arrive — the client normally re-encodes to JPEG, but a browser that
   // cannot DECODE the format passes the original through, and refusing it there
