@@ -90,3 +90,41 @@ test('guided tutorial full stack: read, media, save round-trip, 409, staff read,
   await page.goto(`/tasks/manager/templates/${TEMPLATE_ID}`, { waitUntil: 'networkidle' });
   await expect(page.getByText('Grill Station Setup').first()).toBeVisible({ timeout: 20_000 });
 });
+
+test('draft saves incomplete; publishing incomplete is blocked; then restores', async ({ page }) => {
+  await login(page, ADMIN.email, ADMIN.password);
+  const base = `/api/tasks/templates/${TEMPLATE_ID}/lines/${LINE_ID}/guide`;
+
+  // Capture the original (published, complete) state so we can restore it.
+  const orig = await (await page.request.get(base)).json();
+  const oStep = orig.steps[0];
+  const origExplanation: string = oStep.explanation;
+  const origPins = oStep.pins.map((p: { pin_x: number; pin_y: number; note: string }) => ({ pin_x: p.pin_x, pin_y: p.pin_y, note: p.note }));
+  expect(origExplanation.length).toBeGreaterThan(0);
+
+  // 1) Save an INCOMPLETE DRAFT (empty explanation, keep the photo) — must succeed now.
+  const draft = await page.request.put(base, {
+    data: { revision: orig.revision, published: false, steps: [{ id: oStep.id, media_type: 'photo', explanation: '', pins: origPins }] },
+  });
+  expect(draft.ok()).toBeTruthy();
+  const afterDraft = await (await page.request.get(base)).json();
+  expect(afterDraft.published).toBe(false);
+  expect(afterDraft.steps[0].explanation).toBe('');
+  const dStep = afterDraft.steps[0];
+
+  // 2) Publishing the incomplete guide is blocked (400).
+  const badPublish = await page.request.put(base, {
+    data: { revision: afterDraft.revision, published: true, steps: [{ id: dStep.id, media_type: 'photo', explanation: '', pins: origPins }] },
+    failOnStatusCode: false,
+  });
+  expect(badPublish.status()).toBe(400);
+
+  // 3) Restore: publish with the original explanation — succeeds; leaves staging as it was.
+  const restore = await page.request.put(base, {
+    data: { revision: afterDraft.revision, published: true, steps: [{ id: dStep.id, media_type: 'photo', explanation: origExplanation, pins: origPins }] },
+  });
+  expect(restore.ok()).toBeTruthy();
+  const final = await (await page.request.get(base)).json();
+  expect(final.published).toBe(true);
+  expect(final.steps[0].explanation).toBe(origExplanation);
+});
