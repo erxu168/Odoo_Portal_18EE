@@ -49,7 +49,11 @@ export function textItemPolygon(item: RawTextItem, pageW: number, pageH: number)
     [e + ux * w + vx * h, f + uy * w + vy * h],
     [e + vx * h, f + vy * h],
   ];
-  return corners.map(([x, y]) => ({ x: x / pageW, y: 1 - y / pageH }));
+  // Clamp to the page: oversized display text (the big floor title) can
+  // legitimately overhang the page box by a few points, but everything we
+  // STORE must satisfy the publish-time invariant 0 ≤ x,y ≤ 1.
+  const clamp = (v: number) => Math.min(1, Math.max(0, v));
+  return corners.map(([x, y]) => ({ x: clamp(x / pageW), y: clamp(1 - y / pageH) }));
 }
 
 /** Baseline rotation in PDF space, degrees CCW, rounded. 0 = normal horizontal text. */

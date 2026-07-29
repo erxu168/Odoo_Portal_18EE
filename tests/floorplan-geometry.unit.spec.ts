@@ -125,14 +125,14 @@ test('REAL PLAN: extraction finds the storage labels and rooms of SSK96 -1F', as
   expect(rooms.join('|')).toContain('Changing Room');
   expect(rooms.join('|')).toContain('DISPATCH AREA');
 
-  // every polygon must be inside the page with finite coordinates
+  // every stored polygon must satisfy the publish-time invariant 0 ≤ x,y ≤ 1
   for (const g of groups) {
     for (const p of g.poly) {
       expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
-      expect(p.x).toBeGreaterThanOrEqual(-0.02);
-      expect(p.x).toBeLessThanOrEqual(1.02);
-      expect(p.y).toBeGreaterThanOrEqual(-0.02);
-      expect(p.y).toBeLessThanOrEqual(1.02);
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x).toBeLessThanOrEqual(1);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y).toBeLessThanOrEqual(1);
     }
   }
 });
