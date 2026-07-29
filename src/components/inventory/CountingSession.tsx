@@ -95,6 +95,9 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   // itself isn't cached — only these STATIC paths — so no stale statuses).
   const [cachedSpotPaths, setCachedSpotPaths] = useState<Record<number, string>>({});
   const [guidedStatuses, setGuidedStatuses] = useState<Record<number, { status: string; skip_reason: string | null }>>({});
+  // What this restaurant wants to hold. Shown under the name so a wrong number
+  // is noticed at the SHELF rather than three days later in a report.
+  const [par, setPar] = useState<Record<number, { min: number | null; max: number | null }>>({});
   const [statusPending, setStatusPending] = useState(0); // in-flight location-status writes
   const [savesPending, setSavesPending] = useState(0);
   // A refusal the server sent back. Shown until dismissed — a count that did
@@ -245,6 +248,27 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   }, [sessionId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Par belongs to the restaurant this COUNT is for, not to whatever the top
+  // bar happens to show — a manager reviewing WAJ's count from an Ssam context
+  // must still see WAJ's numbers.
+  useEffect(() => {
+    const co = (session as any)?.company_id;
+    if (!co) return;
+    let stale = false;
+    fetch(`/api/inventory/product-par?company_id=${co}`)
+      .then((r) => (r.ok ? r.json() : { par: [] }))
+      .then((d) => {
+        if (stale) return;
+        const map: Record<number, { min: number | null; max: number | null }> = {};
+        (d.par || []).forEach((row: any) => {
+          map[row.odoo_product_id] = { min: row.par_min ?? null, max: row.par_max ?? null };
+        });
+        setPar(map);
+      })
+      .catch(() => { /* the range is a helper, not the count */ });
+    return () => { stale = true; };
+  }, [session]);
 
   useEffect(() => {
     fetch('/api/inventory/product-flags').then(r => r.json()).then(async (d) => {
@@ -819,6 +843,23 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   1 {label} = {size} {words.looseFor(size)}
                 </span>
               )}
+              {/* What this restaurant wants to hold. Informational only — if
+                  there really are 12, then 12 is the right answer and the count
+                  records reality rather than arguing with it. */}
+              {(() => {
+                const pr = par[p.id];
+                if (!pr || (pr.min == null && pr.max == null)) return null;
+                const range = pr.min != null && pr.max != null ? `${pr.min}–${pr.max}`
+                  : pr.min != null ? `at least ${pr.min}` : `at most ${pr.max}`;
+                const low = pr.min != null && typeof val === 'number' && val < pr.min;
+                return (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 border ${
+                    low ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-gray-50 text-gray-500 border-gray-200'
+                  }`}>
+                    {low ? 'below par · ' : 'par '}{range}
+                  </span>
+                );
+              })()}
               {flagged && (
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0">
                   Photo required
