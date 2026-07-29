@@ -52,7 +52,10 @@ export async function GET(request: Request) {
       'account.tax',
       [['company_id', '=', companyId], ['type_tax_use', 'in', ['sale', 'purchase']]],
       ['id', 'name', 'amount', 'price_include', 'type_tax_use', 'company_id', 'active'],
-      { limit: 200, order: 'type_tax_use, amount desc, name', context: { active_test: false } },
+      // No meaningful cap: the client resolves the product's CURRENT tax against
+      // this list, so a tax beyond the limit would read as "not set" and could not
+      // be chosen. Ssam alone has 51 configured.
+      { limit: 2000, order: 'type_tax_use, amount desc, name', context: { active_test: false } },
     );
 
     const shape = (r: Record<string, unknown>): TaxOption => ({

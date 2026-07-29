@@ -153,7 +153,9 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   // Tracked per tax type: saving the sales tax must not silently clear a warning
   // that the PURCHASE tax is still doubled up.
   const [taxClash, setTaxClash] = useState<{ sale: boolean; purchase: boolean }>({ sale: false, purchase: false });
-  const [taxRetired, setTaxRetired] = useState(false);    // set, but to a rate since archived
+  // Per type, for the same reason taxClash is: saving the selling tax must not
+  // clear a warning about the BUYING tax.
+  const [taxRetired, setTaxRetired] = useState<{ sale: boolean; purchase: boolean }>({ sale: false, purchase: false });
   // Editable "Count by" units (seeded from the defaults) + the manage sheet.
   const [packUnits, setPackUnits] = useState<string[]>(PACK_LABELS);
   const [manageUnits, setManageUnits] = useState(false);
@@ -232,7 +234,8 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     // one's, while the request is in flight.
     setTaxOpts({ sale: [], purchase: [] });
     setSaleTax(null); setPurchaseTax(null);
-    setTaxClash({ sale: false, purchase: false }); setTaxRetired(false);
+    setTaxClash({ sale: false, purchase: false });
+    setTaxRetired({ sale: false, purchase: false });
     (async () => {
       try {
         const [flagRes, uomRes, spotRes, locRes, masterRes, taxRes] = await Promise.all([
@@ -268,7 +271,10 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           // here are in the second state and a manager would swear they set it.
           const retired = new Set(opts.retired || []);
           const onRetired = (ids: number[]) => (ids || []).some((id) => retired.has(id));
-          setTaxRetired(onRetired(m.taxes_id) || onRetired(m.supplier_taxes_id));
+          setTaxRetired({
+            sale: onRetired(m.taxes_id || []),
+            purchase: onRetired(m.supplier_taxes_id || []),
+          });
           setStorable(m.is_storable === true);
         }
         if (m) {
@@ -349,7 +355,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
       if (!res.ok) { set(prev); flash('err', d.error || 'Could not save the tax'); return; }
       // Only the type just saved is resolved; the other keeps its warning.
       setTaxClash((c) => ({ ...c, [kind]: false }));
-      setTaxRetired(false);
+      setTaxRetired((r) => ({ ...r, [kind]: false }));
       flash('ok', taxId == null ? 'Tax cleared' : 'Tax saved');
     } catch { set(prev); flash('err', 'Network error — the tax was not saved.'); }
     finally { setBusy(null); }
@@ -778,10 +784,12 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
                 <p className="text-[var(--fs-xs)] text-gray-400">
                   This restaurant only. The other restaurants keep their own tax on this product.
                 </p>
-                {taxRetired && !taxClash && (
+                {(taxRetired.sale || taxRetired.purchase) && !(taxClash.sale || taxClash.purchase) && (
                   <p className="text-[var(--fs-xs)] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
-                    This product still uses a tax rate that has been retired in Odoo, so it shows as
-                    blank above. Pick a current one.
+                    The {taxRetired.sale && taxRetired.purchase ? 'buying and selling taxes'
+                      : taxRetired.sale ? 'selling tax' : 'buying tax'} on this product
+                    {taxRetired.sale && taxRetired.purchase ? ' have' : ' has'} been retired in Odoo,
+                    so it shows as blank above. Pick a current one.
                   </p>
                 )}
                 {(taxClash.sale || taxClash.purchase) && (
