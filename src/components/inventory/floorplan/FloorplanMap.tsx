@@ -119,7 +119,6 @@ export default function FloorplanMap({
           iconSize: undefined,
         });
         const pin = L.marker(fracToLatLng(w, { x: a.cx, y: a.cy }), { icon }).addTo(map);
-        (pin.getElement() ?? { style: { setProperty: () => {} } } as unknown as HTMLElement);
         const el = pin.getElement();
         if (el) el.style.setProperty('--c', color);
         pin.on('click', (e: Leaflet.LeafletMouseEvent) => {
