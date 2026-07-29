@@ -4,24 +4,27 @@ name: Build Portal APK
 # rolling GitHub release, so a phone or tablet can install it straight from a link
 # and nobody needs Android Studio.
 #
-# UNLIKE build-timeclock.yml / build-station.yml, this one does NOT run
-# `npx cap add android` to generate the project. This app has custom native code —
-# the Zebra Bluetooth printing plugin at
-# android/Krawings Portal/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java —
-# so the native project is COMMITTED and built as it stands. Regenerating it would
-# throw that plugin away.
+# UNLIKE the station/timeclock/cooktimer apps, this one does NOT run `npx cap add
+# android` to generate the project. It has CUSTOM native code — the Zebra Bluetooth
+# printing plugin + barcode scanner bridge at
+# apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/ — so the native
+# project is COMMITTED (in apps/portal/android/) and built as it stands. Regenerating it
+# would throw those away.
 #
-# Until 2026-07-28 `android/` was gitignored, so that plugin existed only on one
-# laptop. Committing it fixed the backup problem; this workflow fixes the
-# "only one machine can build it" problem.
+# One-app-per-folder: everything for this app lives under apps/portal/ and the build runs
+# there (Capacitor's CWD), so it never collides with the other apps' throwaway android/.
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'apps/portal/**'
+      - '.github/workflows/android-apk.yml'
   push:
     branches: [ main ]
     paths:
-      - 'android/**'
-      - 'capacitor.config.ts'
+      - 'apps/portal/**'
       - '.github/workflows/android-apk.yml'
 
 jobs:
@@ -30,6 +33,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+    defaults:
+      run:
+        working-directory: apps/portal
 
     steps:
       - name: Check out the repo
@@ -55,7 +61,8 @@ jobs:
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Install JS dependencies
+      - name: Install JS dependencies (root node_modules)
+        working-directory: .
         run: npm ci
 
       - name: Provide a webDir (the app loads the live site via server.url)
@@ -66,26 +73,32 @@ jobs:
           [ -f www/index.html ] || printf '' > www/index.html
 
       - name: Sync Capacitor into the committed native project
-        # copy + update only: refreshes plugin wiring and the config in assets/.
-        # It does not remove custom Java, so ZebraPrintPlugin survives.
+        # copy + update only: refreshes plugin wiring and regenerates capacitor.settings.gradle
+        # with node_modules paths relative to apps/portal/. Never `cap add`, so the custom
+        # Java (ZebraPrintPlugin, BarcodeScannerBridge) survives.
         run: npx cap sync android
 
       - name: Build the debug APK
+        working-directory: apps/portal/android
         run: |
-          cd android
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Find the APK
-        id: apk
+      - name: Verify appId + custom plugins, then stage the APK
+        working-directory: .
         run: |
           set -e
-          # The module folder has a space in its name ("Krawings Portal"), so glob for it.
-          APK=$(find android -path '*outputs/apk/debug/*.apk' | head -1)
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          # The module folder has a space in its name ("Krawings Portal"), so glob for the APK.
+          APK=$(find apps/portal/android -path '*outputs/apk/debug/*.apk' | head -1)
           test -n "$APK" || { echo "No APK produced"; exit 1; }
+          "$AAPT" dump badging "$APK" | grep -q "package: name='de.krawings.portal'"
+          test -f "apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/plugins/ZebraPrintPlugin.java"
+          test -f "apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/BarcodeScannerBridge.java"
+          grep -q 'registerPlugin(ZebraPrintPlugin.class)' "apps/portal/android/Krawings Portal/src/main/java/de/krawings/portal/MainActivity.java"
+          echo "OK: de.krawings.portal with Zebra + barcode native code"
           cp "$APK" krawings-portal.apk
           ls -lh krawings-portal.apk
-          echo "path=krawings-portal.apk" >> "$GITHUB_OUTPUT"
 
       - name: Upload the APK as a build artifact
         uses: actions/upload-artifact@v4
@@ -96,6 +109,7 @@ jobs:
 
       - name: Publish APK to the 'portal-latest' release
         if: github.ref == 'refs/heads/main'
+        working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

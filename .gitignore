@@ -37,18 +37,8 @@ next-env.d.ts
 /data/
 .env
 
-# Capacitor: commit android sources (custom plugins live there), ignore build artifacts
+# Capacitor iOS (unused)
 /ios/
-android/.gradle/
-android/**/.gradle/
-android/.idea/
-android/**/.idea/
-android/build/
-android/**/build/
-android/local.properties
-android/**/local.properties
-android/.DS_Store
-android/**/.DS_Store
 
 # worktrees (Claude isolated workspaces)
 .worktrees/
@@ -64,21 +54,20 @@ android-kds/
 android-timeclock/
 .superpowers/
 
-# Capacitor Android — COMMIT the sources (the custom Zebra plugin lives here);
-# never the build output. The blanket `android/` rule used to sit below and
-# quietly kept the whole native app off GitHub, contradicting the note above.
-android/build/
-android/**/build/
-android/.gradle/
-android/**/.gradle/
-android/.idea/
-android/**/.idea/
-android/.cxx/
-android/.externalNativeBuild/
-android/local.properties
-android/**/local.properties
-android/**/src/main/assets/public/
-android/**/output-metadata.json
+# Portal app (apps/portal/android) — native sources are COMMITTED (the custom Zebra +
+# barcode plugins live here); the Gradle/IDE/Capacitor build output is not.
+/apps/portal/android/.gradle/
+/apps/portal/android/**/.gradle/
+/apps/portal/android/.idea/
+/apps/portal/android/**/.idea/
+/apps/portal/android/**/build/
+/apps/portal/android/.cxx/
+/apps/portal/android/.externalNativeBuild/
+/apps/portal/android/local.properties
+/apps/portal/android/**/local.properties
+/apps/portal/android/**/.DS_Store
+/apps/portal/android/**/src/main/assets/public/
+/apps/portal/android/**/output-metadata.json
 *.apk
 *.aab
 

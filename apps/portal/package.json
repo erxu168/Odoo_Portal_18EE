@@ -1,0 +1,14 @@
+{
+  "name": "krawings-portal-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor wrapper (appId de.krawings.portal) around https://portal.krawings.de with COMMITTED custom native code (Zebra Bluetooth print + barcode scanner) under android/. Built by .github/workflows/android-apk.yml, which runs Capacitor with this folder as CWD (never `cap add`) and resolves @capacitor/* from the repo-root node_modules.",
+  "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "^8.0.1",
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/core": "^8.3.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.3.0"
+  }
+}
