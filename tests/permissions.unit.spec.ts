@@ -113,6 +113,17 @@ test('recipes defaults are behavior-preserving (manager writes, delete=admin)', 
   expect(roleCan('admin', 'recipes.delete', {})).toBe(true);
 });
 
+test('chef-guide dashboard tiles (record/edit/stats) default manager+admin, hidden from staff', () => {
+  for (const k of ['recipes.record.create', 'recipes.recipe.edit', 'recipes.stats.view']) {
+    expect(roleCan('staff', k, {})).toBe(false);
+    expect(roleCan('manager', k, {})).toBe(true);
+    expect(roleCan('admin', k, {})).toBe(true);
+  }
+  // An admin can still open Record up to staff via an override (e.g. submit-for-review).
+  expect(roleCan('staff', 'recipes.record.create',
+    { 'recipes.record.create': ['staff', 'manager', 'admin'] } as any)).toBe(true);
+});
+
 test('credentials defaults: view=manager+admin, manage=admin', () => {
   expect(roleCan('staff', 'credentials.view', {})).toBe(false);
   expect(roleCan('manager', 'credentials.view', {})).toBe(true);

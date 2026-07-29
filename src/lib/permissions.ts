@@ -111,6 +111,13 @@ export const PERMISSION_ACTIONS: PermissionAction[] = [
   { key: 'recipes.ingredients.manage', module: 'recipes', label: 'Edit recipe ingredients',          defaultRoles: ['manager', 'admin'] },
   { key: 'recipes.featured.manage',    module: 'recipes', label: 'Manage featured dishes',           defaultRoles: ['manager', 'admin'] },
   { key: 'recipes.delete',             module: 'recipes', label: 'Delete a recipe',                  defaultRoles: ['admin'] },
+  // Chef Guide dashboard tiles — who may OPEN Record / Edit Recipes / Stats. Was a
+  // hardcoded client-side minRole (everyone saw them); now admin-adjustable and
+  // enforced on the write routes. Default manager+admin so normal staff only get
+  // Cooking Guide + Production Guide.
+  { key: 'recipes.record.create',      module: 'recipes', label: 'Record & create recipe guides',    defaultRoles: ['manager', 'admin'] },
+  { key: 'recipes.recipe.edit',        module: 'recipes', label: 'Open the recipe editor',           defaultRoles: ['manager', 'admin'] },
+  { key: 'recipes.stats.view',         module: 'recipes', label: 'View recipe cook stats',           defaultRoles: ['manager', 'admin'] },
 
   // ── Supplier Logins (credentials) — view = manager (hasRole 'manager'); add/edit/delete = admin
   // (hasRole 'admin'). The admins-see-all data-scoping in the GET is preserved.

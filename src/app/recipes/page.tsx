@@ -94,6 +94,8 @@ export default function RecipesPage() {
     return { type: 'active-sessions' };
   });
   const [userRole, setUserRole] = useState<string>('staff');
+  const [capabilities, setCapabilities] = useState<string[]>([]);
+  const [capsLoaded, setCapsLoaded] = useState(false);
   const [ctx, setCtx] = useState<RecipeCtx>({ mode: 'cooking', recipeId: 0, recipeName: '', steps: [], batch: 1, multiplier: 1 });
   const [recCtx, setRecCtx] = useState<RecordCtx>({ mode: 'cooking', recipeId: 0, recipeName: '', recordedSteps: [], ingredients: [] });
   const [aprCtx, setAprCtx] = useState<ApprovalCtx>({ versionId: 0, recipeName: '', changeSummary: '' });
@@ -120,13 +122,29 @@ export default function RecipesPage() {
   const [bomScaleIngredients, setBomScaleIngredients] = useState<ScaleIngredient[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
   function showToast(msg: string, type: 'success' | 'error' | 'info' = 'info') { setToast({ msg, type }); }
+  const can = (key: string) => capabilities.includes(key);
 
   // Persist sessions to localStorage on every change
   useEffect(() => {
     try { localStorage.setItem('kw_cook_sessions', JSON.stringify(sessions)); } catch (_e) { /* */ }
   }, [sessions]);
 
-  useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.role) setUserRole(d.user.role); }).catch(() => {}); }, []);
+  useEffect(() => { fetch('/api/auth/me').then(r => r.json()).then(d => { if (d.user?.role) setUserRole(d.user.role); setCapabilities(d.user?.capabilities || []); setCapsLoaded(true); }).catch(() => {}); }, []);
+
+  // Belt-and-suspenders: the Record / Edit / Stats tiles are already hidden from
+  // staff, but if one of those screens is somehow reached without the capability
+  // (e.g. a stale link or a state left over from a role change), bounce back to
+  // the dashboard once capabilities have loaded. Server routes enforce it too.
+  useEffect(() => {
+    if (!capsLoaded) return;
+    const t = screen.type;
+    const recordScreens = ['record', 'create-dish', 'active-recording', 'recording-summary', 'edit-step'];
+    const editScreens = ['edit-browse', 'edit-overview', 'edit-metadata', 'edit-ingredients', 'edit-steps', 'edit-step-detail'];
+    if (recordScreens.includes(t) && !can('recipes.record.create')) setScreen({ type: 'dashboard' });
+    else if (editScreens.includes(t) && !can('recipes.recipe.edit')) setScreen({ type: 'dashboard' });
+    else if (t === 'stats' && !can('recipes.stats.view')) setScreen({ type: 'dashboard' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen.type, capsLoaded, capabilities]);
 
   // Load the manager's prep list for THIS guide (cooking or production) + restaurant.
   useEffect(() => {
@@ -280,8 +298,12 @@ export default function RecipesPage() {
   );
 
   // ===== COOK FLOW =====
-  if (screen.type === 'dashboard') return (<>{alertEl}<RecipeDashboard userRole={userRole} scope={browseMode}
+  if (screen.type === 'dashboard') return (<>{alertEl}<RecipeDashboard userRole={userRole} capabilities={capabilities} scope={browseMode}
     onNavigate={(id: string) => {
+      // Guard the admin-gated tiles (defence-in-depth; they're already hidden for staff).
+      if (id === 'record' && !can('recipes.record.create')) return;
+      if (id === 'edit' && !can('recipes.recipe.edit')) return;
+      if (id === 'stats' && !can('recipes.stats.view')) return;
       if (id === 'cooking-guide') { setBrowseMode('cooking'); goCookingBoard(); return; }
       if (id === 'production-guide') { setBrowseMode('production'); goCookingBoard(); return; }
       if (id === 'edit') { setScreen({ type: 'edit-browse' }); return; }
@@ -304,10 +326,10 @@ export default function RecipesPage() {
 
   if (screen.type === 'overview') return (<>{alertEl}<RecipeOverview mode={ctx.mode} recipeId={ctx.recipeId} recipeName={ctx.recipeName} difficulty={ctx.difficulty} categoryName={ctx.categoryName} productQty={ctx.productQty}
     userRole={userRole}
-    onEdit={() => {
+    onEdit={can('recipes.recipe.edit') ? (() => {
       setEditCtx({ mode: ctx.mode, recipeId: ctx.recipeId, recipeName: ctx.recipeName, difficulty: ctx.difficulty || '', categoryId: null, categoryName: ctx.categoryName || '', productQty: ctx.productQty || 0, steps: [], isPublished: true });
       setScreen({ type: 'edit-overview' });
-    }}
+    }) : undefined}
     onBack={() => setScreen({ type: ctx.mode === 'cooking' ? 'cooking-guide' : 'production-guide' })}
     onStartCooking={(steps) => { setCtx(p => ({ ...p, steps })); setScreen({ type: 'batch-size' }); }} /></>);
 
@@ -353,7 +375,7 @@ export default function RecipesPage() {
     onFinish={(s) => { setRecCtx(p => ({ ...p, recordedSteps: s })); setScreen({ type: 'recording-summary' }); }} onBack={() => setScreen({ type: 'record' })} /></>);
 
   if (screen.type === 'recording-summary') {
-    const canSaveDirect = userRole === 'admin' || userRole === 'manager';
+    const canSaveDirect = can('recipes.publish');
     return (
     <RecordingSummary recipeName={recCtx.recipeName} recipeId={recCtx.recipeId} mode={recCtx.mode} steps={recCtx.recordedSteps}
       ingredients={recCtx.ingredients} userRole={userRole}
@@ -385,6 +407,7 @@ export default function RecipesPage() {
             })),
             change_summary: 'New recipe recording',
             auto_publish: canSaveDirect,
+            operation: 'record',
           };
           if (recCtx.mode === 'cooking') body.product_tmpl_id = recCtx.recipeId; else body.bom_id = recCtx.recipeId;
           const res = await fetch('/api/recipes/steps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -500,7 +523,7 @@ export default function RecipesPage() {
     onBack={() => setScreen({ type: 'edit-overview' })} /></>);
 
   if (screen.type === 'edit-steps') {
-    const canSaveDirect = userRole === 'admin' || userRole === 'manager';
+    const canSaveDirect = can('recipes.publish');
     return (
     <>{alertEl}<RecordingSummary recipeName={editCtx.recipeName} recipeId={editCtx.recipeId} mode={editCtx.mode} steps={editCtx.steps}
       userRole={userRole}
@@ -524,6 +547,7 @@ export default function RecipesPage() {
             steps: editCtx.steps.map(s => ({ step_type: s.step_type, instruction: s.instruction, timer_seconds: s.timer_seconds, tip: s.tip, images: s.photos.map(p => ({ data: p.split(',')[1] || p, source: 'edit' })) })),
             change_summary: 'Recipe steps edited',
             auto_publish: canSaveDirect,
+            operation: 'edit',
           };
           if (editCtx.mode === 'cooking') body.product_tmpl_id = editCtx.recipeId; else body.bom_id = editCtx.recipeId;
           const res = await fetch('/api/recipes/steps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

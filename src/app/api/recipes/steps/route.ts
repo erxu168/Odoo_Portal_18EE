@@ -7,6 +7,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { recipeCan, recipeForbidden } from '@/lib/recipe-access';
 import { getOdoo } from '@/lib/odoo';
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -145,9 +146,20 @@ export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const can = recipeCan(user.role);
+
   try {
     const body = await request.json();
-    const { product_tmpl_id, bom_id, steps, change_summary, auto_publish } = body;
+    const { product_tmpl_id, bom_id, steps, change_summary, auto_publish, operation } = body;
+
+    // Record and Edit both POST here; the operation flag picks the permission.
+    // Default to the (stricter-by-intent) edit gate when unspecified.
+    const needed = operation === 'record' ? 'recipes.record.create' : 'recipes.recipe.edit';
+    if (!can(needed)) return recipeForbidden();
+
+    // Never trust the client's publish flag: only someone who may publish can auto-publish.
+    // A staff member granted record rights still lands in "review", not "approved".
+    const effectiveAutoPublish = !!auto_publish && can('recipes.publish');
 
     if (!steps || !Array.isArray(steps) || steps.length === 0) {
       return NextResponse.json({ error: 'steps array required' }, { status: 400 });
@@ -190,10 +202,10 @@ export async function POST(request: Request) {
 
     const versionVals: Record<string, unknown> = {
       version: nextVersion,
-      status: auto_publish ? 'approved' : 'review',
+      status: effectiveAutoPublish ? 'approved' : 'review',
       change_summary: change_summary || 'New recipe recording',
     };
-    if (auto_publish) {
+    if (effectiveAutoPublish) {
       versionVals.approved_at = new Date().toISOString().substring(0, 19).replace('T', ' ');
     }
     if (product_tmpl_id) versionVals.product_tmpl_id = product_tmpl_id;
@@ -290,7 +302,7 @@ export async function POST(request: Request) {
     }
 
     // Auto-publish: set x_recipe_published on the product/bom
-    if (auto_publish) {
+    if (effectiveAutoPublish) {
       if (product_tmpl_id) {
         await odoo.write('product.template', [product_tmpl_id], { x_recipe_published: true });
       }

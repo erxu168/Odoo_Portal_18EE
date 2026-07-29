@@ -2,16 +2,19 @@
  * PUT /api/recipes/metadata
  *
  * Updates recipe metadata (name, category, difficulty, product_qty).
- * Any authenticated user can edit metadata.
+ * Editing a recipe — recipes.recipe.edit (manager/admin by default).
  * Body: { product_tmpl_id?, bom_id?, name?, x_recipe_category_id?, x_recipe_difficulty?, product_qty? }
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { recipeCan, recipeForbidden } from '@/lib/recipe-access';
 import { getOdoo } from '@/lib/odoo';
 
 export async function PUT(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (!recipeCan(user.role)('recipes.recipe.edit')) return recipeForbidden();
 
   try {
     const body = await request.json();
