@@ -29,7 +29,7 @@ test('manager can create a count location, and it persists across reload', async
   await expect(page.getByRole('heading', { name: /^Locations$/ })).toBeVisible({ timeout: 25_000 });
 
   // Create an area
-  await page.getByRole('button', { name: /Add an area/i }).click();
+  await page.getByRole('button', { name: /^\+ Area$/i }).click(); // button copy since the type-chip redesign
   await page.getByPlaceholder('e.g. Walk-in Fridge').fill(areaName);
   await page.getByRole('button', { name: /^Save$/ }).click();
   await expect(page.getByText(areaName)).toBeVisible({ timeout: 15_000 });

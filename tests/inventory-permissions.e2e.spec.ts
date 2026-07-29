@@ -41,8 +41,9 @@ test('staff has only the all-role Inventory capabilities by default', async ({ p
 
 test('server refuses staff manager-only Inventory actions (403)', async ({ page }) => {
   await login(page, STAFF.email, STAFF.password);
-  // Consumption report — manager-gated read.
-  const consumption = await page.request.get('/api/inventory/consumption', { failOnStatusCode: false });
+  // Consumption report — manager-gated read (endpoint is /api/inventory/usage
+  // since the products split; the old /consumption path is gone).
+  const consumption = await page.request.get('/api/inventory/usage', { failOnStatusCode: false });
   expect(consumption.status()).toBe(403);
   // Approve counts into stock — manager-gated write; roleCan runs before any Odoo call.
   const approve = await page.request.post('/api/inventory/approve', { data: {}, failOnStatusCode: false });
