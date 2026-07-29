@@ -979,11 +979,17 @@ export function listSessions(filters?: {
   }
   if (filters?.scheduled_date) { where.push('s.scheduled_date = ?'); vals.push(filters.scheduled_date); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  // Progress comes back with the list. A dashboard that wants to say "41
+  // products to count" should not have to open every session to find out, and
+  // computing it here means one definition of "counted" rather than one per
+  // screen. lines = what this count covers (frozen), done = lines answered.
   return db.prepare(`
     SELECT s.*, t.name as template_name, t.frequency as template_frequency,
            t.product_ids as template_product_ids, t.category_ids as template_category_ids,
            s.company_id as company_id,
-           u.name as assigned_user_name
+           u.name as assigned_user_name,
+           (SELECT COUNT(*) FROM session_count_items i WHERE i.session_id = s.id) AS lines_total,
+           (SELECT COUNT(*) FROM count_entries e WHERE e.session_id = s.id) AS lines_done
     FROM counting_sessions s
     LEFT JOIN counting_templates t ON t.id = s.template_id
     LEFT JOIN portal_users u ON u.id = s.assigned_user_id
@@ -1202,10 +1208,78 @@ export function templateHasRealSessions(templateId: number): boolean {
   const row = db.prepare(`
     SELECT 1 FROM counting_sessions s
     WHERE s.template_id = ?
+      AND s.status != 'missed'
       AND (s.status != 'pending' OR EXISTS (SELECT 1 FROM count_entries e WHERE e.session_id = s.id))
     LIMIT 1
   `).get(templateId);
   return !!row;
+}
+
+/**
+ * Close yesterday's counts that nobody touched.
+ *
+ * A new count is generated every morning and an unfinished one never closed, so
+ * they accumulated one per day forever — six days in, the dashboard offered 281
+ * products to count, which was the same forty products over and over. A stock
+ * count is also only meaningful for the day it was taken: nobody can count
+ * yesterday's shelf today.
+ *
+ * ONLY counts with NO ENTRIES AT ALL are closed. If somebody counted even one
+ * product and went home, that is their work and a machine does not get to throw
+ * it away overnight — those are returned separately so a manager can decide.
+ * The same rule deleteStalePendingSessions already follows.
+ *
+ * Marked 'missed' rather than deleted, so the gap stays visible: a shelf that
+ * went uncounted for six days is worth being able to see.
+ */
+export function expireStaleSessions(today: string, companyIds?: number[]): {
+  missed: number[];
+  leftAlone: { id: number; scheduled_date: string; entries: number }[];
+} {
+  const db = getDb();
+  const scope = companyIds && companyIds.length > 0
+    ? ` AND s.company_id IN (${companyIds.map(() => '?').join(',')})`
+    : '';
+  const scopeVals = companyIds && companyIds.length > 0 ? companyIds : [];
+
+  const stale = db.prepare(`
+    SELECT s.id, s.scheduled_date,
+           (SELECT COUNT(*) FROM count_entries e WHERE e.session_id = s.id) AS entries
+      FROM counting_sessions s
+     WHERE s.scheduled_date < ?
+       AND s.status IN ('pending','in_progress')${scope}
+     ORDER BY s.scheduled_date
+  `).all(today, ...scopeVals) as { id: number; scheduled_date: string; entries: number }[];
+
+  // "Touched" is sessionHasProgress, NOT just count_entries. A spot deliberately
+  // skipped with a reason is somebody standing at a shelf deciding something,
+  // and this module already treats that as real progress everywhere else. Using
+  // a second, narrower definition here would close a guided count that a person
+  // had genuinely worked through.
+  const untouched = stale.filter((r) => !sessionHasProgress(r.id));
+  const leftAlone = stale.filter((r) => sessionHasProgress(r.id));
+
+  const missed: number[] = [];
+  if (untouched.length > 0) {
+    const tx = db.transaction((ids: number[]) => {
+      const upd = db.prepare(
+        "UPDATE counting_sessions SET status = 'missed' WHERE id = ? AND status IN ('pending','in_progress')",
+      );
+      for (const id of ids) {
+        // Re-checked inside the transaction: somebody could start counting
+        // between the read above and this write, and their first entry must
+        // not be closed out from under them.
+        if (sessionHasProgress(id)) continue;
+        // Report only what REALLY changed. Returning a candidate as "closed"
+        // when the guarded update matched nothing made the cron log say it had
+        // done something it had not.
+        if (upd.run(id).changes > 0) missed.push(id);
+      }
+    });
+    tx(untouched.map((r) => r.id));
+  }
+
+  return { missed, leftAlone };
 }
 
 export function deleteStalePendingSessions(templateId: number, keepDate: string | null): number {
