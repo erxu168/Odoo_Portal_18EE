@@ -270,7 +270,12 @@ export async function PUT(request: Request) {
         // everything in Drinks") names no products, so the old check — which
         // only ran when the explicit list was non-empty — let 1 of 200 count as
         // finished. The same helper the save and approve paths use answers it.
-        const scope = await allowedProductIds(session);
+        // activeOnly: this decides what MUST be answered, and the counting
+        // screen only ever lists active products. Demanding an archived one
+        // would make the count unsubmittable with nothing a person could do
+        // about it. Saving still accepts archived products — a different
+        // question, asked elsewhere with the permissive scope.
+        const scope = await allowedProductIds(session, { activeOnly: true });
         const required = scope.kind === 'known' ? Array.from(scope.ids) : [];
         if (required.length > 0) {
           // Coverage, not row count: EVERY required product must have an entry, so

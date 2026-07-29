@@ -43,7 +43,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [dispMode, setDispMode] = useState<'split' | 'base'>('split');  // pack display toggle
   const [groupMode, setGroupMode] = useState<'product' | 'category' | 'type'>('product');  // review grouping: by product / product group / place
   // product_id -> what it came out at the last few APPROVED counts. Context only.
-  const [reviewHistory, setReviewHistory] = useState<Record<number, { qty: number; date: string }[]>>({});
+  const [reviewHistory, setReviewHistory] = useState<Record<number, { qty: number | null; date: string; not_found?: boolean }[]>>({});
   const [reviewPackLabels, setReviewPackLabels] = useState<Record<number, string>>({});  // product_id -> whole-unit word
   const [reviewLooseLabels, setReviewLooseLabels] = useState<Record<number, string>>({}); // product_id -> single-unit word
   const [reviewQCLabel, setReviewQCLabel] = useState<string | null>(null);
@@ -836,12 +836,25 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                               // manager whether today's 31 is fine or 300 is a typo.
                               const past = reviewHistory[p.id] || [];
                               if (past.length === 0) return null;
-                              const qs = past.map((x) => x.qty);
+                              // A past count that could not FIND the product has
+                              // no quantity. Math.min(null) is 0, which would
+                              // invent a low of zero and make today's number look
+                              // wild — so those are counted separately, not averaged in.
+                              const qs = past.map((x) => x.qty).filter((q): q is number => typeof q === 'number');
+                              const blind = past.length - qs.length;
+                              if (qs.length === 0) {
+                                return (
+                                  <span className="block text-[var(--fs-xs)] text-amber-700">
+                                    Last {past.length === 1 ? 'count' : `${past.length} counts`}: couldn’t find it
+                                  </span>
+                                );
+                              }
                               const lo = Math.min(...qs), hi = Math.max(...qs);
                               return (
                                 <span className="block text-[var(--fs-xs)] text-gray-400">
-                                  Last {past.length === 1 ? 'count' : `${past.length} counts`}:{' '}
+                                  Last {qs.length === 1 ? 'count' : `${qs.length} counts`}:{' '}
                                   {lo === hi ? `${lo}` : `${lo}\u2013${hi}`} {uom}
+                                  {blind > 0 && <span className="text-amber-700"> {'\u00B7'} {blind} not found</span>}
                                 </span>
                               );
                             })()}

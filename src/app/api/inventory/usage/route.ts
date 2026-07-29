@@ -62,13 +62,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'The opening count must be on or before the closing count' }, { status: 400 });
   }
 
-  // Each product's base-unit total in a session (summed across spots).
-  function totals(sessionId: number): Record<number, number> {
-    const out: Record<number, number> = {};
+  /**
+   * Each product's base-unit total in a session (summed across spots).
+   *
+   * A product answered "couldn't find it" ANYWHERE has no total: its quantity is
+   * unknown, which is why approval leaves its stock alone. Summing the spots
+   * where it WAS found would turn "at least 5" into a closing figure of 5 and
+   * silently invent consumption. Such products are reported separately instead.
+   */
+  function totals(sessionId: number): { qty: Record<number, number>; unknown: Set<number> } {
+    const qty: Record<number, number> = {};
+    const unknown = new Set<number>();
     for (const e of getSessionEntries(sessionId)) {
-      out[e.product_id] = (out[e.product_id] || 0) + (Number(e.counted_qty) || 0);
+      if ((e as any).not_found) unknown.add(e.product_id);
+      qty[e.product_id] = (qty[e.product_id] || 0) + (Number(e.counted_qty) || 0);
     }
-    return out;
+    Array.from(unknown).forEach((pid) => { delete qty[pid]; });
+    return { qty, unknown };
   }
   const openTotals = totals(openingId);
   const closeTotals = totals(closingId);
@@ -101,18 +111,26 @@ export async function GET(request: Request) {
   const received = sumReceiptsByProduct(companyIds, openBoundary, closeBoundary);
 
   const productIds = Array.from(new Set<number>([
-    ...Object.keys(openTotals).map(Number),
-    ...Object.keys(closeTotals).map(Number),
+    ...Object.keys(openTotals.qty).map(Number),
+    ...Object.keys(closeTotals.qty).map(Number),
     ...Object.keys(received).map(Number),
+    // Products whose quantity is unknown still belong in the report — as a
+    // stated gap, not as a silent omission.
+    ...Array.from(openTotals.unknown), ...Array.from(closeTotals.unknown),
   ]));
 
   const rows = productIds.map((pid) => {
-    const inOpen = pid in openTotals;
-    const inClose = pid in closeTotals;
-    const opening_qty = openTotals[pid] || 0;
-    const closing_qty = closeTotals[pid] || 0;
+    const inOpen = pid in openTotals.qty;
+    const inClose = pid in closeTotals.qty;
+    const opening_qty = openTotals.qty[pid] || 0;
+    const closing_qty = closeTotals.qty[pid] || 0;
     const received_qty = received[pid] || 0;
     const complete = inOpen && inClose;
+    // "Couldn't find it" is a DIFFERENT kind of gap from "never counted", and a
+    // manager chasing a number needs to know which: one means go and look for
+    // the product, the other means the count was not done.
+    const notFoundAt = openTotals.unknown.has(pid) ? 'opening'
+      : closeTotals.unknown.has(pid) ? 'closing' : null;
     return {
       product_id: pid,
       opening_qty,
@@ -122,7 +140,8 @@ export async function GET(request: Request) {
       // flag it rather than guess.
       consumption: complete ? opening_qty + received_qty - closing_qty : null,
       complete,
-      missing: complete ? null : (!inOpen ? 'opening' : 'closing'),
+      missing: complete ? null : (notFoundAt || (!inOpen ? 'opening' : 'closing')),
+      not_found_at: notFoundAt,
     };
   });
 

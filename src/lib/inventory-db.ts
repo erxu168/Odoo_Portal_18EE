@@ -2449,8 +2449,8 @@ export function getProductCountHistory(
   companyId: number,
   productIds: number[],
   opts: { excludeSessionId?: number; perProduct?: number } = {},
-): Record<number, { qty: number; date: string }[]> {
-  const out: Record<number, { qty: number; date: string }[]> = {};
+): Record<number, { qty: number | null; date: string; not_found?: boolean }[]> {
+  const out: Record<number, { qty: number | null; date: string; not_found?: boolean }[]> = {};
   if (productIds.length === 0) return out;
   const db = getDb();
   const perProduct = opts.perProduct ?? 5;
@@ -2459,7 +2459,8 @@ export function getProductCountHistory(
     SELECT e.product_id AS product_id,
            s.id AS session_id,
            COALESCE(s.scheduled_date, s.created_at) AS date,
-           SUM(COALESCE(e.counted_qty, 0)) AS qty
+           SUM(COALESCE(e.counted_qty, 0)) AS qty,
+           MAX(COALESCE(e.not_found, 0)) AS had_not_found
     FROM count_entries e
     JOIN counting_sessions s ON s.id = e.session_id
     WHERE s.company_id = ?
@@ -2468,10 +2469,19 @@ export function getProductCountHistory(
       AND s.id != ?
     GROUP BY e.product_id, s.id
     ORDER BY e.product_id, date DESC
-  `).all(companyId, ...productIds, opts.excludeSessionId ?? -1) as { product_id: number; date: string; qty: number }[];
+  `).all(companyId, ...productIds, opts.excludeSessionId ?? -1) as
+    { product_id: number; date: string; qty: number; had_not_found: number }[];
   rows.forEach((r) => {
     const list = (out[r.product_id] ||= []);
-    if (list.length < perProduct) list.push({ qty: Number(r.qty), date: String(r.date) });
+    // A count that could not FIND the product has no total for it — showing the
+    // sum of the spots where it was found would put a number in the history
+    // that nobody ever counted. Kept as a dated entry with no quantity, so the
+    // gap is visible rather than the count silently vanishing from history.
+    if (list.length < perProduct) {
+      list.push(r.had_not_found
+        ? { qty: null, date: String(r.date), not_found: true }
+        : { qty: Number(r.qty), date: String(r.date) });
+    }
   });
   return out;
 }
