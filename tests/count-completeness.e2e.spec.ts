@@ -38,10 +38,16 @@ test('a count cannot be submitted with blanks, and every line can be answered', 
   const model = (tmpls.body?.templates || [])[0];
   expect(model, 'need an existing list to copy location/company from').toBeTruthy();
 
-  // Three products so "some answered, some not" is a real state.
-  const prods = await api(rq, `/api/inventory/products?limit=500&company_id=${WAJ}&relevant=1`);
-  const ids = (prods.body?.products || []).filter((p: any) => p.active !== false).slice(0, 3).map((p: any) => p.id);
-  expect(ids.length, 'need three products').toBe(3);
+  // Products that have a HOME SPOT, so the count is routed by location and the
+  // GUIDED gate is the one under test. Without spots the list falls to the flat
+  // gate, which already demanded every line and would prove nothing about the
+  // rule this test exists for.
+  const placements = await api(rq, `/api/inventory/product-locations?company_id=${WAJ}`);
+  const placed = Array.from(new Set(
+    (placements.body?.placements || []).map((pl: any) => pl.odoo_product_id as number),
+  ));
+  expect(placed.length, 'need products with home spots to exercise a GUIDED count').toBeGreaterThanOrEqual(3);
+  const ids = placed.slice(0, 3);
 
   let templateId: number | null = null;
   try {
@@ -59,15 +65,27 @@ test('a count cannot be submitted with blanks, and every line can be answered', 
 
     const opened = await api(rq, `/api/inventory/counts?session_id=${sessionId}`);
     const items = opened.body?.items || [];
-    expect(items.length, 'the count should cover all three').toBe(3);
+    // A product with home spots in two places produces TWO lines, so the count
+    // covers at least three but usually more. The rule is per LINE, which is
+    // exactly the multi-spot case worth testing.
+    expect(items.length, 'the count should cover every placed line').toBeGreaterThanOrEqual(3);
+    console.log('lines to answer:', items.length);
 
     // --- 1. nothing answered → refused -------------------------------------
     const empty = await api(rq, '/api/inventory/sessions', 'PUT', { id: sessionId, status: 'submitted' });
     expect(empty.status, 'an untouched count must not submit').toBe(400);
     console.log('empty  →', empty.body?.code, '|', String(empty.body?.error).slice(0, 90));
+    // The point of the fixture: this must be the GUIDED gate, not the flat one.
+    expect(empty.body?.code, 'the fixture must produce a guided count').toBe('UNANSWERED_PRODUCTS');
 
     // --- 2. answer ONE, still refused --------------------------------------
-    const first = items[0];
+    // Counted with a real number, on a line whose product does not demand a
+    // photo — that is a different gate and would muddy this one.
+    const preFlags = await api(rq, '/api/inventory/product-flags');
+    const photoIds = new Set(
+      (preFlags.body?.flags || []).filter((f: any) => f.requires_photo).map((f: any) => f.odoo_product_id),
+    );
+    const first = items.find((it: any) => !photoIds.has(it.odoo_product_id)) || items[0];
     expect((await api(rq, '/api/inventory/counts', 'POST', {
       session_id: sessionId, product_id: first.odoo_product_id,
       count_location_id: first.count_location_id, counted_qty: 4, uom: 'kg',
@@ -75,28 +93,63 @@ test('a count cannot be submitted with blanks, and every line can be answered', 
 
     const partial = await api(rq, '/api/inventory/sessions', 'PUT', { id: sessionId, status: 'submitted' });
     expect(partial.status, 'a partly answered count must not submit').toBe(400);
-    console.log('1 of 3 →', partial.body?.code, '| unanswered:', (partial.body?.unanswered || []).length);
+    console.log('1 answered →', partial.body?.code, '| still blank:', (partial.body?.unanswered || []).length);
+    // THE OLD BEHAVIOUR: counting one product in a spot waved the rest of that
+    // spot through as blanks. Every remaining line must still be demanded.
+    expect(partial.body?.code).toBe('UNANSWERED_PRODUCTS');
+    expect((partial.body?.unanswered || []).length, 'every remaining line must be named')
+      .toBe(items.length - 1);
 
-    // --- 3. the other two, by the OTHER two routes -------------------------
-    const second = items[1];
+    // --- 3. every remaining line, by the OTHER two routes ------------------
+    const rest = items.filter((it: any) => it !== first);
+    const second = rest[0];
     expect((await api(rq, '/api/inventory/counts', 'POST', {
       session_id: sessionId, product_id: second.odoo_product_id,
       count_location_id: second.count_location_id, out_of_stock: true, counted_qty: 0, uom: 'kg',
     })).status, '"nothing here" must save').toBe(200);
 
-    const third = items[2];
+    const third = rest[1];
     expect((await api(rq, '/api/inventory/counts', 'POST', {
       session_id: sessionId, product_id: third.odoo_product_id,
       count_location_id: third.count_location_id, not_found: true, counted_qty: 0, uom: 'kg',
     })).status, '"couldn\'t find it" must save').toBe(200);
 
+    // Whatever else the placements produced. Answered as "nothing here" so the
+    // photo rule stays out of it: a photo is demanded only for a POSITIVE
+    // count, which is a separate gate from the one under test.
+    for (const it of rest.slice(2)) {
+      expect((await api(rq, '/api/inventory/counts', 'POST', {
+        session_id: sessionId, product_id: it.odoo_product_id,
+        count_location_id: it.count_location_id, out_of_stock: true, counted_qty: 0, uom: 'kg',
+      })).status).toBe(200);
+    }
+
+    // A product that REQUIRES A PHOTO but could not be found must not deadlock:
+    // you cannot photograph what you cannot see. The photo rule fires only on a
+    // positive count, so a zero-quantity answer is exempt — pinned here because
+    // the two rules meeting is exactly where a count would become unsubmittable.
+    const flags = await api(rq, '/api/inventory/product-flags');
+    const needsPhoto = new Set(
+      (flags.body?.flags || []).filter((f: any) => f.requires_photo).map((f: any) => f.odoo_product_id),
+    );
+    console.log('lines whose product requires a photo:',
+      items.filter((it: any) => needsPhoto.has(it.odoo_product_id)).length);
+
     // it must come back FLAGGED, not as a plain zero
+    // Matched on (product, SPOT). The same product can hold a different answer
+    // at each spot, so finding by product alone picks an arbitrary line — which
+    // is exactly the mistake that made this assertion fail the first time.
     const after = await api(rq, `/api/inventory/counts?session_id=${sessionId}`);
-    const nf = (after.body?.entries || []).find((e: any) => e.product_id === third.odoo_product_id);
+    const line = (e: any, it: any) =>
+      e.product_id === it.odoo_product_id && (e.count_location_id ?? 0) === (it.count_location_id ?? 0);
+
+    const nf = (after.body?.entries || []).find((e: any) => line(e, third));
     expect(nf?.not_found, 'the answer must persist as not_found').toBeTruthy();
-    const oos = (after.body?.entries || []).find((e: any) => e.product_id === second.odoo_product_id);
+    expect(Number(nf?.counted_qty), 'not-found stores zero, but the FLAG is what matters').toBe(0);
+
+    const oos = (after.body?.entries || []).find((e: any) => line(e, second));
     expect(oos?.out_of_stock, 'and out-of-stock must stay distinct from it').toBeTruthy();
-    expect(oos?.not_found, 'the two answers must not both be set').toBeFalsy();
+    expect(oos?.not_found, 'the two answers must not both be set on one line').toBeFalsy();
 
     // --- 4. all three answered → it submits. NO DEADLOCK. ------------------
     const done = await api(rq, '/api/inventory/sessions', 'PUT', { id: sessionId, status: 'submitted' });

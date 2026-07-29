@@ -10,20 +10,22 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
-import { getPermissionOverrides, parseCompanyIds } from '@/lib/db';
+import { getPermissionOverrides } from '@/lib/db';
+import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
 import { initInventoryTables, getProductPar, setProductPar } from '@/lib/inventory-db';
 
 export const dynamic = 'force-dynamic';
 
 /** A manager may only read or write par for a restaurant they belong to. */
-function companyOr403(user: { role: string; allowed_company_ids: string | null }, raw: string | null) {
+function companyOr403(user: Parameters<typeof isUnrestrictedAdmin>[0], raw: string | null) {
   const companyId = raw && /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
   if (!Number.isInteger(companyId) || companyId <= 0) {
     return { error: NextResponse.json({ error: 'A restaurant is required' }, { status: 400 }) };
   }
-  const allowed = parseCompanyIds(user.allowed_company_ids);
-  const unrestrictedAdmin = user.role === 'admin' && allowed.length === 0;
-  if (!unrestrictedAdmin && !allowed.includes(companyId)) {
+  // isUnrestrictedAdmin, not "admin with an empty list": parseCompanyIds returns
+  // [] for malformed JSON too, so the naive check would treat a corrupted
+  // restriction as no restriction and hand over another restaurant's data.
+  if (!isUnrestrictedAdmin(user) && !canAccessCompany(user, companyId)) {
     return { error: NextResponse.json({ error: 'That restaurant is not yours' }, { status: 403 }) };
   }
   return { companyId };

@@ -190,7 +190,13 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       let loadedProducts: any[] = [];
 
       if (productIds.length > 0) {
-        const prodRes = await fetch(`/api/inventory/products?ids=${productIds.join(',')}`).then(r => r.json());
+        // limit MUST cover the whole count. The API defaults to 200, so a
+        // larger list silently rendered only the first 200 rows — and now that
+        // submitting demands an answer for every line, the missing ones would
+        // be unanswerable and the count could never be sent.
+        const prodRes = await fetch(
+          `/api/inventory/products?ids=${productIds.join(',')}&limit=${Math.max(200, productIds.length)}`,
+        ).then(r => r.json());
         loadedProducts = prodRes.products || [];
       } else if (categoryIds.length > 0) {
         const promises = categoryIds.map(cid =>
@@ -518,6 +524,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       if (res.queued) void sync.refresh();
     } else {
       const wasQty = entries[k];
+      // A number supersedes "couldn't find it" — the server already clears the
+      // flag, and leaving it set here left the badge showing while the row held
+      // a real count, so "Found it after all" would delete the new number.
+      setNotFound((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: qty }));
       if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
       void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom, ...(note !== undefined ? { notes: note } : {}) }, loc);
@@ -591,6 +601,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     setCrateSplits((prev) => { if (!(k in prev)) return prev; const n = { ...prev }; delete n[k]; return n; });
     if (on) {
       setOos((prev) => { const n = new Set(prev); n.add(k); return n; });
+      setNotFound((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: 0 }));
       if (note !== undefined) setRowNotes((p) => ({ ...p, [k]: note }));
       void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, notes: note }, loc);
