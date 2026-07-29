@@ -28,7 +28,10 @@ let pdfjsLib: any = null;
 async function loadPdfJs() {
   if (pdfjsLib) return pdfjsLib;
   const pdfjs = await import('pdfjs-dist');
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+  // Self-hosted worker (public/vendor/pdfjs, same pinned 4.8.69 build) — the
+  // old cdnjs URL made every PDF open depend on a third-party CDN and broke
+  // offline/PWA use.
+  pdfjs.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
   pdfjsLib = pdfjs;
   return pdfjs;
 }
