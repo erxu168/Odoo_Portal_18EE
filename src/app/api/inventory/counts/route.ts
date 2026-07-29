@@ -140,13 +140,16 @@ export async function POST(request: Request) {
 
   initInventoryTables();
   const body = await request.json();
-  const { session_id, product_id, count_location_id, out_of_stock, counted_qty, crate_qty, loose_qty, units_per_crate, system_qty, uom, notes, photos, pack_counts } = body;
+  const { session_id, product_id, count_location_id, out_of_stock, not_found, counted_qty, crate_qty, loose_qty, units_per_crate, system_qty, uom, notes, photos, pack_counts } = body;
 
   // Which spot this count is for (0 = no specific spot / legacy client).
   // Validated against the session's frozen snapshot further below.
   let locId = Number.isInteger(count_location_id) && count_location_id >= 0 ? count_location_id : 0;
   // Explicit "none here" — recorded distinctly from a counted 0 or an uncounted row.
   const isOut = out_of_stock === true;
+  // "Couldn't find it" — an answer, but NOT a zero. Stored flagged so approval
+  // can leave Odoo's stock alone instead of guessing that we have none.
+  const isNotFound = not_found === true && !isOut;
 
   const sentSplit = !isOut && (crate_qty !== undefined || loose_qty !== undefined);
 
@@ -218,7 +221,7 @@ export async function POST(request: Request) {
   const hasChain = chain.length > 0 && sentLevels;
 
   const hasSplit = !hasChain && sentSplit && packSize != null && packSize > 0;
-  const baseQty = isOut ? 0 : (
+  const baseQty = (isOut || isNotFound) ? 0 : (
     hasChain
       ? packTotal({ byLevel: pack_counts as Record<number, number>, loose: Number(loose_qty) || 0 }, chain)
       : hasSplit
@@ -265,6 +268,7 @@ export async function POST(request: Request) {
     session_id, product_id, counted_qty: baseQty,
     count_location_id: locId,
     out_of_stock: isOut,
+    not_found: isNotFound,
     system_qty: system_qty ?? null,
     uom: uom || 'Units',
     // Staff notes and manager corrections live in different columns, so a

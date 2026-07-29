@@ -462,6 +462,12 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   const ceCols = (db.prepare("PRAGMA table_info('count_entries')").all() as { name: string }[]).map(c => c.name);
   if (!ceCols.includes('count_location_id')) db.exec("ALTER TABLE count_entries ADD COLUMN count_location_id INTEGER NOT NULL DEFAULT 0");
   if (!ceCols.includes('out_of_stock')) db.exec("ALTER TABLE count_entries ADD COLUMN out_of_stock INTEGER NOT NULL DEFAULT 0");
+  // "Couldn't find it" — an ANSWER, but not a number and NOT a zero.
+  // out_of_stock means "I looked, there is none", and approval writes 0 to
+  // Odoo for it. If the jar is really sitting in another fridge, that zero is a
+  // lie about your stock. This says "acknowledged, quantity unknown" and is
+  // deliberately excluded from the stock write.
+  if (!ceCols.includes('not_found')) db.exec("ALTER TABLE count_entries ADD COLUMN not_found INTEGER NOT NULL DEFAULT 0");
   if (!ceCols.includes('count_mode')) db.exec("ALTER TABLE count_entries ADD COLUMN count_mode TEXT");
   if (!ceCols.includes('pack_label')) db.exec("ALTER TABLE count_entries ADD COLUMN pack_label TEXT");
   if (!ceCols.includes('loose_label')) db.exec("ALTER TABLE count_entries ADD COLUMN loose_label TEXT");
@@ -1454,6 +1460,7 @@ export function upsertCountEntry(data: {
   count_location_id?: number;        // which spot (default 0 = no specific spot / legacy)
   counted_qty: number;               // base-unit total (bottles); forced to 0 when out_of_stock
   out_of_stock?: boolean;            // deliberate "none here" (≠ a counted 0, ≠ not-counted)
+  not_found?: boolean;               // "couldn't find it" — answered, quantity UNKNOWN, never written to stock
   system_qty?: number | null;
   uom: string;
   notes?: string;                    // staff's own note; undefined = leave as it was
@@ -1472,7 +1479,11 @@ export function upsertCountEntry(data: {
   const db = getDb();
   const locId = data.count_location_id ?? 0;
   const oos = data.out_of_stock ? 1 : 0;
-  const countedQty = oos ? 0 : data.counted_qty;
+  const nf = data.not_found ? 1 : 0;
+  // "Couldn't find it" stores 0 like out-of-stock does, but the FLAG is what
+  // matters: approval reads not_found and leaves Odoo alone, where an
+  // out-of-stock line writes a real zero.
+  const countedQty = oos || nf ? 0 : data.counted_qty;
   // Keyed by (session, spot, product) so the SAME product can be counted at
   // several spots in one session without overwriting itself.
   const existing = db.prepare(
@@ -1519,12 +1530,12 @@ export function upsertCountEntry(data: {
     const setMgr = data.manager_note !== undefined ? 'manager_note = ?,' : '';
     const setPack = data.pack_counts !== undefined ? 'pack_counts = ?,' : '';
     db.prepare(`
-      UPDATE count_entries SET counted_qty = ?, out_of_stock = ?, system_qty = ?, diff = ?, uom = ?, ${setNotes} ${setMgr} ${setPack}
+      UPDATE count_entries SET counted_qty = ?, out_of_stock = ?, not_found = ?, system_qty = ?, diff = ?, uom = ?, ${setNotes} ${setMgr} ${setPack}
         crate_qty = ?, loose_qty = ?, units_per_crate = ?, count_mode = ?, pack_label = ?, loose_label = ?, odoo_qty = ?,
         counted_by = ?, counted_at = ?
       WHERE id = ?
     `).run(
-      countedQty, oos, data.system_qty ?? null, diff, data.uom,
+      countedQty, oos, nf, data.system_qty ?? null, diff, data.uom,
       ...(data.notes !== undefined ? [data.notes || null] : []),
       ...(data.manager_note !== undefined ? [data.manager_note || null] : []),
       ...(data.pack_counts !== undefined ? [data.pack_counts || null] : []),
@@ -1532,10 +1543,10 @@ export function upsertCountEntry(data: {
     );
   } else {
     db.prepare(`
-      INSERT INTO count_entries (session_id, product_id, count_location_id, counted_qty, out_of_stock, system_qty, diff, uom, notes, manager_note,
+      INSERT INTO count_entries (session_id, product_id, count_location_id, counted_qty, out_of_stock, not_found, system_qty, diff, uom, notes, manager_note,
         crate_qty, loose_qty, units_per_crate, count_mode, pack_label, loose_label, pack_counts, odoo_qty, counted_by, counted_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(data.session_id, data.product_id, locId, countedQty, oos, data.system_qty ?? null, diff, data.uom, data.notes || null, data.manager_note || null,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(data.session_id, data.product_id, locId, countedQty, oos, nf, data.system_qty ?? null, diff, data.uom, data.notes || null, data.manager_note || null,
       crateQty, looseQty, upc, cmode, plabel, llabel, data.pack_counts || null, odooQty, data.counted_by, now());
   }
 }
@@ -1563,7 +1574,7 @@ export function getSessionEntries(session_id: number): CountEntry[] {
   const db = getDb();
   const rows = db.prepare('SELECT * FROM count_entries WHERE session_id = ? ORDER BY counted_at DESC')
     .all(session_id) as Record<string, unknown>[];
-  return rows.map(r => ({ ...(r as unknown as CountEntry), out_of_stock: !!r.out_of_stock }));
+  return rows.map(r => ({ ...(r as unknown as CountEntry), out_of_stock: !!r.out_of_stock, not_found: !!r.not_found }));
 }
 
 // ===

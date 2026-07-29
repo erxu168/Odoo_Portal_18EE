@@ -92,8 +92,19 @@ export async function POST(request: Request) {
     }, { status: 400 });
   }
 
+  // "Couldn't find it" means the quantity is UNKNOWN, not zero. Such a product
+  // is left out of the stock write entirely rather than written as the partial
+  // sum of the spots where it WAS found: counted 5 in the walk-in and not found
+  // in the dry store means "at least 5", and writing 5 would state as fact a
+  // number we know is incomplete. Out-of-stock is different — "I looked, there
+  // is none" is a real zero and still writes.
+  const notFoundProducts = new Set<number>(
+    entries.filter((e: any) => e.not_found).map((e: any) => e.product_id),
+  );
+
   const writeByProduct = new Map<number, number>();
   for (const e of entries) {
+    if (notFoundProducts.has(e.product_id)) continue;                   // quantity unknown
     const oq = e.odoo_qty === undefined ? e.counted_qty : e.odoo_qty;  // legacy safety
     if (oq === null) continue;                                          // portal-only
     writeByProduct.set(e.product_id, (writeByProduct.get(e.product_id) || 0) + Number(oq));
@@ -212,5 +223,8 @@ export async function POST(request: Request) {
     synced_count: syncedProducts.length,
     failed_entries: failedEntries.length > 0 ? failedEntries : undefined,
     entries_count: entries.length,
+    // Named, not silent: these products were acknowledged but their stock was
+    // deliberately left untouched, and somebody should go and look.
+    not_found_products: notFoundProducts.size > 0 ? Array.from(notFoundProducts) : undefined,
   });
 }
