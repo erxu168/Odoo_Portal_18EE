@@ -43,7 +43,7 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
   const [dispMode, setDispMode] = useState<'split' | 'base'>('split');  // pack display toggle
   const [groupMode, setGroupMode] = useState<'product' | 'category' | 'type'>('product');  // review grouping: by product / product group / place
   // product_id -> what it came out at the last few APPROVED counts. Context only.
-  const [reviewHistory, setReviewHistory] = useState<Record<number, { qty: number; date: string }[]>>({});
+  const [reviewHistory, setReviewHistory] = useState<Record<number, { qty: number | null; date: string; not_found?: boolean }[]>>({});
   const [reviewPackLabels, setReviewPackLabels] = useState<Record<number, string>>({});  // product_id -> whole-unit word
   const [reviewLooseLabels, setReviewLooseLabels] = useState<Record<number, string>>({}); // product_id -> single-unit word
   const [reviewQCLabel, setReviewQCLabel] = useState<string | null>(null);
@@ -219,7 +219,22 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       }
       const data = await res.json();
       if (!res.ok) { setErrorMsg(data.error || 'Action failed'); setShowConfirm(null); return; }
-      if (data.warning) setErrorMsg(data.warning);
+      // Products the count could not find: approval deliberately left their
+      // stock untouched. The server has always returned them; nobody was told.
+      // Said FIRST, because "these were not updated" matters more to a manager
+      // than any sync note that follows it.
+      const nf: number[] = Array.isArray(data.not_found_products) ? data.not_found_products : [];
+      if (nf.length > 0) {
+        const names = nf
+          .map((id) => reviewProducts.find((p: any) => p.id === id)?.name || `#${id}`)
+          .slice(0, 6);
+        const more = nf.length > names.length ? ` and ${nf.length - names.length} more` : '';
+        setErrorMsg(
+          `Approved. ${nf.length} product${nf.length === 1 ? '' : 's'} could not be found, so `
+          + `${nf.length === 1 ? 'its' : 'their'} stock was left unchanged: ${names.join(', ')}${more}.`
+          + `${data.warning ? ` (${data.warning})` : ''}`,
+        );
+      } else if (data.warning) setErrorMsg(data.warning);
       setShowConfirm(null);
       setReviewSession(null);
       setReviewProducts([]);
@@ -433,6 +448,10 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
       const es = entriesByProduct[pid];
       return !!es && es.length > 0 && es.every((e: any) => e.out_of_stock);
     };
+    // ANY not-found line makes the product's total unknown — approval leaves its
+    // stock untouched, so showing the sum of the spots that WERE found would be
+    // a number the manager thinks is complete and is not.
+    const isNotFound = (pid: number) => (entriesByProduct[pid] || []).some((e: any) => e.not_found);
     const countedProducts = reviewProducts.filter(p => entryMap[p.id] !== undefined);
     const uncountedProducts = reviewProducts.filter(p => entryMap[p.id] === undefined);
     // PARTIAL: counted somewhere, but at least one of its frozen spot lines has
@@ -683,6 +702,14 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                               </span>
                             ) : isOutOfStock(p.id) ? (
                               <span className="text-[var(--fs-xs)] font-semibold text-red-600 flex-shrink-0">none left</span>
+                            ) : isNotFound(p.id) ? (
+                              // Deliberately NOT the sum. Stock is left untouched
+                              // for this product, so a number here would read as
+                              // a complete count when it is not.
+                              <span className="flex items-baseline gap-1.5 flex-shrink-0">
+                                {v > 0 && <span className="font-mono text-gray-500">{v} {uom} found</span>}
+                                <span className="text-[var(--fs-xs)] font-semibold text-amber-700">couldn’t find · stock left alone</span>
+                              </span>
                             ) : (
                               <span className="font-mono font-semibold text-gray-900 flex-shrink-0">{v} {uom}</span>
                             )}
@@ -809,12 +836,25 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                               // manager whether today's 31 is fine or 300 is a typo.
                               const past = reviewHistory[p.id] || [];
                               if (past.length === 0) return null;
-                              const qs = past.map((x) => x.qty);
+                              // A past count that could not FIND the product has
+                              // no quantity. Math.min(null) is 0, which would
+                              // invent a low of zero and make today's number look
+                              // wild — so those are counted separately, not averaged in.
+                              const qs = past.map((x) => x.qty).filter((q): q is number => typeof q === 'number');
+                              const blind = past.length - qs.length;
+                              if (qs.length === 0) {
+                                return (
+                                  <span className="block text-[var(--fs-xs)] text-amber-700">
+                                    Last {past.length === 1 ? 'count' : `${past.length} counts`}: couldn’t find it
+                                  </span>
+                                );
+                              }
                               const lo = Math.min(...qs), hi = Math.max(...qs);
                               return (
                                 <span className="block text-[var(--fs-xs)] text-gray-400">
-                                  Last {past.length === 1 ? 'count' : `${past.length} counts`}:{' '}
+                                  Last {qs.length === 1 ? 'count' : `${qs.length} counts`}:{' '}
                                   {lo === hi ? `${lo}` : `${lo}\u2013${hi}`} {uom}
+                                  {blind > 0 && <span className="text-amber-700"> {'\u00B7'} {blind} not found</span>}
                                 </span>
                               );
                             })()}
@@ -829,8 +869,12 @@ export default function ReviewSubmissions({ onViewSession }: ReviewSubmissionsPr
                                       className="flex items-center gap-2 text-left active:bg-gray-50 rounded-md px-1 -mx-1">
                                       <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${loc === 0 ? 'bg-gray-50 text-gray-500 border-gray-200' : 'bg-blue-50 text-blue-800 border-blue-200'}`}>{spotName(loc)}</span>
                                       {le ? (
-                                        <span className={`text-[var(--fs-xs)] font-mono font-bold ${le.out_of_stock ? 'text-red-600' : 'text-gray-700'}`}>
-                                          {le.out_of_stock ? 'none here' : `${le.counted_qty} ${uom}`}
+                                        <span className={`text-[var(--fs-xs)] font-mono font-bold ${
+                                          le.out_of_stock ? 'text-red-600' : le.not_found ? 'text-amber-700' : 'text-gray-700'
+                                        }`}>
+                                          {le.out_of_stock ? 'none here'
+                                            : le.not_found ? 'couldn’t find'
+                                            : `${le.counted_qty} ${uom}`}
                                           {le.manager_note && <span className="text-amber-600 font-sans font-semibold"> {'\u00B7'} edited</span>}
                                         </span>
                                       ) : (

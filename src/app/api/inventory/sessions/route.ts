@@ -216,16 +216,39 @@ export async function PUT(request: Request) {
       // explicit skip. A stored 'counted' status is NOT accepted — the button
       // that set it is gone, so the only way one exists now is a stale row, and
       // honouring it would wave through a place nobody actually visited.
-      const touched = new Set<number>();
-      entries.forEach((e: any) => touched.add(e.count_location_id ?? 0));
-      const missed = route.stops.filter(
-        (s) => s.product_ids.length > 0 && s.status !== 'skipped' && !touched.has(s.bucket_id),
+      // EVERY product needs an answer — a number, "nothing here", or
+      // "couldn't find it". A guided count used to pass once each STOP had been
+      // touched, so counting one product in the walk-in waved through the other
+      // nine and they reached the manager as silent blanks.
+      //
+      // A SKIPPED spot answers everything in it: once somebody has said the
+      // freezer was locked, making them tap ten more times only teaches people
+      // to invent numbers.
+      const answered = new Set<string>();
+      entries.forEach((e: any) => answered.add(`${e.product_id}:${e.count_location_id ?? 0}`));
+      const skipped = new Set(
+        route.stops.filter((s) => s.status === 'skipped').map((s) => s.bucket_id),
       );
-      if (missed.length > 0) {
-        const names = missed.map((s) => (s.location ? s.location.name : 'Everything else'));
+
+      const unanswered: { product_id: number; bucket: number }[] = [];
+      for (const stop of route.stops) {
+        if (skipped.has(stop.bucket_id)) continue;
+        for (const pid of stop.product_ids) {
+          if (!answered.has(`${pid}:${stop.bucket_id}`)) unanswered.push({ product_id: pid, bucket: stop.bucket_id });
+        }
+      }
+
+      if (unanswered.length > 0) {
+        // The IDS travel back, not names: the counting screen already has every
+        // product loaded and can say "Scotch bonnet, fresh" where the server
+        // would only manage "#1712" without another Odoo round-trip. It also
+        // lets the screen jump straight to them.
+        const n = unanswered.length;
         return NextResponse.json({
-          error: `Nothing was counted in: ${names.join(', ')}. Count something there, or skip the place and say why.`,
-          code: 'MISSED_LOCATIONS',
+          error: `${n} product${n === 1 ? '' : 's'} still ${n === 1 ? 'has' : 'have'} no answer. Count each one, or mark it "nothing here" or "couldn't find it".`,
+          code: 'UNANSWERED_PRODUCTS',
+          unanswered: unanswered.map((u) => u.product_id),
+          unanswered_lines: unanswered,
         }, { status: 400 });
       }
     } else {
@@ -247,7 +270,12 @@ export async function PUT(request: Request) {
         // everything in Drinks") names no products, so the old check — which
         // only ran when the explicit list was non-empty — let 1 of 200 count as
         // finished. The same helper the save and approve paths use answers it.
-        const scope = await allowedProductIds(session);
+        // activeOnly: this decides what MUST be answered, and the counting
+        // screen only ever lists active products. Demanding an archived one
+        // would make the count unsubmittable with nothing a person could do
+        // about it. Saving still accepts archived products — a different
+        // question, asked elsewhere with the permissive scope.
+        const scope = await allowedProductIds(session, { activeOnly: true });
         const required = scope.kind === 'known' ? Array.from(scope.ids) : [];
         if (required.length > 0) {
           // Coverage, not row count: EVERY required product must have an entry, so

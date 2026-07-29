@@ -95,6 +95,11 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   // itself isn't cached — only these STATIC paths — so no stale statuses).
   const [cachedSpotPaths, setCachedSpotPaths] = useState<Record<number, string>>({});
   const [guidedStatuses, setGuidedStatuses] = useState<Record<number, { status: string; skip_reason: string | null }>>({});
+  // What this restaurant wants to hold. Shown under the name so a wrong number
+  // is noticed at the SHELF rather than three days later in a report.
+  const [par, setPar] = useState<Record<number, { min: number | null; max: number | null }>>({});
+  // Lines answered "couldn't find it" — acknowledged, quantity unknown.
+  const [notFound, setNotFound] = useState<Set<string>>(new Set());
   const [statusPending, setStatusPending] = useState(0); // in-flight location-status writes
   const [savesPending, setSavesPending] = useState(0);
   // A refusal the server sent back. Shown until dismissed — a count that did
@@ -137,11 +142,13 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       const photoMap: Record<string, string[]> = {};
       const splitMap: Record<string, { crates: number; loose: number }> = {};
       const oosSet = new Set<string>();
+      const nfSet = new Set<string>();
       const noteMap: Record<string, string> = {};
       for (const e of entriesArr || []) {
         const k = `${e.product_id}:${e.count_location_id ?? 0}`;
         entryMap[k] = e.counted_qty;
         if (e.out_of_stock) oosSet.add(k);
+        if (e.not_found) nfSet.add(k);
         if (Array.isArray(e.photos) && e.photos.length > 0) {
           photoMap[k] = e.photos;
         }
@@ -151,6 +158,7 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
         if (e.notes) noteMap[k] = e.notes;
       }
       setEntries(entryMap);
+      setNotFound(nfSet);
       setOos(oosSet);
       setRowPhotos(photoMap);
       setCrateSplits(splitMap);
@@ -182,11 +190,21 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       let loadedProducts: any[] = [];
 
       if (productIds.length > 0) {
-        const prodRes = await fetch(`/api/inventory/products?ids=${productIds.join(',')}`).then(r => r.json());
+        // limit MUST cover the whole count. The API defaults to 200, so a
+        // larger list silently rendered only the first 200 rows — and now that
+        // submitting demands an answer for every line, the missing ones would
+        // be unanswerable and the count could never be sent.
+        const prodRes = await fetch(
+          `/api/inventory/products?ids=${productIds.join(',')}&limit=${Math.max(200, productIds.length)}`,
+        ).then(r => r.json());
         loadedProducts = prodRes.products || [];
       } else if (categoryIds.length > 0) {
+        // Same 200-row trap as the explicit-ids fetch above: a category with
+        // more products than that rendered only the first 200, and the submit
+        // gate requires every product the category resolves to. 2000 is well
+        // past any real category here and still bounded.
         const promises = categoryIds.map(cid =>
-          fetch(`/api/inventory/products?category_id=${cid}&include_pos=1`).then(r => r.json())
+          fetch(`/api/inventory/products?category_id=${cid}&include_pos=1&limit=2000`).then(r => r.json())
         );
         const results = await Promise.all(promises);
         const seen = new Set<number>();
@@ -245,6 +263,27 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   }, [sessionId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Par belongs to the restaurant this COUNT is for, not to whatever the top
+  // bar happens to show — a manager reviewing WAJ's count from an Ssam context
+  // must still see WAJ's numbers.
+  useEffect(() => {
+    const co = (session as any)?.company_id;
+    if (!co) return;
+    let stale = false;
+    fetch(`/api/inventory/product-par?company_id=${co}`)
+      .then((r) => (r.ok ? r.json() : { par: [] }))
+      .then((d) => {
+        if (stale) return;
+        const map: Record<number, { min: number | null; max: number | null }> = {};
+        (d.par || []).forEach((row: any) => {
+          map[row.odoo_product_id] = { min: row.par_min ?? null, max: row.par_max ?? null };
+        });
+        setPar(map);
+      })
+      .catch(() => { /* the range is a helper, not the count */ });
+    return () => { stale = true; };
+  }, [session]);
 
   useEffect(() => {
     fetch('/api/inventory/product-flags').then(r => r.json()).then(async (d) => {
@@ -489,6 +528,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
       if (res.queued) void sync.refresh();
     } else {
       const wasQty = entries[k];
+      // A number supersedes "couldn't find it" — the server already clears the
+      // flag, and leaving it set here left the badge showing while the row held
+      // a real count, so "Found it after all" would delete the new number.
+      setNotFound((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: qty }));
       if (note !== undefined) setRowNotes((prev) => ({ ...prev, [k]: note }));
       void updateCachedEntry(sessionId, productId, { counted_qty: qty, uom, ...(note !== undefined ? { notes: note } : {}) }, loc);
@@ -512,6 +555,48 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
   // Mark (or unmark) a product OUT OF STOCK — a deliberate "none here", distinct
   // from a not-counted row. On = record a 0 with the out_of_stock flag; off =
   // clear the entry back to not-counted. Approval records it in the portal.
+  /**
+   * "Couldn't find it" — an answer, but not a number and NOT a zero.
+   *
+   * "None left here" says the shelf is empty and approval writes a real zero to
+   * Odoo. This says the product is not where it should be and the quantity is
+   * unknown, so approval leaves stock alone. Conflating the two would turn every
+   * misplaced jar into "we have none of these".
+   */
+  async function saveNotFound(product: any, loc: number, on: boolean) {
+    const k = K(product.id, loc);
+    const uom = product.uom_id?.[1] || 'Units';
+    const wasQty = entries[k];
+    const wasNf = notFound.has(k);
+    setCrateSplits((prev) => { if (!(k in prev)) return prev; const n = { ...prev }; delete n[k]; return n; });
+    if (on) {
+      setOos((prev) => { const n = new Set(prev); n.delete(k); return n; });
+      setNotFound((prev) => { const n = new Set(prev); n.add(k); return n; });
+      setEntries((prev) => ({ ...prev, [k]: 0 }));
+      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, not_found: true }, loc);
+      await trackedMutate({
+        url: '/api/inventory/counts',
+        method: 'POST',
+        body: { session_id: sessionId, product_id: product.id, count_location_id: loc, not_found: true, counted_qty: 0, uom },
+        dedupKey: `save:${sessionId}:${product.id}:${loc}`,
+      }, () => {
+        setNotFound((prev) => { const n = new Set(prev); if (!wasNf) n.delete(k); return n; });
+        setEntries((prev) => { const n = { ...prev }; if (wasQty === undefined) delete n[k]; else n[k] = wasQty; return n; });
+      });
+    } else {
+      setNotFound((prev) => { const n = new Set(prev); n.delete(k); return n; });
+      setEntries((prev) => { const next = { ...prev }; delete next[k]; return next; });
+      void updateCachedEntry(sessionId, product.id, { counted_qty: null }, loc);
+      await trackedMutate({
+        url: `/api/inventory/counts?session_id=${sessionId}&product_id=${product.id}&count_location_id=${loc}`,
+        method: 'DELETE',
+        dedupKey: `delete:${sessionId}:${product.id}:${loc}`,
+      }, () => {
+        setNotFound((prev) => { const n = new Set(prev); if (wasNf) n.add(k); return n; });
+      });
+    }
+  }
+
   async function saveOutOfStock(product: any, loc: number, on: boolean, note?: string) {
     const uom = product.uom_id?.[1] || 'Units';
     const k = K(product.id, loc);
@@ -520,9 +605,10 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
     setCrateSplits((prev) => { if (!(k in prev)) return prev; const n = { ...prev }; delete n[k]; return n; });
     if (on) {
       setOos((prev) => { const n = new Set(prev); n.add(k); return n; });
+      setNotFound((prev) => { if (!prev.has(k)) return prev; const n = new Set(prev); n.delete(k); return n; });
       setEntries((prev) => ({ ...prev, [k]: 0 }));
       if (note !== undefined) setRowNotes((p) => ({ ...p, [k]: note }));
-      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, notes: note }, loc);
+      void updateCachedEntry(sessionId, product.id, { counted_qty: 0, uom, notes: note, out_of_stock: true }, loc);
       const res = await trackedMutate({
         url: '/api/inventory/counts',
         method: 'POST',
@@ -819,6 +905,23 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                   1 {label} = {size} {words.looseFor(size)}
                 </span>
               )}
+              {/* What this restaurant wants to hold. Informational only — if
+                  there really are 12, then 12 is the right answer and the count
+                  records reality rather than arguing with it. */}
+              {(() => {
+                const pr = par[p.id];
+                if (!pr || (pr.min == null && pr.max == null)) return null;
+                const range = pr.min != null && pr.max != null ? `${pr.min}–${pr.max}`
+                  : pr.min != null ? `at least ${pr.min}` : `at most ${pr.max}`;
+                const low = pr.min != null && typeof val === 'number' && val < pr.min;
+                return (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 border ${
+                    low ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-gray-50 text-gray-500 border-gray-200'
+                  }`}>
+                    {low ? 'below par · ' : 'par '}{range}
+                  </span>
+                );
+              })()}
               {flagged && (
                 <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 flex-shrink-0">
                   Photo required
@@ -939,6 +1042,15 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
                 from a counted 0. */}
             <span className="inline-block text-[11px] font-bold rounded-full px-2.5 py-1 border text-red-600 border-red-200 bg-red-50">
               {'\u2713'} {hasSpots ? 'Nothing at this spot' : 'Nothing here'}
+            </span>
+          </div>
+        )}
+        {/* Answered, but the quantity is unknown — visibly NOT the same thing as
+            a zero, because the stock consequence is the opposite. */}
+        {notFound.has(k) && (
+          <div className="mt-2">
+            <span className="inline-block text-[11px] font-bold rounded-full px-2.5 py-1 border text-amber-800 border-amber-200 bg-amber-50">
+              {'\u2713'} Couldn’t find it {'\u00B7'} stock left alone
             </span>
           </div>
         )}
@@ -1412,10 +1524,37 @@ export default function CountingSession({ sessionId, userRole, onBack, onSubmit 
               <button onClick={() => { void saveOutOfStock(rowMenu.product, rowMenu.loc, !isNone); close(); }}
                 className="w-full flex items-center gap-3 px-5 py-4 border-b border-gray-100 text-left active:bg-gray-50">
                 <span className="text-[18px]" aria-hidden="true">{isNone ? '↩️' : '🚫'}</span>
-                <span className={`text-[var(--fs-base)] font-semibold ${isNone ? 'text-gray-900' : 'text-red-600'}`}>
-                  {isNone ? 'There is some here after all' : (hasSpots ? 'None left at this spot' : 'None left here')}
+                <span className="min-w-0">
+                  <span className={`block text-[var(--fs-base)] font-semibold ${isNone ? 'text-gray-900' : 'text-red-600'}`}>
+                    {isNone ? 'There is some here after all' : (hasSpots ? 'None left at this spot' : 'None left here')}
+                  </span>
+                  {!isNone && (
+                    <span className="block text-[var(--fs-xs)] text-gray-500">I looked — there is none. Records zero.</span>
+                  )}
                 </span>
               </button>
+              {/* The THIRD answer. Deliberately separate from "none left": that
+                  one records a real zero, this one records "I do not know" and
+                  leaves your stock alone. */}
+              {(() => {
+                const isNf = notFound.has(rk);
+                return (
+                  <button onClick={() => { void saveNotFound(rowMenu.product, rowMenu.loc, !isNf); close(); }}
+                    className="w-full flex items-center gap-3 px-5 py-4 border-b border-gray-100 text-left active:bg-gray-50">
+                    <span className="text-[18px]" aria-hidden="true">{isNf ? '↩️' : '🔎'}</span>
+                    <span className="min-w-0">
+                      <span className={`block text-[var(--fs-base)] font-semibold ${isNf ? 'text-gray-900' : 'text-amber-700'}`}>
+                        {isNf ? 'Found it after all' : 'Couldn’t find it'}
+                      </span>
+                      {!isNf && (
+                        <span className="block text-[var(--fs-xs)] text-gray-500">
+                          Not where it should be. Your stock is left alone and the manager is told.
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                );
+              })()}
               <button onClick={close} className="w-full px-5 py-4 text-[var(--fs-base)] font-bold text-gray-500 active:bg-gray-50">
                 Close
               </button>

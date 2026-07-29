@@ -136,6 +136,21 @@ export function initInventoryTables() {
       updated_at TEXT NOT NULL
     );
 
+    -- How much of a product this restaurant wants to hold. PER COMPANY on
+    -- purpose: WAJ and Ssam keep different volumes of the same thing, unlike
+    -- pack size and the loose word (product_flags), which are shared.
+    -- Stored in BASE units — the unit staff count in — so the ordering maths
+    -- never has to guess what "2" meant.
+    CREATE TABLE IF NOT EXISTS product_par (
+      odoo_product_id INTEGER NOT NULL,
+      company_id      INTEGER NOT NULL,
+      par_min         REAL,
+      par_max         REAL,
+      updated_by      INTEGER,
+      updated_at      TEXT,
+      PRIMARY KEY (odoo_product_id, company_id)
+    );
+
     CREATE TABLE IF NOT EXISTS product_locations (
       odoo_product_id INTEGER NOT NULL,
       count_location_id INTEGER NOT NULL,
@@ -447,6 +462,12 @@ function migrateInventorySchema(db: ReturnType<typeof getDb>) {
   const ceCols = (db.prepare("PRAGMA table_info('count_entries')").all() as { name: string }[]).map(c => c.name);
   if (!ceCols.includes('count_location_id')) db.exec("ALTER TABLE count_entries ADD COLUMN count_location_id INTEGER NOT NULL DEFAULT 0");
   if (!ceCols.includes('out_of_stock')) db.exec("ALTER TABLE count_entries ADD COLUMN out_of_stock INTEGER NOT NULL DEFAULT 0");
+  // "Couldn't find it" — an ANSWER, but not a number and NOT a zero.
+  // out_of_stock means "I looked, there is none", and approval writes 0 to
+  // Odoo for it. If the jar is really sitting in another fridge, that zero is a
+  // lie about your stock. This says "acknowledged, quantity unknown" and is
+  // deliberately excluded from the stock write.
+  if (!ceCols.includes('not_found')) db.exec("ALTER TABLE count_entries ADD COLUMN not_found INTEGER NOT NULL DEFAULT 0");
   if (!ceCols.includes('count_mode')) db.exec("ALTER TABLE count_entries ADD COLUMN count_mode TEXT");
   if (!ceCols.includes('pack_label')) db.exec("ALTER TABLE count_entries ADD COLUMN pack_label TEXT");
   if (!ceCols.includes('loose_label')) db.exec("ALTER TABLE count_entries ADD COLUMN loose_label TEXT");
@@ -979,11 +1000,17 @@ export function listSessions(filters?: {
   }
   if (filters?.scheduled_date) { where.push('s.scheduled_date = ?'); vals.push(filters.scheduled_date); }
   const clause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  // Progress comes back with the list. A dashboard that wants to say "41
+  // products to count" should not have to open every session to find out, and
+  // computing it here means one definition of "counted" rather than one per
+  // screen. lines = what this count covers (frozen), done = lines answered.
   return db.prepare(`
     SELECT s.*, t.name as template_name, t.frequency as template_frequency,
            t.product_ids as template_product_ids, t.category_ids as template_category_ids,
            s.company_id as company_id,
-           u.name as assigned_user_name
+           u.name as assigned_user_name,
+           (SELECT COUNT(*) FROM session_count_items i WHERE i.session_id = s.id) AS lines_total,
+           (SELECT COUNT(*) FROM count_entries e WHERE e.session_id = s.id) AS lines_done
     FROM counting_sessions s
     LEFT JOIN counting_templates t ON t.id = s.template_id
     LEFT JOIN portal_users u ON u.id = s.assigned_user_id
@@ -1197,15 +1224,134 @@ export function deleteTemplate(templateId: number): void {
  * that already has entries). Used to guard hard-delete: a manager may only purge
  * a list with real history if they're an unrestricted admin.
  */
+export interface ProductPar { odoo_product_id: number; par_min: number | null; par_max: number | null }
+
+/** Par for these products at ONE restaurant. Missing = no par set, which is fine. */
+export function getProductPar(companyId: number, productIds?: number[]): ProductPar[] {
+  const db = getDb();
+  if (productIds && productIds.length === 0) return [];
+  const filter = productIds && productIds.length > 0
+    ? ` AND odoo_product_id IN (${productIds.map(() => '?').join(',')})`
+    : '';
+  return db.prepare(
+    `SELECT odoo_product_id, par_min, par_max FROM product_par WHERE company_id = ?${filter}`,
+  ).all(companyId, ...(productIds || [])) as ProductPar[];
+}
+
+/**
+ * Set or clear par for one product at one restaurant.
+ *
+ * Both null clears it — a product with no par simply never triggers an ordering
+ * suggestion, and nothing on the counting screen changes for it. A max below
+ * the min is refused rather than stored: "order up to less than you already
+ * wanted" is not a thing, and silently swapping them would hide a typo.
+ */
+export function setProductPar(
+  productId: number,
+  companyId: number,
+  parMin: number | null,
+  parMax: number | null,
+  userId: number,
+): void {
+  const clean = (v: number | null) =>
+    v == null || !Number.isFinite(v) || v < 0 ? null : v;
+  const lo = clean(parMin);
+  const hi = clean(parMax);
+  if (lo != null && hi != null && hi < lo) {
+    throw new Error('PAR_INVALID: the most you want cannot be less than the least you want');
+  }
+  const db = getDb();
+  if (lo == null && hi == null) {
+    db.prepare('DELETE FROM product_par WHERE odoo_product_id = ? AND company_id = ?')
+      .run(productId, companyId);
+    return;
+  }
+  db.prepare(`
+    INSERT INTO product_par (odoo_product_id, company_id, par_min, par_max, updated_by, updated_at)
+    VALUES (?,?,?,?,?,?)
+    ON CONFLICT(odoo_product_id, company_id) DO UPDATE SET
+      par_min = excluded.par_min, par_max = excluded.par_max,
+      updated_by = excluded.updated_by, updated_at = excluded.updated_at
+  `).run(productId, companyId, lo, hi, userId, now());
+}
+
 export function templateHasRealSessions(templateId: number): boolean {
   const db = getDb();
   const row = db.prepare(`
     SELECT 1 FROM counting_sessions s
     WHERE s.template_id = ?
+      AND s.status != 'missed'
       AND (s.status != 'pending' OR EXISTS (SELECT 1 FROM count_entries e WHERE e.session_id = s.id))
     LIMIT 1
   `).get(templateId);
   return !!row;
+}
+
+/**
+ * Close yesterday's counts that nobody touched.
+ *
+ * A new count is generated every morning and an unfinished one never closed, so
+ * they accumulated one per day forever — six days in, the dashboard offered 281
+ * products to count, which was the same forty products over and over. A stock
+ * count is also only meaningful for the day it was taken: nobody can count
+ * yesterday's shelf today.
+ *
+ * ONLY counts with NO ENTRIES AT ALL are closed. If somebody counted even one
+ * product and went home, that is their work and a machine does not get to throw
+ * it away overnight — those are returned separately so a manager can decide.
+ * The same rule deleteStalePendingSessions already follows.
+ *
+ * Marked 'missed' rather than deleted, so the gap stays visible: a shelf that
+ * went uncounted for six days is worth being able to see.
+ */
+export function expireStaleSessions(today: string, companyIds?: number[]): {
+  missed: number[];
+  leftAlone: { id: number; scheduled_date: string; entries: number }[];
+} {
+  const db = getDb();
+  const scope = companyIds && companyIds.length > 0
+    ? ` AND s.company_id IN (${companyIds.map(() => '?').join(',')})`
+    : '';
+  const scopeVals = companyIds && companyIds.length > 0 ? companyIds : [];
+
+  const stale = db.prepare(`
+    SELECT s.id, s.scheduled_date,
+           (SELECT COUNT(*) FROM count_entries e WHERE e.session_id = s.id) AS entries
+      FROM counting_sessions s
+     WHERE s.scheduled_date < ?
+       AND s.status IN ('pending','in_progress')${scope}
+     ORDER BY s.scheduled_date
+  `).all(today, ...scopeVals) as { id: number; scheduled_date: string; entries: number }[];
+
+  // "Touched" is sessionHasProgress, NOT just count_entries. A spot deliberately
+  // skipped with a reason is somebody standing at a shelf deciding something,
+  // and this module already treats that as real progress everywhere else. Using
+  // a second, narrower definition here would close a guided count that a person
+  // had genuinely worked through.
+  const untouched = stale.filter((r) => !sessionHasProgress(r.id));
+  const leftAlone = stale.filter((r) => sessionHasProgress(r.id));
+
+  const missed: number[] = [];
+  if (untouched.length > 0) {
+    const tx = db.transaction((ids: number[]) => {
+      const upd = db.prepare(
+        "UPDATE counting_sessions SET status = 'missed' WHERE id = ? AND status IN ('pending','in_progress')",
+      );
+      for (const id of ids) {
+        // Re-checked inside the transaction: somebody could start counting
+        // between the read above and this write, and their first entry must
+        // not be closed out from under them.
+        if (sessionHasProgress(id)) continue;
+        // Report only what REALLY changed. Returning a candidate as "closed"
+        // when the guarded update matched nothing made the cron log say it had
+        // done something it had not.
+        if (upd.run(id).changes > 0) missed.push(id);
+      }
+    });
+    tx(untouched.map((r) => r.id));
+  }
+
+  return { missed, leftAlone };
 }
 
 export function deleteStalePendingSessions(templateId: number, keepDate: string | null): number {
@@ -1314,6 +1460,7 @@ export function upsertCountEntry(data: {
   count_location_id?: number;        // which spot (default 0 = no specific spot / legacy)
   counted_qty: number;               // base-unit total (bottles); forced to 0 when out_of_stock
   out_of_stock?: boolean;            // deliberate "none here" (≠ a counted 0, ≠ not-counted)
+  not_found?: boolean;               // "couldn't find it" — answered, quantity UNKNOWN, never written to stock
   system_qty?: number | null;
   uom: string;
   notes?: string;                    // staff's own note; undefined = leave as it was
@@ -1332,7 +1479,11 @@ export function upsertCountEntry(data: {
   const db = getDb();
   const locId = data.count_location_id ?? 0;
   const oos = data.out_of_stock ? 1 : 0;
-  const countedQty = oos ? 0 : data.counted_qty;
+  const nf = data.not_found ? 1 : 0;
+  // "Couldn't find it" stores 0 like out-of-stock does, but the FLAG is what
+  // matters: approval reads not_found and leaves Odoo alone, where an
+  // out-of-stock line writes a real zero.
+  const countedQty = oos || nf ? 0 : data.counted_qty;
   // Keyed by (session, spot, product) so the SAME product can be counted at
   // several spots in one session without overwriting itself.
   const existing = db.prepare(
@@ -1379,12 +1530,12 @@ export function upsertCountEntry(data: {
     const setMgr = data.manager_note !== undefined ? 'manager_note = ?,' : '';
     const setPack = data.pack_counts !== undefined ? 'pack_counts = ?,' : '';
     db.prepare(`
-      UPDATE count_entries SET counted_qty = ?, out_of_stock = ?, system_qty = ?, diff = ?, uom = ?, ${setNotes} ${setMgr} ${setPack}
+      UPDATE count_entries SET counted_qty = ?, out_of_stock = ?, not_found = ?, system_qty = ?, diff = ?, uom = ?, ${setNotes} ${setMgr} ${setPack}
         crate_qty = ?, loose_qty = ?, units_per_crate = ?, count_mode = ?, pack_label = ?, loose_label = ?, odoo_qty = ?,
         counted_by = ?, counted_at = ?
       WHERE id = ?
     `).run(
-      countedQty, oos, data.system_qty ?? null, diff, data.uom,
+      countedQty, oos, nf, data.system_qty ?? null, diff, data.uom,
       ...(data.notes !== undefined ? [data.notes || null] : []),
       ...(data.manager_note !== undefined ? [data.manager_note || null] : []),
       ...(data.pack_counts !== undefined ? [data.pack_counts || null] : []),
@@ -1392,10 +1543,10 @@ export function upsertCountEntry(data: {
     );
   } else {
     db.prepare(`
-      INSERT INTO count_entries (session_id, product_id, count_location_id, counted_qty, out_of_stock, system_qty, diff, uom, notes, manager_note,
+      INSERT INTO count_entries (session_id, product_id, count_location_id, counted_qty, out_of_stock, not_found, system_qty, diff, uom, notes, manager_note,
         crate_qty, loose_qty, units_per_crate, count_mode, pack_label, loose_label, pack_counts, odoo_qty, counted_by, counted_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(data.session_id, data.product_id, locId, countedQty, oos, data.system_qty ?? null, diff, data.uom, data.notes || null, data.manager_note || null,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(data.session_id, data.product_id, locId, countedQty, oos, nf, data.system_qty ?? null, diff, data.uom, data.notes || null, data.manager_note || null,
       crateQty, looseQty, upc, cmode, plabel, llabel, data.pack_counts || null, odooQty, data.counted_by, now());
   }
 }
@@ -1423,7 +1574,7 @@ export function getSessionEntries(session_id: number): CountEntry[] {
   const db = getDb();
   const rows = db.prepare('SELECT * FROM count_entries WHERE session_id = ? ORDER BY counted_at DESC')
     .all(session_id) as Record<string, unknown>[];
-  return rows.map(r => ({ ...(r as unknown as CountEntry), out_of_stock: !!r.out_of_stock }));
+  return rows.map(r => ({ ...(r as unknown as CountEntry), out_of_stock: !!r.out_of_stock, not_found: !!r.not_found }));
 }
 
 // ===
@@ -2298,8 +2449,8 @@ export function getProductCountHistory(
   companyId: number,
   productIds: number[],
   opts: { excludeSessionId?: number; perProduct?: number } = {},
-): Record<number, { qty: number; date: string }[]> {
-  const out: Record<number, { qty: number; date: string }[]> = {};
+): Record<number, { qty: number | null; date: string; not_found?: boolean }[]> {
+  const out: Record<number, { qty: number | null; date: string; not_found?: boolean }[]> = {};
   if (productIds.length === 0) return out;
   const db = getDb();
   const perProduct = opts.perProduct ?? 5;
@@ -2308,7 +2459,8 @@ export function getProductCountHistory(
     SELECT e.product_id AS product_id,
            s.id AS session_id,
            COALESCE(s.scheduled_date, s.created_at) AS date,
-           SUM(COALESCE(e.counted_qty, 0)) AS qty
+           SUM(COALESCE(e.counted_qty, 0)) AS qty,
+           MAX(COALESCE(e.not_found, 0)) AS had_not_found
     FROM count_entries e
     JOIN counting_sessions s ON s.id = e.session_id
     WHERE s.company_id = ?
@@ -2317,10 +2469,19 @@ export function getProductCountHistory(
       AND s.id != ?
     GROUP BY e.product_id, s.id
     ORDER BY e.product_id, date DESC
-  `).all(companyId, ...productIds, opts.excludeSessionId ?? -1) as { product_id: number; date: string; qty: number }[];
+  `).all(companyId, ...productIds, opts.excludeSessionId ?? -1) as
+    { product_id: number; date: string; qty: number; had_not_found: number }[];
   rows.forEach((r) => {
     const list = (out[r.product_id] ||= []);
-    if (list.length < perProduct) list.push({ qty: Number(r.qty), date: String(r.date) });
+    // A count that could not FIND the product has no total for it — showing the
+    // sum of the spots where it was found would put a number in the history
+    // that nobody ever counted. Kept as a dated entry with no quantity, so the
+    // gap is visible rather than the count silently vanishing from history.
+    if (list.length < perProduct) {
+      list.push(r.had_not_found
+        ? { qty: null, date: String(r.date), not_found: true }
+        : { qty: Number(r.qty), date: String(r.date) });
+    }
   });
   return out;
 }

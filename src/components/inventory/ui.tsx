@@ -186,8 +186,12 @@ export function ProductThumb({ productId, has, size = 44, className = '' }: {
       aria-hidden="true"
     >
       {has ? (
+        // CONTAIN, not cover: the frame is square and most products are not, so
+        // cover cropped a bottle to a band of its middle — exactly the part with
+        // no label. A thumbnail exists to be recognised at a glance, and the
+        // grey frame around a contained image costs nothing.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={`/api/inventory/product-images/${productId}`} alt="" loading="lazy" className="w-full h-full object-cover" />
+        <img src={`/api/inventory/product-images/${productId}`} alt="" loading="lazy" className="w-full h-full object-contain" />
       ) : (
         <svg width={Math.round(size * 0.5)} height={Math.round(size * 0.5)} viewBox="0 0 24 24" fill="none"
              stroke="#C4C4C4" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

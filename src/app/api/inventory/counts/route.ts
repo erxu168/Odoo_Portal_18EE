@@ -21,8 +21,28 @@ import { packTotal, usableLevels } from '@/lib/packaging';
 import { inventoryOdooSyncEnabled } from '@/lib/inventory-config';
 
 // A count line can only be written/removed while the session is still open.
+//
+// 'missed' counts as open. A count is closed overnight only when NOBODY had
+// touched it — so a save arriving for one means somebody did have work after
+// all, and the commonest way that happens is a phone that was offline while
+// they counted. Refusing it would be silent data loss: the offline queue drops
+// a 4xx permanently, so their whole shelf would vanish on reconnect. Their
+// arrival is the evidence the count was not missed, so it reopens (see
+// reopenIfMissed below).
 function isEditable(status: string): boolean {
-  return status === 'pending' || status === 'in_progress';
+  return status === 'pending' || status === 'in_progress' || status === 'missed';
+}
+
+/**
+ * A save landed on a count we closed as missed — so it was not missed. Put it
+ * back to in_progress before the line is written, so the count behaves normally
+ * from here (submit, review, approve) instead of holding an entry in a closed
+ * count.
+ */
+function reopenIfMissed(session: { id: number; status: string }): void {
+  if (session.status !== 'missed') return;
+  updateSessionStatus(session.id, 'in_progress', { fromStatus: 'missed' });
+  console.warn('[inventory] count', session.id, 'was closed as missed but work arrived — reopened');
 }
 
 
@@ -120,13 +140,16 @@ export async function POST(request: Request) {
 
   initInventoryTables();
   const body = await request.json();
-  const { session_id, product_id, count_location_id, out_of_stock, counted_qty, crate_qty, loose_qty, units_per_crate, system_qty, uom, notes, photos, pack_counts } = body;
+  const { session_id, product_id, count_location_id, out_of_stock, not_found, counted_qty, crate_qty, loose_qty, units_per_crate, system_qty, uom, notes, photos, pack_counts } = body;
 
   // Which spot this count is for (0 = no specific spot / legacy client).
   // Validated against the session's frozen snapshot further below.
   let locId = Number.isInteger(count_location_id) && count_location_id >= 0 ? count_location_id : 0;
   // Explicit "none here" — recorded distinctly from a counted 0 or an uncounted row.
   const isOut = out_of_stock === true;
+  // "Couldn't find it" — an answer, but NOT a zero. Stored flagged so approval
+  // can leave Odoo's stock alone instead of guessing that we have none.
+  const isNotFound = not_found === true && !isOut;
 
   const sentSplit = !isOut && (crate_qty !== undefined || loose_qty !== undefined);
 
@@ -143,6 +166,7 @@ export async function POST(request: Request) {
   // rejecting the whole count) — attributed to the manager and noted.
   const isReviewerCorrection = session.status === 'submitted'
     && roleCan(user.role, 'inventory.review.approve', getPermissionOverrides());
+  reopenIfMissed(session);
   if (!isEditable(session.status) && !isReviewerCorrection) {
     return NextResponse.json({ error: 'This count can no longer be edited' }, { status: 400 });
   }
@@ -197,7 +221,7 @@ export async function POST(request: Request) {
   const hasChain = chain.length > 0 && sentLevels;
 
   const hasSplit = !hasChain && sentSplit && packSize != null && packSize > 0;
-  const baseQty = isOut ? 0 : (
+  const baseQty = (isOut || isNotFound) ? 0 : (
     hasChain
       ? packTotal({ byLevel: pack_counts as Record<number, number>, loose: Number(loose_qty) || 0 }, chain)
       : hasSplit
@@ -244,6 +268,7 @@ export async function POST(request: Request) {
     session_id, product_id, counted_qty: baseQty,
     count_location_id: locId,
     out_of_stock: isOut,
+    not_found: isNotFound,
     system_qty: system_qty ?? null,
     uom: uom || 'Units',
     // Staff notes and manager corrections live in different columns, so a
@@ -305,6 +330,7 @@ export async function DELETE(request: Request) {
   const session = getSession(parseInt(sessionId));
   if (!session) return NextResponse.json({ error: 'Session not found' }, { status: 404 });
   if (!canAccessSession(user, session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  reopenIfMissed(session);
   if (!isEditable(session.status)) return NextResponse.json({ error: 'This count can no longer be edited' }, { status: 400 });
 
   // Modern (snapshotted) sessions delete ONE line — the spot is required so a

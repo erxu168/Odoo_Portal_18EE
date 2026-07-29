@@ -12,9 +12,11 @@ import { plainFromOdooHtml } from '@/lib/odoo-html';
 
 interface ProductSettingsProps {
   onBack: () => void;
+  /** Open the batch photo grid. Omitted where the screen has no route to it. */
+  onBatchPhotos?: () => void;
 }
 
-export default function ProductSettings({ onBack }: ProductSettingsProps) {
+export default function ProductSettings({ onBack, onBatchPhotos }: ProductSettingsProps) {
   const { companyId } = useCompany();
   const [products, setProducts] = useState<any[]>([]);
   const [flags, setFlags] = useState<Record<number, boolean>>({});
@@ -265,6 +267,12 @@ export default function ProductSettings({ onBack }: ProductSettingsProps) {
       {/* One of these is always chosen, so "All" belongs in the set — otherwise
           the only way back is tapping the active one again, which nobody finds. */}
       <div className="px-4 pb-2 flex gap-1.5 overflow-x-auto no-scrollbar" role="group" aria-label="Show">
+        {onBatchPhotos && (
+          <button onClick={onBatchPhotos}
+            className="flex-shrink-0 px-3 h-8 rounded-full text-[var(--fs-xs)] font-bold border bg-blue-50 border-blue-300 text-blue-800">
+            🖼️ Batch photos
+          </button>
+        )}
         <button onClick={() => setGap(null)} aria-pressed={gap === null}
           className={`flex-shrink-0 px-3 h-8 rounded-full text-[var(--fs-xs)] font-bold border transition-colors ${
             gap === null ? 'bg-gray-900 border-gray-900 text-white' : 'bg-white border-gray-200 text-gray-600'

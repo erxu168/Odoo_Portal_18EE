@@ -1,37 +1,31 @@
 #!/bin/bash
-# Krawings Portal — Android Capacitor Setup
-# Run this from the project root: /Users/ethan/Odoo_Portal_18EE
+# Krawings Portal Android app — local build helper.
+#
+# The native project is COMMITTED at apps/portal/android (it holds custom native code:
+# the Zebra Bluetooth print plugin + barcode scanner bridge), so there is NO `cap add` —
+# that would wipe the custom Java. Just install root deps, sync, and build.
+#
+# Run this from the repo root. CI does the same thing in .github/workflows/android-apk.yml
+# and publishes the .apk to the 'portal-latest' GitHub release.
 set -e
 
-echo "=== Krawings Portal: Android Setup ==="
+echo "=== Krawings Portal (apps/portal): local Android build ==="
 echo ""
 
-# 1. Install Capacitor core + CLI + Android
-echo "📦 Installing Capacitor..."
-npm install @capacitor/core @capacitor/cli
-npm install @capacitor/android
+# 1. Install JS deps once at the repo root. Capacitor's CLI + the @capacitor-mlkit/barcode
+#    plugin resolve from the repo-root node_modules (apps/portal has its own package.json
+#    so the CLI has a manifest in its CWD, but no separate install is needed).
+echo "📦 npm ci (repo root)..."
+npm ci
 
-# 2. Install Bluetooth Serial plugin for BT Classic SPP
-echo "📦 Installing Bluetooth Serial plugin..."
-npm install capacitor-bluetooth-serial
-
-# 3. Add Android platform
-echo "🤖 Adding Android platform..."
-npx cap add android
-
-# 4. Sync (copies web assets + plugin configs to native project)
-echo "🔄 Syncing..."
-npx cap sync android
+# 2. Sync Capacitor into the committed native project. This regenerates
+#    apps/portal/android/capacitor.settings.gradle with node_modules paths relative to
+#    apps/portal — required before a local ./gradlew or Android Studio build will resolve.
+echo "🔄 cap sync (from apps/portal)..."
+( cd apps/portal && npx cap sync android )
 
 echo ""
-echo "=== Setup Complete ==="
-echo ""
-echo "Next steps:"
-echo "  1. Open in Android Studio:  npx cap open android"
-echo "  2. Connect your Android tablet via USB"
-echo "  3. Click Run (green play button) in Android Studio"
-echo "  4. The app will load portal.krawings.de with native BT printing"
-echo ""
-echo "To rebuild after plugin changes:"
-echo "  npx cap sync android"
-echo "  Then rebuild in Android Studio"
+echo "=== Ready ==="
+echo "Build the debug APK:  ( cd 'apps/portal/android' && ./gradlew assembleDebug )"
+echo "Open in Studio:       ( cd apps/portal && npx cap open android )"
+echo "The app loads portal.krawings.de with native BT/Zebra printing + barcode scanning."

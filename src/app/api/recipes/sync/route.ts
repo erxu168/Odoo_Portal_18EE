@@ -7,6 +7,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { recipeCan, recipeForbidden } from '@/lib/recipe-access';
 import { getOdoo } from '@/lib/odoo';
 import {
   initRecipeTables,
@@ -39,6 +40,9 @@ export async function GET() {
 export async function POST() {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Pushing the offline queue creates recipes in Odoo — same gate as create.
+  if (!recipeCan(user.role)('recipes.record.create')) return recipeForbidden();
 
   try {
     initRecipeTables();

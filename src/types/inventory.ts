@@ -47,7 +47,12 @@ export interface OdooPlanningRole {
 
 export type Frequency = 'daily' | 'weekly' | 'monthly' | 'adhoc';
 export type AssignType = 'person' | 'department' | 'shift' | null;
-export type SessionStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected';
+/**
+ * 'missed' = the day passed and nobody counted a single line. Closed
+ * automatically overnight so unfinished counts stop accumulating, and kept
+ * rather than deleted so a shelf that went uncounted is visible in history.
+ */
+export type SessionStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'rejected' | 'missed';
 export type CountMode = 'simple' | 'pack_loose';
 
 export interface CountingTemplate {
@@ -77,6 +82,9 @@ export interface CountingSession {
   template_frequency?: Frequency;
   scheduled_date: string;
   status: SessionStatus;
+  /** How many lines this count covers, and how many have been answered. */
+  lines_total?: number;
+  lines_done?: number;
   location_id: number;
   company_id?: number | null;  // restaurant of the template (for staff visibility)
   location_name?: string;

@@ -9,7 +9,8 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice, reorderGuideItems } from '@/lib/purchase-db';
+import { getGuideWithItems, getGuide, createGuide, addGuideItem, removeGuideItem, updateGuideItemPrice, reorderGuideItems, getCompanyForPurchaseLocation } from '@/lib/purchase-db';
+import { initInventoryTables, getProductPar, setProductPar } from '@/lib/inventory-db';
 import { canAccessPurchaseLocation, isUnrestrictedAdmin } from '@/lib/purchase-access';
 import { getDb } from '@/lib/db';
 
@@ -27,6 +28,36 @@ export async function GET(request: Request) {
   if (!canAccessPurchaseLocation(user, locationId)) return NextResponse.json({ error: 'Access denied' }, { status: 403 });
 
   const guide = getGuideWithItems(supplierId, locationId);
+
+  // PAR COMES FROM PRODUCT SETTINGS, not from the guide's own column.
+  //
+  // purchase_guide_items still has a par_level of its own, and that is the
+  // problem: the same product could carry 20 there and 15 in product settings
+  // with nothing to say which is right. Product settings is the single source
+  // of truth, so the guide reads from it and its column is ignored. (Nothing
+  // was lost in the change — every existing guide row had par_level 0.)
+  if (guide && Array.isArray(guide.items) && guide.items.length > 0) {
+    const companyId = getCompanyForPurchaseLocation(locationId);
+    if (companyId != null) {
+      initInventoryTables();
+      const ids = guide.items.map((i: { product_id: number }) => i.product_id);
+      const parById = new Map(
+        getProductPar(companyId, ids).map((r) => [r.odoo_product_id, r]),
+      );
+      guide.items = guide.items.map((i: { product_id: number }) => {
+        const par = parById.get(i.product_id);
+        return {
+          ...i,
+          // par_level kept for callers that still read it — it now means "the
+          // least you want", which is what it was always used as.
+          par_level: par?.par_min ?? 0,
+          par_min: par?.par_min ?? null,
+          par_max: par?.par_max ?? null,
+        };
+      });
+    }
+  }
+
   return NextResponse.json({ guide });
 }
 
@@ -55,6 +86,23 @@ export async function POST(request: Request) {
     par_level: typeof par_level === 'number' ? par_level : 0,
     product_code: typeof product_code === 'string' ? product_code : '',
   });
+
+  // A par typed here must land where par actually LIVES. It was still being
+  // written only to purchase_guide_items.par_level, which the GET above no
+  // longer reads — so a manager's number vanished on the very next load.
+  if (typeof par_level === 'number' && par_level > 0) {
+    const companyId = getCompanyForPurchaseLocation(location_id);
+    if (companyId != null) {
+      initInventoryTables();
+      const existing = getProductPar(companyId, [product_id])[0];
+      // Never overwrite a par already set in product settings — that screen is
+      // the source of truth, and this is a convenience field beside it.
+      if (!existing || (existing.par_min == null && existing.par_max == null)) {
+        try { setProductPar(product_id, companyId, par_level, existing?.par_max ?? null, user.id); }
+        catch (e) { console.warn('[purchase] could not store par for', product_id, e); }
+      }
+    }
+  }
 
   return NextResponse.json({ id: itemId, message: 'Item added to guide' }, { status: 201 });
 }

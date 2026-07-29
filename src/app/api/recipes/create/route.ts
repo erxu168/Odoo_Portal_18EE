@@ -1,18 +1,22 @@
 /**
  * POST /api/recipes/create
  *
- * Creates a new dish in Odoo immediately (all roles).
+ * Creates a new dish in Odoo immediately (recipes.record.create — manager/admin by default).
  * - Cooking guide: creates product.template
  * - Production guide: creates product.template + mrp.bom
  * Staff-created dishes start unpublished; only manager/admin can publish.
  */
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
+import { recipeCan, recipeForbidden } from '@/lib/recipe-access';
 import { getOdoo } from '@/lib/odoo';
 
 export async function POST(request: Request) {
   const user = requireAuth();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Creating a dish is part of the Record flow — manager/admin by default.
+  if (!recipeCan(user.role)('recipes.record.create')) return recipeForbidden();
 
   try {
     const body = await request.json();

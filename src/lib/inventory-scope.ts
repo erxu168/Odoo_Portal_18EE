@@ -22,19 +22,35 @@ import { getOdoo } from './odoo';
 const CACHE_MS = 60_000;
 const categoryCache = new Map<string, { ids: Set<number>; at: number }>();
 
-async function productsInCategories(categoryIds: number[]): Promise<Set<number> | null> {
-  const key = categoryIds.slice().sort((a, b) => a - b).join(',');
+async function productsInCategories(
+  categoryIds: number[],
+  /**
+   * Only products a person can actually SEE and therefore answer.
+   *
+   * Two different questions get asked of this set and they need different
+   * answers. "May this line be saved?" must include ARCHIVED products — a
+   * product archived mid-count still has to accept the number already being
+   * entered against it. "Must this line be answered before submitting?" must
+   * NOT, because the counting screen lists active products only, so demanding
+   * an archived one makes the count unsubmittable with no way to fix it.
+   *
+   * The old comment here claimed this matched the count screen. It did not:
+   * the screen lists active products, this passed active_test: false.
+   */
+  activeOnly = false,
+): Promise<Set<number> | null> {
+  const key = `${activeOnly ? 'a' : 'all'}:${categoryIds.slice().sort((a, b) => a - b).join(',')}`;
   const hit = categoryCache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.ids;
   try {
     const odoo = await getOdoo();
-    // Same rule the count screen uses when it lists a category's products, so
-    // the two can never disagree about what is on the list.
     const rows = await odoo.searchRead(
       'product.product',
-      [['categ_id', 'in', categoryIds]],
+      activeOnly
+        ? [['categ_id', 'in', categoryIds], ['active', '=', true]]
+        : [['categ_id', 'in', categoryIds]],
       ['id'],
-      { limit: 5000, context: { active_test: false } },
+      { limit: 5000, ...(activeOnly ? {} : { context: { active_test: false } }) },
     ) as { id: number }[];
     const ids = new Set(rows.map((r) => r.id));
     categoryCache.set(key, { ids, at: Date.now() });
@@ -56,7 +72,11 @@ export type ScopeResult =
  * Order matters: the frozen snapshot wins over the template, because a template
  * edited after the count started must not change what the count is about.
  */
-export async function allowedProductIds(session: CountingSession): Promise<ScopeResult> {
+export async function allowedProductIds(
+  session: CountingSession,
+  /** true when the caller is deciding what MUST be answered, not what may be saved. */
+  opts: { activeOnly?: boolean } = {},
+): Promise<ScopeResult> {
   const snapshot = getSessionItems(session.id);
   if (snapshot.length > 0) {
     return { kind: 'known', ids: new Set(snapshot.map((it) => it.odoo_product_id)) };
@@ -70,7 +90,7 @@ export async function allowedProductIds(session: CountingSession): Promise<Scope
     // Neither products nor categories: an empty list allows nothing.
     return { kind: 'known', ids: new Set<number>() };
   }
-  const ids = await productsInCategories(cats.filter((c) => Number.isInteger(c) && c > 0));
+  const ids = await productsInCategories(cats.filter((c) => Number.isInteger(c) && c > 0), opts.activeOnly);
   return ids ? { kind: 'known', ids } : { kind: 'unknown' };
 }
 

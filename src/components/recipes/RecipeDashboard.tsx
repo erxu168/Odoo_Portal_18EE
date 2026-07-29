@@ -8,24 +8,30 @@ import { useCompany } from '@/lib/company-context';
 
 interface Props {
   userRole: string;
+  capabilities?: string[];
   onNavigate: (screen: string) => void;
   onHome?: () => void;
   onSettings?: () => void;
   scope?: 'cooking' | 'production';
 }
 
-const TILES = [
+// `perm` (when set) gates the tile by an admin-adjustable capability from
+// /admin/permissions. Record / Edit Recipes / Stats default to manager+admin,
+// so normal staff only ever see Cooking Guide + Production Guide.
+type DashTile = { id: string; label: string; sub: string; emoji: string; minRole: string; badge?: boolean; perm?: string };
+
+const TILES: DashTile[] = [
   { id: 'cooking-guide', label: 'Cooking Guide', sub: 'SSAM menu dishes', emoji: '📖', minRole: 'staff' },
   { id: 'production-guide', label: 'Production Guide', sub: 'WAJ sauces & prep', emoji: '🥫', minRole: 'staff' },
-  { id: 'record', label: 'Record', sub: 'Create guides', emoji: '⏺️', minRole: 'staff' },
-  { id: 'edit', label: 'Edit Recipes', sub: 'Create & modify', emoji: '✏️', minRole: 'staff' },
+  { id: 'record', label: 'Record', sub: 'Create guides', emoji: '⏺️', minRole: 'staff', perm: 'recipes.record.create' },
+  { id: 'edit', label: 'Edit Recipes', sub: 'Create & modify', emoji: '✏️', minRole: 'staff', perm: 'recipes.recipe.edit' },
   { id: 'approvals', label: 'Approvals', sub: 'Review changes', emoji: '✅', minRole: 'manager', badge: true },
-  { id: 'stats', label: 'Stats', sub: 'Cook history', emoji: '📊', minRole: 'staff' },
+  { id: 'stats', label: 'Stats', sub: 'Cook history', emoji: '📊', minRole: 'staff', perm: 'recipes.stats.view' },
 ];
 
 const ROLE_LEVEL: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
 
-export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettings, scope = 'cooking' }: Props) {
+export default function RecipeDashboard({ userRole, capabilities = [], onNavigate, onHome, onSettings, scope = 'cooking' }: Props) {
   const { companyName, companyId } = useCompany();
   const isProduction = scope === 'production';
   const [pendingApprovals, setPendingApprovals] = useState(0);
@@ -81,6 +87,8 @@ export default function RecipeDashboard({ userRole, onNavigate, onHome, onSettin
   const myLevel = ROLE_LEVEL[userRole] || 1;
   const visibleTiles = TILES
     .filter(t => myLevel >= (ROLE_LEVEL[t.minRole] || 1))
+    // Admin-adjustable per-tile gate (Record / Edit / Stats). No `perm` = always shown.
+    .filter(t => !t.perm || capabilities.includes(t.perm))
     // Chef Guide shows the cooking browse; Production Guide shows the production browse. Never both.
     .filter(t => {
       if (t.id === 'cooking-guide') return !isProduction;
