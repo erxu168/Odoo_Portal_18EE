@@ -434,6 +434,13 @@ export default function ProductSettings({ onBack, onBatchPhotos, initialGap = nu
             }
             // imageAdded is true for a saved photo and false for a removed one,
             // so the thumbnail follows both ways.
+            // Stock tracking drives the "Not counted in stock" badge and the
+            // filter's count, so both follow the switch immediately rather than
+            // waiting for a reload.
+            if (patch.is_storable !== undefined) {
+              const pid = detailFor.id;
+              setProducts((prev: any[]) => prev.map((x) => x.id === pid ? { ...x, is_storable: patch.is_storable } : x));
+            }
             if (patch.imageAdded !== undefined) {
               setImageIds((prev) => {
                 const n = new Set(prev);

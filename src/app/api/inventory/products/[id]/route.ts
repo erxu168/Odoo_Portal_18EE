@@ -15,6 +15,8 @@ import { getPermissionOverrides, logAudit, parseCompanyIds } from '@/lib/db';
 
 import { getOdoo } from '@/lib/odoo';
 import { initInventoryTables, describeCountWorkForProduct, deleteProductPortalData, isDraftProduct } from '@/lib/inventory-db';
+import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
+import { taxDiffCommands } from '@/lib/product-tax';
 
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
   const user = requireAuth();
@@ -29,7 +31,18 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   try {
     const odoo = getOdoo();
     const rows = await odoo.searchRead('product.product', [['id', '=', productId]],
-      ['id', 'name', 'default_code', 'barcode', 'categ_id', 'uom_id', 'list_price', 'standard_price', 'taxes_id', 'description'],
+      ['id', 'name', 'default_code', 'barcode', 'categ_id', 'uom_id', 'list_price', 'standard_price',
+        // Both tax lists, raw. Which entry belongs to the active restaurant is
+        // decided in the client against that restaurant's tax ids — the server
+        // cannot pick without being told which restaurant is asking, and
+        // guessing "the first one" reads another company's rate as yours.
+        'taxes_id', 'supplier_taxes_id',
+        // Odoo 18 asks "is it a physical good?" (type) and "do we track how much
+        // we hold?" (is_storable) separately, and the second defaults to FALSE.
+        // Off means no stock figure exists, so an approved count cannot be
+        // written back — the single most consequential field on this screen.
+        'is_storable', 'type',
+        'description'],
       { limit: 1, context: { active_test: false } });
     if (rows.length === 0) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     return NextResponse.json({ product: rows[0] });
@@ -104,16 +117,144 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     if (note.length > 5000) return NextResponse.json({ error: 'Note is too long' }, { status: 400 });
     vals.description = note.trim() === '' ? false : note;
   }
-  if (Object.keys(vals).length === 0) {
+  if (body.is_storable !== undefined) {
+    if (typeof body.is_storable !== 'boolean') {
+      return NextResponse.json({ error: 'is_storable must be true or false' }, { status: 400 });
+    }
+    // Odoo 18's "Track Inventory". Off means the product holds no stock figure,
+    // so a count of it can never be written back. Odoo itself may refuse to turn
+    // it OFF once stock moves exist; that refusal is surfaced verbatim below
+    // rather than swallowed, because "it didn't save and nobody said why" is the
+    // worse outcome.
+    vals.is_storable = body.is_storable;
+  }
+
+  // --- taxes ------------------------------------------------------------
+  // Per restaurant, on a record shared by all of them. Handled inside the try
+  // below because it needs the product's CURRENT tax lists to merge against.
+  const wantsSaleTax = body.sale_tax_id !== undefined;
+  const wantsPurchaseTax = body.purchase_tax_id !== undefined;
+  const taxCompanyRaw = body.company_id;
+  if (wantsSaleTax || wantsPurchaseTax) {
+    const companyId = Number(taxCompanyRaw);
+    if (!Number.isInteger(companyId) || companyId <= 0) {
+      return NextResponse.json({ error: 'A restaurant is required to set tax' }, { status: 400 });
+    }
+    // A tax change is a change to ONE restaurant's accounting on a shared
+    // record, so the caller must be entitled to that restaurant. PUT had no
+    // company check at all before this; adding one is required by the field
+    // being added, not optional hardening.
+    if (!isUnrestrictedAdmin(user) && !canAccessCompany(user, companyId)) {
+      return NextResponse.json({ error: 'That restaurant is not yours' }, { status: 403 });
+    }
+  }
+
+  if (Object.keys(vals).length === 0 && !wantsSaleTax && !wantsPurchaseTax) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
   }
 
   try {
     const odoo = getOdoo();
-    // Product must exist (drafts included — active_test off).
-    const rows = await odoo.searchRead('product.product', [['id', '=', productId]], ['id'],
+    // Product must exist (drafts included — active_test off). company_id is read
+    // so the guard below can run: PUT previously read only `id`, which meant a
+    // manager scoped to one restaurant could rename, reprice or reconfigure
+    // another restaurant's private product by putting its id in the URL.
+    const rows = await odoo.searchRead('product.product', [['id', '=', productId]],
+      ['id', 'company_id', 'taxes_id', 'supplier_taxes_id'],
       { limit: 1, context: { active_test: false } });
     if (rows.length === 0) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    const current = rows[0] as { company_id: [number, string] | false; taxes_id: number[]; supplier_taxes_id: number[] };
+
+    // Most products here are shared (company_id = false) and genuinely belong to
+    // everyone. A product TAGGED to one restaurant is that restaurant's.
+    const owner = Array.isArray(current.company_id) ? current.company_id[0] : null;
+    if (owner != null && !isUnrestrictedAdmin(user) && !canAccessCompany(user, owner)) {
+      return NextResponse.json({
+        error: `This product belongs to ${Array.isArray(current.company_id) ? current.company_id[1] : 'another restaurant'}. Ask someone there to change it.`,
+        code: 'WRONG_COMPANY',
+      }, { status: 403 });
+    }
+
+    if (wantsSaleTax || wantsPurchaseTax) {
+      const companyId = Number(taxCompanyRaw);
+      // OWNERSHIP is resolved from the taxes actually ON THE PRODUCT, by looking
+      // up those exact ids — not by listing the restaurant's taxes and hoping the
+      // product's are among them.
+      //
+      // Listing was wrong three ways at once. It capped at 200 rows; it filtered
+      // by type_tax_use, so a tax since retyped looked like nobody's; and it
+      // excluded inactive taxes (Odoo drops them unless active_test is off),
+      // which matters because 92 products here still carry a WAJ sales tax that
+      // has since been archived. Any of those made a tax of THIS restaurant look
+      // like another's, so the write preserved it and left the product holding
+      // two of this restaurant's taxes at once.
+      const onProduct = Array.from(new Set([...(current.taxes_id || []), ...(current.supplier_taxes_id || [])]));
+      const [taxOwners, chosenRows] = await Promise.all([
+        onProduct.length > 0
+          ? odoo.searchRead('account.tax', [['id', 'in', onProduct]], ['id', 'company_id'],
+              { limit: onProduct.length, context: { active_test: false } })
+          : Promise.resolve([]),
+        // The chosen ids, validated on their own terms: a tax may be DISPLACED
+        // after being retired, but never newly CHOSEN.
+        (() => {
+          const want = [body.sale_tax_id, body.purchase_tax_id]
+            .map((v) => (v === '' || v == null ? null : Number(v)))
+            .filter((v): v is number => v != null && Number.isInteger(v) && v > 0);
+          return want.length > 0
+            ? odoo.searchRead('account.tax', [['id', 'in', want]],
+                ['id', 'company_id', 'type_tax_use', 'active'], { limit: want.length })
+            : Promise.resolve([]);
+        })(),
+      ]);
+
+      const ownedByCompany = new Set(
+        (taxOwners as { id: number; company_id: [number, string] | false }[])
+          .filter((t) => (Array.isArray(t.company_id) ? t.company_id[0] : null) === companyId)
+          .map((t) => t.id),
+      );
+
+      const apply = (field: 'taxes_id' | 'supplier_taxes_id', use: 'sale' | 'purchase', raw: unknown) => {
+        // '' and null both mean "no tax for this restaurant". 0 is not a tax id.
+        const chosen = raw === '' || raw == null ? null : Number(raw);
+        if (chosen != null && (!Number.isInteger(chosen) || chosen <= 0)) {
+          throw new Error('TAX_INVALID: that is not a tax');
+        }
+        if (chosen != null) {
+          const row = (chosenRows as { id: number; company_id: [number, string] | false; type_tax_use: string; active: boolean }[])
+            .find((t) => t.id === chosen);
+          // searchRead applies active_test, so a retired tax simply is not here.
+          if (!row) throw new Error('TAX_INVALID: that tax is retired or does not exist');
+          if ((Array.isArray(row.company_id) ? row.company_id[0] : null) !== companyId) {
+            throw new Error('TAX_NOT_IN_COMPANY: that tax belongs to a different restaurant');
+          }
+          if (row.type_tax_use !== use) {
+            throw new Error(`TAX_INVALID: that is a ${row.type_tax_use} tax, not a ${use} tax`);
+          }
+          // A chosen tax is by definition this restaurant's, so it joins the
+          // displaceable set even when the product does not carry it yet.
+          ownedByCompany.add(chosen);
+        }
+        const cmds = taxDiffCommands(
+          ((current as unknown as Record<string, number[]>)[field] || []),
+          Array.from(ownedByCompany),
+          chosen,
+        );
+        // No commands = the product already has exactly this. Writing nothing is
+        // better than writing a no-op that still bumps the record.
+        if (cmds.length > 0) vals[field] = cmds;
+      };
+
+      try {
+        if (wantsSaleTax) apply('taxes_id', 'sale', body.sale_tax_id);
+        if (wantsPurchaseTax) apply('supplier_taxes_id', 'purchase', body.purchase_tax_id);
+      } catch (e: unknown) {
+        const m = e instanceof Error ? e.message : 'Tax could not be set';
+        if (m.startsWith('TAX_NOT_IN_COMPANY') || m.startsWith('TAX_INVALID')) {
+          return NextResponse.json({ error: m.replace(/^[A-Z_]+: /, '') }, { status: 400 });
+        }
+        throw e;
+      }
+    }
     if (vals.uom_id) {
       const uom = await odoo.searchRead('uom.uom', [['id', '=', vals.uom_id as number], ['active', '=', true]], ['id', 'category_id'], { limit: 1 });
       if (uom.length === 0) return NextResponse.json({ error: 'That unit no longer exists' }, { status: 400 });

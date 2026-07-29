@@ -13,6 +13,7 @@ import PhotoLightbox from './PhotoLightbox';
 import { useCompany } from '@/lib/company-context';
 import { locationPathLabel } from '@/lib/location-tree';
 import { plainFromOdooHtml } from '@/lib/odoo-html';
+import { currentCompanyTax, hasConflictingTax, type TaxOption } from '@/lib/product-tax';
 
 /**
  * Product page — everything about ONE product in one place:
@@ -66,6 +67,13 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     active?: boolean;
     /** The product is gone from Odoo. Drop it, do not try to re-read it. */
     deleted?: true;
+    /**
+     * Odoo's stock tracking was turned on or off. The catalog shows a
+     * "Not counted in stock" badge and a filter counting these, so it has to be
+     * TOLD — exactly like `active` above, which sat stale for the same reason
+     * until it was added.
+     */
+    is_storable?: boolean;
   }) => void;
   /** View-only (no edit capability) — inputs disabled, no writes. */
   readOnly?: boolean;
@@ -132,6 +140,20 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const [homeSpots, setHomeSpots] = useState<number[]>([]);
   const [spotLabels, setSpotLabels] = useState<Record<number, string>>({});
   const [spotSheet, setSpotSheet] = useState(false);
+  // TRACK INVENTORY (Odoo 18 `is_storable`). Separate from "is it a physical
+  // good?", and it defaults to OFF — which is why 133 products in this catalog
+  // hold no stock figure and could never have taken a count.
+  const [storable, setStorable] = useState<boolean | null>(null);
+  // TAX — per restaurant, on a record most restaurants share. Two fields
+  // because Odoo keeps two and they are not the same money: what a supplier
+  // charges you, and what you charge a customer.
+  const [taxOpts, setTaxOpts] = useState<{ sale: TaxOption[]; purchase: TaxOption[] }>({ sale: [], purchase: [] });
+  const [saleTax, setSaleTax] = useState<number | null>(null);
+  const [purchaseTax, setPurchaseTax] = useState<number | null>(null);
+  // Tracked per tax type: saving the sales tax must not silently clear a warning
+  // that the PURCHASE tax is still doubled up.
+  const [taxClash, setTaxClash] = useState<{ sale: boolean; purchase: boolean }>({ sale: false, purchase: false });
+  const [taxRetired, setTaxRetired] = useState(false);    // set, but to a rate since archived
   // Editable "Count by" units (seeded from the defaults) + the manage sheet.
   const [packUnits, setPackUnits] = useState<string[]>(PACK_LABELS);
   const [manageUnits, setManageUnits] = useState(false);
@@ -187,6 +209,7 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     .catch(() => {});
   useEffect(() => { loadUnits(); }, []);
   const [loading, setLoading] = useState(true);
+  const loadRef = useRef(0);                                                    // newest-load token
   const [busy, setBusy] = useState<string | null>(null);      // which section is saving
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -199,9 +222,20 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   const effPack = unitWords(uomName, packLabel, looseLabel).pack;
 
   useEffect(() => {
+    // Only the newest load may write state. This effect re-runs when the
+    // restaurant changes, and the tax it reads is per-restaurant — so a slow
+    // first reply landing after a fast second would show one restaurant's tax
+    // rate labelled as another's, which is a wrong number stated confidently.
+    const token = ++loadRef.current;
+    // Tax is per restaurant. Clear it BEFORE the new read so a company change
+    // never leaves the previous restaurant's rate on screen, labelled as this
+    // one's, while the request is in flight.
+    setTaxOpts({ sale: [], purchase: [] });
+    setSaleTax(null); setPurchaseTax(null);
+    setTaxClash({ sale: false, purchase: false }); setTaxRetired(false);
     (async () => {
       try {
-        const [flagRes, uomRes, spotRes, locRes, masterRes] = await Promise.all([
+        const [flagRes, uomRes, spotRes, locRes, masterRes, taxRes] = await Promise.all([
           fetch(`/api/inventory/product-flags?ids=${product.id}`).then((r) => r.ok ? r.json() : { flags: [] }),
           fetch('/api/inventory/uoms').then((r) => r.ok ? r.json() : { uoms: [] }),
           fetch(`/api/inventory/product-locations?product_id=${product.id}`).then((r) => r.ok ? r.json() : { location_ids: [] }),
@@ -209,8 +243,34 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           // Odoo master (manager-only) — internal ref, sales price, cost. 403 for
           // non-managers is fine; the section is hidden for them anyway.
           fetch(`/api/inventory/products/${product.id}`).then((r) => r.ok ? r.json() : { product: null }).catch(() => ({ product: null })),
+          companyId
+            ? fetch(`/api/products/taxes?company_id=${companyId}`).then((r) => r.ok ? r.json() : { sale: [], purchase: [] }).catch(() => ({ sale: [], purchase: [] }))
+            : { sale: [], purchase: [] },
         ]);
+        if (token !== loadRef.current) return;
         const m = (masterRes as any).product;
+        // Tax: work out which entry on the product is THIS restaurant's, by
+        // intersecting with the taxes this restaurant owns. Never by position —
+        // the list is ordered by company id, so entry zero is somebody else's.
+        const opts = taxRes as { sale: TaxOption[]; purchase: TaxOption[]; retired?: number[] };
+        setTaxOpts({ sale: opts.sale || [], purchase: opts.purchase || [] });
+        if (m) {
+          const saleIds = (opts.sale || []).map((t) => t.id);
+          const purchIds = (opts.purchase || []).map((t) => t.id);
+          setSaleTax(currentCompanyTax(m.taxes_id || [], saleIds));
+          setPurchaseTax(currentCompanyTax(m.supplier_taxes_id || [], purchIds));
+          setTaxClash({
+            sale: hasConflictingTax(m.taxes_id || [], saleIds),
+            purchase: hasConflictingTax(m.supplier_taxes_id || [], purchIds),
+          });
+          // "Not set" and "set to a rate that has since been retired" look
+          // identical in an empty select but need different words — 92 products
+          // here are in the second state and a manager would swear they set it.
+          const retired = new Set(opts.retired || []);
+          const onRetired = (ids: number[]) => (ids || []).some((id) => retired.has(id));
+          setTaxRetired(onRetired(m.taxes_id) || onRetired(m.supplier_taxes_id));
+          setStorable(m.is_storable === true);
+        }
         if (m) {
           const dc = m.default_code || '';
           const lp = m.list_price != null ? String(m.list_price) : '';
@@ -223,7 +283,12 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           Promise.all([
             fetch(`/api/inventory/products/${product.id}/suppliers`).then((r) => r.ok ? r.json() : { suppliers: [] }).catch(() => ({ suppliers: [] })),
             fetch('/api/inventory/vendors').then((r) => r.ok ? r.json() : { vendors: [] }).catch(() => ({ vendors: [] })),
-          ]).then(([supRes, vendRes]) => { setSuppliers(supRes.suppliers || []); setVendors(vendRes.vendors || []); }).catch(() => {});
+            // Same token: this is un-awaited, so without the check it can land
+            // after the product changed and show the previous one's suppliers.
+          ]).then(([supRes, vendRes]) => {
+            if (token !== loadRef.current) return;
+            setSuppliers(supRes.suppliers || []); setVendors(vendRes.vendors || []);
+          }).catch(() => {});
         }
         const f = (flagRes.flags || [])[0];
         if (f) {
@@ -242,13 +307,75 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
         locs.forEach((l) => { labels[l.id] = locationPathLabel(l.id, locs); });
         setSpotLabels(labels);
       } catch { /* sections degrade to their defaults */ }
-      finally { setLoading(false); }
+      finally { if (token === loadRef.current) setLoading(false); }
     })();
   }, [product.id, companyId]);
 
   function flash(kind: 'ok' | 'err', text: string) {
     setMsg({ kind, text });
     setTimeout(() => setMsg(null), kind === 'ok' ? 1800 : 4000);
+  }
+
+  /** "7% Vorsteuer — 7%" or "19% Umsatzst (incl.) — 19%, in the price". The real
+   *  percentage travels with the name because the names in this database are not
+   *  reliable: one reads "19% Vorsteuer" and is configured at 0%. */
+  function taxLabel(t: TaxOption): string {
+    const pct = `${Number.isInteger(t.amount) ? t.amount : t.amount.toFixed(1)}%`;
+    return `${t.name} — ${pct}${t.included ? ', in the price' : ''}`;
+  }
+
+  /**
+   * Tax for THIS restaurant. The server merges rather than replaces, so the
+   * other restaurants' tax on the same shared product is left alone.
+   *
+   * Optimistic, then reverted on failure: the select must not sit showing a
+   * value Odoo refused.
+   */
+  async function saveTax(kind: 'sale' | 'purchase', taxId: number | null) {
+    if (readOnly || !companyId) return;
+    const prev = kind === 'sale' ? saleTax : purchaseTax;
+    const set = kind === 'sale' ? setSaleTax : setPurchaseTax;
+    set(taxId);
+    setBusy('tax');
+    try {
+      const res = await fetch(`/api/inventory/products/${product.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: companyId,
+          ...(kind === 'sale' ? { sale_tax_id: taxId } : { purchase_tax_id: taxId }),
+        }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { set(prev); flash('err', d.error || 'Could not save the tax'); return; }
+      // Only the type just saved is resolved; the other keeps its warning.
+      setTaxClash((c) => ({ ...c, [kind]: false }));
+      setTaxRetired(false);
+      flash('ok', taxId == null ? 'Tax cleared' : 'Tax saved');
+    } catch { set(prev); flash('err', 'Network error — the tax was not saved.'); }
+    finally { setBusy(null); }
+  }
+
+  /**
+   * Turn stock tracking on or off. Odoo can REFUSE to turn it off once the
+   * product has stock moves; that refusal is shown verbatim rather than left as
+   * a switch that silently springs back.
+   */
+  async function saveStorable(next: boolean) {
+    if (readOnly) return;
+    const prev = storable;
+    setStorable(next);
+    setBusy('storable');
+    try {
+      const res = await fetch(`/api/inventory/products/${product.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_storable: next }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setStorable(prev); flash('err', d.error || 'Could not change this'); return; }
+      flash('ok', next ? 'This product will be counted in stock' : 'This product is no longer counted');
+      onChanged({ is_storable: next });
+    } catch { setStorable(prev); flash('err', 'Network error — nothing changed.'); }
+    finally { setBusy(null); }
   }
 
   async function saveMaster(patch: { name?: string; uom_id?: number; categ_id?: number; barcode?: string; default_code?: string; list_price?: number; standard_price?: number; description?: string }) {
@@ -610,6 +737,65 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             </div>
           )}
 
+          {/* TAX. Two fields, not one, because Odoo keeps two and they are not
+              the same money: what a supplier charges you and what you charge a
+              customer. An ingredient you never sell needs only the first.
+
+              Per restaurant, on a record most restaurants share — so the write
+              merges rather than replaces (see lib/product-tax.ts). The real
+              percentage is printed beside every name because names lie: this
+              company has one called "19% Vorsteuer" configured at 0%. */}
+          {master0 && !readOnly && companyId && (taxOpts.sale.length > 0 || taxOpts.purchase.length > 0) && (
+            <div className="mb-4">
+              <label className={label}>Tax</label>
+              <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-3">
+                {taxOpts.purchase.length > 0 && (
+                  <div>
+                    <div className="text-[var(--fs-xs)] font-semibold text-gray-500 mb-1">Tax when buying it</div>
+                    <select value={purchaseTax ?? ''} disabled={busy === 'tax'}
+                      onChange={(e) => saveTax('purchase', e.target.value === '' ? null : Number(e.target.value))}
+                      className={box}>
+                      <option value="">Not set</option>
+                      {taxOpts.purchase.map((t) => (
+                        <option key={t.id} value={t.id}>{taxLabel(t)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {taxOpts.sale.length > 0 && (
+                  <div>
+                    <div className="text-[var(--fs-xs)] font-semibold text-gray-500 mb-1">Tax when selling it</div>
+                    <select value={saleTax ?? ''} disabled={busy === 'tax'}
+                      onChange={(e) => saveTax('sale', e.target.value === '' ? null : Number(e.target.value))}
+                      className={box}>
+                      <option value="">Not sold {'—'} leave empty</option>
+                      {taxOpts.sale.map((t) => (
+                        <option key={t.id} value={t.id}>{taxLabel(t)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <p className="text-[var(--fs-xs)] text-gray-400">
+                  This restaurant only. The other restaurants keep their own tax on this product.
+                </p>
+                {taxRetired && !taxClash && (
+                  <p className="text-[var(--fs-xs)] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                    This product still uses a tax rate that has been retired in Odoo, so it shows as
+                    blank above. Pick a current one.
+                  </p>
+                )}
+                {(taxClash.sale || taxClash.purchase) && (
+                  <p className="text-[var(--fs-xs)] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                    This product carries more than one {taxClash.sale && taxClash.purchase
+                      ? 'buying AND selling tax'
+                      : taxClash.sale ? 'selling tax' : 'buying tax'} for this restaurant,
+                    which Odoo cannot resolve. Choosing one above replaces them with it.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Suppliers (Odoo product.supplierinfo) — manager only. */}
           {master0 && !readOnly && (
             <div className="mb-4">
@@ -669,6 +855,43 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
           <p className="text-[var(--fs-xs)] text-gray-400 mb-4">
             Changing the unit changes what counts mean. Odoo may refuse a change to a different unit family — the reason will show here.
           </p>
+
+          {/* TRACK INVENTORY. The most consequential switch on this screen and
+              the one nothing in the portal has ever set: Odoo 18 asks "is this a
+              physical good?" and "do we track how much of it we hold?" as two
+              separate questions, and the second defaults to NO. With it off the
+              product has no stock figure, so an approved count has nowhere to
+              write — silently. Stated here in those terms rather than as
+              "is_storable". Managers only, because the value arrives with the
+              manager-gated master read — a viewer has no way to see it. */}
+          {storable !== null && (
+            <div className="mb-4">
+              <label className={label}>Stock</label>
+              <div className={`border rounded-xl p-3 ${storable ? 'bg-white border-gray-200' : 'bg-amber-50 border-amber-300'}`}>
+                <button type="button" disabled={readOnly || busy === 'storable'}
+                  onClick={() => saveStorable(!storable)}
+                  aria-pressed={storable}
+                  className="w-full flex items-center gap-3 text-left disabled:opacity-60">
+                  <span className={`flex-shrink-0 w-11 h-[26px] rounded-full transition-colors relative ${storable ? 'bg-green-600' : 'bg-gray-300'}`}>
+                    <span className={`absolute top-[3px] w-5 h-5 rounded-full bg-white shadow transition-all ${storable ? 'left-[23px]' : 'left-[3px]'}`} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[var(--fs-sm)] font-bold text-gray-900">Count this in stock</span>
+                    <span className="block text-[var(--fs-xs)] text-gray-500">
+                      {storable
+                        ? 'Odoo keeps a quantity for this product, so counts save.'
+                        : 'Odoo keeps NO quantity for this product — a count of it cannot be saved. Turn this on before counting it.'}
+                    </span>
+                  </span>
+                </button>
+                {!storable && !readOnly && (
+                  <p className="text-[var(--fs-xs)] text-gray-500 mt-2.5 pl-[56px]">
+                    Leave it off only for things you never count {'—'} a service, or a fee.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Count-by config */}
           <label className={label}>How staff count it</label>
