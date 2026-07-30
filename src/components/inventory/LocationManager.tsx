@@ -1,5 +1,8 @@
 'use client';
 import React, { useEffect, useState, useCallback } from 'react';
+import { announceChange } from '@/lib/record-events';
+import { isExpanded, toggleExpanded, expandAll, collapseAll, expandedCount } from '@/lib/tree-expansion';
+import { useRecordList } from '@/lib/useRecordChanges';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import AppHeader from '@/components/ui/AppHeader';
@@ -19,9 +22,14 @@ import type { CountLocation } from '@/types/inventory';
  * then a "+ Add inside" button. Depth 0 is a card; deeper levels are lighter,
  * indented rows. Drag-reorder stays within each sibling group at every level.
  */
-function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIcon }: {
+function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIcon, scope, expandTick, onToggle }: {
   node: LocationTreeNode<CountLocation>;
   depth: number;
+  /** Expansion scope — per screen, so a picker sheet opens independently. */
+  scope: string;
+  /** Bumped by the parent on any expand/collapse, to force this subtree to re-read. */
+  expandTick: number;
+  onToggle: (id: number) => void;
   sensors: ReturnType<typeof useSensors>;
   onDragEnd: (e: DragEndEvent) => void;
   onEdit: (loc: Partial<CountLocation>) => void;
@@ -29,6 +37,20 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
   iconOf?: (kind: string | null | undefined) => string;
 }) {
   const isRoot = depth === 0;
+  // COLLAPSIBLE. Ethan: rooms give the overview, shelves appear when you open the
+  // room. Closed by default at every level — a deep map buried its own rooms.
+  const hasChildren = node.children.length > 0;
+  // expandTick is read so this re-renders when the shared store changes; the
+  // store is module-level and deliberately outside React (see lib/tree-expansion).
+  void expandTick;
+  const isOpen = hasChildren ? isExpanded(scope, node.id) : true;
+  /** Everything below this node, so a closed row can say what it is hiding. */
+  const insideCount = React.useMemo(() => {
+    let n = 0;
+    const walk = (kids: LocationTreeNode[]) => { for (const k of kids) { n++; walk(k.children); } };
+    walk(node.children);
+    return n;
+  }, [node.children]);
   const rowPad = 12 + depth * 16;          // indent the row itself with depth
   const childPad = 12 + (depth + 1) * 16;  // "+ Add inside" aligns with children
   return (
@@ -59,9 +81,35 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
                 {iconOf(node.kind)}
               </div>
             )}
+            {/* The whole name area toggles, not just the arrow — a 12px chevron
+                is not a tablet target. Rows with nothing inside get a spacer so
+                every name still lines up. */}
+            {hasChildren ? (
+              <button
+                onClick={() => onToggle(node.id)}
+                aria-expanded={isOpen}
+                aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${node.name}`}
+                className="flex-shrink-0 w-8 h-8 -ml-1 rounded-lg flex items-center justify-center text-gray-400 active:bg-gray-100"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.5" strokeLinecap="round"
+                  className={`transition-transform ${isOpen ? 'rotate-90' : ''}`}>
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </button>
+            ) : (
+              <span className="flex-shrink-0 w-8" aria-hidden="true" />
+            )}
             <div className="flex-1 min-w-0">
               <div className={isRoot ? 'font-bold text-gray-900 truncate' : 'font-semibold text-gray-800 text-sm truncate'}>
                 {node.name}
+                {/* Collapsing SUMMARISES; it must not simply hide. A silent
+                    closed row makes people open every one again to check. */}
+                {hasChildren && !isOpen && (
+                  <span className="ml-2 text-[11px] font-semibold text-gray-400">
+                    {insideCount} inside
+                  </span>
+                )}
               </div>
               {/* Named slots just show their note (if any), not a type. */}
               {node.description && (
@@ -79,12 +127,13 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
             </button>
             <RecordLink type="location" id={node.id} label={node.name} />
           </div>
+          {isOpen && (
           <div className={isRoot ? 'border-t border-gray-100' : undefined}>
             {/* Drag-reorder within this node's own children (same pattern at every depth). */}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={node.children.map((c) => c.id)} strategy={verticalListSortingStrategy}>
                 {node.children.map((child) => (
-                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} iconOf={iconOf} />
+                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} iconOf={iconOf} scope={scope} expandTick={expandTick} onToggle={onToggle} />
                 ))}
               </SortableContext>
             </DndContext>
@@ -115,6 +164,7 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
               </div>
             </div>
           </div>
+          )}
         </>
       )}
     </DragRow>
@@ -153,21 +203,40 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
   }, [companyId]);
   useEffect(() => { load(); }, [load]);
 
+  // Hear about locations deleted ANYWHERE — most importantly on the location's
+  // own page, which is where the "it's still there until I refresh" complaint
+  // came from. Patches the array in place, so nothing re-mounts and the scroll
+  // position survives.
+  useRecordList('location', setLocations, (l) => l.id);
+
+  // COLLAPSE STATE. Held in a module-level store, not in this component and not
+  // in any browser storage — see lib/tree-expansion for why. The tick is what
+  // makes React notice a store that lives outside it.
+  const scope = `locations:${companyId ?? 'all'}`;
+  const [expandTick, setExpandTick] = useState(0);
+  const toggle = useCallback((id: number) => {
+    toggleExpanded(scope, id);
+    setExpandTick((t) => t + 1);
+  }, [scope]);
+  const allOpen = expandedCount(scope) > 0;
+
   const tree = buildLocationTree(locations);
 
   // Fetch that surfaces a failed mutation instead of silently "succeeding".
-  async function mutate(url: string, init: RequestInit): Promise<boolean> {
+  /** Returns the response body on success, null on failure — callers need
+   *  removed_ids to announce a cascade. */
+  async function mutate(url: string, init: RequestInit): Promise<Record<string, unknown> | null> {
     try {
       const res = await fetch(url, init);
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         alert(d.error || 'Something went wrong — please try again.');
-        return false;
+        return null;
       }
-      return true;
+      return (await res.json().catch(() => ({}))) as Record<string, unknown>;
     } catch {
       alert('Network error — please try again.');
-      return false;
+      return null;
     }
   }
 
@@ -211,9 +280,18 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
   }
   async function remove(id: number) {
     if (!confirm('Remove this location and everything under it?')) return;
-    const ok = await mutate(`/api/inventory/count-locations?id=${id}`, { method: 'DELETE' });
-    if (!ok) return;
-    setEditing(null); await load();
+    const body = await mutate(`/api/inventory/count-locations?id=${id}`, { method: 'DELETE' });
+    if (!body) return;
+    setEditing(null);
+    // Dropped IN PLACE rather than reloaded. `await load()` worked, but it
+    // re-rendered the whole tree from the top — which on a long list threw away
+    // the scroll position, so removing one shelf sent you back to the start.
+    const removed: number[] = Array.isArray(body.removed_ids) ? (body.removed_ids as number[]) : [id];
+    const gone = new Set(removed);
+    setLocations((prev) => prev.filter((l) => !gone.has(l.id)));
+    // ...and tell everything else, so the location's own page and any picker
+    // holding this tree drop it too.
+    announceChange({ kind: 'location', verb: 'deleted', id, alsoAffected: removed.filter((x) => x !== id) });
   }
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -267,6 +345,23 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
     <div className="min-h-screen bg-gray-50">
       <AppHeader title="Locations" subtitle="Set up where staff count" showBack onBack={onBack} />
       <div className="px-4 py-4 space-y-3">
+        {/* Building the map wants everything open; using it wants everything
+            closed. Same screen, two jobs — so both are one tap away. Text rather
+            than a button: it is a view control, not an action on the data. */}
+        {tree.length > 0 && (
+          <div className="flex justify-end -mb-1">
+            <button
+              onClick={() => {
+                if (allOpen) collapseAll(scope);
+                else expandAll(scope, locations.map((l) => l.id));
+                setExpandTick((t) => t + 1);
+              }}
+              className="text-[var(--fs-sm)] font-semibold text-blue-600 px-2 py-1 active:opacity-70"
+            >
+              {allOpen ? 'Collapse all' : 'Expand all'}
+            </button>
+          </div>
+        )}
         {loadError && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
             <p className="text-red-700 font-semibold text-sm mb-2">Could not load locations.</p>
@@ -293,6 +388,9 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
                 onDragEnd={handleDragEnd}
                 onEdit={setEditing}
                 iconOf={iconOf}
+                scope={scope}
+                expandTick={expandTick}
+                onToggle={toggle}
               />
             ))}
           </SortableContext>

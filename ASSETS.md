@@ -50,10 +50,14 @@ refresh, it is not finished.
 | `SwipeToDelete` | `ui/SwipeToDelete.tsx` | iOS-style swipe-to-reveal delete | 1 |
 | `ManagedListSheet` | `ui/ManagedListSheet.tsx` | Add/edit/delete/reorder CRUD sheet for lookup lists | 2 |
 
-**KNOWN GAP:** most modules print inline error text instead of using `Toast`, and
-there is **no shared "this record changed" signal** — so a detail screen that
-deletes something cannot tell the list behind it. That is the cause of the
-stale-after-delete bug. Needed: `lib/record-events.ts` + `useRecordChanges`.
+| `announceChange` / `onRecordChange` | `lib/record-events.ts` | **"This record changed."** A detail screen announces a delete/update; every mounted list hears it and patches in place. Module-level so it crosses Next's router cache | 2 |
+| `useRecordList` / `useRecordChanges` | `lib/useRecordChanges.ts` | Keep a list in step with changes made elsewhere, without re-fetching (a re-fetch re-mounts and loses the scroll) | 1 |
+
+**Use `announceChange` after EVERY mutation**, right after the server confirms.
+Pass `alsoAffected` for a cascade — deleting a room removes its shelves, and a
+list told only about the room keeps rendering orphans.
+
+**KNOWN GAP:** most modules print inline error text instead of using `Toast`.
 
 ---
 
@@ -138,7 +142,13 @@ importers.
 
 ## Planned — decided, not yet built
 
-### `CollapsibleTree` (`ui/`) — signed off 2026-07-30
+### `CollapsibleTree` — BUILT for locations 2026-07-30, not yet extracted
+`lib/tree-expansion.ts` holds the state (module-level Map, per-scope) and
+`LocationManager` has the chevron / count / expand-all. **Still to do: lift the
+node UI into `ui/CollapsibleTree` and use it for the category picker and the
+"Where does it live?" sheet**, which have the same nesting problem.
+
+### Original spec — signed off 2026-07-30
 The location tree renders every level at once, so a deep map (room → cabinet →
 shelf) buries the rooms. Same problem in the category picker
 (`All / RAW MATERIALS / Spices`), so this is ONE shared asset used by the

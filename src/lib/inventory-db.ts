@@ -2272,7 +2272,14 @@ export function updateCountLocation(id: number, companyId: number, data: Partial
  * NOTE (Phase 2): once session history references locations, switch this to a soft delete
  * (active = 0, already filtered by listCountLocations) so a historical count is never orphaned.
  */
-export function deleteCountLocation(id: number, companyId: number): void {
+/**
+ * Delete a location and everything inside it.
+ *
+ * Returns EVERY id that went, not just the one asked for. Deleting a room takes
+ * its shelves with it, and a list told only about the room keeps rendering
+ * children of something that no longer exists.
+ */
+export function deleteCountLocation(id: number, companyId: number): number[] {
   const db = getDb();
   const ids: number[] = [];
   const seen = new Set<number>();
@@ -2286,7 +2293,7 @@ export function deleteCountLocation(id: number, companyId: number): void {
   };
   // Only proceed if the root belongs to this company.
   const root = db.prepare('SELECT id FROM count_locations WHERE id = ? AND company_id = ?').get(id, companyId);
-  if (!root) return;
+  if (!root) return [];
   collect(id);
   const tx = db.transaction(() => {
     const ph = ids.map(() => '?').join(',');
@@ -2294,6 +2301,7 @@ export function deleteCountLocation(id: number, companyId: number): void {
     db.prepare(`DELETE FROM count_locations WHERE id IN (${ph}) AND company_id = ?`).run(...ids, companyId);
   });
   tx();
+  return ids;
 }
 
 export function listCountLocations(companyId: number): CountLocation[] {

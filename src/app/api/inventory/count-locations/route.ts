@@ -132,6 +132,8 @@ export async function DELETE(request: Request) {
   if (!loc || !canAccessCompany(user, loc.company_id))
     return NextResponse.json({ error: 'Location not found' }, { status: 404 });
 
-  deleteCountLocation(id, loc.company_id);
-  return NextResponse.json({ message: 'Location removed' });
+  // Every id that went, so the screen can drop the room AND its shelves without
+  // re-fetching — a re-fetch re-mounts the list and loses the scroll position.
+  const removed = deleteCountLocation(id, loc.company_id);
+  return NextResponse.json({ message: 'Location removed', removed_ids: removed });
 }

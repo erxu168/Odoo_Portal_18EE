@@ -11,6 +11,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { announceChange } from '@/lib/record-events';
 import AppHeader from '@/components/ui/AppHeader';
 import { Spinner, ProductThumb } from '@/components/inventory/ui';
 import RecordLink from '@/components/ui/RecordLink';
@@ -111,8 +112,27 @@ export default function LocationRecordPage({ params }: { params: { id: string } 
     try {
       const res = await fetch(`/api/inventory/count-locations?id=${loc.id}`, { method: 'DELETE' });
       if (!res.ok) { const d = await res.json().catch(() => ({})); setSaveErr(d.error || 'Could not delete'); return; }
+      const d = await res.json().catch(() => ({}));
+
+      // TELL THE LIST. Without this the Locations manager still shows the row:
+      // Next serves its route from cache, complete with the React state it had,
+      // so only a browser refresh cleared it. Announced AFTER the server
+      // confirmed, never before — a failed delete must not empty the screen.
+      //
+      // `removed_ids` carries the cascade: deleting a room takes its shelves, and
+      // a list told only about the room keeps rendering orphans.
+      const removed: number[] = Array.isArray(d.removed_ids) ? d.removed_ids : [];
+      announceChange({
+        kind: 'location',
+        verb: 'deleted',
+        id: loc.id,
+        alsoAffected: removed.filter((x) => x !== loc.id),
+      });
+
       // Never back() — a parent delete also removes the child we may have come
       // from, so return to the Locations manager, not a now-deleted record.
+      // It is already correct by the time we arrive, and because it is NOT
+      // re-mounted it also keeps its scroll position.
       router.replace('/inventory');
     } catch { setSaveErr('Network error — not deleted'); }
     finally { setSaving(false); }
