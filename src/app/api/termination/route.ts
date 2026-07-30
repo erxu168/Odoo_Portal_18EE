@@ -83,6 +83,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, data: records[0] });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    // Log the real cause — this catch silently ate an invalid-field crash for days.
+    console.error('POST /api/termination error:', err);
     return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }
