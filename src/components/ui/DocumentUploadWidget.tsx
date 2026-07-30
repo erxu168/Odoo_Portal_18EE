@@ -182,8 +182,12 @@ export default function DocumentUploadWidget({
   }
 
   // --- Document exists: show card with actions ---
-  if (hasDocument) {
-    return (
+  // NOT an early return. This branch used to `return` its own markup, which
+  // skipped the DropZone wrapper at the bottom of the file entirely — so you
+  // could drag a document in when the field was EMPTY but not to replace one.
+  // Assigned to `control` and allowed to fall through, so both states accept a
+  // drop, which is what the rule requires.
+  const hasDocControl = hasDocument ? (
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
@@ -227,11 +231,10 @@ export default function DocumentUploadWidget({
           )}
         </div>
       </div>
-    );
-  }
+  ) : null;
 
   // --- No document: show upload button ---
-  const control = (
+  const emptyControl = (
     <label className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl border-[1.5px] border-dashed border-gray-300 text-[var(--fs-sm)] font-semibold text-gray-500 active:bg-gray-50 cursor-pointer ${disabled || uploading ? "opacity-50 pointer-events-none" : ""}`}>
       {uploading ? (
         <>
@@ -260,14 +263,17 @@ export default function DocumentUploadWidget({
 
   // Wrapped rather than rebuilt: the label above is still the click target, the
   // drop is simply another way to reach the same upload.
+  // ONE DropZone around whichever state is showing, so a document can be dragged
+  // in AND dragged over to replace. Previously the has-document branch returned
+  // before ever reaching here.
   return (
     <DropZone
       onFiles={(fs) => handleUpload(fs[0])}
       accept={dropAccept}
       disabled={uploading || disabled}
-      hint={`Drop the ${label.toLowerCase()} here`}
+      hint={hasDocument ? `Drop to replace the ${label.toLowerCase()}` : `Drop the ${label.toLowerCase()} here`}
     >
-      {control}
+      {hasDocControl ?? emptyControl}
     </DropZone>
   );
 }

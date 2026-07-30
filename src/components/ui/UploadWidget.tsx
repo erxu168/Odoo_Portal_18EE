@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef } from "react";
+import DropZone from './DropZone';
 
 /**
  * Reusable dual-button upload widget (Take Photo + Choose Files).
@@ -62,7 +63,12 @@ export default function UploadWidget({
   const borderRadius = compact ? "rounded-xl" : "rounded-2xl";
 
   return (
-    <>
+    <DropZone
+      onFiles={(files) => { if (files.length > 0) onFiles(files); }}
+      multiple={multiple}
+      disabled={disabled}
+      hint="Drop it here"
+    >
       <div className="flex gap-2.5">
         <button
           type="button"
@@ -126,6 +132,6 @@ export default function UploadWidget({
         className="hidden"
         onChange={handleFileChange}
       />
-    </>
+    </DropZone>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import DropZone from '@/components/ui/DropZone';
 import { useRouter, useParams } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 
@@ -75,8 +76,8 @@ export default function AddMeterReading() {
       .finally(() => setLoading(false));
   }, [meterId]);
 
-  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] || null;
+  /** ONE path in — picker and drop must behave identically. */
+  function acceptPhoto(file: File | null) {
     setPhoto(file);
     if (photoPreview) {
       URL.revokeObjectURL(photoPreview);
@@ -227,6 +228,9 @@ export default function AddMeterReading() {
         {/* Photo */}
         <div>
           <label className={labelCls}>Photo</label>
+          {/* Drop wraps both states so a photo can be dragged in or dragged over
+              to replace, and routes through the same acceptPhoto(). */}
+          <DropZone onFiles={(fs) => { if (fs[0]) acceptPhoto(fs[0]); }} hint="Drop the meter photo here">
           {photoPreview ? (
             <div className="relative inline-block">
               <img
@@ -260,9 +264,10 @@ export default function AddMeterReading() {
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            onChange={handlePhotoChange}
+            onChange={(e) => { acceptPhoto(e.target.files?.[0] || null); e.target.value = ''; }}
             className="hidden"
           />
+          </DropZone>
         </div>
 
         {/* Notes */}

@@ -36,12 +36,53 @@ export class PhotoCancelled extends Error {
   constructor() { super('Photo upload cancelled'); this.name = 'PhotoCancelled'; }
 }
 
+/**
+ * Compress and upload one already-chosen file. The drag-and-drop path calls this
+ * directly; the picker path below funnels into it too, so a dropped photo and a
+ * picked photo cannot behave differently.
+ */
+export async function uploadTaskPhotoFile(
+  lineId: number, file: File, onAfter?: () => Promise<void>,
+): Promise<void> {
+  const compressed = await compressImage(file, 1280, 0.85);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  let body: { ok?: boolean; error?: string };
+  try {
+    const res = await fetch(`/api/tasks/lines/${lineId}/photo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: compressed.filename, data_base64: compressed.base64 }),
+      signal: controller.signal,
+    });
+    body = await res.json();
+  } catch (e: unknown) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error('Upload timed out — try again on a stronger connection');
+    }
+    throw e instanceof Error ? e : new Error('Upload failed');
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!body.ok) throw new Error(body.error || 'Upload failed');
+  if (onAfter) await onAfter();
+}
+
 export function uploadTaskPhoto(lineId: number, onAfter?: () => Promise<void>): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.capture = 'environment' as never;
+    // NO `capture`. It used to be 'environment', which forces the camera and
+    // REMOVES Photo Library and Browse Files from the native sheet — so a member
+    // of staff who had already photographed the finished job could not attach it,
+    // and neither could anyone on a desktop. `accept="image/*"` with no capture is
+    // exactly what makes iOS and Android offer all three.
+    //
+    // Binding rule: every photo field offers camera, gallery, file upload and
+    // drag-and-drop. Drag is handled at the call site (see uploadTaskPhotoFile),
+    // because this helper builds its own detached input and has no element to
+    // drop onto.
 
     // The browser fires no `change` event when the user dismisses the camera
     // dialog. Without an explicit cancel handler the returned Promise never
@@ -70,25 +111,10 @@ export function uploadTaskPhoto(lineId: number, onAfter?: () => Promise<void>): 
       const file = input.files?.[0];
       if (!file) return reject(new PhotoCancelled());
       try {
-        const compressed = await compressImage(file, 1280, 0.85);
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60000);
-        const res = await fetch(`/api/tasks/lines/${lineId}/photo`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: compressed.filename, data_base64: compressed.base64 }),
-          signal: controller.signal,
-        }).finally(() => clearTimeout(timeout));
-        const body = await res.json();
-        if (!body.ok) return reject(new Error(body.error || 'Upload failed'));
-        if (onAfter) await onAfter();
+        await uploadTaskPhotoFile(lineId, file, onAfter);
         resolve();
       } catch (e: unknown) {
-        if (e instanceof Error && e.name === 'AbortError') {
-          reject(new Error('Upload timed out — try again on a stronger connection'));
-        } else {
-          reject(e instanceof Error ? e : new Error('Upload failed'));
-        }
+        reject(e instanceof Error ? e : new Error('Upload failed'));
       }
     };
     input.click();

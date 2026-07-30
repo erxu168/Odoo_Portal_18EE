@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, use } from 'react';
+import DropZone from '@/components/ui/DropZone';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { TaskTemplate, TaskTemplateLine, TaskAttachment, TaskList, TaskListLine, DayPart, ModuleLink, RecurrenceRule, DepartmentOption } from '@/lib/odoo-tasks';
@@ -974,6 +975,11 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
                 ))}
               </ul>
             )}
+            {/* accept="" because this field takes a PDF **or** an image, and
+                DropZone filters on "image/" by default — it would have silently
+                rejected exactly the PDFs the button offers. */}
+            <DropZone onFiles={(fs) => { if (fs[0] && !uploadingFile) uploadAttachment(fs[0]); }}
+              accept="" disabled={uploadingFile} hint="Drop the file here">
             <label className="mt-2 inline-flex items-center justify-center gap-2 px-3 py-2 bg-orange-50 border-2 border-dashed border-orange-400 rounded-lg text-xs font-semibold text-orange-700 cursor-pointer hover:bg-orange-100">
               {uploadingFile ? '⏳ Reading file…' : '+ Add file (PDF / image)'}
               <input
@@ -991,6 +997,7 @@ function LineModal({ tplId, departmentId, line, onClose, onSaved, onBackgroundRe
                 }}
               />
             </label>
+            </DropZone>
           </div>
           </fieldset>
           {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}

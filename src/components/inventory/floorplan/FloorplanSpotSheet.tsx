@@ -7,6 +7,7 @@
  * page; this sheet is a quick look, not a second editor.
  */
 import { useEffect, useRef, useState } from 'react';
+import DropZone from '@/components/ui/DropZone';
 import { useRouter } from 'next/navigation';
 import { BottomSheet } from '@/components/ui/BottomSheet';
 import { downscale } from '@/components/inventory/LocationForm';
@@ -148,6 +149,15 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
                       <span className="block text-[10.5px] font-semibold text-gray-500">{p.category ?? 'Product'}</span>
                     </span>
                     {canEditProductPhotos && (
+                      // Drop onto the row itself, not just the button — a 36px
+                      // target is not a drop target. Routed through the same
+                      // pendingProductRef the picker uses, so the photo lands on
+                      // the right product either way.
+                      <DropZone
+                        onFiles={(fs) => { if (fs[0]) { pendingProductRef.current = p.id; onFile(fs[0]); } }}
+                        disabled={photoBusy === p.id}
+                        hint={`Drop a photo of ${p.name}`}
+                      >
                       <button
                         onClick={() => startPhoto(p.id)}
                         disabled={photoBusy === p.id}
@@ -156,6 +166,7 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
                       >
                         {photoBusy === p.id ? '…' : '📷'}
                       </button>
+                      </DropZone>
                     )}
                   </div>
                 ))}

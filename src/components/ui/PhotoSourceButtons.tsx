@@ -2,6 +2,7 @@
 
 import React, { useRef, useState } from 'react';
 import CameraCaptureModal from '@/components/ui/CameraCaptureModal';
+import DropZone from '@/components/ui/DropZone';
 
 /**
  * Three-source photo picker (Take photo · Photo library · Choose file).
@@ -58,6 +59,11 @@ export default function PhotoSourceButtons({ onFile, disabled = false }: Props) 
 
   return (
     <>
+      {/* Drag is the fourth way in, and it is required on every photo field —
+          not optional per screen. This component pre-dates that rule and had
+          camera, library and file only. */}
+      <DropZone onFiles={(fs) => { if (fs[0]) onFile(fs[0]); }} disabled={disabled}
+        hint="Drop the photo here">
       <div className="flex gap-2">
         <button type="button" onClick={openCamera} disabled={disabled} className={btn}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600">
@@ -89,6 +95,7 @@ export default function PhotoSourceButtons({ onFile, disabled = false }: Props) 
       <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={pick} disabled={disabled} />
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pick} disabled={disabled} />
 
+      </DropZone>
       {showCamera && (
         <CameraCaptureModal
           onCapture={(f) => { setShowCamera(false); onFile(f); }}

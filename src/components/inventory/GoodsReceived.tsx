@@ -9,6 +9,7 @@
  * (consumption = opening + received − closing).
  */
 import React, { useState, useEffect, useCallback } from 'react';
+import DropZone from '@/components/ui/DropZone';
 import { useCompany } from '@/lib/company-context';
 import { useHardwareScanner } from '@/hooks/useHardwareScanner';
 import { SearchBar, Spinner, EmptyState, ProductThumb, Stepper } from './ui';
@@ -272,11 +273,16 @@ function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabe
   const base = isPack ? crateTotal(crates, loose, unitsPerCrate) : qty;
   const canSave = base > 0 && !saving;
 
+  /** ONE path in, so a dropped photo and a picked photo cannot behave differently. */
+  async function acceptPhotoFile(file: File) {
+    try { setPhoto(await downscale(file)); } catch { /* unreadable file — leave the field as it was */ }
+  }
+
   async function onPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    try { setPhoto(await downscale(file)); } catch { /* ignore */ }
+    await acceptPhotoFile(file);
   }
 
   async function save() {
@@ -348,6 +354,9 @@ function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabe
 
         <label className="block text-[var(--fs-xs)] font-bold uppercase tracking-wide text-gray-400 mb-1">Delivery photo (optional)</label>
         <input ref={fileRef} type="file" accept="image/*" onChange={onPhoto} className="hidden" />
+        {/* Drop wraps BOTH states, so a photo can be dragged in and dragged over
+            to replace. Routed through the same handler as the picker. */}
+        <DropZone onFiles={(fs) => { if (fs[0]) acceptPhotoFile(fs[0]); }} hint="Drop the photo here">
         {photo ? (
           <div className="relative mb-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -359,6 +368,7 @@ function LogReceiptSheet({ product, hasImage, companyId, unitsPerCrate, packLabe
             {'📷'} Add a photo
           </button>
         )}
+        </DropZone>
 
         <button onClick={save} disabled={!canSave}
           className="w-full py-4 rounded-xl bg-green-600 text-white text-[var(--fs-xl)] font-bold shadow-lg shadow-green-600/30 active:bg-green-700 disabled:opacity-40 disabled:shadow-none">

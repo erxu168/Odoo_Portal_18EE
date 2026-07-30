@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type MutableRefObject } from 'react';
+import DropZone from '@/components/ui/DropZone';
 import {
   DndContext,
   closestCenter,
@@ -979,14 +980,23 @@ interface PhotoStepProps {
 function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRefs, onSetActive, onPins, onPickPhoto, onImgError }: PhotoStepProps) {
   const photo = hasPhoto(step);
 
-  function onFile(e: ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    e.target.value = '';
+  /**
+   * ONE path in for picker AND drop. Routing the drop through here matters: a
+   * dropped replacement must hit the same pin-wipe confirmation, or dragging a
+   * new photo onto a pinned step would silently discard its notes.
+   */
+  function acceptPhoto(f: File | null | undefined) {
     if (!f) return;
     // Replacing a photo that carries pins wipes them (coords go stale) — confirm.
     if (photo && step.pins.length > 0 &&
         !confirm('Replace this photo? Its note-pins will be removed because they point to the old photo.')) return;
     onPickPhoto(f);
+  }
+
+  function onFile(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    acceptPhoto(f);
   }
 
   // Shared place-a-pin path for BOTH tap-to-place (pointer) and the keyboard
@@ -1001,6 +1011,8 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
 
   return (
     <div className="space-y-2">
+      <DropZone onFiles={(fs) => acceptPhoto(fs[0])} disabled={disabled}
+        hint={photo ? 'Drop to replace' : 'Drop the photo here'}>
       {!photo ? (
         <label className={`flex flex-col items-center justify-center gap-1 px-3 py-6 bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg text-[12px] font-semibold text-gray-500 cursor-pointer hover:bg-gray-100 ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
           <span className="text-2xl" aria-hidden="true">📷</span>
@@ -1058,6 +1070,7 @@ function PhotoStep({ step, stepNo, disabled, busy, imgError, activeIndex, noteRe
           </div>
         </div>
       )}
+      </DropZone>
 
       {/* Note-pin list — each pin carries an editable note (required). */}
       {step.pins.length > 0 && (
