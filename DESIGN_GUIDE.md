@@ -17,7 +17,10 @@
 1. **Header card** — `ui/AppHeader`: blue `#2563EB`, `rounded-b-[28px]`, uppercase
    overline (module name) + bold white title + white/45 subtitle (usually the date),
    a 44px+ white/10 home/back square, and a right-side **action slot** carrying the
-   **company pill** (`ui/CompanyPill`).
+   company-change subscriber (`ui/CompanyPill` — INVISIBLE since 2026-07-31;
+   the top bar's `CompanySelector` is the portal's ONE visible company
+   switcher, per Ethan's decision. Keep passing `onSwitched` so the screen
+   reloads when the company changes).
 2. **KPI stat chips** — `ui/KpiRow` + `ui/KpiChip`, up to 4: white, bordered,
    `rounded-xl`, big number + 10px uppercase gray label. Number is red **only** when
    the stat is an actionable problem (overdue / blocked). Red always means "look here".
@@ -74,7 +77,7 @@
 
 ```tsx
 <AppHeader supertitle="INVENTORY" title="Stock counting" subtitle={date}
-  action={<CompanyPill onSwitched={() => location.reload()} />} />
+  action={<CompanyPill onSwitched={() => location.reload()} />} />  {/* renders nothing; fires on company switch */}
 <KpiRow columns={3}>
   <KpiChip value={3} label="Waiting" tone="danger" />
   <KpiChip value={2} label="To review" />

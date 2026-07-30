@@ -138,7 +138,7 @@ importers.
 | `useAddProduct` | `components/products/useAddProduct.ts` | Add-a-product state + save + navigate | 2 |
 | `BarcodeScanner` | `ui/BarcodeScanner.tsx` | Camera scan + hardware scanner fallback | 2 |
 | `SignInSheet` / `StationGate` | `ui/` | PIN sign-in, shared-tablet gate | 1 each |
-| `CompanyPill` / `CompanySelector` | `ui/` | Restaurant indicator / switcher | 4 / 1 |
+| `CompanyPill` / `CompanySelector` | `ui/` | `CompanySelector` (top bar) = the ONE visible switcher; `CompanyPill` = invisible per-screen change subscriber (`onSwitched` → reload) | 4 / 1 |
 
 ---
 
