@@ -76,7 +76,7 @@
                         <field name="resignation_received_date"/>
                     </group>
 
-                    <group string="Adresse">
+                    <group string="Address">
                         <group>
                             <field name="employee_street"/>
                             <field name="employee_zip"/>
@@ -127,9 +127,9 @@
                 <filter name="filter_draft" string="Entwurf" domain="[('state', '=', 'draft')]"/>
                 <filter name="filter_confirmed" string="Best&#228;tigt" domain="[('state', '=', 'confirmed')]"/>
                 <filter name="filter_signed" string="Unterschrieben" domain="[('state', '=', 'signed')]"/>
-                <filter name="filter_delivered" string="Zugestellt" domain="[('state', '=', 'delivered')]"/>
+                <filter name="filter_delivered" string="Delivered" domain="[('state', '=', 'delivered')]"/>
                 <separator/>
-                <filter name="filter_not_delivered" string="Noch nicht zugestellt"
+                <filter name="filter_not_delivered" string="Not yet delivered"
                     domain="[('state', '=', 'signed'), ('delivery_date', '=', False)]"/>
                 <group expand="0" string="Gruppieren">
                     <filter name="groupby_type" string="Type" context="{'group_by': 'termination_type'}"/>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireRole, AuthError } from '@/lib/auth';
+import { AuthError } from '@/lib/auth';
+import { requireTerminationAccess } from '@/lib/termination-access';
 import { buildLetterHtml, generatePdf } from '@/lib/termination-pdf';
 
 function formatDate(d: string | false): string {
@@ -39,7 +40,7 @@ function formatDate(d: string | false): string {
  */
 export async function POST(req: NextRequest) {
   try {
-    requireRole('manager');
+    await requireTerminationAccess();
     const odoo = getOdoo();
     const body = await req.json();
 

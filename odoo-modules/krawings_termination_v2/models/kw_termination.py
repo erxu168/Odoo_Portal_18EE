@@ -41,7 +41,8 @@ ALLOWED_TRANSITIONS = {
     'confirmed': {'signed', 'cancelled'},
     # signed -> delivered stays allowed for the portal-compat window and for
     # personal handover, where dispatch and receipt happen in one step.
-    'signed': {'in_transit', 'delivered', 'cancelled'},
+    'signed': {'in_transit', 'delivered', 'cancelled'},  # delivered only survives the
+    # delivered-invariant constraint when confirmation fields are written with it
     'in_transit': {'delivered', 'cancelled'},
     'delivered': {'archived'},
     'archived': set(),
@@ -304,6 +305,15 @@ class KwTermination(models.Model):
     # =================================================================
     # Guards
     # =================================================================
+    @api.constrains('state', 'delivery_method', 'delivery_date',
+                    'delivery_confirmed', 'delivery_confirmed_date')
+    def _check_state_invariants(self):
+        for rec in self:
+            if rec.state == 'in_transit' and (not rec.delivery_method or not rec.delivery_date):
+                raise ValidationError(_('A sent letter needs a delivery method and sent date.'))
+            if rec.state == 'delivered' and (not rec.delivery_confirmed or not rec.delivery_confirmed_date):
+                raise ValidationError(_('A delivered letter needs a confirmed delivery (with date).'))
+
     @api.constrains('delivery_date', 'receipt_date', 'delivery_confirmed_date')
     def _check_delivery_dates(self):
         for rec in self:
@@ -315,7 +325,7 @@ class KwTermination(models.Model):
     def write(self, vals):
         # Validate state transitions (portal writes state directly during the
         # compat window; actions below use the same path).
-        if 'state' in vals and not self.env.context.get('kw_skip_transition_check'):
+        if 'state' in vals:
             for rec in self:
                 new = vals['state']
                 if new != rec.state and new not in ALLOWED_TRANSITIONS.get(rec.state, set()):
@@ -326,22 +336,31 @@ class KwTermination(models.Model):
         # Terminal records are immutable (except un-archiving mistakes by admins
         # directly in Odoo, which intentionally requires a state change first).
         protected = self.filtered(lambda r: r.state in ('archived', 'cancelled'))
-        if protected and not self.env.context.get('kw_skip_transition_check'):
+        if protected:
             changing = set(vals) - {'message_follower_ids', 'activity_ids'}
             if changing:
                 raise UserError(_('Archived and cancelled terminations cannot be changed.'))
 
         # Letter-relevant edits after the letter exists mark the stored PDF outdated.
-        letter_changed = LETTER_FIELDS & set(vals)
+        # Only genuine value CHANGES count — the portal edit sheet resends every field.
+        def _norm(v):
+            return False if v in (False, None, '') else str(v)
+        letter_changed = set()
         flag_ids = []
-        if letter_changed and 'pdf_outdated' not in vals:
-            flag_ids = [r.id for r in self if r.state != 'draft' and (r.pdf_attachment_id or r.signed_pdf_attachment_id)]
+        if (LETTER_FIELDS & set(vals)) and 'pdf_outdated' not in vals:
+            for r in self:
+                if r.state == 'draft' or not (r.pdf_attachment_id or r.signed_pdf_attachment_id):
+                    continue
+                changed = {f for f in (LETTER_FIELDS & set(vals)) if _norm(vals[f]) != _norm(r[f])}
+                if changed:
+                    letter_changed |= changed
+                    flag_ids.append(r.id)
 
         res = super().write(vals)
 
         if flag_ids:
             recs = self.browse(flag_ids)
-            recs.with_context(kw_skip_transition_check=True).write({'pdf_outdated': True})
+            super(KwTermination, recs).write({'pdf_outdated': True})
             for r in recs:
                 r.message_post(body=_(
                     'A letter-relevant field changed (%s) — the stored PDF may no longer match this record.',
@@ -376,8 +395,13 @@ class KwTermination(models.Model):
     def action_confirm_delivery(self):
         """In Transit (or Signed, for personal handover) -> Delivered."""
         for rec in self:
-            if rec.state not in ('in_transit', 'signed'):
+            ok = rec.state == 'in_transit' or (
+                rec.state == 'signed' and rec.delivery_method in ('personal', 'bote')) or (
+                rec.state == 'delivered' and not rec.delivery_confirmed)
+            if not ok:
                 raise UserError(_('Only a sent termination can be confirmed as delivered.'))
+            if rec.state == 'signed' and not rec.delivery_date:
+                raise UserError(_('Record the handover date first.'))
             vals = {'state': 'delivered', 'delivery_confirmed': True}
             if not rec.delivery_confirmed_date:
                 vals['delivery_confirmed_date'] = fields.Date.today()
@@ -392,7 +416,9 @@ class KwTermination(models.Model):
                 raise UserError(_('Only a delivered termination can be archived.'))
             if not rec.delivery_confirmed:
                 raise UserError(_('Confirm delivery before archiving.'))
-            if rec.last_working_day and rec.last_working_day > date.today():
+            if not rec.last_working_day:
+                raise UserError(_('Set the last working day before archiving.'))
+            if rec.last_working_day > date.today():
                 raise UserError(_(
                     'The last working day (%s) has not passed yet.',
                 ) % rec.last_working_day)
@@ -407,6 +433,8 @@ class KwTermination(models.Model):
             if rec.state in ('delivered', 'archived'):
                 raise UserError(_('A delivered termination cannot be cancelled.'))
             rec.write({'state': 'cancelled'})
+            if rec.employee_id and rec.employee_id.departure_date:
+                rec.employee_id.departure_date = False
             rec.message_post(body=_('Termination cancelled.'))
         return True
 

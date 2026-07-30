@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireRole, AuthError } from '@/lib/auth';
+import { AuthError } from '@/lib/auth';
+import { requireTerminationAccess } from '@/lib/termination-access';
 import { TERMINATION_DETAIL_FIELDS, DELIVERY_METHOD_LABELS } from '@/types/termination';
 import type { DeliveryMethod } from '@/types/termination';
 
@@ -17,8 +18,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    requireRole('manager');
     const { id } = await params;
+    await requireTerminationAccess(Number(id));
     const odoo = getOdoo();
     const numId = Number(id);
     const body = await req.json();

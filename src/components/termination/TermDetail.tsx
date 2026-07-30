@@ -83,8 +83,8 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
 
   // --- Helpers for PdfDocumentCard ---
 
-  async function fetchPdfBase64(): Promise<{ base64: string; name: string }> {
-    const res = await fetch(`/api/termination/${id}/pdf`);
+  async function fetchPdfBase64(kind?: 'generated' | 'signed'): Promise<{ base64: string; name: string }> {
+    const res = await fetch(`/api/termination/${id}/pdf${kind ? `?kind=${kind}` : ''}`);
     if (!res.ok) throw new Error('No PDF available');
     const blob = await res.blob();
     const base64 = await new Promise<string>((resolve, reject) => {
@@ -101,8 +101,8 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     return { base64, name };
   }
 
-  async function printPdf() {
-    const res = await fetch(`/api/termination/${id}/pdf`);
+  async function printPdf(kind?: 'generated' | 'signed') {
+    const res = await fetch(`/api/termination/${id}/pdf${kind ? `?kind=${kind}` : ''}`);
     if (!res.ok) throw new Error('No PDF available');
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -379,35 +379,34 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
           <div className="flex items-center justify-between mb-3">
             <span className="text-[var(--fs-sm)] font-semibold text-gray-900">Details</span>
             <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium ${STATE_COLORS[rec.state] || ''}`}>{STATE_LABELS[rec.state]}</span>
+            {rec.pdf_outdated && <span className="ml-1.5 text-[11px] px-2.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800" title="A letter-relevant field changed after the PDF was generated">Letter may be outdated</span>}
           </div>
           <div className="space-y-2 text-[13px]">
             <div className="flex justify-between"><span className="text-gray-500">Company</span><span className="text-gray-900 font-medium">{rec.company_id[1]}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Letter date</span><span className="text-gray-900">{fmt(rec.letter_date)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Notice period</span><span className="text-gray-900">{rec.notice_period_text}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Notice period</span><span className="text-gray-900">{rec.notice_period_text_en || rec.notice_period_text}</span></div>
             <div className="flex justify-between"><span className="text-gray-500">Last working day</span><span className="text-gray-900 font-bold">{fmt(rec.last_working_day)}</span></div>
             {rec.tenure_years > 0 && <div className="flex justify-between"><span className="text-gray-500">Tenure</span><span className="text-gray-900">{rec.tenure_years} years</span></div>}
             {rec.include_severance && <div className="flex justify-between"><span className="text-gray-500">Severance</span><span className="text-gray-900 font-bold">{rec.severance_amount.toFixed(2)} EUR</span></div>}
           </div>
         </div>
 
-        {/* TERMINATION LETTER / SIGNED DOC */}
-        {hasPdf && !['draft', 'cancelled'].includes(rec.state) && (
+        {/* SIGNED DOCUMENT (the legally binding one) */}
+        {hasSigned && (
           <div className="mb-3">
             <PdfDocumentCard
-              label={hasSigned ? 'Signed document' : 'Termination letter'}
+              label="Signed document"
               hasDocument={true}
-              documentName={hasSigned ? signedDocName : pdfDocName}
-              onView={fetchPdfBase64}
-              onPrint={printPdf}
+              documentName={signedDocName}
+              onView={() => fetchPdfBase64('signed')}
+              onPrint={() => printPdf('signed')}
               onUpload={uploadSignedDoc}
-              onDelete={hasSigned && !['archived', 'cancelled'].includes(rec.state) ? deleteSignedDoc : undefined}
-              accent={hasSigned ? 'green' : 'blue'}
+              onDelete={!['archived', 'cancelled'].includes(rec.state) ? deleteSignedDoc : undefined}
+              accent="green"
             />
           </div>
         )}
-
-        {/* Upload signed doc slot */}
-        {hasPdf && !hasSigned && !['draft', 'cancelled'].includes(rec.state) && (
+        {!hasSigned && !['draft', 'cancelled'].includes(rec.state) && (
           <div className="mb-3">
             <PdfDocumentCard
               label="Signed document"
@@ -417,6 +416,21 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
               onUpload={uploadSignedDoc}
               accent="green"
               emptyLabel="Upload signed letter"
+            />
+          </div>
+        )}
+
+        {/* GENERATED LETTER (unsigned original) */}
+        {hasPdf && !['draft', 'cancelled'].includes(rec.state) && (
+          <div className="mb-3">
+            <PdfDocumentCard
+              label="Generated letter (unsigned)"
+              hasDocument={true}
+              documentName={pdfDocName}
+              onView={() => fetchPdfBase64('generated')}
+              onPrint={() => printPdf('generated')}
+              onUpload={uploadSignedDoc}
+              accent="blue"
             />
           </div>
         )}
@@ -508,7 +522,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
               className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold text-[14px] active:bg-amber-600">
               Letter sent — record dispatch</button>
           )}
-          {rec.state === 'in_transit' && !showConfirmDelivery && (
+          {((rec.state === 'in_transit') || (rec.state === 'delivered' && !rec.delivery_confirmed)) && !showConfirmDelivery && (
             <button onClick={() => { setConfirmDeliveryDate(new Date().toISOString().split('T')[0]); setShowConfirmDelivery(true); }}
               className="w-full py-3.5 rounded-xl bg-emerald-600 text-white font-semibold text-[14px] active:bg-emerald-700">
               Confirm delivery</button>

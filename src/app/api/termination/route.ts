@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireRole, AuthError } from '@/lib/auth';
+import { AuthError } from '@/lib/auth';
+import { requireTerminationAccess, terminationCompanyScope } from '@/lib/termination-access';
+import { canAccessCompany } from '@/lib/inventory-access';
 import {
   TERMINATION_LIST_FIELDS,
   TERMINATION_DETAIL_FIELDS,
@@ -15,17 +17,25 @@ const MODEL = 'kw.termination';
  */
 export async function GET(req: NextRequest) {
   try {
-    requireRole('manager');
+    const user = await requireTerminationAccess();
     const odoo = getOdoo();
     const { searchParams } = new URL(req.url);
 
     const domain: unknown[][] = [];
+    // Company scoping is authorization, not a filter preference.
+    const scope = terminationCompanyScope(user);
+    if (scope !== undefined) domain.push(['company_id', 'in', scope.length ? scope : [-1]]);
     const stateFilter = searchParams.get('state');
     if (stateFilter) domain.push(['state', '=', stateFilter]);
     const empId = searchParams.get('employee_id');
     if (empId) domain.push(['employee_id', '=', Number(empId)]);
     const companyId = searchParams.get('company_id');
-    if (companyId) domain.push(['company_id', '=', Number(companyId)]);
+    if (companyId) {
+      if (!canAccessCompany(user, Number(companyId))) {
+        return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 });
+      }
+      domain.push(['company_id', '=', Number(companyId)]);
+    }
 
     const records = await odoo.searchRead(MODEL, domain, TERMINATION_LIST_FIELDS, {
       order: 'letter_date desc',
@@ -64,7 +74,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    requireRole('manager');
+    const user = await requireTerminationAccess();
     const odoo = getOdoo();
     const body: TerminationCreateValues = await req.json();
 
@@ -74,6 +84,15 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    // Company comes from the employee record, never from the client.
+    const emp = (await odoo.read('hr.employee', [Number(body.employee_id)], ['company_id']))?.[0];
+    if (!emp) return NextResponse.json({ ok: false, error: 'Employee not found' }, { status: 404 });
+    const empCompany = Array.isArray(emp.company_id) ? emp.company_id[0] : emp.company_id;
+    if (!canAccessCompany(user, empCompany)) {
+      return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 });
+    }
+    body.company_id = empCompany;
 
     const id = await odoo.create(MODEL, body);
 

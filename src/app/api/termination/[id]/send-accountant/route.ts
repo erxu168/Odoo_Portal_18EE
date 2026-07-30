@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireRole, AuthError } from '@/lib/auth';
+import { AuthError } from '@/lib/auth';
+import { requireTerminationAccess } from '@/lib/termination-access';
 import { TERMINATION_DETAIL_FIELDS, TERMINATION_TYPE_LABELS } from '@/types/termination';
 import type { TerminationType } from '@/types/termination';
 
@@ -16,13 +17,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    requireRole('manager');
     const { id } = await params;
+    await requireTerminationAccess(Number(id));
     const odoo = getOdoo();
     const numId = Number(id);
 
     const records = await odoo.read(MODEL, [numId], [
-      'state', 'pdf_attachment_id', 'employee_name', 'company_id',
+      'state', 'pdf_attachment_id', 'signed_pdf_attachment_id', 'employee_name', 'company_id',
       'termination_type', 'last_working_day', 'sent_to_accountant',
     ]);
     if (!records || records.length === 0) {
@@ -30,7 +31,7 @@ export async function POST(
     }
     const rec = records[0];
 
-    if (!rec.pdf_attachment_id) {
+    if (!rec.pdf_attachment_id && !rec.signed_pdf_attachment_id) {
       return NextResponse.json(
         { ok: false, error: 'No PDF generated yet. Generate the PDF first.' },
         { status: 400 },
@@ -73,7 +74,8 @@ export async function POST(
 </ul>
 <p>Mit freundlichen Gr\u00fc\u00dfen<br/>${companyName}</p>`;
 
-    const attId = rec.pdf_attachment_id[0];
+    // Send the signed letter when available — that is the binding document.
+    const attId = (rec.signed_pdf_attachment_id || rec.pdf_attachment_id)[0];
     const mailId = await odoo.create('mail.mail', {
       subject,
       email_to: accountantEmail,

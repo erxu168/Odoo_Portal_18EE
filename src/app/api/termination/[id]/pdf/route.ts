@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireRole, AuthError } from '@/lib/auth';
+import { AuthError } from '@/lib/auth';
+import { requireTerminationAccess } from '@/lib/termination-access';
 import { buildLetterHtml, generatePdf } from '@/lib/termination-pdf';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
@@ -21,8 +22,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    requireRole('manager');
     const { id } = await params;
+    await requireTerminationAccess(Number(id));
     const odoo = getOdoo();
     const numId = Number(id);
 
@@ -116,21 +117,27 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    requireRole('manager');
     const { id } = await params;
+    await requireTerminationAccess(Number(id));
     const odoo = getOdoo();
     const numId = Number(id);
 
-    const records = await odoo.read(MODEL, [numId], ['pdf_attachment_id', 'employee_name', 'letter_date']);
+    const kind = new URL(_req.url).searchParams.get('kind'); // 'generated' | 'signed' | null
+    const records = await odoo.read(MODEL, [numId], ['pdf_attachment_id', 'signed_pdf_attachment_id', 'employee_name', 'letter_date']);
     if (!records || records.length === 0) {
       return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
     }
     const rec = records[0];
-    if (!rec.pdf_attachment_id) {
+    // Prefer the SIGNED document when it exists (that is the legally relevant
+    // one); ?kind= lets the UI request a specific slot.
+    const slot = kind === 'generated' ? rec.pdf_attachment_id
+      : kind === 'signed' ? rec.signed_pdf_attachment_id
+      : (rec.signed_pdf_attachment_id || rec.pdf_attachment_id);
+    if (!slot) {
       return NextResponse.json({ ok: false, error: 'No PDF generated yet' }, { status: 404 });
     }
 
-    const attId = rec.pdf_attachment_id[0];
+    const attId = slot[0];
     const attachments = await odoo.read('ir.attachment', [attId], ['datas', 'name']);
     if (!attachments || !attachments[0]?.datas) {
       return NextResponse.json({ ok: false, error: 'Attachment not found' }, { status: 404 });

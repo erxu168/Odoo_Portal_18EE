@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireRole, AuthError } from '@/lib/auth';
+import { AuthError } from '@/lib/auth';
+import { requireTerminationAccess } from '@/lib/termination-access';
 import { exec } from 'child_process';
 import { writeFileSync, readFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
@@ -9,6 +10,10 @@ import { randomBytes } from 'crypto';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
 const WKHTMLTOPDF = '/usr/local/bin/wkhtmltopdf';
+
+function isPdfCheck(cleaned: string, raw?: string): boolean {
+  return cleaned.startsWith('JVBER') || !!raw?.startsWith('data:application/pdf');
+}
 
 /**
  * POST /api/termination/:id/upload-signed
@@ -24,8 +29,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    requireRole('manager');
     const { id } = await params;
+    await requireTerminationAccess(Number(id));
     const termId = Number(id);
     const body = await req.json();
     const { image_base64: rawImage, filename } = body;
@@ -33,6 +38,9 @@ export async function POST(
     let image_base64 = rawImage;
     if (!image_base64) {
       return NextResponse.json({ ok: false, error: 'No image provided' }, { status: 400 });
+    }
+    if (typeof image_base64 !== 'string' || image_base64.length > 20_000_000) {
+      return NextResponse.json({ ok: false, error: 'File too large (max ~15 MB)' }, { status: 413 });
     }
 
     // Strip data URL prefix if present
@@ -50,6 +58,15 @@ export async function POST(
       image_base64.startsWith('data:application/pdf') ||
       body.image_base64?.startsWith('data:application/pdf')
     );
+
+    // The payload is interpolated into HTML for wkhtmltopdf — allow only clean
+    // base64 of a real image/PDF so nothing can escape the src attribute.
+    if (!/^[A-Za-z0-9+/=\r\n]+$/.test(image_base64.replace(/^data:[^,]+,/, ''))) {
+      return NextResponse.json({ ok: false, error: 'Invalid file data' }, { status: 400 });
+    }
+    if (!/^(image\/(jpeg|jpg|png|webp|heic|heif)|application\/pdf)$/.test(mimeType) && !isPdfCheck(image_base64, body.image_base64)) {
+      return NextResponse.json({ ok: false, error: 'Only images or PDF files are accepted' }, { status: 400 });
+    }
 
     let pdfBase64: string;
 
@@ -106,12 +123,18 @@ export async function POST(
     // unsigned original stays available on the record.
     const odoo = getOdoo();
     let oldSignedAttachId: number | null = null;
+    let generatedAttachId: number | null = null;
     try {
-      const current = await odoo.read('kw.termination', [termId], ['signed_pdf_attachment_id']);
+      const current = await odoo.read('kw.termination', [termId], ['signed_pdf_attachment_id', 'pdf_attachment_id']);
       if (current?.[0]?.signed_pdf_attachment_id) {
         oldSignedAttachId = Array.isArray(current[0].signed_pdf_attachment_id)
           ? current[0].signed_pdf_attachment_id[0]
           : current[0].signed_pdf_attachment_id;
+      }
+      if (current?.[0]?.pdf_attachment_id) {
+        generatedAttachId = Array.isArray(current[0].pdf_attachment_id)
+          ? current[0].pdf_attachment_id[0]
+          : current[0].pdf_attachment_id;
       }
     } catch (_e) {}
 
@@ -131,9 +154,15 @@ export async function POST(
     await odoo.write('kw.termination', [termId], {
       signed_pdf_attachment_id: attachId,
     });
-    if (oldSignedAttachId && oldSignedAttachId !== attachId) {
+    // Never unlink an attachment still referenced as the generated PDF (aliases
+    // can exist from uploads made during the pre-v3 deployment window), and only
+    // ones owned by this record.
+    if (oldSignedAttachId && oldSignedAttachId !== attachId && oldSignedAttachId !== generatedAttachId) {
       try {
-        await odoo.call('ir.attachment', 'unlink', [[oldSignedAttachId]]);
+        const att = (await odoo.read('ir.attachment', [oldSignedAttachId], ['res_model', 'res_id']))?.[0];
+        if (att && att.res_model === 'kw.termination' && att.res_id === termId) {
+          await odoo.call('ir.attachment', 'unlink', [[oldSignedAttachId]]);
+        }
       } catch (_e) {
         // Non-critical — orphaned attachment is harmless
       }
@@ -171,8 +200,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    requireRole('manager');
     const { id } = await params;
+    await requireTerminationAccess(Number(id));
     const termId = Number(id);
     const odoo = getOdoo();
 

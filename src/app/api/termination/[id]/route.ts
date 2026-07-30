@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireRole, AuthError } from '@/lib/auth';
+import { AuthError } from '@/lib/auth';
+import { requireTerminationAccess } from '@/lib/termination-access';
 import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
 const MODEL = 'kw.termination';
@@ -26,8 +27,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    requireRole('manager');
     const { id } = await params;
+    await requireTerminationAccess(Number(id));
     const odoo = getOdoo();
     const records = await odoo.read(MODEL, [Number(id)], TERMINATION_DETAIL_FIELDS);
     if (!records || records.length === 0) {
@@ -49,8 +50,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    requireRole('manager');
     const { id } = await params;
+    await requireTerminationAccess(Number(id));
     const odoo = getOdoo();
     const body = await req.json();
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
-import { requireRole, AuthError } from '@/lib/auth';
+import { AuthError } from '@/lib/auth';
+import { requireTerminationAccess } from '@/lib/termination-access';
 
 /**
  * GET /api/termination/employees?company_id=5
@@ -8,7 +9,7 @@ import { requireRole, AuthError } from '@/lib/auth';
  */
 export async function GET(req: NextRequest) {
   try {
-    requireRole('manager');
+    await requireTerminationAccess();
     const odoo = getOdoo();
     const { searchParams } = new URL(req.url);
 

@@ -137,7 +137,7 @@ export default function TermWizard({ onBack, onCreated, onHome, preselectEmploye
       const createJson = await createRes.json();
       if (!createJson.ok) throw new Error(createJson.error || 'Failed to create draft');
       const rec = createJson.data;
-      setComputedNoticePeriod(rec.notice_period_text || '');
+      setComputedNoticePeriod(rec.notice_period_text_en || rec.notice_period_text || '');
       setComputedLastDay(rec.last_working_day || '');
       const previewBody = { ...body, notice_period_text: rec.notice_period_text, last_working_day: rec.last_working_day, employee_start_date: rec.employee_start_date, tenure_years: rec.tenure_years };
       const pdfRes = await fetch('/api/termination/preview', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(previewBody) });
@@ -166,7 +166,7 @@ export default function TermWizard({ onBack, onCreated, onHome, preselectEmploye
 
   async function handleDiscard() {
     if (createdRecordId) {
-      try { await fetch(`/api/termination/${createdRecordId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state: 'cancelled' }) }); } catch { /* best effort */ }
+      try { await fetch(`/api/termination/${createdRecordId}/cancel`, { method: 'POST' }); } catch { /* best effort */ }
       setCreatedRecordId(null);
     }
     setPdfBase64(null); setStep('details');

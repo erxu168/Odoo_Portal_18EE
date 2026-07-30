@@ -70,6 +70,8 @@ export interface TerminationRecord {
   // Accountant
   sent_to_accountant: boolean;
   sent_to_accountant_date: string | false;
+  notice_period_text_en: string | false;
+  pdf_outdated: boolean;
   display_name: string;
 }
 
@@ -146,5 +148,5 @@ export const TERMINATION_DETAIL_FIELDS = [
   // NOTE: no 'archive_scheduled' — the field was dropped from the Odoo model
   // (krawings_termination_v2); requesting it made every read 500. The archive
   // flow works off state + last_working_day, not this flag.
-  'sent_to_accountant_date', 'display_name',
+  'sent_to_accountant_date', 'display_name', 'notice_period_text_en', 'pdf_outdated',
 ];
