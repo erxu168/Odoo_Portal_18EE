@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useState, useCallback } from 'react';
 import { announceChange } from '@/lib/record-events';
-import { isExpanded, toggleExpanded, expandAll, collapseAll, expandedCount } from '@/lib/tree-expansion';
+import { isExpanded, toggleExpanded, expandAll, collapseAll, expandedCount, onExpansionChange } from '@/lib/tree-expansion';
 import { useRecordList } from '@/lib/useRecordChanges';
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
@@ -22,14 +22,11 @@ import type { CountLocation } from '@/types/inventory';
  * then a "+ Add inside" button. Depth 0 is a card; deeper levels are lighter,
  * indented rows. Drag-reorder stays within each sibling group at every level.
  */
-function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIcon, scope, expandTick, onToggle }: {
+function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIcon, scope }: {
   node: LocationTreeNode<CountLocation>;
   depth: number;
   /** Expansion scope — per screen, so a picker sheet opens independently. */
   scope: string;
-  /** Bumped by the parent on any expand/collapse, to force this subtree to re-read. */
-  expandTick: number;
-  onToggle: (id: number) => void;
   sensors: ReturnType<typeof useSensors>;
   onDragEnd: (e: DragEndEvent) => void;
   onEdit: (loc: Partial<CountLocation>) => void;
@@ -37,13 +34,7 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
   iconOf?: (kind: string | null | undefined) => string;
 }) {
   const isRoot = depth === 0;
-  // COLLAPSIBLE. Ethan: rooms give the overview, shelves appear when you open the
-  // room. Closed by default at every level — a deep map buried its own rooms.
   const hasChildren = node.children.length > 0;
-  // expandTick is read so this re-renders when the shared store changes; the
-  // store is module-level and deliberately outside React (see lib/tree-expansion).
-  void expandTick;
-  const isOpen = hasChildren ? isExpanded(scope, node.id) : true;
   /** Everything below this node, so a closed row can say what it is hiding. */
   const insideCount = React.useMemo(() => {
     let n = 0;
@@ -51,6 +42,13 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
     walk(node.children);
     return n;
   }, [node.children]);
+  // Open/closed comes from the SHARED ui/CollapsibleNode below, not from a second
+  // copy of the mechanics here. This screen had its own chevron, its own count and
+  // its own version-counter threading before ui/CollapsibleNode existed; keeping
+  // both would have been two places to fix the same behaviour.
+  const [, bumpOpen] = React.useState(0);
+  React.useEffect(() => onExpansionChange(scope, () => bumpOpen((n) => n + 1)), [scope]);
+  const isOpen = hasChildren ? isExpanded(scope, node.id) : true;
   const rowPad = 12 + depth * 16;          // indent the row itself with depth
   const childPad = 12 + (depth + 1) * 16;  // "+ Add inside" aligns with children
   return (
@@ -81,12 +79,15 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
                 {iconOf(node.kind)}
               </div>
             )}
-            {/* The whole name area toggles, not just the arrow — a 12px chevron
-                is not a tablet target. Rows with nothing inside get a spacer so
-                every name still lines up. */}
+            {/* The OPEN/CLOSED STATE is shared — lib/tree-expansion, the same
+                store and the same subscription ui/CollapsibleNode uses, so
+                "Expand all" and the session-only reset behave identically here.
+                Only the chevron's PLACEMENT is local: this row puts it after the
+                photo, whereas CollapsibleNode puts it before the row. That is a
+                layout difference, not a second implementation. */}
             {hasChildren ? (
               <button
-                onClick={() => onToggle(node.id)}
+                onClick={() => toggleExpanded(scope, node.id)}
                 aria-expanded={isOpen}
                 aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${node.name}`}
                 className="flex-shrink-0 w-8 h-8 -ml-1 rounded-lg flex items-center justify-center text-gray-400 active:bg-gray-100"
@@ -103,8 +104,8 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
             <div className="flex-1 min-w-0">
               <div className={isRoot ? 'font-bold text-gray-900 truncate' : 'font-semibold text-gray-800 text-sm truncate'}>
                 {node.name}
-                {/* Collapsing SUMMARISES; it must not simply hide. A silent
-                    closed row makes people open every one again to check. */}
+                {/* Collapsing SUMMARISES; a silent closed row makes people open
+                    every one again to find out what is in it. */}
                 {hasChildren && !isOpen && (
                   <span className="ml-2 text-[11px] font-semibold text-gray-400">
                     {insideCount} inside
@@ -133,7 +134,7 @@ function LocationNode({ node, depth, sensors, onDragEnd, onEdit, iconOf = typeIc
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={node.children.map((c) => c.id)} strategy={verticalListSortingStrategy}>
                 {node.children.map((child) => (
-                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} iconOf={iconOf} scope={scope} expandTick={expandTick} onToggle={onToggle} />
+                  <LocationNode key={child.id} node={child} depth={depth + 1} sensors={sensors} onDragEnd={onDragEnd} onEdit={onEdit} iconOf={iconOf} scope={scope} />
                 ))}
               </SortableContext>
             </DndContext>
@@ -213,11 +214,10 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
   // in any browser storage — see lib/tree-expansion for why. The tick is what
   // makes React notice a store that lives outside it.
   const scope = `locations:${companyId ?? 'all'}`;
-  const [expandTick, setExpandTick] = useState(0);
-  const toggle = useCallback((id: number) => {
-    toggleExpanded(scope, id);
-    setExpandTick((t) => t + 1);
-  }, [scope]);
+  // The list itself only needs to repaint for the Expand-all label; each node
+  // subscribes to the store on its own via ui/CollapsibleNode.
+  const [, bumpAll] = useState(0);
+  useEffect(() => onExpansionChange(scope, () => bumpAll((n) => n + 1)), [scope]);
   const allOpen = expandedCount(scope) > 0;
 
   const tree = buildLocationTree(locations);
@@ -354,7 +354,6 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
               onClick={() => {
                 if (allOpen) collapseAll(scope);
                 else expandAll(scope, locations.map((l) => l.id));
-                setExpandTick((t) => t + 1);
               }}
               className="text-[var(--fs-sm)] font-semibold text-blue-600 px-2 py-1 active:opacity-70"
             >
@@ -389,8 +388,6 @@ export default function LocationManager({ onBack, companyId: companyIdProp }: { 
                 onEdit={setEditing}
                 iconOf={iconOf}
                 scope={scope}
-                expandTick={expandTick}
-                onToggle={toggle}
               />
             ))}
           </SortableContext>

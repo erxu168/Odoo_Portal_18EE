@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import CollapsibleNode from '@/components/ui/CollapsibleNode';
+import { collapseAll, expandAll, expandedCount } from '@/lib/tree-expansion';
 import { Spinner, ProductThumb } from './ui';
 import { buildLocationTree } from '@/lib/location-tree';
 import { useLocationTypes } from '@/lib/use-location-types';
@@ -107,6 +109,9 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
 
   // Areas (roots) with their child spots, in walking order.
   const tree = useMemo(() => buildLocationTree(spots as SpotRow[]), [spots]);
+  // Per-screen scope, per product: opening the map for one product should not
+  // decide how it opens for the next.
+  const spotScope = `spots:${product.id}`;
 
   const byId = useMemo(() => new Map<number, SpotRow>(spots.map((s) => [s.id, s] as [number, SpotRow])), [spots]);
   const childrenOf = useMemo(() => {
@@ -369,18 +374,50 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
   // deeper node is a plain tickable row. Each node at every level is tickable
   // (its SpotToggle checkbox) and editable (the pencil), and its own children
   // nest inside the same left-rail indent, one level deeper each time.
+  /** Everything below a node, at any depth — what a closed row summarises. */
+  function countBelow(node: any): number {
+    let n = 0;
+    const walk = (kids: any[]) => { for (const k of kids) { n++; walk(k.children || []); } };
+    walk(node.children || []);
+    return n;
+  }
+
+  /**
+   * Does this branch hold a TICKED spot?
+   *
+   * It must then stay open. A chosen shelf hidden inside a collapsed room is a
+   * selection the user cannot see — and on this screen that is a place staff will
+   * be sent to count, so silently hiding it is worse than a long list. This is the
+   * one thing the Locations manager did not have to worry about.
+   */
+  function hasChosenInside(node: any): boolean {
+    for (const k of (node.children || [])) {
+      if (chosen.has(k.id) || hasChosenInside(k)) return true;
+    }
+    return false;
+  }
+
   function renderNode(node: any, isTop: boolean) {
     const kids = node.children || [];
     const showAddInside = editMode && canManageLocations;
     return (
-      <div key={node.id} className={isTop ? 'mb-3' : undefined}>
-        {/* The unit itself is ONE tickable row (photo + name + note + edit) —
-            no separate header, so it can't appear twice. Its spots (if any)
-            sit indented inside it, and so do THEIRS, to any depth. In Edit mode
-            a "+ Add inside" button lets you nest a new level (e.g. Shelf #1). */}
-        <SpotToggle s={node} isArea={isTop} />
-        {(kids.length > 0 || showAddInside) && (
-          <div className="flex flex-col gap-1.5 mt-1.5 ml-3 pl-3 border-l-2 border-gray-200">
+      <CollapsibleNode
+        key={node.id}
+        scope={spotScope}
+        id={node.id}
+        label={node.name}
+        insideCount={countBelow(node)}
+        // Open while building the map, and open when something inside is picked.
+        forceOpen={editMode || hasChosenInside(node)}
+        className={isTop ? 'mb-3' : undefined}
+        row={(
+          /* The unit itself is ONE tickable row (photo + name + note + edit) —
+             no separate header, so it can't appear twice. */
+          <SpotToggle s={node} isArea={isTop} />
+        )}
+      >
+        {(kids.length > 0 || showAddInside) ? (
+          <>
             {kids.map((c: any) => renderNode(c, false))}
             {showAddInside && (
               <button onClick={() => setCreating({ parent_id: node.id, kind: suggestedChildTypes(node.kind)[0]?.key || 'shelf' })} disabled={saving}
@@ -388,9 +425,9 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
                 + Add inside {node.name}
               </button>
             )}
-          </div>
-        )}
-      </div>
+          </>
+        ) : null}
+      </CollapsibleNode>
     );
   }
 
@@ -421,6 +458,23 @@ export default function SpotSheet({ product, hasImage, companyId, initialSpotIds
             </div>
           </div>
         </div>
+
+        {/* Building the map wants everything open; picking a place wants the
+            overview. In Edit mode every branch is force-opened anyway, so the
+            control only appears where it can do anything. */}
+        {!loading && !editMode && tree.length > 0 && (
+          <div className="px-4 pt-2 flex justify-end">
+            <button
+              onClick={() => {
+                if (expandedCount(spotScope) > 0) collapseAll(spotScope);
+                else expandAll(spotScope, spots.map((sp) => sp.id));
+              }}
+              className="text-[var(--fs-sm)] font-semibold text-green-700 px-2 py-1 active:opacity-70"
+            >
+              {expandedCount(spotScope) > 0 ? 'Collapse all' : 'Expand all'}
+            </button>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
           {loading ? <Spinner /> : tree.length === 0 ? (

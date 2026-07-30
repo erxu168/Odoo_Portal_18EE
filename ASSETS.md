@@ -166,13 +166,31 @@ importers.
 
 ## Planned — decided, not yet built
 
-### `CollapsibleTree` — BUILT for locations 2026-07-30, not yet extracted
-`lib/tree-expansion.ts` holds the state (module-level Map, per-scope) and
-`LocationManager` has the chevron / count / expand-all. **Still to do: lift the
-node UI into `ui/CollapsibleTree` and use it for the category picker and the
-"Where does it live?" sheet**, which have the same nesting problem.
+### Collapsible trees — SHIPPED 2026-07-30
 
-### Original spec — signed off 2026-07-30
+| Asset | Path | What | users |
+|---|---|---|---|
+| `CollapsibleNode` | `ui/CollapsibleNode.tsx` | One collapsible branch: chevron, "N inside" summary, open/closed, force-open. The CALLER renders its own row | 1 |
+| `tree-expansion` | `lib/tree-expansion.ts` | The open/closed store: module-level Map, per scope, subscribable. Session-only by design | 2 |
+
+**The split is deliberate.** `CollapsibleNode` owns the MECHANICS; the caller owns
+the ROW, because the rows are genuinely different work — the Locations manager row
+carries a drag handle and an edit pencil, the "Where does it live?" row is a tick
+box. What was being duplicated was the mechanics, not the markup.
+
+`LocationManager` shares the STORE and its subscription but renders its own
+chevron, because its row puts the chevron after the photo while `CollapsibleNode`
+puts it before the row. A layout difference, not a second implementation —
+"Expand all" and the session-only reset behave identically in both.
+
+**"Where does it live?"** additionally force-opens any branch containing a TICKED
+spot. A chosen shelf hidden inside a collapsed room is a place staff will be sent
+to count that the manager cannot see.
+
+**Still to do:** the category picker (`All / RAW MATERIALS / Spices`) has the same
+nesting problem and does not use this yet.
+
+### The spec — signed off 2026-07-30
 The location tree renders every level at once, so a deep map (room → cabinet →
 shelf) buries the rooms. Same problem in the category picker
 (`All / RAW MATERIALS / Spices`), so this is ONE shared asset used by the
