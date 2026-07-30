@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import HrDashboard from '@/components/hr/HrDashboard';
 import OnboardingWizard from '@/components/hr/OnboardingWizard';
 import MyProfile from '@/components/hr/MyProfile';
@@ -46,8 +46,21 @@ type Screen =
   | { type: 'checklist-view'; instanceId: number };
 
 export default function HrPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50" />}>
+      <HrPageInner />
+    </Suspense>
+  );
+}
+
+function HrPageInner() {
   const router = useRouter();
-  const [screen, setScreen] = useState<Screen>({ type: 'dashboard' });
+  // Canonical deep link to a person's file: /hr?employee=<id> opens their record
+  // directly (used by Termination and anywhere else an employee is shown).
+  const deepLinkEmployeeId = Number(useSearchParams().get('employee')) || null;
+  const [screen, setScreen] = useState<Screen>(
+    deepLinkEmployeeId ? { type: 'employee-detail', employeeId: deepLinkEmployeeId } : { type: 'dashboard' },
+  );
   const [staffEditMode, setStaffEditMode] = useState(false);
   const [history, setHistory] = useState<Screen[]>([]);
   const [isCandidate, setIsCandidate] = useState(false);
@@ -147,7 +160,7 @@ export default function HrPage() {
       return (
         <EmployeeDetail
           employeeId={screen.employeeId}
-          onBack={goBack}
+          onBack={history.length === 0 && deepLinkEmployeeId ? () => router.back() : goBack}
           onHome={goHome}
           onContract={() => navigate({ type: 'employee-contract', employeeId: screen.employeeId })}
           onDeactivated={goBack}

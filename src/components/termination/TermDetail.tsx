@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import type { TerminationRecord, DeliveryMethod } from '@/types/termination';
 import { TERMINATION_TYPE_LABELS, STATE_LABELS, DELIVERY_METHOD_LABELS } from '@/types/termination';
 import DeliveryForm from './DeliveryForm';
@@ -41,6 +42,7 @@ function m2oName(field: false | [number, string]): string {
 }
 
 export default function TermDetail({ id, onBack, onHome }: Props) {
+  const router = useRouter();
   const [rec, setRec] = useState<TerminationRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -286,6 +288,14 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
         subtitle={TERMINATION_TYPE_LABELS[rec.termination_type]}
         showBack
         onBack={onBack}
+        action={Array.isArray(rec.employee_id) ? (
+          <button
+            onClick={() => router.push(`/hr?employee=${(rec.employee_id as [number, string])[0]}`)}
+            className="px-3 h-[44px] rounded-xl bg-white/10 border border-white/10 text-white text-[var(--fs-xs)] font-semibold active:bg-white/20 transition-colors whitespace-nowrap"
+          >
+            Open file ›
+          </button>
+        ) : undefined}
       />
 
       <div className="flex-1 px-4 pb-8 -mt-3">

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { TERMINATION_TYPE_LABELS, type TerminationType } from '@/types/termination';
 import { useCompany } from '@/lib/company-context';
 import AppHeader from '@/components/ui/AppHeader';
@@ -27,6 +28,7 @@ interface TermWizardProps {
 type Step = 'employee' | 'type' | 'details' | 'preview';
 
 export default function TermWizard({ onBack, onCreated, onHome, preselectEmployeeId }: TermWizardProps) {
+  const router = useRouter();
   const { companyId } = useCompany();
   const [step, setStep] = useState<Step>('employee');
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -216,14 +218,24 @@ export default function TermWizard({ onBack, onCreated, onHome, preselectEmploye
             <div className="text-[var(--fs-xs)] text-gray-400 mb-2 px-1">{filteredEmployees.length} employee{filteredEmployees.length !== 1 ? 's' : ''}</div>
             <div className="space-y-2 max-h-[55vh] overflow-y-auto">
               {filteredEmployees.map(emp => (
-                <button key={emp.id} onClick={() => { setSelectedEmployee(emp); setStep('type'); }}
-                  className={`w-full rounded-xl border p-4 text-left transition-colors ${selectedEmployee?.id === emp.id ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white active:bg-gray-50'}`}>
-                  <div className="text-[var(--fs-md)] font-bold text-gray-900">{emp.name}</div>
-                  <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">
-                    {emp.department_id ? emp.department_id[1] : 'No department'}
-                    {emp.job_title ? ` \u2022 ${emp.job_title}` : ''}
-                  </div>
-                </button>
+                <div key={emp.id}
+                  className={`w-full rounded-xl border transition-colors flex items-stretch ${selectedEmployee?.id === emp.id ? 'border-red-400 bg-red-50' : 'border-gray-200 bg-white'}`}>
+                  <button onClick={() => { setSelectedEmployee(emp); setStep('type'); }}
+                    className="flex-1 min-w-0 p-4 text-left active:bg-gray-50 rounded-l-xl">
+                    <div className="text-[var(--fs-md)] font-bold text-gray-900">{emp.name}</div>
+                    <div className="text-[var(--fs-xs)] text-gray-500 mt-0.5">
+                      {emp.department_id ? emp.department_id[1] : 'No department'}
+                      {emp.job_title ? ` \u2022 ${emp.job_title}` : ''}
+                    </div>
+                  </button>
+                  {/* Canonical-record rule: every place a person appears links to their file. */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); router.push(`/hr?employee=${emp.id}`); }}
+                    aria-label={`Open ${emp.name}\u2019s file`}
+                    className="flex items-center gap-1 px-4 text-[var(--fs-xs)] font-semibold text-blue-600 border-l border-gray-100 active:bg-blue-50 rounded-r-xl whitespace-nowrap">
+                    Open file <span aria-hidden>\u203a</span>
+                  </button>
+                </div>
               ))}
               {filteredEmployees.length === 0 && <p className="text-center text-gray-400 text-[13px] py-8">No employees found</p>}
             </div>
