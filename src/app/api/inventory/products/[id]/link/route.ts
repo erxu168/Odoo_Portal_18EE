@@ -14,7 +14,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, reassignCountsForProduct, markDraftStatus } from '@/lib/inventory-db';
+import { initInventoryTables, reassignCountsForProduct, markDraftStatus, isDraftProduct } from '@/lib/inventory-db';
 
 export async function POST(
   request: Request,
@@ -52,6 +52,15 @@ export async function POST(
       return NextResponse.json({ error: 'Draft product not found' }, { status: 404 });
     }
     const draft = drafts[0];
+    // "Inactive" is NOT "is a draft" — every archived product is inactive too,
+    // and this endpoint MOVES a barcode and rewrites count history. Without this
+    // check an archived product's id posted here would strip its barcode and
+    // reassign its counts to something else.
+    if (!isDraftProduct(draftId)) {
+      return NextResponse.json({
+        error: 'That is not a scanned draft. Archived products are managed from the product page.',
+      }, { status: 400 });
+    }
     if (draft.active === true) {
       return NextResponse.json({ error: 'Product is not a draft' }, { status: 400 });
     }

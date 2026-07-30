@@ -3096,6 +3096,24 @@ export function recordPortalCreatedProduct(odooProductId: number, userId: number
   ).run(odooProductId, new Date().toISOString(), userId);
 }
 
+export interface PendingDraft {
+  odoo_product_id: number;
+  barcode: string;
+  created_by: number;
+  created_at: string;
+}
+
+/**
+ * Drafts still awaiting a decision, oldest first — the oldest is the one that
+ * has been holding up a count the longest.
+ */
+export function listPendingDrafts(): PendingDraft[] {
+  return getDb().prepare(
+    `SELECT odoo_product_id, barcode, created_by, created_at
+       FROM product_drafts WHERE status = 'pending' ORDER BY created_at ASC`,
+  ).all() as PendingDraft[];
+}
+
 /** Every product the portal created — unioned into the relevance set. */
 export function listPortalCreatedProductIds(): number[] {
   const rows = getDb().prepare('SELECT odoo_product_id FROM portal_created_products')

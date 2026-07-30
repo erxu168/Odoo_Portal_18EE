@@ -1,36 +1,23 @@
 'use client';
 
 /**
- * /products — the Products module home.
+ * /products/setup — the products waiting to be finished.
  *
- * A product is a first-class business record referenced by inventory, purchase,
- * POS and manufacturing, so it lives in its own module rather than inside
- * Inventory. This screen is the module's landing dashboard; the catalog list,
- * the batch photo grid and the setup queue are its own routes beneath it, so
- * each is linkable, refreshable and back-button-correct.
- *
- * Manager-gated. Individual products stay viewable by anyone through
- * drill-down to /products/[id].
+ * Its own route so the dashboard tile has somewhere real to go, the back button
+ * behaves, and a manager can be sent the link.
  */
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import { Spinner } from '@/components/inventory/ui';
-import ProductsDashboard, { type ProductsScreen } from '@/components/products/ProductsDashboard';
+import SetupQueue from '@/components/products/SetupQueue';
 import { allowedActionKeysForRole, type Role } from '@/lib/permissions';
 import { RECORD_EDIT_CAP } from '@/lib/record-links';
 
-/** Where each tile goes. Kept here so the dashboard stays presentation-only. */
-const DESTINATION: Record<ProductsScreen, string> = {
-  catalog: '/products/catalog',
-  photos: '/products/photos',
-  untracked: '/products/catalog?gap=untracked',
-  setup: '/products/setup',
-};
-
-export default function ProductsPage() {
+export default function ProductSetupPage() {
   const router = useRouter();
   const [state, setState] = useState<'loading' | 'ok' | 'denied'>('loading');
+  const back = () => router.push('/products');
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -50,10 +37,10 @@ export default function ProductsPage() {
   if (state === 'denied') {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col">
-        <AppHeader title="Products" subtitle="Catalog" showBack onBack={() => router.push('/')} />
+        <AppHeader title="Needs setup" showBack onBack={back} />
         <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
           <p className="text-[var(--fs-lg)] font-bold text-gray-900 mb-1">Manager access required</p>
-          <p className="text-[var(--fs-sm)] text-gray-500 max-w-[260px]">You can still open any single product from a list or report to view its details.</p>
+          <p className="text-[var(--fs-sm)] text-gray-500 max-w-[260px]">Ask a manager to finish the products scanned during counts.</p>
         </div>
       </div>
     );
@@ -61,8 +48,7 @@ export default function ProductsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <AppHeader title="Products" subtitle="Catalog" showBack onBack={() => router.push('/')} />
-      <ProductsDashboard onNavigate={(screen) => router.push(DESTINATION[screen])} />
+      <SetupQueue onBack={back} />
     </div>
   );
 }

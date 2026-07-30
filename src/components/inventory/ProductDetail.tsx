@@ -67,6 +67,8 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
     active?: boolean;
     /** The product is gone from Odoo. Drop it, do not try to re-read it. */
     deleted?: true;
+    /** A scanned draft was put in use, so it is a draft no longer. */
+    is_draft?: false;
     /**
      * Odoo's stock tracking was turned on or off. The catalog shows a
      * "Not counted in stock" badge and a filter counting these, so it has to be
@@ -103,6 +105,12 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   // waiting for review. Telling its opener "it is archived" and offering "Bring
   // this product back" would activate it outside that review flow.
   const [isArchived, setIsArchived] = useState(product.active === false && !product.is_draft);
+  // Held in state so putting a draft in use flips the screen immediately, but
+  // RE-SEEDED from the prop below — an overlay reused for a different product,
+  // or a parent that re-fetched, would otherwise keep the previous product's
+  // draft mode and offer "Put it in use" for something already in use.
+  const [isDraft, setIsDraft] = useState(product.is_draft === true);
+  useEffect(() => { setIsDraft(product.is_draft === true); }, [product.id, product.is_draft]);
   const [confirmAction, setConfirmAction] = useState<'archive' | 'unarchive' | 'delete' | null>(null);
   const [lifecycleError, setLifecycleError] = useState<{ message: string; canArchive: boolean } | null>(null);
   const [catForm, setCatForm] = useState<{ editing: CategoryRow | null } | null>(null);
@@ -327,6 +335,37 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
   function flash(kind: 'ok' | 'err', text: string) {
     setMsg({ kind, text });
     setTimeout(() => setMsg(null), kind === 'ok' ? 1800 : 4000);
+  }
+
+  /**
+   * Put a scanned draft into use.
+   *
+   * Sends the name, category and unit currently on screen — the three Odoo needs
+   * — to the approve endpoint, which activates it and clears it from the setup
+   * queue. The cost is left out deliberately: it is already saved by its own
+   * field above, and passing it again would let a half-typed number overwrite
+   * what was stored.
+   */
+  async function activateDraft() {
+    if (readOnly || !catId || !uomId) return;
+    setBusy('activate');
+    try {
+      const res = await fetch(`/api/inventory/products/${product.id}/approve`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), categ_id: catId, uom_id: uomId }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { flash('err', d.error || 'Could not put it in use'); return; }
+      setIsDraft(false);
+      setIsArchived(false);
+      flash('ok', 'In use — it will show up on counts and orders now');
+      // is_draft as well as active: a parent holding a cached copy would
+      // otherwise still think this is a draft and show the button again on
+      // reopen, and the review screen decides whether a count is blocked from
+      // exactly that flag.
+      onChanged({ active: true, is_draft: false });
+    } catch { flash('err', 'Network error — it is still not in use.'); }
+    finally { setBusy(null); }
   }
 
   /** "7% Vorsteuer — 7%" or "19% Umsatzst (incl.) — 19%, in the price". The real
@@ -1137,10 +1176,37 @@ export default function ProductDetail({ product, hasImage, onClose, onChanged, r
             onBlur={() => { const v = barcode.trim(); if (v !== (product.barcode || '')) saveMaster({ barcode: v }); }}
             className={`${box} font-mono mb-8`} />
 
+          {/* A DRAFT is not archived and must not be offered the archive/delete
+              pair: it is a product scanned mid-count that nobody has finished, so
+              the only thing to do with it is put it in use. Without this the
+              screen showed "Archive this product" for something that was never in
+              use — and nothing anywhere could activate it, so "Finish it" on the
+              setup queue led to a page with no way to finish. */}
+          {isDraft && !readOnly && (
+            <>
+              <label className={label}>Not in use yet</label>
+              <div className="mb-8 rounded-xl border border-green-300 bg-green-50 p-3">
+                <p className="text-[var(--fs-xs)] text-green-900 mb-2.5">
+                  This was created from a barcode scanned during a count. It stays out of counts,
+                  orders and the till until you put it in use.
+                </p>
+                <button onClick={activateDraft} disabled={!!busy || !catId || !uomId}
+                  className="w-full h-12 rounded-xl bg-green-600 text-white font-bold active:bg-green-700 disabled:opacity-50">
+                  {busy === 'activate' ? 'Putting it in use…' : 'Put it in use'}
+                </button>
+                {(!catId || !uomId) && (
+                  <p className="text-[var(--fs-xs)] text-green-800 mt-2">
+                    Pick a category and a unit above first.
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+
           {/* Taking a product out of use. Archive reads as the ordinary action
               because it is the one that almost always applies; delete sits
               under it and looks like what it is. */}
-          {!readOnly && (
+          {!isDraft && !readOnly && (
             <>
               <label className={label}>Take it out of use</label>
               {isArchived ? (

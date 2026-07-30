@@ -3,19 +3,24 @@
 /**
  * Products module landing screen.
  *
- * Two tiles, not four. The portal's rule asks for a tile grid, not for the grid
+ * Three tiles, not four. The portal's rule asks for a tile grid, not for the grid
  * to be padded: a tile that always reads zero stops being read at all, and then
- * the one that matters gets skipped with it. (A third — the queue of products
- * half-created by scanning an unknown barcode during a count — is deliberately
- * absent until those products can actually be finished or rejected from here.
- * A tile whose screen has no working actions is worse than no tile.)
+ * the one that matters gets skipped with it.
  *
- * Every number here is counted from THE SAME request the catalog screen makes
+ * "Needs setup" earns its place because it is a genuine queue that is otherwise
+ * forgotten — a barcode nobody recognised was scanned mid-count, a product was
+ * started for it, and it sits inactive until somebody decides what it is. It
+ * counts drafts from the drafts table directly rather than from the catalog,
+ * because the catalog's relevance filter hides a product nothing uses yet, which
+ * is every draft by definition.
+ *
+ * The catalog numbers are counted from THE SAME request the catalog screen makes
  * (`/api/inventory/products` with the same company, relevance and PoS flags,
  * asking only for the fields a count needs). That is the point — the catalog's
  * scope is company-aware and relevance-filtered, so a tile that built its own
  * query would drift from the list it opens, and "the numbers are wrong" is
- * reported long after the cause is forgotten.
+ * reported long after the cause is forgotten. The draft count is the exception,
+ * and for the same reason inverted: it must NOT come from that request.
  *
  * The "not counted in stock" strip is a STRIP rather than a tile because it is
  * temporary. Odoo 18 keeps "is this a physical good?" apart from "do we track
@@ -33,9 +38,10 @@ interface Counts {
   total: number;
   notTracked: number;
   noPicture: number;
+  needsSetup: number;
 }
 
-export type ProductsScreen = 'catalog' | 'photos' | 'untracked';
+export type ProductsScreen = 'catalog' | 'photos' | 'untracked' | 'setup';
 
 export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen: ProductsScreen) => void }) {
   const { companyId } = useCompany();
@@ -55,7 +61,7 @@ export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen:
 
     (async () => {
       try {
-        const [prodRes, imgRes] = await Promise.all([
+        const [prodRes, imgRes, setupRes] = await Promise.all([
           // The catalog screen's own query, slim. Same limit, so if the catalog
           // is truncated this reports the truncated number too rather than
           // promising more than tapping through delivers.
@@ -67,10 +73,18 @@ export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen:
           // send someone to a screen with nothing to do.
           fetch('/api/inventory/product-images')
             .then((r) => (r.ok ? r.json() : Promise.reject(new Error('images')))),
+          // Drafts, from the drafts table rather than the catalog: the catalog's
+          // relevance filter hides a product nothing uses yet, which is every
+          // draft. Its failure is tolerated — a broken setup count should not
+          // blank the two tiles that did load.
+          fetch('/api/products/setup')
+            .then((r) => (r.ok ? r.json() : { drafts: [] }))
+            .catch(() => ({ drafts: [] })),
         ]);
         if (token !== reqRef.current) return;
 
         const all: { id: number; active?: boolean; is_storable?: boolean }[] = prodRes.products || [];
+        const drafts: unknown[] = (setupRes as { drafts?: unknown[] }).drafts || [];
         const withImages = new Set<number>(imgRes.with_images || []);
         // The catalog lists LIVE products, so these counts must too — counting
         // the inactive ones as well would make every tile read higher than the
@@ -81,6 +95,7 @@ export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen:
           total: live.length,
           notTracked: live.filter((p) => p.is_storable === false).length,
           noPicture: live.filter((p) => !withImages.has(p.id)).length,
+          needsSetup: drafts.length,
         });
       } catch {
         if (token === reqRef.current) setFailed(true);
@@ -96,6 +111,16 @@ export default function ProductsDashboard({ onNavigate }: { onNavigate: (screen:
       sublabel: counts ? `${counts.total} · search and edit` : 'Search and edit',
       badge: 0,
       danger: false,
+    },
+    {
+      key: 'setup' as const,
+      emoji: '🧾',
+      label: 'Needs setup',
+      sublabel: 'Scanned mid-count, not finished',
+      badge: counts?.needsSetup ?? 0,
+      // Red rather than green: these are products staff have already tried to
+      // count and could not, so the number is a queue, not a score.
+      danger: true,
     },
     {
       key: 'photos' as const,
