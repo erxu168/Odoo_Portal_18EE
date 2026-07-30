@@ -32,7 +32,7 @@ export interface FloorplanAppProps {
 
 export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppProps) {
   const router = useRouter();
-  const rootClass = onClose ? 'flex h-full flex-col overflow-hidden bg-gray-50' : 'flex h-[100dvh] flex-col overflow-hidden bg-gray-50';
+  const rootClass = onClose ? 'flex h-full flex-col overflow-hidden bg-gray-50' : 'flex h-[calc(100dvh-7.25rem)] flex-col overflow-hidden bg-gray-50';
   const stateClass = onClose ? 'flex h-full flex-col bg-gray-50' : 'flex min-h-screen flex-col bg-gray-50';
   const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading');
   const [resp, setResp] = useState<ManifestResponse | null>(null);

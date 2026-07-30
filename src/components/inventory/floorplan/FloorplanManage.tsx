@@ -190,7 +190,7 @@ export default function FloorplanManage() {
         </div>
       )}
       <input ref={fileRef} type="file" accept="application/pdf" className="hidden" onChange={e => onFile(e.target.files?.[0] ?? null)} />
-      <div className={`flex flex-col gap-3 p-4 ${capsLoaded && !canManage ? 'hidden' : ''}`}>
+      <div className={`mx-auto w-full max-w-2xl flex flex-col gap-3 p-4 ${capsLoaded && !canManage ? 'hidden' : ''}`}>
         {error && (
           <div className="flex items-center gap-3 rounded-xl bg-red-50 px-4 py-3">
             <span className="min-w-0 flex-1 text-[13px] font-medium text-red-700">{error}</span>

@@ -34,7 +34,7 @@ export default function FloorplanPrintView({ floorId }: { floorId: number }) {
   }, [floorId]);
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white"><div className="mx-auto w-full max-w-3xl">
       <div className="flex items-center gap-2 border-b border-gray-200 p-3 print:hidden">
         <button
           onClick={() => router.push('/inventory/floorplan/manage')}
@@ -77,6 +77,7 @@ export default function FloorplanPrintView({ floorId }: { floorId: number }) {
           />
         </div>
       )}
+    </div>
     </div>
   );
 }

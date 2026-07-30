@@ -167,7 +167,7 @@ export default function FloorplanUploadReview({ revisionId }: { revisionId: numb
         showBack
         onBack={() => router.push('/inventory/floorplan/manage')}
       />
-      <div className="flex flex-col gap-3 p-4">
+      <div className="mx-auto w-full max-w-2xl flex flex-col gap-3 p-4">
         {already && (
           <div className="rounded-xl bg-amber-50 px-4 py-3 text-[13px] font-medium text-amber-800">
             This plan version is already published. Upload a new version to change it.

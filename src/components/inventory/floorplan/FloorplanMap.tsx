@@ -54,6 +54,7 @@ export default function FloorplanMap({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<World | null>(null);
+  const resizeObsRef = useRef<ResizeObserver | null>(null);
   // Callbacks kept current without re-initializing the map.
   const cbRef = useRef({ onTapAnchor, onTapEmpty, onMoveAnchor, editable });
   cbRef.current = { onTapAnchor, onTapEmpty, onMoveAnchor, editable };
@@ -79,10 +80,19 @@ export default function FloorplanMap({
       });
       const bounds = L.latLngBounds([[0, 0], [revision.height, revision.width]]);
       L.imageOverlay(revision.rasterUrl, bounds).addTo(map);
+      // CRS.Simple renders at scale 2^zoom, so the zoom where the WHOLE plan
+      // fits is plain math. Leaflet's getBoundsZoom proved unreliable during
+      // late flex layout (it locked users zoomed-in on desktop) — never ask it.
+      const applyZoomLimits = () => {
+        const size = map.getSize();
+        if (size.x < 50 || size.y < 50) return; // not laid out yet — resize will call again
+        const fitZoom = Math.log2(Math.min(size.x / revision.width, size.y / revision.height));
+        map.setMinZoom(fitZoom - 0.2);
+        map.setMaxZoom(fitZoom + 3.4);
+        return fitZoom;
+      };
+      applyZoomLimits();
       map.fitBounds(bounds);
-      const fitZoom = map.getBoundsZoom(bounds);
-      map.setMinZoom(fitZoom - 0.4);
-      map.setMaxZoom(fitZoom + 3.2);
       map.setMaxBounds(bounds.pad(0.35));
       map.on('click', (e: Leaflet.LeafletMouseEvent) => {
         const w = worldRef.current;
@@ -91,14 +101,36 @@ export default function FloorplanMap({
 
       world = { L, map, layers: new Map(), width: revision.width, height: revision.height };
       worldRef.current = world;
+      // test hook: lets browser tests read zoom/bounds state (no UI impact)
+      (containerRef.current as unknown as { _kwMap?: Leaflet.Map })._kwMap = map;
       buildLayers(world);
       styleLayers(world);
       // A fly target that arrived BEFORE the map existed (QR deep link on a
       // cold load) must still run — the seq-effect fired into the void.
       if (flyRef.current) applyFly(world, flyRef.current);
+
+      // The container often gets its FINAL size after init (desktop shell
+      // lays out late) — a stale size locks minZoom too high and the whole
+      // plan becomes unreachable. Track resizes: refresh Leaflet's cached
+      // size, recompute the zoom floor, and re-fit if we were at the floor.
+      const container = containerRef.current;
+      if (container && typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => {
+          const wNow = worldRef.current;
+          if (!wNow || wNow.map !== map) return;
+          const wasAtFloor = map.getZoom() <= map.getMinZoom() + 0.05;
+          map.invalidateSize({ animate: false });
+          const fitZoom = applyZoomLimits();
+          if (fitZoom !== undefined && (wasAtFloor || map.getZoom() < fitZoom - 0.2)) map.fitBounds(bounds);
+        });
+        ro.observe(container);
+        resizeObsRef.current = ro;
+      }
     })();
     return () => {
       cancelled = true;
+      resizeObsRef.current?.disconnect();
+      resizeObsRef.current = null;
       if (world) { world.map.remove(); }
       if (worldRef.current === world) worldRef.current = null;
     };
