@@ -29,12 +29,13 @@ const STATE_COLORS: Record<string, string> = {
   draft: 'bg-yellow-100 text-yellow-800',
   confirmed: 'bg-blue-100 text-blue-800',
   signed: 'bg-green-100 text-green-800',
+  in_transit: 'bg-amber-100 text-amber-800',
   delivered: 'bg-emerald-100 text-emerald-800',
   archived: 'bg-gray-100 text-gray-600',
   cancelled: 'bg-red-100 text-red-800',
 };
 
-const STEPS = ['draft', 'confirmed', 'signed', 'delivered', 'archived'];
+const STEPS = ['draft', 'confirmed', 'signed', 'in_transit', 'delivered', 'archived'];
 
 /** Safely extract name from an Odoo M2O field (false | [number, string]) */
 function m2oName(field: false | [number, string]): string {
@@ -453,17 +454,17 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
               className="w-full py-3.5 rounded-xl bg-green-600 text-white font-semibold text-[14px] active:bg-green-700">
               Mark as signed</button>
           )}
-          {['signed', 'delivered'].includes(rec.state) && !showDelivery && !rec.delivery_method && (
+          {['signed', 'in_transit', 'delivered'].includes(rec.state) && !showDelivery && !rec.delivery_method && (
             <button onClick={() => setShowDelivery(true)}
               className="w-full py-3.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50">
               Record delivery info</button>
           )}
-          {rec.state === 'signed' && (
+          {['signed', 'in_transit'].includes(rec.state) && (
             <button onClick={() => handleSetState('delivered')}
               className="w-full py-3.5 rounded-xl bg-emerald-600 text-white font-semibold text-[14px] active:bg-emerald-700">
               Mark as delivered</button>
           )}
-          {['signed', 'delivered'].includes(rec.state) && !rec.sent_to_accountant && (
+          {['signed', 'in_transit', 'delivered'].includes(rec.state) && !rec.sent_to_accountant && (
             <button onClick={handleSendToAccountant} disabled={accountantLoading}
               className="w-full py-3.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50 disabled:opacity-50">
               {accountantLoading ? 'Sending...' : 'Send to accountant'}</button>

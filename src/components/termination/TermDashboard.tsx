@@ -31,7 +31,7 @@ export default function TermDashboard({ onNavigate }: TermDashboardProps) {
         const json = await res.json();
         const records = json.data || [];
         setStats({
-          inProgress: records.filter((r: any) => ['draft', 'confirmed', 'signed'].includes(r.state)).length,
+          inProgress: records.filter((r: any) => ['draft', 'confirmed', 'signed', 'in_transit'].includes(r.state)).length,
           completed: records.filter((r: any) => ['delivered', 'archived'].includes(r.state)).length,
         });
       } catch { /* ignore */ }

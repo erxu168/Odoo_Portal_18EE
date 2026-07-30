@@ -14,6 +14,7 @@ export type TerminationState =
   | 'draft'
   | 'confirmed'
   | 'signed'
+  | 'in_transit'
   | 'delivered'
   | 'archived'
   | 'cancelled';
@@ -105,17 +106,20 @@ export const TERMINATION_TYPE_LABELS: Record<TerminationType, string> = {
 export const STATE_LABELS: Record<TerminationState, string> = {
   draft: 'Draft',
   confirmed: 'Confirmed',
-  signed: 'In Transit',
+  signed: 'Signed',
+  in_transit: 'In Transit',
   delivered: 'Delivered',
   archived: 'Archived',
   cancelled: 'Cancelled',
 };
 
+// English UI labels; the German postal product names stay in parentheses because
+// that is what the courier receipt will say.
 export const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
-  einschreiben_rueckschein: 'Einschreiben mit R\u00fcckschein',
-  einwurf_einschreiben: 'Einwurf-Einschreiben',
-  personal: 'Pers\u00f6nliche \u00dcbergabe',
-  bote: 'Bote (mit Zeuge)',
+  einschreiben_rueckschein: 'Registered mail, return receipt (Einschreiben mit R\u00fcckschein)',
+  einwurf_einschreiben: 'Registered mail, mailbox (Einwurf-Einschreiben)',
+  personal: 'Personal handover',
+  bote: 'Courier with witness',
 };
 
 /** All fields to fetch from Odoo for list views */

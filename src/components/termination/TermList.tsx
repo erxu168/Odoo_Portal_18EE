@@ -21,10 +21,11 @@ const STATE_COLORS: Record<string, string> = {
 };
 
 const IN_PROGRESS_FILTERS: { id: string; label: string; states: TerminationState[] }[] = [
-  { id: 'all', label: 'All', states: ['draft', 'confirmed', 'signed'] },
+  { id: 'all', label: 'All', states: ['draft', 'confirmed', 'signed', 'in_transit'] },
   { id: 'draft', label: 'Draft', states: ['draft'] },
   { id: 'confirmed', label: 'Confirmed', states: ['confirmed'] },
-  { id: 'signed', label: 'In Transit', states: ['signed'] },
+  { id: 'signed', label: 'Signed', states: ['signed'] },
+  { id: 'in_transit', label: 'In Transit', states: ['in_transit'] },
 ];
 
 const COMPLETED_STATES: TerminationState[] = ['delivered', 'archived'];
