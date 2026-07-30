@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppHeader from '@/components/ui/AppHeader';
 import { CompanyPill } from '@/components/ui/CompanyPill';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { processPdf, suggestRooms, buildRevisionFormData, countPdfPages } from '@/lib/inventory-floorplan/pdf-client';
 import { allowedActionKeysForRole } from '@/lib/permissions';
 import type { FloorplanTypeInfo } from '@/lib/inventory-floorplan/manifest';
@@ -29,6 +30,10 @@ export default function FloorplanManage() {
   const [busy, setBusy] = useState<string | null>(null); // human-readable progress
   const [newFloor, setNewFloor] = useState('');
   const [newType, setNewType] = useState({ label: '', icon: '', color: '#16A34A' });
+  const [renameFloor, setRenameFloor] = useState<{ id: number; name: string } | null>(null);
+  const [archiveFloor, setArchiveFloor] = useState<{ id: number; name: string } | null>(null);
+  const [editType, setEditType] = useState<{ id: number; key: string; label: string; icon: string; color: string } | null>(null);
+  const [deleteType, setDeleteType] = useState<{ id: number; label: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadFloorRef = useRef<number | null>(null);
   const tokenRef = useRef(0);
@@ -111,6 +116,44 @@ export default function FloorplanManage() {
     }
   };
 
+  const saveFloorRename = async () => {
+    if (!renameFloor || !renameFloor.name.trim()) return;
+    const res = await fetch(`/api/inventory/floorplans/${renameFloor.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: renameFloor.name.trim() }),
+    });
+    if (!res.ok) { setError((await res.json()).error ?? 'Could not rename the floor'); }
+    setRenameFloor(null);
+    load();
+  };
+
+  const doArchiveFloor = async () => {
+    if (!archiveFloor) return;
+    const res = await fetch(`/api/inventory/floorplans/${archiveFloor.id}`, { method: 'DELETE' });
+    if (!res.ok) { setError((await res.json()).error ?? 'Could not archive the floor'); }
+    setArchiveFloor(null);
+    load();
+  };
+
+  const saveTypeEdit = async () => {
+    if (!editType || !editType.label.trim()) return;
+    const res = await fetch('/api/inventory/location-kinds', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: editType.id, label: editType.label.trim(), icon: editType.icon.trim(), color: editType.color }),
+    });
+    if (!res.ok) { setError((await res.json()).error ?? 'Could not save the type'); }
+    setEditType(null);
+    load();
+  };
+
+  const doDeleteType = async () => {
+    if (!deleteType) return;
+    const res = await fetch(`/api/inventory/location-kinds?id=${deleteType.id}`, { method: 'DELETE' });
+    if (!res.ok) { setError((await res.json()).error ?? 'Could not remove the type'); }
+    setDeleteType(null);
+    load();
+  };
+
   const addType = async () => {
     if (!newType.label.trim()) return;
     setError(null);
@@ -161,15 +204,15 @@ export default function FloorplanManage() {
               <span className="flex h-11 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[13px] font-extrabold text-blue-700">
                 {f.code || f.name.slice(0, 3)}
               </span>
-              <span className="min-w-0 flex-1">
+              <button className="min-w-0 flex-1 text-left" onClick={() => setRenameFloor({ id: f.id, name: f.name })} aria-label={`Rename ${f.name}`}>
                 <span className="block truncate text-[13.5px] font-bold text-gray-900">
-                  {f.name}
+                  {f.name} <span className="text-[11px] font-semibold text-gray-300">✏️</span>
                   {f.revision && <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-[9.5px] font-extrabold text-green-700 align-middle">LIVE</span>}
                 </span>
                 <span className="block text-[11.5px] text-gray-500">
                   {f.revision ? `Plan v${f.revision.revision_no} · published` : 'No plan yet'}
                 </span>
-              </span>
+              </button>
               {f.revision && (
                 <button
                   onClick={() => router.push(`/inventory/floorplan/print?floor=${f.id}`)}
@@ -185,6 +228,13 @@ export default function FloorplanManage() {
                 className="h-10 flex-shrink-0 rounded-full border-[1.5px] border-blue-600 px-3.5 text-[12px] font-bold text-blue-600 active:scale-95 disabled:opacity-50"
               >
                 {f.revision ? '⬆ New version' : '⬆ Upload PDF'}
+              </button>
+              <button
+                onClick={() => setArchiveFloor({ id: f.id, name: f.name })}
+                aria-label={`Archive ${f.name}`}
+                className="h-10 w-10 flex-shrink-0 rounded-full border-[1.5px] border-gray-200 text-[13px] text-gray-400 active:scale-95"
+              >
+                🗑
               </button>
             </div>
           ))}
@@ -206,8 +256,18 @@ export default function FloorplanManage() {
         <div className="rounded-2xl border border-gray-200 bg-white p-4">
           <p className="mb-2 text-[10.5px] font-bold tracking-[0.08em] text-gray-400">LOCATION TYPES</p>
           <div className="flex flex-wrap gap-1.5">
-            {types.map(t => (
-              <span key={t.key} className="flex h-9 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-[12px] font-semibold text-gray-900">
+            {types.map(t => t.custom ? (
+              <button
+                key={t.key}
+                onClick={() => t.id != null && setEditType({ id: t.id, key: t.key, label: t.label, icon: t.icon, color: t.color })}
+                className="flex h-10 items-center gap-1.5 rounded-full border border-dashed border-gray-300 bg-white px-3 text-[12px] font-semibold text-gray-900 active:scale-95"
+              >
+                <span>{t.icon}</span>
+                <span className="h-2 w-2 rounded-full" style={{ background: t.color }} />
+                {t.label} <span className="text-[10px] text-gray-300">✏️</span>
+              </button>
+            ) : (
+              <span key={t.key} className="flex h-10 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 text-[12px] font-semibold text-gray-900">
                 <span>{t.icon}</span>
                 <span className="h-2 w-2 rounded-full" style={{ background: t.color }} />
                 {t.label}
@@ -250,6 +310,83 @@ export default function FloorplanManage() {
           </p>
         </div>
       </div>
+      {renameFloor && (
+        <ConfirmDialog
+          title="Rename floor"
+          message="The floor keeps its plan, spots and history — only the name changes."
+          confirmLabel="Save name"
+          onConfirm={saveFloorRename}
+          onCancel={() => setRenameFloor(null)}
+          extra={
+            <input
+              value={renameFloor.name}
+              onChange={e => setRenameFloor(f => (f ? { ...f, name: e.target.value } : f))}
+              aria-label="Floor name"
+              className="h-11 w-full rounded-xl border-[1.5px] border-gray-200 px-3.5 text-[14px] font-semibold outline-none focus:border-blue-600"
+            />
+          }
+        />
+      )}
+      {archiveFloor && (
+        <ConfirmDialog
+          title={`Archive ${archiveFloor.name}?`}
+          message="Staff will no longer see this floor. The plan, its spots and every version stay saved — ask me to restore it any time."
+          confirmLabel="Archive floor"
+          variant="danger"
+          onConfirm={doArchiveFloor}
+          onCancel={() => setArchiveFloor(null)}
+        />
+      )}
+      {editType && (
+        <ConfirmDialog
+          title="Edit type"
+          message="Renaming or recoloring updates every marker of this type. Delete is only possible while no location uses it."
+          confirmLabel="Save type"
+          onConfirm={saveTypeEdit}
+          onCancel={() => setEditType(null)}
+          extra={
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  value={editType.icon}
+                  onChange={e => setEditType(t => (t ? { ...t, icon: e.target.value } : t))}
+                  aria-label="Type icon"
+                  className="h-11 w-14 flex-shrink-0 rounded-xl border-[1.5px] border-gray-200 text-center text-[16px] outline-none focus:border-blue-600"
+                />
+                <input
+                  value={editType.label}
+                  onChange={e => setEditType(t => (t ? { ...t, label: e.target.value } : t))}
+                  aria-label="Type name"
+                  className="h-11 min-w-0 flex-1 rounded-xl border-[1.5px] border-gray-200 px-3.5 text-[14px] font-semibold outline-none focus:border-blue-600"
+                />
+                <input
+                  type="color"
+                  value={editType.color}
+                  onChange={e => setEditType(t => (t ? { ...t, color: e.target.value } : t))}
+                  aria-label="Type color"
+                  className="h-11 w-12 flex-shrink-0 rounded-xl border-[1.5px] border-gray-200"
+                />
+              </div>
+              <button
+                onClick={() => { setDeleteType({ id: editType.id, label: editType.label }); setEditType(null); }}
+                className="h-10 w-full rounded-xl border-[1.5px] border-red-200 text-[13px] font-bold text-red-600"
+              >
+                Delete this type…
+              </button>
+            </div>
+          }
+        />
+      )}
+      {deleteType && (
+        <ConfirmDialog
+          title={`Delete “${deleteType.label}”?`}
+          message="Only possible while no location uses this type — otherwise you’ll get a message telling you how many still do."
+          confirmLabel="Delete type"
+          variant="danger"
+          onConfirm={doDeleteType}
+          onCancel={() => setDeleteType(null)}
+        />
+      )}
     </div>
   );
 }

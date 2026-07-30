@@ -20,6 +20,8 @@ export interface FloorplanTypeInfo {
   icon: string;
   color: string;
   custom: boolean;
+  /** location_kinds row id — custom types only (rename/recolor/delete). */
+  id?: number;
 }
 
 export interface ManifestAnchor {
@@ -74,12 +76,12 @@ export function getTypeRegistry(companyId: number): FloorplanTypeInfo[] {
   }));
   const seen = new Set(builtIns.map(b => b.key));
   const customs = (getDb().prepare(
-    'SELECT kind, label, icon, color FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id',
-  ).all(companyId) as Array<{ kind: string; label: string; icon: string | null; color: string | null }>)
+    'SELECT id, kind, label, icon, color FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id',
+  ).all(companyId) as Array<{ id: number; kind: string; label: string; icon: string | null; color: string | null }>)
     .filter(k => !seen.has(k.kind))
     .map(k => ({
       key: k.kind, label: k.label, icon: k.icon || '📍',
-      color: k.color || CUSTOM_FALLBACK, custom: true,
+      color: k.color || CUSTOM_FALLBACK, custom: true, id: k.id,
     }));
   return [...builtIns, ...customs];
 }
