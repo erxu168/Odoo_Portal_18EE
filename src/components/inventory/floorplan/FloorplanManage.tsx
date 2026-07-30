@@ -25,6 +25,7 @@ interface FloorRow {
 export default function FloorplanManage() {
   const router = useRouter();
   const [floors, setFloors] = useState<FloorRow[] | null>(null);
+  const [companyId, setCompanyId] = useState<number | null>(null);
   const [types, setTypes] = useState<FloorplanTypeInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // human-readable progress
@@ -56,6 +57,7 @@ export default function FloorplanManage() {
     ]).then(([f, m]) => {
       if (tokenRef.current !== token) return;
       setFloors(f.floors ?? []);
+      setCompanyId(f.company_id ?? m.manifest?.companyId ?? null);
       setTypes(m.manifest?.types ?? []);
     }).catch(() => {
       if (tokenRef.current !== token) return;
@@ -67,10 +69,12 @@ export default function FloorplanManage() {
 
   const addFloor = async () => {
     if (!newFloor.trim()) return;
+    if (!companyId) { setError('Pick a restaurant in the pill above first.'); return; }
     setError(null);
+    // ALWAYS the company this screen is showing — never a silent fallback.
     const res = await fetch('/api/inventory/floorplans', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newFloor.trim() }),
+      body: JSON.stringify({ name: newFloor.trim(), company_id: companyId }),
     });
     const d = await res.json();
     if (!res.ok) { setError(d.error ?? 'Could not add the floor'); return; }
@@ -139,7 +143,7 @@ export default function FloorplanManage() {
     if (!editType || !editType.label.trim()) return;
     const res = await fetch('/api/inventory/location-kinds', {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editType.id, label: editType.label.trim(), icon: editType.icon.trim(), color: editType.color }),
+      body: JSON.stringify({ id: editType.id, label: editType.label.trim(), icon: editType.icon.trim(), color: editType.color, company_id: companyId }),
     });
     if (!res.ok) { setError((await res.json()).error ?? 'Could not save the type'); }
     setEditType(null);
@@ -148,7 +152,7 @@ export default function FloorplanManage() {
 
   const doDeleteType = async () => {
     if (!deleteType) return;
-    const res = await fetch(`/api/inventory/location-kinds?id=${deleteType.id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/inventory/location-kinds?id=${deleteType.id}&company_id=${companyId ?? ''}`, { method: 'DELETE' });
     if (!res.ok) { setError((await res.json()).error ?? 'Could not remove the type'); }
     setDeleteType(null);
     load();
@@ -156,10 +160,11 @@ export default function FloorplanManage() {
 
   const addType = async () => {
     if (!newType.label.trim()) return;
+    if (!companyId) { setError('Pick a restaurant in the pill above first.'); return; }
     setError(null);
     const res = await fetch('/api/inventory/location-kinds', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: newType.label.trim(), icon: newType.icon.trim(), color: newType.color }),
+      body: JSON.stringify({ label: newType.label.trim(), icon: newType.icon.trim(), color: newType.color, company_id: companyId }),
     });
     const d = await res.json();
     if (!res.ok) { setError(d.error ?? 'Could not add the type'); return; }
