@@ -14,7 +14,7 @@ import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides, logAudit, parseCompanyIds } from '@/lib/db';
 
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, describeCountWorkForProduct, deleteProductPortalData, isDraftProduct } from '@/lib/inventory-db';
+import { initInventoryTables, describeCountWorkForProduct, deleteProductPortalData, isDraftProduct, describeProductUsage } from '@/lib/inventory-db';
 import { isUnrestrictedAdmin, canAccessCompany } from '@/lib/inventory-access';
 import { taxDiffCommands } from '@/lib/product-tax';
 
@@ -432,13 +432,33 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
   }
 
   initInventoryTables();
+
+  // AUTHORISE FIRST. The guards below describe the product — which counting lists
+  // name it, how many orders it is on — and those descriptions are information.
+  // Running them before the ownership check let a manager probe another
+  // restaurant's product id and be told about its orders instead of being turned
+  // away.
+  const odooEarly = getOdoo();
+  const [owner] = await odooEarly.searchRead(
+    'product.product', [['id', '=', productId]], ['id', 'company_id'],
+    { limit: 1, context: { active_test: false } },
+  ) as { id: number; company_id: [number, string] | false }[];
+  if (!owner) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+  const deniedEarly = companyDenial(user, owner.company_id);
+  if (deniedEarly) return deniedEarly;
+
   // Refuse while any counted number depends on this product — including a count
   // still open on someone's tablet right now. Naming what is in the way is the
   // point: "it is in a count" gives a manager nothing to do about it.
   // Scoped: a manager is told something is in the way, never another
   // restaurant's list name.
-  const visible = parseCompanyIds(user.allowed_company_ids);
-  const work = describeCountWorkForProduct(productId, visible.length > 0 ? visible : null);
+  //
+  // An unrestricted admin passes `null` (no narrowing). A manager whose company
+  // list is genuinely EMPTY must pass `[]`, not null — null means "every company"
+  // in that helper, so the old `length > 0 ? visible : null` handed a
+  // misconfigured manager every restaurant's list names.
+  const visible = isUnrestrictedAdmin(user) ? null : parseCompanyIds(user.allowed_company_ids);
+  const work = describeCountWorkForProduct(productId, visible);
   if (work.total > 0) {
     // A draft is ALREADY inactive, so "archive it" is a no-op that would relabel
     // a product awaiting review as archived. Reject in Review is its real way out.
@@ -458,6 +478,26 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
       code: 'IN_LOCKED_COUNT',
       canArchive: !isDraft,
       work,
+    }, { status: 409 });
+  }
+
+  // ...and refuse while anything ELSE in this portal still points at it.
+  //
+  // The count check above looked at two tables. Twenty-four tables across six
+  // modules hold an Odoo product id — orders, receipts, printed container
+  // labels, prep sales history, cook profiles, open carts — and Odoo cannot
+  // protect any of them, because Odoo does not know they exist. Deleting a
+  // product used by one of those left a row pointing at an id nothing could
+  // resolve, inside a screen that shows history.
+  const usage = describeProductUsage(productId);
+  if (usage.used) {
+    return NextResponse.json({
+      error: `This product can’t be deleted — it is ${usage.blocking.join(', and ')}. `
+        + 'Archive it instead: everything above keeps working, and it stops turning up in '
+        + 'searches and when adding products.',
+      code: 'STILL_IN_USE',
+      canArchive: !isDraftProduct(productId),
+      blocking: usage.blocking,
     }, { status: 409 });
   }
 

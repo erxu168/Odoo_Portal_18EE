@@ -129,6 +129,58 @@ export default function ProductSettings({ onBack, onBatchPhotos, initialGap = nu
   const [loading, setLoading] = useState(true);
   const loadRef = React.useRef(0);                                              // newest-request token
   const add = useAddProduct();
+  // Lifecycle from a row: which product's ⋯ menu is open, and what the delete
+  // guard said when it refused.
+  const [rowMenu, setRowMenu] = useState<any | null>(null);
+  const [rowBusy, setRowBusy] = useState(false);
+  const [blocked, setBlocked] = useState<{ product: any; reason: string; canArchive: boolean } | null>(null);
+  // Delete gets its own confirm step, matching the product page. A one-tap
+  // irreversible action on a scrolling list of 200 rows is a mis-tap waiting to
+  // happen, and there is no undo for this one.
+  const [confirmDelete, setConfirmDelete] = useState<any | null>(null);
+
+  /** Archive from the row. Same endpoint the product page uses. */
+  async function archiveFromRow(p: any) {
+    setRowBusy(true);
+    try {
+      const res = await fetch(`/api/inventory/products/${p.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: false }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setToast({ text: d.error || 'Could not archive that.' }); return; }
+      setProducts((prev: any[]) => prev.map((x) => x.id === p.id ? { ...x, active: false } : x));
+      setRowMenu(null);
+      setBlocked(null);
+      setToast({ text: `"${p.name}" archived — hidden from this list.`, undo: () => unarchive(p.id, p.name) });
+    } catch { setToast({ text: 'Network error — nothing changed.' }); }
+    finally { setRowBusy(false); }
+  }
+
+  /**
+   * Delete from the row. The endpoint refuses while anything in the portal still
+   * references the product and names what — that reason is shown verbatim with
+   * archive offered instead, because "it can't be deleted" with no reason and no
+   * way forward reads as a broken button.
+   */
+  async function deleteFromRow(p: any) {
+    setRowBusy(true);
+    try {
+      const res = await fetch(`/api/inventory/products/${p.id}`, { method: 'DELETE' });
+      const d = await res.json().catch(() => ({}));
+      if (res.status === 409) {
+        setRowMenu(null);
+        setBlocked({ product: p, reason: d.error || 'Something still uses this product.', canArchive: d.canArchive !== false });
+        return;
+      }
+      if (!res.ok) { setToast({ text: d.error || 'Could not delete that.' }); return; }
+      setProducts((prev: any[]) => prev.filter((x) => x.id !== p.id));
+      setRowMenu(null);
+      setToast({ text: `"${p.name}" was deleted.` });
+    } catch { setToast({ text: 'Network error — nothing changed.' }); }
+    finally { setRowBusy(false); }
+  }
+
 
   useEffect(() => {
     // WAIT for the restaurant. Without this the first paint fetched unscoped and
@@ -383,9 +435,11 @@ export default function ProductSettings({ onBack, onBatchPhotos, initialGap = nu
               // The list is navigation ONLY — every product setting lives on the
               // single product form (tap to open). Read-only summary here.
               return (
-                <button key={p.id} onClick={() => setDetailFor(p)}
+                <div key={p.id}
+                  className="w-full border-b border-gray-100 flex items-center [content-visibility:auto] [contain-intrinsic-size:auto_76px]">
+                <button onClick={() => setDetailFor(p)}
                   aria-label={`Open ${p.name}`}
-                  className="w-full py-3 border-b border-gray-100 flex items-center gap-3 text-left active:bg-gray-50 [content-visibility:auto] [contain-intrinsic-size:auto_76px]">
+                  className="flex-1 min-w-0 py-3 flex items-center gap-3 text-left active:bg-gray-50">
                   <div className="w-11 h-11 rounded-lg bg-gray-100 border border-gray-200 flex-shrink-0 flex items-center justify-center overflow-hidden">
                     {imageIds.has(p.id)
                       ? <img src={`/api/inventory/product-images/${p.id}?v=${imgVer}`} alt="" className="w-full h-full object-cover" />
@@ -412,6 +466,16 @@ export default function ProductSettings({ onBack, onBatchPhotos, initialGap = nu
                   </div>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
                 </button>
+                {/* Lifecycle actions live behind the ⋯, never as a bare icon on
+                    the row. This is a shared tablet: an exposed trash can beside
+                    a scrolling list gets pressed by accident, and a swipe gesture
+                    has no visible affordance at all. */}
+                <button onClick={() => setRowMenu(p)}
+                  aria-label={`More for ${p.name}`}
+                  className="flex-shrink-0 w-10 h-10 mr-1 rounded-full flex items-center justify-center text-gray-400 text-[19px] leading-none active:bg-gray-100">
+                  &#8942;
+                </button>
+                </div>
               );
             })}
           </div>
@@ -516,6 +580,89 @@ export default function ProductSettings({ onBack, onBatchPhotos, initialGap = nu
           onPick={(id) => { setLocId(id); setLocPick(false); }}
           onClose={() => setLocPick(false)}
         />
+      )}
+
+      {rowMenu && (
+        <div className="fixed inset-0 z-[125] bg-black/40 flex items-end justify-center"
+          role="dialog" aria-modal="true" aria-label={`Actions for ${rowMenu.name}`}
+          onClick={() => { if (!rowBusy) setRowMenu(null); }}>
+          <div className="w-full max-w-md bg-white rounded-t-2xl p-4 pb-6" onClick={(e) => e.stopPropagation()}>
+            <div className="text-[var(--fs-base)] font-bold text-gray-900 truncate mb-3">{rowMenu.name}</div>
+            <button onClick={() => { const p = rowMenu; setRowMenu(null); setDetailFor(p); }}
+              className="w-full h-12 mb-2 rounded-xl border border-gray-200 font-bold text-gray-800 active:bg-gray-50">
+              Open it
+            </button>
+            <button onClick={() => archiveFromRow(rowMenu)} disabled={rowBusy}
+              className="w-full h-12 mb-2 rounded-xl border border-amber-300 bg-amber-50 font-bold text-amber-800 active:bg-amber-100 disabled:opacity-50">
+              {rowBusy ? 'Working…' : 'Archive it'}
+            </button>
+            <p className="text-[var(--fs-xs)] text-gray-500 mb-3 px-1">
+              Archiving hides it from searches and from adding to lists. Every count and order keeps
+              it, and you can bring it back any time.
+              {/* Most products here are shared, so this is not a local change. */}
+              {' '}Products are shared, so this affects every restaurant.
+            </p>
+            {/* Subordinate on purpose: text, not a filled button. */}
+            <button onClick={() => { const p = rowMenu; setRowMenu(null); setConfirmDelete(p); }} disabled={rowBusy}
+              className="w-full h-12 mb-2 rounded-xl text-red-600 font-bold active:bg-red-50 disabled:opacity-50">
+              Delete for good
+            </button>
+            <button onClick={() => setRowMenu(null)} disabled={rowBusy}
+              className="w-full h-12 rounded-xl bg-gray-100 font-bold text-gray-700 active:bg-gray-200 disabled:opacity-50">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[127] bg-black/40 flex items-end justify-center"
+          role="dialog" aria-modal="true" aria-label="Confirm delete"
+          onClick={() => { if (!rowBusy) setConfirmDelete(null); }}>
+          <div className="w-full max-w-md bg-white rounded-t-2xl p-4 pb-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[var(--fs-lg)] font-bold text-gray-900 mb-1">Delete &ldquo;{confirmDelete.name}&rdquo;?</h3>
+            <p className="text-[var(--fs-sm)] text-gray-600 mb-4">
+              This cannot be undone {'—'} there is no bringing it back. It is refused if anything has
+              ever used the product, so nothing is lost silently; but if it goes, it is gone.
+              Archive instead if you are unsure.
+            </p>
+            <button onClick={() => { const p = confirmDelete; setConfirmDelete(null); deleteFromRow(p); }}
+              disabled={rowBusy}
+              className="w-full h-12 mb-2 rounded-xl bg-red-600 text-white font-bold active:bg-red-700 disabled:opacity-50">
+              {rowBusy ? 'Deleting…' : 'Yes, delete it for good'}
+            </button>
+            <button onClick={() => { const p = confirmDelete; setConfirmDelete(null); archiveFromRow(p); }}
+              disabled={rowBusy}
+              className="w-full h-12 mb-2 rounded-xl border border-amber-300 bg-amber-50 font-bold text-amber-800 active:bg-amber-100 disabled:opacity-50">
+              Archive it instead
+            </button>
+            <button onClick={() => setConfirmDelete(null)} disabled={rowBusy}
+              className="w-full h-12 rounded-xl bg-gray-100 font-bold text-gray-700 active:bg-gray-200 disabled:opacity-50">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {blocked && (
+        <div className="fixed inset-0 z-[126] bg-black/40 flex items-end justify-center"
+          role="dialog" aria-modal="true" aria-label="Cannot delete"
+          onClick={() => setBlocked(null)}>
+          <div className="w-full max-w-md bg-white rounded-t-2xl p-4 pb-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[var(--fs-lg)] font-bold text-gray-900 mb-2">It can&rsquo;t be deleted</h3>
+            <p className="text-[var(--fs-sm)] text-gray-600 mb-4">{blocked.reason}</p>
+            {blocked.canArchive && (
+              <button onClick={() => archiveFromRow(blocked.product)} disabled={rowBusy}
+                className="w-full h-12 mb-2 rounded-xl bg-amber-500 text-white font-bold active:bg-amber-600 disabled:opacity-50">
+                {rowBusy ? 'Working…' : 'Archive it instead'}
+              </button>
+            )}
+            <button onClick={() => setBlocked(null)}
+              className="w-full h-12 rounded-xl border border-gray-200 font-bold text-gray-600 active:bg-gray-50">
+              Leave it alone
+            </button>
+          </div>
+        </div>
       )}
 
       {toast && (
