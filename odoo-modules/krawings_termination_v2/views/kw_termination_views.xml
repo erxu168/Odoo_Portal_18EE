@@ -13,7 +13,7 @@
                 <field name="delivery_method"/>
                 <field name="delivery_confirmed" widget="boolean"/>
                 <field name="state" widget="badge"
-                    decoration-success="state in ('signed', 'delivered')"
+                    decoration-success="state in ('signed', 'delivered')" decoration-danger="state == 'in_transit'"
                     decoration-warning="state == 'draft'"
                     decoration-info="state == 'confirmed'"
                     decoration-muted="state in ('archived', 'cancelled')"/>
@@ -28,7 +28,7 @@
             <form string="Termination">
                 <header>
                     <field name="state" widget="statusbar"
-                        statusbar_visible="draft,confirmed,signed,delivered,archived"/>
+                        statusbar_visible="draft,confirmed,signed,in_transit,delivered,archived"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
@@ -39,7 +39,7 @@
                         </button>
                     </div>
                     <group>
-                        <group string="K&#252;ndigung">
+                        <group string="Termination">
                             <field name="employee_id"/>
                             <field name="company_id" readonly="1"/>
                             <field name="termination_type"/>
@@ -49,7 +49,7 @@
                             <field name="receipt_date"
                                 invisible="calc_method != 'receipt'"/>
                         </group>
-                        <group string="Fristen">
+                        <group string="Deadlines">
                             <field name="employee_start_date"/>
                             <field name="tenure_years" widget="float" digits="[4,1]"/>
                             <field name="in_probation"/>
@@ -59,12 +59,12 @@
                         </group>
                     </group>
 
-                    <group string="Vorfall" invisible="termination_type != 'fristlos'">
+                    <group string="Incident" invisible="termination_type != 'fristlos'">
                         <field name="incident_date"/>
                         <field name="incident_description"/>
                     </group>
 
-                    <group string="Aufhebungsvertrag" invisible="termination_type != 'aufhebung'">
+                    <group string="Mutual agreement" invisible="termination_type != 'aufhebung'">
                         <group>
                             <field name="include_severance"/>
                             <field name="severance_amount" invisible="not include_severance"/>
@@ -72,7 +72,7 @@
                         </group>
                     </group>
 
-                    <group string="Eigene K&#252;ndigung" invisible="termination_type != 'bestaetigung'">
+                    <group string="Resignation" invisible="termination_type != 'bestaetigung'">
                         <field name="resignation_received_date"/>
                     </group>
 
@@ -84,7 +84,7 @@
                         </group>
                     </group>
 
-                    <group string="Zustellung" invisible="state in ('draft', 'confirmed')">
+                    <group string="Delivery" invisible="state in ('draft', 'confirmed')">
                         <group>
                             <field name="delivery_method"/>
                             <field name="delivery_date"/>
@@ -132,7 +132,7 @@
                 <filter name="filter_not_delivered" string="Noch nicht zugestellt"
                     domain="[('state', '=', 'signed'), ('delivery_date', '=', False)]"/>
                 <group expand="0" string="Gruppieren">
-                    <filter name="groupby_type" string="Art" context="{'group_by': 'termination_type'}"/>
+                    <filter name="groupby_type" string="Type" context="{'group_by': 'termination_type'}"/>
                     <filter name="groupby_state" string="Status" context="{'group_by': 'state'}"/>
                     <filter name="groupby_company" string="Unternehmen" context="{'group_by': 'company_id'}"/>
                 </group>
@@ -141,7 +141,7 @@
     </record>
 
     <record id="action_kw_termination" model="ir.actions.act_window">
-        <field name="name">K&#252;ndigungen</field>
+        <field name="name">Terminations</field>
         <field name="res_model">kw.termination</field>
         <field name="view_mode">list,form</field>
         <field name="search_view_id" ref="kw_termination_view_search"/>

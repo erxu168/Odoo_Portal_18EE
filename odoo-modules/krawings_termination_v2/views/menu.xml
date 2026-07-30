@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <menuitem id="menu_kw_termination_root"
-        name="K&#252;ndigungen"
+        name="Terminations"
         parent="hr.menu_hr_root"
         sequence="90"
         groups="hr.group_hr_manager"/>
     <menuitem id="menu_kw_termination_list"
-        name="Alle K&#252;ndigungen"
+        name="All terminations"
         parent="menu_kw_termination_root"
         action="action_kw_termination"
         sequence="10"/>
