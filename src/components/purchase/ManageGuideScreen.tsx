@@ -21,7 +21,11 @@ interface OdooProduct {
   name: string;
   uom: string;
   category_name: string;
+  /** What we PAY. Never Odoo's list_price, which is what we would charge. */
   price: number;
+  /** Where that number came from — this supplier's list, our cost, or nowhere. */
+  price_source?: 'supplier' | 'cost' | 'none';
+  price_from?: string | null;
 }
 
 interface ManageGuideScreenProps {
@@ -201,6 +205,16 @@ export default function ManageGuideScreen({
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold text-gray-900 truncate">{product.name}</div>
                     <div className="text-[11px] text-gray-500 font-mono">{product.uom} &bull; &euro;{product.price.toFixed(2)} &bull; {product.category_name}</div>
+                    {/* Where the number came from. A price this supplier has never
+                        quoted must not look like one they did — and a product with
+                        no price at all showing a confident €0.00 is how a wrong
+                        order gets sent. */}
+                    {product.price_source === 'cost' && (
+                      <div className="text-[10px] text-amber-700">our cost {'\u2014'} they haven&rsquo;t quoted this</div>
+                    )}
+                    {product.price_source === 'none' && (
+                      <div className="text-[10px] text-amber-700">no price yet {'\u2014'} set it after adding</div>
+                    )}
                   </div>
                   <button
                     onClick={() => onAddProduct(product)}

@@ -702,3 +702,16 @@ export function setSetting(key: string, value: string) {
 
 // Init on import
 try { initPurchaseTables(); } catch (_e) { /* tables may already exist */ }
+
+/**
+ * The Odoo partner behind a portal supplier.
+ *
+ * Needed because an order guide's price must come from THAT supplier's price
+ * list, and product.supplierinfo is keyed by res.partner — not by the portal's
+ * own supplier row.
+ */
+export function getSupplierOdooPartnerId(supplierId: number): number | null {
+  const row = db().prepare('SELECT odoo_partner_id FROM purchase_suppliers WHERE id = ?')
+    .get(supplierId) as { odoo_partner_id: number } | undefined;
+  return row?.odoo_partner_id ?? null;
+}

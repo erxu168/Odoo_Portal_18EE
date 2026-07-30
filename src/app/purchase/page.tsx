@@ -37,7 +37,13 @@ interface GuideItem { id: number; product_id: number; product_name: string; prod
 interface CartSummary { id: number; supplier_id: number; supplier_name: string; item_count: number; total: number; items: any[]; send_method: string; min_order_value: number; approval_required: number; }
 interface Order { id: number; supplier_id: number; supplier_name: string; odoo_po_name: string | null; status: string; total_amount: number; created_at: string; lines?: any[]; delivery_date: string | null; order_note: string; location_id: number; sent_at?: string | null; cancelled_at?: string | null; receipt_status?: string | null; receipt_created_at?: string | null; receipt_confirmed_at?: string | null; approved_by?: number | null; }
 interface ReceiptLine { id: number; product_id: number; product_name: string; product_uom: string; ordered_qty: number; received_qty: number | null; difference: number; has_issue: number; issue_type: string | null; issue_notes: string | null; price?: number; subtotal?: number; issue_photo?: string | null; }
-interface OdooProduct { id: number; name: string; uom: string; category_name: string; price: number; }
+interface OdooProduct {
+  id: number; name: string; uom: string; category_name: string; price: number;
+  /** Where the price came from: this supplier's list, our cost, or nowhere. */
+  price_source?: 'supplier' | 'cost' | 'none';
+  /** The supplier the price came from, when it came from one. */
+  price_from?: string | null;
+}
 
 type Tab = 'order' | 'cart' | 'receive' | 'history';
 type Screen = 'dashboard' | 'suppliers' | 'guide' | 'cart' | 'review' | 'sent' | 'receive-list' | 'receive-check' | 'receive-issue' | 'history' | 'order-detail' | 'manage' | 'manage-guide' | 'add-supplier' | 'catalog' | 'insights' | 'settings';
@@ -325,6 +331,11 @@ export default function PurchasePage() {
       if (cat && cat !== 'All') params.set('category', cat);
       params.set('limit', '40');
       params.set('offset', String(offset));
+      // Which supplier's price to quote. An order guide belongs to one supplier,
+      // so "what does this cost" has a real answer — without this the search
+      // falls back to our own cost, and before this it reported the SELLING
+      // price, which is 1.00 for almost every product here.
+      if (guideSupplierId) params.set('supplier_id', String(guideSupplierId));
       const r = await fetch(`/api/purchase/products?${params}`);
       const d = await r.json();
       const list: OdooProduct[] = d.products || [];
@@ -350,7 +361,7 @@ export default function PurchasePage() {
 
   async function addProductToGuide(product: OdooProduct & { product_code?: string }, extra?: { par_level?: number; product_code?: string }) {
     setMgAdding(product.id);
-    try { await fetch('/api/purchase/guides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ supplier_id: guideSupplierId, location_id: locationId, product_id: product.id, product_name: product.name, product_uom: product.uom, price: product.price, price_source: 'odoo', category_name: product.category_name, par_level: extra?.par_level ?? 0, product_code: extra?.product_code ?? product.product_code ?? '' }) }); const r = await fetch(`/api/purchase/guides?supplier_id=${guideSupplierId}&location_id=${locationId}`); const d = await r.json(); setGuideItems(d.guide?.items || []); fetchSuppliers(); } catch (e) { void e; } finally { setMgAdding(0); }
+    try { await fetch('/api/purchase/guides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ supplier_id: guideSupplierId, location_id: locationId, product_id: product.id, product_name: product.name, product_uom: product.uom, price: product.price, price_source: (product as any).price_source || 'none', category_name: product.category_name, par_level: extra?.par_level ?? 0, product_code: extra?.product_code ?? product.product_code ?? '' }) }); const r = await fetch(`/api/purchase/guides?supplier_id=${guideSupplierId}&location_id=${locationId}`); const d = await r.json(); setGuideItems(d.guide?.items || []); fetchSuppliers(); } catch (e) { void e; } finally { setMgAdding(0); }
   }
 
   async function createProductAndAddToGuide(payload: { name: string; uom_id: number; price: number; categ_id: number; default_code: string; par_level: number }) {

@@ -8,6 +8,8 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
+import { initPurchaseTables, getSupplierOdooPartnerId } from '@/lib/purchase-db';
+import { indexSupplierPrices, resolveBuyPrice } from '@/lib/purchase-price';
 
 export async function GET(request: Request) {
   const user = requireAuth();
@@ -19,6 +21,11 @@ export async function GET(request: Request) {
   const category = searchParams.get('category') || '';
   const limit = parseInt(searchParams.get('limit') || '40');
   const offset = parseInt(searchParams.get('offset') || '0') || 0;
+  // The order guide belongs to ONE supplier, so "what does this cost" has an
+  // answer — theirs. Optional, because this search is also used where no supplier
+  // is in play; without it the price falls back to our own cost.
+  const rawSupplier = searchParams.get('supplier_id');
+  const portalSupplierId = rawSupplier && /^\d+$/.test(rawSupplier) ? parseInt(rawSupplier, 10) : null;
 
   try {
     const odoo = getOdoo();
@@ -34,9 +41,35 @@ export async function GET(request: Request) {
 
     const products = await odoo.searchRead('product.product',
       domain,
-      ['id', 'name', 'uom_id', 'categ_id', 'list_price', 'type', 'active'],
+      // standard_price and product_tmpl_id replace the reliance on list_price:
+      // one is our cost, the other is how a supplier price is attached.
+      ['id', 'name', 'uom_id', 'categ_id', 'list_price', 'standard_price', 'product_tmpl_id', 'type', 'active'],
       { limit, offset, order: 'categ_id, name' }
     );
+
+    // THE FIX. This route reported `list_price` — the price you SELL at — as the
+    // order guide price. Almost nothing here has one set, so Odoo's default of
+    // 1.00 stood in and the guide read €1.00 for essentially every product, while
+    // the real numbers sat on product.supplierinfo: 515 of 601 catalog products
+    // have a supplier price, and only 8 have a cost.
+    let partnerId: number | null = null;
+    if (portalSupplierId != null) {
+      initPurchaseTables();
+      partnerId = getSupplierOdooPartnerId(portalSupplierId);
+    }
+    const ids = (products as { id: number }[]).map((p) => p.id);
+    const tmplIds = (products as { product_tmpl_id?: [number, string] }[])
+      .map((p) => (Array.isArray(p.product_tmpl_id) ? p.product_tmpl_id[0] : null))
+      .filter((n): n is number => n != null);
+    // A supplierinfo row hangs off the VARIANT or the TEMPLATE — usually the
+    // template — so both are asked for, or most prices are missed.
+    const sellerRows = ids.length > 0
+      ? await odoo.searchRead('product.supplierinfo',
+          ['|', ['product_id', 'in', ids], ['product_tmpl_id', 'in', tmplIds]],
+          ['product_id', 'product_tmpl_id', 'partner_id', 'price', 'min_qty'],
+          { limit: 2000 })
+      : [];
+    const priceIndex = indexSupplierPrices(sellerRows as any[], partnerId ?? undefined);
 
     // Also fetch categories for filter pills
     const categories = await odoo.searchRead('product.category',
@@ -59,7 +92,11 @@ export async function GET(request: Request) {
       uom: p.uom_id?.[1] || 'Units',
       category_id: p.categ_id?.[0] || 0,
       category_name: p.categ_id?.[1]?.split(' / ').pop() || 'Other',
-      price: p.list_price || 0,
+      // What we PAY, never what we would charge. See lib/purchase-price.ts.
+      ...(() => {
+        const r = resolveBuyPrice(p, priceIndex);
+        return { price: r.price, price_source: r.source, price_from: r.supplier_name || null };
+      })(),
       type: p.type,
     }));
 
