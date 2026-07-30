@@ -67,6 +67,13 @@ report** — which step was skipped and why. Never let the missing cross-check b
 
 ## Read These Files First (every session)
 
+0. **ASSETS.md** — the shared-asset registry. **Check it BEFORE building any
+   component or helper.** Anything reusable you create goes into
+   `src/components/ui/` or `src/lib/` and gets added to ASSETS.md **in the same
+   commit** — Ethan should never have to remind you something already exists.
+   Two binding rules live there: every photo/file input accepts camera + camera
+   roll + file picker + drag-and-drop + paste; and every mutation updates the
+   screen immediately, with no refresh.
 1. **PORTAL.md** — master reference: tech stack, file structure, what's built, UX rules, Odoo field names, build priority
 2. **DESIGN_GUIDE.md** — all visual decisions: color system, badges, cards, typography, navigation rules
 3. **src/lib/ux-rules.ts** — plain language mappings, confirmation dialogs, error messages
