@@ -187,8 +187,15 @@ puts it before the row. A layout difference, not a second implementation —
 spot. A chosen shelf hidden inside a collapsed room is a place staff will be sent
 to count that the manager cannot see.
 
-**Still to do:** the category picker (`All / RAW MATERIALS / Spices`) has the same
-nesting problem and does not use this yet.
+**The category picker does NOT need this** — checked 2026-07-30. It delegates to
+`ui/TreePickerSheet`, which is a DRILL-DOWN: it shows only the children of the
+current level, with a breadcrumb back up. That solves the same problem a different
+way, and converting it to an expandable tree would be a regression, not a fix.
+`LocationPickerSheet` shares that component and is likewise fine.
+
+So the collapsing work is complete: the two screens that rendered a whole tree at
+once (`LocationManager`, `SpotSheet`) now collapse; the two that drill already
+did not have the problem.
 
 ### The spec — signed off 2026-07-30
 The location tree renders every level at once, so a deep map (room → cabinet →
