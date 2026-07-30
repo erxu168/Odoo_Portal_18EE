@@ -233,7 +233,7 @@ export default function TermWizard({ onBack, onCreated, onHome, preselectEmploye
                     onClick={(e) => { e.stopPropagation(); router.push(`/hr?employee=${emp.id}`); }}
                     aria-label={`Open ${emp.name}\u2019s file`}
                     className="flex items-center gap-1 px-4 text-[var(--fs-xs)] font-semibold text-blue-600 border-l border-gray-100 active:bg-blue-50 rounded-r-xl whitespace-nowrap">
-                    Open file <span aria-hidden>\u203a</span>
+                    Open file <span aria-hidden>›</span>
                   </button>
                 </div>
               ))}
