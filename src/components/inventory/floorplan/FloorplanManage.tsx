@@ -32,6 +32,7 @@ export default function FloorplanManage() {
   const [newFloor, setNewFloor] = useState('');
   const [newType, setNewType] = useState({ label: '', icon: '', color: '#16A34A' });
   const [renameFloor, setRenameFloor] = useState<{ id: number; name: string } | null>(null);
+  const [dragOverFloor, setDragOverFloor] = useState<number | null>(null);
   const [archiveFloor, setArchiveFloor] = useState<{ id: number; name: string } | null>(null);
   const [editType, setEditType] = useState<{ id: number; key: string; label: string; icon: string; color: string } | null>(null);
   const [deleteType, setDeleteType] = useState<{ id: number; label: string } | null>(null);
@@ -205,7 +206,24 @@ export default function FloorplanManage() {
             <p className="py-2 text-[12.5px] text-gray-500">No floors yet — add one below, then upload its plan PDF.</p>
           )}
           {floors?.map(f => (
-            <div key={f.id} className="flex min-h-[52px] items-center gap-3 border-b border-gray-50 py-2 last:border-b-0">
+            <div
+              key={f.id}
+              onDragOver={e => { e.preventDefault(); setDragOverFloor(f.id); }}
+              onDragLeave={() => setDragOverFloor(d => (d === f.id ? null : d))}
+              onDrop={e => {
+                e.preventDefault();
+                setDragOverFloor(null);
+                const file = e.dataTransfer.files?.[0];
+                if (!file) return;
+                if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                  setError('Drop the plan as a PDF file.');
+                  return;
+                }
+                uploadFloorRef.current = f.id;
+                void onFile(file);
+              }}
+              className={`flex min-h-[52px] items-center gap-3 border-b border-gray-50 py-2 last:border-b-0 rounded-xl transition-colors ${dragOverFloor === f.id ? 'bg-blue-50 outline outline-2 outline-dashed outline-blue-400' : ''}`}
+            >
               <span className="flex h-11 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[13px] font-extrabold text-blue-700">
                 {f.code || f.name.slice(0, 3)}
               </span>
@@ -253,8 +271,8 @@ export default function FloorplanManage() {
             <button onClick={addFloor} className="h-11 flex-shrink-0 rounded-full bg-green-600 px-4 text-[13px] font-bold text-white active:scale-95">Add</button>
           </div>
           <p className="mt-2 text-[11.5px] leading-relaxed text-gray-500">
-            Upload the Illustrator PDF exactly as you export it — labels are detected automatically, and a new
-            version of a floor keeps the old one available.
+            Upload the Illustrator PDF exactly as you export it — or simply drag the PDF onto a floor row.
+            Labels are detected automatically, and a new version of a floor keeps the old one available.
           </p>
         </div>
 
