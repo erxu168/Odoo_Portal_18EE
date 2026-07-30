@@ -136,6 +136,33 @@ importers.
 
 ---
 
+## Planned — decided, not yet built
+
+### `CollapsibleTree` (`ui/`) — signed off 2026-07-30
+The location tree renders every level at once, so a deep map (room → cabinet →
+shelf) buries the rooms. Same problem in the category picker
+(`All / RAW MATERIALS / Spices`), so this is ONE shared asset used by the
+Locations manager, the "Where does it live?" sheet, and the category picker.
+
+Ethan's decisions:
+- **Collapsed to the top level by default.** Rooms visible, contents closed.
+- **"Expand all" — yes**, as a small text action. Building the map wants
+  everything open; using it wants everything closed.
+- **Expansion is remembered for the CURRENT MOMENT ONLY.** Navigating away and
+  back keeps it; a browser reload starts collapsed again.
+  → **Implementation: a module-level in-memory `Map`, NOT localStorage and NOT
+  sessionStorage.** sessionStorage survives a reload, which is explicitly not
+  wanted. A plain JS store outside React survives client-side navigation (so it
+  satisfies [[feedback_no_scroll_jump]]) and dies with the page, which is exactly
+  the ask. Keyed per screen — how you leave the manager is not how a picker
+  sheet should open.
+- A collapsed row still **summarises** what it hides ("Fridge Room · 4 inside").
+- **Search auto-expands to its matches**, or a collapsed tree looks like a broken
+  search.
+- A branch containing the **current selection** opens on load, so a chosen shelf
+  is never hidden behind a closed room.
+- Whole row is the tap target, 44px, chevron rotates.
+
 ## Patterns that are not files, but are still rules
 
 - **Newest-request token.** Any effect that loads per-company or per-record data
