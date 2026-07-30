@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
+import DropZone from "./DropZone";
 
 /**
  * FilePicker — Shared upload widget for the Krawings Portal.
@@ -15,6 +16,14 @@ import React, { useCallback, useRef } from "react";
  *   - Choose from Gallery
  *   - Browse Files
  * No `capture` attribute is set, so all three options appear natively.
+ *
+ * DRAG AND DROP is built in, not per screen. Ethan's standing rule: "any place
+ * you can add a photo or file, you must also be able to drag one in — that should
+ * be the general rule." Wrapping the whole picker in ui/DropZone means all seven
+ * screens that already use this get it with no change at their call site, and no
+ * screen can accidentally ship a photo box that ignores a dropped file. PASTE is
+ * opt-in (`paste`) because a document-level listener in a component used seven
+ * times over would fight with itself.
  *
  * Props:
  *   onFile(file, dataUrl) — called after user picks a file; receives File + base64 dataUrl
@@ -40,6 +49,12 @@ interface FilePickerProps {
   variant?: "slot" | "button" | "icon";
   size?: "sm" | "md" | "lg";
   children?: React.ReactNode;
+  /**
+   * Also accept Cmd/Ctrl-V while this picker has focus. Off by default: a
+   * document-level paste listener from seven simultaneous pickers is a fight
+   * nobody wins. Turn it on where the screen is about one file at a time.
+   */
+  paste?: boolean;
 }
 
 export default function FilePicker({
@@ -53,8 +68,34 @@ export default function FilePicker({
   variant = "slot",
   size = "md",
   children,
+  paste = false,
 }: FilePickerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const hostRef = useRef<HTMLSpanElement>(null);
+
+  /** One path in for every source — picker, drop, paste — so they cannot drift. */
+  const acceptFile = useCallback((file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => onFile(file, reader.result as string);
+    reader.readAsDataURL(file);
+  }, [onFile]);
+
+  // Paste, when asked for and when this picker is the focused thing. Scoped to
+  // the host element rather than the document so two pickers cannot both claim
+  // the same keystroke.
+  useEffect(() => {
+    if (!paste || disabled || loading) return;
+    const host = hostRef.current;
+    if (!host) return;
+    const onPaste = (e: ClipboardEvent) => {
+      if (!host.contains(document.activeElement)) return;
+      const item = Array.from(e.clipboardData?.items || []).find((i) => i.kind === 'file');
+      const f = item?.getAsFile();
+      if (f) { e.preventDefault(); acceptFile(f); }
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [paste, disabled, loading, acceptFile]);
 
   const handleClick = useCallback(() => {
     if (disabled || loading) return;
@@ -65,23 +106,39 @@ export default function FilePicker({
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        onFile(file, dataUrl);
-      };
-      reader.readAsDataURL(file);
+      acceptFile(file);
       // Reset so same file can be re-selected
       if (inputRef.current) inputRef.current.value = "";
     },
-    [onFile]
+    [acceptFile]
   );
 
   const sizeH =
     size === "sm" ? "h-28" : size === "lg" ? "h-48" : "h-40";
 
+  /**
+   * The drop wrapper every variant shares. A <span> host so wrapping a "button"
+   * or "icon" variant cannot break an inline layout, and so the paste listener
+   * above has an element to scope itself to.
+   */
+  const withDrop = (inner: React.ReactNode) => (
+    <DropZone
+      onFiles={(files) => { if (files[0]) acceptFile(files[0]); }}
+      accept={accept.startsWith("image") ? "image/" : ""}
+      disabled={disabled || loading}
+      // NOT "contents": DropZone's root is the `relative` ancestor its drag-over
+      // overlay positions against, and display:contents removes an element from
+      // the box tree — the overlay would then anchor to some outer container and
+      // land in the wrong place. A full-width block for the tall slot, inline for
+      // the button and icon variants so they stay in their row.
+      className={variant === "slot" ? "w-full" : "inline-flex"}
+    >
+      <span ref={hostRef} className="contents">{inner}</span>
+    </DropZone>
+  );
+
   if (variant === "button") {
-    return (
+    return withDrop(
       <>
         <input
           ref={inputRef}
@@ -110,7 +167,7 @@ export default function FilePicker({
   }
 
   if (variant === "icon") {
-    return (
+    return withDrop(
       <>
         <input
           ref={inputRef}
@@ -137,8 +194,9 @@ export default function FilePicker({
     );
   }
 
-  // Default: slot variant (tall dashed box)
-  return (
+  // Default: slot variant (tall dashed box) — the one that most looks like it
+  // should accept a drop, and until now did not.
+  return withDrop(
     <>
       <input
         ref={inputRef}

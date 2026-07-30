@@ -21,7 +21,7 @@ drag-and-drop + paste**. Drag is *in addition to*, never instead of.
 | Asset | Path | What | users |
 |---|---|---|---|
 | `DropZone` | `ui/DropZone.tsx` | Wraps any target to accept a dragged-in file (handles enter/leave counting so nested elements don't flicker) | 3 |
-| `FilePicker` | `ui/FilePicker.tsx` | Camera + gallery + file input trio | 7 |
+| `FilePicker` | `ui/FilePicker.tsx` | Camera + gallery + file input + **drag-and-drop** (built in, all 3 variants) + optional paste (`paste` prop) | 7 |
 | `PhotoSourceButtons` | `ui/PhotoSourceButtons.tsx` | Take photo / library / file, with mobile UA detection | 1 |
 | `CameraCaptureModal` | `ui/CameraCaptureModal.tsx` | In-browser webcam capture for desktop | 1 |
 | `DocumentUploadWidget` | `ui/DocumentUploadWidget.tsx` | Document card: preview, replace, drag | 2 |
@@ -31,10 +31,14 @@ drag-and-drop + paste**. Drag is *in addition to*, never instead of.
 | `fetchImageFromUrl` | `lib/fetch-image-url.ts` | SSRF-guarded fetch of a pasted image URL. **Use this, never a bare fetch** | 1 |
 | `BatchPhotos` | `components/products/BatchPhotos.tsx` | The paste-and-advance grid: camera, file, drop, paste, or copied URL | 1 |
 
-**KNOWN GAP (not yet fixed):** `FilePicker`, `PhotoSourceButtons` and
-`UploadWidget` do **not** accept a drag — they should all wrap `DropZone`. The
-richest implementation is `BatchPhotos` (camera + file + drop + paste + URL) and
-it is not yet extracted. **One shared `PhotoInput` should replace all four.**
+**FIXED 2026-07-30:** `FilePicker` now wraps `DropZone` itself, so all seven
+screens using it accept a dragged-in file with no change at their call site —
+recipes (2), locations, HR documents (2), purchase receiving (2).
+
+**REMAINING GAP:** `PhotoSourceButtons` (1 user) and `UploadWidget` (1 user) still
+have no drag, and both overlap `FilePicker` — they should be retired into it
+rather than fixed separately. `BatchPhotos` additionally accepts a copied image
+URL via `fetchImageFromUrl`; if a second screen ever wants that, lift it out.
 
 ---
 
