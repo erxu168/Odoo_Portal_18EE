@@ -95,12 +95,14 @@ export interface TerminationCreateValues {
   resignation_received_date?: string;
 }
 
+// English UI labels with the German legal instrument in parentheses (the
+// letters themselves are and remain German).
 export const TERMINATION_TYPE_LABELS: Record<TerminationType, string> = {
-  ordentlich: 'Ordentliche K\u00fcndigung',
-  ordentlich_probezeit: 'Ordentliche K\u00fcndigung (Probezeit)',
-  fristlos: 'Fristlose K\u00fcndigung',
-  aufhebung: 'Aufhebungsvertrag',
-  bestaetigung: 'K\u00fcndigungsbest\u00e4tigung',
+  ordentlich: 'Standard termination (Ordentliche K\u00fcndigung)',
+  ordentlich_probezeit: 'Probation termination (Probezeit)',
+  fristlos: 'Immediate termination (Fristlos)',
+  aufhebung: 'Mutual agreement (Aufhebungsvertrag)',
+  bestaetigung: 'Resignation acknowledgment',
 };
 
 export const STATE_LABELS: Record<TerminationState, string> = {

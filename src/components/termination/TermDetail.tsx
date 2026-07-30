@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { TerminationRecord, DeliveryMethod } from '@/types/termination';
 import { TERMINATION_TYPE_LABELS, STATE_LABELS, DELIVERY_METHOD_LABELS } from '@/types/termination';
 import DeliveryForm from './DeliveryForm';
+import TerminationEditForm from './TerminationEditForm';
 import AppHeader from '@/components/ui/AppHeader';
 import PdfViewer from '@/components/ui/PdfViewer';
 import PdfDocumentCard from '@/components/ui/PdfDocumentCard';
@@ -49,6 +50,11 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   const [error, setError] = useState('');
   const [pdfLoading, setPdfLoading] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showConfirmDelivery, setShowConfirmDelivery] = useState(false);
+  const [confirmDeliveryDate, setConfirmDeliveryDate] = useState('');
+  const [confirmReceiptDate, setConfirmReceiptDate] = useState('');
+  const [confirmDeliveryBusy, setConfirmDeliveryBusy] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
   const [accountantLoading, setAccountantLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -219,6 +225,43 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
     } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Error'); }
   }
 
+  async function handleConfirmDelivery() {
+    setConfirmDeliveryBusy(true);
+    try {
+      const res = await fetch(`/api/termination/${id}/confirm-delivery`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          delivery_confirmed_date: confirmDeliveryDate || undefined,
+          receipt_date: confirmReceiptDate || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (json.ok) { setRec(json.data); setShowConfirmDelivery(false); } else alert(json.error);
+    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Error'); }
+    finally { setConfirmDeliveryBusy(false); }
+  }
+
+  async function handleArchiveEmployee() {
+    if (!confirm('Archive this employee? They will be deactivated in Odoo and the termination completed.')) return;
+    try {
+      const res = await fetch(`/api/termination/${id}/archive`, { method: 'POST' });
+      const json = await res.json();
+      if (json.ok) setRec(json.data); else alert(json.error);
+    } catch (err: unknown) { alert(err instanceof Error ? err.message : 'Error'); }
+  }
+
+  async function deleteSignedDoc() {
+    const res = await fetch(`/api/termination/${id}/upload-signed`, { method: 'DELETE' });
+    const json = await res.json();
+    if (json.ok) setRec(json.data); else throw new Error(json.error || 'Delete failed');
+  }
+
+  async function deleteProofDoc() {
+    const res = await fetch(`/api/termination/${id}/upload-proof`, { method: 'DELETE' });
+    const json = await res.json();
+    if (json.ok) setRec(json.data); else throw new Error(json.error || 'Delete failed');
+  }
+
   async function handleSendToAccountant() {
     if (!confirm('Send termination letter to accountant via email?')) return;
     setAccountantLoading(true);
@@ -270,7 +313,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
   if (error || !rec) return <div className="px-5 pt-12"><p className="text-red-600">{error || 'Not found'}</p></div>;
 
   const stepIdx = STEPS.indexOf(rec.state);
-  const canCancel = ['draft', 'confirmed', 'signed'].includes(rec.state);
+  const canCancel = ['draft', 'confirmed', 'signed', 'in_transit'].includes(rec.state);
   const hasPdf = !!rec.pdf_attachment_id;
   const hasSigned = !!rec.signed_pdf_attachment_id;
   const signedDocName = m2oName(rec.signed_pdf_attachment_id);
@@ -357,6 +400,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
               onView={fetchPdfBase64}
               onPrint={printPdf}
               onUpload={uploadSignedDoc}
+              onDelete={hasSigned && !['archived', 'cancelled'].includes(rec.state) ? deleteSignedDoc : undefined}
               accent={hasSigned ? 'green' : 'blue'}
             />
           </div>
@@ -426,6 +470,7 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
                 onView={fetchProofBase64}
                 onPrint={printProof}
                 onUpload={uploadProofDoc}
+                onDelete={rec.delivery_proof_attachment_id && !['archived', 'cancelled'].includes(rec.state) ? deleteProofDoc : undefined}
                 accent="gray"
                 emptyLabel="Upload courier confirmation"
               />
@@ -435,6 +480,10 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
 
         {showDelivery && (
           <DeliveryForm onSubmit={handleDeliverySubmit} onCancel={() => setShowDelivery(false)} />
+        )}
+
+        {showEdit && (
+          <TerminationEditForm rec={rec} onSaved={(u) => { setRec(u); setShowEdit(false); }} onCancel={() => setShowEdit(false)} />
         )}
 
         {/* Actions */}
@@ -454,15 +503,49 @@ export default function TermDetail({ id, onBack, onHome }: Props) {
               className="w-full py-3.5 rounded-xl bg-green-600 text-white font-semibold text-[14px] active:bg-green-700">
               Mark as signed</button>
           )}
-          {['signed', 'in_transit', 'delivered'].includes(rec.state) && !showDelivery && !rec.delivery_method && (
+          {rec.state === 'signed' && !showDelivery && (
             <button onClick={() => setShowDelivery(true)}
-              className="w-full py-3.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50">
-              Record delivery info</button>
+              className="w-full py-3.5 rounded-xl bg-amber-500 text-white font-semibold text-[14px] active:bg-amber-600">
+              Letter sent — record dispatch</button>
           )}
-          {['signed', 'in_transit'].includes(rec.state) && (
-            <button onClick={() => handleSetState('delivered')}
+          {rec.state === 'in_transit' && !showConfirmDelivery && (
+            <button onClick={() => { setConfirmDeliveryDate(new Date().toISOString().split('T')[0]); setShowConfirmDelivery(true); }}
               className="w-full py-3.5 rounded-xl bg-emerald-600 text-white font-semibold text-[14px] active:bg-emerald-700">
-              Mark as delivered</button>
+              Confirm delivery</button>
+          )}
+          {showConfirmDelivery && (
+            <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+              <span className="text-[13px] font-semibold text-gray-900 block">Confirm delivery</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Confirmed on</div>
+                  <input type="date" value={confirmDeliveryDate} onChange={e => setConfirmDeliveryDate(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[14px]" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Receipt date</div>
+                  <input type="date" value={confirmReceiptDate} onChange={e => setConfirmReceiptDate(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-[14px]" />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setShowConfirmDelivery(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-semibold text-[13px]">Cancel</button>
+                <button onClick={handleConfirmDelivery} disabled={confirmDeliveryBusy}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-[13px] disabled:opacity-50">
+                  {confirmDeliveryBusy ? 'Saving…' : 'Delivered ✓'}</button>
+              </div>
+            </div>
+          )}
+          {rec.state === 'delivered' && (
+            <button onClick={handleArchiveEmployee}
+              className="w-full py-3.5 rounded-xl bg-gray-800 text-white font-semibold text-[14px] active:bg-gray-900">
+              Archive employee</button>
+          )}
+          {!['archived', 'cancelled'].includes(rec.state) && (
+            <button onClick={() => setShowEdit(true)}
+              className="w-full py-3.5 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-[14px] active:bg-gray-50">
+              Edit details</button>
           )}
           {['signed', 'in_transit', 'delivered'].includes(rec.state) && !rec.sent_to_accountant && (
             <button onClick={handleSendToAccountant} disabled={accountantLoading}

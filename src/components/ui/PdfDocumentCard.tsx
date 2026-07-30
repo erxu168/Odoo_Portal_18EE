@@ -36,6 +36,8 @@ interface PdfDocumentCardProps {
   onUpload: (file: File) => Promise<void>;
   /** Print the document (opens in new tab) */
   onPrint: () => Promise<void>;
+  /** Optional: shows a Delete action (confirm dialog included) */
+  onDelete?: () => Promise<void>;
   /** Accent color for the icon */
   accent?: 'green' | 'blue' | 'gray';
   /** File accept types. Default: "image/*,.pdf" */
@@ -53,12 +55,14 @@ export default function PdfDocumentCard({
   onView,
   onUpload,
   onPrint,
+  onDelete,
   accent = 'green',
   accept = 'image/*,.pdf',
   emptyLabel,
   disabled = false,
 }: PdfDocumentCardProps) {
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [viewLoading, setViewLoading] = useState(false);
   const [pdfData, setPdfData] = useState<{ base64: string; name: string } | null>(null);
 
@@ -88,6 +92,19 @@ export default function PdfDocumentCard({
       alert(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!onDelete) return;
+    if (!confirm(`Delete this ${label.toLowerCase()}? You can upload a new one afterwards.`)) return;
+    setDeleting(true);
+    try {
+      await onDelete();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -208,6 +225,23 @@ export default function PdfDocumentCard({
             disabled={uploading || disabled}
           />
         </label>
+        {onDelete && (
+          <button
+            onClick={handleDelete}
+            disabled={deleting || disabled}
+            className="py-2.5 px-3 rounded-xl bg-red-50 border border-red-200 text-red-600 font-medium text-[12px] flex items-center justify-center gap-1.5 active:bg-red-100 disabled:opacity-50"
+            aria-label={`Delete ${label}`}
+          >
+            {deleting ? (
+              <div className="w-4 h-4 border-2 border-red-200 border-t-red-600 rounded-full animate-spin" />
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+              </svg>
+            )}
+            Delete
+          </button>
+        )}
       </div>
     </div>
   );

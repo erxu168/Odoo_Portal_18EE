@@ -101,15 +101,17 @@ export async function POST(
       pdfBase64 = pdfBuffer.toString('base64');
     }
 
-    // Read old pdf_attachment_id before creating the new one
+    // Read the PREVIOUS signed PDF (replace flow removes it after the new one
+    // is safely linked). The generated PDF slot is never touched here — the
+    // unsigned original stays available on the record.
     const odoo = getOdoo();
-    let oldPdfAttachId: number | null = null;
+    let oldSignedAttachId: number | null = null;
     try {
-      const current = await odoo.read('kw.termination', [termId], ['pdf_attachment_id']);
-      if (current?.[0]?.pdf_attachment_id) {
-        oldPdfAttachId = Array.isArray(current[0].pdf_attachment_id)
-          ? current[0].pdf_attachment_id[0]
-          : current[0].pdf_attachment_id;
+      const current = await odoo.read('kw.termination', [termId], ['signed_pdf_attachment_id']);
+      if (current?.[0]?.signed_pdf_attachment_id) {
+        oldSignedAttachId = Array.isArray(current[0].signed_pdf_attachment_id)
+          ? current[0].signed_pdf_attachment_id[0]
+          : current[0].signed_pdf_attachment_id;
       }
     } catch (_e) {}
 
@@ -125,16 +127,13 @@ export async function POST(
       mimetype: 'application/pdf',
     });
 
-    // Link to termination record
+    // Link new first (atomic swap), then remove the replaced signed PDF.
     await odoo.write('kw.termination', [termId], {
-      pdf_attachment_id: attachId,
       signed_pdf_attachment_id: attachId,
     });
-
-    // Delete old unsigned PDF attachment if different from the new signed one
-    if (oldPdfAttachId && oldPdfAttachId !== attachId) {
+    if (oldSignedAttachId && oldSignedAttachId !== attachId) {
       try {
-        await odoo.call('ir.attachment', 'unlink', [[oldPdfAttachId]]);
+        await odoo.call('ir.attachment', 'unlink', [[oldSignedAttachId]]);
       } catch (_e) {
         // Non-critical — orphaned attachment is harmless
       }
@@ -143,7 +142,7 @@ export async function POST(
     // Post to chatter
     try {
       await odoo.call('kw.termination', 'message_post', [[termId]], {
-        body: '<p>Unterschriebenes Dokument hochgeladen (via Portal).</p>',
+        body: '<p>Signed document uploaded (via portal).</p>',
         message_type: 'comment',
         subtype_xmlid: 'mail.mt_note',
         attachment_ids: [attachId],
@@ -156,6 +155,56 @@ export async function POST(
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
     console.error('POST /api/termination/[id]/upload-signed error:', err);
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/termination/:id/upload-signed
+ * Remove the stored signed PDF (manager; confirm dialog client-side). The slot
+ * is cleared first, then the attachment is unlinked — only when it belongs to
+ * this record and is not aliased into the generated-PDF slot. The signing event
+ * stays in the chatter history; the workflow state does not regress.
+ */
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    requireRole('manager');
+    const { id } = await params;
+    const termId = Number(id);
+    const odoo = getOdoo();
+
+    const cur = (await odoo.read('kw.termination', [termId],
+      ['state', 'signed_pdf_attachment_id', 'pdf_attachment_id']))?.[0];
+    if (!cur) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
+    if (['archived', 'cancelled'].includes(cur.state)) {
+      return NextResponse.json({ ok: false, error: 'This record can no longer be changed.' }, { status: 409 });
+    }
+    const signedId = Array.isArray(cur.signed_pdf_attachment_id) ? cur.signed_pdf_attachment_id[0] : cur.signed_pdf_attachment_id;
+    if (!signedId) return NextResponse.json({ ok: false, error: 'No signed document to delete.' }, { status: 404 });
+    const genId = Array.isArray(cur.pdf_attachment_id) ? cur.pdf_attachment_id[0] : cur.pdf_attachment_id;
+
+    await odoo.write('kw.termination', [termId], { signed_pdf_attachment_id: false });
+    if (signedId !== genId) {
+      const att = (await odoo.read('ir.attachment', [signedId], ['res_model', 'res_id']))?.[0];
+      if (att && att.res_model === 'kw.termination' && att.res_id === termId) {
+        try { await odoo.call('ir.attachment', 'unlink', [[signedId]]); } catch { /* orphan ok */ }
+      }
+    }
+    try {
+      await odoo.call('kw.termination', 'message_post', [[termId]], {
+        body: '<p>Signed document removed (via portal).</p>',
+        message_type: 'comment', subtype_xmlid: 'mail.mt_note',
+      });
+    } catch {}
+
+    const updated = await odoo.read('kw.termination', [termId], TERMINATION_DETAIL_FIELDS);
+    return NextResponse.json({ ok: true, data: updated[0] });
+  } catch (err: unknown) {
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('DELETE /api/termination/[id]/upload-signed error:', err);
     return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }

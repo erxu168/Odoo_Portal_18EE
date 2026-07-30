@@ -8,7 +8,8 @@ const MODEL = 'kw.termination';
 
 /**
  * POST /api/termination/:id/deliver
- * Mark a signed termination as delivered.
+ * "Letter sent": records dispatch details and moves signed -> in_transit via the
+ * model action (delivered now requires a separate receipt confirmation).
  * Body: { delivery_method, delivery_date, delivery_tracking_number?, delivery_witness? }
  */
 export async function POST(
@@ -32,13 +33,12 @@ export async function POST(
     const method = body.delivery_method as DeliveryMethod;
     if ((method === 'personal' || method === 'bote') && !body.delivery_witness) {
       return NextResponse.json(
-        { ok: false, error: 'Zeuge ist bei pers\u00f6nlicher \u00dcbergabe / Bote erforderlich' },
+        { ok: false, error: 'A witness is required for personal handover / courier delivery' },
         { status: 400 },
       );
     }
 
     const vals: Record<string, unknown> = {
-      state: 'delivered',
       delivery_method: body.delivery_method,
       delivery_date: body.delivery_date,
     };
@@ -47,12 +47,13 @@ export async function POST(
     if (body.delivery_notes) vals.delivery_notes = body.delivery_notes;
 
     await odoo.write(MODEL, [numId], vals);
+    // Validated transition signed -> in_transit (posts its own chatter entry).
+    await odoo.call(MODEL, 'action_mark_sent', [[numId]]);
 
-    // Chatter message
     const label = DELIVERY_METHOD_LABELS[method] || method;
-    let msg = `K\u00fcndigung zugestellt am ${body.delivery_date} per ${label}.`;
-    if (body.delivery_tracking_number) msg += ` Sendungsnr.: ${body.delivery_tracking_number}`;
-    if (body.delivery_witness) msg += ` Zeuge: ${body.delivery_witness}`;
+    let msg = `Letter sent on ${body.delivery_date} via ${label}.`;
+    if (body.delivery_tracking_number) msg += ` Tracking: ${body.delivery_tracking_number}`;
+    if (body.delivery_witness) msg += ` Witness: ${body.delivery_witness}`;
     await odoo.call(MODEL, 'message_post', [numId], {
       body: msg,
       message_type: 'comment',

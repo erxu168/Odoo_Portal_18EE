@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOdoo } from '@/lib/odoo';
 import { requireRole, AuthError } from '@/lib/auth';
+import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
 const MODEL = 'kw.termination';
 
@@ -110,6 +111,49 @@ export async function GET(
     });
   } catch (err: unknown) {
     if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/termination/:id/upload-proof
+ * Remove the courier-confirmation attachment (manager; confirmed client-side).
+ */
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    requireRole('manager');
+    const { id } = await params;
+    const termId = Number(id);
+    const odoo = getOdoo();
+
+    const cur = (await odoo.read(MODEL, [termId], ['state', 'delivery_proof_attachment_id']))?.[0];
+    if (!cur) return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404 });
+    if (['archived', 'cancelled'].includes(cur.state)) {
+      return NextResponse.json({ ok: false, error: 'This record can no longer be changed.' }, { status: 409 });
+    }
+    const proofId = Array.isArray(cur.delivery_proof_attachment_id) ? cur.delivery_proof_attachment_id[0] : cur.delivery_proof_attachment_id;
+    if (!proofId) return NextResponse.json({ ok: false, error: 'No courier confirmation to delete.' }, { status: 404 });
+
+    await odoo.write(MODEL, [termId], { delivery_proof_attachment_id: false });
+    const att = (await odoo.read('ir.attachment', [proofId], ['res_model', 'res_id']))?.[0];
+    if (att && att.res_model === MODEL && att.res_id === termId) {
+      try { await odoo.call('ir.attachment', 'unlink', [[proofId]]); } catch { /* orphan ok */ }
+    }
+    try {
+      await odoo.call(MODEL, 'message_post', [[termId]], {
+        body: '<p>Courier confirmation removed (via portal).</p>',
+        message_type: 'comment', subtype_xmlid: 'mail.mt_note',
+      });
+    } catch {}
+
+    const updated = await odoo.read(MODEL, [termId], TERMINATION_DETAIL_FIELDS);
+    return NextResponse.json({ ok: true, data: updated[0] });
+  } catch (err: unknown) {
+    if (err instanceof AuthError) return NextResponse.json({ error: err.message }, { status: err.status });
+    console.error('DELETE /api/termination/[id]/upload-proof error:', err);
     return NextResponse.json({ ok: false, error: 'Internal server error' }, { status: 500 });
   }
 }

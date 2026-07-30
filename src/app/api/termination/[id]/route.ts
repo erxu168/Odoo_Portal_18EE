@@ -5,10 +5,17 @@ import { TERMINATION_DETAIL_FIELDS } from '@/types/termination';
 
 const MODEL = 'kw.termination';
 
+// "Reality facts" — operational details a manager may correct at any active
+// state (the Odoo model guards transitions, terminal states and flags the
+// stored letter when a letter-relevant field like last_working_day changes).
 const ALLOWED_FIELDS = [
-  'termination_date', 'reason', 'notice_period', 'last_working_day',
-  'notes', 'state', 'notice_type', 'severance_months',
+  'delivery_method', 'delivery_date', 'delivery_tracking_number',
+  'delivery_witness', 'receipt_date', 'delivery_confirmed_date',
+  'delivery_notes', 'last_working_day',
 ];
+// The one direct state write left: the manual bookkeeping step confirmed ->
+// signed. Every other transition goes through a validated model action.
+const ALLOWED_STATES = ['signed'];
 
 /**
  * GET /api/termination/:id
@@ -51,6 +58,12 @@ export async function PATCH(
     const safeBody: Record<string, unknown> = {};
     for (const key of Object.keys(body)) {
       if (ALLOWED_FIELDS.includes(key)) safeBody[key] = body[key];
+    }
+    if (typeof body.state === 'string' && ALLOWED_STATES.includes(body.state)) {
+      safeBody.state = body.state;
+    }
+    if (Object.keys(safeBody).length === 0) {
+      return NextResponse.json({ ok: false, error: 'No editable fields in request' }, { status: 400 });
     }
 
     await odoo.write(MODEL, [Number(id)], safeBody);
