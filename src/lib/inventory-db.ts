@@ -1680,14 +1680,115 @@ export function setQuickCountCompanyByLocation(locationId: number, companyId: nu
  *
  * Returns the total number of rows changed.
  */
+export class LinkConflictError extends Error {
+  code = 'LINK_CONFLICT' as const;
+  constructor(public readonly where: string[]) {
+    super(`Both products have already been counted in the same place: ${where.join(', ')}`);
+    this.name = 'LinkConflictError';
+  }
+}
+
+/**
+ * Move a draft's counting work onto the real product it turned out to be.
+ *
+ * Three things this has to get right, all of which the first version did not:
+ *
+ * 1. `session_count_items` — THE FROZEN SCOPE. A count records which products it
+ *    covers at the moment it starts, and approval refuses any line for a product
+ *    outside that list (OFF_LIST_LINES). Moving an entry to the target while
+ *    leaving the snapshot naming the draft produced a line that could never be
+ *    approved: the count was silently unfinishable.
+ *
+ * 2. THE UNIQUE LINE INDEX. There is one count line per (session, product, spot).
+ *    If the target has already been counted at the same spot in the same count,
+ *    a plain UPDATE violates it and throws mid-way. Rather than guess a merge —
+ *    summing could double-count the same physical items, keeping one silently
+ *    discards a real observation — this REFUSES and names where, because a
+ *    wrong number in a stock count is worse than a manager having to look.
+ *
+ * 3. ATOMICITY. All of it in one transaction, so a failure changes nothing.
+ *
+ * Returns the number of rows moved.
+ */
 export function reassignCountsForProduct(fromProductId: number, toProductId: number): number {
   const db = getDb();
-  let changed = 0;
-  changed += db.prepare('UPDATE quick_counts SET product_id = ? WHERE product_id = ?')
-    .run(toProductId, fromProductId).changes;
-  changed += db.prepare('UPDATE count_entries SET product_id = ? WHERE product_id = ?')
-    .run(toProductId, fromProductId).changes;
-  return changed;
+
+  const tx = db.transaction(() => {
+    // --- 2. collisions first, before anything is written -------------------
+    const clashes = db.prepare(`
+      SELECT s.id AS session_id, COALESCE(t.name, 'a count') AS list_name
+        FROM count_entries a
+        JOIN count_entries b
+          ON b.session_id = a.session_id
+         AND COALESCE(b.count_location_id, 0) = COALESCE(a.count_location_id, 0)
+         AND b.product_id = ?
+        JOIN counting_sessions s ON s.id = a.session_id
+        LEFT JOIN counting_templates t ON t.id = s.template_id
+       WHERE a.product_id = ?
+       GROUP BY s.id
+    `).all(toProductId, fromProductId) as { session_id: number; list_name: string }[];
+    if (clashes.length > 0) {
+      throw new LinkConflictError(clashes.map((c) => c.list_name));
+    }
+    // Quick counts are keyed by LOCATION, not by a session — there is no
+    // session_id on that table. Two open quick counts of the same product at the
+    // same place is the collision.
+    const quickClash = db.prepare(`
+      SELECT COUNT(*) n FROM quick_counts a
+       WHERE a.product_id = ?
+         AND COALESCE(a.status, 'pending') IN ('pending','in_progress')
+         AND EXISTS (
+           SELECT 1 FROM quick_counts b
+            WHERE b.product_id = ?
+              AND b.location_id = a.location_id
+              AND COALESCE(b.status, 'pending') IN ('pending','in_progress'))
+    `).get(fromProductId, toProductId) as { n: number } | undefined;
+    if ((quickClash?.n ?? 0) > 0) {
+      throw new LinkConflictError(['a quick count in the same place']);
+    }
+
+    let changed = 0;
+    changed += db.prepare('UPDATE quick_counts SET product_id = ? WHERE product_id = ?')
+      .run(toProductId, fromProductId).changes;
+    changed += db.prepare('UPDATE count_entries SET product_id = ? WHERE product_id = ?')
+      .run(toProductId, fromProductId).changes;
+
+    // --- 1. the frozen scope has to follow the entries ---------------------
+    // Keyed on (session, product, SPOT) — that is the table's primary key, and
+    // the reason: one product can be in scope at several spots, and each spot is
+    // its own count line. Comparing only session+product would treat "already in
+    // scope at a different shelf" as a collision and delete the row for the shelf
+    // that actually holds the entry, leaving that line off-list and unapprovable.
+    db.prepare(`
+      UPDATE session_count_items SET odoo_product_id = ?
+       WHERE odoo_product_id = ?
+         AND NOT EXISTS (SELECT 1 FROM session_count_items x
+                          WHERE x.session_id = session_count_items.session_id
+                            AND x.count_location_id = session_count_items.count_location_id
+                            AND x.odoo_product_id = ?)
+    `).run(toProductId, fromProductId, toProductId);
+    // Whatever is left is a spot where the target was ALREADY in scope, so the
+    // draft's row is redundant — the entry it justified now points at the target,
+    // which is already covered there.
+    db.prepare('DELETE FROM session_count_items WHERE odoo_product_id = ?').run(fromProductId);
+
+    // The frozen PACKAGING snapshot travels with it, for the same reason: a line
+    // counted in crates needs the crate size the count started with.
+    try {
+      db.prepare(`
+        UPDATE session_packaging_levels SET odoo_product_id = ?
+         WHERE odoo_product_id = ?
+           AND NOT EXISTS (SELECT 1 FROM session_packaging_levels x
+                            WHERE x.session_id = session_packaging_levels.session_id
+                              AND x.odoo_product_id = ?)
+      `).run(toProductId, fromProductId, toProductId);
+      db.prepare('DELETE FROM session_packaging_levels WHERE odoo_product_id = ?').run(fromProductId);
+    } catch { /* a build without that table */ }
+
+    return changed;
+  });
+
+  return tx();
 }
 
 /**

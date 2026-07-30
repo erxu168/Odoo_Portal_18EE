@@ -14,7 +14,7 @@ import { requireAuth } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
 import { getOdoo } from '@/lib/odoo';
-import { initInventoryTables, reassignCountsForProduct, markDraftStatus, isDraftProduct } from '@/lib/inventory-db';
+import { initInventoryTables, reassignCountsForProduct, markDraftStatus, isDraftProduct, LinkConflictError } from '@/lib/inventory-db';
 
 export async function POST(
   request: Request,
@@ -92,12 +92,41 @@ export async function POST(
       );
     }
 
-    // Clear barcode from draft first so Odoo's unique constraint doesn't fire
+    // ORDER MATTERS, and it used to be the wrong way round.
+    //
+    // The counts move FIRST, in one transaction. If that fails, nothing has
+    // changed: the draft still holds its barcode and the manager can try again.
+    // Previously the barcode was moved first, so a database failure left the
+    // draft with no barcode at all — and the barcode is the only thing
+    // identifying it, so there was nothing left to retry from.
+    let rowsChanged: number;
+    try {
+      rowsChanged = reassignCountsForProduct(draftId, targetId);
+    } catch (e: unknown) {
+      // Both products counted in the same place in the same count. Refused
+      // rather than merged: summing could double-count the same physical items
+      // and keeping one silently discards a real observation, and either way a
+      // manager cannot tell which happened.
+      if (e instanceof LinkConflictError) {
+        return NextResponse.json({
+          error: `Both have already been counted in the same place (${e.where.join(', ')}). `
+            + 'Clear one of those counts first, then join them.',
+          code: 'LINK_CONFLICT',
+          where: e.where,
+        }, { status: 409 });
+      }
+      throw e;
+    }
+
+    // Then the barcode. Cleared from the draft first so Odoo's own uniqueness
+    // check cannot fire on the second write.
+    //
+    // If THIS half fails the counts have already moved, which is the milder
+    // failure: the target holds the numbers, the draft holds its barcode, the
+    // draft is still pending, and repeating the operation finishes the job.
     await odoo.write('product.product', [draftId], { barcode: false });
     await odoo.write('product.product', [targetId], { barcode: draft.barcode });
 
-    // Reassign all count lines
-    const rowsChanged = reassignCountsForProduct(draftId, targetId);
     markDraftStatus(draftId, 'linked');
 
     return NextResponse.json({ success: true, rows_changed: rowsChanged });

@@ -10,16 +10,17 @@
  *
  * Three answers, because there are exactly three things it can be:
  *   Finish it        — a real new product. Opens its page to fill in the rest.
+ *   Same as…         — it already exists under another name, or with no barcode
+ *                      on it. The commonest answer. Moves the barcode across and
+ *                      hands over anything already counted against the scan.
  *   Not a product    — a mis-scan, a shelf label, somebody's loyalty card.
  *
- * A third answer — "this is the same as an existing product, move the barcode
- * across" — is the commonest case and is DELIBERATELY ABSENT. The endpoint for it
- * exists but is not safe to put behind a button yet: it moves the Odoo barcode
- * before reassigning the count lines (so a database failure strands the draft
- * with no barcode to retry from), it does not update the frozen session scope, so
- * a moved line can fail approval as off-list, and it can hit the one-line-per
- * product-and-spot index when the real product was already counted in the same
- * place. Offering it would be offering a data-corrupting button.
+ * "Same as…" was withheld until 2026-07-30 because the endpoint could corrupt a
+ * count three ways — it moved the Odoo barcode before the counts (so a database
+ * failure stranded the draft with no barcode to retry from), it left the frozen
+ * session scope naming the draft (so the moved line became unapprovable), and it
+ * could hit the one-line-per-product-and-spot index. All three are fixed; a
+ * genuine collision is now REFUSED and named rather than guessed at.
  *
  * Deliberately NOT a form. Editing a product's fields belongs on the product's
  * own page, which already owns every one of them; this screen only decides which
@@ -60,6 +61,12 @@ export default function SetupQueue({ onBack }: { onBack: () => void }) {
   const [busy, setBusy] = useState<number | null>(null);
   const [confirmReject, setConfirmReject] = useState<Draft | null>(null);
   const [toast, setToast] = useState('');
+  // "Same as…" — search the catalog and move the barcode onto the real product.
+  const [linkFor, setLinkFor] = useState<Draft | null>(null);
+  const [linkQuery, setLinkQuery] = useState('');
+  const [linkHits, setLinkHits] = useState<{ id: number; name: string; category: string }[]>([]);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkErr, setLinkErr] = useState('');
 
   const load = useCallback(() => {
     setError('');
@@ -101,6 +108,44 @@ export default function SetupQueue({ onBack }: { onBack: () => void }) {
       setTimeout(() => setToast(''), 2500);
     } catch { setError('Network error — nothing was changed.'); }
     finally { setBusy(null); }
+  }
+
+  // Debounced, so typing a product name is not one request per keystroke.
+  useEffect(() => {
+    if (!linkFor) return;
+    const q = linkQuery.trim();
+    if (q.length < 2) { setLinkHits([]); return; }
+    let stale = false;
+    const t = setTimeout(() => {
+      fetch(`/api/products/search?q=${encodeURIComponent(q)}&limit=15`)
+        .then((r) => (r.ok ? r.json() : { products: [] }))
+        .then((d) => { if (!stale) setLinkHits(d.products || []); })
+        .catch(() => { if (!stale) setLinkHits([]); });
+    }, 250);
+    return () => { stale = true; clearTimeout(t); };
+  }, [linkQuery, linkFor]);
+
+  async function linkTo(d: Draft, targetId: number, targetName: string) {
+    setLinkBusy(true);
+    setLinkErr('');
+    try {
+      const res = await fetch(`/api/inventory/products/${d.id}/link`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_product_id: targetId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // A collision is shown IN the sheet, not as a toast — the manager has to
+        // go and clear a count before this can work, so the message must stay put.
+        setLinkErr(body.error || 'Could not join those two.');
+        return;
+      }
+      setDrafts((prev) => (prev || []).filter((x) => x.id !== d.id));
+      setLinkFor(null); setLinkQuery(''); setLinkHits([]);
+      setToast(`Barcode moved onto "${targetName}".`);
+      setTimeout(() => setToast(''), 3000);
+    } catch { setLinkErr('Network error — nothing was changed.'); }
+    finally { setLinkBusy(false); }
   }
 
   if (drafts === null) return <Spinner />;
@@ -168,6 +213,13 @@ export default function SetupQueue({ onBack }: { onBack: () => void }) {
                     </button>
                   )}
                   {!d.missing && !d.already_active && (
+                    <button
+                      onClick={() => { setLinkFor(d); setLinkQuery(d.name || ''); setLinkErr(''); }}
+                      className="flex-1 min-w-[120px] h-10 px-4 rounded-xl border border-gray-300 text-gray-800 text-[var(--fs-sm)] font-bold active:bg-gray-50">
+                      Same as{'…'}
+                    </button>
+                  )}
+                  {!d.missing && !d.already_active && (
                   <button
                     onClick={() => setConfirmReject(d)}
                     disabled={busy === d.id}
@@ -209,6 +261,52 @@ export default function SetupQueue({ onBack }: { onBack: () => void }) {
             <button onClick={() => setConfirmReject(null)}
               className="w-full h-12 rounded-xl border border-gray-200 text-gray-600 font-bold active:bg-gray-50">
               Keep it
+            </button>
+          </div>
+        </div>
+      )}
+
+      {linkFor && (
+        <div className="fixed inset-0 z-[120] bg-black/40 flex items-end justify-center"
+          role="dialog" aria-modal="true" aria-label="Which product is this?"
+          onClick={() => { if (!linkBusy) { setLinkFor(null); setLinkQuery(''); setLinkHits([]); setLinkErr(''); } }}>
+          <div className="w-full max-w-md bg-white rounded-t-2xl max-h-[85vh] overflow-y-auto p-4 pb-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[var(--fs-lg)] font-bold text-gray-900 mb-1">Which product is this?</h3>
+            <p className="text-[var(--fs-sm)] text-gray-500 mb-3">
+              The barcode <span className="font-mono">{linkFor.barcode}</span> moves onto the product you
+              pick, and anything already counted against the scan goes with it.
+            </p>
+            {linkErr && (
+              <p className="text-[var(--fs-sm)] text-red-800 bg-red-50 border border-red-200 rounded-xl p-3 mb-3">{linkErr}</p>
+            )}
+            <input autoFocus value={linkQuery} onChange={(e) => setLinkQuery(e.target.value)}
+              placeholder="Search the catalog…" disabled={linkBusy}
+              className="w-full bg-white border border-gray-200 rounded-lg px-3 h-11 text-[var(--fs-base)] outline-none focus:border-green-500 mb-3" />
+
+            {linkQuery.trim().length < 2 ? (
+              <p className="text-[var(--fs-xs)] text-gray-400">Type at least two letters.</p>
+            ) : linkHits.length === 0 ? (
+              <p className="text-[var(--fs-xs)] text-gray-400">
+                Nothing matches. If it really is new, use &ldquo;Finish it&rdquo; instead.
+              </p>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {linkHits.map((h) => (
+                  <button key={h.id} disabled={linkBusy}
+                    onClick={() => linkTo(linkFor, h.id, h.name)}
+                    className="w-full py-3 text-left flex items-center gap-3 active:bg-gray-50 disabled:opacity-50">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[var(--fs-sm)] font-semibold text-gray-900 truncate">{h.name}</div>
+                      <div className="text-[var(--fs-xs)] text-gray-500 truncate">{h.category}</div>
+                    </div>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round" className="flex-shrink-0"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => { setLinkFor(null); setLinkQuery(''); setLinkHits([]); setLinkErr(''); }} disabled={linkBusy}
+              className="w-full h-12 mt-3 rounded-xl border border-gray-200 text-gray-600 font-bold active:bg-gray-50 disabled:opacity-50">
+              Cancel
             </button>
           </div>
         </div>
