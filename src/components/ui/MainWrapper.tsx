@@ -15,7 +15,7 @@ const FULL_SCREEN_ROUTES = ['/recipes', '/shift-handover'];
 const FULL_VIEWPORT_ROUTES = ['/kds', '/kiosk', '/confirm-shift'];
 // Wide routes: no phone-width cap and top-bar clearance (pt-9). Each screen
 // chooses its own content width (grids go wide, dashboards self-centre).
-const WIDE_ROUTES = ['/shifts', '/hr'];
+const WIDE_ROUTES = ['/shifts', '/hr', '/termination'];
 
 export default function MainWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
