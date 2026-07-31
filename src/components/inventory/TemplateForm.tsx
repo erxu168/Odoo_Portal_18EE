@@ -396,10 +396,14 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
     return (
       <div key={p.id} className="border-b border-gray-100 last:border-b-0 px-4 py-2.5">
         <div className="flex items-center gap-3">
-          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={40} />
+          {/* 72, up from 40: on a shelf you recognise a product by its picture,
+              and at 40px a bottle label was a smudge. The width it takes comes
+              back below — the name now WRAPS instead of truncating, so a bigger
+              picture costs no readable text. */}
+          <ProductThumb productId={p.id} has={productImageIds.has(p.id)} size={72} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className={`text-[var(--fs-base)] font-semibold truncate ${archived ? 'text-gray-500' : 'text-gray-900'}`}>{p.name}</span>
+              <span className={`text-[var(--fs-base)] font-semibold line-clamp-2 [overflow-wrap:anywhere] ${archived ? 'text-gray-500' : 'text-gray-900'}`}>{p.name}</span>
               {archived && (
                 <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
                   Archived
@@ -423,7 +427,7 @@ export default function TemplateForm({ template, departments, onSave, onCancel }
           </button>
         </div>
         <button onClick={() => setSpotSheetFor(p)} aria-label={`Change where ${p.name} is counted`}
-          className="mt-1 flex flex-wrap gap-1 pl-[52px] text-left active:opacity-80">
+          className="mt-1 flex flex-wrap gap-1 pl-[84px] text-left active:opacity-80">
           {(homeSpots[p.id] || []).length > 0 ? (
             (homeSpots[p.id] || []).map((sid) => (
               <span key={sid}
