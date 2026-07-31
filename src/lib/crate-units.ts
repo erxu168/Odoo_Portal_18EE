@@ -64,7 +64,12 @@ export function splitFromTotal(
 export function pluralizePack(label: string, n: number): string {
   const l = (label || 'pack').trim();
   if (n === 1) return l;
-  if (/(s|x|z|ch|sh)$/i.test(l)) return `${l}es`;
+  // A single trailing s means the word is already plural — people type "units"
+  // or "pieces" as readily as "unit", and "unitses" is not a word. Double-s is
+  // a real singular: glass -> glasses.
+  if (/ss$/i.test(l)) return `${l}es`;
+  if (/s$/i.test(l)) return l;
+  if (/(x|z|ch|sh)$/i.test(l)) return `${l}es`;
   if (/[^aeiou]y$/i.test(l)) return `${l.slice(0, -1)}ies`;
   // potato -> potatoes, tomato -> tomatoes (kitchen words that take -es).
   if (/[^aeiou]o$/i.test(l)) return `${l}es`;
