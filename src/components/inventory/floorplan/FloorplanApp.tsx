@@ -19,6 +19,7 @@ import type { Pt } from '@/lib/inventory-floorplan/types';
 import FloorplanMap, { type FlyTarget } from './FloorplanMap';
 import FloorplanSearch from './FloorplanSearch';
 import FloorplanSpotSheet from './FloorplanSpotSheet';
+import { useTopBar } from '@/components/ui/TopBarContext';
 
 interface ManifestResponse {
   manifest: FloorplanManifest | null;
@@ -34,7 +35,6 @@ export interface FloorplanAppProps {
 
 export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppProps) {
   const router = useRouter();
-  const rootClass = onClose ? 'flex h-full flex-col overflow-hidden bg-gray-50' : 'flex h-[calc(100dvh-7.25rem)] flex-col overflow-hidden bg-gray-50';
   const stateClass = onClose ? 'flex h-full flex-col bg-gray-50' : 'flex min-h-screen flex-col bg-gray-50';
   const [state, setState] = useState<'loading' | 'error' | 'ready'>('loading');
   const [resp, setResp] = useState<ManifestResponse | null>(null);
@@ -45,7 +45,43 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   const [flyTo, setFlyTo] = useState<FlyTarget | null>(null);
   const [capabilities, setCapabilities] = useState<string[]>(() => allowedActionKeysForRole('staff', {}));
   const [edit, setEdit] = useState(false);
+  /**
+   * Editing a plan is precision work, and the plan was getting the smaller
+   * half of the screen: app bar, page header, search, filters, the type strip
+   * and a hint all stacked above it. Edit mode therefore goes IMMERSIVE —
+   * fixed to the whole viewport, over the global chrome, with the page header
+   * and search dropped. Same rule the recipe screens already follow
+   * (feedback_immersive_views): a focused work screen owns the screen.
+   *
+   * Only for the real page. In counting's overlay (onClose) the parent already
+   * owns the frame, so taking over the viewport there would break out of it.
+   */
+  const immersive = edit && !onClose;
+  // Hide the global bars the way every other immersive screen does — the count
+  // flow, KDS and the cook timer all use this. It UNMOUNTS the chrome rather
+  // than covering it, which matters: a fixed overlay of our own would also
+  // paint over the shared-device PIN gate, and an expired session would then
+  // look like a frozen plan you cannot sign back into.
+  const { setHidden: setChromeHidden } = useTopBar();
+  useEffect(() => {
+    // In counting's overlay the PARENT owns the chrome and has already hidden
+    // it. Touching the shared flag from in here would switch it back on behind
+    // that overlay, and our cleanup would leave it on afterwards.
+    if (onClose) return;
+    setChromeHidden(immersive);
+    return () => setChromeHidden(false);
+  }, [immersive, onClose, setChromeHidden]);
+  const rootClass = onClose
+    ? 'flex h-full flex-col overflow-hidden bg-gray-50'
+    // fixed, because this route's <main> reserves pt-9/pb-20 for the very bars
+    // we just unmounted — inside that padding a 100dvh box overflows the page.
+    // z-130 clears the app chrome (max z-120) and stays UNDER the shared-device
+    // PIN gate at z-200, which must always be able to paint over us.
+    : immersive
+      ? 'fixed inset-0 z-[130] flex h-[100dvh] flex-col overflow-hidden bg-gray-50'
+      : 'flex h-[calc(100dvh-7.25rem)] flex-col overflow-hidden bg-gray-50';
   const [armed, setArmed] = useState<string | null>(null);
+  const [showEditHint, setShowEditHint] = useState(true);
   const [addForm, setAddForm] = useState<{ x: number; y: number; code: string; roomId: number | null; existingId: number | null } | null>(null);
   const [treeLocations, setTreeLocations] = useState<Array<{ id: number; name: string; parent_id: number | null; kind: string }>>([]);
   const [editSel, setEditSel] = useState<{ anchorId: number; locationId: number; label: string } | null>(null);
@@ -594,7 +630,9 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
 
   return (
     <div className={rootClass}>
-      {header}
+      {/* Immersive editing: the page header and the search bar are navigation,
+          and navigation is not what you are doing while placing markers. */}
+      {!immersive && header}
       {offlineFrom && (
         <div className="bg-amber-500 px-3 py-1.5 text-center text-[11.5px] font-bold text-white">
           Offline — showing the plan saved {new Date(offlineFrom).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
@@ -605,8 +643,8 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           Not marked on the plan itself — it usually sits inside something that is. Details below.
         </div>
       )}
-      <FloorplanSearch manifest={manifest} activeFloorId={activeFloorId} onPick={focusLocation} />
-      <div className="flex gap-1.5 overflow-x-auto px-3 py-2 [scrollbar-width:none]">
+      {!immersive && <FloorplanSearch manifest={manifest} activeFloorId={activeFloorId} onPick={focusLocation} />}
+      <div className={`flex gap-1.5 overflow-x-auto px-3 [scrollbar-width:none] ${immersive ? 'py-1.5' : 'py-2'}`}>
         <button
           onClick={() => setFilterType(null)}
           className={`h-[34px] flex-shrink-0 rounded-full border px-3.5 text-[12px] font-semibold ${filterType === null ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-900'}`}
@@ -625,9 +663,12 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
         ))}
         {canManage && !onClose && (
           <>
+            {/* Immersive mode removes back and home, so the way OUT must never
+                be scrolled off: pin it to the front of the row and keep it
+                stuck there while the type chips scroll under it. */}
             <button
               onClick={() => { setEdit(e => !e); setArmed(null); setEditSel(null); closeSheet(); }}
-              className={`h-[34px] flex-shrink-0 rounded-full border px-3.5 text-[12px] font-bold ${edit ? 'border-green-600 bg-green-600 text-white' : 'border-blue-600 bg-white text-blue-600'}`}
+              className={`h-[34px] flex-shrink-0 rounded-full border px-3.5 text-[12px] font-bold ${edit ? 'border-green-600 bg-green-600 text-white' : 'border-blue-600 bg-white text-blue-600'} ${immersive ? 'sticky left-0 z-10 order-first shadow-[0_0_0_4px_rgba(249,250,251,1)]' : ''}`}
             >
               {edit ? '✓ Done' : '✏️ Edit'}
             </button>
@@ -656,19 +697,30 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
           ))}
         </div>
       )}
-      {edit && (
+      {/* The standing hint is worth a row the first time and costs one every
+          time after. It can be dismissed; the ARMED hint always shows, because
+          then it is telling you what your next tap will do. */}
+      {edit && (armed || showEditHint) && (
         <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 text-[11.5px] font-medium text-gray-200">
           <span className="min-w-0 flex-1">
             {armed
               ? `Tap or drop where the ${typesByKey[armed]?.label.toLowerCase() ?? 'item'} is — name it, press Enter, place the next one.`
               : 'Zoom in, then DRAG any marker to place it exactly · tap one to rename or remove · pick a type above to add.'}
           </span>
-          {armed && (
+          {armed ? (
             <button
               onClick={() => setArmed(null)}
               className="flex-shrink-0 rounded-full border border-gray-500 px-2.5 py-0.5 text-[11px] font-bold text-gray-100"
             >
               Stop adding
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowEditHint(false)}
+              aria-label="Hide this hint"
+              className="flex-shrink-0 rounded-full border border-gray-500 px-2.5 py-0.5 text-[11px] font-bold text-gray-100"
+            >
+              Got it
             </button>
           )}
         </div>

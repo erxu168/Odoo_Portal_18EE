@@ -88,7 +88,10 @@
 .kw-fp-shape-triangle > * { transform: translateY(4px); }
 .kw-fp-shape-star > * { font-size: 13px; }
 .kw-fp-dotlbl {
-  margin-top: 3px;
+  /* --lbl-dy is written by the declutter pass when this label had to step
+     down to clear a neighbour's. Zero for a label that fits where it is. */
+  margin-top: calc(3px + var(--lbl-dy, 0px));
+  position: relative;
   /* NEVER truncate a place name. "CHANGING R…" tells a staff member nothing
      and sends them to the wrong room — the same reason the product chips
      stopped clipping in 11e32ab9. Wrap to as many lines as the name needs.
@@ -116,6 +119,27 @@
   font-weight: 700;
   color: #111827;
 }
+/* A label that stepped down to avoid a neighbour keeps a thread back to its
+   own dot, or in a busy corner you cannot tell which name belongs to which. */
+.kw-fp-dotlbl::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 0;
+  height: var(--lbl-conn, 0px);
+  border-left: 1.5px dotted var(--c, #64748b);
+}
+/* Stepped UP instead: the thread hangs from the label down to its dot. */
+.kw-fp-dotlbl.kw-fp-lbl-up::before {
+  bottom: auto;
+  top: 100%;
+}
+/* No room to sit anywhere: the dot remains and a tap still gives the name. */
+.kw-fp-lbl-hidden {
+  display: none !important;
+}
+
 /* Rooms + utility points: a label, not a dot. */
 .kw-fp-pin.kw-fp-label .kw-fp-dot {
   display: none;

@@ -10,7 +10,7 @@
  * All Leaflet work happens imperatively inside effects — Leaflet 1.9 has no
  * React wrapper compatible with React 18 worth its dependency cost.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import './floorplan.css';
 import type * as Leaflet from 'leaflet';
@@ -89,6 +89,10 @@ export default function FloorplanMap({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<World | null>(null);
+  /** Bumped when a map finishes initialising, so effects can wait for one. */
+  const [mapReady, setMapReady] = useState(0);
+  /** True while a marker is being dragged — see the declutter effect. */
+  const draggingRef = useRef(false);
   const resizeObsRef = useRef<ResizeObserver | null>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null);
   // Callbacks kept current without re-initializing the map.
@@ -141,6 +145,11 @@ export default function FloorplanMap({
       (containerRef.current as unknown as { _kwMap?: Leaflet.Map })._kwMap = map;
       buildLayers(world);
       styleLayers(world);
+      // Same shape as the fly-target note below: the declutter effect runs
+      // BEFORE this async import resolves, finds no world and installs
+      // nothing. Announcing readiness re-runs it, or labels stay overlapping
+      // on a cold load until something else happens to change.
+      setMapReady(r => r + 1);
       // A fly target that arrived BEFORE the map existed (QR deep link on a
       // cold load) must still run — the seq-effect fired into the void.
       if (flyRef.current) applyFly(world, flyRef.current);
@@ -199,6 +208,10 @@ export default function FloorplanMap({
   // ---- anchor layers (per anchors/edit change) -----------------------------
   const buildLayers = (w: World) => {
     const { L, map } = w;
+    // Removing a marker mid-drag can end the drag without Leaflet emitting the
+    // marker's dragend, which would strand the flag at true and silence the
+    // declutter pass for the rest of the session. A rebuild always clears it.
+    draggingRef.current = false;
     Array.from(w.layers.values()).forEach(l => {
       l.poly?.remove(); l.pin?.remove(); l.handle?.remove();
       l.leader?.remove(); l.arrow?.remove(); l.target?.remove();
@@ -241,6 +254,8 @@ export default function FloorplanMap({
           autoPan: true,
         }).addTo(map);
         if (cbRef.current.editable) {
+          pin.on('dragstart', () => { draggingRef.current = true; });
+          pin.on('dragend', () => { draggingRef.current = false; });
           // While the icon is out, dragging it moves ONLY the icon — the spot
           // stays where it is. Redraw the arrow live so it never lags behind.
           if (pulledOut) {
@@ -294,6 +309,8 @@ export default function FloorplanMap({
             }).addTo(map);
             const tel = target.getElement();
             if (tel) tel.style.setProperty('--c', color);
+            target.on('dragstart', () => { draggingRef.current = true; });
+            target.on('dragend', () => { draggingRef.current = false; });
             target.on('drag', () => {
               const wNow = worldRef.current;
               if (!wNow) return;
@@ -340,6 +357,8 @@ export default function FloorplanMap({
         }).addTo(map);
         const hel = handle.getElement();
         if (hel) hel.style.setProperty('--c', color);
+        handle.on('dragstart', () => { draggingRef.current = true; });
+        handle.on('dragend', () => { draggingRef.current = false; });
         handle.on('dragend', () => {
           const wNow = worldRef.current;
           if (!wNow || !cbRef.current.onMoveAnchor) return;
@@ -355,6 +374,110 @@ export default function FloorplanMap({
       }
 
       w.layers.set(a.id, entry);
+    }
+  };
+
+  /**
+   * Label decluttering.
+   *
+   * Two fridges standing side by side in the real room put their icons within
+   * a few pixels of each other, and their names then print on top of one
+   * another — unreadable exactly where being readable matters most.
+   *
+   * So after every build, zoom and pan: measure each label ON SCREEN, and walk
+   * the collisions apart downwards. A label that finds a free slot keeps its
+   * full text and grows a short connector back to its dot. One that cannot fit
+   * anywhere hides, leaving its dot — which is still tappable, and the sheet
+   * gives the name. Nothing here touches stored data; it is pure presentation,
+   * recomputed from what is actually visible.
+   *
+   * Priority is deliberate: the SELECTED spot always gets first choice, so the
+   * one you are looking for is never the one that gets hidden. Rooms are
+   * landmarks — never moved, never hidden, but they do occupy space that item
+   * labels must route around.
+   */
+  const declutter = (w: World) => {
+    type R = { l: number; t: number; r: number; b: number };
+    const overlaps = (a: R, b: R) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+    // Leaflet clips its container, so a slot outside it is not a free slot —
+    // it is an invisible one. A label with nowhere visible to sit should hide
+    // and leave its dot, not be seated somewhere no one can read it.
+    // Leaflet clips its container, so a slot outside it is not a free slot.
+    // Only the VERTICAL axis is tested, because that is the only axis this
+    // pass moves: a label clipped at the left or right edge is clipped
+    // identically at every candidate offset, so judging it there would hide
+    // labels for a reason no amount of nudging could fix.
+    const cb = containerRef.current?.getBoundingClientRect();
+    const inView = (x: R) => !cb || (x.t >= cb.top && x.b <= cb.bottom);
+    const taken: R[] = [];
+    const movable: Array<{ el: HTMLElement; rect: R; selected: boolean; dotH: number }> = [];
+
+    for (const entry of Array.from(w.layers.values())) {
+      const host = entry.pin?.getElement();
+      const el = host?.querySelector('.kw-fp-dotlbl') as HTMLElement | null;
+      if (!host || !el) continue;
+      // Clear last pass before measuring, or offsets would compound each zoom.
+      el.style.removeProperty('--lbl-dy');
+      el.style.removeProperty('--lbl-conn');
+      el.classList.remove('kw-fp-lbl-hidden', 'kw-fp-lbl-up');
+
+      // The DOTS are obstacles too, and this is the case that actually bites:
+      // one marker's icon landing on its neighbour's NAME. Dots never move —
+      // a dot marks a real position — so they are reserved before any label.
+      const dot = host.querySelector('.kw-fp-dot') as HTMLElement | null;
+      let dotH = 0;
+      if (dot && !host.classList.contains('kw-fp-label')) {
+        const d = dot.getBoundingClientRect();
+        if (d.width > 0) {
+          taken.push({ l: d.left, t: d.top, r: d.right, b: d.bottom });
+          dotH = d.height;   // measured, so --kw-fp-dot stays the one source of truth
+        }
+      }
+
+      const b = el.getBoundingClientRect();
+      if (b.width === 0 && b.height === 0) continue;   // not laid out yet
+      const rect: R = { l: b.left, t: b.top, r: b.right, b: b.bottom };
+      if (host.classList.contains('kw-fp-label')) taken.push(rect);
+      else movable.push({ el, rect, selected: entry.anchor.locationId === selectedId, dotH });
+    }
+
+    movable.sort((a, z) => Number(z.selected) - Number(a.selected) || a.rect.t - z.rect.t);
+
+    for (const m of movable) {
+      // Step by the label's own height so a nudged label clears the one above
+      // it rather than landing half on top of it. Try DOWN first (the resting
+      // place, so the common case looks conventional), then the mirrored slot
+      // ABOVE — a label boxed in below often has clear space over its dot, and
+      // hiding it while that space sits empty would be a poor trade.
+      //
+      // A slot that lands on the marker's OWN dot needs no special case: every
+      // dot is already an obstacle, so the collision test rejects it.
+      const step = (m.rect.b - m.rect.t) + 4;
+      const offsets: number[] = [0];
+      for (let i = 1; i <= 4; i++) offsets.push(i * step, -i * step);
+      let seated = false;
+      for (const dy of offsets) {
+        const cand: R = { l: m.rect.l, t: m.rect.t + dy, r: m.rect.r, b: m.rect.b + dy };
+        if (!inView(cand) || taken.some(t => overlaps(cand, t))) continue;
+        if (dy !== 0) {
+          // Connector length is NOT |dy|. Downwards the thread spans the gap
+          // that opened above the label (dy plus its 3px resting gap).
+          // Upwards it hangs from the label's underside and must stop at the
+          // TOP of the dot, so the label's own height, the resting gap AND the
+          // dot's height all come out of it — otherwise the thread is drawn
+          // straight through the marker it is pointing at.
+          const h = m.rect.b - m.rect.t;
+          const conn = dy > 0 ? dy + 3 : Math.max(0, -dy - h - 3 - m.dotH);
+          m.el.style.setProperty('--lbl-dy', `${dy}px`);
+          m.el.style.setProperty('--lbl-conn', `${conn}px`);
+          m.el.classList.toggle('kw-fp-lbl-up', dy < 0);
+        }
+        taken.push(cand);
+        seated = true;
+        break;
+      }
+      // Nowhere to sit: the dot stays and still opens the sheet on tap.
+      if (!seated) m.el.classList.add('kw-fp-lbl-hidden');
     }
   };
 
@@ -408,6 +531,34 @@ export default function FloorplanMap({
     if (w) styleLayers(w);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, filterType]);
+
+  // Declutter AFTER the layer effects above, and again whenever the view
+  // changes — which labels collide depends entirely on the current zoom.
+  useEffect(() => {
+    const w = worldRef.current;
+    if (!w) return;
+    let frame = 0;
+    const run = () => {
+      // Skip entirely mid-drag. A marker dragged near the edge triggers
+      // Leaflet's autoPan, which emits moveend per animation frame — running a
+      // full measure-and-seat pass on each one makes a busy plan drag badly.
+      // The dragend handlers rebuild anchors, which re-runs this effect.
+      if (draggingRef.current) return;
+      // One frame late: Leaflet writes marker transforms during the event, so
+      // measuring immediately would read the positions we are replacing.
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => declutter(w));
+    };
+    run();
+    w.map.on('zoomend', run);
+    w.map.on('moveend', run);
+    return () => {
+      cancelAnimationFrame(frame);
+      w.map.off('zoomend', run);
+      w.map.off('moveend', run);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchors, editable, typesByKey, selectedId, filterType, mapReady]);
 
   // Glide so the target lands ~38% from the top — clear of the bottom sheet.
   const flyRef = useRef<FlyTarget | null>(null);
