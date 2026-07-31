@@ -83,7 +83,11 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
 
   const load = useCallback(() => {
     const token = ++tokenRef.current;
-    setState('loading');
+    // Only the FIRST load may show the full-screen loading state. A refresh
+    // after placing/moving must keep the map mounted — otherwise Leaflet is
+    // destroyed and rebuilt, snapping the view back to the whole plan and
+    // undoing the zoom you were working at.
+    setState(prev => (prev === 'ready' ? 'ready' : 'loading'));
     // ?spot= deep link (QR sticker / "Show on map") or overlay focus prop.
     let spotParam = focusLocationId != null ? String(focusLocationId) : null;
     if (spotParam == null && typeof window !== 'undefined') {
@@ -179,7 +183,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
   // Type chips: only types that actually appear on the active floor.
   const chipTypes = useMemo(() => {
     const present = new Set(activeAnchors.map(a => a.typeKey));
-    return (manifest?.types ?? []).filter(t => present.has(t.key));
+    return (manifest?.types ?? []).filter(t => present.has(t.key) && !t.hidden);
   }, [activeAnchors, manifest?.types]);
 
   const switchFloor = (floorId: number) => {
@@ -247,13 +251,37 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     load();
   };
 
-  const moveAnchor = async (anchor: { id: number }, polygon: { x: number; y: number }[], cx: number, cy: number) => {
+  /** Patch one anchor in the loaded manifest (optimistic — the screen must
+   *  never disagree with what the server accepted). */
+  const patchAnchor = (anchorId: number, next: { polygon: Pt[]; cx: number; cy: number }) => {
+    setResp(prev => {
+      if (!prev?.manifest) return prev;
+      const anchors: typeof prev.manifest.anchors = {};
+      let changed = false;
+      for (const [fid, list] of Object.entries(prev.manifest.anchors)) {
+        anchors[Number(fid)] = list.map(a => {
+          if (a.id !== anchorId) return a;
+          changed = true;
+          return { ...a, polygon: next.polygon, cx: next.cx, cy: next.cy };
+        });
+      }
+      return changed ? { ...prev, manifest: { ...prev.manifest, anchors } } : prev;
+    });
+  };
+
+  const moveAnchor = async (anchor: { id: number; polygon: Pt[]; cx: number; cy: number }, polygon: Pt[], cx: number, cy: number) => {
+    const previous = { polygon: anchor.polygon, cx: anchor.cx, cy: anchor.cy };
+    patchAnchor(anchor.id, { polygon, cx, cy });   // keep the screen truthful
     const res = await fetch(`/api/inventory/floorplan-anchors/${anchor.id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ polygon, cx, cy }),
     });
-    if (!res.ok) toast('Could not save the new position — it will snap back on reload');
-    else toast('Position saved');
+    if (!res.ok) {
+      patchAnchor(anchor.id, previous);            // rejected → put it back
+      toast('Could not save the new position — put back where it was');
+    } else {
+      toast('Position saved');
+    }
   };
 
   const renameSelected = async () => {
@@ -319,11 +347,37 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAnchors, activeFloor?.revision]);
 
+  /**
+   * Which place should a new item of this type sit inside? The LAYER decides:
+   * an item (layer 3) belongs in the room (layer 2) you dropped it in; a level
+   * (layer 4) belongs in the nearest ITEM. That is the same sequence staff are
+   * guided along — area → room → item → inside.
+   */
+  const inferParent = useCallback((typeKey: string, pt: Pt): number | null => {
+    const layer = typesByKey[typeKey]?.layer ?? 3;
+    if (layer <= 2) return null;                    // areas/rooms stand alone
+    const wantLayer = layer - 1;                    // sit inside the layer above
+    const W = activeFloor?.revision?.width ?? 1, H = activeFloor?.revision?.height ?? 1;
+    const candidates = activeAnchors.filter(a => (typesByKey[a.typeKey]?.layer ?? 3) === wantLayer);
+    const pool = candidates.length > 0
+      ? candidates
+      : activeAnchors.filter(a => (typesByKey[a.typeKey]?.layer ?? 3) < layer);
+    if (pool.length === 0) return null;
+    const inside = pool.find(a => pointInPolygon(pt, a.polygon));
+    if (inside) return inside.locationId;
+    let best: number | null = null, bd = Infinity;
+    for (const a of pool) {
+      const d = Math.hypot((pt.x - a.cx) * W, (pt.y - a.cy) * H);
+      if (d < bd) { bd = d; best = a.locationId; }
+    }
+    return best;
+  }, [activeAnchors, activeFloor?.revision, typesByKey]);
+
   const openAddForm = useCallback((typeKey: string, pt: Pt) => {
     setArmed(typeKey);
-    setAddForm({ x: pt.x, y: pt.y, code: suggestCode(typeKey), roomId: inferRoom(pt), existingId: null });
+    setAddForm({ x: pt.x, y: pt.y, code: suggestCode(typeKey), roomId: inferParent(typeKey, pt), existingId: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inferRoom, activeAnchors]);
+  }, [inferParent, activeAnchors]);
 
   const roomOptions = useMemo(
     () => (manifest ? manifest.places.filter(p => p.bucket === 'room' && p.floorId === activeFloorId) : []),
@@ -462,7 +516,7 @@ export default function FloorplanApp({ focusLocationId, onClose }: FloorplanAppP
       {edit && (
         <div className="flex items-center gap-1.5 overflow-x-auto border-y border-gray-200 bg-gray-900 px-3 py-2 [scrollbar-width:none]">
           <span className="flex-shrink-0 text-[10px] font-extrabold tracking-[0.08em] text-gray-400">ADD:</span>
-          {(manifest?.types ?? []).filter(t => !['floor', 'area'].includes(t.key)).map(t => (
+          {(manifest?.types ?? []).filter(t => !t.hidden && !['floor'].includes(t.key)).map(t => (
             <button
               key={t.key}
               draggable

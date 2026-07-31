@@ -39,18 +39,38 @@
   pointer-events: auto;
 }
 .kw-fp-dot {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: #fff;
-  border: 3px solid var(--c, #64748b);
-  box-shadow: 0 2px 6px rgba(15, 25, 40, 0.25);
+  position: relative;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(15, 25, 40, 0.28));
 }
+/* Outline + white fill, built from two clipped layers so ANY shape (star,
+   hexagon, shield…) gets the same crisp coloured outline. --clip is set per
+   shape class below; the circle keeps plain border-radius. */
+.kw-fp-dot::before,
+.kw-fp-dot::after {
+  content: '';
+  position: absolute;
+  clip-path: var(--clip, none);
+}
+.kw-fp-dot::before { inset: 0; background: var(--c, #64748b); border-radius: var(--radius, 0); }
+.kw-fp-dot::after { inset: 3px; background: #fff; border-radius: var(--radius-inner, 0); }
+.kw-fp-dot > * { position: relative; z-index: 1; }
+.kw-fp-shape-dot      { --radius: 50%; --radius-inner: 50%; }
+.kw-fp-shape-square   { --radius: 8px; --radius-inner: 6px; }
+.kw-fp-shape-diamond  { --clip: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+.kw-fp-shape-star     { --clip: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+.kw-fp-shape-hex      { --clip: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0% 50%); }
+.kw-fp-shape-triangle { --clip: polygon(50% 2%, 100% 98%, 0% 98%); }
+.kw-fp-shape-shield   { --clip: polygon(50% 0%, 100% 18%, 100% 62%, 50% 100%, 0% 62%, 0% 18%); }
+/* Non-circular shapes need the icon nudged into their visual centre. */
+.kw-fp-shape-triangle > * { transform: translateY(4px); }
+.kw-fp-shape-star > * { font-size: 13px; }
 .kw-fp-dotlbl {
   margin-top: 3px;
   max-width: 130px;

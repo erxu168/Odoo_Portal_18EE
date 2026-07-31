@@ -95,9 +95,10 @@ test('Odoo unavailable is a flagged state, never an empty lie', () => {
   expect(m.products).toEqual([]);
 });
 
-test('type registry = built-ins + company customs; built-ins shadow same-key customs', () => {
-  // 'utility' is a BUILT-IN since the Codex round (floorspace/cabinet/utility
-  // joined location-types.ts) — a same-key company row must NOT duplicate it.
+test('type registry = built-ins + company customs; a company row OVERRIDES a built-in', () => {
+  // Ethan's rule (2026-07-31): the library is HIS. A company row for a
+  // built-in key customises that built-in (label/icon/colour/shape/layer) or
+  // hides it — it never duplicates it and is never ignored.
   getDb().prepare(
     "INSERT OR IGNORE INTO location_kinds (company_id, kind, label, sort_order, icon, color) VALUES (?,?,?,0,?,?)",
   ).run(CO, 'utility', 'Old Custom Utility', '🔧', '#334455');
@@ -112,8 +113,13 @@ test('type registry = built-ins + company customs; built-ins shadow same-key cus
   expect(types.find(t => t.key === 'shelf')).toMatchObject({ label: 'Shelf', custom: false, color: '#16A34A' });
   expect(types.find(t => t.key === 'floorspace')).toMatchObject({ label: 'Floor space', custom: false, color: '#3B82F6' });
   expect(types.find(t => t.key === 'cabinet')).toMatchObject({ label: 'Cabinet', custom: false, color: '#8B5CF6' });
-  expect(types.filter(t => t.key === 'utility').length).toBe(1);
-  expect(types.find(t => t.key === 'utility')).toMatchObject({ custom: false, color: '#64748B' });
+  expect(types.filter(t => t.key === 'utility').length).toBe(1);       // never duplicated
+  expect(types.find(t => t.key === 'utility')).toMatchObject({
+    custom: false,             // still a built-in key
+    color: '#334455',          // …wearing the company's colour
+    label: 'Old Custom Utility',
+    icon: '🔧',
+  });
   expect(types.find(t => t.key === 'winecellar')).toMatchObject({ label: 'Wine Cellar', custom: true, color: '#7C2D12' });
   expect(types.find(t => t.key === 'firstaid')).toMatchObject({ label: 'First Aid', icon: '🚑', custom: true, color: '#64748B' });
 });
@@ -125,4 +131,15 @@ test('archived spots vanish from anchors and places', () => {
   const m = buildManifest(CO, { products: [] });
   expect(m.anchors[floorId].find(a => a.locationId === fuseId)).toBeUndefined();
   expect(m.places.find(p => p.locationId === fuseId)).toBeUndefined();
+});
+
+test('hiding a built-in removes it from the library without touching the key', () => {
+  const before = getTypeRegistry(CO).find(t => t.key === 'shelf');
+  expect(before?.hidden).toBeFalsy();
+  getDb().prepare(
+    "INSERT INTO location_kinds (company_id, kind, label, icon, sort_order, hidden) VALUES (?,?,?,?,90,1)",
+  ).run(CO, 'shelf', 'Shelf', '🗄️');
+  const hidden = getTypeRegistry(CO).find(t => t.key === 'shelf');
+  expect(hidden?.hidden).toBe(true);
+  expect(getTypeRegistry(CO).filter(t => t.key === 'shelf').length).toBe(1);
 });

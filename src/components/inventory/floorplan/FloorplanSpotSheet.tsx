@@ -56,6 +56,9 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const [assignBusy, setAssignBusy] = useState(false);
   const [catalogDown, setCatalogDown] = useState(false);
+  const [levelsOpen, setLevelsOpen] = useState(false);
+  const [levels, setLevels] = useState({ count: 4, word: 'Level' });
+  const [levelsBusy, setLevelsBusy] = useState(false);
   const searchTokenRef = useRef(0);
   const pendingProductRef = useRef<number | null>(null);
   const tokenRef = useRef(0);
@@ -103,6 +106,25 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
   }, [assignOpen, query]);
 
   const alreadyHere = new Set((data?.products ?? []).map(p => p.id));
+
+  const addLevels = async () => {
+    if (!data) return;
+    setLevelsBusy(true);
+    try {
+      const res = await fetch(`/api/inventory/floorplan/spots/${data.location.id}/children`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: levels.count, labelPattern: levels.word, typeKey: 'shelf' }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(d.error ?? 'Could not add the levels'); return; }
+      setLevelsOpen(false);
+      setImageBust(b => b + 1); // reload — they appear under INSIDE
+    } catch {
+      setError('Could not add the levels — check your connection');
+    } finally {
+      setLevelsBusy(false);
+    }
+  };
 
   const saveAssignment = async () => {
     if (!data) return;
@@ -244,6 +266,48 @@ export default function FloorplanSpotSheet({ locationId, typesByKey, canEditProd
               </div>
             )}
           </div>
+
+          {canAssignProducts && !levelsOpen && (
+            <button
+              onClick={() => setLevelsOpen(true)}
+              className="h-11 w-full rounded-full border-[1.5px] border-gray-200 text-[13px] font-bold text-gray-700 active:scale-[0.98]"
+            >
+              ＋ Add levels / drawers inside
+            </button>
+          )}
+          {levelsOpen && (
+            <div className="rounded-2xl border border-gray-200 p-3">
+              <p className="mb-2 text-[12px] font-semibold text-gray-600">
+                Numbered places inside {data.location.name} — no extra markers needed.
+              </p>
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  value={levels.word}
+                  onChange={e => setLevels(l => ({ ...l, word: e.target.value }))}
+                  aria-label="What are they called"
+                  className="h-11 min-w-0 flex-1 rounded-xl border-[1.5px] border-gray-200 px-3.5 text-[14px] font-semibold outline-none focus:border-blue-600"
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={40}
+                  value={levels.count}
+                  onChange={e => setLevels(l => ({ ...l, count: Math.min(40, Math.max(1, Number(e.target.value) || 1)) }))}
+                  aria-label="How many"
+                  className="h-11 w-20 rounded-xl border-[1.5px] border-gray-200 px-3 text-center text-[14px] font-bold outline-none focus:border-blue-600"
+                />
+              </div>
+              <p className="mb-2 text-[11.5px] text-gray-500">
+                Creates {levels.word} 1 … {levels.word} {levels.count} inside this place.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setLevelsOpen(false)} className="h-11 flex-1 rounded-full border-[1.5px] border-gray-200 text-[13.5px] font-bold text-gray-700">Cancel</button>
+                <button onClick={addLevels} disabled={levelsBusy} className="h-11 flex-1 rounded-full bg-green-600 text-[13.5px] font-bold text-white disabled:opacity-50">
+                  {levelsBusy ? 'Adding…' : 'Add'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {(data.children?.length ?? 0) > 0 && (
             <div>

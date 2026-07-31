@@ -12,9 +12,15 @@ import { listCountLocations, listProductImageIds } from '@/lib/inventory-db';
 import { locationPath } from '@/lib/location-tree';
 import { LOCATION_TYPES } from '@/lib/location-types';
 import { initFloorplanTables, listFloors, getRevision, listAnchors } from './db';
+import { MARKER_SHAPES, type MarkerShape, type LocationLayer } from './marker-presets';
 import type { Pt } from './types';
 
-export type MarkerShape = 'dot' | 'label';
+// The marker vocabulary lives in a dependency-free module so client
+// components can import it without pulling the database into the bundle.
+export {
+  MARKER_SHAPES, SHAPE_LABELS, MARKER_COLORS, LAYER_LABELS, isMarkerShape,
+} from './marker-presets';
+export type { MarkerShape, LocationLayer } from './marker-presets';
 
 export interface FloorplanTypeInfo {
   key: string;
@@ -23,7 +29,11 @@ export interface FloorplanTypeInfo {
   color: string;
   /** How this type draws on the plan: a circle, or a rounded-rectangle label. */
   shape: MarkerShape;
+  /** Hierarchy rank — see LocationLayer. */
+  layer: LocationLayer;
   custom: boolean;
+  /** Removed from THIS restaurant's library (built-ins can't be deleted). */
+  hidden?: boolean;
   /** location_kinds row id — custom types only (rename/recolor/delete). */
   id?: number;
 }
@@ -74,6 +84,15 @@ const CUSTOM_FALLBACK = '#64748B';
 /** Built-ins that describe an AREA or a fixed installation read as labels. */
 const LABEL_SHAPED = new Set(['floor', 'area', 'room', 'utility']);
 
+/** Built-in hierarchy ranks (see LocationLayer). */
+const BUILTIN_LAYER: Record<string, LocationLayer> = {
+  floor: 1, area: 1,
+  room: 2, walkin: 2,
+  fridge: 3, freezer: 3, counterfridge: 3, counterfreezer: 3,
+  dryshelf: 3, shelf: 3, floorspace: 3, cabinet: 3, utility: 3,
+  drawer: 4, bin: 4,
+};
+
 /** Built-in types + the company's custom location_kinds, one flat registry. */
 export function getTypeRegistry(companyId: number): FloorplanTypeInfo[] {
   initFloorplanTables();
@@ -81,20 +100,46 @@ export function getTypeRegistry(companyId: number): FloorplanTypeInfo[] {
     key: t.key, label: t.label, icon: t.icon,
     color: BUILTIN_COLORS[t.key] ?? CUSTOM_FALLBACK,
     shape: LABEL_SHAPED.has(t.key) ? 'label' : 'dot',
+    layer: BUILTIN_LAYER[t.key] ?? 3,
     custom: false,
   }));
-  const seen = new Set(builtIns.map(b => b.key));
-  const customs = (getDb().prepare(
-    'SELECT id, kind, label, icon, color, shape FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id',
-  ).all(companyId) as Array<{ id: number; kind: string; label: string; icon: string | null; color: string | null; shape: string | null }>)
-    .filter(k => !seen.has(k.kind))
-    .map(k => ({
-      key: k.kind, label: k.label, icon: k.icon || '📍',
-      color: k.color || CUSTOM_FALLBACK,
-      shape: (k.shape === 'label' ? 'label' : 'dot') as MarkerShape,
-      custom: true, id: k.id,
-    }));
-  return [...builtIns, ...customs];
+  const rows = getDb().prepare(
+    'SELECT id, kind, label, icon, color, shape, layer, hidden FROM location_kinds WHERE company_id = ? ORDER BY sort_order, id',
+  ).all(companyId) as Array<{ id: number; kind: string; label: string; icon: string | null; color: string | null; shape: string | null; layer: number | null; hidden: number | null }>;
+
+  const byKey = new Map(builtIns.map(b => [b.key, { ...b }]));
+  const customs: FloorplanTypeInfo[] = [];
+  const shapeOf = (v: string | null, fallback: MarkerShape): MarkerShape =>
+    (MARKER_SHAPES as readonly string[]).includes(v ?? '') ? (v as MarkerShape) : fallback;
+  const layerOf = (v: number | null, fallback: LocationLayer): LocationLayer =>
+    ([1, 2, 3, 4].includes(Number(v)) ? Number(v) : fallback) as LocationLayer;
+
+  for (const k of rows) {
+    const base = byKey.get(k.kind);
+    if (base) {
+      // A company row for a BUILT-IN key is an override: relabel, recolor,
+      // reshape — or hide it from this restaurant's library.
+      byKey.set(k.kind, {
+        ...base,
+        id: k.id,
+        label: k.label || base.label,
+        icon: k.icon || base.icon,
+        color: k.color || base.color,
+        shape: shapeOf(k.shape, base.shape),
+        layer: layerOf(k.layer, base.layer),
+        hidden: k.hidden === 1,
+      });
+    } else {
+      customs.push({
+        key: k.kind, label: k.label, icon: k.icon || '📍',
+        color: k.color || CUSTOM_FALLBACK,
+        shape: shapeOf(k.shape, 'dot'),
+        layer: layerOf(k.layer, 3),
+        custom: true, id: k.id, hidden: k.hidden === 1,
+      });
+    }
+  }
+  return [...Array.from(byKey.values()), ...customs];
 }
 
 export function buildManifest(

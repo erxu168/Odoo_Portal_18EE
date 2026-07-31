@@ -18,7 +18,8 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { initInventoryTables, listLocationKinds, addLocationKind, deleteLocationKind, renameLocationKind } from '@/lib/inventory-db';
-import { setLocationKindColor, setLocationKindShape } from '@/lib/inventory-floorplan/db';
+import { setLocationKindColor, setLocationKindShape, setLocationKindLayer, upsertLocationKind } from '@/lib/inventory-floorplan/db';
+import { isMarkerShape as isShape } from '@/lib/inventory-floorplan/marker-presets';
 import { authorizeFloorplan, FLOORPLAN_CAP } from '@/lib/inventory-floorplan/access';
 import { canAccessCompany, resolveScopedCompany } from '@/lib/inventory-access';
 
@@ -66,13 +67,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'The color must look like #16A34A' }, { status: 400 });
   }
 
-  const shape = body.shape === 'label' ? 'label' : body.shape === 'dot' ? 'dot' : null;
+  const shape = isShape(body.shape) ? body.shape : null;
+  const layer = [1, 2, 3, 4].includes(Number(body.layer)) ? Number(body.layer) : null;
 
   const row = addLocationKind(companyId, label, icon, authz.actor.userId);
   if (!row) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
   if (color) setLocationKindColor(row.id, companyId, color);
   if (shape) setLocationKindShape(row.id, companyId, shape);
-  return NextResponse.json({ kind: { ...row, color: color || null, shape: shape ?? 'dot' } }, { status: 201 });
+  if (layer) setLocationKindLayer(row.id, companyId, layer);
+  return NextResponse.json({ kind: { ...row, color: color || null, shape: shape ?? 'dot', layer: layer ?? 3 } }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
@@ -88,7 +91,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'That restaurant is not available to you' }, { status: 403 });
   const companyId = resolveScopedCompany(user, requested);
   const label = String(body.label || '').trim();
-  if (!id || !companyId) return NextResponse.json({ error: 'id and company_id are required' }, { status: 400 });
+  if ((!id && !body.kind) || !companyId) return NextResponse.json({ error: 'id or kind is required' }, { status: 400 });
   if (!label) return NextResponse.json({ error: 'label is required' }, { status: 400 });
   if (label.length > 40) return NextResponse.json({ error: 'Keep the type under 40 characters' }, { status: 400 });
 
@@ -101,11 +104,29 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'The color must look like #16A34A' }, { status: 400 });
   }
 
+  // Editing a BUILT-IN type: it has no row yet, so upsert an override keyed by
+  // its kind. Everything on screen must be editable (Ethan's rule).
+  if (!id && typeof body.kind === 'string' && body.kind.trim()) {
+    upsertLocationKind(companyId, String(body.kind).trim(), {
+      label, icon: icon || undefined,
+      color: color === undefined ? undefined : (color || null),
+      shape: isShape(body.shape) ? body.shape : undefined,
+      layer: [1, 2, 3, 4].includes(Number(body.layer)) ? Number(body.layer) : undefined,
+      hidden: body.hidden === true ? 1 : body.hidden === false ? 0 : undefined,
+      createdBy: authz.actor.userId,
+    });
+    return NextResponse.json({ message: 'Type updated' });
+  }
+
   const result = renameLocationKind(id, companyId, label, icon);
   if (!result.ok && result.dupe) return NextResponse.json({ error: `“${label}” already exists` }, { status: 409 });
   if (!result.ok) return NextResponse.json({ error: 'Type not found' }, { status: 404 });
   if (color !== undefined) setLocationKindColor(id, companyId, color || null);
-  if (body.shape === 'label' || body.shape === 'dot') setLocationKindShape(id, companyId, body.shape);
+  if (isShape(body.shape)) setLocationKindShape(id, companyId, body.shape);
+  if ([1, 2, 3, 4].includes(Number(body.layer))) setLocationKindLayer(id, companyId, Number(body.layer));
+  if (body.hidden === true || body.hidden === false) {
+    upsertLocationKind(companyId, String(body.kind ?? '').trim() || label.toLowerCase(), { hidden: body.hidden ? 1 : 0 });
+  }
   return NextResponse.json({ message: 'Type renamed' });
 }
 
@@ -121,7 +142,15 @@ export async function DELETE(request: Request) {
   if (requested && !canAccessCompany(user, requested))
     return NextResponse.json({ error: 'That restaurant is not available to you' }, { status: 403 });
   const companyId = resolveScopedCompany(user, requested);
-  if (!id || !companyId) return NextResponse.json({ error: 'id and company_id are required' }, { status: 400 });
+  if ((!id && !searchParams.get('kind')) || !companyId) return NextResponse.json({ error: 'id or kind is required' }, { status: 400 });
+
+  const kindParam = (searchParams.get('kind') || '').trim();
+  if (!id && kindParam) {
+    // Built-in: cannot be deleted (locations reference the key) — hide it from
+    // this restaurant's library instead. Reversible from the Hidden list.
+    upsertLocationKind(companyId, kindParam, { hidden: 1, createdBy: authz.actor.userId });
+    return NextResponse.json({ message: 'Removed from your library' });
+  }
 
   const result = deleteLocationKind(id, companyId);
   if (!result.ok && result.in_use > 0) {

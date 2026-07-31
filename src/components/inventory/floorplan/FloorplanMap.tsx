@@ -176,12 +176,13 @@ export default function FloorplanMap({
       if (a.display === 'pin') {
         // The TYPE decides the shape (marker library): 'label' draws a rounded
         // rectangle (rooms, utility points), 'dot' a circle with the icon.
-        const asLabel = (typesByKey[a.typeKey]?.shape ?? 'dot') === 'label';
+        const shape = typesByKey[a.typeKey]?.shape ?? 'dot';
+        const asLabel = shape === 'label';
         const icon = L.divIcon({
           className: `kw-fp-pin${asLabel ? ' kw-fp-label' : ''}`,
           html:
             '<span class="kw-fp-inner">' +
-            `<span class="kw-fp-dot">${escapeHtml(typesByKey[a.typeKey]?.icon ?? '📍')}</span>` +
+            `<span class="kw-fp-dot kw-fp-shape-${escapeHtml(shape)}"><span>${escapeHtml(typesByKey[a.typeKey]?.icon ?? '📍')}</span></span>` +
             `<span class="kw-fp-dotlbl">${asLabel ? escapeHtml(typesByKey[a.typeKey]?.icon ?? '') + ' ' : ''}${escapeHtml(a.label)}</span>` +
             '</span>',
           // Zero-size icon anchored EXACTLY at the point; .kw-fp-inner centres

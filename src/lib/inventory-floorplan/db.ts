@@ -164,6 +164,12 @@ export function initFloorplanTables(): void {
   // Marker shape on the plan: 'dot' (a circle — items) or 'label' (a rounded
   // rectangle — rooms, utility points). Ethan's marker library, 2026-07-31.
   addLkCol('shape', "ALTER TABLE location_kinds ADD COLUMN shape TEXT NOT NULL DEFAULT 'dot'");
+  // Hierarchy rank: 1 area, 2 room, 3 item, 4 inside-an-item (see manifest.ts).
+  addLkCol('layer', 'ALTER TABLE location_kinds ADD COLUMN layer INTEGER NOT NULL DEFAULT 3');
+  // A built-in type the company customised or removed from ITS library. The
+  // built-ins live in code (existing spots reference their keys), so "delete"
+  // means hidden = 1 — reversible, and never orphans a location.
+  addLkCol('hidden', 'ALTER TABLE location_kinds ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
 
   _inited = true;
 }
@@ -406,9 +412,56 @@ export function setLocationKindColor(id: number, companyId: number, color: strin
 }
 
 /** Marker shape of a custom type: 'dot' (circle) or 'label' (rounded rectangle). */
-export function setLocationKindShape(id: number, companyId: number, shape: 'dot' | 'label'): void {
+export function setLocationKindShape(id: number, companyId: number, shape: string): void {
   initFloorplanTables();
   getDb().prepare('UPDATE location_kinds SET shape = ? WHERE id = ? AND company_id = ?').run(shape, id, companyId);
+}
+
+/**
+ * Create or update THIS company's row for a type key. Built-in keys get an
+ * override row (same key) so the whole library is editable — Ethan's rule:
+ * anything on screen must be editable and removable.
+ */
+export function upsertLocationKind(companyId: number, kind: string, fields: {
+  label?: string; icon?: string; color?: string | null;
+  shape?: string; layer?: number; hidden?: 0 | 1; createdBy?: number | null;
+}): number {
+  initFloorplanTables();
+  const db = getDb();
+  const existing = db.prepare('SELECT id FROM location_kinds WHERE company_id = ? AND kind = ?')
+    .get(companyId, kind) as { id: number } | undefined;
+  if (!existing) {
+    const maxSort = (db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS m FROM location_kinds WHERE company_id = ?')
+      .get(companyId) as { m: number }).m;
+    const res = db.prepare(
+      `INSERT INTO location_kinds (company_id, kind, label, icon, color, shape, layer, hidden, sort_order, created_by, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(
+      companyId, kind, fields.label ?? kind, fields.icon ?? '📍', fields.color ?? null,
+      fields.shape ?? 'dot', fields.layer ?? 3, fields.hidden ?? 0, maxSort + 10,
+      fields.createdBy ?? null, nowISO(),
+    );
+    return res.lastInsertRowid as number;
+  }
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  for (const [col, val] of [
+    ['label', fields.label], ['icon', fields.icon], ['color', fields.color],
+    ['shape', fields.shape], ['layer', fields.layer], ['hidden', fields.hidden],
+  ] as Array<[string, unknown]>) {
+    if (val !== undefined) { sets.push(`${col} = ?`); vals.push(val); }
+  }
+  if (sets.length) {
+    vals.push(existing.id);
+    db.prepare(`UPDATE location_kinds SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+  }
+  return existing.id;
+}
+
+/** Hierarchy rank of a custom type (1 area … 4 inside an item). */
+export function setLocationKindLayer(id: number, companyId: number, layer: number): void {
+  initFloorplanTables();
+  getDb().prepare('UPDATE location_kinds SET layer = ? WHERE id = ? AND company_id = ?').run(layer, id, companyId);
 }
 
 /**
