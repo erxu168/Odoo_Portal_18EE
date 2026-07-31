@@ -42,6 +42,17 @@ export async function POST(
     const attachFilename = filename || `Zustellnachweis_${termId}.pdf`;
     const odoo = getOdoo();
 
+    // Remember the current proof so a REPLACE doesn't leave the old file
+    // orphaned (removed only after the new one is safely linked).
+    let oldProofId: number | null = null;
+    try {
+      const cur = (await odoo.read(MODEL, [termId], ['delivery_proof_attachment_id']))?.[0];
+      if (cur?.delivery_proof_attachment_id) {
+        oldProofId = Array.isArray(cur.delivery_proof_attachment_id)
+          ? cur.delivery_proof_attachment_id[0] : cur.delivery_proof_attachment_id;
+      }
+    } catch (_e) {}
+
     // Create ir.attachment
     const attachId = await odoo.create('ir.attachment', {
       name: attachFilename,
@@ -56,6 +67,16 @@ export async function POST(
     await odoo.write(MODEL, [termId], {
       delivery_proof_attachment_id: attachId,
     });
+
+    // Atomic-replace tail: drop the superseded proof (ownership-guarded).
+    if (oldProofId && oldProofId !== attachId) {
+      try {
+        const att = (await odoo.read('ir.attachment', [oldProofId], ['res_model', 'res_id']))?.[0];
+        if (att && att.res_model === MODEL && att.res_id === termId) {
+          await odoo.call('ir.attachment', 'unlink', [[oldProofId]]);
+        }
+      } catch (_e) { /* orphan is harmless */ }
+    }
 
     // Post to chatter
     try {
