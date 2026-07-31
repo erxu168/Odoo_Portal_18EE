@@ -224,6 +224,20 @@ export function getLatestRun(): ForecastRun | null {
   ).get() as ForecastRun | null;
 }
 
+/**
+ * Forecasts for a company+date PLUS the run they came from — paired, so a
+ * screen can never caption one company's rows with another company's newer
+ * run time and status. With no rows, the globally latest run still comes
+ * back, so an empty state can say "last run wrote nothing" honestly.
+ */
+export function getForecastsWithRun(companyId: number, targetDate: string): { run: ForecastRun | null; forecasts: ForecastRow[] } {
+  const forecasts = getLatestForecasts(companyId, targetDate);
+  if (forecasts.length === 0) return { run: getLatestRun(), forecasts };
+  const run = getDb().prepare('SELECT * FROM prep_forecast_runs WHERE id = ?')
+    .get(forecasts[0].forecast_run_id) as ForecastRun | null;
+  return { run, forecasts };
+}
+
 // ── Demand history ─────────────────────────────────────
 
 export function upsertDemandRows(rows: DemandRow[]): number {
@@ -363,11 +377,16 @@ export function getLatestForecasts(
 ): ForecastRow[] {
   initPrepPlannerTables();
   const db = getDb();
+  // The latest successful run WITH ROWS for this company and date — not the
+  // globally latest run. A nightly run for another company (or one that wrote
+  // nothing) used to eclipse every forecast that actually existed.
   const latestRun = db.prepare(`
-    SELECT id FROM prep_forecast_runs
-    WHERE status = 'success'
-    ORDER BY started_at DESC LIMIT 1
-  `).get() as { id: number } | undefined;
+    SELECT f.forecast_run_id AS id
+      FROM prep_forecasts f
+      JOIN prep_forecast_runs r ON r.id = f.forecast_run_id AND r.status = 'success'
+     WHERE f.company_id = ? AND f.target_date = ?
+     ORDER BY f.forecast_run_id DESC LIMIT 1
+  `).get(companyId, targetDate) as { id: number } | undefined;
   if (!latestRun) return [];
   return db.prepare(`
     SELECT * FROM prep_forecasts

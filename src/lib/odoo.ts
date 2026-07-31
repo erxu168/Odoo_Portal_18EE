@@ -243,6 +243,52 @@ export class OdooClient {
   }
 
   /**
+   * search_read, ALL of it — pages by an id CURSOR until done.
+   *
+   * Exists because `searchRead({ limit: 0 })` does NOT mean "no limit": 0 is
+   * falsy, so the client quietly substitutes 200 and callers get the first 200
+   * rows sorted however they asked, with no error. That silent cap starved the
+   * Prep Planner's demand backfill for months. Use THIS whenever the intent is
+   * "every matching row".
+   *
+   * Cursor, not offset, on purpose: an offset walk over a live table repeats
+   * or skips rows when records land mid-run; `id > last` cannot. The price:
+   * results come back ordered by id — sort in memory if you need another order.
+   *
+   * `maxRows` is a runaway backstop, and hitting it THROWS: returning a
+   * silently truncated "everything" would recreate the exact bug this method
+   * exists to fix. Raise it deliberately when a dataset is genuinely bigger.
+   */
+  async searchReadAll(
+    model: string,
+    domain: any[] = [],
+    fields: string[] = [],
+    options: { context?: Record<string, any>; pageSize?: number; maxRows?: number } = {},
+  ): Promise<any[]> {
+    const pageSize = options.pageSize || 500;
+    const maxRows = options.maxRows || 50_000;
+    const all: any[] = [];
+    let cursor = 0;
+    for (;;) {
+      const page = await this.searchRead(model, [...domain, ['id', '>', cursor]], fields, {
+        limit: pageSize,
+        order: 'id asc',
+        context: options.context,
+      });
+      all.push(...page);
+      // Over the backstop in ANY case — including a short final page that
+      // lands past it (non-aligned pageSize/maxRows must not slip through).
+      if (all.length > maxRows || (all.length >= maxRows && page.length === pageSize)) {
+        throw new Error(
+          `searchReadAll(${model}) exceeded the ${maxRows}-row backstop — refusing to return truncated data; raise maxRows deliberately`,
+        );
+      }
+      if (page.length < pageSize) return all;
+      cursor = page[page.length - 1].id;
+    }
+  }
+
+  /**
    * read — fetch specific record IDs
    */
   async read(

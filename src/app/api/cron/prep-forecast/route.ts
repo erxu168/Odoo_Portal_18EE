@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic';
 /**
- * GET /api/cron/prep-forecast?token=<CRON_SECRET>&companies=3,5
+ * GET /api/cron/prep-forecast?token=<CRON_SECRET>&companies=6
  *
  * Runs the Prep Planner Phase 1 forecast job:
  *   1. Pulls the last 84 days of POS order lines per company.
@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
  *
  * Also callable manually during Phase 1 validation. Query params:
  *   token         — required when CRON_SECRET is set
- *   companies     — comma-separated Odoo company IDs (default: 3 = Ssam Korean BBQ)
+ *   companies     — comma-separated Odoo company IDs (default: 6 = What a Jerk)
  *   lookback      — history window in days (default 84)
  *   horizon       — forecast window in days (default 7)
  *   skipWeather   — "1" to skip Open-Meteo calls (useful for debugging)
@@ -24,9 +24,10 @@ import { NextResponse } from 'next/server';
 import { runForecastJob } from '@/lib/prep-planner-engine';
 import { logAudit } from '@/lib/db';
 
-// Default to Ssam Korean BBQ for Phase 1 validation.
-// What a Jerk (company_id=5) will be added here once POS data exists on staging.
-const DEFAULT_COMPANY_IDS = [3];
+// What a Jerk (company 6 — the post-merge id) is the restaurant whose till
+// actually posts to staging. Ssam (3) stopped producing staging sales in
+// March 2026; re-add it here if its till ever comes back.
+const DEFAULT_COMPANY_IDS = [6];
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);

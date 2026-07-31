@@ -238,8 +238,8 @@ _Rewritten 2026-07-16 from a code-level audit. Legend: ✅ shipped · ⚠️ par
 |---|---|
 | `src/lib/weather.ts` | Open-Meteo client (archive + forecast), Berlin 52.52°N/13.405°E, weather buckets (nice/heat/rain/cold/snow/normal) |
 | `src/lib/prep-planner-db.ts` | 4 tables: `prep_demand_history`, `prep_weather_daily`, `prep_forecasts`, `prep_forecast_runs` + full CRUD |
-| `src/lib/prep-planner-engine.ts` | `backfillDemandHistory`, `backfillWeather`, `backfillForecastWeather`, `computeForecasts`, `runForecastJob` |
-| `src/app/api/cron/prep-forecast/route.ts` | Token-protected GET, defaults to company_id=3 (Ssam Kottbusser) |
+| `src/lib/prep-planner-engine.ts` | `backfillDemandHistory`, `computeForecasts`, `runForecastJob` (weather fetch inlined + non-fatal since 2026-08-01) |
+| `src/app/api/cron/prep-forecast/route.ts` | Token-protected GET, defaults to company_id=6 (What a Jerk — the till that posts to staging) |
 | `src/app/api/prep-planner/forecasts/route.ts` | Read endpoint for future UI (no writes) |
 
 ### Phase 2 shipped (2026-04-19, commit `7115d67`)
@@ -343,7 +343,7 @@ curl "http://localhost:3000/api/prep-planner/forecasts-by-item?companyId=3&date=
 - [ ] **Cook-facing view**: start-of-shift overlay ("make N portions of X by T") with confirm/adjust/reject
 - [ ] **Manager/admin dashboard**: forecast vs actual variance, accuracy metrics per prep item
 - [ ] **Migrate `kds_product_config` → `prep_items`**: unify the two tables next time KDS is touched
-- [ ] Add What a Jerk (company_id=5) to `DEFAULT_COMPANY_IDS` once POS lives on staging
+- [x] What a Jerk is `DEFAULT_COMPANY_IDS` since 2026-08-01 — company **6** (post-merge id; 5 is dead), and its till posts to staging
 - [ ] `prune_old_forecasts` cron companion (call `pruneOldForecasts(30)` weekly)
 
 ## Rentals (Properties & Tenancies) — detail

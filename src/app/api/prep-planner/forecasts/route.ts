@@ -15,7 +15,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { roleCan } from '@/lib/permissions';
 import { getPermissionOverrides } from '@/lib/db';
-import { getLatestForecasts, getLatestRun } from '@/lib/prep-planner-db';
+import { getForecastsWithRun } from '@/lib/prep-planner-db';
 
 export async function GET(request: Request) {
   const user = getCurrentUser();
@@ -40,8 +40,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const run = getLatestRun();
-    const forecasts = getLatestForecasts(companyId, date);
+    // Paired on purpose: the run must be the one the rows came from.
+    const { run, forecasts } = getForecastsWithRun(companyId, date);
     return NextResponse.json({ run, forecasts });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

@@ -184,7 +184,10 @@ export async function backfillDemandHistory(
   const odoo = getOdoo();
 
   // Pull order metadata once so we can resolve each line's date_order.
-  const orders = (await odoo.searchRead(
+  // searchReadAll, NOT searchRead with limit 0: "limit: 0" silently means 200,
+  // and with oldest-first ordering this backfill spent months re-reading the
+  // same first 200 orders while the recent history it needed sat out of reach.
+  const orders = (await odoo.searchReadAll(
     'pos.order',
     [
       ['company_id', '=', companyId],
@@ -193,7 +196,8 @@ export async function backfillDemandHistory(
       ['state', 'in', ['paid', 'done', 'invoiced']],
     ],
     ['id', 'date_order'],
-    { limit: 0, order: 'date_order asc' },
+    // Comes back id-ordered (cursor pagination) — fine, the aggregation below
+    // buckets by (product, date, hour) and never cares about row order.
   )) as PosOrderMeta[];
 
   if (orders.length === 0) return 0;
@@ -201,18 +205,17 @@ export async function backfillDemandHistory(
   const orderDateMap = new Map<number, string>();
   for (const o of orders) orderDateMap.set(o.id, o.date_order);
 
-  // Pull lines in manageable chunks. Some restaurants have 100k+ lines/year
-  // so we page via offset rather than a single massive query.
+  // Pull lines per chunk of orders — and ALL lines of each chunk, for the same
+  // reason as above (500 orders easily carry more than 200 lines).
   const orderIds = orders.map(o => o.id);
   const CHUNK = 500;
   const lines: PosOrderLine[] = [];
   for (let i = 0; i < orderIds.length; i += CHUNK) {
     const chunk = orderIds.slice(i, i + CHUNK);
-    const page = (await odoo.searchRead(
+    const page = (await odoo.searchReadAll(
       'pos.order.line',
       [['order_id', 'in', chunk]],
       ['order_id', 'product_id', 'qty'],
-      { limit: 0 },
     )) as PosOrderLine[];
     lines.push(...page);
   }
@@ -278,20 +281,9 @@ export async function backfillDemandHistory(
 
 // ── Step 2: Backfill weather ───────────────────────────
 
-export async function backfillWeather(
-  fromDate: string,
-  toDate: string,
-): Promise<number> {
-  initPrepPlannerTables();
-  if (fromDate > toDate) return 0;
-  const today = berlinToday();
-  // Archive only covers up to yesterday in some regions. Clamp if needed.
-  const archiveEnd = toDate >= today ? addDays(today, -1) : toDate;
-  let historical: WeatherDaily[] = [];
-  if (fromDate <= archiveEnd) {
-    historical = await fetchHistoricalWeather(fromDate, archiveEnd);
-  }
-  return upsertWeatherRows(historical.map(h => ({
+/** One WeatherDaily → the row upsertWeatherRows stores. */
+function weatherRowFrom(h: WeatherDaily, source: 'open-meteo-archive' | 'open-meteo-forecast') {
+  return {
     date: h.date,
     tavg: h.tavg,
     tmax: h.tmax,
@@ -299,23 +291,8 @@ export async function backfillWeather(
     precip_mm: h.precip_mm,
     snow_cm: h.snow_cm,
     bucket: h.bucket,
-    source: 'open-meteo-archive',
-  })));
-}
-
-export async function backfillForecastWeather(horizonDays: number): Promise<number> {
-  initPrepPlannerTables();
-  const forecast = await fetchForecastWeather(horizonDays);
-  return upsertWeatherRows(forecast.map(h => ({
-    date: h.date,
-    tavg: h.tavg,
-    tmax: h.tmax,
-    tmin: h.tmin,
-    precip_mm: h.precip_mm,
-    snow_cm: h.snow_cm,
-    bucket: h.bucket,
-    source: 'open-meteo-forecast',
-  })));
+    source,
+  };
 }
 
 // ── Step 3: Compute forecasts ──────────────────────────
@@ -490,6 +467,8 @@ export interface ForecastJobResult {
   prepItemRowsWritten: number;
   durationMs: number;
   error?: string;
+  /** Weather failed but the run went on without it (multiplier is 1.0 anyway). */
+  weatherWarning?: string;
 }
 
 export async function runForecastJob(
@@ -508,6 +487,7 @@ export async function runForecastJob(
   let weatherRowsPulled = 0;
   let forecastRowsWritten = 0;
   let prepItemRowsWritten = 0;
+  let weatherWarning: string | undefined;
 
   try {
     const today = berlinToday();
@@ -523,10 +503,26 @@ export async function runForecastJob(
     }
 
     // 2. Weather backfill — once, shared across companies (all Berlin).
-    //    Pull history + next horizon in two calls so we have a full window.
+    //    The FETCHES are non-fatal on purpose: the weather multiplier is still
+    //    hardcoded 1.0 (Phase 2), yet Open-Meteo 502s were aborting entire
+    //    nightly runs — a free API must never cost a night's forecasts.
+    //    Persisting whatever DID arrive happens OUTSIDE the catch: a local
+    //    database failure is a real failure and must fail the run.
     if (!opts.skipWeather) {
-      weatherRowsPulled += await backfillWeather(fromDate, yesterday);
-      weatherRowsPulled += await backfillForecastWeather(horizonDays);
+      let historical: WeatherDaily[] = [];
+      let forecastWx: WeatherDaily[] = [];
+      try {
+        const archiveEnd = yesterday;
+        if (fromDate <= archiveEnd) {
+          historical = await fetchHistoricalWeather(fromDate, archiveEnd);
+        }
+        forecastWx = await fetchForecastWeather(horizonDays);
+      } catch (err) {
+        weatherWarning = err instanceof Error ? err.message : String(err);
+        console.warn('[prep-planner] weather fetch failed — continuing without it:', weatherWarning);
+      }
+      weatherRowsPulled += upsertWeatherRows(historical.map((h) => weatherRowFrom(h, 'open-meteo-archive')));
+      weatherRowsPulled += upsertWeatherRows(forecastWx.map((h) => weatherRowFrom(h, 'open-meteo-forecast')));
     }
 
     // 3. Forecast computation per company (POS-product level)
@@ -562,6 +558,7 @@ export async function runForecastJob(
       forecastRowsWritten,
       prepItemRowsWritten,
       durationMs: Date.now() - startedAt,
+      ...(weatherWarning ? { weatherWarning } : {}),
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

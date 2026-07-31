@@ -434,11 +434,15 @@ export function getLatestPrepItemForecasts(
 ): PrepItemForecastWithName[] {
   initPrepMappingTables();
   const db = getDb();
+  // Latest successful run WITH ROWS for this company+date — same reasoning as
+  // getLatestForecasts: another company's nightly run must not eclipse these.
   const latestRun = db.prepare(`
-    SELECT id FROM prep_forecast_runs
-    WHERE status = 'success'
-    ORDER BY started_at DESC LIMIT 1
-  `).get() as { id: number } | undefined;
+    SELECT f.forecast_run_id AS id
+      FROM prep_item_forecasts f
+      JOIN prep_forecast_runs r ON r.id = f.forecast_run_id AND r.status = 'success'
+     WHERE f.company_id = ? AND f.target_date = ?
+     ORDER BY f.forecast_run_id DESC LIMIT 1
+  `).get(companyId, targetDate) as { id: number } | undefined;
   if (!latestRun) return [];
   return db.prepare(`
     SELECT f.*, i.name AS prep_item_name, i.unit AS prep_item_unit,
