@@ -255,9 +255,34 @@ Ethan's decisions:
 
 - **Newest-request token.** Any effect that loads per-company or per-record data
   keeps `const token = ++ref.current` and drops stale responses. Copied in
-  `PackagingLevels`, `ProductSettings`, `ProductDetail`, `ProductsDashboard`.
-  **Should be a `useLatestRequest` hook — it is hand-rolled four times.**
+  `PackagingLevels`, `ProductSettings`, `ProductDetail`, `ProductsDashboard`, and
+  `app/kiosk/page.tsx` (`sessionRef`).
+  **Should be a `useLatestRequest` hook — it is hand-rolled five times.**
+  The kiosk copy is the one to read first: there the token is not just a
+  staleness fix but a *privacy* one — it is bumped by `clearPerson()` so a reply
+  that lands after the previous staff member walked away cannot paint their name,
+  rules gate or confirmation in front of the next person. Guards belong on the
+  `catch` arm and the `finally` arm too, not only on success.
 - **`onChanged(patch)` back to the parent.** A detail overlay tells its list what
   changed. The patch must carry every field the list displays.
 - **Unknown means "don't".** A guard that cannot check something must block, never
   assume nothing was found.
+
+## Brand assets
+
+| Asset | Path | What | users |
+|---|---|---|---|
+| What a Jerk mark | `public/waj-logo.svg` | The wordmark in brand yellow on a transparent ground, viewBox trimmed to the artwork. **Served without login** via an exact-path carve-out in `src/middleware.ts` — everything else in `public/` gets redirected to `/login`, which is why a new public-screen asset appears to 404. | 1 |
+| — its master | `docs/brand/waj-logo-master.svg` | Untouched Illustrator export, red `#BE1E2D` background square included. Derive from this, never retype it. | — |
+
+**Brand colours:** red `#BE1E2D`, yellow `#EFA949`. Exported as `WAJ_RED` / `WAJ_YELLOW`
+from `components/kiosk/KioskWelcome.tsx`.
+
+⚠️ **The mark's letter interiors are transparent** — the counters are cut out and show
+whatever is behind. It is drawn to sit on the brand red. On white or a photo it will read
+wrong; put a red field behind it.
+
+⚠️ **Never rebuild this file by hand from a paste.** It is one `<path>` whose
+reverse-wound sub-shapes cut the letter counters; splitting it into separate `<path>`
+elements fills every counter solid and the wordmark turns to blobs. That shipped to a
+screenshot once. Copy the file, don't transcribe it.
