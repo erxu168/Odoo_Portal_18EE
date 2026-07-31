@@ -16,7 +16,10 @@ const ENVS: Record<string, string> = {
 };
 
 const target = process.env.SMOKE_ENV ?? 'staging';
-const baseURL = ENVS[target] ?? ENVS.staging;
+// SMOKE_BASE_URL points a run at any server — e.g. a local dev server with a
+// seeded scratch database, when staging's shared fixture accounts can't be
+// touched. Named envs stay the default.
+const baseURL = process.env.SMOKE_BASE_URL || (ENVS[target] ?? ENVS.staging);
 
 // Unit specs exercise the real SQLite layer. Give EVERY worker its own scratch
 // database so they can neither race each other on one file (which made the
