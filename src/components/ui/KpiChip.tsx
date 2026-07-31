@@ -13,14 +13,33 @@ export interface KpiChipProps {
   value: React.ReactNode;
   label: string;
   tone?: 'default' | 'danger';
+  /** A stat you can see should be a stat you can act on: given a handler the
+   *  chip renders as a real button and navigates. Without one it stays a div. */
+  onClick?: () => void;
 }
 
-export function KpiChip({ value, label, tone = 'default' }: KpiChipProps) {
+export function KpiChip({ value, label, tone = 'default', onClick }: KpiChipProps) {
   const danger = tone === 'danger';
-  return (
-    <div className="rounded-xl bg-white border border-gray-200 py-2.5 text-center">
+  const inner = (
+    <>
       <div className={`text-[var(--fs-xl)] font-bold tabular-nums ${danger ? 'text-red-600' : 'text-gray-900'}`}>{value}</div>
       <div className="text-[10px] text-gray-400 uppercase tracking-wide">{label}</div>
+    </>
+  );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="rounded-xl bg-white border border-gray-200 py-2.5 min-h-[44px] text-center w-full active:bg-gray-50 active:scale-[0.98] transition-transform"
+      >
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <div className="rounded-xl bg-white border border-gray-200 py-2.5 text-center">
+      {inner}
     </div>
   );
 }

@@ -132,10 +132,14 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
       />
 
       <div className="px-4 pt-4">
+        {/* The pills are NAVIGATION, not decoration: each opens the screen
+            where its number gets worked on. "To review" stays a plain number
+            for staff — Review itself is manager-gated. */}
         <KpiRow columns={3} className="mb-4">
-          <KpiChip value={stats.toCount} label="To count" />
-          <KpiChip value={reviewCount} label="To review" />
-          <KpiChip value={stats.countedToday} label="Counted" />
+          <KpiChip value={stats.toCount} label="To count" onClick={() => onNavigate('my-lists')} />
+          <KpiChip value={reviewCount} label="To review"
+            onClick={can('inventory.review.approve') ? () => onNavigate('review') : undefined} />
+          <KpiChip value={stats.countedToday} label="Counted" onClick={() => onNavigate('my-lists')} />
         </KpiRow>
 
         {/* Counts from earlier days that were never finished. Stated on its own
@@ -143,17 +147,38 @@ export default function InventoryDashboard({ userRole, capabilities, onNavigate,
             counted today, and merging them is what turned one list into
             "281 products waiting". Untouched ones close themselves overnight,
             so anything showing here has work in it and needs a person. */}
-        {!loading && stats.olderOpen > 0 && (
-          <div className="mx-4 mb-3 px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
-            <p className="text-[var(--fs-sm)] font-bold text-amber-900">
-              {stats.olderOpen} count{stats.olderOpen === 1 ? '' : 's'} from earlier days {stats.olderOpen === 1 ? 'was' : 'were'} started and never submitted
-            </p>
-            <p className="text-[var(--fs-xs)] text-amber-800 mt-0.5">
-              Counts nobody touched close themselves overnight, so {stats.olderOpen === 1 ? 'this one has' : 'these have'} work in
-              {stats.olderOpen === 1 ? ' it' : ' them'}. A manager can submit or reject {stats.olderOpen === 1 ? 'it' : 'them'} from Review.
-            </p>
-          </div>
-        )}
+        {!loading && stats.olderOpen > 0 && (() => {
+          // The notice tells you to go to Review — so, for anyone who CAN
+          // review, it IS the way there. Staff see the same words, unclickable.
+          const canReview = can('inventory.review.approve');
+          const inner = (
+            <>
+              <p className="text-[var(--fs-sm)] font-bold text-amber-900">
+                {stats.olderOpen} count{stats.olderOpen === 1 ? '' : 's'} from earlier days {stats.olderOpen === 1 ? 'was' : 'were'} started and never submitted
+              </p>
+              <p className="text-[var(--fs-xs)] text-amber-800 mt-0.5">
+                Counts nobody touched close themselves overnight, so {stats.olderOpen === 1 ? 'this one has' : 'these have'} work in
+                {stats.olderOpen === 1 ? ' it' : ' them'}.{' '}
+                {canReview
+                  ? <span className="font-bold underline">Tap to open Review.</span>
+                  : `A manager can submit or reject ${stats.olderOpen === 1 ? 'it' : 'them'} from Review.`}
+              </p>
+            </>
+          );
+          const box = 'px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200';
+          return (
+            <div className="mx-4 mb-3">
+              {canReview ? (
+                <button type="button" onClick={() => onNavigate('review')}
+                  className={`${box} block w-full text-left active:bg-amber-100`}>
+                  {inner}
+                </button>
+              ) : (
+                <div className={box}>{inner}</div>
+              )}
+            </div>
+          );
+        })()}
         <ActionGrid
           items={tiles}
           getItemId={(tile) => tile.id}

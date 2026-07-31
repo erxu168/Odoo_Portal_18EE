@@ -116,7 +116,7 @@ list told only about the room keeps rendering orphans.
 | `PhoneInput` | `ui/PhoneInput.tsx` | Country code + validation | 1 |
 | `RichTextEditor` | `ui/RichTextEditor.tsx` | Formatted-note editor | 2 |
 | `Chip` | `ui/Chip.tsx` | Status badge — colour AND icon carry meaning | 1 |
-| `KpiChip` / `KpiRow` | `ui/KpiChip.tsx` | Stat chip; red only for real problems | 11 |
+| `KpiChip` / `KpiRow` | `ui/KpiChip.tsx` | Stat chip; red only for real problems. Give it `onClick` and it becomes a real button — a stat you can see should be a stat you can act on | 11 |
 
 **KNOWN GAPS:** **176 files hand-roll `bg-green-600` buttons** instead of
 `PrimaryButton`. **58 hand-roll a raw `<select>`.** There are **four rival status
