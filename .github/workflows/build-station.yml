@@ -148,16 +148,20 @@ jobs:
           path = sys.argv[1]
           xml = open(path, encoding='utf-8').read()
 
-          # Scoped deliberately. The plugin only ever reads the list of ALREADY
-          # PAIRED devices and cancels discovery — it never scans for new ones
-          # and never wants a location. So SCAN is flagged neverForLocation, and
-          # the three legacy permissions stop at Android 11, which is the last
-          # version that used them. Without that, staff would be asked for
-          # location just to print a label.
+          # UNSCOPED on purpose — parity with the Portal app's manifest, which is
+          # the proven combination. Scoping the legacy trio with maxSdkVersion="30"
+          # looked cleaner but broke printing on Android 12+: the OS strips those
+          # entries at install time, and Capacitor validates the plugin's FULL
+          # annotated permission list against the installed manifest, so every
+          # connect failed with "Missing the following permissions in
+          # AndroidManifest.xml" (seen live on the BV5200, 2026-08-01). Trim the
+          # prompts only together with a per-SDK split of the plugin's request
+          # logic, and test both apps on a 12+ device. neverForLocation on SCAN
+          # is metadata, strips nothing, and stays.
           perms = [
-              ('android.permission.BLUETOOTH', ' android:maxSdkVersion="30"'),
-              ('android.permission.BLUETOOTH_ADMIN', ' android:maxSdkVersion="30"'),
-              ('android.permission.ACCESS_FINE_LOCATION', ' android:maxSdkVersion="30"'),
+              ('android.permission.BLUETOOTH', ''),
+              ('android.permission.BLUETOOTH_ADMIN', ''),
+              ('android.permission.ACCESS_FINE_LOCATION', ''),
               ('android.permission.BLUETOOTH_CONNECT', ''),
               ('android.permission.BLUETOOTH_SCAN', ' android:usesPermissionFlags="neverForLocation"'),
           ]
